@@ -164,7 +164,8 @@ src/
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
     styles.ts              base styles (BASE_STYLES: Iris, Lavender, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
-                           style (user choice, default), themeCss() (only hex values and constants reach the CSS)
+                           style (user choice, default), themeCss() (only hex values and constants reach the CSS); (sprint 117) NAV_APPEARANCES
+                           (Pillar Light / Dark), navAppearance() → the <body> classes nav-pillar-*, the header strip (--strip)
     template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges; (124) menu entries {action} → data-menu-entry for menu_entry dynamic actions)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
@@ -348,7 +349,8 @@ src/
     ldap.ts                Users → LDAP directories
     documents.ts           document template preview (Shared Components)
     pwa.ts                 Settings → Progressive Web App (icon upload)
-    themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose
+    themeroller.ts         Settings → Theme Roller: style variants (add, edit, rename, delete), default style, users may choose;
+                           (sprint 117) navigation appearance and header strip colours (application and per style), the preview's menu
     subscriptions.ts       Shared Components → Subscriptions: subscribe, refresh, unsubscribe, subscribers and publish; the note under a component
     reporter.ts            page designer: Data Reporter settings (sources: table or view, offered columns, labels, masks; sharing;
                            (sprint 110) a dataset as a source, who may edit, who may moderate, publishing)
@@ -396,7 +398,8 @@ src/
                            into agents and regions), toolCallTable() (Activity → AI usage → Tool calls), agentOptions()
     supporting.ts          supporting objects: review page, running the install/upgrade/deinstall scripts as the app's role in one transaction
 public/
-  app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*)
+  app.css                  theme (light/dark, responsive; --font, --font-size, --radius for style variants; template option classes to-*;
+                           (sprint 117) navigation tree states, RTL via logical properties, body.nav-pillar-*, u-color-*-subtle, the busy bar)
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs (sprint 115: the next page loads on scroll through an
                            IntersectionObserver, ‹/More without one), dynamic actions (focus, classes, messages; sprint 115: wait_popup /
                            remove_wait_popup as a modal <dialog class="wait-popup">, pgkiln.waitPopup(), the menu_entry event), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
@@ -473,6 +476,7 @@ test/
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris
+  theme-pillar.test.ts     (sprint 117) Pillar Light / Dark appearances and the header strip: checks, CSS, runtime classes, Theme Roller, export
   workspaces.test.ts       workspaces (064): Default, administrators' pages, current workspace, refused apps, imports and copies
   gallery.test.ts          the App Gallery: every starter created from its review with all its pages rendering; sample apps (admins)
   builder-apex-screens.test.ts sprint 61: sign-in with a workspace, message and banner, utilization, SQL Workshop home, groups, reports
@@ -493,6 +497,7 @@ test/
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/pillar.test.ts       (sprint 117) Pillar appearances: axe in light and dark, subtle colours, current vs parent entry, Arabic RTL, 390 px, preview
   e2e/code-editor.test.ts  the code editor in a browser: highlighting, keys, suggestions, touch, screen readers, syntax colours at AA in both themes (sprint 108)
   e2e/data-modeler.test.ts (sprint 98) the Data Modeler in a browser: drag, save, reload, undo/redo, zoom, mini-map, exports, phone
   e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript;

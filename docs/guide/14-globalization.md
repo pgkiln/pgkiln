@@ -245,6 +245,8 @@ application. The base style and colours under Settings → Theme are the *Standa
 |---|---|
 | Accent colour, header colour | `#rrggbb` (or "as the base"), for the light theme |
 | Accent and header colour in dark mode | `#rrggbb` (or the base style's dark palette), for the dark theme; choose light colours (text on the accent is dark there) |
+| Navigation appearance | *As the application*, *Default* (the base style's header and menu), *Pillar Light* or *Pillar Dark*, see [below](#navigation-appearances-pillar-light-and-pillar-dark) |
+| Header strip colour, also for dark mode | `#rrggbb` or an item reference (else the application's strip, else the accent) |
 | Font | *System* (default), *Humanist sans*, *Geometric sans*, *Serif*, *Rounded*, *Monospace* (font stacks of fonts on the device; nothing is downloaded) |
 | Font size | 14, 15 (default), 16 or 17 px |
 | Corners | Square, 4, 8 (default) or 14 px, for regions, buttons and fields |
@@ -276,10 +278,56 @@ per tenant, environment or user group:
   a style themselves get the first style (in the list's order) whose condition holds, else the
   default style. The condition runs as the application's database role in the page's transaction;
   an error counts as *false* and is written to the [debug messages](06-processing.md#debug-messages).
-- **Dynamic colours.** Instead of a picked colour, any of a style's four colours may be an item
+- **Dynamic colours.** Instead of a picked colour, any of a style's colours may be an item
   reference such as `&APP_BRAND_COLOUR.`: the item's value in session state (set by a computation,
   an application process after login, a form…), used when it is a `#rrggbb` colour and ignored
   otherwise, so a stored value can never become anything but a colour in the CSS.
 
 Together: one style *Tenant brand* with condition `:APP_BRAND_COLOUR is not null` and accent
 `&APP_BRAND_COLOUR.` gives each tenant its colour from a table, read once after sign-in.
+
+## Navigation appearances: Pillar Light and Pillar Dark
+
+APEX 26.2's Universal Theme adds *Pillar* appearances for the header and the navigation menu. In pgkiln:
+**Theme Roller → Navigation appearance** (for the whole application) or a style's own *Navigation appearance*:
+
+| Appearance | Look |
+|---|---|
+| **Default** | The base style's header and menu (Iris: a dark header and menu; Standard: a navy header and a white menu) |
+| **Pillar Light** | Header and menu on the page's own light surfaces (in dark mode its dark ones), a line under the header |
+| **Pillar Dark** | Header and menu as one dark column in the header colour; in dark mode a darker one |
+
+Both have a **header pillar strip** across the top of the header, in the *Header strip colour* (light and dark mode,
+on the Theme Roller page or per style; a style may take it from an item, like its other colours), else the accent,
+and show the **current page as a filled pill** in the accent. Pillar Light replaces the header colour with the page's
+surface, so the strip carries the brand colour. A style's appearance wins over the application's; *Default* in a style
+switches a pillar appearance off. The appearance works with a side and a top menu, and on tablets and phones in the
+drawer. It is stored as `"appearance"`, `"strip"` and `"strip_dark"` in `meta.app.theme` (and in each style), so it
+travels with export and import; only the two keys of the list and `#rrggbb` colours reach the page (classes
+`nav-pillar nav-pillar-light` / `nav-pillar-dark` on `<body>`, `--strip` in the nonce'd `<style>`).
+
+### The navigation tree
+
+In every appearance (sprint 117) the menu tells three states apart: the **current page** is filled, in the accent,
+with a bar at the start of the entry (a pill in the pillar appearances); its **parent entries** (the trail) are bold
+with an accent icon but not filled, and the open parent's sub-menu hangs on an accent guide line; the **selected**
+entry (keyboard focus) has a ring inside the menu. A page that is not in the menu marks its nearest menu ancestor as
+the trail.
+
+### Right to left
+
+Arabic, Hebrew, Persian and Urdu pages (`dir="rtl"`) mirror the chrome: the menu sits on the right, the drawer
+slides in from the right on tablets and phones, the current page's bar, the guide lines and the menu's chevrons turn
+around, menus open from the other side and reflowed report cards are aligned to the start.
+
+### Subtle colour utilities and the processing indicator
+
+The classes `u-color-1-subtle` … `u-color-15-subtle` and `u-color-success-subtle`, `u-color-danger-subtle`,
+`u-color-warning-subtle`, `u-color-info-subtle`, `u-color-neutral-subtle` give an element a tinted background with
+readable text (WCAG AA in light and dark mode, in every base style), for static content, HTML expressions and
+template components, e.g. `<span class="u-color-4-subtle">Approved</span>`.
+
+A region that is busy (a dynamic action, a refresh) is dimmed slightly after 150 ms, so quick answers don't flicker,
+and shows a thin moving bar along its top (a still bar when the device asks for reduced motion); the wait popup's
+spinner is lighter too.
+

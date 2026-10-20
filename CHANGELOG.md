@@ -5,6 +5,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Pillar navigation appearances** (WS-10; APEX 26.2 Universal Theme): Theme Roller → *Navigation appearance*
+  **Pillar Light** (header and menu on the page's own surfaces) or **Pillar Dark** (header and menu as one dark column),
+  for the application or per style, with a **header pillar strip** colour for light and dark mode (per style also from an
+  item) and the current page as a filled pill; the Theme Roller's preview has a sample menu. Stored in `meta.app.theme`
+  (`appearance`, `strip`, `strip_dark`), so it travels with export and import. No migration.
+- **Subtle colour utilities** `u-color-1-subtle` … `u-color-15-subtle` and `u-color-{success,danger,warning,info,neutral}-subtle`:
+  tinted backgrounds with AA-contrast text in light and dark mode.
+
+### Changed
+- The navigation menu tells the current page (filled, accent bar) from its parent entries (bold, not filled, an accent
+  guide line along the open sub-menu) at a glance; keyboard focus is a ring inside the menu.
+- Right to left (Arabic, Hebrew, …): the menu and drawer, guide lines, chevrons, menus and reflowed report cards are
+  mirrored (logical CSS properties).
+- A lighter processing indicator: busy regions dim slightly after 150 ms and show a thin moving bar; a lighter wait
+  popup spinner.
+
+### Fixed
+- A theme or style with both an accent and a header colour wrote them as one malformed CSS declaration, so the header
+  colour (and the soft accent) were ignored.
+- The top navigation's sub-menus used the page surface behind the menu's text colour (unreadable with Iris's dark menu).
+
 ## [0.52.0] - 2026-10-19
 
 ### Added
