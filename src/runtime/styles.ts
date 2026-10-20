@@ -69,6 +69,22 @@ export const RADII: Record<string, { label: string; css: string }> = {
   large: { label: 'Large (14 px)', css: '14px' },
 };
 
+/**
+ * (sprint 117, APEX 26.2) Navigation appearances: how the header and the
+ * navigation menu look, on top of the base style. Pillar Light: the header
+ * and menu on the page's own surfaces; Pillar Dark: header and menu as one
+ * dark column. Both carry the header pillar strip (theme.strip / a style's
+ * strip, else the accent) and a filled "pill" for the current page. The
+ * page's <body> gets the classes nav-pillar and nav-pillar-light / -dark.
+ */
+export const NAV_APPEARANCES: Record<string, { label: string }> = {
+  pillar_light: { label: 'Pillar Light' },
+  pillar_dark: { label: 'Pillar Dark' },
+};
+export type NavAppearance = 'pillar_light' | 'pillar_dark';
+/** A style's appearance "default": the base style's own look, whatever the application's appearance. */
+export const APPEARANCE_DEFAULT = 'default';
+
 export interface StyleVariant {
   name: string;
   accent?: string;
@@ -76,6 +92,11 @@ export interface StyleVariant {
   /** (0.29) the colours in dark mode (else dark mode keeps the base style's dark palette) */
   accent_dark?: string;
   header_dark?: string;
+  /** (sprint 117) the navigation appearance (a key of NAV_APPEARANCES, or 'default'; absent: as the application) */
+  appearance?: string;
+  /** (sprint 117) the header pillar strip's colour, light and dark mode (absent: the accent) */
+  strip?: string;
+  strip_dark?: string;
   font?: string;
   font_size?: string;
   radius?: string;
@@ -93,8 +114,11 @@ export function parseStyle(v: Record<string, unknown>): StyleVariant | string {
   const name = typeof v.name === 'string' ? v.name.trim() : '';
   if (!STYLE_NAME.test(name)) return 'Name: 1 to 30 letters, digits, spaces, - or _, starting with a letter or digit.';
   const out: StyleVariant = { name };
-  const colourLabels = { accent: 'Accent colour', header: 'Header colour', accent_dark: 'Accent colour (dark mode)', header_dark: 'Header colour (dark mode)' };
-  for (const k of ['accent', 'header', 'accent_dark', 'header_dark'] as const) {
+  const colourLabels = {
+    accent: 'Accent colour', header: 'Header colour', accent_dark: 'Accent colour (dark mode)', header_dark: 'Header colour (dark mode)',
+    strip: 'Header strip colour', strip_dark: 'Header strip colour (dark mode)',
+  };
+  for (const k of ['accent', 'header', 'accent_dark', 'header_dark', 'strip', 'strip_dark'] as const) {
     const x = v[k];
     if (x === undefined || x === null || x === '') continue;
     if (typeof x === 'string' && ITEM_REF.test(x.trim().toUpperCase())) {
@@ -109,6 +133,11 @@ export function parseStyle(v: Record<string, unknown>): StyleVariant | string {
     if (x === undefined || x === null || x === '') continue;
     if (!own(list, x)) return `${label}: choose from ${Object.keys(list).join(', ')}.`;
     out[k] = x as string;
+  }
+  const ap = v.appearance;
+  if (ap !== undefined && ap !== null && ap !== '') {
+    if (ap !== APPEARANCE_DEFAULT && !own(NAV_APPEARANCES, ap)) return `Navigation appearance: choose from ${APPEARANCE_DEFAULT}, ${Object.keys(NAV_APPEARANCES).join(', ')}.`;
+    out.appearance = ap as string;
   }
   if (typeof v.condition === 'string' && v.condition.trim()) {
     if (v.condition.length > MAX_CONDITION) return `Condition: at most ${MAX_CONDITION} characters.`;
@@ -162,19 +191,32 @@ export const choosable = (app: Pick<App, 'theme'>, name: unknown): name is strin
 /** An item's value for &ITEM. colours (session state), when the CSS is made. */
 export type ItemValue = (name: string) => string | undefined;
 
-const colourVars = (accent?: string, header?: string, item?: ItemValue) => {
+const colourVars = (accent?: unknown, header?: unknown, item?: ItemValue, strip?: unknown) => {
   // an item reference becomes the item's value, used only when it is a #rrggbb colour
-  const value = (c?: string) => {
-    const ref = c ? ITEM_REF.exec(c) : null;
+  const value = (c?: unknown) => {
+    if (typeof c !== 'string') return undefined;
+    const ref = ITEM_REF.exec(c);
     return ref ? item?.(ref[1])?.trim() : c;
   };
-  accent = value(accent);
-  header = value(header);
+  const a = value(accent);
+  const h = value(header);
+  const st = value(strip);
   const vars: string[] = [];
-  if (accent && HEX.test(accent)) vars.push(`--accent:${accent};--accent-soft:color-mix(in srgb, ${accent} 14%, var(--surface))`);
-  if (header && HEX.test(header)) vars.push(`--header:${header};`);
+  if (a && HEX.test(a)) vars.push(`--accent:${a};--accent-soft:color-mix(in srgb, ${a} 14%, var(--surface));`);
+  if (h && HEX.test(h)) vars.push(`--header:${h};`);
+  // (sprint 117) the header pillar strip
+  if (st && HEX.test(st)) vars.push(`--strip:${st};`);
   return vars;
 };
+
+/**
+ * (sprint 117) The navigation appearance for this request: the style's own
+ * (or 'default' for none), else the application's (theme.appearance).
+ */
+export function navAppearance(theme: App['theme'] | undefined, style: StyleVariant | null): NavAppearance | null {
+  const v = style?.appearance ?? theme?.appearance;
+  return typeof v === 'string' && v !== APPEARANCE_DEFAULT && own(NAV_APPEARANCES, v) ? (v as NavAppearance) : null;
+}
 
 /**
  * The theme's CSS: the base colours (Settings → Theme), then the style
@@ -182,15 +224,15 @@ const colourVars = (accent?: string, header?: string, item?: ItemValue) => {
  */
 export function themeCss(theme: App['theme'] | undefined, style: StyleVariant | null, item?: ItemValue): string {
   const out: string[] = [];
-  const base = colourVars(theme?.accent, theme?.header);
+  const base = colourVars(theme?.accent, theme?.header, undefined, theme?.strip);
   // html:root ties with app.css's html[data-style] rules and comes later, so own colours win over a base style's
   if (base.length) out.push(`html:root{${base.join('')}}`);
   // dark mode: the same specificity as app.css's dark palettes (html[data-style]…), later in the page
-  const dark = [...colourVars(theme?.accent_dark, theme?.header_dark), ...(style ? colourVars(style.accent_dark, style.header_dark, item) : [])];
+  const dark = [...colourVars(theme?.accent_dark, theme?.header_dark, undefined, theme?.strip_dark), ...(style ? colourVars(style.accent_dark, style.header_dark, item, style.strip_dark) : [])];
   if (dark.length)
     out.push(`@media (prefers-color-scheme: dark){html:root:not([data-theme="light"]){${dark.join('')}}}html:root[data-theme="dark"]{${dark.join('')}}`);
   if (style) {
-    const colours = colourVars(style.accent, style.header, item);
+    const colours = colourVars(style.accent, style.header, item, style.strip);
     if (colours.length) out.push(`html:root{${colours.join('')}}`);
     const all: string[] = [];
     if (style.font && own(FONTS, style.font)) all.push(`--font:${FONTS[style.font].css};`);

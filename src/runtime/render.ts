@@ -5,7 +5,7 @@ import { pushBody } from './push.ts';
 import { mapHead } from './maps.ts';
 import { staticHead } from './static-files.ts';
 import { pluginAttributes, pluginOf } from './plugins.ts';
-import { appStyles, chosenStyle, chosenStyleName, conditionalStyles, styleChoice, themeCss } from './styles.ts';
+import { appStyles, chosenStyle, chosenStyleName, conditionalStyles, navAppearance, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
@@ -260,6 +260,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
 
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
+  // (sprint 117, APEX 26.2) Pillar Light / Pillar Dark: classes on <body> from a fixed list (styles.ts)
+  const appearance = navAppearance(ctx.app.theme, chosenStyle(ctx.app, ctx.session, ctx.styleByCondition));
   const nav = await navTree(ctx, topNav);
   const listNodes = ctx.app.navbar_list ? await listTree(ctx, ctx.app.navbar_list) : null;
   // (084) the Feedback entry, after the application's own navigation bar list
@@ -311,7 +313,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
         <footer class="t-footer">${ctx.app.version ? html`<span class="t-version">${ctx.locale.tr(ctx.app.version)}</span>` : ''}<a class="t-top" href="#top">${icon('arrow-up')} ${t('common.back_to_top')}</a></footer></main>
     </div>
     ${devbarHtml(ctx)}`,
-    `t-app${topNav ? ' nav-top' : ''}`,
+    `t-app${topNav ? ' nav-top' : ''}${appearance ? ` nav-pillar nav-${appearance === 'pillar_dark' ? 'pillar-dark' : 'pillar-light'}` : ''}`,
     { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)) },
     html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
     root,
