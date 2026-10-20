@@ -123,7 +123,7 @@ developing pgkiln itself.
 
 ## What's in the box
 
-For a full comparison with Oracle APEX 26.1, including what's missing, see
+For a full comparison with Oracle APEX 26.2, including what's missing, see
 **[docs/apex-feature-parity.md](docs/apex-feature-parity.md)**.
 
 **Runtime (Universal Theme-style UI, responsive on phone, tablet and desktop)**
