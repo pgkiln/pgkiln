@@ -86,6 +86,10 @@ import { workspaceBackupRoutes } from './builder/workspace-backups.ts';
 import { restCatalogRoutes } from './builder/rest-catalogs.ts';
 import { workspaceTransferRoutes } from './builder/workspace-transfer.ts';
 import { findWorkspaceRoutes } from './builder/find-workspace.ts';
+// (sprint 118) Administration → Mail queue, Network access; a workspace's own mail service
+import { mailQueueRoutes } from './builder/mail-queue.ts';
+import { networkAccessRoutes } from './builder/network-access.ts';
+import { workspaceMailRoutes } from './builder/workspace-mail.ts';
 import { runtimeScope } from './db.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
@@ -257,6 +261,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(blueprintRoutes);
   await app.register(workspaceHomeRoutes);
   await app.register(teamRoutes);
+  await app.register(mailQueueRoutes);
+  await app.register(networkAccessRoutes);
+  await app.register(workspaceMailRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder/home'));
   return app;
 }

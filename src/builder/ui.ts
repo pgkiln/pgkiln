@@ -139,6 +139,8 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
               <a href="${BASE}/workspaces/${s.workspace.id}#preferences">${icon('sliders-horizontal')} Workspace preferences</a>
               <a href="${BASE}/workspaces/${s.workspace.id}#links">${icon('external-link')} Extension links</a>
               <a href="${BASE}/workspaces/${s.workspace.id}/utilization">${icon('chart')} Workspace utilization</a>
+              <a href="${BASE}/mail-queue">${icon('inbox')} Mail queue</a>
+              <a href="${BASE}/network">${icon('globe')} Network access</a>
               <a href="${BASE}/workspaces/${s.workspace.id}">${icon('layers')} Workspace and developers</a>
             </div>` : ''}
             <div class="menu-section menu-links">
