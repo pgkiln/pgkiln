@@ -134,14 +134,16 @@ async function callFromPage(url: string) {
   return (await owner.one(`select msg from ${SCHEMA}.log`)).msg as string;
 }
 
-/** The debug messages of the app's latest POST (stored after the response: wait for them). */
+/** The debug messages of the app's POSTs with a "web" entry (stored after the response, maybe after an earlier one's: wait for them). */
 async function debugMessages() {
+  let rows: any[] = [];
   for (let i = 0; i < 50; i++) {
-    const v = await owner.one(`select id from meta.debug_view where app_id = $1 and method = 'POST' order by id desc limit 1`, [appId]);
-    if (v) return (await owner.query('select level, component, message from meta.debug_message where view_id = $1 order by seq', [v.id])).rows;
+    rows = (await owner.query(`select m.level, m.component, m.message from meta.debug_message m join meta.debug_view v on v.id = m.view_id
+                                where v.app_id = $1 and v.method = 'POST' and m.component = 'web' order by m.view_id, m.seq`, [appId])).rows;
+    if (rows.length) return rows;
     await new Promise((r) => setTimeout(r, 40));
   }
-  return [];
+  return rows;
 }
 
 describe('network access lists', () => {
