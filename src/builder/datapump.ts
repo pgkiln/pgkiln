@@ -36,7 +36,7 @@ async function admin(req: Req, reply: FastifyReply) {
 }
 
 const page = (reply: FastifyReply, s: Session, title: string, trail: [string, string?][], body: Raw, code = 200) =>
-  send(reply.code(code), s, shell(s, title, crumbs(...trail), html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('datapump')}${body}`, 'sql'));
+  send(reply.code(code), s, shell(s, title, crumbs(...trail), html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('datapump', s)}${body}`, 'sql'));
 
 export const size = (n: number | null) =>
   n === null ? '' : n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : n < 1024 ** 3 ? `${(n / 1024 ** 2).toFixed(1)} MB` : `${(n / 1024 ** 3).toFixed(2)} GB`;

@@ -57,7 +57,7 @@ export async function feedbackRoutes(app: FastifyInstance) {
             </div>
             <div class="buttons"><button class="btn btn-sm btn-hot">Save</button></div></form>
         </li>`)}</ul>` : html`<p class="muted">No feedback${status || kind ? ' with these filters' : ' yet'}.</p>`}`)}`;
-    const main = html`${appHeader(a, 'activity')}<div class="ide-body">${body}</div>`;
+    const main = html`${appHeader(a, 'activity', s)}<div class="ide-body">${body}</div>`;
     return send(reply, s, shell(s, `${a.name} feedback`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Activity', `${BASE}/apps/${a.id}/activity`], ['Feedback']], main));
   });
 

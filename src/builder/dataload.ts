@@ -139,7 +139,7 @@ export function resultHtml(r: LoadResult, failed: boolean) {
 
 export async function dataLoadRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, main: Raw) =>
-    send(reply, s, shell(s, 'Load Data', [['SQL Workshop', `${BASE}/sql`], ['Load Data']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('load')}${main}`, 'sql'));
+    send(reply, s, shell(s, 'Load Data', [['SQL Workshop', `${BASE}/sql`], ['Load Data']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('load', s)}${main}`, 'sql'));
 
   // step 1: choose a file
   app.get(`${BASE}/sql/load`, async (req: Req, reply) => {

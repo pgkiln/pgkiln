@@ -158,7 +158,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         <a class="create-source" href="${BASE}/sql/load">${icon('upload')}<span><b>Load data</b><small class="muted">A table from a file</small></span></a></div>
         <p class="muted">Select an object in the tree, or filter it by name.</p>`);
 
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects', s)}
       <div class="ob-head">
         <form method="get" class="ob-schema">${filter ? html`<input type="hidden" name="q" value="${filter}">` : ''}
           <label class="label" for="ob-schema">Schema</label>

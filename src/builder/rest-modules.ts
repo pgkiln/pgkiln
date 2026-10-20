@@ -101,7 +101,7 @@ function tree(m: ModRow, sel: { t?: string; m?: string } = {}) {
 
 /** The page frame: tabs, the module's tree beside the content. */
 function frame(s: Session, m: ModRow, title: string, crumbs: [string, string?][], sel: { t?: string; m?: string }, body: Raw) {
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest')}${restNav('modules')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest', s)}${restNav('modules')}
     <h2 class="u-mb1 wrap-anywhere">${m.title} <span class="muted small">${m.app_name} · /a/${m.app_alias}/rest/${m.name}/${m.enabled ? '' : ' · disabled'}</span></h2>
     <div class="rm-layout">${region('Module', tree(m, sel))}<div class="rm-main">${body}</div></div>`;
   return shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['RESTful Services', MODULES], ...crumbs], main, 'sql');
@@ -136,7 +136,7 @@ async function listPage(s: Session, b: Record<string, unknown> = {}, problems: s
     </div>
     <div class="field"><label class="label" for="f_description">Description</label><input id="f_description" name="description" value="${v('description')}"></div>
     <div class="buttons"><button class="btn btn-hot"${apps.length ? '' : raw(' disabled')}>${icon('plus')} Create module</button></div></form>`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest')}${restNav('modules')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest', s)}${restNav('modules')}
     <p class="muted">RESTful Services modules: a module is a base path of an application, its templates are URIs with <code>:parameters</code>, and each template has handlers per method with their source: a collection query, a single row, SQL, a PL/pgSQL block or a media resource. Handlers run as the application's database role with the caller as <code>meta.app_user()</code>, so its grants and row level security apply; parameters are bound, never pasted into the SQL. Every module has an OpenAPI document. Modules belong to their application: they travel with its export (also in Shared Components › RESTful Services).</p>
     ${region('Modules', table)}${region('Create a module', form)}`;
   return shell(s, 'RESTful Services: Modules', [['SQL Workshop', `${BASE}/sql`], ['RESTful Services', `${BASE}/sql/rest`], ['Modules']], main, 'sql');

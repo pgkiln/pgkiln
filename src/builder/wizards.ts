@@ -246,7 +246,7 @@ export async function wizardRoutes(app: FastifyInstance) {
     }
 
     const kindName = WIZARD_KINDS.find((k) => k[0] === kind)![1];
-    const main = html`${appHeader(a, 'pages')}
+    const main = html`${appHeader(a, 'pages', s)}
       ${region(`${kindName} on ${rel.t}`, html`
         <p class="muted u-mt0">${WIZARD_KINDS.find((k) => k[0] === kind)![2]} The proposals come from the table's columns, key and foreign keys; change them below. <a href="${BASE}/apps/${a.id}">Back to choose another type or table</a>.</p>
         ${needsPk && !pk ? html`<p class="alert alert-error" role="status">${rel.t} has no single-column primary key, which this page type needs.</p>` : ''}

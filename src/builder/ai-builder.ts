@@ -142,7 +142,7 @@ const SQL_SCHEMA = {
 
 async function workshopPage(s: Session, reply: FastifyReply, out: { question?: string; schema?: string; sql?: string; error?: string; result?: Raw }) {
   const list = await schemas(s);
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai', s)}
     ${await serviceBox(s)}
     <p><a href="${BASE}/sql/ai/describe">Describe tables for AI ▸</a> <span class="muted">(better answers: say what tables and columns mean)</span></p>
     ${out.result ?? ''}
@@ -178,7 +178,7 @@ async function describePage(s: Session, reply: FastifyReply, schema: string, tab
   const t = table ? tables.find((x) => x.table === table) : undefined;
   const noted = new Set((await owner.query<{ t: string }>(`select distinct table_name as t from meta.ai_table_note where schema_name = $1`, [schema])).rows.map((r) => r.t));
   const value = (col: string, current: string | null) => (draft ? (col === '' ? draft.table : draft.columns?.[col]) ?? current ?? '' : current ?? '');
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai', s)}
     <p><a href="${BASE}/sql/ai">◂ SQL Workshop AI</a></p>
     ${message ?? ''}
     ${region('Describe tables for AI', html`
@@ -225,7 +225,7 @@ async function pagesPage(s: Session, reply: FastifyReply, a: any, description: s
   const tables = (await wizardTables(a.db_role)).filter((t) => t.access).map((t) => t.t);
   const svc = await builderService();
   const kindOptions = WIZARD_KINDS.map(([k, label]): [string, string] => [k, label]);
-  const main = html`${appHeader(a, 'pages')}
+  const main = html`${appHeader(a, 'pages', s)}
     ${message ?? ''}
     ${region('Create pages with AI', html`
       <p class="muted u-mt0">Describe the pages you want. The App Builder's AI service proposes pages of the create page wizards for tables and views the application's role (${a.db_role ?? 'the owner'}) can read; you check the proposals and create the ones you tick. Table and column names, types and <a href="${BASE}/sql/ai/describe">descriptions</a> are sent to the service, never rows.</p>

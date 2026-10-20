@@ -40,7 +40,7 @@ export async function availabilityRoutes(app: FastifyInstance) {
           'Run only: the builder refuses changes to the application (pages, shared components, settings, restores) until it is set back here. pgkiln import --replace still deploys it.')}
       </div>
       <div class="buttons"><button class="btn btn-hot">Save</button></div></form>`);
-    const main = html`${appHeader(a, 'settings')}<div class="ide-body">${body}</div>`;
+    const main = html`${appHeader(a, 'settings', s)}<div class="ide-body">${body}</div>`;
     return send(reply, s, shell(s, `${a.name} availability`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Availability']], main));
   });
 

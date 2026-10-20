@@ -64,7 +64,7 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
       for (const [k, v] of Object.entries(extra)) q.set(k, v);
       return q.toString();
     };
-    const main = html`${appHeader(a, 'activity')}
+    const main = html`${appHeader(a, 'activity', s)}
       <div class="columns">
         ${region('Debug level', html`
           <p class="muted u-mt0">${a.debug_level
@@ -131,7 +131,7 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
       )
     ).rows;
     const slowest = Math.max(0, ...entries.map((e) => e.dur ?? 0));
-    const main = html`${appHeader(a, 'activity')}
+    const main = html`${appHeader(a, 'activity', s)}
       ${region(`Page view ${v.id}`, html`
         <div class="stat-grid">
           <div class="stat"><b>${v.ms ?? '?'} ms</b><span>total time</span></div>

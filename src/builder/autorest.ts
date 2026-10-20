@@ -167,7 +167,7 @@ async function listPage(s: Session, q: Record<string, unknown>, problems: string
       <div class="buttons"><button class="btn btn-hot"${usable.length ? '' : raw(' disabled')}>${icon('bolt')} Enable</button></div>
       ${usable.length ? '' : html`<p class="muted">No application of this workspace has a database role to run as.</p>`}
     </form>`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest')}${restNav('autorest')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest', s)}${restNav('autorest')}
     <p class="muted">RESTful Services: publish a table or view as REST endpoints (AutoREST). Rows come paged as JSON, with filters; a primary key gives single-row GET, PUT and DELETE. Requests run as the publishing application's database role with the caller as <code>meta.app_user()</code>, so its grants and row level security apply. For tailored endpoints with your own SQL or PL/pgSQL, create a <a href="${BASE}/sql/rest/modules">module</a>.</p>
     ${region('Published objects', table)}
     ${region('Enable a table or view', form)}`;
@@ -227,7 +227,7 @@ async function detailPage(s: Session, o: Row, problems: string[] = []) {
   ].filter(Boolean).join('\n');
   const fetchEx = `const res = await fetch('${base}?limit=10'${o.auth === 'public' ? '' : `, {\n  headers: { Authorization: \`Bearer \${token}\` },\n}`});\nconst { items, has_more } = await res.json();`;
   const openapi = `${publicUrl()}/a/${o.app_alias}/autorest/openapi.json`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest', s)}
     <h2 class="u-mb1 wrap-anywhere">${o.schema_name}.${o.object_name} <span class="muted small">${info ? kindLabel(info.kind) : ''} · ${o.enabled ? 'enabled' : 'disabled'}</span></h2>
     ${errorList(problems)}
     ${!o.enabled ? html`<div class="alert alert-info" role="status">Disabled: the endpoints answer 404.</div>` : ''}

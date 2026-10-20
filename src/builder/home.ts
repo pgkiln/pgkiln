@@ -7,6 +7,7 @@ import { crossAppLinks } from './cross-app.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { currentWorkspace, inWorkspaceSql, workspaceAdmin } from './workspaces.ts';
+import { tr, translatorFor, type BuilderKey, type BuilderTranslate } from './i18n.ts';
 
 // The workspace pages of the builder, laid out like APEX's App Builder: the
 // home page (tiles, a searchable list of applications as a report or as
@@ -30,56 +31,56 @@ export function rememberApp(s: Session, appId: number) {
   s.state.__RECENT = [appId, ...recentIds(s).filter((id) => id !== appId)].slice(0, RECENT_MAX).join(',');
 }
 
-/** "3 minutes ago", "2 days ago", "1.7 years ago", as APEX shows it. */
-export function ago(at: Date | string | null | undefined, now = Date.now()) {
+/** "3 minutes ago", "2 days ago", "1.7 years ago", as APEX shows it (in the builder language of `tx`: ago.* in i18n/en.ts). */
+export function ago(at: Date | string | null | undefined, now = Date.now(), tx: BuilderTranslate = translatorFor('en')) {
   if (!at) return '';
   const sec = Math.max(0, (now - new Date(at).getTime()) / 1000);
-  const units: [number, string][] = [[365 * 86400, 'year'], [30 * 86400, 'month'], [7 * 86400, 'week'], [86400, 'day'], [3600, 'hour'], [60, 'minute']];
+  const units: [number, 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute'][] = [[365 * 86400, 'year'], [30 * 86400, 'month'], [7 * 86400, 'week'], [86400, 'day'], [3600, 'hour'], [60, 'minute']];
   for (const [size, unit] of units) {
     if (sec >= size) {
       const n = sec / size;
       const v = unit === 'year' && n < 10 ? Math.round(n * 10) / 10 : Math.round(n);
-      return `${v} ${unit}${v === 1 ? '' : 's'} ago`;
+      return tx(v === 1 ? `ago.${unit}` : `ago.${unit}s`, { n: tx.lang === 'en' ? v : String(v).replace('.', ',') });
     }
   }
-  return 'just now';
+  return tx('ago.now');
 }
 
 /** (116) the App Builder list's working copies count and lock state */
-const copiesText = (n: number) => `${n} working cop${n === 1 ? 'y' : 'ies'}`;
-const lockedText = (by: string) => `Locked by ${by}`;
+const copiesText = (tx: BuilderTranslate, n: number) => tx(n === 1 ? 'ab.copies_one' : 'ab.copies', { n });
+const lockedText = (tx: BuilderTranslate, by: string) => tx('ab.locked_by', { user: by });
 
 const appIcon = (a: { id: number; name: string }, cls = '') =>
   html`<span class="app-icon app-color-${a.id % APP_COLORS}${cls ? ` ${cls}` : ''}" aria-hidden="true">${a.name.slice(0, 1).toUpperCase()}</span>`;
 
 /** The four tiles at the top of the App Builder. */
-const tiles = () => html`<nav class="ab-tiles" aria-label="App Builder">
-  ${[
-    ['create', 'plus', 'Create', 'Create a new application in this workspace.'],
-    ['import', 'upload', 'Import', 'Import an exported application into this workspace.'],
-    ['dashboard', 'activity', 'Dashboard', 'View workspace usage, activity and sign-in problems.'],
-    ['utilities', 'settings', 'Workspace Utilities', 'Users, identity providers, developers and the SQL Workshop.'],
-  ].map(([path, ic, title, text]) => html`<a class="ab-tile" href="${BASE}/${path}"><span class="ab-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`)}
+const tiles = (tx: BuilderTranslate) => html`<nav class="ab-tiles" aria-label="${tx('rail.app_builder')}">
+  ${([
+    ['create', 'plus', tx('ab.tile.create'), tx('ab.tile.create_text')],
+    ['import', 'upload', tx('ab.tile.import'), tx('ab.tile.import_text')],
+    ['dashboard', 'activity', tx('ab.tile.dashboard'), tx('ab.tile.dashboard_text')],
+    ['utilities', 'settings', tx('ab.tile.utilities'), tx('ab.tile.utilities_text')],
+  ] as const).map(([path, ic, title, text]) => html`<a class="ab-tile" href="${BASE}/${path}"><span class="ab-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`)}
 </nav>`;
 
 /** The side column: About, Recent, Tasks. */
-function aside(recent: { id: number; name: string }[], about: string, tasks: [string, string][]) {
-  return html`<aside class="ab-side" aria-label="About, recent and tasks">
-    <section><h2>About</h2><p>${about}</p>
-      <p><a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md" target="_blank" rel="noopener">Learn more …</a></p></section>
-    ${recent.length ? html`<section><h2>Recent</h2><ul class="ab-links">${recent.map((a) => html`<li><a href="${BASE}/apps/${a.id}">${a.name} - ${a.id}</a></li>`)}</ul></section>` : ''}
-    <section><h2>Tasks</h2><ul class="ab-links ab-tasks">${tasks.map(([label, href]) => html`<li><a href="${href}">${label}${icon('chevron')}</a></li>`)}</ul></section>
+function aside(tx: BuilderTranslate, recent: { id: number; name: string }[], about: string, tasks: [string, string][]) {
+  return html`<aside class="ab-side" aria-label="${tx('ab.aside')}">
+    <section><h2>${tx('common.about')}</h2><p>${about}</p>
+      <p><a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md" target="_blank" rel="noopener">${tx('common.learn_more')}</a></p></section>
+    ${recent.length ? html`<section><h2>${tx('ab.recent')}</h2><ul class="ab-links">${recent.map((a) => html`<li><a href="${BASE}/apps/${a.id}">${a.name} - ${a.id}</a></li>`)}</ul></section>` : ''}
+    <section><h2>${tx('common.tasks')}</h2><ul class="ab-links ab-tasks">${tasks.map(([label, href]) => html`<li><a href="${href}">${label}${icon('chevron')}</a></li>`)}</ul></section>
   </aside>`;
 }
 
-const TASKS: [string, string][] = [
-  ['Create application', `${BASE}/create`],
-  ['Create application from a file', `${BASE}/create/file`],
-  ['Import application', `${BASE}/import`],
-  ['Manage users', `${BASE}/users`],
-  ['Identity providers', `${BASE}/users/providers`],
-  ['SQL Workshop', `${BASE}/sql`],
-  ['Developers', `${BASE}/developers`],
+const TASKS: [BuilderKey, string][] = [
+  ['ab.task.create', `${BASE}/create`],
+  ['ab.task.create_file', `${BASE}/create/file`],
+  ['ab.task.import', `${BASE}/import`],
+  ['ab.task.users', `${BASE}/users`],
+  ['ab.task.providers', `${BASE}/users/providers`],
+  ['rail.sql_workshop', `${BASE}/sql`],
+  ['admin.developers', `${BASE}/developers`],
 ];
 
 async function recentApps(s: Session) {
@@ -100,6 +101,7 @@ export async function homeRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     if (s.workspace?.builder_home === 'home' && req.url === BASE) return reply.redirect(`${BASE}/home`);
+    const tx = tr(s);
     const q = String(req.query.q ?? '').trim().slice(0, 100);
     // the view and sort are remembered for the session
     if (req.query.view === 'grid' || req.query.view === 'report') s.state.__BVIEW = req.query.view;
@@ -141,64 +143,64 @@ export async function homeRoutes(app: FastifyInstance) {
       html`<th scope="col"${cls ? raw(` class="${cls}"`) : ''}${sort === key ? raw(' aria-sort="' + (key === 'pages' || key === 'updated' ? 'descending' : 'ascending') + '"') : ''}><a href="${link({ sort: key })}">${label}${sort === key ? html`<span class="ab-sorted" aria-hidden="true">${key === 'pages' || key === 'updated' ? '↓' : '↑'}</span>` : ''}</a></th>`;
     const rows = apps.rows;
     const list = rows.length === 0
-      ? html`<p class="ab-empty">${total.n ? html`No application ${group ? html`in the group ${group.name}${q ? html` matches “${q}”` : ''}` : html`matches “${q}”`}. <a href="${BASE}/apps?q=&amp;group=">Show all</a>` : html`No applications yet. <a href="${BASE}/create">Create one</a> or <a href="${BASE}/import">import one</a>.`}</p>`
+      ? html`<p class="ab-empty">${total.n ? html`${group ? (q ? tx('ab.none_group_q', { group: group.name, q }) : tx('ab.none_group', { group: group.name })) : tx('ab.none_q', { q })} <a href="${BASE}/apps?q=&amp;group=">${tx('ab.show_all')}</a>` : tx.rich('ab.none_yet', { create: html`<a href="${BASE}/create">${tx('ab.create_one')}</a>`, import: html`<a href="${BASE}/import">${tx('ab.import_one')}</a>` })}</p>`
       : view === 'grid'
         ? html`<div class="ab-cards">${rows.map((a) => html`<article class="ab-card" data-filter-row>
             <a class="ab-card-main" href="${BASE}/apps/${a.id}">${appIcon(a)}<span><strong>${a.name}</strong><small>${a.id} · /a/${a.alias}</small></span></a>
-            <div class="ab-card-meta">${a.group_name ? html`<span class="tag">${a.group_name}</span>` : ''}<span>${a.pages} pages</span><span>${a.views} views today</span><span>${ago(a.updated_at)}${a.updated_by ? html` by <span class="ab-by">${a.updated_by}</span>` : ''}</span></div>
-            ${a.copies || a.locked_by ? html`<div class="ab-card-badges">${a.copies ? html`<a class="tag" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} ${copiesText(a.copies)}</a>` : ''}${a.locked_by ? html`<span class="tag ab-locked" title="${lockedText(a.locked_by)}">${icon('lock')} <span class="ab-by">${lockedText(a.locked_by)}</span></span>` : ''}</div>` : ''}
+            <div class="ab-card-meta">${a.group_name ? html`<span class="tag">${a.group_name}</span>` : ''}<span>${tx(a.pages === 1 ? 'ab.pages_one' : 'ab.pages', { n: a.pages })}</span><span>${tx('ab.views_today', { n: a.views })}</span><span>${ago(a.updated_at, Date.now(), tx)}${a.updated_by ? html` ${tx('ab.by')} <span class="ab-by">${a.updated_by}</span>` : ''}</span></div>
+            ${a.copies || a.locked_by ? html`<div class="ab-card-badges">${a.copies ? html`<a class="tag" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} ${copiesText(tx, a.copies)}</a>` : ''}${a.locked_by ? html`<span class="tag ab-locked" title="${lockedText(tx, a.locked_by)}">${icon('lock')} <span class="ab-by">${lockedText(tx, a.locked_by)}</span></span>` : ''}</div>` : ''}
             <div class="ab-card-actions">
-              <a class="tb-btn" href="${BASE}/apps/${a.id}" title="Edit ${a.name}">${icon('edit')}<span class="sr-only">Edit ${a.name}</span></a>
-              <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="Run ${a.name}">${icon('play')}<span class="sr-only">Run ${a.name}</span></a>
+              <a class="tb-btn" href="${BASE}/apps/${a.id}" title="${tx('ab.edit', { name: a.name })}">${icon('edit')}<span class="sr-only">${tx('ab.edit', { name: a.name })}</span></a>
+              <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="${tx('ab.run', { name: a.name })}">${icon('play')}<span class="sr-only">${tx('ab.run', { name: a.name })}</span></a>
             </div></article>`)}</div>`
         : html`<div class="table-wrap ab-table"><table class="report ab-apps">
-            <caption class="sr-only">Applications</caption>
-            <thead><tr>${th('id', 'Application', 'num')}${th('name', 'Name')}${th('alias', 'Alias')}${th('pages', 'Pages', 'num')}<th scope="col" class="num">Views (24h)</th><th scope="col">Sign-in</th>${th('updated', 'Updated')}<th scope="col">Updated by</th><th scope="col" class="num">Working copies</th><th scope="col" class="ab-actions-col">Actions</th></tr></thead>
+            <caption class="sr-only">${tx('ab.col.apps')}</caption>
+            <thead><tr>${th('id', tx('ab.col.app'), 'num')}${th('name', tx('ab.col.name'))}${th('alias', tx('ab.col.alias'))}${th('pages', tx('ab.col.pages'), 'num')}<th scope="col" class="num">${tx('ab.col.views')}</th><th scope="col">${tx('ab.col.signin')}</th>${th('updated', tx('ab.col.updated'))}<th scope="col">${tx('ab.col.updated_by')}</th><th scope="col" class="num">${tx('ab.col.copies')}</th><th scope="col" class="ab-actions-col">${tx('ab.col.actions')}</th></tr></thead>
             <tbody>${rows.map((a) => html`<tr data-filter-row>
               <td class="num">${a.id}</td>
-              <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a>${a.locked_by ? html`<span class="ab-lock" role="img" aria-label="${lockedText(a.locked_by)}" title="${lockedText(a.locked_by)}">${icon('lock')}</span>` : ''}</td>
+              <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a>${a.locked_by ? html`<span class="ab-lock" role="img" aria-label="${lockedText(tx, a.locked_by)}" title="${lockedText(tx, a.locked_by)}">${icon('lock')}</span>` : ''}</td>
               <td>${a.alias}${a.group_name ? html` <span class="tag">${a.group_name}</span>` : ''}</td>
               <td class="num">${a.pages}</td>
               <td class="num">${a.views}</td>
-              <td>${a.authentication === 'none' ? 'Public' : a.authentication === 'header' ? 'HTTP header' : a.authentication === 'database' ? 'Database accounts' : a.authentication === 'custom' ? 'Custom' : 'App users'}</td>
-              <td title="${a.updated_at ? new Date(a.updated_at).toISOString().slice(0, 16).replace('T', ' ') : ''}">${ago(a.updated_at)}</td>
+              <td>${tx(a.authentication === 'none' ? 'ab.auth.none' : a.authentication === 'header' ? 'ab.auth.header' : a.authentication === 'database' ? 'ab.auth.database' : a.authentication === 'custom' ? 'ab.auth.custom' : 'ab.auth.app_users')}</td>
+              <td title="${a.updated_at ? new Date(a.updated_at).toISOString().slice(0, 16).replace('T', ' ') : ''}">${ago(a.updated_at, Date.now(), tx)}</td>
               <td class="ab-by">${a.updated_by ?? ''}</td>
-              <td class="num">${a.copies ? html`<a href="${BASE}/apps/${a.id}/working-copies" aria-label="${copiesText(a.copies)} of ${a.name}">${a.copies}</a>` : '0'}</td>
+              <td class="num">${a.copies ? html`<a href="${BASE}/apps/${a.id}/working-copies" aria-label="${tx('ab.copies_of', { copies: copiesText(tx, a.copies), name: a.name })}">${a.copies}</a>` : '0'}</td>
               <td class="ab-actions">
-                <a class="tb-btn" href="${BASE}/apps/${a.id}" title="Edit ${a.name}">${icon('edit')}<span class="sr-only">Edit ${a.name}</span></a>
-                <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="Run ${a.name}">${icon('play')}<span class="sr-only">Run ${a.name}</span></a>
+                <a class="tb-btn" href="${BASE}/apps/${a.id}" title="${tx('ab.edit', { name: a.name })}">${icon('edit')}<span class="sr-only">${tx('ab.edit', { name: a.name })}</span></a>
+                <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="${tx('ab.run', { name: a.name })}">${icon('play')}<span class="sr-only">${tx('ab.run', { name: a.name })}</span></a>
               </td></tr>`)}</tbody></table></div>`;
     const viewButton = (v: View, ic: string, label: string) =>
       html`<a class="tb-btn" href="${link({ view: v })}" title="${label}"${view === v ? raw(' aria-current="true"') : ''}>${icon(ic)}<span class="sr-only">${label}</span></a>`;
     const main = html`<div class="ab-home">
       <div class="ab-main">
-        <h1 class="sr-only">App Builder</h1>
+        <h1 class="sr-only">${tx('rail.app_builder')}</h1>
         ${s.workspace?.message ? html`<div class="alert alert-info ab-message" role="status">${icon('bell')}<div><strong>${s.workspace.name}</strong><p>${s.workspace.message}</p></div></div>` : ''}
-        ${tiles()}
+        ${tiles(tx)}
         <div class="ab-toolbar">
           <form class="ab-search" method="get" action="${BASE}/apps" role="search">
-            <label class="sr-only" for="ab-q">Search applications</label>${icon('search')}
-            <input id="ab-q" name="q" type="search" value="${q}" placeholder="Search" autocomplete="off" data-filter-list=".ab-home [data-filter-row]">
+            <label class="sr-only" for="ab-q">${tx('ab.search_label')}</label>${icon('search')}
+            <input id="ab-q" name="q" type="search" value="${q}" placeholder="${tx('common.search')}" autocomplete="off" data-filter-list=".ab-home [data-filter-row]">
           </form>
-          <div class="ab-views" role="group" aria-label="View">${viewButton('grid', 'grid', 'Cards')}${viewButton('report', 'list', 'Report')}</div>
-          ${groups.length ? html`<form method="get" action="${BASE}/apps" class="ab-group"><label class="sr-only" for="ab-group">Application group</label>
-            <select id="ab-group" name="group" data-autosubmit><option value="">All groups</option>${groups.map((g) => html`<option value="${g.id}"${group?.id === g.id ? raw(' selected') : ''}>${g.name}</option>`)}</select>
-            <noscript><button class="btn btn-sm">Show</button></noscript></form>` : ''}
-          <details class="menu ab-menu"><summary class="btn">Actions ${icon('chevron')}</summary>
+          <div class="ab-views" role="group" aria-label="${tx('ab.view')}">${viewButton('grid', 'grid', tx('ab.view_cards'))}${viewButton('report', 'list', tx('ab.view_report'))}</div>
+          ${groups.length ? html`<form method="get" action="${BASE}/apps" class="ab-group"><label class="sr-only" for="ab-group">${tx('ab.group')}</label>
+            <select id="ab-group" name="group" data-autosubmit><option value="">${tx('ab.all_groups')}</option>${groups.map((g) => html`<option value="${g.id}"${group?.id === g.id ? raw(' selected') : ''}>${g.name}</option>`)}</select>
+            <noscript><button class="btn btn-sm">${tx('common.show')}</button></noscript></form>` : ''}
+          <details class="menu ab-menu"><summary class="btn">${tx('ab.actions')} ${icon('chevron')}</summary>
             <div class="menu-panel" role="menu">
-              <div class="menu-section"><span class="small muted">Sort by</span>
-                ${(Object.keys(SORTS) as Sort[]).map((k) => html`<a role="menuitem" href="${link({ sort: k })}"${sort === k ? raw(' aria-current="true"') : ''}>${{ name: 'Name', id: 'Application ID', alias: 'Alias', pages: 'Most pages', updated: 'Recently updated' }[k]}</a>`)}</div>
+              <div class="menu-section"><span class="small muted">${tx('ab.sort_by')}</span>
+                ${(Object.keys(SORTS) as Sort[]).map((k) => html`<a role="menuitem" href="${link({ sort: k })}"${sort === k ? raw(' aria-current="true"') : ''}>${tx(`ab.sort.${k}`)}</a>`)}</div>
               <div class="menu-section menu-links">
-                <a role="menuitem" href="${BASE}/import">${icon('upload')} Import application</a>
-                <a role="menuitem" href="${BASE}/dashboard">${icon('activity')} Workspace dashboard</a>
+                <a role="menuitem" href="${BASE}/import">${icon('upload')} ${tx('ab.task.import')}</a>
+                <a role="menuitem" href="${BASE}/dashboard">${icon('activity')} ${tx('ab.ws_dashboard')}</a>
               </div>
             </div></details>
-          <span class="ab-count muted" aria-live="polite">${rows.length === total.n ? `${total.n} application${total.n === 1 ? '' : 's'}` : `${rows.length} of ${total.n}`}</span>
-          <a class="btn btn-hot ab-create" href="${BASE}/create">Create</a>
+          <span class="ab-count muted" aria-live="polite">${rows.length === total.n ? tx(total.n === 1 ? 'ab.count_one' : 'ab.count', { n: total.n }) : tx('ab.count_of', { n: rows.length, total: total.n })}</span>
+          <a class="btn btn-hot ab-create" href="${BASE}/create">${tx('ab.tile.create')}</a>
         </div>
         ${list}
       </div>
-      ${aside(recent, 'The App Builder creates, edits and runs the applications of this workspace: pages and regions on your PostgreSQL tables, with sign-in, roles and row level security.', TASKS)}
+      ${aside(tx, recent, tx('ab.about'), TASKS.map(([key, href]): [string, string] => [tx(key), href]))}
     </div>`;
     return send(reply, s, shell(s, 'App Builder', [['App Builder']], main));
   };

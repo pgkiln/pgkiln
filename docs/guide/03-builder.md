@@ -237,7 +237,7 @@ Every builder page has the same frame, modelled on an IDE:
   API, Settings, Search and Advisor, with Export and Run on the right.
 
 - **The status bar** at the bottom: who is signed in, the current [workspace](#workspaces), the database, the
-  builder's language and the pgkiln version.
+  [builder language](#choosing-the-builder-language) (a menu) and the pgkiln version.
 - **An environment banner** (when the current workspace has one) across the top: a coloured band with a label such as
   DEVELOPMENT or TEST, so nobody mistakes one environment for another.
 
@@ -256,6 +256,27 @@ other sites.
 application of a workspace you are not a member of) shows a **Page not found** page in the builder's
 theme with a link to the App Builder home; a server error shows **Something went wrong** (the error
 is in the server log, not on the page). Scripts get the plain answers they always got.
+
+### Choosing the builder language
+
+(sprint 121, APEX: the builder's language links) The builder speaks **Deutsch, English, Español, Français, Nederlands
+and Português** (Brazilian). English is the default.
+
+- **On the sign-in page** the languages are links under the form: choosing one shows the sign-in page in that
+  language and, when you then sign in, stores it as your builder language. The choice is remembered on this device
+  (a cookie), so the sign-in page keeps it after you sign out.
+- **When signed in**, the language in the status bar at the bottom is a menu: pick another language and the page
+  you are on comes back in it.
+
+The language is stored **per developer** (in your developer account), so it follows you to every session and every
+device; other developers keep their own. It only changes the builder: your applications have their own languages
+(chapter 7).
+
+What is translated: the builder's frame (the rail, the top bar and its search, your account menu, the status bar,
+standard messages and error pages), the sign-in page, the Workspace home, the App Builder home, an application's
+home page and its tabs, the Page Designer's toolbar, menus, component tree, panes and gallery, and the SQL Workshop's
+home page and tabs. Other builder pages are still in English (they move over screen by screen); so are the
+Page Designer's property names and their help, the links to this guide, and any SQL the builder generates.
 
 ## Workspace home
 

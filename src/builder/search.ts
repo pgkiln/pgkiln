@@ -202,7 +202,7 @@ export async function searchRoutes(app: FastifyInstance) {
     const hits = q.trim() ? search(await appEntries(a.id), q) : [];
     const groups = new Map<string, Hit[]>();
     for (const h of hits) groups.set(h.entry.kindLabel, [...(groups.get(h.entry.kindLabel) ?? []), h]);
-    const main = html`${appHeader(a, 'search')}
+    const main = html`${appHeader(a, 'search', s)}
       ${region('Search', html`<form method="get" action="${BASE}/apps/${a.id}/search" class="search u-mwnone" role="search">
           <input type="search" name="q" value="${q}" placeholder="Text in names, titles, SQL, settings…" aria-label="Search the application" autofocus>
           <button class="btn btn-hot">Search</button></form>

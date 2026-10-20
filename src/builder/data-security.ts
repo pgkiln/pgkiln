@@ -171,7 +171,7 @@ async function page(req: Req, reply: FastifyReply) {
   }
   const title = `Security of ${cur.schema}.${cur.table}`;
   const objUrl = `${BASE}/sql/objects?${new URLSearchParams({ schema: cur.schema, k: 'table', o: ref })}`;
-  const main = html`<h1 class="u-mb1">${title}</h1>${workshopTabs('objects')}${form(s, cur, def, { ref, sql, warnings, errors, output })}`;
+  const main = html`<h1 class="u-mb1">${title}</h1>${workshopTabs('objects', s)}${form(s, cur, def, { ref, sql, warnings, errors, output })}`;
   return send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['Object Browser', `${BASE}/sql/objects`], [`${cur.schema}.${cur.table}`, objUrl], ['Security']], main, 'sql'));
 }
 

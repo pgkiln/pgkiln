@@ -25,6 +25,8 @@ import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
+import { cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
+import { chooseLanguage, langCookieOptions, languageRoutes, signInLanguageLinks } from './language.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -49,6 +51,14 @@ export async function builderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/login`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
     if (s.username) return reply.redirect(`${BASE}/home`);
+    // (sprint 121) a language link (?lang=de) sets the sign-in page's language: a cookie, and this visit's choice
+    // (stored for the developer who signs in next, see the post below); an unknown code is ignored
+    const picked = validBuilderLanguage(req.query?.lang);
+    if (picked) {
+      s.state.__BLANG = picked;
+      reply.setCookie(LANG_COOKIE, picked, langCookieOptions());
+    }
+    const tx = translatorFor(picked ?? validBuilderLanguage(s.state.__BLANG) ?? cookieLanguage(req));
     const error = takeFlash(s, '__ERROR');
     await saveState(s);
     const r = remembered(req);
@@ -56,41 +66,42 @@ export async function builderRoutes(app: FastifyInstance) {
     const field = (name: string, label: string, ic: string, value: string, opts: { type?: string; required?: boolean; auto?: string; placeholder?: string; reveal?: boolean }) =>
       html`<div class="field signin-field"><label class="sr-only" for="f_${name}">${label}</label>
         <div class="signin-input">${icon(ic)}<input id="f_${name}" name="${name}" type="${opts.type ?? 'text'}" value="${value}" placeholder="${opts.placeholder ?? label}"${opts.required ? raw(' required') : ''}${opts.auto ? raw(` autocomplete="${opts.auto}"`) : ''}>
-          ${opts.reveal ? html`<button type="button" class="signin-reveal" data-reveal="f_${name}" aria-controls="f_${name}" aria-pressed="false" data-hide="Hide" hidden>Show</button>` : ''}</div></div>`;
+          ${opts.reveal ? html`<button type="button" class="signin-reveal" data-reveal="f_${name}" aria-controls="f_${name}" aria-pressed="false" data-hide="${tx('signin.hide')}" hidden>${tx('signin.show')}</button>` : ''}</div></div>`;
     return reply.type('text/html').send(
       documentShell(
-        'Sign in · Builder',
+        `${tx('signin.title')} · ${tx('shell.builder')}`,
         html`<main class="signin">
           <section class="signin-hero" aria-label="pgkiln">
             <span class="signin-logo" aria-hidden="true">${brandMark()}</span>
             <h1 class="signin-title">pgkiln</h1>
-            <p class="signin-tagline">Build data applications on PostgreSQL, in SQL you can trust</p>
-            <p class="signin-foot">Open source under the Apache-2.0 license</p>
+            <p class="signin-tagline">${tx('signin.tagline')}</p>
+            <p class="signin-foot">${tx('signin.license')}</p>
           </section>
           <section class="signin-panel">
             <form method="post" class="signin-form">
-              <h2>Welcome</h2>
-              <p class="muted u-mt0">Sign in to your workspace to continue</p>
+              <h2>${tx('signin.welcome')}</h2>
+              <p class="muted u-mt0">${tx('signin.intro')}</p>
               ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
               ${csrf(s)}<input type="hidden" name="next" value="${next}">
-              ${field('workspace', 'Workspace', 'database', r?.w ?? '', { placeholder: 'Workspace (optional)', auto: 'organization' })}
-              ${field('username', 'Username', 'user', r?.u ?? '', { required: true, auto: 'username' })}
-              ${field('password', 'Password', 'key', '', { type: 'password', required: true, auto: 'current-password', reveal: true })}
-              <label class="check signin-remember"><input type="checkbox" name="remember" value="1"${r ? raw(' checked') : ''}> Remember workspace and username</label>
-              <button class="btn btn-hot signin-submit">Sign in</button>
-              <p class="muted small signin-hint">Leave the workspace empty to open your last one; you can switch later in your account menu.</p>
-              <nav class="signin-actions" aria-label="Quick actions">
-                <a href="${BASE}/find-workspace">${icon('search')} Find my workspace</a>
-                <a href="${BASE}/login?next=${encodeURIComponent(`${BASE}/utilities`)}">${icon('settings')} Administration</a>
-                <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${icon('help')} About workspaces</a>
+              ${field('workspace', tx('signin.workspace'), 'database', r?.w ?? '', { placeholder: tx('signin.workspace_placeholder'), auto: 'organization' })}
+              ${field('username', tx('signin.username'), 'user', r?.u ?? '', { required: true, auto: 'username' })}
+              ${field('password', tx('signin.password'), 'key', '', { type: 'password', required: true, auto: 'current-password', reveal: true })}
+              <label class="check signin-remember"><input type="checkbox" name="remember" value="1"${r ? raw(' checked') : ''}> ${tx('signin.remember')}</label>
+              <button class="btn btn-hot signin-submit">${tx('signin.submit')}</button>
+              <p class="muted small signin-hint">${tx('signin.hint')}</p>
+              <nav class="signin-actions" aria-label="${tx('signin.quick')}">
+                <a href="${BASE}/find-workspace">${icon('search')} ${tx('signin.find_ws')}</a>
+                <a href="${BASE}/login?next=${encodeURIComponent(`${BASE}/utilities`)}">${icon('settings')} ${tx('signin.admin')}</a>
+                <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${icon('help')} ${tx('signin.about_ws')}</a>
               </nav>
+              ${signInLanguageLinks(tx.lang, next, tx('signin.languages'))}
             </form>
           </section>
         </main>`,
         'login-body ide-login signin-body',
         {},
         builderHead(),
-        { theme: validTheme(req.cookies?.[THEME_COOKIE]) ?? 'dark' },
+        { theme: validTheme(req.cookies?.[THEME_COOKIE]) ?? 'dark', lang: tx.lang },
       ),
     );
   });
@@ -102,18 +113,21 @@ export async function builderRoutes(app: FastifyInstance) {
     const next = safeNext(req.body?.next);
     const again = next === `${BASE}/home` ? `${BASE}/login` : `${BASE}/login?next=${encodeURIComponent(next)}`;
     const ip = clientIp(req);
+    // (sprint 121) the language chosen on the sign-in page in this visit (a link), else the device's
+    const picked = validBuilderLanguage(s.state.__BLANG);
+    const tx = translatorFor(picked ?? cookieLanguage(req));
     if (req.body?.__csrf !== s.csrf_token) {
-      flash(s, 'Your session expired. Please try again.', 'error');
+      flash(s, tx('signin.expired'), 'error');
       return back(reply, s, again);
     }
     if (await loginThrottled(null, username, ip)) {
       logActivity({ username, event: 'login_locked', ip, detail: 'builder' });
-      flash(s, 'Too many failed sign-in attempts. Try again later.', 'error');
+      flash(s, tx('signin.throttled'), 'error');
       return back(reply, s, again);
     }
     // bcrypt always runs (dummy salt for unknown users) so timing does not reveal accounts
     const dev = await owner.one(
-      `select d.username
+      `select d.username, d.language
          from (select $1::text as u) x
          left join meta.developer d on d.username = x.u
         where crypt($2, coalesce(d.password_hash, gen_salt('bf', 10))) = d.password_hash`,
@@ -131,7 +145,7 @@ export async function builderRoutes(app: FastifyInstance) {
       : undefined;
     if (!dev || (workspace && !ws)) {
       await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: workspace ? 'builder (workspace)' : 'builder' });
-      flash(s, workspace ? 'Invalid workspace, username or password.' : 'Invalid username or password.', 'error');
+      flash(s, tx(workspace ? 'signin.invalid_ws' : 'signin.invalid'), 'error');
       return back(reply, s, again);
     }
     await destroySession(reply, s, BASE);
@@ -140,6 +154,12 @@ export async function builderRoutes(app: FastifyInstance) {
     const theme = validTheme(req.cookies?.[THEME_COOKIE]);
     if (theme) ns.state.__BTHEME = theme;
     if (ws) ns.state.__WS = String(ws.id);
+    // (sprint 121) the builder language: a link chosen on the sign-in page is stored for the developer; else theirs
+    if (picked) await chooseLanguage(reply, ns, picked);
+    else {
+      ns.state.__BLANG = validBuilderLanguage(dev.language) ?? 'en';
+      if (dev.language && ns.state.__BLANG !== 'en') reply.setCookie(LANG_COOKIE, ns.state.__BLANG, langCookieOptions());
+    }
     if (password === 'admin' || password === dev.username) ns.state.__WEAK = '1';
     await saveState(ns);
     if (req.body?.remember === '1')
@@ -182,6 +202,7 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
   await homeRoutes(app);
+  await languageRoutes(app);
   await workspaceRoutes(app);
   await instanceRoutes(app);
   await wizardRoutes(app);
@@ -261,72 +282,73 @@ export async function builderRoutes(app: FastifyInstance) {
     const commentsPerPage = new Map((await owner.query('select page_no, count(*)::int as n from meta.dev_comment where app_id = $1 group by 1', [a.id])).rows.map((r) => [r.page_no, r.n]));
     const appLock = locks.get(0);
     const issues = await appIssues(a.id);
+    const tx = tr(s);
 
     const main = html`
-      ${appHeader(a, 'pages')}
-      ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} Changes are refused until it is unlocked.</div>` : ''}
+      ${appHeader(a, 'pages', s)}
+      ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} ${tx('app.lock_refused')}</div>` : ''}
       <div class="app-home">
       <div class="app-home-main">
       <div class="pages-bar">
         <form method="get" class="search u-mwnone" role="search">${groupFilter ? html`<input type="hidden" name="group" value="${groupFilter}">` : ''}${icons ? html`<input type="hidden" name="view" value="icons">` : ''}
-          <label class="sr-only" for="f_pq">Search pages</label><input id="f_pq" name="q" type="search" value="${q}" placeholder="Page name or number" data-filter-rows="pages-rows">
-          <button class="btn">${icon('search')}<span class="sr-only">Search</span></button></form>
-        <div class="seg view-toggle" role="group" aria-label="View">
-          <a href="${keep({})}"${icons ? '' : raw(' aria-current="true"')}>${icon('list')} Report</a><a href="${keep({ view: 'icons' })}"${icons ? raw(' aria-current="true"') : ''}>${icon('grid')} Icons</a></div>
-        <a class="btn btn-hot" href="#create-page">${icon('plus')} Create page</a>
+          <label class="sr-only" for="f_pq">${tx('app.search_pages')}</label><input id="f_pq" name="q" type="search" value="${q}" placeholder="${tx('app.search_placeholder')}" data-filter-rows="pages-rows">
+          <button class="btn">${icon('search')}<span class="sr-only">${tx('common.search')}</span></button></form>
+        <div class="seg view-toggle" role="group" aria-label="${tx('ab.view')}">
+          <a href="${keep({})}"${icons ? '' : raw(' aria-current="true"')}>${icon('list')} ${tx('ab.view_report')}</a><a href="${keep({ view: 'icons' })}"${icons ? raw(' aria-current="true"') : ''}>${icon('grid')} ${tx('app.view_icons')}</a></div>
+        <a class="btn btn-hot" href="#create-page">${icon('plus')} ${tx('app.create_page')}</a>
       </div>
-      ${region('Pages', html`${grouped
-          ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">Page group</label>
-              <select id="f_group" name="group">${[['', 'All pages'], ...groups.map((g) => [g, g]), ['-', 'Without a group']].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
-              <button class="btn u-selfend">Show</button></form>`
+      ${region(tx('app.tab.pages'), html`${grouped
+          ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">${tx('app.page_group')}</label>
+              <select id="f_group" name="group">${[['', tx('app.all_pages')], ...groups.map((g) => [g, g]), ['-', tx('app.no_group')]].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
+              <button class="btn u-selfend">${tx('common.show')}</button></form>`
           : ''}${icons
-          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${p.mode}, ${p.regions} region${p.regions === 1 ? '' : 's'}</small></a></li>`)}</ul>`
+          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${p.mode}, ${tx(p.regions === 1 ? 'app.regions_one' : 'app.regions', { n: p.regions })}</small></a></li>`)}</ul>`
           : html`<div class="table-wrap"><table class="report">
-          <thead><tr><th class="num">Page</th><th>Name</th>${grouped ? html`<th>Group</th>` : ''}<th>Mode</th><th class="num">Regions</th><th class="num">Items</th><th class="num">DAs</th><th class="num">Processes</th><th>Authorization</th><th>Protection</th><th>Lock</th><th></th></tr></thead>
+          <thead><tr><th class="num">${tx('app.col.page')}</th><th>${tx('ab.col.name')}</th>${grouped ? html`<th>${tx('app.col.group')}</th>` : ''}<th>${tx('app.col.mode')}</th><th class="num">${tx('app.col.regions')}</th><th class="num">${tx('app.col.items')}</th><th class="num">${tx('app.col.das')}</th><th class="num">${tx('app.col.processes')}</th><th>${tx('app.col.authz')}</th><th>${tx('app.col.protection')}</th><th>${tx('app.col.lock')}</th><th></th></tr></thead>
           <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="Developer comments">${commentsPerPage.get(p.page_no)} comment${commentsPerPage.get(p.page_no) === 1 ? '' : 's'}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
+            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="${tx('app.dev_comments')}">${tx(commentsPerPage.get(p.page_no) === 1 ? 'app.comments_one' : 'app.comments', { n: commentsPerPage.get(p.page_no) })}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
-            <td>${p.requires_auth ? (p.authz ?? '—') : 'public'}</td><td>${p.protection}</td>
-            <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? 'you' : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
-            <td><a href="/a/${a.alias}/${p.page_no}" target="_blank" rel="noopener">Run ▸</a></td></tr>`)}</tbody>
-        </table></div>`}${q && !shownPages.length ? html`<p class="muted">No page matches “${q}”.</p>` : ''}`)}
-      <div id="app-lock">${region('Application lock and comments', await lockPanel(s, a.id, 0, { headings: true }))}</div>
+            <td>${p.requires_auth ? (p.authz ?? '—') : tx('app.public')}</td><td>${p.protection}</td>
+            <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? tx('app.you') : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
+            <td><a href="/a/${a.alias}/${p.page_no}" target="_blank" rel="noopener">${tx('common.run')} ▸</a></td></tr>`)}</tbody>
+        </table></div>`}${q && !shownPages.length ? html`<p class="muted">${tx('app.no_match', { q })}</p>` : ''}`)}
+      <div id="app-lock">${region(tx('app.lock_region'), await lockPanel(s, a.id, 0, { headings: true }))}</div>
       <div class="columns" id="create-page">
-        ${region('Create pages from a table', html`
-          <p class="muted u-mt0">Choose a page type and a table or view; the next step proposes the columns, key, dates, positions and foreign keys from the database, and creates the page with a menu entry.</p>
+        ${region(tx('app.from_table'), html`
+          <p class="muted u-mt0">${tx('app.from_table_text')}</p>
           <form method="get" action="${BASE}/apps/${a.id}/wizard">
             <div class="form-grid">
-              ${select('kind', 'Page type', 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, label]))}
-              ${select('table', 'Table or view (master table for master detail)', '', tables.map((t): [string, string] => [t.t, t.access ? t.t : `${t.t} (no access for ${a.db_role})`]))}
+              ${select('kind', tx('app.page_type'), 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, label]))}
+              ${select('table', tx('app.table_or_view'), '', tables.map((t): [string, string] => [t.t, t.access ? t.t : tx('app.no_access', { table: t.t, role: a.db_role })]))}
             </div>
-            <div class="buttons"><button class="btn btn-hot">Next</button></div>
+            <div class="buttons"><button class="btn btn-hot">${tx('common.next')}</button></div>
           </form>
-          <p><a href="${BASE}/apps/${a.id}/ai-pages">Create pages with AI ▸</a> <span class="muted">(describe them in your own words)</span></p>`)}
-        ${region('Create blank page', html`
+          <p><a href="${BASE}/apps/${a.id}/ai-pages">${tx('app.ai_pages')} ▸</a> <span class="muted">${tx('app.ai_pages_note')}</span></p>`)}
+        ${region(tx('app.blank'), html`
           <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
             <div class="form-grid">
-              ${input('page_no', 'Page number', nextPage, { type: 'number', required: true })}
-              ${input('name', 'Name', '', { required: true })}
-              ${select('mode', 'Mode', 'normal', ['normal', 'modal'])}
-              ${input('parent_page', 'Breadcrumb parent', a.home_page, { type: 'number' })}
+              ${input('page_no', tx('app.page_number'), nextPage, { type: 'number', required: true })}
+              ${input('name', tx('ab.col.name'), '', { required: true })}
+              ${select('mode', tx('app.col.mode'), 'normal', ['normal', 'modal'])}
+              ${input('parent_page', tx('app.parent'), a.home_page, { type: 'number' })}
             </div>
-            <div class="buttons"><button class="btn btn-hot">Create page</button></div>
+            <div class="buttons"><button class="btn btn-hot">${tx('app.create_page')}</button></div>
           </form>`)}
       </div>
       </div>
-      <aside class="app-tasks region region-standard" aria-labelledby="app-tasks-h"><header class="region-header"><h2 id="app-tasks-h">Tasks</h2></header>
+      <aside class="app-tasks region region-standard" aria-labelledby="app-tasks-h"><header class="region-header"><h2 id="app-tasks-h">${tx('common.tasks')}</h2></header>
         <ul class="sc-links">
-          <li><a href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run application</a></li>
-          <li><a href="#create-page">${icon('plus')} Create page</a></li>
-          <li><a href="${BASE}/apps/${a.id}/ai-pages">${icon('lightbulb')} Create pages with AI</a></li>
-          <li><a href="${BASE}/apps/${a.id}/shared">${icon('layers')} Shared Components</a></li>
-          <li><a href="${BASE}/apps/${a.id}/shared?type=page_group">${icon('folder')} Page groups</a></li>
-          <li><a href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a></li>
-          <li><a href="${BASE}/apps/${a.id}/backups">${icon('history')} Backups</a></li>
-          <li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('database')} Supporting objects</a></li>
-          <li><a href="#app-lock">${icon('lock')} Lock the application</a></li>
+          <li><a href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('app.task.run')}</a></li>
+          <li><a href="#create-page">${icon('plus')} ${tx('app.create_page')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/ai-pages">${icon('lightbulb')} ${tx('app.ai_pages')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/shared">${icon('layers')} ${tx('app.tab.shared')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/shared?type=page_group">${icon('folder')} ${tx('app.task.page_groups')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/export">${icon('download')} ${tx('app.head.export')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/backups">${icon('history')} ${tx('app.head.backups')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('database')} ${tx('app.task.supporting')}</a></li>
+          <li><a href="#app-lock">${icon('lock')} ${tx('app.task.lock')}</a></li>
           ${issues.task}
-          <li><a href="${BASE}/apps/${a.id}/settings?tab=definition">${icon('trash')} Delete the application</a></li>
+          <li><a href="${BASE}/apps/${a.id}/settings?tab=definition">${icon('trash')} ${tx('app.task.delete')}</a></li>
         </ul></aside>
       </div>`;
     return send(reply, s, shell(s, a.name, [['App Builder', BASE], [a.name]], main));
@@ -341,7 +363,7 @@ export async function builderRoutes(app: FastifyInstance) {
         'insert into meta.page (app_id, page_no, name, title, mode, parent_page) values ($1, $2, $3, $3, $4, $5) returning id',
         [req.params.id, Number(b.page_no), b.name?.trim(), b.mode === 'modal' ? 'modal' : 'normal', b.parent_page ? Number(b.parent_page) : null],
       );
-      flash(s, 'Page created.');
+      flash(s, tr(s)('app.page_created'));
       return back(reply, s, `${BASE}/pages/${p.id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -398,7 +420,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const panel = (k: string) => raw(`<section class="settings-panel" data-tab="${k}"${k === tab ? '' : ' hidden'}>`);
     const end = raw('</section>');
     const authPart = (k: string) => raw(`<div class="auth-part" data-auth="${k}"${a.authentication === k ? '' : ' hidden'}>`);
-    const main = html`${appHeader(a, 'settings')}
+    const main = html`${appHeader(a, 'settings', s)}
       <nav class="settings-tabs" aria-label="Settings">${SETTINGS_TABS.map(([k, label]) => html`<a href="?tab=${k}" data-tab-link="${k}"${k === tab ? raw(' aria-current="page"') : ''}>${label}</a>`)}</nav>
       <div class="settings-body">
         <form method="post" action="${BASE}/apps/${a.id}/settings" class="settings-form">${csrf(s)}<input type="hidden" name="tab" value="${tab}" data-settings-tab>
@@ -636,7 +658,7 @@ export async function builderRoutes(app: FastifyInstance) {
         [a.id, req.query.all === '1'],
       ),
     ]);
-    const main = html`${appHeader(a, 'activity')}
+    const main = html`${appHeader(a, 'activity', s)}
       <div class="stat-grid">
         <div class="stat"><b>${stats.views}</b><span>page views (24h)</span></div>
         <div class="stat"><b>${stats.users}</b><span>distinct users (24h)</span></div>

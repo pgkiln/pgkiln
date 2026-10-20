@@ -99,7 +99,7 @@ export async function sqlChartRoutes(app: FastifyInstance) {
       css += `\n${card.css}`;
       cards.push(html`<section class="ch-card"><h2><a href="${BASE}/sql/charts/${ch.id}">${ch.name}</a></h2>${card.body}</section>`);
     }
-    const main = html`<h1 class="u-mb1">Charts</h1>${workshopTabs('charts')}${style(req.cspNonce, css)}
+    const main = html`<h1 class="u-mb1">Charts</h1>${workshopTabs('charts', s)}${style(req.cspNonce, css)}
       <p class="muted">Queries drawn as charts. Make one from a query in the <a href="${BASE}/sql/worksheet">SQL Worksheet</a> (its Chart tab, Ctrl+F11), then save it.</p>
       ${cards.length ? html`<div class="ch-dashboard">${cards}</div>` : ''}
       ${region('All charts', charts.length ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Chart</th><th>Type</th><th>On the dashboard</th><th>Changed</th></tr></thead><tbody>
@@ -124,7 +124,7 @@ export async function sqlChartRoutes(app: FastifyInstance) {
     } catch {
       controls = '';
     }
-    const main = html`<h1 class="u-mb1">${ch.name}</h1>${workshopTabs('charts')}${style(req.cspNonce, card.css)}
+    const main = html`<h1 class="u-mb1">${ch.name}</h1>${workshopTabs('charts', s)}${style(req.cspNonce, card.css)}
       <div class="ch-view">${card.body}</div>
       <form method="post" action="${BASE}/sql/charts/${ch.id}" class="ch-edit">${csrf(s)}
         <div class="field"><label class="label" for="ch-name">Name</label><input id="ch-name" name="name" value="${ch.name}" maxlength="120" required></div>

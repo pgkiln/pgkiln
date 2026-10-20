@@ -223,7 +223,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const agents = (a.ai_agents ?? []) as AiAgent[];
     const tools = (a.ai_tools ?? []) as AiTool[];
     const problems = definitionProblems(agents, tools);
-    const main = html`${appHeader(a, 'shared')}
+    const main = html`${appHeader(a, 'shared', s)}
       <div class="title-row"><h1>AI Agents</h1></div>
       <p class="muted u-mt0">An agent answers in an AI assistant region and acts only through the tools you give it: SQL queries (read-only, as the application's database role, so row level security applies), PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and links to pages (pgkiln builds the URL and its checksum, only for pages the user may open). What users type and the tools' results go to the agent's AI service. <a href="${BASE}/apps/${a.id}/ai">AI usage</a> lists every tool call.</p>
       ${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
@@ -250,7 +250,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const x = name ? ((a.ai_agents ?? []) as AiAgent[]).find((g) => g.name === name) : {};
     if (!x) return reply.code(404).send('Not found');
     const title = name || 'New agent';
-    const main = html`${appHeader(a, 'shared')}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('AI agent', await agentForm(a, s, x, name, []))}`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('AI agent', await agentForm(a, s, x, name, []))}`;
     return send(reply, s, shell(s, title, crumbs(a, title), main));
   });
 
@@ -273,7 +273,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
       return [];
     });
     if (problems.length) {
-      const main = html`${appHeader(a, 'shared')}<div class="title-row"><h1 class="ai-name">${original || 'New agent'}</h1></div>${region('AI agent', await agentForm(a, s, x, original, problems))}`;
+      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New agent'}</h1></div>${region('AI agent', await agentForm(a, s, x, original, problems))}`;
       return send(reply.code(422), s, shell(s, original || 'New agent', crumbs(a, original || 'New agent'), main));
     }
     if (original && original !== x.name)
@@ -305,7 +305,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const x = name ? ((a.ai_tools ?? []) as AiTool[]).find((t) => t.name === name) : {};
     if (!x) return reply.code(404).send('Not found');
     const title = name || 'New tool';
-    const main = html`${appHeader(a, 'shared')}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('AI tool', await toolForm(a, s, x, name, []))}`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('AI tool', await toolForm(a, s, x, name, []))}`;
     return send(reply, s, shell(s, title, crumbs(a, title), main));
   });
 
@@ -337,7 +337,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
       return [];
     });
     if (problems.length) {
-      const main = html`${appHeader(a, 'shared')}<div class="title-row"><h1 class="ai-name">${original || 'New tool'}</h1></div>${region('AI tool', await toolForm(a, s, x, original, problems))}`;
+      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New tool'}</h1></div>${region('AI tool', await toolForm(a, s, x, original, problems))}`;
       return send(reply.code(422), s, shell(s, original || 'New tool', crumbs(a, original || 'New tool'), main));
     }
     flash(s, 'AI tool saved.');

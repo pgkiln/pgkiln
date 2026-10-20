@@ -65,7 +65,7 @@ export async function ddlToolRoutes(app: FastifyInstance) {
         result = html`<div class="alert alert-error" role="alert">${(e as Error).message}</div>`;
       }
     }
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ddl')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ddl', s)}
       <p class="muted">The DDL of a schema's objects, from the database catalog, in an order that runs: types, sequences, tables, functions, views, constraints, indexes, triggers, row level security, comments and grants (APEX: Generate DDL). Objects of extensions are left out.</p>
       <form method="get" class="u-mb1">
         <div class="form-grid">${schemaSelect('schema', 'Schema', schemas, schema)}</div>
@@ -114,7 +114,7 @@ export async function ddlToolRoutes(app: FastifyInstance) {
         result = html`<div class="alert alert-error" role="alert">${(e as Error).message}</div>`;
       }
     }
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('compare')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('compare', s)}
       <p class="muted">Compares the objects of two schemas of this database by their DDL (APEX: Schema Comparison), e.g. a development copy with the schema it came from, and writes a script that makes the target like the source. The order of a table's columns is not compared.</p>
       <form method="get" class="u-mb1">
         <div class="form-grid">${schemaSelect('source', 'Source', schemas, source)}${schemaSelect('target', 'Target (to make like the source)', schemas, target)}</div>

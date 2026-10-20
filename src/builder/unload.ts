@@ -88,7 +88,7 @@ const list = (v: unknown) => (Array.isArray(v) ? v : v === undefined || v === nu
 export async function unloadRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, main: Raw, code = 200) => {
     reply.code(code);
-    return send(reply, s, shell(s, 'Unload Data', [['SQL Workshop', `${BASE}/sql`], ['Unload Data']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('unload')}${main}`, 'sql'));
+    return send(reply, s, shell(s, 'Unload Data', [['SQL Workshop', `${BASE}/sql`], ['Unload Data']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('unload', s)}${main}`, 'sql'));
   };
 
   const formatFields = (b: Body) => {

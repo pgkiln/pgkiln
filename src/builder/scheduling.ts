@@ -42,7 +42,7 @@ async function admin(req: Req, reply: FastifyReply) {
   return null;
 }
 
-const head = (s: Session, title: string, actions: Raw | '' = '') => html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('scheduling')}
+const head = (s: Session, title: string, actions: Raw | '' = '') => html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('scheduling', s)}
   <div class="ide-head-title u-mb1"><div><h2 class="u-m0 u-break">${title}</h2></div>${actions ? html`<div class="buttons ide-head-actions">${actions}</div>` : ''}</div>`;
 
 // ------------------------------------------------------------------ schedule preview

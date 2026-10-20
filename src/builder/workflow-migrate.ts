@@ -179,7 +179,7 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
                   : html`<p class="wf-problem">Map a step for every instance (or leave the others out) and preview again: nothing is migrated while one can't move.</p>`}`)
             : ''}
           ${target ? region(`Version ${to}`, html`<div class="wf-wrap">${workflowDiagram(target.steps, { id: 'target' })}</div>`) : ''}`;
-    const main = html`${appHeader(a, 'shared')}<div class="ide-body">${body}</div>`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="ide-body">${body}</div>`;
     return send(reply, s, shell(s, `Migrate ${d.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`],
       [d.name, `${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}`], ['Migrate instances']], main));
   });

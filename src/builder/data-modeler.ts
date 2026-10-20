@@ -87,7 +87,7 @@ async function listPage(req: Req, reply: FastifyReply) {
         <small class="help">Names separated by commas or spaces; <code>*</code> for all, <code>ord*</code> for those starting with ord. You can add more later.</small></div>
     </div>
     <div class="buttons"><button class="btn btn-hot">${icon('plus')} Create diagram</button></div></form>`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler', s)}
     <p class="muted u-mt0">Relational diagrams of a schema's tables and views: their columns, keys and the foreign keys between them. From a diagram: its DDL and a data dictionary.</p>
     ${region('Diagrams', list)}<div class="u-spacer"></div>${region('Create diagram', create)}`;
   return send(reply, s, shell(s, 'Data Modeler', [['SQL Workshop', `${BASE}/sql`], ['Data Modeler']], main, 'sql'));
@@ -102,7 +102,7 @@ async function diagramPage(req: Req, reply: FastifyReply) {
   const m = await model(s, d);
   const crumbs: [string, string?][] = [['SQL Workshop', `${BASE}/sql`], ['Data Modeler', M], [d.name]];
   if (!m) {
-    const main = html`<h1 class="u-mb1">${d.name}</h1>${workshopTabs('modeler')}<div class="alert alert-error" role="alert">The schema ${d.schema_name} doesn't exist any more, or this workspace can't use it.</div>
+    const main = html`<h1 class="u-mb1">${d.name}</h1>${workshopTabs('modeler', s)}<div class="alert alert-error" role="alert">The schema ${d.schema_name} doesn't exist any more, or this workspace can't use it.</div>
       <form method="post" action="${M}/${d.id}/delete">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the diagram ${d.name}?">${icon('trash')} Delete the diagram</button></form>`;
     return send(reply, s, shell(s, d.name, crumbs, main, 'sql'));
   }
@@ -151,7 +151,7 @@ async function diagramPage(req: Req, reply: FastifyReply) {
   const settings = html`<details class="dm-settings"><summary>Rename or delete the diagram</summary>
     <form method="post" action="${M}/${d.id}/rename" class="dm-search-row">${csrf(s)}<label class="sr-only" for="f_rename">Name</label><input id="f_rename" name="name" value="${d.name}" maxlength="120" required><button class="btn">${icon('edit')} Rename</button></form>
     <form method="post" action="${M}/${d.id}/delete">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the diagram ${d.name}? The tables stay as they are.">${icon('trash')} Delete diagram</button></form></details>`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler', s)}
     <div class="dm-head"><h2 class="dm-name">${d.name}</h2><span class="muted small">Schema ${d.schema_name} · ${tables.length} objects · updated ${when(d.updated_at)} by ${d.updated_by ?? d.created_by}</span></div>
     ${missing.length ? html`<div class="alert alert-error" role="alert">Not in ${d.schema_name} any more: ${missing.join(', ')}. Saving the diagram leaves them out.</div>` : ''}
     ${toolbar}
@@ -353,7 +353,7 @@ export async function dataModelerRoutes(app: FastifyInstance) {
     const script = diagramDdl(d.schema_name, new Set(m.tables.map((t) => t.name)), await readSchema(m.db.pool, d.schema_name));
     if (req.query.download === '1')
       return reply.header('content-disposition', `attachment; filename="${fileName(d.name)}.sql"`).type('application/sql; charset=utf-8').send(script);
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('modeler', s)}
       ${region(`DDL of ${d.name}`, html`<p class="muted u-mt0">The CREATE statements of the diagram's ${m.tables.length} objects in schema ${d.schema_name}: tables, their keys, indexes, triggers, row level security, policies, comments and grants, and views. Review before running.</p>
         <pre class="source" data-code-view="sql" tabindex="0" aria-label="DDL">${script}</pre>
         <form method="post" action="${BASE}/sql">${csrf(s)}<input type="hidden" name="sql" value="${script}">

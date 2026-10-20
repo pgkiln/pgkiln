@@ -365,6 +365,6 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
           <form method="post" action="${BASE}/sql">${csrf(s)}<input type="hidden" name="sql" value="${built.sql}">
             <div class="buttons"><button class="btn btn-hot">${icon('play')} Run in the SQL Worksheet</button></div></form>`)}`
       : '';
-    return send(reply, s, shell(s, 'Query Builder', [['SQL Workshop', `${BASE}/sql`], ['Query Builder']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('query')}${form}${output}`, 'sql'));
+    return send(reply, s, shell(s, 'Query Builder', [['SQL Workshop', `${BASE}/sql`], ['Query Builder']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('query', s)}${form}${output}`, 'sql'));
   });
 }

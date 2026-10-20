@@ -263,6 +263,11 @@ src/
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
+    i18n.ts                (sprint 121) the builder's own texts: BUILDER_LANGUAGES, tr(s) / translatorFor(lang) → tx(key, params),
+                           tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels)
+    i18n/                  en.ts defines the builder's keys; de, es, fr, nl, pt are Records of the same keys
+    language.ts            (migration 127) the status bar's language menu (POST /builder/language), the sign-in page's
+                           language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
@@ -484,6 +489,8 @@ test/
   logic.test.ts            computations, branches, menu buttons and badges, new dynamic actions, build options, export
   page-logic.test.ts       download, chain (background jobs) and workflow processes, function/app branches, dialog_closed (HR page 28)
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
+  builder-i18n.test.ts     (sprint 121) builder languages: the coverage check of src/builder against i18n/en.ts, the message
+                           files, Deutsch on the sign-in page, the status bar menu, the choice per developer, English fallback
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   app-list.test.ts         (116) the App Builder list's Updated by, working copies and lock; what counts as a change
   import-only.test.ts      (116) pgkiln import --replace --only: a page or component file, refusals
@@ -531,6 +538,7 @@ test/
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/builder-i18n.test.ts (sprint 121) Deutsch on the sign-in page, the status bar's language menu, German screens at 390 px, CSP
   e2e/gallery.test.ts      (sprint 120) the gallery's sample apps: every page at 4 widths, CSP, axe; dynamic actions; the four tabs at 390 px
   e2e/admin-mail-network.test.ts (sprint 118) Mail queue, Network access and a workspace's mail service at 390 px without JavaScript
   e2e/pillar.test.ts       (sprint 117) Pillar appearances: axe in light and dark, subtle colours, current vs parent entry, Arabic RTL, 390 px, preview
@@ -550,6 +558,39 @@ test/
   e2e/ai-assistant.test.ts the AI assistant and report questions on HR page 38 in a browser (mock Claude), with and without JavaScript
   e2e/ai.test.ts           Generate text with AI on HR page 37 in a browser (mock Claude): dynamic actions without a submit, errors, no JavaScript
 ```
+
+## Builder texts in more languages
+
+(sprint 121) The builder's own texts are keyed messages, like the runtime's: `src/builder/i18n/en.ts` defines every
+key (`<screen>.<what>`, e.g. `rail.app_builder`, `pd.menu.create`, `ab.count` with `{n}`), and `de.ts`, `es.ts`,
+`fr.ts`, `nl.ts` and `pt.ts` are `Record<BuilderKey, string>` of the same keys. A page takes its translator from the
+session and uses it for every text it shows:
+
+```ts
+const tx = tr(s);                                  // the developer's language (meta.developer.language, in the session)
+html`<h2>${tx('wh.summary')}</h2><p>${tx('ab.count', { n: 3 })}</p>`;   // plain text: html`` escapes it
+tx.rich('ab.none_yet', { create: html`<a href="…">${tx('ab.create_one')}</a>` });   // markup inside a sentence
+tx.dyn(`gallery.region.${type}`, REGION_LABELS[type][0]);              // a key made at run time, with a fallback
+```
+
+A missing text falls back to English, never to the raw key. Shared helpers that render chrome take the session as
+an optional last argument (`appHeader(a, 'pages', s)`, `workshopTabs('sql', s)`); `shell()` translates known English
+breadcrumb labels (`tx.label`) so pages that aren't moved yet still get a translated trail.
+
+**Moving a screen over**: replace its literal texts with `tx('key')`, add each key with its English text to `en.ts`
+(keep the English exactly as it was: tests and e2e tests assert it), then add the key to the five other files
+(TypeScript refuses a file with a missing or an unknown key). A sentence with a link is one key with a `{link}`
+placeholder and `tx.rich`, not pieces glued together; a count has a `_one` and a plural key; never lower-case a
+translated label (German nouns). Flash messages are translated where they are set.
+
+**The coverage check** (`test/builder-i18n.test.ts`, part of `npm test` and CI) scans `src/builder/**/*.ts` for
+`tx('…')`, `tx.rich('…')` and `tr(s)('…')` and fails when a key has no English text (templated keys such as
+`` `ago.${unit}` `` must match at least one English key); checks that every region type, item type, button action,
+display position, button position, component kind and SQL Workshop tool has its run-time key; and that every
+language file has exactly the English keys, the same `{placeholders}`, no empty texts and is mostly translated.
+
+Stays English by design: the property editor's field names and help, links to the guide, generated SQL, and pages
+not moved yet. The builder's language is separate from an application's languages (`src/i18n.ts`).
 
 ## Principles
 

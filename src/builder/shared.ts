@@ -92,7 +92,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         return html`<li><a href="${designerUrl(a.id, p.page_no)}">${icon('file')}<span>${p.name}</span><span class="kind">p${p.page_no}</span></a>${tree(p.page_no, next)}</li>`;
       })}</ul>`;
     };
-    const main = html`${appHeader(a, 'shared')}
+    const main = html`${appHeader(a, 'shared', s)}
       ${region('Breadcrumbs', html`<p class="muted u-mt0">A page's breadcrumb lists the pages above it: each page names its breadcrumb parent (Page Designer → page → Breadcrumb parent). Pages without one show Home.</p>${tree(null, new Set())}`)}`;
     return send(reply, s, shell(s, 'Breadcrumbs', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Breadcrumbs']], main));
   });
@@ -105,7 +105,7 @@ export async function sharedRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const cur = (a.component_settings ?? {}) as ComponentSettings;
     const groups = [...new Set(COMPONENT_SETTINGS.map((x) => x.group))];
-    const main = html`${appHeader(a, 'shared')}
+    const main = html`${appHeader(a, 'shared', s)}
       ${region('Component Settings', html`<p class="muted u-mt0">Defaults for the application's built-in component types, used where a component sets nothing itself. Empty: pgkiln's default.</p>
         <form method="post" action="${BASE}/apps/${a.id}/component-settings">${csrf(s)}
           ${groups.map((g) => html`<fieldset class="u-mb1"><legend>${g}</legend>${COMPONENT_SETTINGS.filter((x) => x.group === g).map((x) =>
@@ -163,7 +163,7 @@ export async function sharedRoutes(app: FastifyInstance) {
     if (!selKind && !newKind && !type && req.query.view !== 'tree') {
       const counts: Record<string, number> = Object.fromEntries(SHARED.map((k) => [k, rows[k].length]));
       counts.access = users.length;
-      const main = html`${appHeader(a, 'shared')}
+      const main = html`${appHeader(a, 'shared', s)}
         <div class="sc-head"><p class="muted u-m0">The components the pages of ${a.name} share.</p><a class="btn" href="?view=tree">${icon('list')} Tree view</a></div>
         <div class="sc-grid">${sharedGroups(a.id).map((g) => html`<section class="region region-standard sc-group" aria-labelledby="sc-${g.key}">
           <header class="region-header"><h2 id="sc-${g.key}">${icon(g.icon)} ${g.title}</h2></header>
@@ -180,7 +180,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         .map((r) => ({ r, name: String(spec.summary(r)) }))
         .filter((x) => !q || x.name.toLowerCase().includes(q.toLowerCase()))
         .sort((x, y) => (desc ? -1 : 1) * x.name.localeCompare(y.name, 'en', { numeric: true }));
-      const main = html`${appHeader(a, 'shared')}
+      const main = html`${appHeader(a, 'shared', s)}
         <div class="sc-list-head"><h1>${spec.plural}</h1><a class="btn btn-hot" href="?new=${type}">${icon('plus')} Create</a></div>
         <form method="get" class="search u-mwnone u-mb1" role="search"><input type="hidden" name="type" value="${type}">
           <div class="field"><label class="label" for="f_q">Search</label><input id="f_q" name="q" type="search" value="${q}" placeholder="Name" data-filter-rows="sc-rows"></div>
@@ -285,7 +285,7 @@ export async function sharedRoutes(app: FastifyInstance) {
       })}
     </ul>`;
 
-    const main = html`${appHeader(a, 'shared')}
+    const main = html`${appHeader(a, 'shared', s)}
       <div class="designer"><aside class="region region-standard">${tree}</aside><div>${editor}</div></div>`;
     const kindShown = selKind && SHARED.includes(selKind) ? selKind : newKind && SHARED.includes(newKind) ? newKind : '';
     return send(reply, s, shell(s, 'Shared Components', kindShown ? [...crumbsBase, [COMPONENTS[kindShown].plural, `${BASE}/apps/${a.id}/shared?type=${kindShown}`], [selKind ? 'Edit' : 'Create']] : [...crumbsBase.slice(0, 2), ['Shared Components']], main));

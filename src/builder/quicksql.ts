@@ -52,7 +52,7 @@ export async function quickSqlRoutes(app: FastifyInstance) {
         <div class="buttons"><button class="btn" name="action" value="save">${icon('file')} Save as script</button>
           <button class="btn btn-hot" name="action" value="run">${icon('play')} Run</button></div>`)}
     </form>`;
-    return send(reply, s, shell(s, 'Quick SQL', [['SQL Workshop', `${BASE}/sql`], ['Quick SQL']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('quicksql')}${main}`, 'sql'));
+    return send(reply, s, shell(s, 'Quick SQL', [['SQL Workshop', `${BASE}/sql`], ['Quick SQL']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('quicksql', s)}${main}`, 'sql'));
   };
 
   app.get(`${BASE}/sql/quick`, async (req: Req, reply) => {

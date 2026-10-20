@@ -103,7 +103,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     return send(
       reply,
       s,
-      shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['Sample Data', title === 'Sample Data' ? undefined : sdUrl], ...(title === 'Sample Data' ? [] : ([[title]] as [string][]))], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sample')}${main}`, 'sql'),
+      shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['Sample Data', title === 'Sample Data' ? undefined : sdUrl], ...(title === 'Sample Data' ? [] : ([[title]] as [string][]))], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sample', s)}${main}`, 'sql'),
     );
   };
 

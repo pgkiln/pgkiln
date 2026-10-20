@@ -84,7 +84,7 @@ export async function topSqlRoutes(app: FastifyInstance) {
       : top.reason === 'no_role'
         ? html`<div class="alert alert-error" role="alert">This application runs as the owner role, so its statements can't be told apart. Give it a database role in Settings.</div>`
         : statementsNote(top.reason, top.message);
-    const main = html`${appHeader(a, 'activity')}
+    const main = html`${appHeader(a, 'activity', s)}
       ${region('Top SQL', html`<p class="muted u-mt0">Statements run as the role <code>${a.db_role ?? '(owner)'}</code> since the statistics were last reset, from <code>pg_stat_statements</code>. Literals and binds show as <code>$1</code>, <code>$2</code>…; applications that share a role share this list. <a href="${BASE}/apps/${a.id}/activity">Back to Activity</a></p>
         ${body}`)}`;
     return send(reply, s, shell(s, `Top SQL · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Activity', `${BASE}/apps/${a.id}/activity`], ['Top SQL']], main));
