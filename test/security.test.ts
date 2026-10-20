@@ -10646,3 +10646,78 @@ describe('sprint 115 WS-11', () => {
       await assert.rejects(owner.query(`update meta.button set menu = $2 where page_id = $1 and name = 'ACTIONS'`, [pageId, JSON.stringify([{ label: 'x', action }])]), /button_menu_ok|check constraint/, action);
   });
 });
+
+describe('sprint 117 WS-10', () => {
+  // Theme Roller: the navigation appearance (Pillar Light / Dark) and the header strip colours.
+  // Only keys of a fixed list and #rrggbb reach the page (a <body> class, the nonce'd <style>).
+  let original: unknown;
+  const dev = async () => {
+    const d = new Browser();
+    await d.get('/builder/login');
+    await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'admin', password: 'admin' });
+    await d.get(`/builder/apps/${appId}/theme`);
+    return d;
+  };
+  const theme = async () => (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
+  before(async () => {
+    original = await theme();
+  });
+  after(async () => {
+    await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify(original)]);
+  });
+
+  test('only a developer with a valid CSRF token changes the appearance', async () => {
+    await owner.query(`update meta.app set theme = theme - 'appearance' where id = $1`, [appId]);
+    const anon = new Browser();
+    await anon.get('/builder/login');
+    const r = await anon.post(`/builder/apps/${appId}/theme/settings`, { __csrf: anon.lastCsrf, appearance: 'pillar_dark' });
+    assert.notEqual(r.statusCode, 200);
+    const king = await as('king');
+    await king.post(`/builder/apps/${appId}/theme/settings`, { __csrf: king.lastCsrf, appearance: 'pillar_dark' });
+    const d = await dev();
+    const bad = await d.post(`/builder/apps/${appId}/theme/settings`, { __csrf: 'wrong', appearance: 'pillar_dark' });
+    assert.equal(bad.statusCode, 403);
+    assert.equal((await theme()).appearance, undefined, 'nothing changed');
+    await d.post(`/builder/apps/${appId}/theme/settings`, { __csrf: d.lastCsrf, appearance: 'pillar_dark' });
+    assert.equal((await theme()).appearance, 'pillar_dark');
+  });
+
+  test('appearance and strip values outside the fixed lists are refused on save', async () => {
+    const d = await dev();
+    await owner.query(`update meta.app set theme = theme - 'appearance' - 'strip' where id = $1`, [appId]);
+    for (const appearance of ['toString', '__proto__', 'pillar_dark" onload="x', 'default'])
+      await d.post(`/builder/apps/${appId}/theme/settings`, { __csrf: d.lastCsrf, appearance });
+    for (const strip of ['red', '#fff;}body{display:none', 'url(https://evil.example/x)'])
+      await d.post(`/builder/apps/${appId}/theme/settings`, { __csrf: d.lastCsrf, strip, strip_own: 'true' });
+    const t = await theme();
+    assert.equal(t.appearance, undefined);
+    assert.equal(t.strip, undefined);
+    // a style's appearance and strip go through parseStyle
+    await d.post(`/builder/apps/${appId}/theme/styles`, { __csrf: d.lastCsrf, name: 'Sec117', appearance: 'constructor' });
+    await d.post(`/builder/apps/${appId}/theme/styles`, { __csrf: d.lastCsrf, name: 'Sec117', strip: '#000;}*{x:y', strip_own: 'true' });
+    assert.ok(!JSON.stringify((await theme()).styles ?? []).includes('Sec117'));
+  });
+
+  test('a hand-edited theme cannot put markup or CSS into the page', async () => {
+    await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify({
+      ...(original as object), appearance: 'pillar_dark"><script>alert(1)</script>', strip: '#000;}body{display:none}',
+      strip_dark: 'red', styles: [{ name: 'Evil', appearance: 'x" onmouseover="alert(1)', strip: '&P1_X.' }], style: 'Evil' })]);
+    const body = (await (await as('king')).get('/a/hr/1')).body;
+    assert.ok(!body.includes('<script>alert(1)'));
+    assert.ok(!body.includes('onmouseover'));
+    assert.ok(!body.includes('display:none}'));
+    assert.doesNotMatch(body, /<body[^>]*nav-pillar/, 'unknown appearances are ignored');
+    const css = /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec(body)?.[1] ?? '';
+    assert.doesNotMatch(css, /--strip/);
+  });
+
+  test('a strip colour from an item is used only when the value is #rrggbb', async () => {
+    await owner.query('update meta.app set theme = $2 where id = $1', [appId, JSON.stringify({
+      ...(original as object), styles: [{ name: 'Item strip', appearance: 'pillar_light', strip: '&APP_SEC117.' }], style: 'Item strip' })]);
+    const king = await as('king');
+    const page = (await king.get('/a/hr/1')).body;
+    assert.match(page, /<body[^>]*class="[^"]*nav-pillar nav-pillar-light/);
+    const css = /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec(page)?.[1] ?? '';
+    assert.doesNotMatch(css, /--strip/, 'no value, no strip');
+  });
+});

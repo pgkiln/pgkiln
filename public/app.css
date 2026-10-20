@@ -323,7 +323,7 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .t-nav summary::-webkit-details-marker { display: none; }
 .t-nav summary::after { content: "›"; margin-inline-start: auto; color: var(--nav-muted, var(--muted)); transition: transform 0.15s; }
 .t-nav details[open] > summary::after { transform: rotate(90deg); }
-[dir="rtl"] .t-nav summary::after { content: "‹"; }
+/* RTL: the bidi algorithm mirrors "›" to "‹"; opened, it turns the other way to point down */
 [dir="rtl"] .t-nav details[open] > summary::after { transform: rotate(-90deg); }
 .t-nav a:hover, .t-nav summary:hover { background: var(--nav-hover, var(--surface-3)); }
 /* (sprint 117) the selected entry (keyboard focus) gets a ring inside the menu, which scrolls and would clip one outside */
