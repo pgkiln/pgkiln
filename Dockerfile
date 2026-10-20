@@ -18,7 +18,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+# the arm64 half runs under QEMU and npm's downloads sometimes get a connection reset (v0.52.0's publish):
+# npm retries each download, and the whole install runs up to three times
+RUN for i in 1 2 3; do \
+      npm ci --omit=dev --no-audit --no-fund --fetch-retries=5 --fetch-retry-mintimeout=10000 --fetch-retry-maxtimeout=60000 \
+        && break; \
+      [ "$i" = 3 ] && exit 1; echo "npm ci failed, retry $i"; sleep 20; \
+    done \
+ && npm cache clean --force
 
 COPY tsconfig.json LICENSE NOTICE ./
 COPY bin ./bin
