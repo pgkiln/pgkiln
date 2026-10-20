@@ -1533,3 +1533,15 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .sc-grid > .region, .qs-columns > .region { margin-top: 0; }
 :where(.ide td) > .btn + .btn { margin-inline-start: 0.25rem; }
 .role-chip + .role-chip { margin-inline-start: 0.3rem; }
+
+/* (sprint 120) App Gallery: four tabs with their counts; two by two on a phone */
+.gal-count { display: inline-block; min-width: 1.5em; padding: 0 5px; border-radius: 999px; background: var(--surface-3); color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; }
+.gal-tabs a[aria-current] .gal-count { background: var(--surface); color: var(--text); }
+@media (max-width: 600px) {
+  .gal-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .gal-tabs a { text-align: center; border-radius: 0; }
+  .gal-tabs a:first-child { border-radius: var(--radius) 0 0 0; }
+  .gal-tabs a:nth-child(2) { border-radius: 0 var(--radius) 0 0; }
+  .gal-tabs a:nth-child(3) { border-left: 1px solid var(--border); border-top: 0; border-radius: 0 0 0 var(--radius); }
+  .gal-tabs a:last-child { border-top: 0; border-radius: 0 0 var(--radius) 0; }
+}

@@ -1,0 +1,28 @@
+{"blueprint": 1, "name": "Lookup Lists", "alias": "lookup-lists", "schema": "lookup_lists",
+ "tables": [
+  {"name": "list", "label": "Lists", "columns": [
+    {"name": "name", "type": "text", "required": true, "unique": true},
+    {"name": "description", "type": "text"},
+    {"name": "used_by", "type": "text"}]},
+  {"name": "list_value", "label": "Values", "columns": [
+    {"name": "list_id", "references": "list", "required": true},
+    {"name": "code", "type": "text", "required": true},
+    {"name": "display", "type": "text", "required": true},
+    {"name": "seq", "type": "integer"},
+    {"name": "active", "type": "boolean"}]}],
+ "pages": [
+  {"type": "report_form", "table": "list", "page": 2, "form_page": 3, "label": "Lists", "icon": "list"},
+  {"type": "master_detail", "table": "list", "page": 4, "label": "Lists and values", "icon": "layers"},
+  {"type": "grid", "table": "list_value", "page": 5, "label": "All values", "icon": "grid"},
+  {"type": "blank", "page": 6, "label": "Using the lists", "icon": "help",
+   "text": "Lookup Lists keeps the lists of values that several applications share (countries, priorities, statuses) as data, so they change without changing an application.\n\nTo use a list in another application of the workspace, let that application's database role read the values (once, in SQL Commands or a migration script):\n\ngrant usage on schema lookup_lists to app_my_app;\ngrant select on lookup_lists.list, lookup_lists.list_value to app_my_app;\n\nThen give an item or a grid column a list of values like this one:\n\nselect v.display, v.code from lookup_lists.list_value v join lookup_lists.list l on l.id = v.list_id where l.name = 'PRIORITIES' and coalesce(v.active, true) order by v.seq, v.display\n\nor make it a shared list of values (Shared Components, Lists of values) and use LOV:PRIORITIES everywhere."}],
+ "dashboard": false,
+ "sample_data": [
+  {"table": "list", "columns": ["id", "name", "description", "used_by"], "rows": [
+    [1, "PRIORITIES", "Priorities of tasks and tickets", "every application"],
+    [2, "STATUSES", "The steps of a request", "requests, approvals"],
+    [3, "COUNTRIES", "Countries we deliver to", "orders, contacts"]]},
+  {"table": "list_value", "columns": ["list_id", "code", "display", "seq", "active"], "rows": [
+    [1, "LOW", "Low", 10, true], [1, "NORMAL", "Normal", 20, true], [1, "HIGH", "High", 30, true], [1, "URGENT", "Urgent", 40, false],
+    [2, "NEW", "New", 10, true], [2, "OPEN", "In progress", 20, true], [2, "DONE", "Done", 30, true], [2, "CANCELLED", "Cancelled", 40, true],
+    [3, "NL", "Netherlands", 10, true], [3, "BE", "Belgium", 20, true], [3, "DE", "Germany", 30, true], [3, "FR", "France", 40, true]]}]}

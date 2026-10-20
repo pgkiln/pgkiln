@@ -1,0 +1,41 @@
+{"blueprint": 1, "name": "Release Notes", "alias": "release-notes", "schema": "release_notes",
+ "tables": [
+  {"name": "application", "label": "Applications", "columns": [
+    {"name": "name", "type": "text", "required": true, "unique": true},
+    {"name": "owner", "type": "text"},
+    {"name": "repository", "type": "text"}]},
+  {"name": "release", "label": "Releases", "columns": [
+    {"name": "application_id", "references": "application", "required": true},
+    {"name": "version", "type": "text", "required": true},
+    {"name": "status", "type": "text", "required": true, "values": ["Planned", "In test", "Released", "Withdrawn"]},
+    {"name": "release_date", "type": "date"},
+    {"name": "summary", "type": "text"}]},
+  {"name": "change", "label": "Changes", "columns": [
+    {"name": "release_id", "references": "release", "required": true},
+    {"name": "kind", "type": "text", "required": true, "values": ["Feature", "Fix", "Change", "Security"]},
+    {"name": "title", "type": "text", "required": true},
+    {"name": "ticket", "type": "text"},
+    {"name": "breaking", "type": "boolean"}]}],
+ "pages": [
+  {"type": "report_form", "table": "application", "page": 2, "form_page": 3, "label": "Applications", "icon": "layers"},
+  {"type": "report_form", "table": "release", "page": 4, "form_page": 5, "label": "Releases", "icon": "flag"},
+  {"type": "master_detail", "table": "release", "page": 6, "label": "Releases and changes", "icon": "list"},
+  {"type": "facets", "table": "change", "page": 7, "label": "Find changes", "icon": "filter"},
+  {"type": "calendar", "table": "release", "page": 8, "label": "Release calendar", "icon": "calendar"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "application", "columns": ["id", "name", "owner", "repository"], "rows": [
+    [1, "Order desk", "Sales team", "git.example.com/sales/order-desk"],
+    [2, "Leave planner", "HR team", "git.example.com/hr/leave-planner"]]},
+  {"table": "release", "columns": ["id", "application_id", "version", "status", "release_date", "summary"], "rows": [
+    [1, 1, "1.4.0", "Released", "2026-09-15", "Discounts per customer group."],
+    [2, 1, "1.5.0", "In test", "2026-10-27", "Faster search, a new order form."],
+    [3, 2, "2.0.0", "Planned", "2026-11-17", "Approvals by the team lead."]]},
+  {"table": "change", "columns": ["release_id", "kind", "title", "ticket", "breaking"], "rows": [
+    [1, "Feature", "Discounts per customer group", "SALES-112", false],
+    [1, "Fix", "Totals rounded to cents", "SALES-118", false],
+    [2, "Change", "The order form is one page", "SALES-130", false],
+    [2, "Feature", "Search by customer number", "SALES-131", false],
+    [2, "Security", "Sessions end after 8 hours", "SALES-135", false],
+    [3, "Feature", "Team leads approve leave", "HR-40", true],
+    [3, "Change", "Leave is counted in hours", "HR-41", true]]}]}

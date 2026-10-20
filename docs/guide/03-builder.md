@@ -329,20 +329,53 @@ leaves its group. Every developer of the workspace manages them.
 
 ## App Gallery
 
-The **App Gallery** (the cube in the icon rail, `/builder/gallery`; APEX: App Gallery) has three tabs:
+The **App Gallery** (the cube in the icon rail, `/builder/gallery`; APEX: App Gallery) has four tabs, each with
+the number of its apps. The search field filters the tab's cards as you type (without JavaScript it searches on the
+server, `?q=`); every word must be in the title or the description.
 
-- **Sample Apps**: applications shipped with pgkiln (HR Demo, Tasks) with their own schema, data and **demo accounts
-  with known passwords**, so install them on a development or demo instance only. Administrators install them (the
-  same scripts as `pgkiln migrate --example hr`); they go into the current workspace. An installed one shows Run and
-  Edit.
+- **Sample Apps**: applications shipped with pgkiln, each with its own schema, data and **demo account with a known
+  password**, so install them on a development or demo instance only. Administrators install them; they go into the
+  current workspace (an isolated workspace gets the application's role too). An installed one shows Run, and Edit
+  in its own workspace (*in another workspace* elsewhere). They are:
+  - **HR Demo**, the showcase of nearly every feature (the same scripts as `pgkiln migrate --example hr`), and
+    **Tasks**, the [tutorial](10-tutorial.md);
+  - single-topic apps (sprint 120; APEX: Sample Charts, Sample Cards, Sample Calendar, Sample Interactive Grids,
+    Sample Dynamic Actions, Sample Reporting), small apps that show one feature area with a text on every page that
+    says how it is made: **Sample Charts** (all 22 chart types on a page per question, and a drill-down),
+    **Sample Cards** (cards, KPI tiles, lists as cards, built-in template components), **Sample Calendar** (the
+    four views, create on click, drag and drop through a function), **Sample Interactive Grids** (an editable grid,
+    select lists, totals, a frozen column, a row menu, master-detail, the grid's views), **Sample Dynamic Actions**
+    (show and hide, values from the server, refresh, messages, a wait popup, classes, an inline dialog) and
+    **Sample Reporting** (interactive report, faceted search, smart filters, a classic report with column options and
+    a column template);
+  - the **UX Pattern Catalog** (APEX: the Universal Theme app): region templates and template options, button
+    styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments,
+    avatars, metric cards, empty states, a dialog, a drawer and a side column, each named by its template, option
+    or class to copy from.
+
+  Each single-topic app and the catalog is one SQL file in `examples/gallery/samples/`, run in one transaction (a
+  failing script leaves nothing behind); sign in with **demo** / **demo**. Outside the builder:
+  `psql "$DATABASE_URL" -1 -f examples/gallery/samples/sample-charts.sql`.
 - **Starter Apps**: small applications (Team Tasks, Contacts, Expense Claims, Asset Inventory, Event Registrations)
   shipped as [blueprints](#creating-an-application-from-a-blueprint). **Install** opens the blueprint's review:
   nothing is created before you confirm, the application gets a new role and schema in the current workspace, and you
   may edit the blueprint first (another alias, more columns). Any developer installs them.
+- **Utility Apps** (sprint 120; APEX: Utility Apps): applications a workspace *uses* rather than learns from, shipped
+  as blueprints and installed like starter apps, by any developer, into the current workspace:
+  **Lookup Lists** (the lists of values several applications share, kept as data, with the grant and the list of
+  values query another application uses), **Release Notes** (the releases of your applications and their changes)
+  and **Announcements** (maintenance, outages and releases for the workspace, with the query that shows the current
+  ones in another application).
 - **Custom Apps**: the workspace's boilerplate applications (Application type *Boilerplate*): *Create from it* opens
   Create with that boilerplate chosen.
 
-The list is `examples/gallery/gallery.json`; add your own starters there as blueprint files.
+The list is `examples/gallery/gallery.json` (see `examples/gallery/README.md`); add your own starters and utilities
+there as blueprint files. A request only ever names a key of that list, never a file.
+
+Why two install paths: a blueprint can only describe tables, generated pages and sample rows, and creating one needs no
+more than a developer's rights (pgkiln writes the DDL). The sample apps need what blueprints can't say (chart kinds,
+dynamic actions, template options, PL/pgSQL functions), so they are SQL scripts, and running shipped SQL as the owner
+is for administrators.
 
 ## Data Reporter: datasets and reporting applications
 

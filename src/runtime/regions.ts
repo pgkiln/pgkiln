@@ -465,7 +465,7 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
     return html`<dialog class="${cls}" id="R${r.id}"${staticAttr} aria-labelledby="${titleId}" data-inline-region>
       <header class="region-header"><h2 id="${titleId}">${r.title}</h2>
         <a class="region-dialog-close icon-button" href="#" role="button" data-region-close aria-label="${ctx.locale.t('common.dismiss')}">${icon('close')}</a></header>
-      <div class="region-body">${body}</div>
+      <div class="region-body"${scrollable(r)}>${body}</div>
       ${buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
     </dialog>`;
 
@@ -473,16 +473,19 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   if (r.template === 'collapsible')
     return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
       <details open><summary class="region-header">${header}</summary>
-        <div class="region-body">${body}</div>
+        <div class="region-body"${scrollable(r)}>${body}</div>
         ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
       </details></section>`;
 
   return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
     ${r.title || (buttonsOnTop && buttons) ? html`<header class="region-header">${header}</header>` : ''}
-    <div class="region-body">${body}</div>
+    <div class="region-body"${scrollable(r)}>${body}</div>
     ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
   </section>`;
 }
+
+/** (sprint 120) A body that scrolls (template option to-scroll) can be reached and scrolled from the keyboard. */
+const scrollable = (r: Region) => (r.template_options?.includes('to-scroll') ? raw(' tabindex="0"') : '');
 
 /**
  * (099) A region whose buttons have positions (APEX: Button Position): create, edit, change, copy, help and up in
@@ -506,9 +509,9 @@ async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, bo
   const header = html`<h2 id="${titleId}">${r.title}</h2>${top}`;
   if (r.template === 'collapsible')
     return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
-      <details open><summary class="region-header">${header}</summary><div class="region-body">${body}</div>${footer}</details></section>`;
+      <details open><summary class="region-header">${header}</summary><div class="region-body"${scrollable(r)}>${body}</div>${footer}</details></section>`;
   return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
     ${r.title || top ? html`<header class="region-header">${header}</header>` : ''}
-    <div class="region-body">${body}</div>${footer}
+    <div class="region-body"${scrollable(r)}>${body}</div>${footer}
   </section>`;
 }

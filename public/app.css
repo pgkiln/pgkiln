@@ -597,6 +597,7 @@ table.report { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
 .col-slot { position: relative; height: 100%; flex: 0 1 24px; }
 .col { position: absolute; left: 0; right: 0; background: var(--c); border-radius: 4px 4px 0 0; }
 .col-value { position: absolute; left: 0; right: 0; text-align: center; font-size: 0.72rem; color: var(--muted); transform: translateY(-1.3em); font-variant-numeric: tabular-nums; pointer-events: none; }
+.col-value[data-value]::after { content: attr(data-value); }
 .col.neg { border-radius: 0 0 4px 4px; }
 /* range: a floating column from low to high */
 .col.range-col { border-radius: 4px; }

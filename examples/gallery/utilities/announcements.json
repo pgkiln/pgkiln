@@ -1,0 +1,24 @@
+{"blueprint": 1, "name": "Announcements", "alias": "announcements", "schema": "announcements",
+ "tables": [
+  {"name": "announcement", "label": "Announcements", "columns": [
+    {"name": "title", "type": "text", "required": true},
+    {"name": "body", "type": "text"},
+    {"name": "kind", "type": "text", "required": true, "values": ["Information", "Maintenance", "Outage", "Release"]},
+    {"name": "audience", "type": "text", "required": true, "values": ["Everyone", "Developers", "Administrators"]},
+    {"name": "start_date", "type": "date", "required": true},
+    {"name": "end_date", "type": "date"},
+    {"name": "published", "type": "boolean"}]}],
+ "pages": [
+  {"type": "cards", "table": "announcement", "page": 2, "label": "Notice board", "icon": "megaphone"},
+  {"type": "report_form", "table": "announcement", "page": 3, "form_page": 4, "label": "Manage announcements", "icon": "edit"},
+  {"type": "calendar", "table": "announcement", "page": 5, "label": "Schedule", "icon": "calendar"},
+  {"type": "blank", "page": 6, "label": "Showing them in your apps", "icon": "help",
+   "text": "Announcements keeps the notices of a workspace in one place: planned maintenance, outages, new releases.\n\nTo show the current ones in another application, let its database role read them (once, in SQL Commands or a migration script):\n\ngrant usage on schema announcements to app_my_app;\ngrant select on announcements.announcement to app_my_app;\n\nThen add a Cards region (or a list) to its home page with this query:\n\nselect title, kind as subtitle, body from announcements.announcement where published and current_date between start_date and coalesce(end_date, start_date) and audience in ('Everyone', 'Developers') order by start_date desc"}],
+ "dashboard": true,
+ "sample_data": [
+  {"table": "announcement", "columns": ["title", "body", "kind", "audience", "start_date", "end_date", "published"], "rows": [
+    ["Database upgrade on Saturday", "The applications are unavailable on Saturday from 8:00 to 10:00.", "Maintenance", "Everyone", "2026-10-24", "2026-10-24", true],
+    ["Order desk 1.5", "Faster search and a new order form.", "Release", "Everyone", "2026-10-27", "2026-11-03", true],
+    ["New developer accounts", "Ask the administrators for an account in the Development workspace.", "Information", "Developers", "2026-10-01", "2026-12-31", true],
+    ["Mail delays", "Mail from the applications was late on Monday morning; everything has been sent.", "Outage", "Everyone", "2026-10-19", "2026-10-20", true],
+    ["Backups move", "Draft: the backups move to the new storage in November.", "Maintenance", "Administrators", "2026-11-10", null, false]]}]}
