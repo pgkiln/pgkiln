@@ -35,7 +35,7 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln migrate [--example <name>]` | Applies the migrations that were not applied yet, then optionally `examples/<name>/` (same as `npm run db:migrate` / `npm run example:hr`; `--root` and `--seed` as in `scripts/migrate.ts`) |
 | `pgkiln apps [--json]` | Lists the applications: alias, number of pages, name |
 | `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgkiln/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
-| `pgkiln import <path> [--alias <alias>] [--replace] [--check [--force] \| --dry-run]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place (after a [backup](03-builder.md#backups)). `--check` checks the application before it commits, `--dry-run` only checks ([below](#checking-before-an-import)) |
+| `pgkiln import <path> [--alias <alias>] [--replace [--only <file>]…] [--check [--force] \| --dry-run]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place (after a [backup](03-builder.md#backups)); with `--only pages/12` (repeatable) only that page or component file ([below](#importing-one-page-or-component)). `--check` checks the application before it commits, `--dry-run` only checks ([below](#checking-before-an-import)) |
 | `pgkiln diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
 | `pgkiln ddl <schema> [--no-comments] [--no-grants] [--out <file>]` | The DDL of a schema's objects, in an order that runs (as SQL Workshop → DDL, [chapter 3](03-builder.md#sql-workshop)) |
 | `pgkiln compare <source> <target> [--script]` | Compares two schemas: `+` only in the source, `-` only in the target, `~` different; exit code 1 when they differ. `--script` writes the script that makes the target like the source (drops commented out); nothing is run |
@@ -209,6 +209,26 @@ git diff apps/hr                                 # review, commit, open a pull r
 pgkiln diff hr apps/hr                           # on the target: what would change (exit code 1)
 pgkiln import apps/hr --replace                  # deploy
 ```
+
+### Importing one page or component
+
+(sprint 116; APEX 26.2: APEXlang file-level import) With `--replace`, `--only` imports just the named files of a
+directory export (or a .zip of one) and leaves the rest of the application as it is in the database:
+
+```sh
+pgkiln import apps/hr --replace --only pages/12                 # page 12 with its regions, items, buttons …
+pgkiln import apps/hr --replace --only shared/lovs/jobs.yaml    # one shared component
+pgkiln import apps/hr --replace --only pages/12 --only shared/lovs   # several: repeat --only
+```
+
+`pages/12` (or just `12`) is page 12's folder whatever its name, so a renamed page still matches; any other value is
+a file or folder path inside the export. A page or file that the directory no longer has is removed from the
+application. How it works: pgkiln exports the application in the directory's style, takes the named files from the
+directory, and imports the result with `--replace` as usual: one transaction, a backup first, `--check` and
+`--dry-run` work the same, and what belongs to the installation is kept. It says how many of the named files differ
+(on standard error). `--only` refuses without `--replace`, for a JSON file, for a path outside the export and for a
+selection that matches nothing in the directory or the application (exit code 2). A component that another file
+refers to by name (a list of values used on a page, say) has to exist after the import, as with any import.
 
 ### Checking before an import
 
