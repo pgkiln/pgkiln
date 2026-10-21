@@ -17,7 +17,6 @@ All notable changes to this project are documented here. The format follows
 ## [0.56.0] - 2026-10-21
 
 ### Added
-### Added
 - **Four more sample apps in the App Gallery** (WS-8 leftover; APEX: Sample Maps, Sample Approvals, Sample Data
   Loading, Sample File Upload and Download): **Sample Maps** (markers and clusters, layers with GeoJSON and a heat
   map, a map filtering a list by distance, a location item, without PostGIS), **Sample Approvals** (a workflow
