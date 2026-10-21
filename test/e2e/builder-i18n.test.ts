@@ -89,6 +89,11 @@ describe('builder language in a browser', () => {
     assert.ok((await page.locator('.sw-tabs').innerText()).includes(fr['sql.tool.objects']));
     await fits(page, 'SQL Workshop (Français)');
     assert.equal((await owner.one<{ language: string }>('select language from meta.developer where username = $1', [DEV]))?.language, 'fr');
+    // Portuguese has the longest Launchpad tab names
+    await page.click('.ide-lang > summary');
+    await Promise.all([page.waitForNavigation(), page.click('.ide-lang-form button[value="pt"]')]);
+    assert.equal(await page.getAttribute('html', 'lang'), 'pt');
+    await fits(page, 'SQL Workshop (Português)');
     await c.close();
   });
 });
