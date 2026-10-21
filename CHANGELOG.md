@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-10-21
+
 ### Added
 - **The builder in more languages** (WS-7; APEX 26.2: the builder's language links). The builder now speaks Deutsch,
   English (the default), Español, Français, Nederlands and Português: the sign-in page offers them as links, the
