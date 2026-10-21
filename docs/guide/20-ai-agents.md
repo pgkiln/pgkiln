@@ -29,6 +29,24 @@ claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp
 claude mcp add pgkiln -e DATABASE_URL=postgres://owner@host/db -- /path/to/pgkiln/bin/pgkiln.js mcp
 ```
 
+**Without a checkout**: the npm package has the same command, so `npx` runs it (Node.js 20 or later). Give it
+the owner connection of the database pgkiln runs on:
+
+```sh
+claude mcp add pgkiln -e DATABASE_URL=postgres://pgkiln:secret@localhost:5432/pgkiln -- npx -y pgkiln mcp
+```
+
+Pin a version (`npx -y pgkiln@0.59.0 mcp`) to match the server you run.
+
+**With the Docker installation** ([chapter 1](01-installation.md#docker)) the container already has the connection;
+the agent starts the server inside it, from the directory with `compose.yaml`:
+
+```sh
+claude mcp add pgkiln -- docker compose -f /path/to/pgkiln/compose.yaml exec -T pgkiln node bin/pgkiln.js mcp
+```
+
+(`-T`: no terminal, the protocol runs over standard input and output.) The database port stays closed to the host.
+
 **Other agents** take the same command in their MCP configuration, e.g. for Cursor
 (`.cursor/mcp.json`) or VS Code (`.vscode/mcp.json`, key `servers`):
 
