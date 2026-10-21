@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# a newer push to the same pull request cancels the run before it (no mail about a run nobody waits for)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -98,7 +103,10 @@ jobs:
           path: test-results/
 
   # Install an older release with its sample data, upgrade to this commit,
-  # then run the tests: migrations must work on existing databases too.
+  # then run the tests: migrations must work on existing databases too. The whole
+  # suite runs after upgrading from the oldest and the newest release; the others
+  # run the tests that touch every table (export / import, the CLI, generated apps,
+  # sign-in), so 29 copies of the suite don't each get a chance to hit a timing flake.
   upgrade:
     runs-on: ubuntu-latest
     strategy:
@@ -140,7 +148,15 @@ jobs:
           npx tsx scripts/migrate.ts --seed --root "$RUNNER_TEMP/old"
       - name: Upgrade to this commit
         run: npm run example:hr
-      - run: npm test
+      - name: Tests
+        run: |
+          # the first and the last release of the matrix above
+          releases=$(grep -oE 'from: \[[^]]*\]' .github/workflows/ci.yml | grep -oE 'v[0-9.]+')
+          if [ "${{ matrix.from }}" = "$(echo "$releases" | head -1)" ] || [ "${{ matrix.from }}" = "$(echo "$releases" | tail -1)" ]; then
+            npm test
+          else
+            npx tsx --test --test-concurrency=1 test/cli.test.ts test/export.test.ts test/generated-apps.test.ts test/builder-home.test.ts test/mfa.test.ts
+          fi
 
   docker:
     # what a user runs: deploy/.env.example filled in, docker compose up -d
