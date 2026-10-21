@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.58.0 (October 2026): Shared Components and the application settings in the builder languages (Deutsch, Español, Français, Nederlands, Português).
+- **Current release:** 0.59.0 (October 2026): the administration screens (users, identity providers, developers, workspaces) in the builder languages (Deutsch, Español, Français, Nederlands, Português).
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
