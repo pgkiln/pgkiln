@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.54.0 (October 2026): the App Gallery with six single-topic sample apps (charts, cards, calendar, interactive grids, dynamic actions, reporting), the UX Pattern Catalog and a Utility Apps tab (lookup lists, release notes, announcements), gallery search without JavaScript, and builder layout fixes (spacing between stacked regions, the side column on wide screens).
+- **Current release:** 0.55.0 (October 2026): the builder in Deutsch, Español, Français, Nederlands and Português besides English (sign-in page links, a language menu in the status bar, stored per developer) for the builder frame, sign-in page, Workspace home, App Builder, Page Designer menus and SQL Workshop; with it every APEX 26.2 feature compared is available or deliberately not planned.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 

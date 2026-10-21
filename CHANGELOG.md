@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
   facets' selections are chips of the Ask box with Remove, and Undo and *start over* include them. A smart filters
   region with `"ask": true` reads its search text as a phrase and offers what its facets can hold as one
   *Understood as* suggestion ([chapter 4](docs/guide/04-pages-and-regions.md#smart_filters)).
+
+## [0.55.0] - 2026-10-21
+
+### Added
 - **The builder in more languages** (WS-7; APEX 26.2: the builder's language links). The builder now speaks Deutsch,
   English (the default), Español, Français, Nederlands and Português: the sign-in page offers them as links, the
   status bar has a language menu, and the choice is stored per developer (migration 127,
