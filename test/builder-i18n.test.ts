@@ -85,6 +85,14 @@ describe('builder message files and their coverage', () => {
     assert.deepEqual(missing, [], 'builder texts without an English key');
   });
 
+  test('(sprint 123) every text the builder\'s JavaScript asks for (msg(\'js.…\')) has an English text', () => {
+    const dir = new URL('../public/', import.meta.url).pathname;
+    const used = readdirSync(dir).filter((f) => f.endsWith('.js'))
+      .flatMap((f) => [...readFileSync(`${dir}${f}`, 'utf8').matchAll(/\bmsg\(\s*'(js\.[a-z0-9_.]+)'/g)].map((m) => [f, m[1]]));
+    assert.ok(used.length > 20, `found ${used.length}`);
+    assert.deepEqual(used.filter(([, k]) => !Object.hasOwn(ENGLISH, k)), [], 'browser texts without an English key');
+  });
+
   test('keys made at run time: every region type, item type, button action, position, slot, kind and SQL Workshop tool', () => {
     const want = [
       ...REGION_TYPES().map((t) => `gallery.region.${t}`), ...ITEM_TYPES().map((t) => `gallery.item.${t}`), ...BUTTON_ACTIONS().map((t) => `gallery.button.${t}`),
@@ -246,6 +254,35 @@ describe('choosing the builder language', () => {
       const raw = Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `) || body.includes(`"${k}"`));
       assert.deepEqual(raw, [], `${url}: raw keys`);
     }
+  });
+
+  test('(sprint 123) the SQL Worksheet, the Object Browser and Table Properties in German; the browser texts too', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const ws = (await b.get('/builder/sql/worksheet')).body;
+    for (const k of ['ws.run_statement', 'ws.run_script', 'ws.tab.result', 'ws.tab.history', 'ws.continue', 'ws.commit.auto'] as BuilderKey[])
+      assert.ok(ws.includes(esc(de[k])), `worksheet: ${k}`);
+    assert.doesNotMatch(ws, />Run Statement</);
+    // the browser's texts: JSON in an attribute (escaped like any value; no inline script), in the developer's language
+    const json = /<div id="builder-texts" hidden data-texts="([^"]*)"><\/div>/.exec(ws);
+    assert.ok(json, 'the builder-texts element');
+    assert.doesNotMatch(ws, /<script(?![^>]*src=)/, 'no inline script');
+    const texts = JSON.parse(json![1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
+    assert.equal(texts['js.ws.txn_none'], de['js.ws.txn_none']);
+    assert.ok(Object.keys(texts).length > 10 && Object.keys(texts).every((k) => k.startsWith('js.')), 'only the js.* keys');
+    // a run: the status bar in German
+    const run = (await b.submit('/builder/sql/worksheet', { sql: 'select 1 as x', mode: 'statement' })).body;
+    assert.match(run, /class="ws-last">1 Zeile in \d+ ms\.</);
+    const ob = (await b.get('/builder/sql/objects?schema=hr&k=table&o=hr.emp')).body;
+    for (const k of ['ob.tab.columns', 'ob.add_col', 'ob.edit_table', 'ob.system'] as BuilderKey[]) assert.ok(ob.includes(esc(de[k])), `object browser: ${k}`);
+    assert.ok(ob.includes(`<span>${esc(de['ob.type.table'])}</span>`), 'the object types');
+    const te = (await b.get('/builder/sql/objects/table?o=hr.emp')).body;
+    for (const k of ['te.preview', 'te.fks', 'te.pk_name'] as BuilderKey[]) assert.ok(te.includes(esc(de[k])), `table properties: ${k}`);
+    for (const [url, body] of [['worksheet', ws], ['objects', ob], ['table', te]]) {
+      const text = body.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '').replace(/<[^>]+>/g, ' ');
+      assert.deepEqual(Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `)), [], `${url}: raw keys`);
+    }
+    await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
   });
 
   test('the builder error pages follow the device language', async () => {

@@ -21,6 +21,9 @@
   'use strict';
   const form = document.getElementById('ws');
   if (!form) return;
+  // (sprint 123) texts in the builder's language: #builder-texts (shell(), keys js.*), English in en.ts
+  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
+  const msg = (key, params = {}) => (TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
   const ta = form.querySelector('textarea[name=sql]');
   const out = form.querySelector('.ws-output');
   const store = {
@@ -149,9 +152,9 @@
   const copy = async (text, what) => {
     try {
       await navigator.clipboard.writeText(text);
-      announce(`${what} copied.`);
+      announce(msg('js.ws.copied', { what }));
     } catch {
-      announce('Copying is not allowed here.');
+      announce(msg('js.ws.no_copy'));
     }
   };
   const announce = (msg) => {
@@ -165,7 +168,7 @@
       if (e.target.closest('[data-ws-copy]')) {
         const head = [...grid.tHead.rows[0].cells].slice(1).map((th) => th.textContent.trim());
         const rows = [...grid.tBodies[0].rows].map((tr) => [...tr.cells].slice(1).map((td) => cellValue(td).replace(/[\t\n]/g, ' ')));
-        copy([head, ...rows].map((r) => r.join('\t')).join('\n'), `${rows.length} rows`);
+        copy([head, ...rows].map((r) => r.join('\t')).join('\n'), msg('js.ws.rows', { n: rows.length }));
       }
       const sort = e.target.closest('[data-ws-sort]');
       if (sort) {
@@ -218,7 +221,7 @@
       run('statement');
     }
     const c = e.target.closest('[data-ws-copy-text]');
-    if (c) copy(c.dataset.wsCopyText, 'The statement');
+    if (c) copy(c.dataset.wsCopyText, msg('js.ws.the_statement'));
   });
 
   // ------------------------------------------------------------ (sprint 93) worksheets as tabs, kept in this browser
@@ -226,7 +229,7 @@
   const readTabs = () => { try { const v = JSON.parse(store.get('tabs') || 'null'); return v && Array.isArray(v.tabs) ? v : null; } catch { return null; } };
   const book = readTabs() || { active: '', tabs: [] };
   const newKey = () => Math.random().toString(36).slice(2, 10);
-  const untitled = () => { let n = 1; while (book.tabs.some((t) => t.name === `Untitled ${n}`)) n++; return `Untitled ${n}`; };
+  const untitled = () => { let n = 1; while (book.tabs.some((x) => x.name === msg('js.ws.untitled', { n }))) n++; return msg('js.ws.untitled', { n }); };
   const src = form.dataset.source;
   const sid = form.dataset.scriptId ? Number(form.dataset.scriptId) : null;
   const sname = form.dataset.scriptName;
@@ -273,16 +276,16 @@
       if (t === cur) b.setAttribute('aria-current', 'true');
       b.dataset.wsWtab = t.key;
       b.textContent = `${t.name}${dirty(t) ? '*' : ''}`;
-      b.title = t.scriptId ? `Script “${t.name}”${dirty(t) ? ' (unsaved changes)' : ''}` : 'Not saved as a script';
+      b.title = t.scriptId ? `${msg('js.ws.script', { name: t.name })}${dirty(t) ? ` ${msg('js.ws.unsaved')}` : ''}` : msg('js.ws.not_saved');
       const x = document.createElement('button');
       x.type = 'button';
       x.className = 'ws-wtab-close';
       x.dataset.wsWclose = t.key;
-      x.setAttribute('aria-label', `Close ${t.name}`);
+      x.setAttribute('aria-label', msg('js.ws.close_tab', { name: t.name }));
       x.textContent = '×';
       wrap.append(b, x);
       return wrap;
-    }), Object.assign(document.createElement('button'), { type: 'button', className: 'ws-wtab-new', title: 'New worksheet', textContent: '+' }));
+    }), Object.assign(document.createElement('button'), { type: 'button', className: 'ws-wtab-new', title: msg('js.ws.new_tab'), textContent: '+' }));
     persist();
   };
   const switchTo = (t) => {
@@ -297,8 +300,8 @@
   const newTab = () => switchTo(add({ key: newKey(), name: untitled(), scriptId: null, text: '', saved: '' }));
   const closeTab = (t) => {
     const txnOpen = t === cur ? txnBox.dataset.state !== 'none' : !!t.txnOpen;
-    if (txnOpen && !window.confirm(`“${t.name}” has an open transaction. Close it and roll the transaction back?`)) return;
-    if (!txnOpen && dirty(t) && t.text.trim() && !window.confirm(`Close “${t.name}” without saving?`)) return;
+    if (txnOpen && !window.confirm(msg('js.ws.close_txn', { name: t.name }))) return;
+    if (!txnOpen && dirty(t) && t.text.trim() && !window.confirm(msg('js.ws.close_unsaved', { name: t.name }))) return;
     if (t.txn) txnPost(t.key, 'rollback'); // the server knows best whether one is open
     const i = book.tabs.indexOf(t);
     book.tabs.splice(i, 1);
@@ -360,15 +363,15 @@
   const rollbackBtn = txnBox.querySelector('[data-ws-txn-rollback]');
   const commitNote = form.querySelector('[data-ws-commit-note]');
   const idleSeconds = Number(txnBox.dataset.idle) || 300;
-  const idleWords = idleSeconds % 60 ? `${idleSeconds} seconds` : `${idleSeconds / 60} minute${idleSeconds === 60 ? '' : 's'}`;
+  const idleWords = idleSeconds % 60 ? msg('js.ws.idle_seconds', { n: idleSeconds }) : msg(idleSeconds === 60 ? 'js.ws.idle_minute' : 'js.ws.idle_minutes', { n: idleSeconds / 60 });
   let txnInfo = { state: txnBox.dataset.state, statements: Number(txnBox.dataset.statements) || 0, startedMs: Number(txnBox.dataset.started) || null,
     lastMs: Number(txnBox.dataset.last) || null, note: txnBox.dataset.note || null };
   let clockSkew = Date.now() - (Number(txnBox.dataset.now) || Date.now());
   let txnTimer = 0;
   const badgeText = (i) => {
-    if (i.state === 'none') return i.note || 'No open transaction';
+    if (i.state === 'none') return i.note || msg('js.ws.txn_none');
     const min = i.startedMs ? Math.floor((Date.now() - clockSkew - i.startedMs) / 60000) : 0;
-    return `${i.state === 'aborted' ? 'Transaction failed' : 'Transaction open'} · ${i.statements} statement${i.statements === 1 ? '' : 's'} · ${min < 1 ? 'under a minute' : `${min} min`}`;
+    return `${msg(i.state === 'aborted' ? 'js.ws.txn_failed' : 'js.ws.txn_open')} · ${msg(i.statements === 1 ? 'js.ws.stmt_one' : 'js.ws.stmt', { n: i.statements })} · ${min < 1 ? msg('js.ws.under_minute') : msg('js.ws.min', { n: min })}`;
   };
   const txnApply = (i) => {
     txnInfo = i;
@@ -381,8 +384,8 @@
     commitBtn.disabled = i.state !== 'open';
     rollbackBtn.disabled = i.state === 'none';
     commitNote.textContent = on
-      ? `The statements stay in one transaction until Commit or Rollback; it is rolled back after ${idleWords} without a run.`
-      : 'Each statement commits on its own.';
+      ? msg('js.ws.commit_txn', { idle: idleWords })
+      : msg('js.ws.commit_auto');
     cur.txn = on;
     cur.txnOpen = i.state !== 'none';
     persist();
@@ -407,7 +410,7 @@
       if (j.state !== 'none') modeSel.value = 'on';
       fromServer(j);
     } catch {
-      badge.textContent = 'Transaction state unknown';
+      badge.textContent = msg('js.ws.txn_unknown');
     }
   }
   async function txnPost(key, action) {
@@ -421,13 +424,13 @@
       }
       return j;
     } catch {
-      announce('The transaction could not be ended: reload the page.');
+      announce(msg('js.ws.txn_not_ended'));
       return null;
     }
   }
   modeSel.addEventListener('change', async () => {
     if (modeSel.value !== 'on' && txnInfo.state !== 'none') {
-      if (!window.confirm('Switching to Autocommit rolls back the open transaction. Roll it back?')) { modeSel.value = 'on'; return; }
+      if (!window.confirm(msg('js.ws.txn_confirm'))) { modeSel.value = 'on'; return; }
       await txnPost(cur.key, 'rollback');
       modeSel.value = '';
     }
@@ -486,9 +489,9 @@
       const out = (await res.json()).sql;
       if (whole) replaceRange(0, ta.value.length, out, false);
       else replaceRange(a, b, out);
-      announce('Formatted.');
+      announce(msg('js.ws.formatted'));
     } catch {
-      announce('Formatting failed.');
+      announce(msg('js.ws.format_failed'));
     }
   };
   const convertCase = () => {
@@ -521,7 +524,7 @@
     try {
       return new RegExp(fre.checked ? fq.value : fq.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), `g${fcs.checked ? '' : 'i'}`);
     } catch (err) {
-      fmsg.textContent = `Not a valid pattern: ${err.message}`;
+      fmsg.textContent = msg('js.ws.bad_pattern', { error: err.message });
       return null;
     }
   };
@@ -537,7 +540,7 @@
     re.lastIndex = from;
     let m = re.exec(ta.value);
     if (!m) { re.lastIndex = 0; m = re.exec(ta.value); }
-    if (!m || !m[0]) { fmsg.textContent = 'Not found.'; return false; }
+    if (!m || !m[0]) { fmsg.textContent = msg('js.ws.not_found'); return false; }
     fmsg.textContent = '';
     reveal(m.index, m.index + m[0].length);
     return true;
@@ -580,7 +583,7 @@
       if (!re) return;
       const n = (ta.value.match(re) || []).length;
       if (n) replaceRange(0, ta.value.length, ta.value.replace(re, fr.value), false);
-      fmsg.textContent = `${n} replaced.`;
+      fmsg.textContent = msg('js.ws.replaced', { n });
     }
   });
 
@@ -660,6 +663,8 @@
 // to open it; Open shows the Object Browser's detail in a panel at the side (its tabs and pages load in the panel).
 (() => {
   'use strict';
+  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
+  const msg = (key) => TEXTS[key] ?? key;
   document.addEventListener('contextmenu', (e) => {
     const item = e.target.closest?.('.ws-obj, .ob-item');
     const menu = item?.querySelector(':scope > .obj-menu');
@@ -678,8 +683,8 @@
     const head = document.createElement('div');
     head.className = 'obj-slide-head';
     const title = Object.assign(document.createElement('strong'), { id: 'obj-slide-title' });
-    const full = Object.assign(document.createElement('a'), { className: 'btn btn-sm', textContent: 'Open in the Object Browser' });
-    const close = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-sm', textContent: 'Close' });
+    const full = Object.assign(document.createElement('a'), { className: 'btn btn-sm', textContent: msg('js.ws.open_ob') });
+    const close = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-sm', textContent: msg('js.ws.close') });
     close.addEventListener('click', () => slide.close());
     const tools = document.createElement('div');
     tools.append(full, ' ', close);
@@ -708,7 +713,7 @@
       d.querySelector('#obj-slide-title').textContent = root?.dataset.label ?? '';
       d.querySelector('.obj-slide-head a').href = url.replace('/sql/objects/panel', '/sql/objects');
     } catch {
-      body.textContent = 'The object could not be opened.';
+      body.textContent = msg('js.ws.open_failed');
     } finally {
       body.removeAttribute('aria-busy');
     }

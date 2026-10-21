@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
+import { tr } from './i18n.ts';
 import { back, BASE, csrf, developer, flash, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { SYSTEM_SCHEMAS } from './object-browser.ts';
 import { clearCompletions } from './code-editor.ts';
@@ -77,76 +78,78 @@ async function tables(db: Awaited<ReturnType<typeof workshopDb>>) {
 
 function form(s: Session, def: TableDef, opts: { editing: TableDef | null; schemas: string[]; refTables: string[]; ddl: string[]; errors: string[]; output: Raw | ''; tab: string; ref: string }): Raw {
   const { editing } = opts;
+  const tx = tr(s);
   const chk = (on: boolean) => (on ? raw(' checked') : '');
   const sel = (v: string, cur: string) => (v === cur ? raw(' selected') : '');
   const typeList = html`<datalist id="te-types">${TYPES.map((t) => html`<option value="${t}">`)}</datalist>`;
   const colRow = (c: ColumnDef | null, i: number) => html`<tr class="te-row${c ? '' : ' te-spare'}">
-      <td class="te-move"><button type="button" class="btn btn-sm btn-icon" data-te-up title="Move up" hidden>↑</button><button type="button" class="btn btn-sm btn-icon" data-te-down title="Move down" hidden>↓</button></td>
-      <td><input type="hidden" name="col.${i}.orig" value="${c?.orig ?? ''}"><input id="te-c${i}-name" aria-label="Name" name="col.${i}.name" value="${c?.name ?? ''}" autocomplete="off" spellcheck="false"></td>
-      <td><input id="te-c${i}-type" aria-label="Type" name="col.${i}.type" value="${c?.type ?? ''}" list="te-types" autocomplete="off" spellcheck="false"></td>
-      <td class="te-c"><input type="checkbox" aria-label="Primary key" id="te-c${i}-pk" name="col.${i}.pk"${chk(!!c?.pk)}></td>
-      <td class="te-c"><input type="checkbox" aria-label="Not null" id="te-c${i}-nn" name="col.${i}.nn"${chk(!!c?.notNull)}></td>
+      <td class="te-move"><button type="button" class="btn btn-sm btn-icon" data-te-up title="${tx('te.move_up')}" hidden>↑</button><button type="button" class="btn btn-sm btn-icon" data-te-down title="${tx('te.move_down')}" hidden>↓</button></td>
+      <td><input type="hidden" name="col.${i}.orig" value="${c?.orig ?? ''}"><input id="te-c${i}-name" aria-label="${tx('te.name')}" name="col.${i}.name" value="${c?.name ?? ''}" autocomplete="off" spellcheck="false"></td>
+      <td><input id="te-c${i}-type" aria-label="${tx('te.type')}" name="col.${i}.type" value="${c?.type ?? ''}" list="te-types" autocomplete="off" spellcheck="false"></td>
+      <td class="te-c"><input type="checkbox" aria-label="${tx('te.pk')}" id="te-c${i}-pk" name="col.${i}.pk"${chk(!!c?.pk)}></td>
+      <td class="te-c"><input type="checkbox" aria-label="${tx('te.not_null')}" id="te-c${i}-nn" name="col.${i}.nn"${chk(!!c?.notNull)}></td>
       <td>${c?.generated
-        ? html`<code class="te-generated" title="Generated (stored)">= ${c.generated}</code><input type="hidden" name="col.${i}.def" value="">`
-        : html`<input id="te-c${i}-def" aria-label="Default" name="col.${i}.def" value="${c?.default ?? ''}" class="code" spellcheck="false">`}</td>
-      <td><select id="te-c${i}-id" aria-label="Identity" name="col.${i}.identity"><option value="">-</option><option value="by default"${sel('by default', c?.identity ?? '')}>by default</option><option value="always"${sel('always', c?.identity ?? '')}>always</option></select></td>
-      <td><input id="te-c${i}-cm" aria-label="Comment" name="col.${i}.comment" value="${c?.comment ?? ''}"></td>
-      <td class="te-c"><label class="te-drop"><input type="checkbox" name="col.${i}.drop"><span>Remove</span></label></td></tr>`;
+        ? html`<code class="te-generated" title="${tx('te.generated')}">= ${c.generated}</code><input type="hidden" name="col.${i}.def" value="">`
+        : html`<input id="te-c${i}-def" aria-label="${tx('te.default')}" name="col.${i}.def" value="${c?.default ?? ''}" class="code" spellcheck="false">`}</td>
+      <td><select id="te-c${i}-id" aria-label="${tx('te.identity')}" name="col.${i}.identity"><option value="">-</option><option value="by default"${sel('by default', c?.identity ?? '')}>by default</option><option value="always"${sel('always', c?.identity ?? '')}>always</option></select></td>
+      <td><input id="te-c${i}-cm" aria-label="${tx('te.comment')}" name="col.${i}.comment" value="${c?.comment ?? ''}"></td>
+      <td class="te-c"><label class="te-drop"><input type="checkbox" name="col.${i}.drop"><span>${tx('te.remove')}</span></label></td></tr>`;
   const simpleRows = <T,>(list: T[], prefix: string, cells: (x: T | null, i: number) => Raw) =>
-    [...list, ...Array<null>(SPARE).fill(null)].map((x, i) => html`<tr class="te-row${x ? '' : ' te-spare'}">${cells(x, i)}<td class="te-c"><label class="te-drop"><input type="checkbox" name="${prefix}.${i}.drop"><span>Remove</span></label></td></tr>`);
+    [...list, ...Array<null>(SPARE).fill(null)].map((x, i) => html`<tr class="te-row${x ? '' : ' te-spare'}">${cells(x, i)}<td class="te-c"><label class="te-drop"><input type="checkbox" name="${prefix}.${i}.drop"><span>${tx('te.remove')}</span></label></td></tr>`);
   // extra: attributes written by this file (constants, or values escaped with esc())
   const input = (name: string, value: string, label: string, extra = '') => html`<input id="te-${name}" aria-label="${label}" name="${name}" value="${value}" autocomplete="off" spellcheck="false"${extra ? raw(` ${extra}`) : ''}>`;
   const sections: [string, string, Raw][] = [
-    ['columns', 'Columns', html`<div class="table-wrap"><table class="report te-table" data-te-grid="col"><thead><tr><th></th><th>Name</th><th>Type</th><th>Key</th><th>Not null</th><th>Default</th><th>Identity</th><th>Comment</th><th></th></tr></thead>
+    ['columns', tx('te.columns'), html`<div class="table-wrap"><table class="report te-table" data-te-grid="col"><thead><tr><th></th><th>${tx('te.name')}</th><th>${tx('te.type')}</th><th>${tx('te.key')}</th><th>${tx('te.not_null')}</th><th>${tx('te.default')}</th><th>${tx('te.identity')}</th><th>${tx('te.comment')}</th><th></th></tr></thead>
       <tbody>${[...def.columns, ...Array<null>(SPARE).fill(null)].map((c, i) => colRow(c, i))}</tbody></table></div>
-      <div class="buttons"><button type="button" class="btn btn-sm" data-te-add="col" hidden>${icon('plus')} Add column</button></div>
-      <div class="field u-mt1"><label class="label" for="te-pk_name">Primary key name</label>${input('pk_name', def.pkName, 'Primary key name', `placeholder="${esc(def.name ? `${def.name}_pkey` : 'table_pkey')}"`)}<small class="help">Tick Key on the columns of the primary key.</small></div>`],
-    ['keys', 'Unique keys', html`<div class="table-wrap"><table class="report te-table" data-te-grid="uk"><thead><tr><th>Name</th><th>Columns (comma-separated)</th><th></th></tr></thead><tbody>
-      ${simpleRows(def.uniques, 'uk', (k, i) => html`<td>${input(`uk.${i}.name`, k?.name ?? '', 'Name')}</td><td>${input(`uk.${i}.cols`, k?.columns ?? '', 'Columns')}</td>`)}</tbody></table></div>`],
-    ['fks', 'Foreign keys', html`<div class="table-wrap"><table class="report te-table" data-te-grid="fk"><thead><tr><th>Name</th><th>Columns</th><th>References</th><th>Their columns</th><th>On delete</th><th></th></tr></thead><tbody>
-      ${simpleRows(def.fks, 'fk', (f, i) => html`<td>${input(`fk.${i}.name`, f?.name ?? '', 'Name')}</td><td>${input(`fk.${i}.cols`, f?.columns ?? '', 'Columns')}</td>
-        <td><select id="te-fk${i}-ref" aria-label="References" name="fk.${i}.ref"><option value="">-</option>${opts.refTables.map((t) => html`<option value="${t}"${sel(t, f?.refTable ?? '')}>${t}</option>`)}</select></td>
-        <td>${input(`fk.${i}.refcols`, f?.refColumns ?? '', 'Their columns', 'placeholder="its primary key"')}</td>
-        <td><select id="te-fk${i}-del" aria-label="On delete" name="fk.${i}.del">${ON_DELETE.map((d) => html`<option value="${d}"${sel(d, f?.onDelete ?? 'no action')}>${d}</option>`)}</select></td>`)}</tbody></table></div>`],
-    ['checks', 'Checks', html`<div class="table-wrap"><table class="report te-table" data-te-grid="ck"><thead><tr><th>Name</th><th>Condition</th><th></th></tr></thead><tbody>
-      ${simpleRows(def.checks, 'ck', (k, i) => html`<td>${input(`ck.${i}.name`, k?.name ?? '', 'Name')}</td><td>${input(`ck.${i}.expr`, k?.expr ?? '', 'Condition', 'class="code" placeholder="salary &gt;= 0"')}</td>`)}</tbody></table></div>`],
-    ['indexes', 'Indexes', html`<div class="table-wrap"><table class="report te-table" data-te-grid="ix"><thead><tr><th>Name</th><th>Columns or expressions</th><th>Unique</th><th></th></tr></thead><tbody>
-      ${simpleRows(def.indexes.filter((i) => !i.fixed), 'ix', (x, i) => html`<td>${input(`ix.${i}.name`, x?.name ?? '', 'Name')}</td><td>${input(`ix.${i}.cols`, x?.columns ?? '', 'Columns', 'class="code" placeholder="lower(name), created_at desc"')}</td>
-        <td class="te-c"><input type="checkbox" aria-label="Unique" id="te-ix${i}-u" name="ix.${i}.unique"${chk(!!x?.unique)}></td>`)}</tbody></table></div>
-      ${def.indexes.some((i) => i.fixed) ? html`<p class="muted small">Kept as they are (another method or a condition): ${def.indexes.filter((i) => i.fixed).map((i) => html`<code>${i.fixed}</code> `)}</p>` : ''}`],
-    ['more', 'Comment and security', html`<div class="field"><label class="label" for="te-comment">Comment</label><textarea id="te-comment" name="comment" rows="2">${def.comment}</textarea></div>
-      <label class="check"><input type="checkbox" name="rls"${chk(def.rls)}> Row level security: rows only through policies</label>
-      <label class="check"><input type="checkbox" name="force_rls"${chk(def.forceRls)}> Force it for the table's owner too</label>
-      ${editing ? '' : html`<fieldset class="prop-group u-mt1"><legend>Partitioning</legend><div class="form-grid">
-        <div class="field"><label class="label" for="te-part_by">Partition by</label><select id="te-part_by" name="part_by"><option value="">Not partitioned</option>${(['range', 'list', 'hash'] as const).map((p) => html`<option value="${p}"${sel(p, def.partitionBy)}>${p}</option>`)}</select></div>
-        <div class="field"><label class="label" for="te-part_key">Key</label>${input('part_key', def.partitionKey, 'Key', 'class="code" placeholder="created_at"')}</div></div>
-        <small class="help">The partitions themselves are tables made with CREATE TABLE … PARTITION OF in the worksheet.</small></fieldset>`}`],
-    ['ddl', 'DDL', opts.ddl.length ? html`<pre class="source te-ddl" data-code-view="sql" tabindex="0" aria-label="DDL">${opts.ddl.join('\n\n')}</pre>` : html`<p class="muted">${editing ? 'No changes yet: the table is as the form shows it.' : 'Fill in the table and press Preview DDL.'}</p>`],
-    ['output', 'Output', opts.output || html`<p class="muted">Apply shows what happened here.</p>`],
+      <div class="buttons"><button type="button" class="btn btn-sm" data-te-add="col" hidden>${icon('plus')} ${tx('te.add_col')}</button></div>
+      <div class="field u-mt1"><label class="label" for="te-pk_name">${tx('te.pk_name')}</label>${input('pk_name', def.pkName, tx('te.pk_name'), `placeholder="${esc(def.name ? `${def.name}_pkey` : 'table_pkey')}"`)}<small class="help">${tx('te.pk_help')}</small></div>`],
+    ['keys', tx('te.uniques'), html`<div class="table-wrap"><table class="report te-table" data-te-grid="uk"><thead><tr><th>${tx('te.name')}</th><th>${tx('te.cols_comma')}</th><th></th></tr></thead><tbody>
+      ${simpleRows(def.uniques, 'uk', (k, i) => html`<td>${input(`uk.${i}.name`, k?.name ?? '', tx('te.name'))}</td><td>${input(`uk.${i}.cols`, k?.columns ?? '', tx('te.columns'))}</td>`)}</tbody></table></div>`],
+    ['fks', tx('te.fks'), html`<div class="table-wrap"><table class="report te-table" data-te-grid="fk"><thead><tr><th>${tx('te.name')}</th><th>${tx('te.columns')}</th><th>${tx('te.references')}</th><th>${tx('te.their_cols')}</th><th>${tx('te.on_delete')}</th><th></th></tr></thead><tbody>
+      ${simpleRows(def.fks, 'fk', (f, i) => html`<td>${input(`fk.${i}.name`, f?.name ?? '', tx('te.name'))}</td><td>${input(`fk.${i}.cols`, f?.columns ?? '', tx('te.columns'))}</td>
+        <td><select id="te-fk${i}-ref" aria-label="${tx('te.references')}" name="fk.${i}.ref"><option value="">-</option>${opts.refTables.map((t) => html`<option value="${t}"${sel(t, f?.refTable ?? '')}>${t}</option>`)}</select></td>
+        <td>${input(`fk.${i}.refcols`, f?.refColumns ?? '', tx('te.their_cols'), `placeholder="${esc(tx('te.its_pk'))}"`)}</td>
+        <td><select id="te-fk${i}-del" aria-label="${tx('te.on_delete')}" name="fk.${i}.del">${ON_DELETE.map((d) => html`<option value="${d}"${sel(d, f?.onDelete ?? 'no action')}>${d}</option>`)}</select></td>`)}</tbody></table></div>`],
+    ['checks', tx('te.checks'), html`<div class="table-wrap"><table class="report te-table" data-te-grid="ck"><thead><tr><th>${tx('te.name')}</th><th>${tx('te.condition')}</th><th></th></tr></thead><tbody>
+      ${simpleRows(def.checks, 'ck', (k, i) => html`<td>${input(`ck.${i}.name`, k?.name ?? '', tx('te.name'))}</td><td>${input(`ck.${i}.expr`, k?.expr ?? '', tx('te.condition'), 'class="code" placeholder="salary &gt;= 0"')}</td>`)}</tbody></table></div>`],
+    ['indexes', tx('te.indexes'), html`<div class="table-wrap"><table class="report te-table" data-te-grid="ix"><thead><tr><th>${tx('te.name')}</th><th>${tx('te.cols_exprs')}</th><th>${tx('te.unique')}</th><th></th></tr></thead><tbody>
+      ${simpleRows(def.indexes.filter((i) => !i.fixed), 'ix', (x, i) => html`<td>${input(`ix.${i}.name`, x?.name ?? '', tx('te.name'))}</td><td>${input(`ix.${i}.cols`, x?.columns ?? '', tx('te.columns'), 'class="code" placeholder="lower(name), created_at desc"')}</td>
+        <td class="te-c"><input type="checkbox" aria-label="${tx('te.unique')}" id="te-ix${i}-u" name="ix.${i}.unique"${chk(!!x?.unique)}></td>`)}</tbody></table></div>
+      ${def.indexes.some((i) => i.fixed) ? html`<p class="muted small">${tx('te.kept')} ${def.indexes.filter((i) => i.fixed).map((i) => html`<code>${i.fixed}</code> `)}</p>` : ''}`],
+    ['more', tx('te.more'), html`<div class="field"><label class="label" for="te-comment">${tx('te.comment')}</label><textarea id="te-comment" name="comment" rows="2">${def.comment}</textarea></div>
+      <label class="check"><input type="checkbox" name="rls"${chk(def.rls)}> ${tx('te.rls')}</label>
+      <label class="check"><input type="checkbox" name="force_rls"${chk(def.forceRls)}> ${tx('te.force_rls')}</label>
+      ${editing ? '' : html`<fieldset class="prop-group u-mt1"><legend>${tx('te.partitioning')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="te-part_by">${tx('te.partition_by')}</label><select id="te-part_by" name="part_by"><option value="">${tx('te.not_partitioned')}</option>${(['range', 'list', 'hash'] as const).map((p) => html`<option value="${p}"${sel(p, def.partitionBy)}>${p}</option>`)}</select></div>
+        <div class="field"><label class="label" for="te-part_key">${tx('te.key')}</label>${input('part_key', def.partitionKey, tx('te.key'), 'class="code" placeholder="created_at"')}</div></div>
+        <small class="help">${tx('te.part_help')}</small></fieldset>`}`],
+    ['ddl', 'DDL', opts.ddl.length ? html`<pre class="source te-ddl" data-code-view="sql" tabindex="0" aria-label="DDL">${opts.ddl.join('\n\n')}</pre>` : html`<p class="muted">${editing ? tx('te.no_changes') : tx('te.fill_in')}</p>`],
+    ['output', tx('te.output'), opts.output || html`<p class="muted">${tx('te.output_empty')}</p>`],
   ];
   const tab = sections.some(([k]) => k === opts.tab) ? opts.tab : opts.errors.length ? 'columns' : 'columns';
   return html`<form method="post" action="${BASE}/sql/objects/table" class="te" data-te-tab="${tab}">${csrf(s)}
     <input type="hidden" name="ref" value="${opts.ref}">${typeList}
     ${opts.errors.length ? html`<div class="alert alert-error" role="alert"><ul>${opts.errors.map((e) => html`<li>${e}</li>`)}</ul></div>` : ''}
     <div class="form-grid te-head">
-      <div class="field"><label class="label" for="te-schema">Schema</label>${editing
+      <div class="field"><label class="label" for="te-schema">${tx('te.schema')}</label>${editing
         ? html`<input id="te-schema" value="${def.schema}" readonly><input type="hidden" name="schema" value="${def.schema}">`
         : html`<select id="te-schema" name="schema">${opts.schemas.map((n) => html`<option value="${n}"${sel(n, def.schema)}>${n}</option>`)}</select>`}</div>
-      <div class="field"><label class="label" for="te-name">Table name</label><input id="te-name" name="name" value="${def.name}" required autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label class="label" for="te-name">${tx('te.table_name')}</label><input id="te-name" name="name" value="${def.name}" required autocomplete="off" spellcheck="false"></div>
     </div>
-    <nav class="te-tabs" role="tablist" aria-label="Table properties" hidden>${sections.map(([k, label]) => html`<button type="button" role="tab" aria-selected="${k === tab ? 'true' : 'false'}" data-te-show="${k}">${label}</button>`)}</nav>
+    <nav class="te-tabs" role="tablist" aria-label="${tx('te.props')}" hidden>${sections.map(([k, label]) => html`<button type="button" role="tab" aria-selected="${k === tab ? 'true' : 'false'}" data-te-show="${k}">${label}</button>`)}</nav>
     ${sections.map(([k, label, body]) => html`<section class="te-section" data-te-section="${k}"><h2>${label}</h2>${body}</section>`)}
     <div class="buttons te-buttons">
-      <button class="btn" name="mode" value="preview">${icon('eye')} Preview DDL</button>
-      <button class="btn btn-hot" name="mode" value="apply">${icon('check')} Apply</button>
-      <button class="btn" name="mode" value="worksheet">${icon('code')} Open in the worksheet</button>
-      <a class="btn" href="${editing ? `${BASE}/sql/objects?${new URLSearchParams({ schema: def.schema, k: 'table', o: opts.ref })}` : `${BASE}/sql/objects?${new URLSearchParams({ schema: def.schema })}`}">Cancel</a>
+      <button class="btn" name="mode" value="preview">${icon('eye')} ${tx('te.preview')}</button>
+      <button class="btn btn-hot" name="mode" value="apply">${icon('check')} ${tx('te.apply')}</button>
+      <button class="btn" name="mode" value="worksheet">${icon('code')} ${tx('te.open_ws')}</button>
+      <a class="btn" href="${editing ? `${BASE}/sql/objects?${new URLSearchParams({ schema: def.schema, k: 'table', o: opts.ref })}` : `${BASE}/sql/objects?${new URLSearchParams({ schema: def.schema })}`}">${tx('common.cancel')}</a>
     </div></form>`;
 }
 
 async function page(req: Req, reply: FastifyReply) {
   const s = await developer(req, reply);
   if (!s) return;
+  const tx = tr(s);
   const db = await workshopDb(s);
   const isPost = req.method === 'POST';
   const b: Body = isPost ? (req.body ?? {}) : (req.query ?? {});
@@ -174,7 +177,7 @@ async function page(req: Req, reply: FastifyReply) {
     tab = 'ddl';
     if (!errors.length && b.mode === 'worksheet') {
       s.state.__SQLDRAFT = ddl.join('\n\n') || '-- no changes';
-      flash(s, 'Review the statements and run them: nothing has been changed yet.');
+      flash(s, tx('te.review'));
       return back(reply, s, `${BASE}/sql/worksheet`);
     }
     if (!errors.length && b.mode === 'apply' && ddl.length) {
@@ -199,19 +202,19 @@ async function page(req: Req, reply: FastifyReply) {
       if (!failed) {
         // (sprint 106, DA-17) one change set in the change log
         await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'table', defaultSchema: def.schema, statements: [joinStatements(ddl)] });
-        flash(s, `${editing ? 'Changed' : 'Created'} ${def.schema}.${def.name}: ${ddl.length} statement${ddl.length === 1 ? '' : 's'}.`);
+        flash(s, tx(editing ? 'te.changed' : 'te.created', { table: `${def.schema}.${def.name}`, what: tx(ddl.length === 1 ? 'ws.stmt_one' : 'ws.stmt', { n: ddl.length }) }));
         const now = await readTable(db, `${pgIdent(def.schema)}.${pgIdent(def.name)}`);
         return back(reply, s, `${BASE}/sql/objects/table?${new URLSearchParams({ o: now ? `${pgIdent(now.schema)}.${pgIdent(now.name)}` : '' })}`);
       }
-      output = html`<div class="alert alert-error" role="alert"><p><strong>Nothing was changed</strong>: the statements ran in one transaction, which was rolled back.</p><p>${failed}</p><pre class="source" data-code-view="sql" tabindex="0" aria-label="Failed statement">${at}</pre></div>`;
+      output = html`<div class="alert alert-error" role="alert"><p><strong>${tx('te.nothing_changed')}</strong>: ${tx('te.rolled_back')}</p><p>${failed}</p><pre class="source" data-code-view="sql" tabindex="0" aria-label="${tx('te.failed_stmt')}">${at}</pre></div>`;
       tab = 'output';
     }
     if (errors.length) tab = 'columns';
   }
-  const title = editing ? `Table ${editing.schema}.${editing.name}` : 'Create table';
+  const title = editing ? tx('te.title_table', { table: `${editing.schema}.${editing.name}` }) : tx('te.title_create');
   const main = html`<h1 class="u-mb1">${title}</h1>${workshopTabs('objects', s)}
     ${form(s, def, { editing, schemas, refTables, ddl, errors, output, tab, ref: editing ? ref : '' })}`;
-  return send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['Object Browser', `${BASE}/sql/objects`], [title]], main, 'sql'));
+  return send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], [tx('ob.title'), `${BASE}/sql/objects`], [title]], main, 'sql'));
 }
 
 const pgIdent = (n: string) => (/^[a-z_][a-z0-9_$]*$/.test(n) ? n : `"${n.replace(/"/g, '""')}"`);

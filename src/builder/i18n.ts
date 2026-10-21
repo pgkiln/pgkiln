@@ -86,6 +86,16 @@ const LABELS: Record<string, BuilderKey> = {
   Settings: 'app.tab.settings',
 };
 
+/**
+ * (sprint 123) The texts the builder's own JavaScript shows (keys js.*), in the language: shell() puts them in the
+ * page as JSON in an attribute (<div id="builder-texts" hidden data-texts="…">, escaped like any value; no inline
+ * script), and public/*.js read them with a small helper. English fills any gap.
+ */
+export function clientTexts(lang: BuilderLang): Record<string, string> {
+  const own = MESSAGES[lang];
+  return Object.fromEntries(Object.keys(en).filter((k) => k.startsWith('js.')).map((k) => [k, own[k] ?? (en as Record<string, string>)[k]]));
+}
+
 /** A translator: the language's messages (`own`, for tests: a partial file), then English, then the key itself. */
 export function builderTranslator(lang: BuilderLang, own: Readonly<Record<string, string>> = MESSAGES[lang]): BuilderTranslate {
   const text = (key: string): string | undefined => own[key] ?? (en as Record<string, string>)[key];
