@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.55.0 (October 2026): the builder in Deutsch, Español, Français, Nederlands and Português besides English (sign-in page links, a language menu in the status bar, stored per developer) for the builder frame, sign-in page, Workspace home, App Builder, Page Designer menus and SQL Workshop; with it every APEX 26.2 feature compared is available or deliberately not planned.
+- **Current release:** 0.56.0 (October 2026): "Ask in your own words" sets faceted search and smart filter facets, smart filters read a typed phrase, and four more sample apps in the App Gallery (Sample Maps, Sample Approvals, Sample Data Loading, Sample Files).
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 

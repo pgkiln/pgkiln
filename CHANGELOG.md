@@ -14,6 +14,9 @@ All notable changes to this project are documented here. The format follows
   ([chapter 12](docs/guide/12-development.md#builder-texts-in-more-languages)). Still English: Table Properties'
   validation messages, and the other SQL Workshop tools.
 
+## [0.56.0] - 2026-10-21
+
+### Added
 ### Added
 - **Four more sample apps in the App Gallery** (WS-8 leftover; APEX: Sample Maps, Sample Approvals, Sample Data
   Loading, Sample File Upload and Download): **Sample Maps** (markers and clusters, layers with GeoJSON and a heat
