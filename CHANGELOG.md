@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-21
+
 ### Added
 - **More of the builder in other languages** (WS-7, part 2): the SQL Worksheet (toolbar, navigator, output tabs, the
   status bar, the transaction badge and its messages, the file menu, find and replace), the Object Browser (object

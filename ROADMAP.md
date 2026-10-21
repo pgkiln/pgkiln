@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.56.0 (October 2026): "Ask in your own words" sets faceted search and smart filter facets, smart filters read a typed phrase, and four more sample apps in the App Gallery (Sample Maps, Sample Approvals, Sample Data Loading, Sample Files).
+- **Current release:** 0.57.0 (October 2026): the SQL Worksheet, the Object Browser and Table Properties in the builder languages (Deutsch, Español, Français, Nederlands, Português), with the texts of the builder's own JavaScript.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
