@@ -469,6 +469,57 @@ const COMMANDS: Record<string, Command> = {
       });
     },
   },
+  // (sprint 126, SEC-6) lockout recovery on the server, when nobody can sign in to the builder
+  admin: {
+    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all [options]',
+    summary: 'lockout recovery: reset a developer\'s two-factor sign-in, set the two-factor policy',
+    details:
+      'pgkiln admin reset-2fa <developer> [--reason <text>]\n' +
+      'pgkiln admin set-2fa-policy off|admins|all [--grace <days>]\n\n' +
+      "reset-2fa removes the developer's authenticator apps and recovery codes and ends their builder\n" +
+      'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works;\n' +
+      'admins and all need at least two administrators with two-factor sign-in (or every one, when there\n' +
+      'are fewer). Both are written to the activity log and mailed to the administrators.',
+    options: { reason: { type: 'string' }, grace: { type: 'string' } },
+    optionHelp: [
+      ['--reason <text>', 'reset-2fa: why (in the activity log and the mail)'],
+      ['--grace <days>', 'set-2fa-policy: days developers have to set up an app (0 to 90, default 7)'],
+    ],
+    positionals: [2, 2],
+    async run(v, [action, arg]) {
+      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL; // the CLI runs as the owner
+      const mfa = await import('../mfa.ts');
+      const { logActivity } = await import('../session.ts');
+      const { closePools } = await import('../db.ts');
+      const by = `pgkiln admin (${userInfo().username})`;
+      try {
+        if (action === 'reset-2fa') {
+          const reason = String(v.reason ?? 'command line').slice(0, 200);
+          if (!(await mfa.resetFactors(arg))) throw new Error(`no developer ${arg}`);
+          await logActivity({ username: arg, event: '2fa_reset', ip: 'cli', detail: `${arg}: ${reason} (${by})` });
+          const sent = await mfa.notifyMfa(await mfa.adminEmails(), `pgkiln: two-factor sign-in of ${arg} reset`,
+            `${by} removed the second factors of developer ${arg} on the server (reason: ${reason}).`);
+          out(`Two-factor sign-in of ${arg} reset; their builder sessions ended.${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
+          return EXIT.ok;
+        }
+        if (action === 'set-2fa-policy') {
+          if (!mfa.MFA_POLICIES.includes(arg as never)) throw new UsageError('set-2fa-policy takes off, admins or all');
+          const grace = v.grace === undefined ? (await mfa.mfaPolicy()).graceDays : Number(v.grace);
+          if (!Number.isInteger(grace) || grace < 0 || grace > 90) throw new UsageError('--grace takes 0 to 90 days');
+          const policy = arg as 'off' | 'admins' | 'all';
+          if (await mfa.policyProblem(policy)) throw new Error('at least two administrators (or every one, when there are fewer) need two-factor sign-in first');
+          await mfa.setPolicy(policy, grace);
+          await logActivity({ event: '2fa_policy', ip: 'cli', detail: `${policy}, grace ${grace} days (${by})` });
+          const sent = await mfa.notifyMfa(await mfa.adminEmails(), `pgkiln: two-factor sign-in policy is now ${policy}`, `${by} set the two-factor policy to ${policy} on the server.`);
+          out(`Two-factor policy: ${policy}${policy === 'off' ? '' : `, grace ${grace} days`}.${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
+          return EXIT.ok;
+        }
+        throw new UsageError(`unknown action ${action}: use reset-2fa or set-2fa-policy`);
+      } finally {
+        await closePools();
+      }
+    },
+  },
 };
 
 // ------------------------------------------------------------------ help and dispatch

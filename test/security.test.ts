@@ -11421,3 +11421,53 @@ describe('sprint 122 WS-5', () => {
     assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from hr.emp'))!.n, before);
   });
 });
+
+describe('sprint 126: two-factor sign-in for developers', () => {
+  const U1 = 'sec126_a';
+  const U2 = 'sec126_b';
+  const PW = 'Sec126-password!';
+  before(async () => {
+    await owner.query('delete from meta.developer where username = any($1)', [[U1, U2]]);
+    for (const u of [U1, U2]) await owner.query('insert into meta.developer (username, password_hash) values ($1, meta.hash_password($2))', [u, PW]);
+    await owner.query(`insert into meta.developer_factor (username, kind, name, secret_enc) values ($1, 'totp', 'Phone', 'x')`, [U2]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.developer where username = any($1)', [[U1, U2]]);
+  });
+  const signIn = async (u: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: u, password: PW });
+    return b;
+  };
+
+  test('the Security page\'s forms need the CSRF token', async () => {
+    const b = await signIn(U1);
+    await b.get('/builder/security');
+    for (const url of ['/builder/security/totp/start', '/builder/security/codes', '/builder/instance/mfa', '/builder/developers/reset-2fa'])
+      assert.equal((await b.post(url, { __csrf: 'forged' })).statusCode, 403, url);
+  });
+
+  test('a developer can\'t remove another developer\'s factor', async () => {
+    const b = await signIn(U1);
+    await b.get('/builder/security');
+    const f = await owner.one<{ id: number }>('select id from meta.developer_factor where username = $1', [U2]);
+    const res = await b.post(`/builder/security/factor/${f!.id}/delete`, { __csrf: b.lastCsrf, [`password_${f!.id}`]: PW });
+    assert.equal(res.statusCode, 404);
+    assert.ok(await owner.one('select 1 from meta.developer_factor where id = $1', [f!.id]));
+  });
+
+  test('the password step alone gives no session; the second step throttles guessing', async () => {
+    const b = await signIn(U2);
+    assert.notEqual((await b.get('/builder/apps')).statusCode, 200);
+    let last = '';
+    for (let i = 0; i < 12; i++) {
+      await b.get('/builder/login/2fa');
+      const r = await b.post('/builder/login/2fa', { __csrf: b.lastCsrf, code: String(100000 + i) });
+      last = String(r.headers.location);
+    }
+    assert.equal(last, '/builder/login', 'too many wrong codes end the pending sign-in');
+    assert.notEqual((await b.get('/builder/apps')).statusCode, 200);
+  });
+});
+

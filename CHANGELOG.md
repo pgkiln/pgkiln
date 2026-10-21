@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Two-factor sign-in for developers** (SEC-2, part 1, and SEC-6): an authenticator app (TOTP, RFC 6238) per
+  developer on the new **Security** page (account menu → Two-factor sign-in), with a QR code, ten one-time recovery
+  codes shown once, and a second step at the builder sign-in. The secret is encrypted with the instance key;
+  recovery codes are stored hashed; every code works once. Administrators require it for administrators or all
+  developers (Instance settings) with a grace period, reset another developer's factors with a reason (Developers),
+  and on the server `pgkiln admin reset-2fa` and `pgkiln admin set-2fa-policy off` recover from a lockout. The
+  policy needs two administrators with an app and keeps them. Logged and mailed to the administrators. Migration 128.
+  In all six builder languages.
+
 ## [0.59.0] - 2026-10-21
 
 ### Added

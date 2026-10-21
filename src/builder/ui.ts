@@ -12,6 +12,7 @@ import { ensureDevbar } from '../runtime/devbar.ts';
 import { noteChange } from './app-updates.ts';
 import { clientTexts, tr } from './i18n.ts';
 import { languageMenu, loadLanguage } from './language.ts';
+import { enrolmentDue } from '../mfa.ts';
 
 // Shared building blocks of the builder UI.
 
@@ -112,6 +113,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
   // (sprint 74) the default-password warning: on the Workspace home (sprint 109), the App Builder home and the Developers page only, until
   // dismissed (for this sign-in); a dot on the avatar stays until the password is changed
   const weak = !!s.state.__WEAK;
+  const mfaDue = typeof s.state.__MFA_DUE === 'string' ? s.state.__MFA_DUE : '';
   const weakBanner = weak && !s.state.__WEAK_HIDDEN && crumbs.length === 1 && (crumbs[0][0] === 'Home' || crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
   const trail = crumbs.map(([label, href]): [string, string?] => [tx.label(label), href]);
   const back = [...trail].reverse().find(([, href], i) => i > 0 && href);
@@ -175,6 +177,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
               </form></div>
             <div class="menu-section menu-links">
               <a href="${BASE}/developers">${icon('key')} ${tx('user.change_password')}</a>
+              <a href="${BASE}/security">${icon('lock')} ${tx('mfa.menu')}</a>
               <form method="post" action="${BASE}/logout">${csrf(s)}<button>${icon('logout')} ${tx('user.sign_out')}</button></form>
             </div>
           </div></details></li>
@@ -191,7 +194,8 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         <div class="ide-tools">${opts.toolbar ?? ''}</div>
       </header>
       ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="${tx('bar.environment')}">${s.workspace.banner_label}</div>` : ''}
-      ${weakBanner || ok || err ? html`<div class="ide-alerts">
+      ${weakBanner || mfaDue || ok || err ? html`<div class="ide-alerts">
+        ${mfaDue ? html`<div class="alert alert-warning" role="status">${tx.rich('mfa.banner', { date: mfaDue.slice(0, 10), link: html`<a href="${BASE}/security">${tx('mfa.set_up_now')}</a>` })}</div>` : ''}
         ${weakBanner ? html`<div class="alert alert-error alert-dismissible" role="alert"><span>${tx.rich('weak.banner', { link: html`<a href="${BASE}/developers">${tx('weak.change_now')}</a>` })}</span>
           <form method="post" action="${BASE}/weak/dismiss">${csrf(s)}<button class="link-button" aria-label="${tx('weak.dismiss')}" title="${tx('weak.dismiss')}">${icon('close')}</button></form></div>` : ''}
         ${ok ? html`<div class="alert alert-success" role="status">${ok}</div>` : ''}
@@ -317,6 +321,14 @@ export async function developer(req: Req, reply: FastifyReply) {
   }
   // (sprint 121) a session from before the developer's language was kept in it: the stored choice (language.ts)
   if (s.state.__BLANG === undefined) await loadLanguage(s);
+  // (sprint 126, SEC-2) the two-factor policy: a banner during the grace period, then only the Security page until they enrol
+  delete s.state.__MFA_DUE;
+  const due = await enrolmentDue(s.username, await isAdmin(s.username));
+  if (due?.due === 'grace') s.state.__MFA_DUE = due.until.toISOString();
+  else if (due && !/^\/builder\/(security|logout|language|theme)(?:[/?]|$)/.test(req.url)) {
+    reply.redirect(`${BASE}/security`);
+    return null;
+  }
   // (079) the developer toolbar on the applications' pages in this browser
   await ensureDevbar(req, reply, s);
   // workspaces: an application outside the developer's workspaces doesn't exist for them

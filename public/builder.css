@@ -1563,3 +1563,11 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 640px) { .ide-status .ide-lang .menu-panel { left: 0.5rem; right: 0.5rem; min-width: 0; } }
 /* long compound words of other languages (Workspace-Dienstprogramme) wrap instead of widening a phone's page */
 .ab-tile > *, .stat span { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }
+
+/* (sprint 126) Security: two-factor sign-in */
+.mfa-qr { margin: .5rem 0 1rem; }
+.mfa-qr svg { width: 200px; max-width: 100%; height: auto; background: #fff; padding: 8px; border-radius: 6px; }
+.mfa-secret { word-break: break-all; font-size: .95em; letter-spacing: .05em; }
+.mfa-steps { padding-left: 1.25rem; }
+.mfa-codes { columns: 2; column-gap: 2rem; padding-left: 1.5rem; font-size: 1.05em; }
+@media (max-width: 480px) { .mfa-codes { columns: 1; } }

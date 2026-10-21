@@ -3,6 +3,7 @@ import { html } from '../html.ts';
 import { configurationValue, CONFIGURATION, INSTANCE_SETTINGS, instanceSetting, origin, refreshInstanceSettings, saveInstanceSettings } from '../instance.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
+import { policyRegion } from './security.ts';
 import { releaseCheckRegion } from './workspace-home.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 
@@ -39,6 +40,7 @@ export async function instanceRoutes(app: FastifyInstance) {
           })}</div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div></form>`)}
         ${await releaseCheckRegion(s)}
+        ${await policyRegion(s)}
         ${region('Configuration', html`<p class="muted u-mt0">Environment variables of this server (chapter 1 of the guide). Secrets show only whether they are set.</p>
           <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Variable</th><th>Value</th><th>Purpose</th></tr></thead>
           <tbody>${CONFIGURATION.map((c) => {

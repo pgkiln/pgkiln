@@ -831,6 +831,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         })(),
         data_load_def: `/builder/apps/${appId}/shared?c=data_load_def-${(await owner.one(`select id from meta.data_load_def where app_id = $1 and name = 'EMP_XML'`, [appId])).id}`,
         developers: '/builder/developers',
+        security: '/builder/security',
         users: '/builder/users',
         providers: '/builder/users/providers',
         directories: '/builder/users/directories',

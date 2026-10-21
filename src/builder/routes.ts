@@ -19,6 +19,7 @@ import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
 import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
+import { securityRoutes } from './security.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
@@ -26,6 +27,7 @@ import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
 import { cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
+import { checkSecondFactor, codesLeft, hasFactor, leavesTooFewAdmins } from '../mfa.ts';
 import { chooseLanguage, langCookieOptions, languageRoutes, signInLanguageLinks } from './language.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
@@ -148,27 +150,124 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, tx(workspace ? 'signin.invalid_ws' : 'signin.invalid'), 'error');
       return back(reply, s, again);
     }
+    // (sprint 126, SEC-2) a developer with a second factor: the password was right, the session comes after the code
+    if (await hasFactor(dev.username)) {
+      s.state.__MFA = JSON.stringify({ u: dev.username, ws: ws ? String(ws.id) : null, w: workspace, next, remember: req.body?.remember === '1', weak: password === 'admin' || password === dev.username, at: Date.now() });
+      await saveState(s);
+      return reply.redirect(`${BASE}/login/2fa`, 303);
+    }
+    return finishSignIn(req, reply, s, { username: dev.username, language: dev.language }, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: password === 'admin' || password === dev.username, picked, detail: 'builder' });
+  });
+
+  /** The session after a successful sign-in (password, and the second factor when the developer has one). */
+  async function finishSignIn(req: Req, reply: Parameters<typeof back>[0], s: Awaited<ReturnType<typeof getSession>>, dev: { username: string; language: string | null },
+    o: { ws: string | null; workspace: string; next: string; remember: boolean; weak: boolean; picked: ReturnType<typeof validBuilderLanguage>; detail: string }) {
+    const ip = clientIp(req);
+    const { picked, next, workspace } = o;
     await destroySession(reply, s, BASE);
     const ns = await createSession(reply, null, BASE, dev.username);
     // the builder theme chosen earlier on this device
     const theme = validTheme(req.cookies?.[THEME_COOKIE]);
     if (theme) ns.state.__BTHEME = theme;
-    if (ws) ns.state.__WS = String(ws.id);
+    if (o.ws) ns.state.__WS = o.ws;
     // (sprint 121) the builder language: a link chosen on the sign-in page is stored for the developer; else theirs
     if (picked) await chooseLanguage(reply, ns, picked);
     else {
       ns.state.__BLANG = validBuilderLanguage(dev.language) ?? 'en';
       if (dev.language && ns.state.__BLANG !== 'en') reply.setCookie(LANG_COOKIE, ns.state.__BLANG, langCookieOptions());
     }
-    if (password === 'admin' || password === dev.username) ns.state.__WEAK = '1';
+    if (o.weak) ns.state.__WEAK = '1';
     await saveState(ns);
-    if (req.body?.remember === '1')
+    if (o.remember)
       reply.setCookie(REMEMBER_COOKIE, Buffer.from(JSON.stringify({ w: workspace, u: dev.username })).toString('base64url'), {
         path: BASE, httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600, secure: process.env.COOKIE_SECURE === 'true',
       });
     else reply.clearCookie(REMEMBER_COOKIE, { path: BASE });
-    logActivity({ username: dev.username, event: 'login', ip, detail: 'builder' });
+    logActivity({ username: dev.username, event: 'login', ip, detail: o.detail });
     return reply.redirect(next, 303);
+  }
+
+  // (sprint 126, SEC-2) the second step: a code from the authenticator app, or a recovery code
+  const MFA_SECONDS = 300;
+  const pendingMfa = (s: { state: Record<string, any> }) => {
+    try {
+      const p = JSON.parse(String(s.state.__MFA ?? ''));
+      return p && typeof p.u === 'string' && Date.now() - Number(p.at) < MFA_SECONDS * 1000 ? p as { u: string; ws: string | null; w: string; next: string; remember: boolean; weak: boolean } : null;
+    } catch {
+      return null;
+    }
+  };
+  app.get(`${BASE}/login/2fa`, async (req: Req, reply) => {
+    const s = await getSession(req, reply, null, BASE);
+    if (s.username) return reply.redirect(`${BASE}/home`);
+    const p = pendingMfa(s);
+    const tx = translatorFor(validBuilderLanguage(s.state.__BLANG) ?? cookieLanguage(req));
+    if (!p) {
+      delete s.state.__MFA;
+      flash(s, tx('mfa.expired'), 'error');
+      return back(reply, s, `${BASE}/login`);
+    }
+    const error = takeFlash(s, '__ERROR');
+    await saveState(s);
+    return reply.type('text/html').send(documentShell(
+      `${tx('mfa.step_title')} · ${tx('shell.builder')}`,
+      html`<main class="signin">
+        <section class="signin-hero" aria-label="pgkiln">
+          <span class="signin-logo" aria-hidden="true">${brandMark()}</span>
+          <h1 class="signin-title">pgkiln</h1>
+          <p class="signin-tagline">${tx('signin.tagline')}</p>
+        </section>
+        <section class="signin-panel">
+          <form method="post" class="signin-form">
+            <h2>${tx('mfa.step_title')}</h2>
+            <p class="muted u-mt0">${tx('mfa.step_intro', { user: p.u })}</p>
+            ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
+            ${csrf(s)}
+            <div class="field signin-field"><label class="label" for="f_code">${tx('mfa.code')}</label>
+              <div class="signin-input">${icon('key')}<input id="f_code" name="code" required autocomplete="one-time-code" autofocus maxlength="20" spellcheck="false" autocapitalize="off"></div>
+              <small class="help">${tx('mfa.code_help')}</small></div>
+            <button class="btn btn-hot signin-submit">${tx('mfa.verify')}</button>
+            <p class="muted small signin-hint"><a href="${BASE}/login">${tx('mfa.cancel')}</a> · ${tx('mfa.locked_out')}</p>
+          </form>
+        </section>
+      </main>`,
+      'login-body ide-login signin-body', {}, builderHead(),
+      { theme: validTheme(req.cookies?.[THEME_COOKIE]) ?? 'dark', lang: tx.lang },
+    ));
+  });
+  app.post(`${BASE}/login/2fa`, async (req: Req, reply) => {
+    const s = await getSession(req, reply, null, BASE);
+    const ip = clientIp(req);
+    const picked = validBuilderLanguage(s.state.__BLANG);
+    const tx = translatorFor(picked ?? cookieLanguage(req));
+    const p = pendingMfa(s);
+    if (req.body?.__csrf !== s.csrf_token || !p) {
+      delete s.state.__MFA;
+      flash(s, tx(p ? 'signin.expired' : 'mfa.expired'), 'error');
+      return back(reply, s, `${BASE}/login`);
+    }
+    if (await loginThrottled(null, p.u, ip)) {
+      logActivity({ username: p.u, event: 'login_locked', ip, detail: 'builder 2fa' });
+      delete s.state.__MFA;
+      flash(s, tx('signin.throttled'), 'error');
+      return back(reply, s, `${BASE}/login`);
+    }
+    const ok = await checkSecondFactor(p.u, String(req.body?.code ?? '').slice(0, 40));
+    if (!ok) {
+      // counts with the failed passwords (lockout after the same number of attempts)
+      await logActivity({ username: p.u, event: 'login_failed', ip, detail: 'builder 2fa' });
+      flash(s, tx('mfa.wrong'), 'error');
+      return back(reply, s, `${BASE}/login/2fa`);
+    }
+    const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [p.u]);
+    if (!dev) return back(reply, s, `${BASE}/login`);
+    if (ok.kind === 'recovery') {
+      const left = await codesLeft(p.u);
+      await logActivity({ username: p.u, event: '2fa_recovery_used', ip, detail: `${left} left` });
+      // to the Security page: one code fewer, maybe time for new ones
+      return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: `${BASE}/security`, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (recovery code)' });
+    }
+    return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa' });
   });
 
   app.post(`${BASE}/logout`, async (req: Req, reply) => {
@@ -205,6 +304,7 @@ export async function builderRoutes(app: FastifyInstance) {
   await languageRoutes(app);
   await workspaceRoutes(app);
   await instanceRoutes(app);
+  await securityRoutes(app);
   await wizardRoutes(app);
   await appFromFileRoutes(app);
 
@@ -686,7 +786,8 @@ export async function builderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/developers`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const devs = (await owner.query('select username, is_admin, email from meta.developer order by 1')).rows;
+    const devs = (await owner.query(`select username, is_admin, email, exists (select 1 from meta.developer_factor f where f.username = d.username) as mfa
+                                       from meta.developer d order by 1`)).rows;
     const admin = devs.some((d) => d.username === s.username && d.is_admin);
     const me = devs.find((d) => d.username === s.username);
     const tx = tr(s);
@@ -703,11 +804,14 @@ export async function builderRoutes(app: FastifyInstance) {
           <div class="buttons"><button class="btn">${tx('dev.save')}</button></div></form>`)}
         ${region(tx('dev.accounts'), html`
           <p class="muted u-mt0">${tx('dev.accounts_help')}</p>
-          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('dev.username')}</th><th>${tx('dev.role')}</th><th>${tx('dev.email_col')}</th><th></th></tr></thead><tbody>
+          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('dev.username')}</th><th>${tx('dev.role')}</th><th>${tx('dev.email_col')}</th><th>${tx('mfa.column')}</th><th></th></tr></thead><tbody>
             ${devs.map((d) => html`<tr><td data-label="${tx('dev.username')}">${d.username}${d.username === s.username ? ` ${tx('dev.you')}` : ''}</td><td data-label="${tx('dev.role')}">${d.is_admin ? tx('dev.administrator') : tx('dev.developer')}</td>
               <td data-label="${tx('dev.email_col')}">${admin && d.username !== s.username
                 ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="${tx('dev.email_of', { user: d.username })}" placeholder="${tx('dev.none')}"><button class="btn">${tx('dev.save')}</button></form>`
-                : html`<span class="wrap-anywhere">${d.email ?? ''}</span>`}</td><td>${d.username === s.username || !admin ? '' : html`
+                : html`<span class="wrap-anywhere">${d.email ?? ''}</span>`}</td>
+              <td data-label="${tx('mfa.column')}">${d.mfa ? html`${icon('lock')} ${tx('mfa.on')}${admin && d.username !== s.username ? html` <details class="menu u-inline"><summary class="link-button">${tx('mfa.reset')}</summary><div class="menu-panel"><form method="post" action="${BASE}/developers/reset-2fa" class="menu-section">${csrf(s)}<input type="hidden" name="username" value="${d.username}">
+                  ${input(`reason_${d.username}`.replace(/[^\w]/g, '_'), tx('mfa.reason'), '', { required: true, help: tx('mfa.reset_help', { user: d.username }) })}
+                  <button class="btn btn-sm btn-danger">${tx('mfa.reset_btn')}</button></form></div></details>` : ''}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td><td>${d.username === s.username || !admin ? '' : html`
               <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? tx('dev.make_dev') : tx('dev.make_admin')}</button></form>
               · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="${tx('dev.remove_confirm', { user: d.username })}">${tx('dev.remove')}</button></form>`}</td></tr>`)}
           </tbody></table></div>
@@ -791,6 +895,10 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators change roles.');
     if (req.body?.username && req.body.username !== s.username) {
+      if (req.body.is_admin !== 'true' && (await leavesTooFewAdmins(req.body.username))) {
+        flash(s, tr(s)('mfa.keep_admins'), 'error');
+        return back(reply, s, `${BASE}/developers`);
+      }
       await owner.query('update meta.developer set is_admin = $2 where username = $1', [req.body.username, req.body.is_admin === 'true']);
       flash(s, tr(s)('dev.role_changed'));
     }
@@ -802,6 +910,10 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators remove developers.');
     if (req.body?.username && req.body.username !== s.username) {
+      if (await leavesTooFewAdmins(req.body.username)) {
+        flash(s, tr(s)('mfa.keep_admins'), 'error');
+        return back(reply, s, `${BASE}/developers`);
+      }
       await owner.query('delete from meta.developer where username = $1', [req.body.username]);
       await owner.query('delete from meta.session where app_id is null and username = $1', [req.body.username]);
       flash(s, tr(s)('dev.removed'));

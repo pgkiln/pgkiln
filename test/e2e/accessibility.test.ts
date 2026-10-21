@@ -121,7 +121,7 @@ describe('accessibility (axe-core)', () => {
           '/builder', '/builder/home', '/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities', '/builder/workspaces', '/builder/instance',
           `/builder/apps/${app}`, `/builder/apps/${app}/shared`, `/builder/apps/${app}/settings`, `/builder/apps/${app}/theme`,
           `/builder/apps/${app}/search?q=emp`, `/builder/apps/${app}/advisor`, `/builder/apps/${app}/static-files`, `/builder/apps/${app}/static-files?edit=hr.js`, `/builder/apps/${app}/plugins?p=log_event`, `/builder/pages/${pid}`, `/builder/pages/${pid}?c=page`,
-          '/builder/sql', '/builder/sql/scripts', '/builder/sql/objects', '/builder/users', '/builder/developers', '/builder/ai',
+          '/builder/sql', '/builder/sql/scripts', '/builder/sql/objects', '/builder/users', '/builder/developers', '/builder/security', '/builder/ai',
           // sprint 108: the SQL Workshop and the wizards in both themes
           '/builder/create/tables', '/builder/create/paste', '/builder/create/file', `/builder/apps/${app}/wizard?kind=report_form&table=hr.dept`,
           '/builder/sql/worksheet', '/builder/sql/objects?schema=hr&k=table&o=hr.emp', '/builder/sql/objects?schema=hr&k=table&o=hr.emp&tab=ddl',

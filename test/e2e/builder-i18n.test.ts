@@ -71,7 +71,7 @@ describe('builder language in a browser', () => {
     // (sprint 124) Shared Components, a component list, access control and the settings too
     for (const url of ['/builder/home', `/builder/apps/${hr.id}`, `/builder/apps/${hr.id}/pages/${hr.page_no}`, `/builder/apps/${hr.id}/shared`, `/builder/apps/${hr.id}/shared?type=authz_scheme`, `/builder/apps/${hr.id}/shared?view=tree`, `/builder/apps/${hr.id}/settings`, `/builder/apps/${hr.id}/settings?tab=ui`,
       // (sprint 125) the administration screens
-      '/builder/users', '/builder/users/providers', '/builder/developers', '/builder/workspaces', '/builder/workspaces/1', '/builder/workspaces/1/utilization']) {
+      '/builder/users', '/builder/users/providers', '/builder/developers', '/builder/security', '/builder/workspaces', '/builder/workspaces/1', '/builder/workspaces/1/utilization']) {
       await page.goto(`${base}${url}`);
       assert.equal(await page.getAttribute('html', 'lang'), 'de');
       await fits(page, `${url} (Deutsch)`);

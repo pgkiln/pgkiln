@@ -84,7 +84,7 @@ describe('pgkiln command line', () => {
   test('help, version and exit codes', () => {
     const help = cli('--help');
     assert.equal(help.code, 0);
-    for (const c of ['migrate', 'apps', 'export', 'import', 'diff', 'users']) assert.match(help.out, new RegExp(`^  ${c} `, 'm'));
+    for (const c of ['migrate', 'apps', 'export', 'import', 'diff', 'users', 'admin']) assert.match(help.out, new RegExp(`^  ${c} `, 'm'));
     assert.equal(cli().code, 2, 'no command is a usage error');
     for (const c of ['migrate', 'apps', 'export', 'import', 'diff', 'users']) {
       const r = cli(c, '--help');
@@ -387,6 +387,21 @@ describe('pgkiln command line', () => {
     assert.equal(cliInput('x\n', 'users', 'password', 'nobody_here').code, 3);
     assert.equal(cli('users', 'frob').code, 2);
     assert.equal(cliInput('cli-user-Passw0rd\n', 'users', 'add', 'cli_user2', '--roles', 'x').code, 2, '--roles needs --app');
+  });
+
+  test('admin: lockout recovery (sprint 126)', async () => {
+    await owner.query(`insert into meta.developer_factor (username, kind, name, secret_enc) values ('cli_dev', 'totp', 'Phone', 'x')`);
+    const r = cli('admin', 'reset-2fa', 'cli_dev', '--reason', 'lost phone');
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /reset/);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.developer_factor where username = 'cli_dev'`)).n, 0);
+    assert.ok(await owner.one(`select 1 from meta.activity_log where event = '2fa_reset' and detail like 'cli_dev: lost phone%'`));
+    assert.equal(cli('admin', 'reset-2fa', 'nobody_here').code, 3);
+    assert.equal(cli('admin', 'set-2fa-policy', 'all').code, 3, 'the two-administrator rule');
+    const off = cli('admin', 'set-2fa-policy', 'off');
+    assert.equal(off.code, 0, off.err);
+    assert.equal(cli('admin', 'set-2fa-policy', 'sometimes').code, 2);
+    assert.equal(cli('admin', 'frob', 'x').code, 2);
   });
 
   test('the builder downloads the directory as a zip, and the CLI imports it', async () => {
