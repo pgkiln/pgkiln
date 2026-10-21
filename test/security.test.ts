@@ -11435,7 +11435,7 @@ describe('sprint 126: two-factor sign-in for developers', () => {
     await owner.query('delete from meta.developer where username = any($1)', [[U1, U2]]);
   });
   const signIn = async (u: string) => {
-    const b = new Browser(app);
+    const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: u, password: PW });
     return b;
