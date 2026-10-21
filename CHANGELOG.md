@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-21
+
 ### Added
 - **The administration screens in the builder languages** (WS-7, part 4): the user directory (accounts, an account's
   password and application access, account settings), identity providers, Developers and Workspaces (a workspace's
