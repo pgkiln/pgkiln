@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-10-21
+
 ### Added
 - **Two-factor sign-in for developers** (SEC-2, part 1, and SEC-6): an authenticator app (TOTP, RFC 6238) per
   developer on the new **Security** page (account menu → Two-factor sign-in), with a QR code, ten one-time recovery
