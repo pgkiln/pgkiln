@@ -18,7 +18,7 @@ npx tsx src/cli/main.ts apps         # directly
 Without a checkout, from the npm package or in the Docker container:
 
 ```sh
-npx -y pgkiln apps                                       # npm (Node.js 22+); or npm install -g pgkiln, then: pgkiln apps
+npx -y pgkiln apps                                       # npm (Node.js 20+); or npm install -g pgkiln, then: pgkiln apps
 docker compose exec pgkiln node bin/pgkiln.js apps       # the Docker installation (from the directory with compose.yaml)
 ```
 

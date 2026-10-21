@@ -29,7 +29,7 @@ claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp
 claude mcp add pgkiln -e DATABASE_URL=postgres://owner@host/db -- /path/to/pgkiln/bin/pgkiln.js mcp
 ```
 
-**Without a checkout**: the npm package has the same command, so `npx` runs it (Node.js 22 or later). Give it
+**Without a checkout**: the npm package has the same command, so `npx` runs it (Node.js 20 or later). Give it
 the owner connection of the database pgkiln runs on:
 
 ```sh
