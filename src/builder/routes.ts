@@ -408,12 +408,13 @@ export async function builderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/apps/:id/settings`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
     const directories = (await owner.query('select name, display_name, enabled from meta.ldap_directory order by display_name')).rows;
     const lists = (await owner.query('select name from meta.list where app_id = $1 order by name', [a.id])).rows.map((r) => r.name as string);
-    const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, `${v} (missing!)`] as [string, string]] : [])];
+    const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, tx('st.missing', { name: v })] as [string, string]] : [])];
     // (sprint 74) tabs like APEX's Edit Application Definition and Security Attributes: every tab of the
     // main form is in the page (the others hidden), so Save keeps all of them; without JavaScript the tabs are links
     const tab = SETTINGS_TABS.some(([k]) => k === req.query?.tab) ? String(req.query!.tab) : 'definition';
@@ -421,123 +422,123 @@ export async function builderRoutes(app: FastifyInstance) {
     const end = raw('</section>');
     const authPart = (k: string) => raw(`<div class="auth-part" data-auth="${k}"${a.authentication === k ? '' : ' hidden'}>`);
     const main = html`${appHeader(a, 'settings', s)}
-      <nav class="settings-tabs" aria-label="Settings">${SETTINGS_TABS.map(([k, label]) => html`<a href="?tab=${k}" data-tab-link="${k}"${k === tab ? raw(' aria-current="page"') : ''}>${label}</a>`)}</nav>
+      <nav class="settings-tabs" aria-label="${tx('st.settings')}">${SETTINGS_TABS.map(([k, label]) => html`<a href="?tab=${k}" data-tab-link="${k}"${k === tab ? raw(' aria-current="page"') : ''}>${tx.dyn(`st.tab.${k}`, label)}</a>`)}</nav>
       <div class="settings-body">
         <form method="post" action="${BASE}/apps/${a.id}/settings" class="settings-form">${csrf(s)}<input type="hidden" name="tab" value="${tab}" data-settings-tab>
-            ${panel('definition')}${region('Definition', html`
+            ${panel('definition')}${region(tx('st.tab.definition'), html`
             <div class="form-grid">
-              ${input('name', 'Name', a.name, { required: true })}
-              ${input('alias', 'Alias', a.alias, { required: true })}
-              ${input('version', 'Version', a.version ?? '', { placeholder: 'Release 1.0', help: 'Shown in the footer of the application\'s pages; empty: none.' })}
-              ${input('home_page', 'Home page', a.home_page, { type: 'number' })}
-              ${select('app_type', 'Application type', a.app_type ?? 'standard', APP_TYPES.map((t): [string, string] => [t, APP_TYPE_LABELS[t]]),
-                'Theme and library applications offer their theme or shared components to other applications (Shared Components → Subscriptions); Create application can start from a boilerplate application.')}
+              ${input('name', tx('st.name'), a.name, { required: true })}
+              ${input('alias', tx('st.alias'), a.alias, { required: true })}
+              ${input('version', tx('st.version'), a.version ?? '', { placeholder: tx('st.version_ph'), help: tx('st.version_help') })}
+              ${input('home_page', tx('st.home_page'), a.home_page, { type: 'number' })}
+              ${select('app_type', tx('st.app_type'), a.app_type ?? 'standard', APP_TYPES.map((t): [string, string] => [t, tx.dyn(`st.type.${t}`, APP_TYPE_LABELS[t])]),
+                tx('st.app_type_help'))}
             </div>`)}${end}
-            ${panel('security')}${region('Authentication', html`
+            ${panel('security')}${region(tx('st.authentication'), html`
             <div class="form-grid">
-              ${select('authentication', 'Authentication', a.authentication, [['app_users', 'App users (login page)'], ['header', 'HTTP header (reverse proxy)'], ['database', 'Database accounts (PostgreSQL roles)'], ['custom', 'Custom (a PL/pgSQL function)'], ['none', 'None (public)']])}
-              ${input('db_role', 'Database role (parsing schema)', a.db_role, { help: 'All application SQL runs as this role (SET LOCAL ROLE), so grants and row level security apply. Leave empty only for trusted internal apps.' })}
-              <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> Debug mode</label>
-                <small class="help">Shows database error details to end users. Development only.</small></div>
-              <div class="field"><span class="label">Debug messages</span><span>${a.debug_level ? html`<b>on, level ${a.debug_level}</b>` : 'off'} · <a href="${BASE}/apps/${a.id}/debug">Debug messages</a></span>
-                <small class="help">Records every request's steps with timings and the messages of <code>meta.debug(level, text)</code>, kept ${a.debug_retention_days} days.</small></div>
+              ${select('authentication', tx('st.authentication'), a.authentication, (['app_users', 'header', 'database', 'custom', 'none'] as const).map((k): [string, string] => [k, tx(`st.auth.${k}`)]))}
+              ${input('db_role', tx('st.db_role'), a.db_role, { help: tx('st.db_role_help') })}
+              <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="debug" value="true"${a.debug ? raw(' checked') : ''}> ${tx('st.debug')}</label>
+                <small class="help">${tx('st.debug_help')}</small></div>
+              <div class="field"><span class="label">${tx('st.debug_msgs')}</span><span>${a.debug_level ? html`<b>${tx('st.debug_on', { level: a.debug_level })}</b>` : tx('st.off')} · <a href="${BASE}/apps/${a.id}/debug">${tx('st.debug_msgs')}</a></span>
+                <small class="help">${tx.rich('st.debug_msgs_help', { fn: html`<code>meta.debug(level, text)</code>`, days: a.debug_retention_days })}</small></div>
             </div>
-            ${authPart('header')}<h3>HTTP header authentication</h3>
-            <p class="muted">Only used when Authentication is "HTTP header". A reverse proxy or single sign-on gateway signs users in and passes the user name in a header; pgkiln trusts it only from the proxy addresses in <code>PGKILN_AUTH_HEADER_PROXIES</code>${headerProxiesConfigured() ? '' : html` (<b>not set on this server: header sign-in is refused</b>)`}.</p>
+            ${authPart('header')}<h3>${tx('st.header_title')}</h3>
+            <p class="muted">${tx.rich('st.header_intro', { env: html`<code>PGKILN_AUTH_HEADER_PROXIES</code>` })}${headerProxiesConfigured() ? '' : html` (<b>${tx('st.header_unset')}</b>)`}.</p>
             <div class="form-grid">
-              ${input('header_name', 'User name header', a.header_name ?? '', { placeholder: DEFAULT_HEADER, help: 'The request header with the user name (APEX: HTTP Header Variable). Empty: X-Remote-User. A changed or missing header ends the session.' })}
-              ${input('logout_url', 'Sign-out URL', a.logout_url ?? '', { placeholder: 'e.g. https://sso.example.com/logout', help: 'Where "Sign out" goes after the session ends, usually the proxy\'s own sign-out page. Empty: a "signed out" page.' })}
+              ${input('header_name', tx('st.header_name'), a.header_name ?? '', { placeholder: DEFAULT_HEADER, help: tx('st.header_name_help') })}
+              ${input('logout_url', tx('st.logout_url'), a.logout_url ?? '', { placeholder: tx('st.logout_url_ph'), help: tx('st.logout_url_help') })}
             </div>
-            <div class="field"><label class="check"><input type="checkbox" name="header_auto_create" value="true"${a.header_auto_create ? raw(' checked') : ''}> Create accounts automatically</label>
-              <small class="help">An unknown user name gets a new account with access to this app. Otherwise the account must exist and have access.</small></div>
-            </div>${authPart('database')}<h3>Database accounts</h3>
-            <p class="muted">Only used when Authentication is "Database accounts". Users sign in with a PostgreSQL login role and its password, checked by a short connection to this database as that role. Superusers and pgkiln's own roles are always refused; with neither field set nobody can sign in.</p>
+            <div class="field"><label class="check"><input type="checkbox" name="header_auto_create" value="true"${a.header_auto_create ? raw(' checked') : ''}> ${tx('st.header_auto')}</label>
+              <small class="help">${tx('st.header_auto_help')}</small></div>
+            </div>${authPart('database')}<h3>${tx('st.db_title')}</h3>
+            <p class="muted">${tx('st.db_intro')}</p>
             <div class="form-grid">
-              ${input('db_auth_roles', 'Allowed roles', (a.db_auth_roles ?? []).join(', '), { placeholder: 'e.g. alice, bob', help: 'Login roles that may sign in, comma separated (exact names).' })}
-              ${input('db_auth_member_of', 'Or members of role', a.db_auth_member_of ?? '', { placeholder: 'e.g. app_users_group', help: 'Every member of this role may sign in too.' })}
+              ${input('db_auth_roles', tx('st.db_roles'), (a.db_auth_roles ?? []).join(', '), { placeholder: tx('st.db_roles_ph'), help: tx('st.db_roles_help') })}
+              ${input('db_auth_member_of', tx('st.db_member'), a.db_auth_member_of ?? '', { placeholder: tx('st.db_member_ph'), help: tx('st.db_member_help') })}
             </div>
-            </div>${authPart('custom')}<h3>Custom authentication</h3>
-            <p class="muted">Only used when Authentication is "Custom". Your own PL/pgSQL checks the user name and password on the sign-in form, as the application's database role; the password is passed as a parameter and never logged. Failed attempts are throttled like other sign-ins. With neither field set nobody can sign in.</p>
+            </div>${authPart('custom')}<h3>${tx('st.custom_title')}</h3>
+            <p class="muted">${tx('st.custom_intro')}</p>
             <div class="form-grid">
-              ${input('custom_auth_function', 'Function name', a.custom_auth_function ?? '', { placeholder: 'e.g. app.check_login', help: 'A function (p_username text, p_password text) returns boolean, in lower case, optionally with its schema. The app\'s role needs EXECUTE on it. Takes precedence over the body below.' })}
+              ${input('custom_auth_function', tx('st.custom_fn'), a.custom_auth_function ?? '', { placeholder: tx('st.custom_fn_ph'), help: tx('st.custom_fn_help') })}
             </div>
-            <div class="field" data-wide><label class="label" for="f_custom_auth_code">Or function body</label>
+            <div class="field" data-wide><label class="label" for="f_custom_auth_code">${tx('st.custom_body')}</label>
               <textarea id="f_custom_auth_code" name="custom_auth_code" class="code" rows="6" spellcheck="false" data-code="plpgsql">${a.custom_auth_code ?? ''}</textarea>
-              <small class="help">PL/pgSQL with p_username and p_password, returning true for a valid sign-in, e.g. <code>return exists (select 1 from app.users where name = p_username and pw_hash = crypt(p_password, pw_hash));</code></small></div>
-            <div class="field" data-wide><label class="label" for="f_custom_auth_post_code">Post-authentication code</label>
+              <small class="help">${tx.rich('st.custom_body_help', { example: html`<code>return exists (select 1 from app.users where name = p_username and pw_hash = crypt(p_password, pw_hash));</code>` })}</small></div>
+            <div class="field" data-wide><label class="label" for="f_custom_auth_post_code">${tx('st.custom_post')}</label>
               <textarea id="f_custom_auth_post_code" name="custom_auth_post_code" class="code" rows="4" spellcheck="false" data-code="plpgsql">${a.custom_auth_post_code ?? ''}</textarea>
-              <small class="help">Optional PL/pgSQL run after a successful check, with p_username (and meta.app_user()), e.g. to record the last sign-in. Raising an exception refuses the sign-in. Application processes "after login" run afterwards as usual.</small></div>
+              <small class="help">${tx('st.custom_post_help')}</small></div>
             </div>`)}${end}
-            ${panel('signin')}${region('Sign-in', html`
-            <h3>Sign-in methods</h3>
-            <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> Username and password</label></div>
+            ${panel('signin')}${region(tx('st.signin'), html`
+            <h3>${tx('st.methods')}</h3>
+            <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> ${tx('st.local')}</label></div>
             ${directories.length
-              ? directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> Passwords from LDAP: ${d.display_name}${d.enabled ? '' : ' (disabled)'}</label></div>`)
-              : html`<p class="muted">No LDAP directories configured. <a href="${BASE}/users/directories">Add one</a> to check passwords against LDAP or Active Directory.</p>`}
-            <small class="help">LDAP passwords are checked by the username and password form, after local accounts, so keep that method on.</small>
-            <div class="form-grid">${input('session_group', 'Session sharing group', a.session_group ?? '', { placeholder: 'empty: not shared', help: 'Applications with the same group (and the user directory as authentication) share a sign-in: after signing in to one, the others open without a new sign-in, each with its own access check and roles; signing out of one signs out of all (APEX: session sharing). Lower case letters, digits and _.' })}</div>
+              ? directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> ${tx('st.ldap', { name: d.display_name })}${d.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)
+              : html`<p class="muted">${tx.rich('st.no_ldap', { add: html`<a href="${BASE}/users/directories">${tx('st.add_one')}</a>` })}</p>`}
+            <small class="help">${tx('st.ldap_help')}</small>
+            <div class="form-grid">${input('session_group', tx('st.session_group'), a.session_group ?? '', { placeholder: tx('st.session_group_ph'), help: tx('st.session_group_help') })}</div>
             ${await loginSettingsFields(a)}
-            <div class="form-grid">${input('remember_me_days', '"Keep me signed in" for (days)', a.remember_me_days ?? '', { type: 'number', placeholder: 'empty: not offered', help: 'Offers a checkbox on the sign-in form (APEX: persistent authentication). The browser stays signed in for this many days after the sign-in, also when the session ends; signing out, a new password, deactivation or removed access ends it. 1 to 365.' })}</div>
+            <div class="form-grid">${input('remember_me_days', tx('st.remember'), a.remember_me_days ?? '', { type: 'number', placeholder: tx('st.remember_ph'), help: tx('st.remember_help') })}</div>
             ${providers.length
-              ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> Sign in with ${pr.display_name}${pr.enabled ? '' : ' (disabled)'}</label></div>`)
-              : html`<p class="muted">No identity providers configured. <a href="${BASE}/users/providers">Add one</a> for single sign-on.</p>`}
+              ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> ${tx('st.sso', { name: pr.display_name })}${pr.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)
+              : html`<p class="muted">${tx.rich('st.no_sso', { add: html`<a href="${BASE}/users/providers">${tx('st.add_one')}</a>` })}</p>`}
             `)}${end}
-            ${panel('ui')}${region('User Interface', html`
-            <h3>Theme</h3>
+            ${panel('ui')}${region(tx('st.tab.ui'), html`
+            <h3>${tx('st.theme')}</h3>
             <div class="form-grid">
-              ${select('base', 'Base style', baseStyleOf(a.theme), [['iris', 'Iris (the default for new applications)'], ['lavender', 'Lavender (Iris until pgkiln 0.41)'], ['standard', 'Standard (pgkiln until 0.28)']], 'Colours, corners, font and shadows of the whole application, light and dark. The colours below override its accent and header.')}
-              ${input('accent', 'Accent colour', a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
-              ${input('header', 'Header colour', a.theme?.header ?? BASE_STYLES[baseStyleOf(a.theme)].header, { type: 'color' })}
-              ${(['accent_dark', 'header_dark'] as const).map((k) => html`<div class="field"><label class="label" for="f_${k}">${k === 'accent_dark' ? 'Accent colour in dark mode' : 'Header colour in dark mode'}</label>
+              ${select('base', tx('st.base'), baseStyleOf(a.theme), (['iris', 'lavender', 'standard'] as const).map((k): [string, string] => [k, tx(`st.base.${k}`)]), tx('st.base_help'))}
+              ${input('accent', tx('st.accent'), a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
+              ${input('header', tx('st.header_colour'), a.theme?.header ?? BASE_STYLES[baseStyleOf(a.theme)].header, { type: 'color' })}
+              ${(['accent_dark', 'header_dark'] as const).map((k) => html`<div class="field"><label class="label" for="f_${k}">${tx(k === 'accent_dark' ? 'st.accent_dark' : 'st.header_dark')}</label>
                 <input id="f_${k}" name="${k}" type="color" value="${a.theme?.[k] ?? (k === 'accent_dark' ? '#a59cff' : '#0d0c1a')}">
-                <label class="check"><input type="checkbox" name="${k}_own" value="true"${a.theme?.[k] ? raw(' checked') : ''}> Use this colour (else the base style's dark palette)</label></div>`)}
-              ${select('nav', 'Navigation menu', a.theme?.nav ?? 'side', [['side', 'Side (collapsible)'], ['top', 'Top bar']], 'On tablets and phones the menu is always a drawer.')}
-              ${select('nav_list', 'Navigation menu list', a.nav_list ?? '', listChoices(a.nav_list, '- the navigation entries -'), 'A list (Shared Components → Lists) shown as the navigation menu instead of the navigation entries.')}
-              ${select('navbar_list', 'Navigation bar list', a.navbar_list ?? '', listChoices(a.navbar_list, '- none -'), 'A list shown as links in the header, next to the user menu.')}
-              ${select('mode', 'Theme style', a.theme?.mode ?? 'auto', [['auto', 'Automatic (light or dark, following the device)'], ['light', 'Light'], ['dark', 'Dark']])}
+                <label class="check"><input type="checkbox" name="${k}_own" value="true"${a.theme?.[k] ? raw(' checked') : ''}> ${tx('st.own_colour')}</label></div>`)}
+              ${select('nav', tx('st.nav'), a.theme?.nav ?? 'side', [['side', tx('st.nav.side')], ['top', tx('st.nav.top')]], tx('st.nav_help'))}
+              ${select('nav_list', tx('st.nav_list'), a.nav_list ?? '', listChoices(a.nav_list, tx('st.nav_entries')), tx('st.nav_list_help'))}
+              ${select('navbar_list', tx('st.navbar_list'), a.navbar_list ?? '', listChoices(a.navbar_list, tx('st.none_option')), tx('st.navbar_help'))}
+              ${select('mode', tx('st.mode'), a.theme?.mode ?? 'auto', (['auto', 'light', 'dark'] as const).map((k): [string, string] => [k, tx(`st.mode.${k}`)]))}
             </div>
-            <div class="field"><label class="check"><input type="checkbox" name="user_choice" value="true"${a.theme?.user_choice !== false ? raw(' checked') : ''}> Users may choose light or dark</label>
-              <small class="help">Adds a switch to the user menu and My account; the choice is saved on the account (APEX: "Enable End Users to Choose Theme Style").</small></div>
-            <p><a class="btn" href="${BASE}/apps/${a.id}/theme">${icon('settings')} Theme Roller: style variants…</a>
-              <span class="muted">${(() => { const n = appStyles(a.theme).length; return n ? `${n} style${n === 1 ? '' : 's'}` : 'no styles yet'; })()}</span></p>
+            <div class="field"><label class="check"><input type="checkbox" name="user_choice" value="true"${a.theme?.user_choice !== false ? raw(' checked') : ''}> ${tx('st.user_choice')}</label>
+              <small class="help">${tx('st.user_choice_help')}</small></div>
+            <p><a class="btn" href="${BASE}/apps/${a.id}/theme">${icon('settings')} ${tx('st.roller')}</a>
+              <span class="muted">${(() => { const n = appStyles(a.theme).length; return n ? tx(n === 1 ? 'st.styles_one' : 'st.styles', { n }) : tx('st.no_styles'); })()}</span></p>
             `)}${end}
-            ${panel('globalization')}${region('Globalization', html`
+            ${panel('globalization')}${region(tx('st.tab.globalization'), html`
             <div class="form-grid">
-              ${input('language', 'Primary language', a.language, { help: 'The language the app is built in, e.g. en, nl, de, en-GB.' })}
-              ${input('languages', 'Translated languages', (a.languages ?? []).join(', '), { placeholder: 'e.g. nl, de', help: 'Comma separated. Translate texts under Shared Components → Globalization.' })}
-              ${select('language_from', 'Language derived from', a.language_from, [['browser', 'Browser (Accept-Language)'], ['user', 'User preference, then browser'], ['primary', 'Always the primary language']], 'Users can also switch with ?lang=xx or the picker on the login page.')}
-              ${input('date_format', 'Date format', a.date_format, { placeholder: 'e.g. DD-MM-YYYY (empty: per language)', help: 'Masks: YYYY YY MM MON MONTH DD DY DAY HH24 HH MI SS AM' })}
-              ${input('timestamp_format', 'Date and time format', a.timestamp_format, { placeholder: 'e.g. DD-MM-YYYY HH24:MI' })}
+              ${input('language', tx('st.language'), a.language, { help: tx('st.language_help') })}
+              ${input('languages', tx('st.languages'), (a.languages ?? []).join(', '), { placeholder: tx('st.languages_ph'), help: tx('st.languages_help') })}
+              ${select('language_from', tx('st.language_from'), a.language_from, (['browser', 'user', 'primary'] as const).map((k): [string, string] => [k, tx(`st.from.${k}`)]), tx('st.language_from_help'))}
+              ${input('date_format', tx('st.date_format'), a.date_format, { placeholder: tx('st.date_format_ph'), help: tx('st.date_format_help') })}
+              ${input('timestamp_format', tx('st.ts_format'), a.timestamp_format, { placeholder: tx('st.ts_format_ph') })}
             </div>
             ${await timeZoneSettings(a)}`)}${end}
-            <div class="buttons settings-save"${['errors', 'pwa'].includes(tab) ? raw(' hidden') : ''}><button class="btn btn-hot">Save settings</button></div>
+            <div class="buttons settings-save"${['errors', 'pwa'].includes(tab) ? raw(' hidden') : ''}><button class="btn btn-hot">${tx('st.save_settings')}</button></div>
           </form>
           ${panel('definition')}<form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="Delete application ${a.name} and all its pages?">Delete application</button>
+            <button class="btn btn-danger" data-confirm="${tx('st.delete_confirm', { app: a.name })}">${tx('st.delete')}</button>
           </form>${end}
-        ${panel('errors')}${region('Errors and sessions', html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
+        ${panel('errors')}${region(tx('st.tab.errors'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
           <div class="form-grid">
-            ${input('error_function', 'Error handling function', a.error_function ?? '', { placeholder: 'e.g. sales.error_message',
-              help: 'schema.function(jsonb) returns jsonb, run as the application\'s role: it receives the message and what is known of an error (code, constraint, table, column, component, page, user, internal, reference) and may return {"message": "…"} to show instead. Empty: none.' })}
-            ${input('session_warning_seconds', 'Session timeout warning (seconds)', a.session_warning_seconds ?? 120, { type: 'number',
-              help: 'Signed-in users are warned this long before their session ends and can stay signed in (0: no warning).' })}
+            ${input('error_function', tx('st.error_fn'), a.error_function ?? '', { placeholder: tx('st.error_fn_ph'),
+              help: tx('st.error_fn_help') })}
+            ${input('session_warning_seconds', tx('st.warning'), a.session_warning_seconds ?? 120, { type: 'number',
+              help: tx('st.warning_help') })}
           </div>
-          <div class="buttons"><button class="btn">Save</button></div></form>`)}${end}
-        ${panel('pwa')}${region('Progressive Web App', await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}${end}
-        ${panel('security')}${region('Security checklist', html`<ul class="checklist">
-          <li>${a.db_role ? '✓' : '✗'} Runs as a dedicated database role ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>(runs as the runtime connection)</b>`}</li>
-          <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? 'Users must sign in' : 'Public application'}</li>
+          <div class="buttons"><button class="btn">${tx('st.save')}</button></div></form>`)}${end}
+        ${panel('pwa')}${region(tx('st.tab.pwa'), await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}${end}
+        ${panel('security')}${region(tx('st.checklist'), html`<ul class="checklist">
+          <li>${a.db_role ? '✓' : '✗'} ${tx('st.ck.role')} ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>${tx('st.ck.runtime')}</b>`}</li>
+          <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? tx('st.ck.signin') : tx('st.ck.public')}</li>
           ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>refused: PGKILN_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
           ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>no roles allowed</b>`})</li>` : ''}
           ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>no check configured: nobody can sign in</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
           ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
-          <li>${a.debug ? '✗ Debug mode is on: error details are shown to users' : '✓ Debug mode is off'}</li>
-          <li>${a.debug_level ? `✗ Debug messages are on (level ${a.debug_level}): every request is recorded` : '✓ Debug messages are off'}</li>
-          <li>Pages without checksum protection: ${(await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n}</li>
-          <li>Public pages: ${(await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n}</li>
+          <li>${a.debug ? `✗ ${tx('st.ck.debug_on')}` : `✓ ${tx('st.ck.debug_off')}`}</li>
+          <li>${a.debug_level ? `✗ ${tx('st.ck.msgs_on', { level: a.debug_level })}` : `✓ ${tx('st.ck.msgs_off')}`}</li>
+          <li>${tx('st.ck.unprotected', { n: (await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n })}</li>
+          <li>${tx('st.ck.public_pages', { n: (await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n })}</li>
         </ul>`)}${end}
       </div>`;
-    return send(reply, s, shell(s, `${a.name} settings`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Settings']], main));
+    return send(reply, s, shell(s, tx('st.title', { app: a.name }), [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Settings']], main));
   });
 
   // (085) error handling function and session timeout warning
@@ -548,13 +549,13 @@ export async function builderRoutes(app: FastifyInstance) {
     const fn = String(b.error_function ?? '').trim();
     const seconds = Number(b.session_warning_seconds ?? 120);
     try {
-      if (fn && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}\.[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(fn)) throw new Error('The error handling function is schema.function, e.g. sales.error_message.');
+      if (fn && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}\.[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(fn)) throw new Error(tr(s)('st.err.fn_shape'));
       if (fn && !(await owner.one(`select 1 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                                     where n.nspname = $1 and p.proname = $2 and p.pronargs = 1 and p.proargtypes[0] = 'jsonb'::regtype and p.prorettype = 'jsonb'::regtype`, fn.split('.'))))
-        throw new Error(`There is no function ${fn}(jsonb) returning jsonb.`);
-      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 3600) throw new Error('The session timeout warning is 0 to 3600 seconds.');
+        throw new Error(tr(s)('st.err.no_fn', { fn }));
+      if (!Number.isInteger(seconds) || seconds < 0 || seconds > 3600) throw new Error(tr(s)('st.err.warning'));
       await owner.query('update meta.app set error_function = $2, session_warning_seconds = $3, updated_at = now() where id = $1', [req.params.id, fn || null, seconds]);
-      flash(s, 'Saved.');
+      flash(s, tr(s)('st.saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -612,7 +613,7 @@ export async function builderRoutes(app: FastifyInstance) {
       );
       await saveTimeZoneSettings(req.params.id, b);
       await saveLoginSettings(req.params.id, b);
-      flash(s, 'Settings saved.');
+      flash(s, tr(s)('st.settings_saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -625,7 +626,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     await owner.query('delete from meta.app where id = $1', [req.params.id]);
-    flash(s, 'Application deleted.');
+    flash(s, tr(s)('st.app_deleted'));
     return back(reply, s, BASE);
   });
 

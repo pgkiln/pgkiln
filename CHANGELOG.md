@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Shared Components and the application settings in the builder languages** (WS-7, part 3): the Shared Components
+  overview (its groups and links), every component type's list, its editor frame and messages, access control,
+  breadcrumbs and component settings, and an application's Settings (all tabs, the security checklist and the
+  messages) follow the developer's builder language. Run-time keys `comp.<kind>` now cover every shared component
+  type. Still English: the field names and help of a component's form (like the property editor's), the sign-in,
+  time zone and PWA parts of Settings that other screens share, and three sign-in lines of the security checklist.
+
 ## [0.57.0] - 2026-10-21
 
 ### Added

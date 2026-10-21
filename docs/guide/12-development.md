@@ -603,7 +603,8 @@ announce(msg('js.ws.copied', { what }));
 The coverage check also scans `public/*.js` for `msg('js.…')` and fails when a key has no English text. Text
 from the server (a JSON answer's `message`) is translated on the server.
 
-Stays English by design: the property editor's field names and help, links to the guide, generated SQL, and pages
+Stays English by design: the property editor's field names and help (and a shared component form's field names and
+help, which work the same way), links to the guide, generated SQL, and pages
 not moved yet. The builder's language is separate from an application's languages (`src/i18n.ts`).
 
 ## Principles

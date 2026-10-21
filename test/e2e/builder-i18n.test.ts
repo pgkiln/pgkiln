@@ -68,7 +68,8 @@ describe('builder language in a browser', () => {
     await fits(page, 'App Builder (Deutsch)');
     // the other translated screens fit a phone in German too (long compound words)
     const hr = (await owner.one<{ id: number; page_no: number }>(`select a.id, min(p.page_no) as page_no from meta.app a join meta.page p on p.app_id = a.id where a.alias = 'hr' group by a.id`))!;
-    for (const url of ['/builder/home', `/builder/apps/${hr.id}`, `/builder/apps/${hr.id}/pages/${hr.page_no}`]) {
+    // (sprint 124) Shared Components, a component list, access control and the settings too
+    for (const url of ['/builder/home', `/builder/apps/${hr.id}`, `/builder/apps/${hr.id}/pages/${hr.page_no}`, `/builder/apps/${hr.id}/shared`, `/builder/apps/${hr.id}/shared?type=authz_scheme`, `/builder/apps/${hr.id}/shared?view=tree`, `/builder/apps/${hr.id}/settings`, `/builder/apps/${hr.id}/settings?tab=ui`]) {
       await page.goto(`${base}${url}`);
       assert.equal(await page.getAttribute('html', 'lang'), 'de');
       await fits(page, `${url} (Deutsch)`);
