@@ -14,6 +14,10 @@ All notable changes to this project are documented here. The format follows
   ([chapter 12](docs/guide/12-development.md#builder-texts-in-more-languages)). Still English: Table Properties'
   validation messages, and the other SQL Workshop tools.
 
+### Fixed
+- The Object Browser's title row (the object, Edit table, Security) wraps on narrow phones instead of widening the
+  page.
+
 ## [0.56.0] - 2026-10-21
 
 ### Added

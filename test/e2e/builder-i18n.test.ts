@@ -81,6 +81,11 @@ describe('builder language in a browser', () => {
       await page.goto(`${base}${url}`);
       await fits(page, `${url} (Deutsch)`);
     }
+    // (sprint 123) a narrower phone too: the Object Browser's title row (the table, Edit table, Security) wraps
+    await page.setViewportSize({ width: 340, height: 844 });
+    await page.goto(`${base}/builder/sql/objects?schema=hr&k=table&o=hr.emp`);
+    assert.ok((await page.evaluate(() => document.documentElement.scrollWidth)) <= 341, 'the Object Browser fits 340 px in German');
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${base}/builder/sql/worksheet`);
     assert.equal((await page.locator('.ws-wtab-new').getAttribute('title')), de['js.ws.new_tab'], 'a text from the browser code');
     assert.ok((await page.locator('[data-ws-commit-note]').innerText()).includes(de['js.ws.commit_auto']));

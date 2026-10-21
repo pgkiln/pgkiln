@@ -1216,7 +1216,7 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .ob-folder > summary .kind { margin-left: auto; }
 .ob-folder .tree { padding-left: 0.75rem; }
 .ob-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 0.5rem; margin-bottom: 0.75rem; }
-.ob-title { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; overflow-wrap: anywhere; }
+.ob-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin: 0 0 0.5rem; overflow-wrap: anywhere; }
 .ob-actions { display: grid; gap: 0.6rem; margin-top: 1rem; }
 .ob-action { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .ob-action input:not([type=checkbox]) { width: 10rem; }

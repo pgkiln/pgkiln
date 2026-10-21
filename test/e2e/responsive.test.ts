@@ -196,6 +196,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
       assert.ok(bar.width < size.width, 'a compact bar');
       await page.waitForSelector('.devbar.is-idle', { timeout: 6000 });
+      // the bar slides down to its tab: wait for the end of the transition (a slow machine measured it half-way)
+      await page.waitForFunction(() => document.querySelector('.devbar')!.getBoundingClientRect().top > window.innerHeight - 20, null, { timeout: 3000 }).catch(() => {});
       const tab = (await page.locator('.devbar').boundingBox())!;
       assert.ok(tab.y > size.height - 20, `the tab stays at the bottom edge (${tab.y})`);
       await page.mouse.move(tab.x + tab.width / 2, size.height - 3);
