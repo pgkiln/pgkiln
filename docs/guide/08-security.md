@@ -420,6 +420,10 @@ Applications of different groups, and applications without a group, sign in on t
 
 All sign-ins, failures and lockouts appear in the **Activity** monitor.
 
+A second factor for an application's users comes from the identity provider ([OpenID Connect](#single-sign-on-openid-connect),
+[SAML](#single-sign-on-saml-20)). Developers can use an authenticator app for the builder itself:
+[two-factor sign-in](03-builder.md#two-factor-sign-in).
+
 ## Authorization: what may the user do?
 
 ### Authorization schemes

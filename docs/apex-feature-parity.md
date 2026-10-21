@@ -138,7 +138,7 @@ the 26.2 comparison.)
 | APEX accounts | ✅ | Instance-wide user directory, bcrypt, session rotation, idle and absolute timeouts |
 | Application Access Control (roles per app, any-user switch) | ✅ | Access control per application |
 | Social sign-in / OpenID Connect | ✅ | Any OIDC provider (Entra ID, Google, Okta, Keycloak, …): PKCE, group → role mapping, account linking, automatic accounts |
-| Multi-factor authentication | ✅ | As in APEX: through the identity provider (OpenID Connect) |
+| Multi-factor authentication | ✅ | As in APEX: through the identity provider (OpenID Connect, SAML). Beyond APEX (sprint 126): the builder itself has two-factor sign-in with authenticator apps (TOTP) and recovery codes, a policy with a grace period and lockout recovery ([chapter 3](guide/03-builder.md#two-factor-sign-in)); passkeys and two-factor for application users follow (SEC-2, SEC-3) |
 | Change own password | ✅ | A built-in *My account* page (APEX offers the API `CHANGE_CURRENT_USER_PW`) |
 | Password expiry, change on first use, admin reset, complexity | ✅ | Lifetime in days, expire/unexpire, admin reset, length and letters+digits rules, unlock |
 | Lockout after failed sign-ins | ✅ | Per user and per IP, time-based (APEX: until an administrator unlocks) |
@@ -296,6 +296,9 @@ Small but real differences, for teams comparing the two:
 - Responsive layouts verified automatically at four screen sizes.
 - The theme follows the device's light/dark setting automatically, and the choice is saved per user.
 - A built-in *My account* page (own password, theme, language).
+- (sprint 126) **Two-factor sign-in for the builder** without an identity provider: authenticator apps (TOTP),
+  recovery codes, a policy for administrators or all developers with a grace period, and lockout recovery on the
+  command line ([chapter 3](guide/03-builder.md#two-factor-sign-in)). APEX relies on the identity provider.
 - One RLS policy set protects both the web UI and the REST API.
 - An import can be checked before it commits (`pgkiln import --check`): SQL that names a missing
   table or column refuses the deployment instead of failing at run time.

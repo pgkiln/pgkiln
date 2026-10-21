@@ -45,6 +45,8 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln users list [--developers]` | Accounts with their applications and roles, or builder developers |
 | `pgkiln users add <username> [--developer] [--app <alias> --roles a,b] [--name …] [--email …]` | Adds an account (optionally with access to an application) or a builder developer |
 | `pgkiln users password <username> [--developer]` | Sets a password and ends that user's sessions |
+| `pgkiln admin reset-2fa <developer> [--reason <text>]` | (0.60) Removes a developer's authenticator apps and recovery codes and ends their builder sessions: [locked out?](03-builder.md#locked-out) |
+| `pgkiln admin set-2fa-policy off\|admins\|all [--grace <days>]` | (0.60) Sets the builder's [two-factor policy](03-builder.md#two-factor-sign-in); `off` always works, the others need two administrators with an app |
 
 `users` reads the password from standard input (the first line, e.g. from a secret store:
 `printf '%s\n' "$PW" | pgkiln users add ops --developer`) or asks for it twice on a terminal. It is
