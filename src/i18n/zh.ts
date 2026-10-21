@@ -406,6 +406,7 @@ export const zh: Record<MessageKey, string> = {
   'smart.suggested': "建议的筛选器：",
   'smart.matching': "筛选条件：",
   'smart.no_match': "没有与搜索匹配的筛选器；将在所有列中搜索该文本。",
+  'smart.understood': "理解为：",
   'rds.label': "区域",
   'rds.region': "区域",
   'rds.show_all': "全部显示",

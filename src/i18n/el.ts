@@ -406,6 +406,7 @@ export const el: Record<MessageKey, string> = {
   'smart.suggested': "Προτεινόμενα φίλτρα:",
   'smart.matching': "Φιλτράρισμα κατά:",
   'smart.no_match': "Κανένα φίλτρο δεν ταιριάζει· το κείμενο αναζητείται σε όλες τις στήλες.",
+  'smart.understood': "Κατανοήθηκε ως:",
   'rds.label': "Περιοχές",
   'rds.region': "Περιοχή",
   'rds.show_all': "Εμφάνιση όλων",

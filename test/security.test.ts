@@ -11366,3 +11366,58 @@ describe('sprint 121 WS-7', () => {
     assert.ok(!page.includes('<script>alert(1)'));
   });
 });
+
+describe('sprint 122 WS-5', () => {
+  // "Ask in your own words" sets facets, and smart filters read a typed phrase: the facets are only
+  // those of filter regions the user sees, on the report's own columns; values reach SQL as parameters.
+  let report: number;
+  let pageId: number;
+  const made: number[] = [];
+  before(async () => {
+    const r = await owner.one<{ id: number; page_id: number }>(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 2 and r.type = 'report' and r.config ? 'ai_filter'`);
+    report = r!.id;
+    pageId = r!.page_id;
+    const add = async (config: object, condition: string | null = null) =>
+      made.push((await owner.one<{ id: number }>(`insert into meta.region (page_id, seq, title, type, config, condition) values ($1, 1, 'Filter', 'smart_filters', $2, $3) returning id`, [pageId, JSON.stringify({ report, ...config }), condition]))!.id);
+    await add({ ask: true, facets: [{ column: 'job' }, { column: 'sal', type: 'range', custom: true }] });
+    // a hidden region's facets may not be set by Ask
+    await add({ facets: [{ column: 'department' }] }, 'false');
+  });
+  after(async () => {
+    await owner.query('delete from meta.region where id = any($1)', [made]);
+  });
+  const signIn = async () => {
+    const b = new FileBrowser(app);
+    await b.login('king');
+    await b.get('/a/hr/2');
+    return b;
+  };
+
+  test('Ask sets only facets of regions the user sees; the rest stays a checked report filter', async () => {
+    const b = await signIn();
+    const res = await b.submit(`/a/hr/2/report/${report}/ask`, { question: 'clerks in sales', params: '' });
+    assert.equal(res.statusCode, 303);
+    const u = new URL(res.headers.location as string, 'http://x');
+    assert.deepEqual(u.searchParams.getAll(`r${report}_x_job`), ['CLERK']);
+    assert.deepEqual(u.searchParams.getAll(`r${report}_x_department`), [], 'the hidden region\'s facet is not set');
+    assert.deepEqual(u.searchParams.getAll(`r${report}_f`), ['department|eq|SALES']);
+  });
+
+  test('a typed phrase: values are bound, not SQL; nothing outside the region\'s facets; text escaped', async () => {
+    const b = await signIn();
+    const before = (await owner.one<{ n: number }>('select count(*)::int as n from hr.emp'))!.n;
+    for (const q of [`job is clerk'; delete from hr.emp; --`, `salary at least 1 or 1=1`, `<img src=x onerror=alert(1)> clerks`, `department is SALES`]) {
+      const page = (await b.get(`/a/hr/2?r${report}_q=${encodeURIComponent(q)}`));
+      assert.equal(page.statusCode, 200, q);
+      assert.ok(!page.body.includes('<img src=x'), q);
+      const href = page.body.match(/sf-understood[\s\S]*?href="([^"]+)"/)?.[1]?.replace(/&amp;/g, '&');
+      if (href) {
+        const u = new URL(href, 'http://x');
+        const facets = [...u.searchParams.keys()].filter((n) => /^r\d+_(x|xn|rg|rf|rt)_/.test(n));
+        assert.ok(facets.every((n) => /_(job|sal)$/.test(n)), `${q}: ${facets}`);
+        for (const v of u.searchParams.getAll(`r${report}_rf_sal`)) assert.match(v, /^-?\d+(\.\d+)?$/, q);
+      }
+    }
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from hr.emp'))!.n, before);
+  });
+});

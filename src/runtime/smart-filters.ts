@@ -1,8 +1,13 @@
 import { appDateReader } from './items.ts';
+import { valueLookup } from './ai-filter.ts';
+import { applyFacetSettings, facetSettings } from './ask-facets.ts';
+import { parseQuestion } from './ir-phrases.ts';
+import { checkPlan, type Column } from './ir-plan.ts';
+import { headingOf, isNumeric } from './report.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Region } from '../metadata.ts';
-import { publicError, type PageContext } from './context.ts';
+import { dbg, publicError, type PageContext } from './context.ts';
 import { regionUrl } from './report.ts';
 import { describeFacetFilter, facetDefs, facetFilters, facetKeys, facetParamNames, rangeLabel, rangeValue, type FacetDef, type FacetFilter } from './facet-state.ts';
 import { facetLabel, facetSource, isFacetSource, rangeCounts, valueCounts } from './facets.ts';
@@ -14,6 +19,12 @@ import { facetLabel, facetSource, isFacetSource, rangeCounts, valueCounts } from
 // works without JavaScript and can be bookmarked.
 //   config: {"report": <report region id>, "suggestions": 3, "placeholder": "Search or filter…",
 //            "facets": [{"column": "job"}, {"column": "sal", "type": "range", "ranges": [...]}]}
+//
+// (sprint 122, WS-5; APEX 26.2) With "ask": true the typed text is also read
+// as a phrase ("clerks in sales with salary between 1000 and 3000", in the
+// application's language: ir-phrases.ts, no AI service): what this region's
+// facets can hold (ask-facets.ts) is offered as the first suggestion, which
+// sets those facets at once. Values are looked up in the report's own rows.
 
 const MAX_SUGGESTIONS = 10;
 
@@ -110,6 +121,28 @@ export async function renderSmartFilters(ctx: PageContext, r: Region): Promise<R
       }
     }
 
+  // (sprint 122) the search term read as a phrase: one suggestion that sets the facets it names
+  let understood: Raw | '' = '';
+  if (r.config.ask === true && fs.search && ctx.client)
+    try {
+      const columns: Column[] = defs.map((f) => {
+        const oid = fs.cols.get(f.column)!;
+        return { name: f.column, label: f.label ?? headingOf(report, f.column, ctx.locale.tr), kind: isNumeric(oid) ? 'number' : [1082, 1114, 1184].includes(oid) ? 'date' : oid === 16 ? 'boolean' : 'text', pos: 0 };
+      });
+      const parsed = await parseQuestion(fs.search, columns, ctx.locale.lang, valueLookup(ctx, columns, fs.src));
+      const settings = facetSettings(checkPlan(parsed.plan, columns), new Map(defs.map((f) => [f.column, f])), columns);
+      // a single value the matching suggestions already offer needs no second chip
+      const single = settings.length === 1 && settings[0].kind === 'values' && settings[0].values.length === 1 && !settings[0].exclude;
+      dbg(ctx, 6, 'smart', () => `"${fs.search}" as facets: ${JSON.stringify(settings)}; not understood: ${JSON.stringify(parsed.left)}`);
+      if (settings.length && !(single && !parsed.left.length && suggestions.some((x) => x.f.column === settings[0].column)))
+        understood = html`<div class="sf-suggestions sf-understood">
+          <span class="sf-suggest-title" id="${formId}_u">${t('smart.understood')}</span>
+          <ul class="sf-chips" aria-labelledby="${formId}_u"><li><a class="chip chip-suggest" href="${regionUrl(ctx, report, (p) => { applyFacetSettings(p, report.id, settings); p.delete(qName); })}">${settings.map((x, i) => html`${i ? ' · ' : ''}${describeFacetFilter(x, facetLabel(ctx, defs.find((d) => d.column === x.column)!), t, defs.find((d) => d.column === x.column))}`)}</a></li></ul>
+        </div>`;
+    } catch (e) {
+      dbg(ctx, 4, 'smart', () => `"${fs.search}" not read as a phrase: ${(e as Error).message}`);
+    }
+
   // GET form: the search term replaces the old one; every other parameter stays
   const keep = [...ctx.params.entries()].filter(([name]) => ![qName, page, 'clear', 'cs'].includes(name));
   ctx.detached.push(
@@ -128,12 +161,13 @@ export async function renderSmartFilters(ctx: PageContext, r: Region): Promise<R
         ? html`<a class="sf-clear" href="${regionUrl(ctx, report, (p) => { p.delete(qName); p.delete(page); for (const f of defs) for (const n of facetParamNames(report.id, f.column)) p.delete(n); })}">${t('facets.clear')}</a>`
         : ''}
     </div>
+    ${understood}
     ${suggestions.length
       ? html`<div class="sf-suggestions">
           <span class="sf-suggest-title" id="${formId}_s">${fs.search ? t('smart.matching') : t('smart.suggested')}</span>
           <ul class="sf-chips" aria-labelledby="${formId}_s">${suggestions.map((s) => html`<li><a class="chip chip-suggest" href="${s.href}">${s.label} <span class="facet-count">${s.n}</span></a></li>`)}</ul>
         </div>`
-      : fs.search && defs.some((f) => f.type === 'checkbox')
+      : fs.search && !understood && defs.some((f) => f.type === 'checkbox')
         ? html`<p class="muted sf-none">${t('smart.no_match')}</p>`
         : ''}
     ${errors}

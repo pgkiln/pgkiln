@@ -406,6 +406,7 @@ export const fi: Record<MessageKey, string> = {
   'smart.suggested': "Ehdotetut suodattimet:",
   'smart.matching': "Suodata:",
   'smart.no_match': "Mikään suodatin ei vastaa hakua; tekstiä haetaan kaikista sarakkeista.",
+  'smart.understood': "Tulkittu näin:",
   'rds.label': "Alueet",
   'rds.region': "Alue",
   'rds.show_all': "Näytä kaikki",

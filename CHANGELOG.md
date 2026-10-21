@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Ask in your own words on faceted search and smart filters** (WS-5 leftover; APEX 26.2). A condition that a
+  facet on the page can hold sets that facet instead of a report filter: values (*only clerks*), excluded values
+  (*not clerks*, with `exclude`), custom ranges (*salary between 1000 and 3000*) and stars (*rating at least 4*); the
+  facets' selections are chips of the Ask box with Remove, and Undo and *start over* include them. A smart filters
+  region with `"ask": true` reads its search text as a phrase and offers what its facets can hold as one
+  *Understood as* suggestion ([chapter 4](docs/guide/04-pages-and-regions.md#smart_filters)).
 - **The builder in more languages** (WS-7; APEX 26.2: the builder's language links). The builder now speaks Deutsch,
   English (the default), Español, Français, Nederlands and Português: the sign-in page offers them as links, the
   status bar has a language menu, and the choice is stored per developer (migration 127,

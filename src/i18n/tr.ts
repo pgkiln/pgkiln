@@ -406,6 +406,7 @@ export const tr: Record<MessageKey, string> = {
   'smart.suggested': "Önerilen süzgeçler:",
   'smart.matching': "Şuna göre süz:",
   'smart.no_match': "Aramayla eşleşen süzgeç yok; metin tüm sütunlarda aranır.",
+  'smart.understood': "Şöyle anlaşıldı:",
   'rds.label': "Bölgeler",
   'rds.region': "Bölge",
   'rds.show_all': "Tümünü göster",

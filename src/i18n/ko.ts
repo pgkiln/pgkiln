@@ -406,6 +406,7 @@ export const ko: Record<MessageKey, string> = {
   'smart.suggested': "추천 필터:",
   'smart.matching': "필터 조건:",
   'smart.no_match': "검색과 일치하는 필터가 없어 모든 열에서 텍스트를 검색합니다.",
+  'smart.understood': "이렇게 이해함:",
   'rds.label': "영역",
   'rds.region': "영역",
   'rds.show_all': "모두 표시",

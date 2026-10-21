@@ -406,6 +406,7 @@ export const pl: Record<MessageKey, string> = {
   'smart.suggested': "Sugerowane filtry:",
   'smart.matching': "Filtruj według:",
   'smart.no_match': "Żaden filtr nie pasuje do wyszukiwania; tekst jest szukany we wszystkich kolumnach.",
+  'smart.understood': "Zrozumiano jako:",
   'rds.label': "Regiony",
   'rds.region': "Region",
   'rds.show_all': "Pokaż wszystkie",

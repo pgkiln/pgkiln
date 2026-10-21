@@ -406,6 +406,7 @@ export const ja: Record<MessageKey, string> = {
   'smart.suggested': "おすすめのフィルター:",
   'smart.matching': "絞り込み:",
   'smart.no_match': "検索に一致するフィルターはありません。テキストはすべての列で検索されます。",
+  'smart.understood': "次のように解釈:",
   'rds.label': "リージョン",
   'rds.region': "リージョン",
   'rds.show_all': "すべて表示",
