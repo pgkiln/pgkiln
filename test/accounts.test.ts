@@ -220,6 +220,6 @@ describe('preferences', () => {
     assert.ok(admin.sources.length > 0);
     const html = String(roleHintsHtml(hints));
     assert.match(html, /data-add-role="admin"/);
-    assert.match(String(roleHintsHtml([])), /doesn't check any roles/);
+    assert.match(String(roleHintsHtml([])), /doesn(?:'|&#39;)t check any roles/);
   });
 });

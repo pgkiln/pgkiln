@@ -1,3 +1,4 @@
+import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { appAllowed } from './workspaces.ts';
@@ -64,10 +65,10 @@ export async function roleHints(appIds: number[]): Promise<Map<number, RoleHint[
 }
 
 /** Clickable role suggestions under a roles field (JS adds the role; without JS they're a list). */
-export function roleHintsHtml(hints: RoleHint[], label = 'Roles this app checks') {
+export function roleHintsHtml(hints: RoleHint[], label?: string, tx: BuilderTranslate = translatorFor('en')) {
   if (!hints.length)
-    return html`<small class="help role-hints">This app doesn't check any roles yet. Roles only matter where an authorization scheme or <code>meta.has_role()</code> checks them (Shared Components → Authorization schemes).</small>`;
-  return html`<small class="help role-hints">${label}: ${hints.map(
+    return html`<small class="help role-hints">${tx.rich('us.hints_none', { fn: html`<code>meta.has_role()</code>` })}</small>`;
+  return html`<small class="help role-hints">${label ?? tx('us.hints_label')}: ${hints.map(
     (h) => html`<button type="button" class="chip role-chip" data-add-role="${h.role}" title="${h.sources.join('; ')}">${h.role}</button> `,
   )}</small>`;
 }
@@ -100,6 +101,7 @@ export async function usersRoutes(app: FastifyInstance) {
   app.get(`${BASE}/users`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const q = (req.query.q ?? '').trim();
     const users = (
       await owner.query(
@@ -114,46 +116,46 @@ export async function usersRoutes(app: FastifyInstance) {
     ).rows;
     const cfg = await accountSettings();
     const main = html`
-      <div class="title-row"><h1>Users</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">Identity providers (single sign-on)</a> <a class="btn" href="${BASE}/users/directories">LDAP directories</a></div></div>
-      <p class="muted u-mt0">One account per person. Give accounts access to applications, with roles per application, here or under an application's <b>Shared Components → Access control</b>.</p>
+      <div class="title-row"><h1>${tx('us.title')}</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">${tx('us.providers_btn')}</a> <a class="btn" href="${BASE}/users/directories">${tx('us.ldap_btn')}</a></div></div>
+      <p class="muted u-mt0">${tx.rich('us.intro', { where: html`<b>${tx('us.access_path')}</b>` })}</p>
       <div class="columns wide-left">
-        ${region('Accounts', html`
+        ${region(tx('us.accounts'), html`
           <form method="get" class="search u-mb075 u-mwnone" role="search">
-            <input type="search" name="q" value="${q}" placeholder="Search name, username or e-mail…" aria-label="Search accounts"><button class="btn">Search</button>
+            <input type="search" name="q" value="${q}" placeholder="${tx('us.search_ph')}" aria-label="${tx('us.search_label')}"><button class="btn">${tx('us.search')}</button>
           </form>
           <div class="table-wrap"><table class="report report-reflow">
-            <thead><tr><th>Username</th><th>Name</th><th>Applications (roles)</th><th>Sign-in</th><th>Status</th></tr></thead>
+            <thead><tr><th>${tx('us.username')}</th><th>${tx('us.name')}</th><th>${tx('us.apps_roles')}</th><th>${tx('us.signin')}</th><th>${tx('us.status')}</th></tr></thead>
             <tbody>${users.length
               ? users.map((u) => html`<tr>
-                  <td data-label="Username"><a href="${BASE}/users/${u.id}">${u.username}</a></td>
-                  <td data-label="Name">${u.display_name ?? ''}${u.email ? html`<div class="muted">${u.email}</div>` : ''}</td>
-                  <td data-label="Applications">${u.apps.length ? u.apps.map((x: any) => html`<span class="chip">${x.alias}${x.roles.length ? `: ${x.roles.join(', ')}` : ''}</span> `) : html`<span class="muted">none</span>`}</td>
-                  <td data-label="Sign-in">${u.password_hash ? 'password' : html`<span class="muted">no password</span>`}</td>
-                  <td data-label="Status">${u.active ? 'active' : html`<b>inactive</b>`}${u.last_login_at ? html`<div class="muted">last ${String(u.last_login_at).slice(0, 16)}</div>` : ''}</td>
+                  <td data-label="${tx('us.username')}"><a href="${BASE}/users/${u.id}">${u.username}</a></td>
+                  <td data-label="${tx('us.name')}">${u.display_name ?? ''}${u.email ? html`<div class="muted">${u.email}</div>` : ''}</td>
+                  <td data-label="${tx('us.applications')}">${u.apps.length ? u.apps.map((x: any) => html`<span class="chip">${x.alias}${x.roles.length ? `: ${x.roles.join(', ')}` : ''}</span> `) : html`<span class="muted">${tx('us.none')}</span>`}</td>
+                  <td data-label="${tx('us.signin')}">${u.password_hash ? tx('us.password') : html`<span class="muted">${tx('us.no_password')}</span>`}</td>
+                  <td data-label="${tx('us.status')}">${u.active ? tx('us.active') : html`<b>${tx('us.inactive')}</b>`}${u.last_login_at ? html`<div class="muted">${tx('us.last', { at: String(u.last_login_at).slice(0, 16) })}</div>` : ''}</td>
                 </tr>`)
-              : html`<tr><td colspan="5" class="empty">No accounts found.</td></tr>`}</tbody>
+              : html`<tr><td colspan="5" class="empty">${tx('us.no_accounts')}</td></tr>`}</tbody>
           </table></div>`)}
-        ${region('Create account', html`
+        ${region(tx('us.create'), html`
           <form method="post" action="${BASE}/users">${csrf(s)}
-            ${input('username', 'Username', '', { required: true, help: 'No spaces or colons; not case-sensitive.' })}
-            ${input('display_name', 'Name', '')}
-            ${input('email', 'E-mail', '', { type: 'email' })}
-            ${input('password', 'Password', '', { type: 'password', auto: 'new-password', help: 'At least 8 characters. Leave empty for accounts that only sign in through single sign-on.' })}
-            <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> Require change of password on first use</label></div>
-            <div class="buttons"><button class="btn btn-hot">Create account</button></div>
+            ${input('username', tx('us.username'), '', { required: true, help: tx('us.username_help') })}
+            ${input('display_name', tx('us.name'), '')}
+            ${input('email', tx('us.email'), '', { type: 'email' })}
+            ${input('password', tx('us.password_label'), '', { type: 'password', auto: 'new-password', help: tx('us.password_help') })}
+            <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> ${tx('us.must_change')}</label></div>
+            <div class="buttons"><button class="btn btn-hot">${tx('us.create')}</button></div>
           </form>`)}
-        ${region('Account settings', html`
+        ${region(tx('us.settings'), html`
           <form method="post" action="${BASE}/users/settings">${csrf(s)}
             <div class="form-grid">
-              ${input('password_min_length', 'Minimum password length', cfg.minLength, { type: 'number' })}
-              ${input('password_lifetime_days', 'Password lifetime (days)', cfg.lifetimeDays, { type: 'number', help: 'After this many days users must choose a new password at sign-in. 0 = never.' })}
+              ${input('password_min_length', tx('us.min_length'), cfg.minLength, { type: 'number' })}
+              ${input('password_lifetime_days', tx('us.lifetime'), cfg.lifetimeDays, { type: 'number', help: tx('us.lifetime_help') })}
             </div>
-            <div class="field"><label class="check"><input type="checkbox" name="password_require_mixed" value="true"${cfg.requireMixed ? raw(' checked') : ''}> Passwords need letters and digits</label></div>
-            <p class="muted">Passwords may never contain the username. Sign-in is locked for ${loginWindowMinutes()} minutes after ${loginMaxFailuresPerUser()} failed attempts (Workspace utilities → Instance settings); Unlock on an account lifts it.</p>
-            <div class="buttons"><button class="btn">Save settings</button></div>
+            <div class="field"><label class="check"><input type="checkbox" name="password_require_mixed" value="true"${cfg.requireMixed ? raw(' checked') : ''}> ${tx('us.mixed')}</label></div>
+            <p class="muted">${tx('us.policy_note', { minutes: loginWindowMinutes(), failures: loginMaxFailuresPerUser() })}</p>
+            <div class="buttons"><button class="btn">${tx('us.save_settings')}</button></div>
           </form>`, '', 'account-settings')}
       </div>`;
-    return send(reply, s, shell(s, 'Users', [['Users']], main, 'users'));
+    return send(reply, s, shell(s, tx('us.title'), [['Users']], main, 'users'));
   });
 
   app.post(`${BASE}/users`, async (req: Req, reply) => {
@@ -168,10 +170,10 @@ export async function usersRoutes(app: FastifyInstance) {
          values ($1, $2, $3, case when $4::text is null then null else meta.hash_password($4) end, $5 and $4::text is not null) returning id`,
         [b.username?.trim(), b.display_name?.trim() || null, b.email?.trim() || null, b.password || null, b.must_change === 'true'],
       );
-      flash(s, 'Account created. Now give it access to applications.');
+      flash(s, tr(s)('us.created'));
       return back(reply, s, `${BASE}/users/${r.id}`);
     } catch (e) {
-      flash(s, /account_username_key/.test((e as Error).message) ? 'An account with that username already exists.' : (e as Error).message, 'error');
+      flash(s, /account_username_key/.test((e as Error).message) ? tr(s)('us.exists') : (e as Error).message, 'error');
       return back(reply, s, `${BASE}/users`);
     }
   });
@@ -187,7 +189,7 @@ export async function usersRoutes(app: FastifyInstance) {
       [n(b.password_min_length, 6, 128), n(b.password_lifetime_days, 0, 3650), b.password_require_mixed === 'true' ? 'true' : 'false'],
     );
     clearAccountSettings();
-    flash(s, 'Account settings saved.');
+    flash(s, tr(s)('us.settings_saved'));
     return back(reply, s, `${BASE}/users`);
   });
 
@@ -195,6 +197,7 @@ export async function usersRoutes(app: FastifyInstance) {
   app.get(`${BASE}/users/:id(^\\d+$)`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const u = await owner.one('select *, meta.password_days_left(username) as days_left from meta.account where id = $1', [req.params.id]);
     if (!u) return reply.code(404).send('Not found');
     const fails = (await owner.one(
@@ -214,58 +217,58 @@ export async function usersRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1>${u.username}</h1></div>
       <div class="columns">
-        ${region('Details', html`
+        ${region(tx('us.details'), html`
           <form method="post" action="${BASE}/users/${u.id}">${csrf(s)}
             <div class="form-grid">
-              ${input('display_name', 'Name', u.display_name)}
-              ${input('email', 'E-mail', u.email, { type: 'email' })}
+              ${input('display_name', tx('us.name'), u.display_name)}
+              ${input('email', tx('us.email'), u.email, { type: 'email' })}
             </div>
-            <div class="field u-mt075"><label class="check"><input type="checkbox" name="active" value="true"${u.active ? raw(' checked') : ''}> Active</label>
-              <small class="help">Inactive accounts can't sign in to any application; deactivating ends their sessions.</small></div>
-            <div class="buttons"><button class="btn btn-hot">Save</button></div>
+            <div class="field u-mt075"><label class="check"><input type="checkbox" name="active" value="true"${u.active ? raw(' checked') : ''}> ${tx('us.active_label')}</label>
+              <small class="help">${tx('us.active_help')}</small></div>
+            <div class="buttons"><button class="btn btn-hot">${tx('us.save')}</button></div>
           </form>
-          <h3>Password</h3>
+          <h3>${tx('us.password_title')}</h3>
           <ul class="checklist">
-            <li>${u.password_hash ? html`Set ${u.password_changed_at ? html`on ${String(u.password_changed_at).slice(0, 10)}` : ''}` : 'No password (single sign-on only)'}</li>
-            ${u.must_change_password ? html`<li><b>Must be changed at the next sign-in</b></li>` : u.days_left !== null ? html`<li>Expires in ${u.days_left} day(s)</li>` : ''}
-            ${fails ? html`<li>${fails} failed sign-in(s) in the last hour</li>` : ''}
+            <li>${u.password_hash ? (u.password_changed_at ? tx('us.set_on', { date: String(u.password_changed_at).slice(0, 10) }) : tx('us.set')) : tx('us.sso_only')}</li>
+            ${u.must_change_password ? html`<li><b>${tx('us.must_next')}</b></li>` : u.days_left !== null ? html`<li>${tx('us.expires', { n: u.days_left })}</li>` : ''}
+            ${fails ? html`<li>${tx('us.fails', { n: fails })}</li>` : ''}
           </ul>
           <div class="buttons">
-            ${u.password_hash ? html`<form method="post" action="${BASE}/users/${u.id}/expire">${csrf(s)}<input type="hidden" name="expire" value="${u.must_change_password ? '0' : '1'}"><button class="btn">${u.must_change_password ? 'Unexpire password' : 'Expire password'}</button></form>` : ''}
-            <form method="post" action="${BASE}/users/${u.id}/unlock">${csrf(s)}<button class="btn"${fails ? '' : raw(' disabled')}>Unlock sign-in</button></form>
+            ${u.password_hash ? html`<form method="post" action="${BASE}/users/${u.id}/expire">${csrf(s)}<input type="hidden" name="expire" value="${u.must_change_password ? '0' : '1'}"><button class="btn">${u.must_change_password ? tx('us.unexpire') : tx('us.expire')}</button></form>` : ''}
+            <form method="post" action="${BASE}/users/${u.id}/unlock">${csrf(s)}<button class="btn"${fails ? '' : raw(' disabled')}>${tx('us.unlock')}</button></form>
           </div>
           <form method="post" action="${BASE}/users/${u.id}/password" class="danger-zone">${csrf(s)}
-            <div class="form-grid">${input('password', u.password_hash ? 'New password' : 'Set a password', '', { type: 'password', auto: 'new-password', help: 'Ends the account’s sessions.' })}</div>
-            <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> Require change of password on first use</label></div>
-            <div class="buttons"><button class="btn">Set password</button>
-              ${u.password_hash ? html`<button class="btn" name="remove" value="1" data-confirm="Remove the password? The account can then only sign in through single sign-on.">Remove password</button>` : ''}</div>
+            <div class="form-grid">${input('password', u.password_hash ? tx('us.new_password') : tx('us.set_password_label'), '', { type: 'password', auto: 'new-password', help: tx('us.ends_sessions') })}</div>
+            <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> ${tx('us.must_change')}</label></div>
+            <div class="buttons"><button class="btn">${tx('us.set_password')}</button>
+              ${u.password_hash ? html`<button class="btn" name="remove" value="1" data-confirm="${tx('us.remove_confirm')}">${tx('us.remove_password')}</button>` : ''}</div>
           </form>
           <form method="post" action="${BASE}/users/${u.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="Delete account ${u.username} and all its application access?">Delete account</button>
+            <button class="btn btn-danger" data-confirm="${tx('us.delete_confirm', { user: u.username })}">${tx('us.delete')}</button>
           </form>`)}
-        ${region('Application access', html`
-          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Application</th><th>Roles</th><th></th></tr></thead><tbody>
+        ${region(tx('us.app_access'), html`
+          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('us.application')}</th><th>${tx('us.roles')}</th><th></th></tr></thead><tbody>
             ${access.rows.length
               ? access.rows.map((a) => html`<tr>
-                  <td data-label="Application"><a href="${BASE}/apps/${a.app_id}/shared">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
-                  <td data-label="Roles"><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}" class="search roles-form u-m0 u-mwnone">${csrf(s)}
-                    <input name="roles" value="${a.roles.join(', ')}" aria-label="Roles in ${a.name}" placeholder="no roles (e.g. ${(hints.get(a.app_id) ?? []).slice(0, 2).map((h) => h.role).join(', ') || 'admin'})"><button class="btn">Save</button>
-                    ${roleHintsHtml(hints.get(a.app_id) ?? [])}</form></td>
-                  <td data-label=""><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}/revoke">${csrf(s)}<button class="link-button" data-confirm="Revoke access to ${a.name}?">Revoke</button></form></td>
+                  <td data-label="${tx('us.application')}"><a href="${BASE}/apps/${a.app_id}/shared">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
+                  <td data-label="${tx('us.roles')}"><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}" class="search roles-form u-m0 u-mwnone">${csrf(s)}
+                    <input name="roles" value="${a.roles.join(', ')}" aria-label="${tx('us.roles_in', { app: a.name })}" placeholder="${tx('us.roles_ph', { example: (hints.get(a.app_id) ?? []).slice(0, 2).map((h) => h.role).join(', ') || 'admin' })}"><button class="btn">${tx('us.save')}</button>
+                    ${roleHintsHtml(hints.get(a.app_id) ?? [], undefined, tx)}</form></td>
+                  <td data-label=""><form method="post" action="${BASE}/users/${u.id}/access/${a.app_id}/revoke">${csrf(s)}<button class="link-button" data-confirm="${tx('us.revoke_confirm', { app: a.name })}">${tx('us.revoke')}</button></form></td>
                 </tr>`)
-              : html`<tr><td colspan="3" class="empty">No access to any application yet.</td></tr>`}
+              : html`<tr><td colspan="3" class="empty">${tx('us.no_access')}</td></tr>`}
           </tbody></table></div>
           ${apps.rows.length
-            ? html`<h3>Grant access</h3>
+            ? html`<h3>${tx('us.grant')}</h3>
               <form method="post" action="${BASE}/users/${u.id}/access">${csrf(s)}
                 <div class="form-grid">
-                  ${select('app_id', 'Application', '', apps.rows.map((a): [string, string] => [String(a.id), a.name]))}
-                  <div class="field"><label class="label" for="f_roles">Roles</label>
-                    <input id="f_roles" name="roles" placeholder="comma separated, or pick below">
-                    ${apps.rows.map((a) => html`<div data-hints-for="${a.id}">${roleHintsHtml(hints.get(a.id) ?? [], `${a.name} checks`)}</div>`)}
+                  ${select('app_id', tx('us.application'), '', apps.rows.map((a): [string, string] => [String(a.id), a.name]))}
+                  <div class="field"><label class="label" for="f_roles">${tx('us.roles')}</label>
+                    <input id="f_roles" name="roles" placeholder="${tx('us.roles_comma')}">
+                    ${apps.rows.map((a) => html`<div data-hints-for="${a.id}">${roleHintsHtml(hints.get(a.id) ?? [], tx('us.hints_app', { app: a.name }), tx)}</div>`)}
                   </div>
                 </div>
-                <div class="buttons"><button class="btn btn-hot">Grant access</button></div>
+                <div class="buttons"><button class="btn btn-hot">${tx('us.grant')}</button></div>
               </form>`
             : ''}`)}
       </div>`;
@@ -280,7 +283,7 @@ export async function usersRoutes(app: FastifyInstance) {
       req.params.id, b.display_name?.trim() || null, b.email?.trim() || null, b.active === 'true',
     ]);
     if (b.active !== 'true') await endSessions(req.params.id);
-    flash(s, 'Account saved.');
+    flash(s, tr(s)('us.saved'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
@@ -297,7 +300,7 @@ export async function usersRoutes(app: FastifyInstance) {
         await owner.query('select meta.set_password($1, $2, $3)', [acc?.username, b.password, b.must_change === 'true']);
       }
       await endSessions(req.params.id);
-      flash(s, b.remove === '1' ? 'Password removed.' : 'Password set.');
+      flash(s, tr(s)(b.remove === '1' ? 'us.pw_removed' : 'us.pw_set'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -309,7 +312,7 @@ export async function usersRoutes(app: FastifyInstance) {
     if (!s) return;
     const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
     if (acc) await owner.query(req.body?.expire === '1' ? 'select meta.expire_password($1)' : 'select meta.unexpire_password($1)', [acc.username]);
-    flash(s, req.body?.expire === '1' ? 'Password expired: it must be changed at the next sign-in.' : 'Password no longer expired.');
+    flash(s, tr(s)(req.body?.expire === '1' ? 'us.pw_expired' : 'us.pw_unexpired'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
@@ -318,7 +321,7 @@ export async function usersRoutes(app: FastifyInstance) {
     if (!s) return;
     const acc = await owner.one('select username from meta.account where id = $1', [req.params.id]);
     if (acc) await owner.query(`insert into meta.activity_log (username, event, detail) values ($1, 'login_unlocked', $2)`, [acc.username, `by ${s.username}`]);
-    flash(s, 'Sign-in unlocked.');
+    flash(s, tr(s)('us.unlocked'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
@@ -327,7 +330,7 @@ export async function usersRoutes(app: FastifyInstance) {
     if (!s) return;
     await endSessions(req.params.id);
     await owner.query('delete from meta.account where id = $1', [req.params.id]);
-    flash(s, 'Account deleted.');
+    flash(s, tr(s)('us.deleted'));
     return back(reply, s, `${BASE}/users`);
   });
 
@@ -337,7 +340,7 @@ export async function usersRoutes(app: FastifyInstance) {
     // only applications of the developer's workspaces (workspaces.ts)
     if (!/^\d{1,9}$/.test(String(req.body?.app_id ?? '')) || !(await appAllowed(s, req.body?.app_id ?? ''))) return reply.code(404).send('Not found');
     await grantAccess(req.body?.app_id ?? '', req.params.id, splitRoles(req.body?.roles));
-    flash(s, 'Access granted.');
+    flash(s, tr(s)('us.granted'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
@@ -347,7 +350,7 @@ export async function usersRoutes(app: FastifyInstance) {
     // only applications of the developer's workspaces (workspaces.ts)
     if (!/^\d{1,9}$/.test(String(req.params.appId)) || !(await appAllowed(s, req.params.appId))) return reply.code(404).send('Not found');
     await grantAccess(req.params.appId, req.params.id, splitRoles(req.body?.roles));
-    flash(s, 'Roles saved. The user gets them at the next sign-in.');
+    flash(s, tr(s)('us.roles_saved'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
@@ -358,35 +361,35 @@ export async function usersRoutes(app: FastifyInstance) {
     if (!/^\d{1,9}$/.test(String(req.params.appId)) || !(await appAllowed(s, req.params.appId))) return reply.code(404).send('Not found');
     await owner.query('delete from meta.app_access where account_id = $1 and app_id = $2', [req.params.id, req.params.appId]);
     await endSessions(req.params.id, req.params.appId);
-    flash(s, 'Access revoked.');
+    flash(s, tr(s)('us.revoked'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
   });
 
   // ---------------------------------------------------------------- identity providers (OpenID Connect)
-  const providerForm = (pr: any, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) => html`
+  const providerForm = (pr: any, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean, tx: BuilderTranslate) => html`
     <form method="post" action="${action}">${csrfField}
       <div class="form-grid">
-        ${isNew ? input('name', 'Name (in URLs)', '', { required: true, help: 'lowercase, e.g. entra, google, keycloak' }) : ''}
-        ${isNew ? select('protocol', 'Protocol', 'oidc', [['oidc', 'OpenID Connect'], ['saml', 'SAML 2.0']]) : html`<div class="field"><span class="label">Protocol</span><span>${pr.protocol === 'saml' ? 'SAML 2.0' : 'OpenID Connect'}</span></div>`}
-        ${input('display_name', 'Button label', pr.display_name, { required: true, help: 'Shown as "Sign in with …"' })}
-        ${input('issuer', 'Issuer (OIDC: URL; SAML: the IdP entity ID)', pr.issuer, { required: true, help: 'e.g. https://login.microsoftonline.com/<tenant>/v2.0, https://keycloak.example.com/realms/acme, or for SAML the entityID of the IdP metadata' })}
-        ${input('client_id', 'Client ID (SAML: pgkiln\'s entity ID)', pr.client_id, { help: 'OIDC: required. SAML: empty = the metadata URL of this provider.' })}
-        ${input('idp_sso_url', 'SAML: IdP sign-in URL', pr.idp_sso_url, { type: 'url', help: 'The SingleSignOnService location (HTTP-Redirect binding) from the IdP metadata.' })}
-        <div class="field" data-wide><label class="label" for="f_idp_cert">SAML: IdP signing certificate (PEM)</label>
+        ${isNew ? input('name', tx('idp.name'), '', { required: true, help: tx('idp.name_help') }) : ''}
+        ${isNew ? select('protocol', tx('idp.protocol'), 'oidc', [['oidc', 'OpenID Connect'], ['saml', 'SAML 2.0']]) : html`<div class="field"><span class="label">${tx('idp.protocol')}</span><span>${pr.protocol === 'saml' ? 'SAML 2.0' : 'OpenID Connect'}</span></div>`}
+        ${input('display_name', tx('idp.label'), pr.display_name, { required: true, help: tx('idp.label_help') })}
+        ${input('issuer', tx('idp.issuer'), pr.issuer, { required: true, help: tx('idp.issuer_help') })}
+        ${input('client_id', tx('idp.client_id'), pr.client_id, { help: tx('idp.client_id_help') })}
+        ${input('idp_sso_url', tx('idp.sso_url'), pr.idp_sso_url, { type: 'url', help: tx('idp.sso_url_help') })}
+        <div class="field" data-wide><label class="label" for="f_idp_cert">${tx('idp.cert')}</label>
           <textarea id="f_idp_cert" name="idp_cert" rows="4" placeholder="-----BEGIN CERTIFICATE-----">${pr.idp_cert ?? ''}</textarea>
-          <small class="help">From the IdP metadata (X509Certificate, wrapped in BEGIN/END CERTIFICATE lines). Assertions must be signed with it.</small></div>
-        ${input('client_secret', 'Client secret', '', { type: 'password', auto: 'new-password', help: pr.has_secret ? 'A secret is stored. Leave empty to keep it.' : 'Leave empty for a public client (PKCE only).' })}
-        ${input('scopes', 'Scopes', pr.scopes ?? 'openid profile email')}
-        ${input('username_claim', 'Username claim', pr.username_claim ?? 'preferred_username', { help: 'Use a claim users cannot change themselves (e.g. preferred_username, upn, email). SAML: an attribute name, or nameID.' })}
-        ${input('groups_claim', 'Groups claim', pr.groups_claim ?? 'groups', { help: 'Dot paths work, e.g. realm_access.roles' })}
+          <small class="help">${tx('idp.cert_help')}</small></div>
+        ${input('client_secret', tx('idp.secret'), '', { type: 'password', auto: 'new-password', help: pr.has_secret ? tx('idp.secret_kept') : tx('idp.secret_public') })}
+        ${input('scopes', tx('idp.scopes'), pr.scopes ?? 'openid profile email')}
+        ${input('username_claim', tx('idp.username_claim'), pr.username_claim ?? 'preferred_username', { help: tx('idp.username_claim_help') })}
+        ${input('groups_claim', tx('idp.groups_claim'), pr.groups_claim ?? 'groups', { help: tx('idp.groups_claim_help') })}
       </div>
-      <div class="field u-mt075"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> Create accounts automatically on first sign-in</label>
-        <small class="help">Otherwise only people with an account linked to this provider (or allowed below) can sign in.</small></div>
-      <div class="field"><label class="check"><input type="checkbox" name="link_existing" value="true"${pr.link_existing ? raw(' checked') : ''}> Link existing accounts with the same username on their first sign-in</label>
-        <small class="help">Only when users can't choose the username claim themselves at this provider: otherwise someone could register the name of an existing account and take it over. With the e-mail claim, only verified addresses link. Turn it off once the accounts are linked.</small></div>
-      <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> Enabled</label></div>
-      ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> Remove the stored client secret</label></div>` : ''}
-      <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add provider' : 'Save'}</button></div>
+      <div class="field u-mt075"><label class="check"><input type="checkbox" name="auto_create" value="true"${pr.auto_create ? raw(' checked') : ''}> ${tx('idp.auto_create')}</label>
+        <small class="help">${tx('idp.auto_create_help')}</small></div>
+      <div class="field"><label class="check"><input type="checkbox" name="link_existing" value="true"${pr.link_existing ? raw(' checked') : ''}> ${tx('idp.link')}</label>
+        <small class="help">${tx('idp.link_help')}</small></div>
+      <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> ${tx('idp.enabled')}</label></div>
+      ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> ${tx('idp.remove_secret')}</label></div>` : ''}
+      <div class="buttons"><button class="btn btn-hot">${isNew ? tx('idp.add') : tx('us.save')}</button></div>
     </form>`;
 
   /** A PEM certificate: the base64 body alone (as in IdP metadata) gets its BEGIN/END lines. */
@@ -409,26 +412,27 @@ export async function usersRoutes(app: FastifyInstance) {
   app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
     const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
+    const tx = tr(s);
     const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create, link_existing,
         (select count(*) from meta.account_identity i where i.provider_id = p.id)::int as linked,
         (select string_agg(a.alias, ', ' order by a.alias) from meta.app a where p.name = any(a.sso_providers)) as apps
       from meta.auth_provider p order by display_name`)).rows;
     const main = html`
-      <div class="title-row"><h1>Identity providers</h1></div>
-      <p class="muted u-mt0">OpenID Connect providers for single sign-on (Microsoft Entra ID, Google, Okta, Keycloak, Auth0, …). Register pgkiln at the provider as a web application with the redirect URI shown, then enable the provider per application under <b>Settings → Sign-in methods</b>.</p>
+      <div class="title-row"><h1>${tx('idp.title')}</h1></div>
+      <p class="muted u-mt0">${tx.rich('idp.intro', { where: html`<b>${tx('idp.where')}</b>` })}</p>
       <div class="columns wide-left">
-        ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>Provider</th><th>Issuer</th><th>Used by</th><th>Linked accounts</th><th>Status</th></tr></thead>
+        ${region(tx('idp.providers'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('idp.provider')}</th><th>${tx('idp.issuer_col')}</th><th>${tx('idp.used_by')}</th><th>${tx('idp.linked')}</th><th>${tx('us.status')}</th></tr></thead>
           <tbody>${rows.length ? rows.map((r) => html`<tr>
-            <td data-label="Provider"><a href="${BASE}/users/providers/${r.id}">${r.display_name}</a> <span class="muted">${r.name}</span></td>
-            <td data-label="Issuer">${r.issuer}</td>
-            <td data-label="Used by">${r.apps ?? html`<span class="muted">no apps</span>`}</td>
-            <td data-label="Linked accounts">${r.linked}</td>
-            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}${r.link_existing ? ' · links existing accounts' : ''}</td>
-          </tr>`) : html`<tr><td colspan="5" class="empty">No identity providers yet.</td></tr>`}</tbody></table></div>`)}
-        ${region('Add provider', providerForm({}, `${BASE}/users/providers`, csrf(s), true))}
+            <td data-label="${tx('idp.provider')}"><a href="${BASE}/users/providers/${r.id}">${r.display_name}</a> <span class="muted">${r.name}</span></td>
+            <td data-label="${tx('idp.issuer_col')}">${r.issuer}</td>
+            <td data-label="${tx('idp.used_by')}">${r.apps ?? html`<span class="muted">${tx('idp.no_apps')}</span>`}</td>
+            <td data-label="${tx('idp.linked')}">${r.linked}</td>
+            <td data-label="${tx('us.status')}">${r.enabled ? tx('idp.enabled_s') : html`<b>${tx('idp.disabled_s')}</b>`}${r.auto_create ? ` · ${tx('idp.auto_s')}` : ''}${r.link_existing ? ` · ${tx('idp.links_s')}` : ''}</td>
+          </tr>`) : html`<tr><td colspan="5" class="empty">${tx('idp.none')}</td></tr>`}</tbody></table></div>`)}
+        ${region(tx('idp.add'), providerForm({}, `${BASE}/users/providers`, csrf(s), true, tx))}
       </div>`;
-    return send(reply, s, shell(s, 'Identity providers', [['Users', `${BASE}/users`], ['Identity providers']], main, 'users'));
+    return send(reply, s, shell(s, tx('idp.title'), [['Users', `${BASE}/users`], [tx('idp.title')]], main, 'users'));
   });
 
   app.post(`${BASE}/users/providers`, async (req: Req, reply) => {
@@ -441,7 +445,7 @@ export async function usersRoutes(app: FastifyInstance) {
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
         [b.name?.trim().toLowerCase(), ...providerValues(b, protocolOf(b.protocol), b.name?.trim().toLowerCase() ?? ''), protocolOf(b.protocol), b.client_secret || null],
       );
-      flash(s, 'Provider added. Register the redirect URI at the provider, then test the connection.');
+      flash(s, tr(s)('idp.added'));
       return back(reply, s, `${BASE}/users/providers/${r.id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -452,27 +456,28 @@ export async function usersRoutes(app: FastifyInstance) {
   app.get(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
     const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
+    const tx = tr(s);
     const pr = await owner.one('select *, client_secret is not null as has_secret from meta.auth_provider where id = $1', [req.params.id]);
     if (!pr) return reply.code(404).send('Not found');
     delete pr.client_secret; // never sent to the browser
     const main = html`
       <div class="title-row"><h1>${pr.display_name}</h1></div>
       <div class="columns wide-left">
-        ${region('Settings', html`${providerForm(pr, `${BASE}/users/providers/${pr.id}`, csrf(s), false)}
+        ${region(tx('idp.settings'), html`${providerForm(pr, `${BASE}/users/providers/${pr.id}`, csrf(s), false, tx)}
           <form method="post" action="${BASE}/users/providers/${pr.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="Delete ${pr.display_name}? Linked identities are removed; accounts stay.">Delete provider</button></form>`)}
-        ${pr.protocol === 'saml' ? region('Register at the identity provider', html`
-          <p>Service provider metadata (import it at the IdP):</p>
+            <button class="btn btn-danger" data-confirm="${tx('idp.delete_confirm', { name: pr.display_name })}">${tx('idp.delete')}</button></form>`)}
+        ${pr.protocol === 'saml' ? region(tx('idp.register_idp'), html`
+          <p>${tx('idp.sp_metadata')}</p>
           <p><a href="${metadataUrl(pr)}"><code>${metadataUrl(pr)}</code></a></p>
-          <p>Or by hand: entity ID <code>${spEntityId(pr)}</code>, assertion consumer service (HTTP-POST) <code>${acsUrl(pr)}</code>.</p>
-          <p class="muted">Based on <code>PUBLIC_URL</code>. Sign the assertions; send the groups in the <code>${pr.groups_claim}</code> attribute to map them to roles.</p>`) : region('Register at the provider', html`
-          <p>Redirect URI (callback):</p>
+          <p>${tx.rich('idp.by_hand', { entity: html`<code>${spEntityId(pr)}</code>`, acs: html`<code>${acsUrl(pr)}</code>` })}</p>
+          <p class="muted">${tx.rich('idp.saml_note', { env: html`<code>PUBLIC_URL</code>`, claim: html`<code>${pr.groups_claim}</code>` })}</p>`) : region(tx('idp.register'), html`
+          <p>${tx('idp.redirect')}</p>
           <p><code>${redirectUri(pr)}</code></p>
-          <p class="muted">Based on <code>PUBLIC_URL</code>; set it to the address users see (e.g. https://apps.example.com).</p>
-          <p>Grant type: <b>authorization code</b> with PKCE. Scopes: <code>${pr.scopes}</code>. Include a <code>${pr.groups_claim}</code> claim in the ID token to map groups to roles.</p>
-          <form method="post" action="${BASE}/users/providers/${pr.id}/test">${csrf(s)}<button class="btn">Test discovery</button></form>`)}
+          <p class="muted">${tx.rich('idp.public_url', { env: html`<code>PUBLIC_URL</code>` })}</p>
+          <p>${tx.rich('idp.grant', { type: html`<b>${tx('idp.auth_code')}</b>`, scopes: html`<code>${pr.scopes}</code>`, claim: html`<code>${pr.groups_claim}</code>` })}</p>
+          <form method="post" action="${BASE}/users/providers/${pr.id}/test">${csrf(s)}<button class="btn">${tx('idp.test')}</button></form>`)}
       </div>`;
-    return send(reply, s, shell(s, pr.display_name, [['Users', `${BASE}/users`], ['Identity providers', `${BASE}/users/providers`], [pr.display_name]], main, 'users'));
+    return send(reply, s, shell(s, pr.display_name, [['Users', `${BASE}/users`], [tx('idp.title'), `${BASE}/users/providers`], [pr.display_name]], main, 'users'));
   });
 
   app.post(`${BASE}/users/providers/:id`, async (req: Req, reply) => {
@@ -489,7 +494,7 @@ export async function usersRoutes(app: FastifyInstance) {
           where id = $1`,
         [req.params.id, ...providerValues(b, current.protocol, current.name), b.client_secret || null, b.remove_secret === 'true'],
       );
-      flash(s, 'Provider saved.');
+      flash(s, tr(s)('idp.saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -502,9 +507,9 @@ export async function usersRoutes(app: FastifyInstance) {
     const pr = await owner.one('select issuer from meta.auth_provider where id = $1', [req.params.id]);
     try {
       const doc = await discover(pr.issuer);
-      flash(s, `Discovery works. Authorization endpoint: ${doc.authorization_endpoint}`);
+      flash(s, tr(s)('idp.works', { url: doc.authorization_endpoint }));
     } catch (e) {
-      flash(s, `Discovery failed: ${(e as Error).message}`, 'error');
+      flash(s, tr(s)('idp.failed', { error: (e as Error).message }), 'error');
     }
     return back(reply, s, `${BASE}/users/providers/${req.params.id}`);
   });
@@ -513,7 +518,7 @@ export async function usersRoutes(app: FastifyInstance) {
     const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     await owner.query('delete from meta.auth_provider where id = $1', [req.params.id]);
-    flash(s, 'Provider deleted.');
+    flash(s, tr(s)('idp.deleted'));
     return back(reply, s, `${BASE}/users/providers`);
   });
 }
