@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.57.0 (October 2026): the SQL Worksheet, the Object Browser and Table Properties in the builder languages (Deutsch, Español, Français, Nederlands, Português), with the texts of the builder's own JavaScript.
+- **Current release:** 0.58.0 (October 2026): Shared Components and the application settings in the builder languages (Deutsch, Español, Français, Nederlands, Português).
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
