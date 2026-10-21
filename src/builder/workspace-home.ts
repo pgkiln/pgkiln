@@ -9,6 +9,7 @@ import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, workspaceAdmin } from './workspaces.ts';
 import { teamHomeBlock } from './team.ts';
+import { tr } from './i18n.ts';
 
 // (sprint 109, WS-1) The Workspace home (APEX: the workspace home page), the page the builder opens after
 // signing in: cards for the tools (App Builder, SQL Workshop, App Gallery), the workspace message (edited in place
@@ -83,6 +84,7 @@ export async function homeData(ws: number, tf: Timeframe) {
 
 /** The System message: the running version, and a newer release when the check is on. */
 async function systemMessage(s: Session, admin: boolean) {
+  const tx = tr(s);
   const check = await releaseCheckEnabled();
   // never wait for GitHub: show what is cached, refresh in the background
   if (check.on) void refreshRelease();
@@ -91,27 +93,26 @@ async function systemMessage(s: Session, admin: boolean) {
   const newer = r && newerVersion(r.version, VERSION) ? r : null;
   const body = newer
     ? html`<div class="alert alert-info wh-release" role="status">${icon('bell')}<div>
-        <strong>pgkiln ${newer.version} is available</strong>
-        <p>${newer.name}${newer.publishedAt ? html` <span class="muted">(${ago(newer.publishedAt)})</span>` : ''}. This server runs pgkiln ${VERSION}.</p>
-        <p><a href="${newer.url}" target="_blank" rel="noopener noreferrer">Release notes ${icon('external')}</a> ·
-          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/01-installation.md#upgrading" target="_blank" rel="noopener">How to upgrade</a></p>
-        <p class="small muted">To upgrade: back up the database, install the new version (<code>npm install -g pgkiln@${newer.version}</code>, or the
-          Docker image <code>pgkiln/pgkiln:${newer.version}</code>), run <code>pgkiln migrate</code> and restart the server.</p></div></div>`
-    : html`<p class="u-mt0">This server runs <strong>pgkiln ${VERSION}</strong>.${check.on && r && !newer ? ' It is the latest release.' : ''}</p>`;
+        <strong>${tx('wh.available', { version: newer.version })}</strong>
+        <p>${newer.name}${newer.publishedAt ? html` <span class="muted">(${ago(newer.publishedAt, Date.now(), tx)})</span>` : ''}. ${tx('wh.server_runs', { version: VERSION })}</p>
+        <p><a href="${newer.url}" target="_blank" rel="noopener noreferrer">${tx('wh.release_notes')} ${icon('external')}</a> ·
+          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/01-installation.md#upgrading" target="_blank" rel="noopener">${tx('wh.how_upgrade')}</a></p>
+        <p class="small muted">${tx.rich('wh.upgrade_steps', { npm: html`<code>npm install -g pgkiln@${newer.version}</code>`, docker: html`<code>pgkiln/pgkiln:${newer.version}</code>`, migrate: html`<code>pgkiln migrate</code>` })}</p></div></div>`
+    : html`<p class="u-mt0">${tx.rich('wh.server_runs_strong', { version: html`<strong>pgkiln ${VERSION}</strong>` })}${check.on && r && !newer ? ` ${tx('wh.latest')}` : ''}</p>`;
   const status = !check.on
-    ? 'The check for new versions is off.'
+    ? tx('wh.check_off')
     : c?.error
-      ? `The last check failed (${c.error})${c.release ? '; the result above is older' : ''}.`
-      : c ? `Checked ${ago(new Date(c.at))}.` : 'Checking for a new version…';
+      ? tx(c.release ? 'wh.check_failed_older' : 'wh.check_failed', { error: c.error })
+      : c ? tx('wh.checked', { ago: ago(new Date(c.at), Date.now(), tx) }) : tx('wh.checking');
   const admins = admin
     ? html`<form method="post" action="${HOME}/release-check" class="wh-release-form">${csrf(s)}
-        <p class="small muted u-mt0">${status} ${check.on ? '' : html`When on, the server asks GitHub (<code>api.github.com</code>) once a day for the latest release; nothing about this installation is sent.`}
+        <p class="small muted u-mt0">${status} ${check.on ? '' : tx.rich('wh.check_explain', { host: html`<code>api.github.com</code>` })}
           ${check.from === 'environment' ? html`(<code>PGKILN_RELEASE_CHECK</code>)` : ''}</p>
         <div class="buttons">${check.on
-          ? html`<button class="btn btn-sm" name="check" value="now">${icon('refresh')} Check now</button><button class="btn btn-sm" name="check" value="off">Turn off</button>`
-          : html`<button class="btn btn-sm" name="check" value="on">Check for new versions</button>`}</div></form>`
+          ? html`<button class="btn btn-sm" name="check" value="now">${icon('refresh')} ${tx('wh.check_now')}</button><button class="btn btn-sm" name="check" value="off">${tx('wh.turn_off')}</button>`
+          : html`<button class="btn btn-sm" name="check" value="on">${tx('wh.check_on')}</button>`}</div></form>`
     : '';
-  return region('System message', html`${body}${admins}`, '', 'system-message');
+  return region(tx('wh.system'), html`${body}${admins}`, '', 'system-message');
 }
 
 /** (Instance settings page) the release check: on, off, or as the environment says. */
@@ -133,16 +134,17 @@ function workspaceMessage(s: Session, canEdit: boolean) {
   const w = s.workspace;
   if (!w) return '';
   if (!w.message && !canEdit) return '';
+  const tx = tr(s);
   return html`<section class="region region-standard wh-message" id="workspace-message" aria-labelledby="wh-message-title">
-    <header class="region-header"><h2 id="wh-message-title">Workspace message</h2></header>
+    <header class="region-header"><h2 id="wh-message-title">${tx('wh.message')}</h2></header>
     <div class="region-body">
-      ${w.message ? html`<p class="wh-message-text">${w.message}</p>` : html`<p class="muted u-mt0">No message for the developers of ${w.name}.</p>`}
-      ${canEdit ? html`<details class="wh-edit"><summary class="btn btn-sm" title="Edit the workspace message">${icon('edit')}<span>Edit message</span></summary>
+      ${w.message ? html`<p class="wh-message-text">${w.message}</p>` : html`<p class="muted u-mt0">${tx('wh.message_none', { name: w.name })}</p>`}
+      ${canEdit ? html`<details class="wh-edit"><summary class="btn btn-sm" title="${tx('wh.message_edit_title')}">${icon('edit')}<span>${tx('wh.message_edit')}</span></summary>
         <form method="post" action="${HOME}/message">${csrf(s)}<input type="hidden" name="workspace" value="${w.id}">
-          <div class="field"><label class="label" for="f_message">Workspace message</label>
+          <div class="field"><label class="label" for="f_message">${tx('wh.message')}</label>
             <textarea id="f_message" name="message" rows="3" maxlength="2000">${w.message ?? ''}</textarea>
-            <small class="help">Shown to the developers of ${w.name} here and on the App Builder home. Plain text, up to 2000 characters; empty removes it.</small></div>
-          <div class="buttons"><button class="btn btn-hot">Save message</button></div></form></details>` : ''}
+            <small class="help">${tx('wh.message_help', { name: w.name })}</small></div>
+          <div class="buttons"><button class="btn btn-hot">${tx('wh.message_save')}</button></div></form></details>` : ''}
     </div></section>`;
 }
 
@@ -160,68 +162,69 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
     const data = await homeData(ws, tf);
     const sql = s.workspace?.sql_workshop !== false;
     const reporter = app.hasRoute({ method: 'GET', url: REPORTER });
+    const tx = tr(s);
     const card = (href: string, ic: string, title: string, text: string) =>
       html`<a class="ab-tile" href="${href}"><span class="ab-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
     const stat = (n: number, one: string, many: string, href: string | null) => {
       const inner = html`<b>${n}</b><span>${n === 1 ? one : many}</span>`;
       return href ? html`<a class="stat" href="${href}">${inner}</a>` : html`<div class="stat">${inner}</div>`;
     };
-    const tfLabel = TIMEFRAMES[tf].label;
+    const tfLabel = tx(`wh.tf.${tf}`);
     const timeframe = html`<form method="post" action="${HOME}/timeframe" class="segmented wh-timeframe" role="group" aria-labelledby="wh-tf-label">${csrf(s)}
-        <span class="sr-only" id="wh-tf-label">Reporting timeframe</span>
-        ${(Object.keys(TIMEFRAMES) as Timeframe[]).map((k) => html`<button name="timeframe" value="${k}" aria-pressed="${k === tf ? 'true' : 'false'}">${TIMEFRAMES[k].label}</button>`)}</form>`;
-    const none = html`<p class="muted u-mt0">No page views in the last ${tfLabel}.</p>`;
+        <span class="sr-only" id="wh-tf-label">${tx('wh.timeframe')}</span>
+        ${(Object.keys(TIMEFRAMES) as Timeframe[]).map((k) => html`<button name="timeframe" value="${k}" aria-pressed="${k === tf ? 'true' : 'false'}">${tx(`wh.tf.${k}`)}</button>`)}</form>`;
+    const none = html`<p class="muted u-mt0">${tx('wh.no_views', { tf: tfLabel })}</p>`;
     const people = (rows: { username: string; views: number; apps: number }[], caption: string, who: string) => rows.length
-      ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">${caption}, last ${tfLabel}</caption>
-          <thead><tr><th scope="col">${who}</th><th scope="col" class="num">Page views</th><th scope="col" class="num">Applications</th></tr></thead>
+      ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">${caption}</caption>
+          <thead><tr><th scope="col">${who}</th><th scope="col" class="num">${tx('wh.col.views')}</th><th scope="col" class="num">${tx('wh.col.apps')}</th></tr></thead>
           <tbody>${rows.map((u) => html`<tr><td class="cell-break">${u.username}</td><td class="num">${u.views}</td><td class="num">${u.apps}</td></tr>`)}</tbody></table></div>`
       : none;
     const topApps = data.apps.length
-      ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">Top applications, last ${tfLabel}</caption>
-          <thead><tr><th scope="col">Application</th><th scope="col" class="num">Page views</th><th scope="col" class="num">Users</th></tr></thead>
+      ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">${tx('wh.top_apps_caption', { tf: tfLabel })}</caption>
+          <thead><tr><th scope="col">${tx('wh.col.app')}</th><th scope="col" class="num">${tx('wh.col.views')}</th><th scope="col" class="num">${tx('wh.col.users')}</th></tr></thead>
           <tbody>${data.apps.map((a) => html`<tr><td class="cell-break"><a href="${BASE}/apps/${a.id}">${a.name}</a></td><td class="num">${a.views}</td><td class="num">${a.users}</td></tr>`)}</tbody></table></div>`
       : none;
     const ext = (href: string, label: string) => html`<li><a href="${href}" target="_blank" rel="noopener">${label}${icon('chevron')}</a></li>`;
     const main = html`<div class="ab-home wh-home">
       <div class="ab-main">
-        <h1 class="wh-title">${s.workspace ? html`Workspace ${s.workspace.name}` : 'Workspace home'}</h1>
-        <nav class="ab-tiles ab-tiles-wrap wh-tools" aria-label="Tools">
-          ${card(`${BASE}/apps`, 'grid', 'App Builder', 'Create, edit and run the applications of this workspace.')}
-          ${sql ? card(`${BASE}/sql`, 'database', 'SQL Workshop', 'Run SQL, browse database objects, load data and build REST services.') : ''}
-          ${reporter ? card(REPORTER, 'pie-chart', 'Data Reporter', 'Datasets and reports for business users, without building pages.') : ''}
-          ${card(`${BASE}/gallery`, 'package', 'App Gallery', 'Sample and starter applications to install.')}
+        <h1 class="wh-title">${s.workspace ? tx('wh.title_ws', { name: s.workspace.name }) : tx('wh.title')}</h1>
+        <nav class="ab-tiles ab-tiles-wrap wh-tools" aria-label="${tx('wh.tools')}">
+          ${card(`${BASE}/apps`, 'grid', tx('rail.app_builder'), tx('wh.card.apps'))}
+          ${sql ? card(`${BASE}/sql`, 'database', tx('rail.sql_workshop'), tx('wh.card.sql')) : ''}
+          ${reporter ? card(REPORTER, 'pie-chart', tx('rail.reporter'), tx('wh.card.reporter')) : ''}
+          ${card(`${BASE}/gallery`, 'package', tx('rail.gallery'), tx('wh.card.gallery'))}
         </nav>
         ${workspaceMessage(s, canEdit)}
         <section class="wh-summary" aria-labelledby="wh-summary-title">
-          <h2 id="wh-summary-title">Summary</h2>
+          <h2 id="wh-summary-title">${tx('wh.summary')}</h2>
           <div class="stat-grid wh-stats">
-            ${stat(data.counts.apps, 'application', 'applications', `${BASE}/apps`)}
-            ${stat(data.counts.tables, 'table', 'tables', sql ? `${BASE}/sql/objects` : null)}
-            ${stat(data.counts.developers, 'developer', 'developers', `${BASE}/developers`)}
-            ${stat(data.counts.reporting, 'reporting application', 'reporting applications', reporter ? REPORTER : null)}
+            ${stat(data.counts.apps, tx('wh.stat.app'), tx('wh.stat.apps'), `${BASE}/apps`)}
+            ${stat(data.counts.tables, tx('wh.stat.table'), tx('wh.stat.tables'), sql ? `${BASE}/sql/objects` : null)}
+            ${stat(data.counts.developers, tx('wh.stat.developer'), tx('wh.stat.developers'), `${BASE}/developers`)}
+            ${stat(data.counts.reporting, tx('wh.stat.reporting'), tx('wh.stat.reportings'), reporter ? REPORTER : null)}
           </div>
         </section>
-        <div class="wh-top-head"><h2>Activity</h2>${timeframe}</div>
+        <div class="wh-top-head"><h2>${tx('wh.activity')}</h2>${timeframe}</div>
         <div class="wh-top">
-          ${region(`Top applications (${tfLabel})`, topApps)}
-          ${region(`Top users (${tfLabel})`, people(data.users, 'Top users', 'User'))}
-          ${region(`Top developers (${tfLabel})`, people(data.developers, 'Top developers', 'Developer'))}
+          ${region(tx('wh.top_apps', { tf: tfLabel }), topApps)}
+          ${region(tx('wh.top_users', { tf: tfLabel }), people(data.users, tx('wh.top_users_caption', { tf: tfLabel }), tx('wh.col.user')))}
+          ${region(tx('wh.top_devs', { tf: tfLabel }), people(data.developers, tx('wh.top_devs_caption', { tf: tfLabel }), tx('wh.col.developer')))}
         </div>
         ${await systemMessage(s, admin)}
       </div>
-      <aside class="ab-side" aria-label="About and learn more">
-        <section><h2>About</h2><p>The workspace home: its tools, how its applications are used and what is new. ${s.workspace ? html`You work in ${s.workspace.name}.` : ''}</p></section>
+      <aside class="ab-side" aria-label="${tx('wh.aside')}">
+        <section><h2>${tx('common.about')}</h2><p>${tx('wh.about')} ${s.workspace ? tx('wh.you_work', { name: s.workspace.name }) : ''}</p></section>
         ${await teamHomeBlock(s)}
-        <section><h2>Learn more</h2><ul class="ab-links ab-tasks">
-          ${ext(`${GUIDE}/docs/README.md`, 'The pgkiln guide')}
-          ${ext(`${GUIDE}/docs/guide/10-tutorial.md`, 'Tutorial')}
-          ${ext(`${GUIDE}/docs/guide/11-from-apex.md`, 'Coming from APEX')}
-          ${ext(`${GUIDE}/CHANGELOG.md`, "What's new (changelog)")}
-          ${ext(`${REPO}/discussions`, 'Discussions')}
+        <section><h2>${tx('wh.learn_more')}</h2><ul class="ab-links ab-tasks">
+          ${ext(`${GUIDE}/docs/README.md`, tx('wh.guide'))}
+          ${ext(`${GUIDE}/docs/guide/10-tutorial.md`, tx('wh.tutorial'))}
+          ${ext(`${GUIDE}/docs/guide/11-from-apex.md`, tx('wh.from_apex'))}
+          ${ext(`${GUIDE}/CHANGELOG.md`, tx('wh.whats_new'))}
+          ${ext(`${REPO}/discussions`, tx('wh.discussions'))}
         </ul></section>
-        <section><h2>Resources</h2><ul class="ab-links ab-tasks">
-          ${ext(`${GUIDE}/docs/guide/20-ai-agents.md`, 'AI coding agents (MCP)')}
-          ${ext(`${REPO}/issues`, 'Report a problem')}
+        <section><h2>${tx('wh.resources')}</h2><ul class="ab-links ab-tasks">
+          ${ext(`${GUIDE}/docs/guide/20-ai-agents.md`, tx('wh.mcp'))}
+          ${ext(`${REPO}/issues`, tx('wh.report_problem'))}
         </ul></section>
       </aside>
     </div>`;
@@ -247,13 +250,13 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
     if (!(await workspaceAdmin(s.username, id))) return reply.code(403).send('Only the workspace\'s administrators change its message.');
     const message = String(req.body?.message ?? '').replace(/\r\n/g, '\n').trim();
     if (message.length > 2000) {
-      flash(s, 'The message is at most 2000 characters.', 'error');
+      flash(s, tr(s)('wh.flash.too_long'), 'error');
       return back(reply, s, HOME);
     }
     const r = await owner.query('update meta.workspace set message = $2 where id = $1', [id, message || null]);
     if (!r.rowCount) return reply.code(404).send('Not found');
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${id}: message` });
-    flash(s, message ? 'Workspace message saved.' : 'Workspace message removed.');
+    flash(s, tr(s)(message ? 'wh.flash.saved' : 'wh.flash.removed'));
     return back(reply, s, `${HOME}#workspace-message`);
   });
 
@@ -270,15 +273,15 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
       await logActivity({ appId: null, username: s.username, event: 'instance_settings', ip: clientIp(req), detail: `release check ${v}` });
       const now = await releaseCheckEnabled();
       if (now.on) await refreshRelease(true);
-      flash(s, now.on ? 'The server checks for new versions once a day.' : 'The check for new versions is off.');
+      flash(s, tr(s)(now.on ? 'wh.flash.check_daily' : 'wh.check_off'));
     } else if (v === 'now') {
       if (!(await releaseCheckEnabled()).on) {
-        flash(s, 'The check for new versions is off.', 'error');
+        flash(s, tr(s)('wh.check_off'), 'error');
         return back(reply, s, to);
       }
       await refreshRelease(true);
       const c = cachedRelease();
-      flash(s, c?.error ? `The check failed (${c.error}).` : 'Checked for a new version.', c?.error ? 'error' : 'ok');
+      flash(s, c?.error ? tr(s)('wh.flash.check_failed', { error: c.error }) : tr(s)('wh.flash.checked'), c?.error ? 'error' : 'ok');
     } else return reply.code(400).send('Unknown action');
     return back(reply, s, to);
   });

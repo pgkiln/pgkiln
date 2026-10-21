@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { tr } from './i18n.ts';
 import { owner, type Db } from '../db.ts';
 import { devDbForWorkspace, workspacesChanged } from '../workspace-db.ts';
 import { ownerUrl, runtimeUrl } from '../db.ts';
@@ -118,7 +119,7 @@ export const inWorkspaceSql = (alias: string, param: number) => `meta.app_worksp
 export function workspaceMenu(s: Session) {
   const list = s.workspaces ?? [];
   if (list.length < 2) return '';
-  return html`<div class="menu-section"><span class="small muted" id="ws-label">Workspace</span>
+  return html`<div class="menu-section"><span class="small muted" id="ws-label">${tr(s)('status.workspace')}</span>
     <form method="post" action="${BASE}/workspace" class="ws-switch" aria-labelledby="ws-label">${csrf(s)}
       ${list.map((w) => html`<button name="workspace" value="${w.id}" aria-pressed="${s.workspace?.id === w.id ? 'true' : 'false'}">${icon('layers')}<span>${w.name}</span></button>`)}
     </form></div>`;

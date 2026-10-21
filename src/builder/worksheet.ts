@@ -557,7 +557,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
     html`<button class="btn btn-sm${hot ? ' btn-hot' : ''}" name="mode" value="${m}" title="${label} (${key})" data-ws-key="${key}">${icon(ic)}<span>${label}</span></button>`;
   const main = html`${chartCss ? html`<style nonce="${req.cspNonce}">${raw(chartCss.replace(/</g, ''))}</style>` : ''}<div class="ws-page">
     <h1 class="sr-only">SQL Worksheet</h1>
-    ${workshopTabs('sql')}
+    ${workshopTabs('sql', s)}
     <form method="post" action="${BASE}/sql/worksheet" class="ws" id="ws" data-ran="${ran ? `${ran.start},${ran.end}` : ''}" data-error-line="${firstError?.errorLine ?? ''}"
       data-source="${source}" data-script-id="${script?.id ?? ''}" data-script-name="${script?.name ?? ''}" data-tab="${tabKey}">${csrf(s)}
       <button class="ws-default" name="mode" value="nav" tabindex="-1">Refresh the navigator</button>

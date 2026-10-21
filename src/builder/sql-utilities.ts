@@ -143,7 +143,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
     const admin = await isAdmin(s.username);
     const tile = (href: string, ic: string, title: string, text: string) =>
       html`<a class="ab-tile sw-tile" href="${BASE}${href}"><span class="ab-tile-icon sw-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities', s)}
       <div class="ab-tiles ab-tiles-wrap">
         ${tile('/sql/load', 'upload', 'Data Workshop: Load Data', 'Load CSV, Excel, JSON or XML into a new or existing table, with saved definitions.')}
         ${tile('/sql/unload', 'download', 'Data Workshop: Unload Data', 'Download a table or a query as CSV, JSON, XML, Excel or SQL inserts.')}
@@ -182,7 +182,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
         ? rows.map((row) => html`<tr><td data-label="Object" class="u-break"><a href="${BASE}/sql/objects?o=${encodeURIComponent(String(row.object))}">${String(row.object)}</a></td>
             ${r.columns.map(([k, l, c]) => html`<td data-label="${l}"${c ? raw(` class="${c}"`) : raw(' class="u-break"')}>${k === 'suggestion' ? html`<code>${String(row[k] ?? '')}</code>` : String(row[k] ?? '')}</td>`)}</tr>`)
         : html`<tr><td colspan="${r.columns.length + 1}" class="empty">${error ? 'The report failed.' : 'Nothing found.'}</td></tr>`}</tbody></table></div>`;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities', s)}
       <div class="ab-home"><div class="ab-main">
         ${region(r.title, html`<p class="muted u-mt0">${r.about} Over the schemas ${workshopRunsAs(db)} may use.</p>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}${table}`)}
@@ -214,7 +214,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
                          where ${USABLE} group by 1, 2 order by 1`),
     }));
     const sv = info.server as Record<string, string>;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities', s)}
       <div class="stat-grid u-mb1">
         ${[['PostgreSQL', sv.server_version], ['Database', sv.database], ['Size', sv.size], ['Running since', new Date(sv.started).toISOString().slice(0, 16).replace('T', ' ') + ' UTC']]
           .map(([l, v]) => html`<div class="stat"><b class="u-break">${v}</b><span>${l}</span></div>`)}

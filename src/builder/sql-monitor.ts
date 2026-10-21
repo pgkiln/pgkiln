@@ -246,7 +246,7 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     const showIdle = req.query?.idle === '1';
     const live = await livePart(s, showIdle);
     if (req.query?.fragment === '1') return reply.header('cache-control', 'no-store').type('text/html').send(String(live));
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('monitor')}${viewTabs('sessions')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('monitor', s)}${viewTabs('sessions')}
       <div class="sm-toolbar" data-sm-controls hidden>
         <label for="sm-interval">Refresh every</label>
         <select id="sm-interval" data-sm-interval>${REFRESH_SECONDS.map((n) => html`<option value="${n}">${n} seconds</option>`)}</select>
@@ -324,7 +324,7 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
         <form method="post" action="${URL_BASE}/reset">${csrf(s)}
           <button class="btn" data-confirm="Clear the statement statistics of the whole server?">${icon('history')} Reset statistics</button></form>`;
     }
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('monitor')}${viewTabs('top')}
+    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('monitor', s)}${viewTabs('top')}
       ${region('Top SQL', html`<p class="muted u-mt0">The statements of this database from <code>pg_stat_statements</code>, every role. Click a statement for its plan.</p>${body}`)}`;
     return send(reply, s, shell(s, 'Top SQL', crumbs(['Top SQL']), main, 'sql'));
   });

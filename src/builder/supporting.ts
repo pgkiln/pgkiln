@@ -94,7 +94,7 @@ async function page(req: Req, appId: string, result?: { kind: Kind; run: RunResu
   const scripts = (await owner.query('select id, name, kind, seq, script from meta.supporting_script where app_id = $1 order by kind, seq, name', [a.id])).rows;
   const imported = req.query?.imported === '1';
   const byKind = (k: Kind) => scripts.filter((x) => x.kind === k);
-  return { a, body: (s: Session) => html`${appHeader(a, 'shared')}
+  return { a, body: (s: Session) => html`${appHeader(a, 'shared', s)}
     ${imported && scripts.length ? html`<div class="alert alert-warning" role="status">${icon('alert')} This application came with supporting objects. They were <b>not</b> run: read them below and run them only if you trust them.</div>` : ''}
     ${result ? region(`Result: ${result.kind} scripts`, resultsHtml(result.kind, result.run)) : ''}
     ${region('Supporting objects', html`<p class="muted u-mt0">Scripts that install, upgrade or remove what the application needs in the database. They travel with the export and run only from here, when you choose to:

@@ -4,7 +4,8 @@ import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Session } from '../session.ts';
 import { back, BASE, csrf, designerUrl, developer, flash, send, shell, type Req } from './ui.ts';
-import { SQL_TOOLS, TOOL_GROUPS } from './sql-tools.ts';
+import { SQL_TOOLS, TOOL_GROUPS, toolDescription, toolLabel } from './sql-tools.ts';
+import { tr } from './i18n.ts';
 import { SYSTEM_SCHEMAS } from './object-browser.ts';
 import { currentWorkspace, inWorkspaceSql, workshopDb } from './workspaces.ts';
 import { isAdmin } from './locks.ts';
@@ -28,10 +29,11 @@ export async function pinsOf(s: Session): Promise<Pin[]> {
 
 /** A pin toggle (a small form): pinned → unpin, else pin. */
 export function pinButton(s: Session, p: Pin, pinned: boolean, backTo: string): Raw {
+  const tx = tr(s);
   return html`<form method="post" action="${BASE}/pins" class="pin-form">${csrf(s)}
     <input type="hidden" name="href" value="${p.href}"><input type="hidden" name="label" value="${p.label}"><input type="hidden" name="icon" value="${p.icon}">
     <input type="hidden" name="pin" value="${pinned ? '0' : '1'}"><input type="hidden" name="back" value="${backTo}">
-    <button class="pin-btn${pinned ? ' is-pinned' : ''}" title="${pinned ? 'Unpin' : 'Pin to the SQL Workshop home'}" aria-pressed="${pinned ? 'true' : 'false'}">${icon('pin')}<span class="sr-only">${pinned ? 'Unpin' : 'Pin'} ${p.label}</span></button></form>`;
+    <button class="pin-btn${pinned ? ' is-pinned' : ''}" title="${tx(pinned ? 'sw.unpin' : 'sw.pin_title')}" aria-pressed="${pinned ? 'true' : 'false'}">${icon('pin')}<span class="sr-only">${tx(pinned ? 'sw.unpin_what' : 'sw.pin_what', { what: p.label })}</span></button></form>`;
 }
 
 /** The Launchpad part of the SQL Workshop home. */
@@ -39,18 +41,21 @@ export async function launchpad(s: Session, admin: boolean): Promise<Raw> {
   const pins = await pinsOf(s);
   const pinned = new Set(pins.map((p) => p.href));
   const tools = SQL_TOOLS.filter((t) => admin || !t.admin);
+  const tx = tr(s);
+  // a pin keeps the tool's English name (pins are stored with their label); the card shows it in the builder's language
   const card = (t: (typeof SQL_TOOLS)[number]) => html`<li class="lp-tool">
-    <a href="${t.href}">${icon(t.icon)}<span><strong>${t.label}</strong><small class="muted">${t.description}</small></span></a>
+    <a href="${t.href}">${icon(t.icon)}<span><strong>${toolLabel(tx, t)}</strong><small class="muted">${toolDescription(tx, t)}</small></span></a>
     ${pinButton(s, { href: t.href, label: t.label, icon: t.icon }, pinned.has(t.href), `${BASE}/sql`)}</li>`;
+  const group = (g: string, label: string) => tx.dyn(`sql.group.${g}`, label);
   return html`<section class="lp-pins" aria-labelledby="lp-pins-title">
-      <h2 id="lp-pins-title">Pinned &amp; recently visited</h2>
+      <h2 id="lp-pins-title">${tx('sw.pinned')}</h2>
       ${pins.length ? html`<ul class="lp-chips">${pins.map((p) => html`<li><a href="${p.href}">${icon(p.icon)}<span>${p.label}</span></a>${pinButton(s, p, true, `${BASE}/sql`)}</li>`)}</ul>`
-        : html`<p class="muted small">Pin a tool, an object or a saved worksheet with ${icon('pin')} to keep it here.</p>`}
-      <ul class="lp-chips lp-recent" data-lp-recent aria-label="Recently visited" hidden></ul>
+        : html`<p class="muted small">${tx.rich('sw.pin_hint', { pin: icon('pin') })}</p>`}
+      <ul class="lp-chips lp-recent" data-lp-recent aria-label="${tx('sw.recent')}" hidden></ul>
     </section>
     <div class="lp-groups">
-      <div class="lp-tabs" role="tablist" aria-label="Tools" hidden>${TOOL_GROUPS.map(([g, label], i) => html`<button type="button" role="tab" aria-selected="${i === 0 ? 'true' : 'false'}" aria-controls="lp-${g}" data-lp-tab="${g}">${label}</button>`)}</div>
-      ${TOOL_GROUPS.map(([g, label]) => html`<section class="lp-group" id="lp-${g}" data-lp-group="${g}" aria-label="${label}"><h2>${label}</h2><ul class="lp-list">${tools.filter((t) => t.group === g).map(card)}</ul></section>`)}
+      <div class="lp-tabs" role="tablist" aria-label="${tx('wh.tools')}" hidden>${TOOL_GROUPS.map(([g, label], i) => html`<button type="button" role="tab" aria-selected="${i === 0 ? 'true' : 'false'}" aria-controls="lp-${g}" data-lp-tab="${g}">${group(g, label)}</button>`)}</div>
+      ${TOOL_GROUPS.map(([g, label]) => html`<section class="lp-group" id="lp-${g}" data-lp-group="${g}" aria-label="${group(g, label)}"><h2>${group(g, label)}</h2><ul class="lp-list">${tools.filter((t) => t.group === g).map(card)}</ul></section>`)}
     </div>`;
 }
 

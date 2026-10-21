@@ -453,7 +453,7 @@ export async function advisorRoutes(app: FastifyInstance) {
           <span class="hit-snippet">${f.entry ? html`<b>${f.field}:</b> ` : ''}${f.message}</span>
         </li>`)}</ul>`
       : html`<div class="alert alert-success" role="status">No problems found.</div>`;
-    const main = html`${appHeader(a, 'advisor')}
+    const main = html`${appHeader(a, 'advisor', s)}
       ${region('Advisor', html`<p class="muted u-mt0">Checked ${checked} pieces of SQL as the role <code>${a.db_role ?? '(owner)'}</code> (planned with EXPLAIN and rolled back, nothing is run), and every reference to pages, items, lists of values, authorization schemes and report layouts.
           ${plpgsqlCheck ? 'PL/pgSQL functions were checked with plpgsql_check.' : html`Install the <code>plpgsql_check</code> extension to check PL/pgSQL functions too.`}</p>
         <p><span class="tag tag-error">${count('error')} errors</span> <span class="tag tag-warning">${count('warning')} warnings</span> <span class="tag tag-info">${count('info')} notes</span>

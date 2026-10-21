@@ -1545,3 +1545,21 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   .gal-tabs a:nth-child(3) { border-left: 1px solid var(--border); border-top: 0; border-radius: 0 0 0 var(--radius); }
   .gal-tabs a:last-child { border-top: 0; border-radius: 0 0 var(--radius) 0; }
 }
+
+/* ---------------------------------------------------------------- (sprint 121) builder language: status bar menu, sign-in links */
+.ide-status .ide-lang { flex: none; }
+.ide-status .ide-lang > summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: inherit; padding: 2px 4px; border-radius: 4px; }
+.ide-status .ide-lang > summary:hover, .ide-status .ide-lang[open] > summary { color: var(--chrome-text); background: rgb(255 255 255 / 8%); }
+.ide-status .ide-lang > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* the status bar clips (overflow: hidden): the menu opens fixed, above it */
+.ide-status .ide-lang .menu-panel { position: fixed; top: auto; bottom: 34px; left: auto; right: auto; min-width: 200px; font-size: 13px; white-space: normal; }
+.ide-lang-form button { width: 100%; }
+.ide-lang-form button[aria-current="true"] { font-weight: 600; }
+.ide-lang-form .icon, .ide-lang-pad { width: 1em; height: 1em; flex: none; display: inline-block; }
+.signin-langs ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem 1rem; margin: 0; padding: 0.75rem 0 0; list-style: none; font-size: 0.85rem; }
+.signin-langs a { color: var(--muted); text-decoration: none; }
+.signin-langs a:hover { color: var(--accent); text-decoration: underline; }
+.signin-langs a[aria-current="true"] { color: var(--text); font-weight: 600; }
+@media (max-width: 640px) { .ide-status .ide-lang .menu-panel { left: 0.5rem; right: 0.5rem; min-width: 0; } }
+/* long compound words of other languages (Workspace-Dienstprogramme) wrap instead of widening a phone's page */
+.ab-tile > *, .stat span { min-width: 0; overflow-wrap: anywhere; hyphens: auto; }

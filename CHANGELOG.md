@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The builder in more languages** (WS-7; APEX 26.2: the builder's language links). The builder now speaks Deutsch,
+  English (the default), Español, Français, Nederlands and Português: the sign-in page offers them as links, the
+  status bar has a language menu, and the choice is stored per developer (migration 127,
+  `meta.developer.language`). Translated: the builder's frame (rail, top bar, account menu, status bar, standard
+  messages, error pages), the sign-in page, the Workspace home, the App Builder home, an application's home and tabs,
+  the Page Designer's toolbar, menus, component tree and gallery, and the SQL Workshop's home and tabs; other screens
+  stay English until they move over. Builder texts are keyed message files (`src/builder/i18n/`) with a coverage
+  check in the test suite ([chapter 3](docs/guide/03-builder.md#choosing-the-builder-language),
+  [chapter 12](docs/guide/12-development.md#builder-texts-in-more-languages)).
+
 ## [0.54.0] - 2026-10-20
 
 ### Added

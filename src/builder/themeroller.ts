@@ -114,7 +114,7 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     };
     const swatch = (hex: string | undefined) =>
       !hex ? html`<span class="muted">base</span>` : ITEM_REF.test(hex) ? html`<code>${hex}</code>` : html`<input type="color" value="${hex}" disabled aria-label="${hex}" class="swatch"> <code>${hex}</code>`;
-    const main = html`${appHeader(a, 'settings')}
+    const main = html`${appHeader(a, 'settings', s)}
       <div class="ide-body">
         ${region('Theme Roller: style variants', html`
           <p class="muted u-mt0">Several saved styles for this application (APEX: theme styles). The base style

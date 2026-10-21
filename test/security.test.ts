@@ -11247,3 +11247,122 @@ describe('sprint 120 WS-8', () => {
   });
 });
 
+
+describe('sprint 121 WS-7', () => {
+  // The builder's language (src/builder/i18n.ts, language.ts): only the known codes are accepted from the sign-in
+  // page's links (?lang=), the cookie and the status bar's menu (a CSRF-checked post); a developer's choice is theirs
+  // alone; translated texts are plain text, escaped like any value, and tx.rich() escapes its message and parameters.
+  const A = 'sec121_a';
+  const B = 'sec121_b';
+  const PW = 'Sec121-dev-password!';
+  const stored = async (u: string) => (await owner.one<{ language: string | null }>('select language from meta.developer where username = $1', [u]))?.language ?? null;
+  const signIn = async (username: string, b = new FileBrowser(app)) => {
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username, password: PW })).statusCode, 303);
+    await b.get('/builder/apps');
+    return b;
+  };
+  before(async () => {
+    await owner.query('delete from meta.developer where username = any($1)', [[A, B]]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($3), true), ($2, meta.hash_password($3), true)`, [A, B, PW]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.session where app_id is null and username = any($1)', [[A, B]]);
+    await owner.query('delete from meta.developer where username = any($1)', [[A, B]]);
+  });
+
+  test('the sign-in page ignores unknown and malicious language codes, in the link and in the cookie', async () => {
+    for (const lang of ['xx', 'DE', 'de-DE', '__proto__', 'constructor', '%22%3E%3Cscript%3Ealert(1)%3C%2Fscript%3E', 'de%00', '..%2F..%2Fetc', 'de&lang=fr']) {
+      const b = new FileBrowser(app);
+      const r = await b.get(`/builder/login?lang=${lang}`);
+      assert.equal(r.statusCode, 200, lang);
+      if (lang === 'de&lang=fr') continue; // two values: ignored too (not a string) – checked below
+      assert.match(r.body, /<html lang="en"/, lang);
+      assert.equal(b.cookies.get('pgkiln_blang'), undefined, `${lang}: no cookie`);
+      assert.ok(!r.body.includes('<script>alert(1)'), lang);
+    }
+    const two = new FileBrowser(app);
+    const r2 = await two.get('/builder/login?lang=de&lang=fr');
+    assert.match(r2.body, /<html lang="en"/, 'a repeated parameter is not a language');
+    for (const cookie of ['"><script>alert(1)</script>', 'xx', 'de;', '__proto__']) {
+      const b = new FileBrowser(app);
+      b.cookies.set('pgkiln_blang', encodeURIComponent(cookie));
+      const r = await b.get('/builder/login');
+      assert.match(r.body, /<html lang="en"/, cookie);
+      assert.ok(!r.body.includes('<script>alert(1)'), cookie);
+    }
+  });
+
+  test('the language menu: CSRF checked, only known codes, stored for the signed-in developer only', async () => {
+    await owner.query(`update meta.developer set language = 'fr' where username = $1`, [B]);
+    const a = await signIn(A);
+    // without (or with a wrong) CSRF token: refused, nothing stored
+    assert.equal((await a.post('/builder/language', { language: 'de' })).statusCode, 403);
+    assert.equal((await a.post('/builder/language', { __csrf: 'forged', language: 'de' })).statusCode, 403);
+    assert.equal(await stored(A), null);
+    // signed out: to the sign-in page, nothing stored
+    const anon = new FileBrowser(app);
+    await anon.get('/builder/login');
+    assert.equal((await anon.submit('/builder/language', { language: 'de' })).statusCode, 302);
+    for (const bad of ['xx', 'DE', "de'; update meta.developer set is_admin = true --", '<script>', '', 'de\u0000']) {
+      await a.get('/builder/apps');
+      assert.equal((await a.submit('/builder/language', { language: bad })).statusCode, 400, bad);
+    }
+    assert.equal(await stored(A), null);
+    await a.get('/builder/apps');
+    assert.equal((await a.submit('/builder/language', { language: 'de' })).statusCode, 303);
+    assert.equal(await stored(A), 'de');
+    assert.equal(await stored(B), 'fr', "another developer's choice is not touched");
+    // the developer's own session follows; the other developer's sessions don't
+    const b = await signIn(B);
+    assert.match((await b.get('/builder/apps')).body, /<html lang="fr"/);
+    assert.match((await a.get('/builder/apps')).body, /<html lang="de"/);
+    // a post naming another developer changes nothing about them
+    await a.get('/builder/apps');
+    await a.submit('/builder/language', { language: 'es', username: B, developer: B });
+    assert.equal(await stored(B), 'fr');
+    assert.equal(await stored(A), 'es');
+    // the column itself refuses anything but a language code
+    await assert.rejects(owner.query(`update meta.developer set language = 'x<y' where username = $1`, [A]));
+  });
+
+  test('a language chosen on the sign-in page by one visitor is stored only for the developer who then signs in', async () => {
+    await owner.query(`update meta.developer set language = 'fr' where username = $1`, [B]);
+    await owner.query(`update meta.developer set language = null where username = $1`, [A]);
+    // a visitor chooses Deutsch, then A signs in on that device: A gets Deutsch
+    const device = new FileBrowser(app);
+    await device.get('/builder/login?lang=de');
+    await signIn(A, device);
+    assert.equal(await stored(A), 'de');
+    // after A signs out, B signs in on the same device without choosing: B keeps their own language
+    await device.get('/builder/apps');
+    await device.submit('/builder/logout', {});
+    await signIn(B, device);
+    assert.equal(await stored(B), 'fr');
+    assert.match((await device.get('/builder/apps')).body, /<html lang="fr"/);
+  });
+
+  test('translated texts with parameters are escaped', async () => {
+    const { translatorFor } = await import('../src/builder/i18n.ts');
+    const { html } = await import('../src/html.ts');
+    const x = '<img src=x onerror=alert(1)>';
+    for (const lang of ['en', 'de', 'fr', 'es', 'nl', 'pt'] as const) {
+      const tx = translatorFor(lang);
+      const plain = String(html`<span title="${tx('ab.edit', { name: x })}">${tx('ab.locked_by', { user: x })}</span>`);
+      assert.ok(!plain.includes('<img'), `${lang}: html escapes a translated text`);
+      // rich: the message and string parameters escaped, Raw parameters kept
+      const rich = String(tx.rich('weak.banner', { link: html`<a href="/builder/developers">${x}</a>` }));
+      assert.ok(rich.includes('<a href="/builder/developers">&lt;img'), `${lang}: the Raw link kept, its text escaped`);
+      assert.ok(!String(tx.rich('ab.none_yet', { create: x, import: '"><b>' })).includes('<img') && !String(tx.rich('ab.none_yet', { create: x, import: '"><b>' })).includes('<b>'), lang);
+    }
+    // on a page: a flash message with a parameter from the URL, in German
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [A]);
+    const a = await signIn(A);
+    const hr = await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`);
+    await a.get(`/builder/apps/${hr!.id}/goto?page=${encodeURIComponent('<script>alert(1)</script>')}`);
+    const page = (await a.get(`/builder/apps/${hr!.id}`)).body;
+    assert.match(page, /<html lang="de"/);
+    assert.ok(page.includes('&lt;script&gt;alert(1)&lt;/script&gt;'), 'the parameter escaped in the translated message');
+    assert.ok(!page.includes('<script>alert(1)'));
+  });
+});

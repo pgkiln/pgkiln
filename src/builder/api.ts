@@ -116,7 +116,7 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
   ].join('\n');
 
   const check = (ok: boolean, text: Raw | string) => html`<li>${ok ? '✓' : '✗'} ${text}</li>`;
-  const main = html`${appHeader(a, 'api')}
+  const main = html`${appHeader(a, 'api', s)}
     <div class="columns">
       ${region('Setup', html`
         <p class="muted u-mt0">PostgREST runs next to pgkiln and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>

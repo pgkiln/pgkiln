@@ -59,7 +59,7 @@ async function page(s: Session, a: any, query: Record<string, string | undefined
       </form>`)
     : '';
 
-  return html`${appHeader(a, 'shared')}
+  return html`${appHeader(a, 'shared', s)}
     ${editor}
     ${region('Static application files', html`<p class="muted u-mt0">JavaScript, CSS, JSON, images and fonts of this application, served at
         <code>/a/${a.alias}/static/<i>name</i></code> and exported with it. Pages load the scripts and stylesheets chosen below

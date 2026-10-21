@@ -142,7 +142,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
     const done = texts.filter((t) => map.has(t.text)).length;
     const all = [...new Set([a.language, ...langs])];
 
-    const main = html`${appHeader(a, 'shared')}
+    const main = html`${appHeader(a, 'shared', s)}
       <p class="muted u-mt0"><a href="${BASE}/apps/${a.id}/shared">Shared Components</a> / Globalization</p>
       <div class="columns">
         ${region('Languages', html`<ul class="checklist">

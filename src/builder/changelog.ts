@@ -106,7 +106,7 @@ async function listPage(s: Session, q: Record<string, unknown>) {
         ${exp ? html`<input type="hidden" name="app" value="${exp.id}">` : ''}
         <div class="buttons"><button class="btn btn-hot">${icon('download')} Download migration</button></div></form>`
     : '';
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('changes')}
+  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('changes', s)}
     <p class="muted">The change log (Liquibase, Flyway): DDL run from the SQL Worksheet, Table Properties and Schema Comparison is kept as change sets per schema, with who ran it and when. Download them as a migration for another database: Flyway versioned files, a Liquibase formatted SQL changelog or a plain script. Only statements that succeeded are kept; data changes (INSERT, UPDATE, DELETE) are not.</p>
     ${nav}
     ${schema ? region(`Change sets of ${schema}`, html`${exportPick}${table}${downloads}`) : region('Change sets', table)}`;

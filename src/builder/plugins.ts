@@ -84,7 +84,7 @@ async function page(s: Session, a: any, selected: string | undefined, result?: {
         </div>`)
     : '';
 
-  return html`${appHeader(a, 'shared')}
+  return html`${appHeader(a, 'shared', s)}
     ${result ? region(`Result: install SQL of ${result.name}`, resultsHtml('install', result.run)) : ''}
     ${detail}
     ${region('Plug-ins', html`<p class="muted u-mt0">Region, item, dynamic action and process types that bring their own code: JavaScript and CSS as

@@ -7,9 +7,11 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
 import { getSession, saveState, takeFlash, type Session } from '../session.ts';
-import { SQL_TOOLS, TOOL_GROUPS } from './sql-tools.ts';
+import { SQL_TOOLS, TOOL_GROUPS, toolLabel } from './sql-tools.ts';
 import { ensureDevbar } from '../runtime/devbar.ts';
 import { noteChange } from './app-updates.ts';
+import { tr } from './i18n.ts';
+import { languageMenu, loadLanguage } from './language.ts';
 
 // Shared building blocks of the builder UI.
 
@@ -101,94 +103,97 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
   const ok = takeFlash(s, '__FLASH');
   const err = takeFlash(s, '__ERROR');
   const theme = builderTheme(s);
+  // (sprint 121) the developer's builder language (i18n.ts); known English breadcrumb labels are translated here
+  const tx = tr(s);
   // the application these pages belong to (for the Search entry), from the breadcrumb
   const appId = crumbs.map(([, href]) => /^\/builder\/apps\/(\d+)$/.exec(href ?? '')?.[1]).find(Boolean);
   const rail = (key: Section | 'search' | 'help', href: string, ic: string, label: string, extra: Raw | '' = '') =>
     html`<li><a href="${href}" class="rail-link" title="${label}"${section === key ? raw(' aria-current="page"') : ''}${extra}>${bicon(ic)}<span class="rail-label">${label}</span></a></li>`;
-  const back = [...crumbs].reverse().find(([, href], i) => i > 0 && href);
   // (sprint 74) the default-password warning: on the Workspace home (sprint 109), the App Builder home and the Developers page only, until
   // dismissed (for this sign-in); a dot on the avatar stays until the password is changed
   const weak = !!s.state.__WEAK;
   const weakBanner = weak && !s.state.__WEAK_HIDDEN && crumbs.length === 1 && (crumbs[0][0] === 'Home' || crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
+  const trail = crumbs.map(([label, href]): [string, string?] => [tx.label(label), href]);
+  const back = [...trail].reverse().find(([, href], i) => i > 0 && href);
   const themeButton = (t: BuilderTheme, ic: string, label: string) =>
     html`<button name="theme" value="${t}" aria-pressed="${theme === t ? 'true' : 'false'}">${bicon(ic)}<span>${label}</span></button>`;
   return documentShell(
-    `${title} · Builder`,
-    html`<a class="skip-link" href="#main">Skip to content</a>
-    <nav class="ide-rail" aria-label="Builder">
-      <a class="rail-logo" href="${BASE}/home" title="pgkiln Builder">${brandMark()}<span class="sr-only">pgkiln Builder home</span></a>
+    `${tx.label(title)} · ${tx('shell.builder')}`,
+    html`<a class="skip-link" href="#main">${tx('shell.skip')}</a>
+    <nav class="ide-rail" aria-label="${tx('shell.builder')}">
+      <a class="rail-logo" href="${BASE}/home" title="${tx('shell.logo')}">${brandMark()}<span class="sr-only">${tx('shell.logo_home')}</span></a>
       <ul class="rail-list">
-        ${rail('home', `${BASE}/home`, 'home', 'Home')}
-        ${rail('apps', `${BASE}/apps`, 'builder', 'App Builder')}
-        ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', 'SQL Workshop')}
-        ${rail('gallery', `${BASE}/gallery`, 'package', 'App Gallery')}
-        ${rail('reporter', `${BASE}/reporter`, 'pie-chart', 'Data Reporter')}
-        ${rail('team', `${BASE}/team`, 'kanban', 'Team Development')}
-        ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', 'Search this application') : ''}
+        ${rail('home', `${BASE}/home`, 'home', tx('rail.home'))}
+        ${rail('apps', `${BASE}/apps`, 'builder', tx('rail.app_builder'))}
+        ${s.workspace?.sql_workshop === false ? '' : rail('sql', `${BASE}/sql`, 'database', tx('rail.sql_workshop'))}
+        ${rail('gallery', `${BASE}/gallery`, 'package', tx('rail.gallery'))}
+        ${rail('reporter', `${BASE}/reporter`, 'pie-chart', tx('rail.reporter'))}
+        ${rail('team', `${BASE}/team`, 'kanban', tx('rail.team'))}
+        ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', tx('rail.search_app')) : ''}
       </ul>
       <ul class="rail-list rail-bottom">
         <li><details class="menu rail-user rail-admin">
-          <summary class="rail-link${section === 'users' || section === 'developers' ? ' rail-open' : ''}" title="Administration"${section === 'users' || section === 'developers' ? raw(' aria-current="page"') : ''}>${icon('settings')}<span class="rail-label">Administration</span></summary>
+          <summary class="rail-link${section === 'users' || section === 'developers' ? ' rail-open' : ''}" title="${tx('rail.admin')}"${section === 'users' || section === 'developers' ? raw(' aria-current="page"') : ''}>${icon('settings')}<span class="rail-label">${tx('rail.admin')}</span></summary>
           <div class="menu-panel">
             <div class="menu-section menu-links">
-              <strong>Administration</strong>
-              <a href="${BASE}/utilities">${icon('grid')} Workspace utilities</a>
+              <strong>${tx('rail.admin')}</strong>
+              <a href="${BASE}/utilities">${icon('grid')} ${tx('admin.utilities')}</a>
             </div>
             ${s.workspace?.admin ? html`<div class="menu-section menu-links">
-              <span class="small muted">Manage service: ${s.workspace.name}</span>
-              <a href="${BASE}/workspaces/${s.workspace.id}#service">${icon('bell')} Workspace message and environment banner</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}#preferences">${icon('sliders-horizontal')} Workspace preferences</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}#links">${icon('external-link')} Extension links</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}/utilization">${icon('chart')} Workspace utilization</a>
-              <a href="${BASE}/mail-queue">${icon('inbox')} Mail queue</a>
-              <a href="${BASE}/network">${icon('globe')} Network access</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}">${icon('layers')} Workspace and developers</a>
+              <span class="small muted">${tx('admin.manage_service', { name: s.workspace.name })}</span>
+              <a href="${BASE}/workspaces/${s.workspace.id}#service">${icon('bell')} ${tx('admin.ws_message')}</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}#preferences">${icon('sliders-horizontal')} ${tx('admin.ws_prefs')}</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}#links">${icon('external-link')} ${tx('admin.ext_links')}</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}/utilization">${icon('chart')} ${tx('admin.utilization')}</a>
+              <a href="${BASE}/mail-queue">${icon('inbox')} ${tx('admin.mail_queue')}</a>
+              <a href="${BASE}/network">${icon('globe')} ${tx('admin.network')}</a>
+              <a href="${BASE}/workspaces/${s.workspace.id}">${icon('layers')} ${tx('admin.ws_devs')}</a>
             </div>` : ''}
             <div class="menu-section menu-links">
-              <a href="${BASE}/users">${icon('user')} Manage users and groups</a>
-              <a href="${BASE}/developers">${icon('users')} Developers</a>
-              <a href="${BASE}/dashboard">${icon('activity')} Monitor activity</a>
-              ${s.instanceAdmin ? html`<a href="${BASE}/db-users">${icon('key')} Database users</a>` : ''}
-              <a href="${BASE}/developers">${icon('key')} Change my password</a>
+              <a href="${BASE}/users">${icon('user')} ${tx('admin.users')}</a>
+              <a href="${BASE}/developers">${icon('users')} ${tx('admin.developers')}</a>
+              <a href="${BASE}/dashboard">${icon('activity')} ${tx('admin.monitor')}</a>
+              ${s.instanceAdmin ? html`<a href="${BASE}/db-users">${icon('key')} ${tx('admin.db_users')}</a>` : ''}
+              <a href="${BASE}/developers">${icon('key')} ${tx('admin.change_my_password')}</a>
             </div>
           </div></details></li>
         ${s.workspace?.links?.length ? html`<li><details class="menu rail-user rail-admin rail-extensions">
-          <summary class="rail-link" title="Extensions">${icon('puzzle')}<span class="rail-label">Extensions</span></summary>
-          <div class="menu-panel"><div class="menu-section menu-links"><strong>Extensions</strong>
+          <summary class="rail-link" title="${tx('rail.extensions')}">${icon('puzzle')}<span class="rail-label">${tx('rail.extensions')}</span></summary>
+          <div class="menu-panel"><div class="menu-section menu-links"><strong>${tx('rail.extensions')}</strong>
             ${s.workspace.links.map((l) => html`<a href="${l.url}" target="_blank" rel="noopener noreferrer"${l.description ? html` title="${l.description}"` : ''}>${icon('external-link')} ${l.label}</a>`)}
           </div></div></details></li>` : ''}
-        ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', 'Help', raw(' target="_blank" rel="noopener"'))}
+        ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', tx('rail.help'), raw(' target="_blank" rel="noopener"'))}
         <li><details class="menu rail-user">
-          <summary class="rail-avatar${weak ? ' has-dot' : ''}" title="${weak ? `${s.username}: change the default password` : s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">Account: ${s.username}${weak ? ' (the default password: change it)' : ''}</span></summary>
+          <summary class="rail-avatar${weak ? ' has-dot' : ''}" title="${weak ? tx('user.weak_title', { user: s.username }) : s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">${tx(weak ? 'user.account_weak' : 'user.account', { user: s.username })}</span></summary>
           <div class="menu-panel">
-            <div class="menu-section"><strong>${s.username}</strong><span class="muted small">Developer</span></div>
-            ${weak ? html`<div class="menu-section"><a class="weak-note" href="${BASE}/developers">${icon('alert')} You use the default password: change it</a></div>` : ''}
+            <div class="menu-section"><strong>${s.username}</strong><span class="muted small">${tx('user.developer')}</span></div>
+            ${weak ? html`<div class="menu-section"><a class="weak-note" href="${BASE}/developers">${icon('alert')} ${tx('user.weak_note')}</a></div>` : ''}
             ${workspaceMenu(s)}
-            <div class="menu-section"><span class="small muted" id="theme-label">Builder theme</span>
+            <div class="menu-section"><span class="small muted" id="theme-label">${tx('user.theme')}</span>
               <form method="post" action="${BASE}/theme" class="segmented ide-theme" role="group" aria-labelledby="theme-label">${csrf(s)}
-                ${themeButton('dark', 'moon', 'Dark')}${themeButton('light', 'sun', 'Light')}${themeButton('auto', 'monitor', 'System')}
+                ${themeButton('dark', 'moon', tx('user.theme_dark'))}${themeButton('light', 'sun', tx('user.theme_light'))}${themeButton('auto', 'monitor', tx('user.theme_auto'))}
               </form></div>
             <div class="menu-section menu-links">
-              <a href="${BASE}/developers">${icon('key')} Change password</a>
-              <form method="post" action="${BASE}/logout">${csrf(s)}<button>${icon('logout')} Sign out</button></form>
+              <a href="${BASE}/developers">${icon('key')} ${tx('user.change_password')}</a>
+              <form method="post" action="${BASE}/logout">${csrf(s)}<button>${icon('logout')} ${tx('user.sign_out')}</button></form>
             </div>
           </div></details></li>
       </ul>
     </nav>
     <div class="ide-main">
       <header class="ide-bar">
-        ${back ? html`<a class="ide-back" href="${back[1]}" title="Back to ${back[0]}">${bicon('back')}<span class="sr-only">Back to ${back[0]}</span></a>` : ''}
-        <nav class="ide-crumbs" aria-label="Breadcrumb"><ol>${crumbs.map(([label, href], i) =>
-          html`<li>${href && i < crumbs.length - 1 ? html`<a href="${href}">${label}</a>` : html`<span aria-current="page">${label}</span>`}</li>`)}</ol></nav>
+        ${back ? html`<a class="ide-back" href="${back[1]}" title="${tx('bar.back', { page: back[0] })}">${bicon('back')}<span class="sr-only">${tx('bar.back', { page: back[0] })}</span></a>` : ''}
+        <nav class="ide-crumbs" aria-label="${tx('bar.breadcrumb')}"><ol>${trail.map(([label, href], i) =>
+          html`<li>${href && i < trail.length - 1 ? html`<a href="${href}">${label}</a>` : html`<span aria-current="page">${label}</span>`}</li>`)}</ol></nav>
         <form method="get" action="${BASE}/palette" class="ide-search" role="search" data-palette>
-          <label class="sr-only" for="ide-search-q">Search the builder</label>
-          <input id="ide-search-q" name="q" type="search" placeholder="Search (Ctrl+K)" autocomplete="off" aria-keyshortcuts="Control+K"></form>
+          <label class="sr-only" for="ide-search-q">${tx('bar.search_label')}</label>
+          <input id="ide-search-q" name="q" type="search" placeholder="${tx('bar.search_placeholder')}" autocomplete="off" aria-keyshortcuts="Control+K"></form>
         <div class="ide-tools">${opts.toolbar ?? ''}</div>
       </header>
-      ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="Environment">${s.workspace.banner_label}</div>` : ''}
+      ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="${tx('bar.environment')}">${s.workspace.banner_label}</div>` : ''}
       ${weakBanner || ok || err ? html`<div class="ide-alerts">
-        ${weakBanner ? html`<div class="alert alert-error alert-dismissible" role="alert"><span>You signed in with the default password. <a href="${BASE}/developers">Change it now.</a></span>
-          <form method="post" action="${BASE}/weak/dismiss">${csrf(s)}<button class="link-button" aria-label="Dismiss until the next sign-in" title="Dismiss until the next sign-in">${icon('close')}</button></form></div>` : ''}
+        ${weakBanner ? html`<div class="alert alert-error alert-dismissible" role="alert"><span>${tx.rich('weak.banner', { link: html`<a href="${BASE}/developers">${tx('weak.change_now')}</a>` })}</span>
+          <form method="post" action="${BASE}/weak/dismiss">${csrf(s)}<button class="link-button" aria-label="${tx('weak.dismiss')}" title="${tx('weak.dismiss')}">${icon('close')}</button></form></div>` : ''}
         ${ok ? html`<div class="alert alert-success" role="status">${ok}</div>` : ''}
         ${err ? html`<div class="alert alert-error" role="alert">${err}</div>` : ''}
       </div>` : ''}
@@ -196,17 +201,17 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${main}
       </main>
       <footer class="ide-status">
-        <span title="Signed in as">${icon('user')}${s.username}</span>
-        ${s.workspace ? html`<span title="Workspace">${icon('layers')}${s.workspace.name}</span>` : ''}
-        <span title="Database">${icon('database')}${DATABASE}</span>
-        <span title="Builder language">en</span>
+        <span title="${tx('status.signed_in_as')}">${icon('user')}${s.username}</span>
+        ${s.workspace ? html`<span title="${tx('status.workspace')}">${icon('layers')}${s.workspace.name}</span>` : ''}
+        <span title="${tx('status.database')}">${icon('database')}${DATABASE}</span>
+        ${languageMenu(s)}
         <span class="ide-status-version">pgkiln ${VERSION}</span>
       </footer>
     </div>`,
     `builder-body ide${opts.full ? ' ide-full' : ''}`,
     {},
     builderHead(),
-    { theme },
+    { theme, lang: tx.lang },
   );
 }
 
@@ -232,50 +237,52 @@ export function select(name: string, label: string, value: unknown, options: (st
 export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '', id = '') =>
   html`<section class="region region-standard"${id ? raw(` id="${id.replace(/[^a-z0-9-]/g, '')}"`) : ''}><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
-/** Title and tabs of an application's builder pages (Pages, Shared Components, …). */
-export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor') => {
+/** Title and tabs of an application's builder pages (Pages, Shared Components, …), in the session's builder language. */
+export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor', s?: Pick<Session, 'state'>) => {
+  const tx = tr(s);
   const tab = (key: typeof active, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${bicon(ic)}<span>${label}</span></a>`;
   return html`
     <div class="ide-head">
       <div class="ide-head-title"><span class="ide-app-icon" aria-hidden="true">${String(a.name ?? '?').slice(0, 1).toUpperCase()}</span>
-        <div><h1>${a.name}</h1><span class="muted small">Application ${a.id} · /a/${a.alias}</span> ${availabilityBadge(a)}</div>
+        <div><h1>${a.name}</h1><span class="muted small">${tx('app.head.id', { id: a.id })} · /a/${a.alias}</span> ${availabilityBadge(a)}</div>
         <div class="buttons ide-head-actions">
-          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} Working copies</a>
-          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} Backups</a>
-          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/availability">${icon('power')} Availability</a>
-          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/export">${icon('download')} Export</a>
-          <a class="btn btn-sm btn-run" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} Run</a>
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/working-copies">${icon('layers')} ${tx('app.head.copies')}</a>
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} ${tx('app.head.backups')}</a>
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/availability">${icon('power')} ${tx('app.head.availability')}</a>
+          <a class="btn btn-sm" href="${BASE}/apps/${a.id}/export">${icon('download')} ${tx('app.head.export')}</a>
+          <a class="btn btn-sm btn-run" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('common.run')}</a>
         </div></div>
-      <nav class="ide-tabs" aria-label="Application">
-        ${tab('pages', `${BASE}/apps/${a.id}`, 'pages', 'Pages')}
-        ${tab('shared', `${BASE}/apps/${a.id}/shared`, 'shapes', 'Shared Components')}
-        ${tab('activity', `${BASE}/apps/${a.id}/activity`, 'activity', 'Activity')}
-        ${tab('api', `${BASE}/apps/${a.id}/api`, 'code', 'REST API')}
-        ${tab('settings', `${BASE}/apps/${a.id}/settings`, 'settings', 'Settings')}
-        ${tab('search', `${BASE}/apps/${a.id}/search`, 'search', 'Search')}
-        ${tab('advisor', `${BASE}/apps/${a.id}/advisor`, 'check', 'Advisor')}
+      <nav class="ide-tabs" aria-label="${tx('app.head.tabs')}">
+        ${tab('pages', `${BASE}/apps/${a.id}`, 'pages', tx('app.tab.pages'))}
+        ${tab('shared', `${BASE}/apps/${a.id}/shared`, 'shapes', tx('app.tab.shared'))}
+        ${tab('activity', `${BASE}/apps/${a.id}/activity`, 'activity', tx('app.tab.activity'))}
+        ${tab('api', `${BASE}/apps/${a.id}/api`, 'code', tx('app.tab.api'))}
+        ${tab('settings', `${BASE}/apps/${a.id}/settings`, 'settings', tx('app.tab.settings'))}
+        ${tab('search', `${BASE}/apps/${a.id}/search`, 'search', tx('common.search'))}
+        ${tab('advisor', `${BASE}/apps/${a.id}/advisor`, 'check', tx('app.tab.advisor'))}
       </nav>
     </div>`;
 };
 
-/** Tabs of the SQL Workshop. */
+/** Tabs of the SQL Workshop, in the session's builder language (tool names: sql.tool.<key> in i18n/en.ts). */
 export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'charts' | 'modeler' | 'rest' | 'scheduling' | 'datapump' | 'monitor' | 'changes';
-export const workshopTabs = (active: WorkshopTab) => {
+export const workshopTabs = (active: WorkshopTab, s?: Pick<Session, 'state'>) => {
+  const tx = tr(s);
   const tab = (key: string, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
   // (sprint 75) the main tools as tabs, the others in a More menu (the open one is a tab too), so the strip never
   // scrolls; (sprint 96) the More menu under the Launchpad's headings, from SQL_TOOLS
   const main = SQL_TOOLS.filter((t) => t.main);
   const open = SQL_TOOLS.find((t) => !t.main && t.tab === active);
-  return html`<nav class="ide-tabs sw-tabs u-mb1" aria-label="SQL Workshop">
-    ${tab('home', `${BASE}/sql`, 'home', 'Home')}${main.map((t) => tab(t.tab!, t.href, t.icon, t.label))}
-    ${open ? tab(open.tab!, open.href, open.icon, open.label) : ''}
-    <details class="menu sw-more"><summary class="ide-tab">${icon('chevron-down')}<span>More</span></summary>
+  return html`<nav class="ide-tabs sw-tabs u-mb1" aria-label="${tx('rail.sql_workshop')}">
+    ${tab('home', `${BASE}/sql`, 'home', tx('rail.home'))}${main.map((t) => tab(t.tab!, t.href, t.icon, toolLabel(tx, t)))}
+    ${open ? tab(open.tab!, open.href, open.icon, toolLabel(tx, open)) : ''}
+    <details class="menu sw-more"><summary class="ide-tab">${icon('chevron-down')}<span>${tx('sw.more')}</span></summary>
       <div class="menu-panel align-right">${TOOL_GROUPS.map(([g, heading]) => {
         // administrators' tools are on the Launchpad and the Utilities page, not in every developer's menu
         const list = SQL_TOOLS.filter((t) => t.group === g && !t.main && !t.admin);
-        return list.length ? html`<div class="menu-section menu-links"><span class="small muted">${heading}</span>${list.map((t) => html`<a href="${t.href}"${t.tab && t.tab === active ? raw(' aria-current="page"') : ''}>${icon(t.icon)} ${t.label}</a>`)}</div>` : '';
+        return list.length ? html`<div class="menu-section menu-links"><span class="small muted">${tx.dyn(`sql.group.${g}`, heading)}</span>${list.map((t) => html`<a href="${t.href}"${t.tab && t.tab === active ? raw(' aria-current="page"') : ''}>${icon(t.icon)} ${toolLabel(tx, t)}</a>`)}</div>` : '';
       })}</div></details></nav>`;
 };
 
@@ -304,9 +311,11 @@ export async function developer(req: Req, reply: FastifyReply) {
     return null;
   }
   if (req.method === 'POST' && req.body?.__csrf !== s.csrf_token) {
-    reply.code(403).send('Invalid CSRF token; reload the page and try again.');
+    reply.code(403).send(tr(s)('error.csrf'));
     return null;
   }
+  // (sprint 121) a session from before the developer's language was kept in it: the stored choice (language.ts)
+  if (s.state.__BLANG === undefined) await loadLanguage(s);
   // (079) the developer toolbar on the applications' pages in this browser
   await ensureDevbar(req, reply, s);
   // workspaces: an application outside the developer's workspaces doesn't exist for them
@@ -318,8 +327,9 @@ export async function developer(req: Req, reply: FastifyReply) {
   }
   // (093) a workspace preference may turn the SQL Workshop off
   if (s.workspace?.sql_workshop === false && /^\/builder\/sql(?:[/?]|$)/.test(req.url)) {
+    const tx = tr(s);
     await send(reply.code(403), s, shell(s, 'SQL Workshop', [['App Builder', BASE], ['SQL Workshop']],
-      html`<h1>SQL Workshop</h1><div class="alert alert-info" role="status">The SQL Workshop is turned off for the workspace ${s.workspace.name}. Its administrators can turn it on in the workspace preferences${s.workspaces && s.workspaces.length > 1 ? '; or switch to another workspace' : ''}.</div>`, 'sql'));
+      html`<h1>${tx('rail.sql_workshop')}</h1><div class="alert alert-info" role="status">${tx(s.workspaces && s.workspaces.length > 1 ? 'error.sql_off_switch' : 'error.sql_off', { name: s.workspace.name })}</div>`, 'sql'));
     return null;
   }
   // a page or application locked by another developer can't be changed (locks.ts)

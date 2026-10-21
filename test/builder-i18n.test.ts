@@ -1,0 +1,259 @@
+// The builder in more languages (sprint 121, WS-7): the message files and their coverage of the builder's
+// source (the check CI runs), the sign-in page's language links, the language menu in the status bar, the
+// choice stored per developer, and the fallback to English.
+import { after, before, describe, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import type { FastifyInstance } from 'fastify';
+import '../src/env.ts';
+import { buildApp } from '../src/app.ts';
+import { closePools, owner } from '../src/db.ts';
+import { html } from '../src/html.ts';
+import { BUTTON_ACTIONS, ITEM_TYPES, POSITIONS, REGION_TYPES, SLOTS } from '../src/builder/arrange.ts';
+import { BUILDER_LANGUAGES, builderMessages, builderTranslator, translatorFor, validBuilderLanguage, type BuilderKey } from '../src/builder/i18n.ts';
+import { en } from '../src/builder/i18n/en.ts';
+import { SQL_TOOLS, TOOL_GROUPS } from '../src/builder/sql-tools.ts';
+import { Browser } from './helpers.ts';
+
+const DEV = 'i18n_dev';
+const OTHER = 'i18n_other';
+const PW = 'I18n-dev-password-1!';
+const ENGLISH = en as Record<string, string>;
+const de = builderMessages('de');
+const fr = builderMessages('fr');
+
+let app: FastifyInstance;
+let appId: number;
+let pageNo: number;
+
+before(async () => {
+  app = await buildApp({ logger: false });
+  await owner.query(`delete from meta.developer where username = any($1)`, [[DEV, OTHER]]);
+  await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($3), true), ($2, meta.hash_password($3), true)`, [DEV, OTHER, PW]);
+  const a = await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`);
+  appId = a!.id;
+  pageNo = (await owner.one<{ page_no: number }>('select min(page_no) as page_no from meta.page where app_id = $1', [appId]))!.page_no;
+});
+after(async () => {
+  await owner.query(`delete from meta.session where username = any($1) and app_id is null`, [[DEV, OTHER]]);
+  await owner.query(`delete from meta.developer where username = any($1)`, [[DEV, OTHER]]);
+  await app.close();
+  await closePools();
+});
+
+/** A browser that signs in to the builder, optionally after a language link on the sign-in page. */
+async function signIn(user: string, opts: { lang?: string; browser?: Browser } = {}) {
+  const b = opts.browser ?? new Browser(app);
+  await b.get(opts.lang ? `/builder/login?lang=${opts.lang}` : '/builder/login');
+  const r = await b.submit('/builder/login', { username: user, password: PW });
+  assert.equal(r.statusCode, 303, `sign-in as ${user}`);
+  return b;
+}
+const stored = async (user: string) => (await owner.one<{ language: string | null }>('select language from meta.developer where username = $1', [user]))?.language ?? null;
+const esc = (s: string) => String(html`${s}`);
+
+// ---------------------------------------------------------------- the coverage check (CI: npm test)
+describe('builder message files and their coverage', () => {
+  const files = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? files(`${dir}/${e.name}`) : e.name.endsWith('.ts') ? [`${dir}/${e.name}`] : []);
+  const SOURCE = files(new URL('../src/builder', import.meta.url).pathname).filter((f) => !f.includes('/builder/i18n/'));
+  const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+
+  test('every key the builder uses (tx, tx.rich, tr(s)) has an English text', () => {
+    const missing: string[] = [];
+    let literal = 0;
+    let templated = 0;
+    for (const f of SOURCE) {
+      const src = readFileSync(f, 'utf8');
+      // tx('key'), tx.rich('key', …), tr(s)('key'), tx(cond ? 'a' : 'b')
+      for (const m of src.matchAll(/\b(?:tx(?:\.rich)?|tr\([^()]*\))\(\s*([^,)]*)/g)) {
+        const arg = m[1];
+        for (const k of arg.matchAll(/'([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)'/g)) {
+          literal++;
+          if (!Object.hasOwn(ENGLISH, k[1])) missing.push(`${f.replace(/.*\/src\//, 'src/')}: ${k[1]}`);
+        }
+        // a key built from a template (`ago.${unit}`): at least one English key of that shape
+        for (const k of arg.matchAll(/`([^`]+)`/g)) {
+          templated++;
+          const re = new RegExp(`^${k[1].replace(/\./g, '\\.').replace(/\$\{[^}]+\}/g, '[a-z0-9_]+')}$`);
+          if (!Object.keys(ENGLISH).some((key) => re.test(key))) missing.push(`${f.replace(/.*\/src\//, 'src/')}: \`${k[1]}\``);
+        }
+      }
+    }
+    assert.ok(literal > 400, `found ${literal} keyed texts`);
+    assert.ok(templated > 3);
+    assert.deepEqual(missing, [], 'builder texts without an English key');
+  });
+
+  test('keys made at run time: every region type, item type, button action, position, slot, kind and SQL Workshop tool', () => {
+    const want = [
+      ...REGION_TYPES().map((t) => `gallery.region.${t}`), ...ITEM_TYPES().map((t) => `gallery.item.${t}`), ...BUTTON_ACTIONS().map((t) => `gallery.button.${t}`),
+      ...POSITIONS().map((p) => `pos.${p}`), ...SLOTS().map((p) => `slot.${p}`),
+      ...['region', 'item', 'button'].map((k) => `comp.${k}.plural`),
+      ...['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'].flatMap((k) =>
+        [`comp.${k}`, `pd.new.${k}`, `pd.create.${k}`, `pd.delete.${k}`, `pd.delete_confirm.${k}`, `pd.saved.${k}`, `pd.deleted.${k}`]),
+      ...SQL_TOOLS.flatMap((t) => [`sql.tool.${t.key}`, `sql.tool.${t.key}.desc`]), ...TOOL_GROUPS.map(([g]) => `sql.group.${g}`),
+    ];
+    assert.deepEqual(want.filter((k) => !Object.hasOwn(ENGLISH, k)), []);
+    // the English texts of tools are the tools' own (sql-tools.ts stays the source of truth)
+    for (const t of SQL_TOOLS) assert.equal(ENGLISH[`sql.tool.${t.key}`], t.label, t.key);
+  });
+
+  test('every language file has exactly the English keys, with the same placeholders, and is translated', () => {
+    assert.deepEqual(BUILDER_LANGUAGES.map(([c]) => c).sort(), ['de', 'en', 'es', 'fr', 'nl', 'pt']);
+    for (const [lang] of BUILDER_LANGUAGES) {
+      if (lang === 'en') continue;
+      const own = builderMessages(lang);
+      assert.deepEqual(Object.keys(own).filter((k) => !Object.hasOwn(ENGLISH, k)), [], `${lang}: keys English doesn't have`);
+      assert.deepEqual(Object.keys(ENGLISH).filter((k) => !Object.hasOwn(own, k)), [], `${lang}: keys missing`);
+      const bad = Object.keys(ENGLISH).filter((k) => placeholders(own[k]) !== placeholders(ENGLISH[k]));
+      assert.deepEqual(bad, [], `${lang}: placeholders differ`);
+      // mostly translated: product names (App Builder, SQL Workshop) and a few terms are the same
+      const same = Object.keys(ENGLISH).filter((k) => own[k] === ENGLISH[k]).length;
+      assert.ok(same < Object.keys(ENGLISH).length * 0.15, `${lang}: ${same} texts are the same as English`);
+      assert.ok(Object.values(own).every((v) => v.trim() === v && v.length > 0), `${lang}: empty or padded texts`);
+    }
+  });
+
+  test('a missing key falls back to English, never to the raw key; a run-time key to its fallback', () => {
+    const partial = builderTranslator('de', { 'rail.home': 'Startseite' });
+    assert.equal(partial('rail.home'), 'Startseite');
+    assert.equal(partial('rail.app_builder'), 'App Builder', 'English when the language has no text');
+    assert.equal(partial('ab.count', { n: 3 }), '3 applications');
+    assert.equal(partial.dyn('gallery.region.no_such_type', 'No such type'), 'No such type');
+    assert.equal(translatorFor('de').dyn('gallery.region.report', 'x'), de['gallery.region.report']);
+    assert.equal(translatorFor('de').label('App Builder'), de['rail.app_builder']);
+    assert.equal(translatorFor('de').label('A page of my own'), 'A page of my own', 'unknown labels stay as they are');
+    // a placeholder without a value stays visible rather than disappearing
+    assert.equal(translatorFor('en')('ab.count', {}), '{n} applications');
+  });
+
+  test('only the known language codes are accepted', () => {
+    for (const ok of ['en', 'de', 'es', 'fr', 'nl', 'pt']) assert.equal(validBuilderLanguage(ok), ok);
+    for (const bad of ['', 'xx', 'DE', 'de-DE', 'de ', 'toString', '__proto__', 'constructor', null, undefined, 3, ['de']]) assert.equal(validBuilderLanguage(bad), null, String(bad));
+  });
+});
+
+// ---------------------------------------------------------------- choosing a language
+describe('choosing the builder language', () => {
+  test('the default is English', async () => {
+    await owner.query('update meta.developer set language = null where username = $1', [DEV]);
+    const b = await signIn(DEV);
+    const home = (await b.get('/builder/apps')).body;
+    assert.match(home, /<html lang="en"/);
+    assert.ok(home.includes(`>${en['rail.app_builder']}<`));
+    assert.ok(home.includes(en['ab.tile.create_text']));
+    assert.equal(await stored(DEV), null, 'nothing stored without a choice');
+  });
+
+  test('the sign-in page offers the languages as links, in their own language', async () => {
+    const page = (await new Browser(app).get('/builder/login')).body;
+    assert.match(page, /<nav class="signin-langs" aria-label="Language">/);
+    for (const [code, name] of BUILDER_LANGUAGES) assert.ok(page.includes(`href="/builder/login?lang=${code}" lang="${code}" hreflang="${code}"`) && page.includes(`>${esc(name)}</a>`), code);
+    // a link keeps where to go after signing in
+    assert.ok((await new Browser(app).get('/builder/login?next=%2Fbuilder%2Fsql')).body.includes('href="/builder/login?lang=de&amp;next=%2Fbuilder%2Fsql"'));
+  });
+
+  test('choosing Deutsch on the sign-in page: the App Builder, the Page Designer menus and the SQL Workshop tabs in German', async () => {
+    const b = new Browser(app);
+    const signin = (await b.get('/builder/login?lang=de')).body;
+    assert.match(signin, /<html lang="de"/);
+    assert.ok(signin.includes(`<h2>${esc(de['signin.welcome'])}</h2>`) && signin.includes(`>${esc(de['signin.submit'])}</button>`));
+    assert.ok(signin.includes('href="/builder/login?lang=de" lang="de" hreflang="de" aria-current="true"'));
+    assert.ok(b.cookies.get('pgkiln_blang') === 'de', 'the sign-in page remembers it in a cookie');
+    await signIn(DEV, { browser: b });
+    assert.equal(await stored(DEV), 'de', 'stored for the developer');
+
+    // the shell, the workspace home and the App Builder
+    const wh = (await b.get('/builder/home')).body;
+    assert.match(wh, /<html lang="de"/);
+    for (const k of ['rail.home', 'rail.app_builder', 'rail.admin', 'user.sign_out', 'wh.summary', 'wh.card.apps'] as BuilderKey[]) assert.ok(wh.includes(esc(de[k])), k);
+    const ab = (await b.get('/builder/apps')).body;
+    for (const k of ['ab.tile.create_text', 'ab.tile.import', 'ab.task.import', 'ab.col.updated_by', 'ab.sort_by', 'ab.recent'] as BuilderKey[]) assert.ok(ab.includes(esc(de[k])), k);
+    assert.ok(ab.includes(`placeholder="${esc(de['bar.search_placeholder'])}"`));
+    // an application's home: tabs, toolbar, tasks
+    const appHome = (await b.get(`/builder/apps/${appId}`)).body;
+    for (const k of ['app.tab.pages', 'app.tab.shared', 'app.tab.settings', 'app.create_page', 'app.task.run', 'app.from_table'] as BuilderKey[]) assert.ok(appHome.includes(esc(de[k])), k);
+
+    // the Page Designer: toolbar menus, tree headings, gallery
+    const pd = (await b.get(`/builder/apps/${appId}/pages/${pageNo}`)).body;
+    assert.match(pd, /<html lang="de"/);
+    for (const k of ['pd.menu.create', 'pd.menu.utilities', 'pd.menu.page_item', 'pd.menu.all_pages', 'pd.menu.export', 'pd.undo', 'pd.tab.rendering', 'pd.tab.da', 'pd.tab.processing',
+      'pd.tree.pre_rendering', 'pd.gallery.regions', 'gallery.region.report', 'gallery.item.date', 'pd.pane.tree', 'pd.properties'] as BuilderKey[])
+      assert.ok(pd.includes(esc(de[k])), k);
+    assert.notEqual(de['pd.menu.utilities'], en['pd.menu.utilities']);
+
+    // the SQL Workshop: its tabs, the More menu and the Launchpad
+    const sw = (await b.get('/builder/sql')).body;
+    const tabs = /<nav class="ide-tabs sw-tabs[\s\S]*?<\/nav>/.exec(sw)![0];
+    for (const k of ['rail.home', 'sql.tool.worksheet', 'sql.tool.objects', 'sql.tool.scripts', 'sql.tool.utilities', 'sw.more', 'sql.group.development', 'sql.tool.quicksql'] as BuilderKey[])
+      assert.ok(tabs.includes(esc(de[k])), k);
+    assert.ok(!tabs.includes('>Object Browser<'), 'not English');
+    assert.ok(sw.includes(esc(de['sql.tool.worksheet.desc'])) && sw.includes(esc(de['sw.recent_tables'])));
+    // the tabs on a tool's own page too
+    assert.ok((await b.get('/builder/sql/scripts')).body.includes(`<span>${esc(de['sql.tool.scripts'])}</span>`));
+  });
+
+  test('the choice holds per developer: in a new session on another device, and after signing out', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    assert.match((await b.get('/builder/apps')).body, /<html lang="de"/);
+    assert.equal(b.cookies.get('pgkiln_blang'), 'de', 'the sign-in page of this device follows');
+    await b.get('/builder/apps');
+    await b.submit('/builder/logout', {});
+    const signin = (await b.get('/builder/login')).body;
+    assert.match(signin, /<html lang="de"/, 'the sign-in page after signing out');
+    // another developer without a choice, on another device: English
+    await owner.query('update meta.developer set language = null where username = $1', [OTHER]);
+    assert.match((await (await signIn(OTHER)).get('/builder/apps')).body, /<html lang="en"/);
+  });
+
+  test('the language menu in the status bar switches and stores it (a form, no script needed)', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const page = (await b.get('/builder/sql')).body;
+    const menu = /<details class="menu ide-lang"[\s\S]*?<\/details>/.exec(page)![0];
+    assert.ok(/<footer class="ide-status">[\s\S]*<details class="menu ide-lang"/.test(page), 'in the footer');
+    assert.match(menu, /<form method="post" action="\/builder\/language"/);
+    assert.match(menu, /name="__csrf"/);
+    for (const [code, name] of BUILDER_LANGUAGES) assert.ok(menu.includes(`value="${code}" lang="${code}"`) && menu.includes(esc(name)), code);
+    assert.match(menu, /value="de" lang="de" aria-current="true"/);
+    const sw = await b.app.inject({ method: 'POST', url: '/builder/language', headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', host: 'builder.test', referer: 'http://builder.test/builder/sql' }, payload: `__csrf=${b.lastCsrf}&language=fr` });
+    assert.equal(sw.statusCode, 303);
+    assert.equal(sw.headers.location, '/builder/sql', 'back to the page');
+    assert.equal(await stored(DEV), 'fr');
+    for (const c of sw.cookies as { name: string; value: string }[]) b.cookies.set(c.name, c.value);
+    const after = (await b.get('/builder/sql')).body;
+    assert.match(after, /<html lang="fr"/);
+    assert.ok(after.includes(esc(fr['sql.tool.objects'])));
+    // and back to English
+    assert.equal((await b.submit('/builder/language', { language: 'en' })).statusCode, 303);
+    assert.equal(await stored(DEV), 'en');
+    assert.match((await b.get('/builder/apps')).body, /<html lang="en"/);
+  });
+
+  test('screens not moved to message files yet stay English inside the translated shell', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const page = (await b.get('/builder/import')).body;
+    assert.match(page, /<html lang="de"/);
+    assert.ok(page.includes(`>${esc(de['rail.app_builder'])}<`), 'the shell in German');
+    assert.ok(page.includes('Import an application'), 'the page itself in English');
+    // no raw keys on the translated pages
+    for (const url of ['/builder/home', '/builder/apps', `/builder/apps/${appId}`, `/builder/apps/${appId}/pages/${pageNo}`, '/builder/sql']) {
+      const body = (await b.get(url)).body.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '');
+      const text = body.replace(/<[^>]+>/g, ' ');
+      const raw = Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `) || body.includes(`"${k}"`));
+      assert.deepEqual(raw, [], `${url}: raw keys`);
+    }
+  });
+
+  test('the builder error pages follow the device language', async () => {
+    const b = new Browser(app, { accept: 'text/html' });
+    await b.get('/builder/login?lang=de');
+    const r = await b.get('/builder/no-such-page');
+    assert.equal(r.statusCode, 404);
+    assert.match(r.body, /<html lang="de"/);
+    assert.ok(r.body.includes(`<h1>${esc(de['error.not_found_title'])}</h1>`));
+  });
+});

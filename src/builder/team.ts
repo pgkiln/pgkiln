@@ -8,6 +8,7 @@ import {
 } from '../team.ts';
 import { TEAM_LANGUAGES, TEAM_SAMPLES } from '../team-samples.ts';
 import { ago } from './home.ts';
+import { tr } from './i18n.ts';
 import { back, BASE, csrf, designerUrl, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { appAllowed, appWorkspace, currentWorkspace, workspaceAdmin } from './workspaces.ts';
 
@@ -975,12 +976,13 @@ export async function teamHomeBlock(s: Session) {
   const ws = currentWorkspace(s);
   if (ws < 0) return '';
   const c = await teamCounts(ws, s.username);
-  return html`<section class="wh-team" aria-labelledby="wh-team-h"><h2 id="wh-team-h">Team Development</h2>
+  const tx = tr(s);
+  return html`<section class="wh-team" aria-labelledby="wh-team-h"><h2 id="wh-team-h">${tx('rail.team')}</h2>
     <ul class="ab-links ab-tasks">
-      <li><a href="${TEAM}">${icon('kanban')} Open issues <b class="wh-team-n">${c.open}</b></a></li>
-      <li><a href="${TEAM}?assignee=me">${icon('user')} Assigned to you <b class="wh-team-n">${c.mine}</b></a></li>
-      ${c.mentions ? html`<li><a href="${TEAM}#mentions">${icon('at')} Mentions of you <b class="wh-team-n">${c.mentions}</b></a></li>` : ''}
-      ${c.set_up ? '' : html`<li><a href="${TEAM}/setup">${icon('settings')} Set up Team Development</a></li>`}
+      <li><a href="${TEAM}">${icon('kanban')} ${tx('team.open')} <b class="wh-team-n">${c.open}</b></a></li>
+      <li><a href="${TEAM}?assignee=me">${icon('user')} ${tx('team.mine')} <b class="wh-team-n">${c.mine}</b></a></li>
+      ${c.mentions ? html`<li><a href="${TEAM}#mentions">${icon('at')} ${tx('team.mentions')} <b class="wh-team-n">${c.mentions}</b></a></li>` : ''}
+      ${c.set_up ? '' : html`<li><a href="${TEAM}/setup">${icon('settings')} ${tx('team.setup')}</a></li>`}
     </ul></section>`;
 }
 

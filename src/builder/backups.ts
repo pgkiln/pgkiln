@@ -66,7 +66,7 @@ export async function backupRoutes(app: FastifyInstance) {
           <div class="form-grid">${input('keep', 'Backups to keep', a.backups_keep, { type: 'number', help: '0 to 500; 0 makes no backups at all (also not before an import).' })}</div>
           <div class="buttons"><button class="btn">Save</button></div></form>`)}
       </div>`;
-    const main = html`${appHeader(a, 'pages')}<div class="ide-body">${body}</div>`;
+    const main = html`${appHeader(a, 'pages', s)}<div class="ide-body">${body}</div>`;
     return send(reply, s, shell(s, `${a.name} backups`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Backups']], main));
   });
 

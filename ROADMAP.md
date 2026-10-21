@@ -7,9 +7,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 ## Where it stands
 
 - **Current release:** 0.54.0 (October 2026): the App Gallery with six single-topic sample apps (charts, cards, calendar, interactive grids, dynamic actions, reporting), the UX Pattern Catalog and a Utility Apps tab (lookup lists, release notes, announcements), gallery search without JavaScript, and builder layout fixes (spacing between stacked regions, the side column on wide screens).
-- **APEX parity (26.2):** 165 features compared: 160 available, none partial, 1 missing (the open 26.2 workspace
-  item WS-7, the builder in more languages), 4 deliberately not planned (PostgreSQL or the
-  platform covers them).
+- **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
+  more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
 ## Next
 

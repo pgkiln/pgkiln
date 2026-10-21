@@ -86,7 +86,7 @@ export async function workingCopyRoutes(app: FastifyInstance) {
             <div class="buttons"><button class="btn btn-hot">${icon('plus')} Create working copy</button></div>
           </form>`)}`;
     }
-    const main = html`${appHeader(a, 'pages')}<div class="ide-body">${body}</div>`;
+    const main = html`${appHeader(a, 'pages', s)}<div class="ide-body">${body}</div>`;
     return send(reply, s, shell(s, `${a.name} working copies`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Working copies']], main));
   });
 
@@ -148,7 +148,7 @@ export async function workingCopyRoutes(app: FastifyInstance) {
           </div>
         </form>`
       : html`<p class="u-mt0">The working copy and the main application are the same: nothing to merge.</p>`;
-    const page = html`${appHeader(a, 'pages')}<div class="ide-body">
+    const page = html`${appHeader(a, 'pages', s)}<div class="ide-body">
       ${region(`Compare with ${main.name}`, html`<p class="muted u-mt0">Working copy <b>${l.copy.name}</b> of
           <a href="${BASE}/apps/${main.id}">${main.name}</a>, compared per component with the main application as it was
           when the copy was made${l.copy.refreshed_at || l.copy.merged_at ? ', refreshed or merged' : ''}.</p>${body}`)}

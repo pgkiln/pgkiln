@@ -111,7 +111,7 @@ export const runOptions = (b: Body = {}) => html`<fieldset class="field"><legend
 
 export async function scriptRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, title: string, crumbs: [string, string?][], main: Raw) =>
-    send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], ...crumbs], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('scripts')}${main}`, 'sql'));
+    send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], ...crumbs], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('scripts', s)}${main}`, 'sql'));
 
   const historyTable = (runs: any[], withName: boolean) =>
     runs.length

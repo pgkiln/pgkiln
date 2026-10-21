@@ -209,7 +209,7 @@ async function page(req: Req, reply: FastifyReply) {
     if (errors.length) tab = 'columns';
   }
   const title = editing ? `Table ${editing.schema}.${editing.name}` : 'Create table';
-  const main = html`<h1 class="u-mb1">${title}</h1>${workshopTabs('objects')}
+  const main = html`<h1 class="u-mb1">${title}</h1>${workshopTabs('objects', s)}
     ${form(s, def, { editing, schemas, refTables, ddl, errors, output, tab, ref: editing ? ref : '' })}`;
   return send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['Object Browser', `${BASE}/sql/objects`], [title]], main, 'sql'));
 }

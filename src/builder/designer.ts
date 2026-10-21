@@ -6,6 +6,7 @@ import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
 import { back, BASE, bicon, csrf, designerUrl, developer, flash, input, select, send, shell, type Req } from './ui.ts';
 import { wantsHtml } from './errors.ts';
+import { tr } from './i18n.ts';
 import type { Session } from '../session.ts';
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionConfigHelp } from './region-help.ts';
@@ -51,7 +52,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const no = /^\d{1,9}$/.test(req.query.page ?? '') ? Number(req.query.page) : -1;
     const p = appId === null ? null : await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no]);
     if (p) return reply.redirect(designerUrl(appId!, no), 303);
-    flash(s, `There is no page ${req.query.page ?? ''}.`, 'error');
+    flash(s, tr(s)('pd.no_page', { page: req.query.page ?? '' }), 'error');
     return back(reply, s, appId === null ? BASE : `${BASE}/apps/${appId}`);
   });
 
@@ -93,6 +94,12 @@ export async function designerRoutes(app: FastifyInstance) {
       ]).then((r) => r.map((x) => x.rows)),
     ]);
     const sel = req.query.c ?? '';
+    // (sprint 121) the toolbar, menus, tree headings, pane titles and gallery in the builder language; the property
+    // editor's fields and their help stay English (docs/guide/12-development.md)
+    const tx = tr(s);
+    const kindLabel = (k: string) => tx.dyn(`comp.${k}`, COMPONENTS[k].label);
+    const posLabel = (pos: string) => tx.dyn(`pos.${pos}`, POSITION_LABELS[pos] ?? pos);
+    const slotLabel = (sl: string) => tx.dyn(`slot.${sl}`, SLOT_LABELS[sl] ?? sl);
     const newKind = PAGE_KINDS.includes(req.query.new ?? '') ? req.query.new : '';
     const [kind, cid] = sel.split('-');
     const url = (q: string) => designerUrl(p.app_id, p.page_no, q);
@@ -100,7 +107,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const post = `${BASE}/pages/${p.id}`;
     const isSel = (key: string) => sel === key || (key === 'page' && !sel && !newKind);
     const cur = (key: string) => (isSel(key) ? raw(' aria-current="true"') : '');
-    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="Authorization: ${r.authz}">${icon('shield')}<span class="sr-only">Authorization ${r.authz}</span></span>` : ''}${r.condition || r.readonly_condition || r.condition_type ? html`<span class="pd-tag" title="Has a condition">${icon('filter')}<span class="sr-only">Has a condition</span></span>` : ''}${r.build_option ? html`<span class="pd-tag" title="Build option: ${r.build_option}">${icon('settings')}<span class="sr-only">Build option ${r.build_option}</span></span>` : ''}`;
+    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="${tx('pd.badge.authz', { name: r.authz })}">${icon('shield')}<span class="sr-only">${tx('pd.badge.authz', { name: r.authz })}</span></span>` : ''}${r.condition || r.readonly_condition || r.condition_type ? html`<span class="pd-tag" title="${tx('pd.badge.condition')}">${icon('filter')}<span class="sr-only">${tx('pd.badge.condition')}</span></span>` : ''}${r.build_option ? html`<span class="pd-tag" title="${tx('pd.badge.build_option', { name: r.build_option })}">${icon('settings')}<span class="sr-only">${tx('pd.badge.build_option', { name: r.build_option })}</span></span>` : ''}`;
     const regionTitle = (r: any) => r.title ?? `(${r.type})`;
 
     // ------------------------------------------------------------ left: component tree
@@ -119,8 +126,8 @@ export async function designerRoutes(app: FastifyInstance) {
       const buttons = rows.button.filter((b) => b.region_id === r.id);
       // (sprint 77, APEX: region slots) buttons by their position in the region
       const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
-      const kids = [...(items.length ? [folder('Items', items.map(itemLeaf))] : []),
-        ...bySlot.map(([sl, list]) => folder(sl === 'region' ? 'Buttons' : `Buttons: ${SLOT_LABELS[sl]}`, list.map(buttonLeaf)))];
+      const kids = [...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
+        ...bySlot.map(([sl, list]) => folder(sl === 'region' ? tx('pd.tree.buttons') : tx('pd.tree.buttons_at', { slot: slotLabel(sl) }), list.map(buttonLeaf)))];
       return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-next="${next?.id ?? ''}"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
@@ -128,7 +135,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const regionFolders = ['banner', 'breadcrumb', 'left', 'body', 'right', 'footer'].map((pos) => {
       const list = rows.region.filter((r) => (r.position ?? 'body') === pos);
       if (!list.length && pos !== 'body' && pos !== treeSide) return '';
-      return folder(POSITION_LABELS[pos], list.length ? list.map((r, i) => regionLeaf(r, list[i + 1])) : none(pos === 'body' ? 'No regions yet' : 'No regions'), list.length > 0);
+      return folder(posLabel(pos), list.length ? list.map((r, i) => regionLeaf(r, list[i + 1])) : none(tx(pos === 'body' ? 'pd.tree.no_regions_yet' : 'pd.tree.no_regions')), list.length > 0);
     });
     const pageItems = rows.item.filter((i) => i.region_id === null);
     const pageButtons = rows.button.filter((b) => b.region_id === null);
@@ -137,65 +144,65 @@ export async function designerRoutes(app: FastifyInstance) {
     const headerComps = rows.computation.filter((x) => x.point === 'before_header');
     const submitComps = rows.computation.filter((x) => x.point !== 'before_header');
     const headerBranches = rows.branch.filter((x) => x.point === 'before_header');
-    const branchNote = (b: any) => `${b.when_button ? `${b.when_button}: ` : ''}→ ${b.target_type === 'url' ? b.target_url : `page ${b.target_page ?? p.page_no}`}`;
+    const branchNote = (b: any) => `${b.when_button ? `${b.when_button}: ` : ''}→ ${b.target_type === 'url' ? b.target_url : tx('pd.page_n', { n: b.target_page ?? p.page_no })}`;
     const compLeaf = (x: any) => leaf('computation', x, icon('activity'), x.item_name, x.type);
     const branchLeaf = (x: any) => leaf('branch', x, bicon('right'), x.name, branchNote(x));
     const preRendering = [...headerBranches.map(branchLeaf), ...headerComps.map(compLeaf), ...loadProcs.map((x) => leaf('process', x, icon('code'), x.name))];
     const createBar = (links: [string, string][]) =>
       html`<div class="pd-treebar">${links.map(([k, label]) => html`<a class="tb-btn tb-text" href="${url(`new=${k}`)}">${icon('plus')}<span>${label}</span></a>`)}</div>`;
 
-    const rendering = html`${createBar([['region', 'Region'], ['item', 'Item'], ['button', 'Button']])}
-      <ul class="pd-tree" aria-label="Rendering" data-tree-menu data-page-id="${p.id}">
-        <li><a class="pd-node" href="${url('c=page')}"${cur('page')}>${icon('file')}<span class="pd-label">Page ${p.page_no}: ${p.name}</span>${badges(p)}</a>
+    const rendering = html`${createBar([['region', kindLabel('region')], ['item', kindLabel('item')], ['button', kindLabel('button')]])}
+      <ul class="pd-tree" aria-label="${tx('pd.tab.rendering')}" data-tree-menu data-page-id="${p.id}">
+        <li><a class="pd-node" href="${url('c=page')}"${cur('page')}>${icon('file')}<span class="pd-label">${tx('pd.page_title', { n: p.page_no, name: p.name })}</span>${badges(p)}</a>
           <ul>
-            ${folder('Pre-Rendering (before header)', preRendering.length ? preRendering : none('No branches, computations or processes before rendering'), preRendering.length > 0)}
+            ${folder(tx('pd.tree.pre_rendering'), preRendering.length ? preRendering : none(tx('pd.tree.no_pre_rendering')), preRendering.length > 0)}
             ${regionFolders}
-            ${pageItems.length ? folder('Page items', pageItems.map(itemLeaf)) : ''}
-            ${pageButtons.length ? folder('Page buttons', pageButtons.map(buttonLeaf)) : ''}
+            ${pageItems.length ? folder(tx('pd.tree.page_items'), pageItems.map(itemLeaf)) : ''}
+            ${pageButtons.length ? folder(tx('pd.tree.page_buttons'), pageButtons.map(buttonLeaf)) : ''}
           </ul></li>
       </ul>
       <dialog class="pd-dialog" id="pd-copy-dialog" aria-labelledby="pd-copy-title">
         <form method="post" action="${post}/layout/copy">${csrf(s)}<input type="hidden" name="kind" value=""><input type="hidden" name="id" value="">
-          <h2 id="pd-copy-title">Copy to other page</h2>
+          <h2 id="pd-copy-title">${tx('pd.copy.title')}</h2>
           <p class="muted" data-copy-what></p>
-          <div class="field"><label class="label" for="pd-copy-page">Page</label>
+          <div class="field"><label class="label" for="pd-copy-page">${tx('pd.copy.page')}</label>
             <select id="pd-copy-page" name="page">${pages.map((x) => html`<option value="${x.id}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no}. ${x.name}</option>`)}</select>
-            <small class="help">Items named P${p.page_no}_… get the other page's number; a region's items and buttons come along. References in SQL and conditions are not changed.</small></div>
-          <div class="pd-dialog-buttons"><button type="button" class="btn" data-dialog-close>Cancel</button><button class="btn btn-primary">Copy</button></div>
+            <small class="help">${tx('pd.copy.help', { prefix: `P${p.page_no}_…` })}</small></div>
+          <div class="pd-dialog-buttons"><button type="button" class="btn" data-dialog-close>${tx('common.cancel')}</button><button class="btn btn-primary">${tx('pd.copy.copy')}</button></div>
         </form>
       </dialog>`;
-    const events: [string, string][] = [['change', 'Change'], ['click', 'Click'], ['load', 'Page load'], ['menu_entry', 'Menu entry chosen']];
+    const events: [string, string][] = [['change', tx('pd.event.change')], ['click', tx('pd.event.click')], ['load', tx('pd.event.load')], ['menu_entry', tx('pd.event.menu_entry')]];
     const daLeaf = (d: (typeof rows.dynamic_action)[number]) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${d.action}`);
     // (sprint 115) the other events (focus, custom, before_submit, …) in one folder, when there are any
     const others = rows.dynamic_action.filter((d) => !events.some(([ev]) => ev === d.event));
-    const dynamicActions = html`${createBar([['dynamic_action', 'Dynamic action']])}
-      <ul class="pd-tree" aria-label="Dynamic actions">
+    const dynamicActions = html`${createBar([['dynamic_action', kindLabel('dynamic_action')]])}
+      <ul class="pd-tree" aria-label="${tx('pd.tab.da')}">
         ${events.map(([ev, label]) => {
           const list = rows.dynamic_action.filter((d) => d.event === ev);
-          return folder(`Events: ${label}`, list.length ? list.map(daLeaf) : none('None'), list.length > 0);
+          return folder(tx('pd.tree.events', { event: label }), list.length ? list.map(daLeaf) : none(tx('common.none')), list.length > 0);
         })}
-        ${others.length ? folder('Events: Other', others.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.event}: ${d.trigger_element ?? ''} → ${d.action}`)), true) : ''}
+        ${others.length ? folder(tx('pd.tree.events', { event: tx('pd.event.other') }), others.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.event}: ${d.trigger_element ?? ''} → ${d.action}`)), true) : ''}
       </ul>`;
     // after processing: the branches in sequence, then (when none applies) the pressed button's target page
     const afterBranches = rows.branch.filter((x) => x.point !== 'before_header');
     const buttonTargets = rows.button.filter((b) => b.target_page && b.action === 'submit');
-    const afterProcessing = [...afterBranches.map(branchLeaf), ...buttonTargets.map((b) => leaf('button', b, bicon('right'), `${b.name} → page ${b.target_page}`, 'button target'))];
-    const processing = html`${createBar([['computation', 'Computation'], ['validation', 'Validation'], ['process', 'Process'], ['branch', 'Branch']])}
-      <ul class="pd-tree" aria-label="Processing">
-        ${folder('After submit (computations)', submitComps.length ? submitComps.map(compLeaf) : none('No computations'), submitComps.length > 0)}
-        ${folder('Validating', rows.validation.length ? rows.validation.map((v) => leaf('validation', v, icon('check'), v.name, v.when_button ?? '')) : none('No validations'))}
-        ${folder('Processing', submitProcs.length ? submitProcs.map((x) => leaf('process', x, icon('code'), x.name, x.when_button ?? '')) : none('No processes'))}
-        ${folder('After processing (branches)', afterProcessing.length ? afterProcessing : none('No branches'), afterProcessing.length > 0)}
+    const afterProcessing = [...afterBranches.map(branchLeaf), ...buttonTargets.map((b) => leaf('button', b, bicon('right'), `${b.name} → ${tx('pd.page_n', { n: b.target_page })}`, tx('pd.tree.button_target')))];
+    const processing = html`${createBar([['computation', kindLabel('computation')], ['validation', kindLabel('validation')], ['process', kindLabel('process')], ['branch', kindLabel('branch')]])}
+      <ul class="pd-tree" aria-label="${tx('pd.tab.processing')}">
+        ${folder(tx('pd.tree.after_submit'), submitComps.length ? submitComps.map(compLeaf) : none(tx('pd.tree.no_computations')), submitComps.length > 0)}
+        ${folder(tx('pd.tree.validating'), rows.validation.length ? rows.validation.map((v) => leaf('validation', v, icon('check'), v.name, v.when_button ?? '')) : none(tx('pd.tree.no_validations')))}
+        ${folder(tx('pd.tab.processing'), submitProcs.length ? submitProcs.map((x) => leaf('process', x, icon('code'), x.name, x.when_button ?? '')) : none(tx('pd.tree.no_processes')))}
+        ${folder(tx('pd.tree.after_processing'), afterProcessing.length ? afterProcessing : none(tx('pd.tree.no_branches')), afterProcessing.length > 0)}
       </ul>`;
     const sharedLink = (k: string, id: number, ic: string, label: string) =>
       html`<li><a class="pd-node" href="${BASE}/apps/${p.app_id}/shared?c=${k}-${id}">${icon(ic)}<span class="pd-label">${label}</span></a></li>`;
     const [lovs, schemes, navs, appItems] = shared;
-    const sharedTree = html`<div class="pd-treebar"><a class="tb-btn tb-text" href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')}<span>All shared components</span></a></div>
-      <ul class="pd-tree" aria-label="Shared components">
-        ${folder('Lists of values', lovs.length ? lovs.map((l) => sharedLink('lov', l.id, 'list', l.name)) : none('None'), lovs.length > 0)}
-        ${folder('Authorization schemes', schemes.length ? schemes.map((a) => sharedLink('authz_scheme', a.id, 'shield', a.name)) : none('None'), false)}
-        ${folder('Navigation menu', navs.length ? navs.map((n) => sharedLink('nav_entry', n.id, 'menu', n.label)) : none('None'), false)}
-        ${folder('Application items', appItems.length ? appItems.map((n) => sharedLink('app_item', n.id, 'edit', n.name)) : none('None'), false)}
+    const sharedTree = html`<div class="pd-treebar"><a class="tb-btn tb-text" href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')}<span>${tx('pd.shared.all')}</span></a></div>
+      <ul class="pd-tree" aria-label="${tx('pd.tab.shared')}">
+        ${folder(tx('pd.shared.lovs'), lovs.length ? lovs.map((l) => sharedLink('lov', l.id, 'list', l.name)) : none(tx('common.none')), lovs.length > 0)}
+        ${folder(tx('pd.shared.authz'), schemes.length ? schemes.map((a) => sharedLink('authz_scheme', a.id, 'shield', a.name)) : none(tx('common.none')), false)}
+        ${folder(tx('pd.shared.nav'), navs.length ? navs.map((n) => sharedLink('nav_entry', n.id, 'menu', n.label)) : none(tx('common.none')), false)}
+        ${folder(tx('pd.shared.app_items'), appItems.length ? appItems.map((n) => sharedLink('app_item', n.id, 'edit', n.name)) : none(tx('common.none')), false)}
       </ul>`;
     const selProcess = kind === 'process' ? rows.process.find((x) => String(x.id) === cid) : null;
     const selComp = kind === 'computation' ? rows.computation.find((x) => String(x.id) === cid) : null;
@@ -203,18 +210,18 @@ export async function designerRoutes(app: FastifyInstance) {
     const leftTab = kind === 'dynamic_action' || newKind === 'dynamic_action' ? 'da'
       : kind === 'validation' || ['validation', 'process', 'computation', 'branch'].includes(newKind ?? '') || (selProcess && selProcess.point !== 'load')
         || (selComp && selComp.point !== 'before_header') || (selBranch && selBranch.point !== 'before_header') ? 'proc' : 'rend';
-    const left = html`<div class="pd-tabs pd-tabs-icons" data-tabs="pd-left" aria-label="Page components">
-      ${tab('pd-l-rendering', 'Rendering', rendering, leftTab === 'rend', 'rendering')}
-      ${tab('pd-l-da', 'Dynamic actions', dynamicActions, leftTab === 'da', 'bolt')}
-      ${tab('pd-l-processing', 'Processing', processing, leftTab === 'proc', 'processing')}
-      ${tab('pd-l-shared', 'Shared components', sharedTree, false, 'shapes')}
+    const left = html`<div class="pd-tabs pd-tabs-icons" data-tabs="pd-left" aria-label="${tx('pd.components')}">
+      ${tab('pd-l-rendering', tx('pd.tab.rendering'), rendering, leftTab === 'rend', 'rendering')}
+      ${tab('pd-l-da', tx('pd.tab.da'), dynamicActions, leftTab === 'da', 'bolt')}
+      ${tab('pd-l-processing', tx('pd.tab.processing'), processing, leftTab === 'proc', 'processing')}
+      ${tab('pd-l-shared', tx('pd.tab.shared'), sharedTree, false, 'shapes')}
     </div>`;
 
     // ------------------------------------------------------------ center: layout + gallery
     const chip = (k: 'item' | 'button', r: any) =>
       html`<a class="pd-chip pd-chip-${k}${isSel(`${k}-${r.id}`) ? ' is-selected' : ''}${k === 'button' && r.hot ? ' is-hot' : ''}" href="${url(`c=${k}-${r.id}`)}" draggable="true" data-kind="${k}" data-id="${r.id}"${cur(`${k}-${r.id}`)} aria-describedby="pd-kbd">${k === 'item' ? bicon(itemIcon(r.type)) : ''}<span>${r.label || r.name}</span>${k === 'item' ? html`<small>${r.name}</small>` : ''}</a>`;
     const slot = (k: 'item' | 'button', regionId: number | null, list: any[], buttonSlot = '') =>
-      html`<div class="pd-slot pd-slot-${k}${buttonSlot && buttonSlot !== 'region' && !list.length ? ' pd-slot-spare' : ''}" data-drop="${k}" data-region="${regionId ?? ''}"${buttonSlot ? raw(` data-slot="${buttonSlot}"`) : ''}${buttonSlot && buttonSlot !== 'region' ? raw(` title="Button position: ${SLOT_LABELS[buttonSlot]}"`) : ''}>${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? 'Items' : buttonSlot && buttonSlot !== 'region' ? SLOT_LABELS[buttonSlot] : 'Buttons'}</span>`}</div>`;
+      html`<div class="pd-slot pd-slot-${k}${buttonSlot && buttonSlot !== 'region' && !list.length ? ' pd-slot-spare' : ''}" data-drop="${k}" data-region="${regionId ?? ''}"${buttonSlot ? raw(` data-slot="${buttonSlot}"`) : ''}${buttonSlot && buttonSlot !== 'region' ? html` title="${tx('pd.slot_title', { slot: slotLabel(buttonSlot) })}"` : ''}>${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? tx('pd.tree.items') : buttonSlot && buttonSlot !== 'region' ? slotLabel(buttonSlot) : tx('pd.tree.buttons')}</span>`}</div>`;
     // (sprint 77, APEX: region slots) a region's buttons by position: the header's, the region's own, the bottom bar's
     const buttonSlots = (r: any) => {
       const mine = rows.button.filter((b) => b.region_id === r.id);
@@ -224,17 +231,17 @@ export async function designerRoutes(app: FastifyInstance) {
     };
     const block = (r: any) => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
         <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
-          <span class="pd-grip" title="Drag to move">${bicon('grip')}</span>
+          <span class="pd-grip" title="${tx('pd.drag_move')}">${bicon('grip')}</span>
           <a class="pd-region-link" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} aria-describedby="pd-kbd">${bicon(regionIcon(r.type))}<span>${regionTitle(r)}</span></a>
           <span class="pd-region-meta">${r.columns}/12</span>
         </div>
         <div class="pd-region-body">
-          <div class="pd-region-type">${REGION_LABELS[r.type]?.[0] ?? r.type}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
+          <div class="pd-region-type">${tx.dyn(`gallery.region.${r.type}`, REGION_LABELS[r.type]?.[0] ?? r.type)}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
           ${buttonSlots(r)}
         </div>
-        <span class="pd-resize" title="Drag to change the column span" aria-hidden="true"></span>
+        <span class="pd-resize" title="${tx('pd.drag_span')}" aria-hidden="true"></span>
       </div>`;
     // (sprint 77, APEX: the page template's display positions) a drop zone per position of the page template, and
     // for any other position that has regions (they show in the body when the page runs)
@@ -243,11 +250,11 @@ export async function designerRoutes(app: FastifyInstance) {
     const zone = (pos: string) => {
       const list = byPos(pos);
       const off = (pos === 'left' || pos === 'right') && pos !== side;
-      return html`<section class="pd-zone pd-zone-${pos}${list.length ? '' : ' is-empty'}" aria-label="${POSITION_LABELS[pos]}">
-        <div class="pd-zone-label">${POSITION_LABELS[pos]}${off ? html` <small>(not in this page template: shown in the body)</small>` : ''}</div>
+      return html`<section class="pd-zone pd-zone-${pos}${list.length ? '' : ' is-empty'}" aria-label="${posLabel(pos)}">
+        <div class="pd-zone-label">${posLabel(pos)}${off ? html` <small>${tx('pd.zone_off')}</small>` : ''}</div>
         <div class="pd-grid" data-drop="region" data-position="${pos}">
           ${list.map(block)}
-          <div class="pd-grid-end" data-end><a href="${url(`new=region${pos === 'body' ? '' : `&position=${pos}`}`)}">${icon('plus')} Region${pos === 'body' ? '' : html`<span class="sr-only"> in ${POSITION_LABELS[pos]}</span>`}</a></div>
+          <div class="pd-grid-end" data-end><a href="${url(`new=region${pos === 'body' ? '' : `&position=${pos}`}`)}">${icon('plus')} ${kindLabel('region')}${pos === 'body' ? '' : html`<span class="sr-only"> ${tx('pd.in_position', { position: posLabel(pos) })}</span>`}</a></div>
         </div></section>`;
     };
     const extra = (pos: string) => pos !== side && byPos(pos).length > 0;
@@ -256,28 +263,31 @@ export async function designerRoutes(app: FastifyInstance) {
         ${side === 'left' || extra('left') ? zone('left') : ''}${zone('body')}${side === 'right' || extra('right') ? zone('right') : ''}
       </div>${zone('footer')}`;
     const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>) =>
-      html`<ul class="pd-gallery-list" aria-label="${COMPONENTS[k].plural}">${types.map((t) => html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="${labels[t]?.[0] ?? t}: drag onto the layout, or open to create">${bicon(labels[t]?.[1] ?? k)}<span>${labels[t]?.[0] ?? t}</span></a></li>`)}</ul>`;
+      html`<ul class="pd-gallery-list" aria-label="${tx.dyn(`comp.${k}.plural`, COMPONENTS[k].plural)}">${types.map((t) => {
+        const name = tx.dyn(`gallery.${k}.${t}`, labels[t]?.[0] ?? t);
+        return html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="${tx('pd.gallery_title', { name })}">${bicon(labels[t]?.[1] ?? k)}<span>${name}</span></a></li>`;
+      })}</ul>`;
     const layout = html`
-      <div class="pd-canvas-bar" role="toolbar" aria-label="Layout">
-        <button type="button" class="tb-btn" data-zoom="-1" title="Zoom out" hidden>${bicon('zoom-out')}<span class="sr-only">Zoom out</span></button>
-        <button type="button" class="tb-btn" data-zoom="1" title="Zoom in" hidden>${bicon('zoom-in')}<span class="sr-only">Zoom in</span></button>
-        <button type="button" class="tb-btn" data-maximize title="Maximize the layout" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">Maximize the layout</span></button>
-        <span class="pd-canvas-hint" id="pd-kbd">Drag to move. Keyboard: Alt+↑/↓ moves the focused component, Alt+Shift+←/→ changes a region's width.</span>
+      <div class="pd-canvas-bar" role="toolbar" aria-label="${tx('pd.layout')}">
+        <button type="button" class="tb-btn" data-zoom="-1" title="${tx('pd.zoom_out')}" hidden>${bicon('zoom-out')}<span class="sr-only">${tx('pd.zoom_out')}</span></button>
+        <button type="button" class="tb-btn" data-zoom="1" title="${tx('pd.zoom_in')}" hidden>${bicon('zoom-in')}<span class="sr-only">${tx('pd.zoom_in')}</span></button>
+        <button type="button" class="tb-btn" data-maximize title="${tx('pd.maximize')}" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">${tx('pd.maximize')}</span></button>
+        <span class="pd-canvas-hint" id="pd-kbd">${tx('pd.kbd_hint')}</span>
       </div>
       <div class="pd-canvas" id="pd-layout" data-page-id="${p.id}">
-        <div class="pd-page-label">${icon('file')} Page ${p.page_no}: ${p.name}${p.mode === 'modal' ? ' (modal dialog)' : ''}</div>
+        <div class="pd-page-label">${icon('file')} ${tx('pd.page_title', { n: p.page_no, name: p.name })}${p.mode === 'modal' ? ` ${tx('pd.modal')}` : ''}</div>
         ${zones}
         <div class="pd-pagelevel">
-          <div class="pd-pagelevel-title">Page level (no region)</div>
+          <div class="pd-pagelevel-title">${tx('pd.page_level')}</div>
           ${slot('item', null, pageItems)}
           ${slot('button', null, pageButtons)}
         </div>
       </div>
       <div class="pd-gallery">
-        <div class="pd-tabs" data-tabs="pd-gallery" data-tabs-remember aria-label="Gallery">
-          ${tab('pd-g-regions', 'Regions', gallery('region', REGION_TYPES(), REGION_LABELS), true)}
-          ${tab('pd-g-items', 'Items', gallery('item', ITEM_TYPES(), ITEM_LABELS))}
-          ${tab('pd-g-buttons', 'Buttons', gallery('button', BUTTON_ACTIONS(), BUTTON_LABELS))}
+        <div class="pd-tabs" data-tabs="pd-gallery" data-tabs-remember aria-label="${tx('pd.gallery')}">
+          ${tab('pd-g-regions', tx('pd.gallery.regions'), gallery('region', REGION_TYPES(), REGION_LABELS), true)}
+          ${tab('pd-g-items', tx('pd.tree.items'), gallery('item', ITEM_TYPES(), ITEM_LABELS))}
+          ${tab('pd-g-buttons', tx('pd.tree.buttons'), gallery('button', BUTTON_ACTIONS(), BUTTON_LABELS))}
         </div>
       </div>`;
     const help = html`<div class="pd-help">
@@ -297,8 +307,8 @@ export async function designerRoutes(app: FastifyInstance) {
       <p>A PL/pgSQL <code>raise exception 'Message' using column = 'sal'</code> shows the message on the item whose source column is <code>sal</code>.</p>
     </div>`;
     const pageSearch = html`<form method="get" action="${BASE}/apps/${p.app_id}/search" class="pd-search" role="search">
-        <label class="label" for="pd-q">Search the application's pages and components</label>
-        <div class="u-row"><input id="pd-q" name="q" type="search" placeholder="e.g. P${p.page_no}_ or a table name"><button class="btn btn-sm">${icon('search')} Search</button></div>
+        <label class="label" for="pd-q">${tx('pd.search_label')}</label>
+        <div class="u-row"><input id="pd-q" name="q" type="search" placeholder="${tx('pd.search_placeholder', { prefix: `P${p.page_no}_` })}"><button class="btn btn-sm">${icon('search')} ${tx('common.search')}</button></div>
       </form>`;
     // a lock of another developer (on this page or the whole application) makes the page read-only
     const locks = (await appLocks(p.app_id)).filter((l) => l.page_no === 0 || l.page_no === p.page_no);
@@ -308,12 +318,12 @@ export async function designerRoutes(app: FastifyInstance) {
     const blocking = runOnly ?? locks.find((l) => l.locked_by !== s.username);
     const mine = locks.find((l) => l.locked_by === s.username);
     const commentCount = (await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1 and page_no = $2', [p.app_id, p.page_no])).n;
-    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} Your changes will be refused.</div>` : ''}${await pageIssuesNote(p.app_id, p.page_no)}
-      <div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="Page">
-      ${tab('pd-c-layout', 'Layout', layout, true)}
-      ${tab('pd-c-search', 'Page search', pageSearch)}
-      ${tab('pd-c-notes', `Lock and comments${commentCount ? ` (${commentCount})` : ''}${mine || blocking ? ' · locked' : ''}`, await lockPanel(s, p.app_id, p.page_no))}
-      ${tab('pd-c-help', 'Help', help)}
+    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} ${tx('pd.lock_refused')}</div>` : ''}${await pageIssuesNote(p.app_id, p.page_no)}
+      <div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="${tx('pd.copy.page')}">
+      ${tab('pd-c-layout', tx('pd.layout'), layout, true)}
+      ${tab('pd-c-search', tx('pd.page_search'), pageSearch)}
+      ${tab('pd-c-notes', `${tx('pd.lock_comments')}${commentCount ? ` (${commentCount})` : ''}${mine || blocking ? ` · ${tx('pd.locked')}` : ''}`, await lockPanel(s, p.app_id, p.page_no))}
+      ${tab('pd-c-help', tx('rail.help'), help)}
     </div>`;
 
     // ------------------------------------------------------------ right: property editor
@@ -322,7 +332,7 @@ export async function designerRoutes(app: FastifyInstance) {
     let arrange: Raw | '' = '';
     const formId = 'pd-form';
     let hasForm = true;
-    const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" data-tabs-remember aria-label="Properties">${panels}</div>`;
+    const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" data-tabs-remember aria-label="${tx('pd.properties')}">${panels}</div>`;
     const moveForm = (k: string, id: number, fields: Raw, button: Raw, title: string) =>
       html`<form method="post" action="${post}/layout/move" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="kind" value="${k}"><input type="hidden" name="id" value="${id}">${fields}<button class="tb-btn" title="${title}">${button}</button></form>`;
     if (newKind) {
@@ -332,43 +342,43 @@ export async function designerRoutes(app: FastifyInstance) {
       const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') ? { [typeField]: req.query.type } : {};
       const presetPlace = newKind === 'region' && POSITIONS().includes(req.query.position ?? '') ? { position: req.query.position } : {};
       const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, ...presetPlace, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
-      heading = html`${icon(spec.icon)}<span>New ${spec.label.toLowerCase()}</span>`;
-      props = peTabs([tab('pd-r-props', spec.label, componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, `Create ${spec.label.toLowerCase()}`, { id: formId }), true)]);
+      heading = html`${icon(spec.icon)}<span>${tx.dyn(`pd.new.${newKind}`, `New ${spec.label.toLowerCase()}`)}</span>`;
+      props = peTabs([tab('pd-r-props', kindLabel(newKind), componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, tx.dyn(`pd.create.${newKind}`, `Create ${spec.label.toLowerCase()}`), { id: formId }), true)]);
     } else if (kind && kind !== 'page' && PAGE_KINDS.includes(kind)) {
       const spec = COMPONENTS[kind];
       const row = rows[kind].find((r) => String(r.id) === cid);
       if (row) {
-        heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${spec.label}: ${spec.summary(row)}</span>`;
+        heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${kindLabel(kind)}: ${spec.summary(row)}</span>`;
         const settings = kind === 'region' ? await regionSettingsForm(p.id, p.app_id, row, s) : '';
         props = html`${peTabs([
-          tab('pd-r-props', spec.label, componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, 'Save', { id: formId }), true),
-          ...(settings ? [tab('pd-r-attrs', 'Attributes', settings)] : []),
-          ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', 'Jobs', await processJobsPanel(row.id))] : []),
+          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, tx('common.save'), { id: formId }), true),
+          ...(settings ? [tab('pd-r-attrs', tx('pd.attributes'), settings)] : []),
+          ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', tx('pd.jobs'), await processJobsPanel(row.id))] : []),
         ])}
           ${await usedInPanel(p.app_id, kind, row)}
           <form method="post" action="${BASE}/pages/${p.id}/c/${kind}/${row.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-sm btn-danger" data-confirm="Delete this ${spec.label.toLowerCase()}?">Delete ${spec.label.toLowerCase()}</button></form>`;
+            <button class="btn btn-sm btn-danger" data-confirm="${tx.dyn(`pd.delete_confirm.${kind}`, `Delete this ${spec.label.toLowerCase()}?`)}">${tx.dyn(`pd.delete.${kind}`, `Delete ${spec.label.toLowerCase()}`)}</button></form>`;
         if (kind === 'region' || kind === 'item' || kind === 'button') {
-          const regionOptions = html`<option value="">- page level -</option>${rows.region.map((r) => html`<option value="${r.id}"${row.region_id === r.id ? raw(' selected') : ''}>${regionTitle(r)}</option>`)}`;
-          arrange = html`<div class="pe-arrange" role="group" aria-label="Arrange">
-            <span class="pe-arrange-label">Arrange</span>
-            ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="up">`, html`${bicon('arrow-up')}<span class="sr-only">Move up</span>`, 'Move up (earlier in the sequence)')}
-            ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="down">`, html`${bicon('arrow-down')}<span class="sr-only">Move down</span>`, 'Move down (later in the sequence)')}
+          const regionOptions = html`<option value="">${tx('pd.arrange.page_level')}</option>${rows.region.map((r) => html`<option value="${r.id}"${row.region_id === r.id ? raw(' selected') : ''}>${regionTitle(r)}</option>`)}`;
+          arrange = html`<div class="pe-arrange" role="group" aria-label="${tx('pd.arrange')}">
+            <span class="pe-arrange-label">${tx('pd.arrange')}</span>
+            ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="up">`, html`${bicon('arrow-up')}<span class="sr-only">${tx('pd.arrange.up')}</span>`, tx('pd.arrange.up_title'))}
+            ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="down">`, html`${bicon('arrow-down')}<span class="sr-only">${tx('pd.arrange.down')}</span>`, tx('pd.arrange.down_title'))}
             ${kind === 'region'
-              ? html`<form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="Narrower (one column less)"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">Narrower</span></button></form>
-                <span class="pe-span" title="Column span">${row.columns}/12</span>
-                <form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="1"><button class="tb-btn" title="Wider (one column more)"${row.columns >= 12 ? raw(' disabled') : ''}>${bicon('wide')}<span class="sr-only">Wider</span></button></form>`
-              : moveForm(kind, row.id, html`<label class="sr-only" for="pe-move-region">Move to region</label><select id="pe-move-region" name="region">${regionOptions}</select>`, html`<span>Move</span>`, 'Move to the end of this region')}
+              ? html`<form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="${tx('pd.arrange.narrower_title')}"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">${tx('pd.arrange.narrower')}</span></button></form>
+                <span class="pe-span" title="${tx('pd.arrange.span')}">${row.columns}/12</span>
+                <form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="1"><button class="tb-btn" title="${tx('pd.arrange.wider_title')}"${row.columns >= 12 ? raw(' disabled') : ''}>${bicon('wide')}<span class="sr-only">${tx('pd.arrange.wider')}</span></button></form>`
+              : moveForm(kind, row.id, html`<label class="sr-only" for="pe-move-region">${tx('pd.arrange.to_region')}</label><select id="pe-move-region" name="region">${regionOptions}</select>`, html`<span>${tx('pd.arrange.move')}</span>`, tx('pd.arrange.move_title'))}
           </div>`;
         }
       } else {
-        heading = html`<span>Not found</span>`;
-        props = html`<p class="muted">Component not found.</p>`;
+        heading = html`<span>${tx('error.label_not_found')}</span>`;
+        props = html`<p class="muted">${tx('pd.not_found')}</p>`;
         hasForm = false;
       }
     } else {
-      heading = html`${icon('file')}<span>Page ${p.page_no}: ${p.name}</span>`;
-      props = html`${peTabs([tab('pd-r-props', 'Page', html`
+      heading = html`${icon('file')}<span>${tx('pd.page_title', { n: p.page_no, name: p.name })}</span>`;
+      props = html`${peTabs([tab('pd-r-props', tx('pd.copy.page'), html`
         <form method="post" action="${BASE}/pages/${p.id}" class="component-form" id="${formId}">${csrf(s)}
           <fieldset class="prop-group"><legend>Identification</legend><div class="form-grid">
             ${input('page_no', 'Page number', p.page_no, { type: 'number', required: true })}
@@ -394,11 +404,11 @@ export async function designerRoutes(app: FastifyInstance) {
             ${select('build_option', 'Build option', p.build_option ?? '', buildOptionChoices(lk, p.build_option),
               'While the option is excluded (or "Not": included) the page does not exist in the running application.')}
           </div></fieldset>
-          <div class="buttons"><button class="btn btn-hot">Save page</button></div>
+          <div class="buttons"><button class="btn btn-hot">${tx('pd.save_page')}</button></div>
         </form>`, true)])}
         ${await usedInPanel(p.app_id, 'page', p)}
         <form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-zone">${csrf(s)}
-          <button class="btn btn-sm btn-danger" data-confirm="Delete page ${p.page_no} and all its components?">Delete page</button></form>`;
+          <button class="btn btn-sm btn-danger" data-confirm="${tx('pd.delete_page_confirm', { n: p.page_no })}">${tx('pd.delete_page')}</button></form>`;
     }
     // (sprint 59) the help pane: the guide section of the selected component's type
     const guide = (() => {
@@ -410,13 +420,13 @@ export async function designerRoutes(app: FastifyInstance) {
     })();
     const right = html`
       <div class="pe-head"><div class="pe-title">${heading}</div>
-        <div class="pe-filter-row" hidden><label class="sr-only" for="pe-filter">Filter properties</label>${icon('filter')}<input id="pe-filter" class="pe-filter" type="search" placeholder="Filter" autocomplete="off"></div>
+        <div class="pe-filter-row" hidden><label class="sr-only" for="pe-filter">${tx('pd.filter_label')}</label>${icon('filter')}<input id="pe-filter" class="pe-filter" type="search" placeholder="${tx('pd.filter')}" autocomplete="off"></div>
       </div>
       ${arrange}
       <div class="pe">${props}</div>
       <details class="pe-help" open${guide ? raw(` data-guide="${guide}"`) : ''}>
-        <summary>${icon('help')} Help</summary>
-        <div class="pe-help-body" aria-live="polite" data-pe-help><p class="muted">Select a property to see its help here.</p></div>
+        <summary>${icon('help')} ${tx('rail.help')}</summary>
+        <div class="pe-help-body" aria-live="polite" data-pe-help><p class="muted">${tx('pd.help_hint')}</p></div>
       </details>`;
 
     // ------------------------------------------------------------ toolbar
@@ -424,54 +434,54 @@ export async function designerRoutes(app: FastifyInstance) {
     const prev = pages[idx - 1];
     const next = pages[idx + 1];
     const h = undoState(s, p.id);
-    const tbForm = (op: string, ic: string, label: string, title: string | null) =>
-      html`<form method="post" action="${post}/layout/${op}" class="tb-form">${csrf(s)}<button class="tb-btn" title="${title ? `${label}: ${title}` : `Nothing to ${label.toLowerCase()}`}"${title ? '' : raw(' disabled')}>${bicon(ic)}<span class="sr-only">${label}</span></button></form>`;
+    const tbForm = (op: string, ic: string, label: string, nothing: string, title: string | null) =>
+      html`<form method="post" action="${post}/layout/${op}" class="tb-form">${csrf(s)}<button class="tb-btn" title="${title ? `${label}: ${title}` : nothing}"${title ? '' : raw(' disabled')}>${bicon(ic)}<span class="sr-only">${label}</span></button></form>`;
     const createMenu = html`<details class="menu tb-menu">
-        <summary class="tb-btn" title="Create">${icon('plus')}${bicon('down', 'icon tb-caret')}<span class="sr-only">Create</span></summary>
+        <summary class="tb-btn" title="${tx('pd.menu.create')}">${icon('plus')}${bicon('down', 'icon tb-caret')}<span class="sr-only">${tx('pd.menu.create')}</span></summary>
         <div class="menu-panel align-right"><div class="menu-section menu-links">
-          ${[['region', 'Region'], ['item', 'Page item'], ['button', 'Button'], ['dynamic_action', 'Dynamic action'], ['computation', 'Computation'], ['validation', 'Validation'], ['process', 'Process'], ['branch', 'Branch']].map(([k, label]) =>
-            html`<a href="${url(`new=${k}`)}">${icon(COMPONENTS[k].icon)} ${label}</a>`)}
+          ${['region', 'item', 'button', 'dynamic_action', 'computation', 'validation', 'process', 'branch'].map((k) =>
+            html`<a href="${url(`new=${k}`)}">${icon(COMPONENTS[k].icon)} ${k === 'item' ? tx('pd.menu.page_item') : kindLabel(k)}</a>`)}
         </div><div class="menu-section menu-links">
-          <a href="${BASE}/apps/${p.app_id}#create-page">${icon('file')} Page…</a>
+          <a href="${BASE}/apps/${p.app_id}#create-page">${icon('file')} ${tx('pd.menu.page')}</a>
         </div></div></details>`;
     const utilMenu = html`<details class="menu tb-menu">
-        <summary class="tb-btn" title="Utilities">${bicon('wrench')}${bicon('down', 'icon tb-caret')}<span class="sr-only">Utilities</span></summary>
+        <summary class="tb-btn" title="${tx('pd.menu.utilities')}">${bicon('wrench')}${bicon('down', 'icon tb-caret')}<span class="sr-only">${tx('pd.menu.utilities')}</span></summary>
         <div class="menu-panel align-right"><div class="menu-section menu-links">
-          <a href="${BASE}/apps/${p.app_id}/advisor">${icon('check')} Advisor</a>
-          <a href="${BASE}/apps/${p.app_id}/search?q=P${p.page_no}_">${icon('search')} Search this page's items</a>
-          <a href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')} Shared components</a>
-          <a href="${BASE}/apps/${p.app_id}">${bicon('pages')} All pages</a>
-          <a href="${BASE}/apps/${p.app_id}/export">${icon('download')} Export application</a>
+          <a href="${BASE}/apps/${p.app_id}/advisor">${icon('check')} ${tx('app.tab.advisor')}</a>
+          <a href="${BASE}/apps/${p.app_id}/search?q=P${p.page_no}_">${icon('search')} ${tx('pd.menu.search_items')}</a>
+          <a href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')} ${tx('pd.tab.shared')}</a>
+          <a href="${BASE}/apps/${p.app_id}">${bicon('pages')} ${tx('pd.menu.all_pages')}</a>
+          <a href="${BASE}/apps/${p.app_id}/export">${icon('download')} ${tx('pd.menu.export')}</a>
         </div></div></details>`;
     const toolbar = html`
-      <div class="tb-group pd-pagenav" role="group" aria-label="Page">
-        ${prev ? html`<a class="tb-btn" href="${designerUrl(p.app_id, prev.page_no)}" title="Previous page: ${prev.page_no}. ${prev.name}">${bicon('left')}<span class="sr-only">Previous page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
+      <div class="tb-group pd-pagenav" role="group" aria-label="${tx('pd.copy.page')}">
+        ${prev ? html`<a class="tb-btn" href="${designerUrl(p.app_id, prev.page_no)}" title="${tx('pd.prev_title', { n: prev.page_no, name: prev.name })}">${bicon('left')}<span class="sr-only">${tx('pd.prev')}</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
         <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto-no">
-          <label class="sr-only" for="pd-goto-no">Page number (Enter goes there)</label>
-          <input id="pd-goto-no" name="page" type="number" min="0" max="999999999" step="1" value="${p.page_no}" inputmode="numeric" title="Page number: type or step to a number, then Enter">
+          <label class="sr-only" for="pd-goto-no">${tx('pd.goto_no')}</label>
+          <input id="pd-goto-no" name="page" type="number" min="0" max="999999999" step="1" value="${p.page_no}" inputmode="numeric" title="${tx('pd.goto_no_title')}">
         </form>
         <form method="get" action="${BASE}/apps/${p.app_id}/goto" class="tb-form pd-goto">
-          <label class="sr-only" for="pd-goto">Go to page</label>
+          <label class="sr-only" for="pd-goto">${tx('pd.goto')}</label>
           <select id="pd-goto" name="page" data-autosubmit>${pages.map((x) => html`<option value="${x.page_no}"${x.id === p.id ? raw(' selected') : ''}>${x.page_no} · ${x.name}</option>`)}</select>
-          <button class="tb-btn tb-text pd-goto-go">Go</button>
+          <button class="tb-btn tb-text pd-goto-go">${tx('common.go')}</button>
         </form>
-        ${next ? html`<a class="tb-btn" href="${designerUrl(p.app_id, next.page_no)}" title="Next page: ${next.page_no}. ${next.name}">${bicon('right')}<span class="sr-only">Next page</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('right')}</span>`}
+        ${next ? html`<a class="tb-btn" href="${designerUrl(p.app_id, next.page_no)}" title="${tx('pd.next_title', { n: next.page_no, name: next.name })}">${bicon('right')}<span class="sr-only">${tx('pd.next')}</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('right')}</span>`}
       </div>
-      <div class="tb-group tb-undo" role="group" aria-label="History">${tbForm('undo', 'undo', 'Undo', h.undo)}${tbForm('redo', 'redo', 'Redo', h.redo)}</div>
+      <div class="tb-group tb-undo" role="group" aria-label="${tx('pd.history')}">${tbForm('undo', 'undo', tx('pd.undo'), tx('pd.nothing_undo'), h.undo)}${tbForm('redo', 'redo', tx('pd.redo'), tx('pd.nothing_redo'), h.redo)}</div>
       <div class="tb-group tb-menus">${createMenu}${utilMenu}</div>
       <div class="tb-group tb-main">
-        ${hasForm ? html`<button class="btn btn-sm tb-save" form="${formId}" title="Save the properties">${bicon('save')}<span>Save</span></button>` : ''}
-        <a class="btn btn-sm btn-run" href="/a/${p.alias}/${p.page_no}" target="_blank" rel="noopener" title="Run page ${p.page_no}">${icon('play')}<span>Run</span></a>
+        ${hasForm ? html`<button class="btn btn-sm tb-save" form="${formId}" title="${tx('pd.save_title')}">${bicon('save')}<span>${tx('common.save')}</span></button>` : ''}
+        <a class="btn btn-sm btn-run" href="/a/${p.alias}/${p.page_no}" target="_blank" rel="noopener" title="${tx('pd.run_title', { n: p.page_no })}">${icon('play')}<span>${tx('common.run')}</span></a>
       </div>`;
 
     const pane = newKind || sel ? 'pd-p-props' : 'pd-p-layout';
-    const main = html`<h1 class="sr-only">Page designer: page ${p.page_no}, ${p.name}</h1>
-      <div class="pd" data-tabs="pd-panes" data-tabs-media="(max-width: 1023px)" aria-label="Page designer">
-        <section class="pd-pane pd-left tab-panel" id="pd-p-tree" data-tab><h2 class="tab-title pd-pane-title"><span>Tree</span></h2>${left}</section>
-        <section class="pd-pane pd-center tab-panel" id="pd-p-layout" data-tab${pane === 'pd-p-layout' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>Layout</span></h2>${center}</section>
-        <section class="pd-pane pd-right tab-panel" id="pd-p-props" data-tab${pane === 'pd-p-props' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>Properties</span></h2>${right}</section>
+    const main = html`<h1 class="sr-only">${tx('pd.h1', { n: p.page_no, name: p.name })}</h1>
+      <div class="pd" data-tabs="pd-panes" data-tabs-media="(max-width: 1023px)" aria-label="${tx('pd.designer')}">
+        <section class="pd-pane pd-left tab-panel" id="pd-p-tree" data-tab><h2 class="tab-title pd-pane-title"><span>${tx('pd.pane.tree')}</span></h2>${left}</section>
+        <section class="pd-pane pd-center tab-panel" id="pd-p-layout" data-tab${pane === 'pd-p-layout' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>${tx('pd.layout')}</span></h2>${center}</section>
+        <section class="pd-pane pd-right tab-panel" id="pd-p-props" data-tab${pane === 'pd-p-props' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>${tx('pd.properties')}</span></h2>${right}</section>
       </div>`;
-    return send(reply, s, shell(s, `Page ${p.page_no}`, [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [`Page ${p.page_no}: ${p.name}`]], main, 'apps', { toolbar, full: true }));
+    return send(reply, s, shell(s, tx('pd.page_n_title', { n: p.page_no }), [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [tx('pd.page_title', { n: p.page_no, name: p.name })]], main, 'apps', { toolbar, full: true }));
   }
 
   // (sprint 59) Quick edit from the developer toolbar: an item or button of the page by its name
@@ -503,7 +513,7 @@ export async function designerRoutes(app: FastifyInstance) {
       if (before && before.page_no !== Number(b.page_no))
         for (const t of ['builder_lock', 'dev_comment'])
           await owner.query(`update meta.${t} set page_no = $3 where app_id = $1 and page_no = $2`, [before.app_id, before.page_no, Number(b.page_no)]);
-      flash(s, 'Page saved.');
+      flash(s, tr(s)('pd.page_saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -515,7 +525,7 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!s) return;
     const p = await owner.one('delete from meta.page where id = $1 returning app_id, page_no', [req.params.pid]);
     if (p) for (const t of ['builder_lock', 'dev_comment']) await owner.query(`delete from meta.${t} where app_id = $1 and page_no = $2`, [p.app_id, p.page_no]);
-    flash(s, 'Page deleted.');
+    flash(s, tr(s)('pd.page_deleted'));
     return back(reply, s, p ? `${BASE}/apps/${p.app_id}` : BASE);
   });
 
@@ -526,7 +536,7 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!PAGE_KINDS.includes(kind)) return reply.code(404).send('Unknown component type');
     try {
       const id = await saveComponent(kind, 'page_id', pid, cid, req.body ?? {});
-      flash(s, `${COMPONENTS[kind].label} saved.`);
+      flash(s, tr(s).dyn(`pd.saved.${kind}`, `${COMPONENTS[kind].label} saved.`));
       return back(reply, s, `${BASE}/pages/${pid}?c=${kind}-${id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -540,7 +550,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const { pid, kind, cid } = req.params;
     if (!PAGE_KINDS.includes(kind)) return reply.code(404).send('Unknown component type');
     await owner.query(`delete from ${COMPONENTS[kind].table} where id = $1 and page_id = $2`, [cid, pid]);
-    flash(s, `${COMPONENTS[kind].label} deleted.`);
+    flash(s, tr(s).dyn(`pd.deleted.${kind}`, `${COMPONENTS[kind].label} deleted.`));
     return back(reply, s, `${BASE}/pages/${pid}`);
   });
 }

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
 import { BASE, THEME_COOKIE, validTheme } from './ui.ts';
+import { cookieLanguage, translatorFor } from './i18n.ts';
 
 // (sprint 86) The builder's error pages: a browser that opens an address under /builder that
 // doesn't exist (or an application or page that doesn't, or not for this developer), or that
@@ -14,24 +15,21 @@ export const wantsHtml = (req: FastifyRequest) =>
 
 const isBuilder = (url: string) => url === BASE || url.startsWith(`${BASE}/`) || url.startsWith(`${BASE}?`);
 
-const TEXTS: Record<number, { title: string; text: string }> = {
-  404: { title: 'Page not found', text: 'There is nothing at this address in the App Builder. The application or page may have been deleted, or belongs to a workspace you are not a member of.' },
-  500: { title: 'Something went wrong', text: 'The App Builder could not show this page because of an error on the server. It has been logged; try again, or go back.' },
-};
-
-/** The error page for a status (404, or 500 for any server error). */
+/** The error page for a status (404, or 500 for any server error), in the builder language of this device (i18n.ts). */
 export function builderErrorPage(req: FastifyRequest, status: number) {
-  const { title, text } = TEXTS[status >= 500 ? 500 : 404];
+  const tx = translatorFor(cookieLanguage(req));
+  const server = status >= 500;
+  const title = tx(server ? 'error.server_title' : 'error.not_found_title');
   const theme = validTheme((req.cookies as Record<string, string> | undefined)?.[THEME_COOKIE]) ?? 'auto';
   return documentShell(
-    `${title} · App Builder`,
-    html`<main class="t-error" id="main"><div class="card"><h1>${title}</h1><p>${text}</p>
-      <p class="muted">${status >= 500 ? 'Error' : 'Not found'}: <code>${req.url.split('?')[0].slice(0, 200)}</code></p>
-      <p><a class="btn btn-hot" href="${BASE}">App Builder home</a></p></div></main>`,
+    `${title} · ${tx('rail.app_builder')}`,
+    html`<main class="t-error" id="main"><div class="card"><h1>${title}</h1><p>${tx(server ? 'error.server_text' : 'error.not_found_text')}</p>
+      <p class="muted">${tx(server ? 'error.label_error' : 'error.label_not_found')}: <code>${req.url.split('?')[0].slice(0, 200)}</code></p>
+      <p><a class="btn btn-hot" href="${BASE}">${tx('error.home')}</a></p></div></main>`,
     'login-body',
     {},
     '',
-    { theme },
+    { theme, lang: tx.lang },
   );
 }
 

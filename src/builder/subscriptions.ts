@@ -69,7 +69,7 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     for (const o of offered) groups.set(o.master.id, [...(groups.get(o.master.id) ?? []), o]);
     const published = [...new Map(subscribers.map((x) => [`${x.kind}|${x.name}`, x])).values()];
 
-    const main = html`${appHeader(a, 'shared')}<div class="ide-body">
+    const main = html`${appHeader(a, 'shared', s)}<div class="ide-body">
       ${region('Application type', html`<p class="u-mt0"><b>${APP_TYPE_LABELS[a.app_type as AppType] ?? a.app_type}</b>: ${TYPE_HELP[a.app_type as AppType] ?? ''}
           Change it under <a href="${BASE}/apps/${a.id}/settings">Settings</a>.</p>`)}
       ${region('Subscriptions', html`

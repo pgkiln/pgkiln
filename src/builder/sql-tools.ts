@@ -3,6 +3,8 @@
 // `tab` is the SQL Workshop tab a tool's own pages mark (workshopTabs in ui.ts); tools without one are pages
 // elsewhere in the builder.
 
+import type { BuilderTranslate } from './i18n.ts';
+
 export type ToolGroup = 'development' | 'administration' | 'monitoring';
 export interface SqlTool {
   key: string;
@@ -51,3 +53,7 @@ export const SQL_TOOLS: SqlTool[] = [
   { key: 'reports', href: '/builder/sql/utilities/reports', icon: 'list', label: 'Object Reports', description: 'Tables without keys, unindexed foreign keys, row level security gaps and more.', group: 'monitoring' },
   { key: 'activity', href: '/builder/dashboard', icon: 'chart', label: 'Monitor Activity', description: 'Page views, errors and slow pages of the applications.', group: 'monitoring' },
 ];
+
+/** (sprint 121) A tool's name and description in the builder's language (sql.tool.<key> and sql.tool.<key>.desc in i18n/en.ts). */
+export const toolLabel = (tx: BuilderTranslate, t: SqlTool) => tx.dyn(`sql.tool.${t.key}`, t.label);
+export const toolDescription = (tx: BuilderTranslate, t: SqlTool) => tx.dyn(`sql.tool.${t.key}.desc`, t.description);
