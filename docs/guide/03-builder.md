@@ -275,9 +275,12 @@ device; other developers keep their own. It only changes the builder: your appli
 What is translated: the builder's frame (the rail, the top bar and its search, your account menu, the status bar,
 standard messages and error pages), the sign-in page, the Workspace home, the App Builder home, an application's
 home page and its tabs, the Page Designer's toolbar, menus, component tree, panes and gallery, the SQL Workshop's
-home page and tabs, and (sprint 123) the **SQL Worksheet** (with its messages in the browser), the **Object Browser**
-and **Table Properties**. Other builder pages are still in English (they move over screen by screen); so are the
-Page Designer's property names and their help, the links to this guide, and any SQL the builder generates.
+home page and tabs, (sprint 123) the **SQL Worksheet** (with its messages in the browser), the **Object Browser**
+and **Table Properties**, and (sprint 124) **Shared Components** (the overview, every component type's list and
+editor frame, access control, breadcrumbs, component settings) and an application's **Settings**. Other builder
+pages are still in English (they move over screen by screen); so are the
+Page Designer's property names and their help (and, the same way, the field names and help of a shared component's
+form), the links to this guide, and any SQL the builder generates.
 
 ## Workspace home
 

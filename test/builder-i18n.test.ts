@@ -285,6 +285,32 @@ describe('choosing the builder language', () => {
     await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
   });
 
+  test('(sprint 124) Shared Components, a component list and the application settings in German', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const sc = (await b.get(`/builder/apps/${appId}/shared`)).body;
+    for (const k of ['sc.group.logic', 'sc.group.security', 'sc.item.lists_of_values', 'sc.item.authorization_schemes', 'sc.tree_view'] as BuilderKey[])
+      assert.ok(sc.includes(esc(de[k])), `shared components: ${k}`);
+    const list = (await b.get(`/builder/apps/${appId}/shared?type=lov`)).body;
+    assert.ok(list.includes(`<h1>${esc(de['comp.lov.plural'])}</h1>`), 'the list is named in German');
+    assert.ok(list.includes(esc(de['sc.details'])));
+    const access = (await b.get(`/builder/apps/${appId}/shared?view=tree`)).body;
+    for (const k of ['sc.access', 'sc.grant', 'sc.who']) assert.ok(access.includes(esc(de[k as BuilderKey])), `access control: ${k}`);
+    const settings = (await b.get(`/builder/apps/${appId}/settings`)).body;
+    for (const k of ['st.tab.definition', 'st.tab.errors', 'st.save_settings', 'st.checklist', 'st.db_role_help'] as BuilderKey[])
+      assert.ok(settings.includes(esc(de[k])), `settings: ${k}`);
+    for (const [url, body] of [['shared', sc], ['list', list], ['access', access], ['settings', settings]]) {
+      const text = body.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '').replace(/<[^>]+>/g, ' ');
+      assert.deepEqual(Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `)), [], `${url}: raw keys`);
+    }
+    // a flash message in German: saving the error settings
+    await b.get(`/builder/apps/${appId}/settings?tab=errors`);
+    const app = await owner.one<{ error_function: string | null; session_warning_seconds: number }>('select error_function, session_warning_seconds from meta.app where id = $1', [appId]);
+    await b.submit(`/builder/apps/${appId}/settings/behaviour`, { error_function: app!.error_function ?? '', session_warning_seconds: String(app!.session_warning_seconds ?? 120) });
+    assert.ok((await b.get(`/builder/apps/${appId}/settings?tab=errors`)).body.includes(esc(de['st.saved'])));
+    await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
+  });
+
   test('the builder error pages follow the device language', async () => {
     const b = new Browser(app, { accept: 'text/html' });
     await b.get('/builder/login?lang=de');
