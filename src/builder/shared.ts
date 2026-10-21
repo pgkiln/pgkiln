@@ -253,7 +253,7 @@ export async function sharedRoutes(app: FastifyInstance) {
                 <td data-label="${tx('sc.account')}"><a href="${BASE}/users/${u.id}">${u.username}</a>${u.display_name ? html` <span class="muted">${u.display_name}</span>` : ''}${u.active ? '' : html` <b>${tx('sc.inactive')}</b>`}</td>
                 <td data-label="${tx('sc.roles')}"><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}" class="search roles-form u-m0 u-mwnone">${csrf(s)}
                   <input name="roles" value="${u.roles.join(', ')}" aria-label="${tx('sc.roles_of', { user: u.username })}" placeholder="${tx('sc.no_roles')}"><button class="btn">${tx('sc.save')}</button>
-                  ${roleHintsHtml(appHints, 'Add')}</form></td>
+                  ${roleHintsHtml(appHints, tx('us.hints_add'), tx)}</form></td>
                 <td data-label="${tx('sc.last_signin')}">${u.last_login_at ? String(u.last_login_at).slice(0, 16) : '—'}</td>
                 <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}/revoke">${csrf(s)}<button class="link-button" data-confirm="${tx('sc.revoke_confirm', { user: u.username, app: a.name })}">${tx('sc.revoke')}</button></form></td>
               </tr>`)
@@ -269,7 +269,7 @@ export async function sharedRoutes(app: FastifyInstance) {
               <small class="help">${tx('sc.existing')} <a href="${BASE}/users">${tx('sc.create_in_users')}</a></small></div>
             <div class="field"><label class="label" for="f_roles">${tx('sc.roles')}</label>
               <input id="f_roles" name="roles" placeholder="${tx('sc.roles_ph')}">
-              ${roleHintsHtml(appHints)}</div>
+              ${roleHintsHtml(appHints, undefined, tx)}</div>
           </div>
           <div class="buttons"><button class="btn btn-hot">${tx('sc.grant')}</button></div>
         </form>`);

@@ -1,5 +1,5 @@
+import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { tr } from './i18n.ts';
 import { owner, type Db } from '../db.ts';
 import { devDbForWorkspace, workspacesChanged } from '../workspace-db.ts';
 import { ownerUrl, runtimeUrl } from '../db.ts';
@@ -129,8 +129,9 @@ const NAME = /^\S(.{0,58}\S)?$/;
 
 async function adminOnly(s: Session, reply: FastifyReply) {
   if (await isAdmin(s.username)) return true;
-  const main = html`<h1 class="u-mb1">Workspaces</h1><div class="alert alert-error" role="alert">Only administrators manage workspaces.</div>`;
-  await send(reply.code(403), s, shell(s, 'Workspaces', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Workspaces']], main));
+  const tx = tr(s);
+  const main = html`<h1 class="u-mb1">${tx('wsp.title')}</h1><div class="alert alert-error" role="alert">${tx('wsp.admins_only')}</div>`;
+  await send(reply.code(403), s, shell(s, tx('wsp.title'), [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [tx('wsp.title')]], main));
   return false;
 }
 
@@ -146,101 +147,105 @@ async function workspaceAdminOnly(s: Session, reply: FastifyReply, workspaceId: 
   return adminOnly(s, reply);
 }
 
-const crumbs = (extra: [string, string?][] = []): [string, string?][] => [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Workspaces', `${BASE}/workspaces`], ...extra];
+const crumbs = (tx: BuilderTranslate, extra: [string, string?][] = []): [string, string?][] => [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [tx('wsp.title'), `${BASE}/workspaces`], ...extra];
 
-const nameError = (e: unknown) => {
+const nameError = (e: unknown, tx: BuilderTranslate) => {
   const m = (e as Error).message;
-  if (m.includes('workspace_name_key')) return 'A workspace with this name exists already.';
-  if (m.includes('workspace_name_check')) return 'The name is 1 to 60 characters, without spaces at the start or end.';
+  if (m.includes('workspace_name_key')) return tx('wsp.err.exists');
+  if (m.includes('workspace_name_check')) return tx('wsp.err.name_check');
   return m;
 };
 
 const ROLE = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 
 /** Why this installation can't isolate a workspace (090), or null. */
-export function isolationProblem(): string | null {
-  if (!secretKeyConfigured()) return 'set PGKILN_SECRET_KEY (at least 32 characters) in the server\'s environment: the workspace\'s database logins get passwords derived from it.';
-  if (runtimeUrl === ownerUrl) return 'set RUNTIME_DATABASE_URL: applications run on the owner connection, so no workspace can be isolated.';
+export function isolationProblem(tx: BuilderTranslate = translatorFor('en')): string | null {
+  if (!secretKeyConfigured()) return tx('wsp.iso.secret');
+  if (runtimeUrl === ownerUrl) return tx('wsp.iso.runtime');
   return null;
 }
 
 /** A role problem from meta.workspace_sync_roles (or a duplicate role) in words. */
-const roleError = (e: unknown) => {
+const roleError = (e: unknown, tx: BuilderTranslate) => {
   const m = (e as Error).message;
-  if (m.includes('workspace_role_role_name_key')) return 'this role belongs to another workspace already.';
-  if (m.includes('workspace_role_pkey')) return 'the workspace has this role already.';
+  if (m.includes('workspace_role_role_name_key')) return tx('wsp.err.role_taken');
+  if (m.includes('workspace_role_pkey')) return tx('wsp.err.role_has');
   return m;
 };
 
 /** The Isolation region of a workspace's page. */
 function isolationRegion(s: Session, w: { id: number; name: string; isolated: boolean; run_role: string | null; dev_role: string | null },
   roles: { role_name: string; exists: boolean; apps: string | null }[]) {
-  const problem = w.isolated ? null : isolationProblem();
+  const tx = tr(s);
+  const problem = w.isolated ? null : isolationProblem(tx);
   const body = w.isolated
-    ? html`<p class="u-mt0"><span class="tag">${icon('lock')} isolated</span> Its applications run as <code>${w.run_role}</code> and its developers' SQL (SQL Workshop, code checks, the Advisor) as <code>${w.dev_role}</code>. Both reach only the roles below, and see only this workspace's applications, sessions and accounts in pgkiln's own tables. Developers who also belong to a shared workspace keep that workspace's rights there.</p>
-      <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Database role</th><th>Used by</th><th></th></tr></thead><tbody>
+    ? html`<p class="u-mt0"><span class="tag">${icon('lock')} ${tx('wsp.isolated_tag')}</span> ${tx.rich('wsp.iso.on', { run: html`<code>${w.run_role}</code>`, dev: html`<code>${w.dev_role}</code>` })}</p>
+      <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('wsp.db_role')}</th><th>${tx('wsp.used_by')}</th><th></th></tr></thead><tbody>
         ${roles.length
-          ? roles.map((r) => html`<tr><td data-label="Database role"><code>${r.role_name}</code>${r.exists ? '' : html` <span class="tag tag-error">missing</span>`}</td>
-              <td data-label="Used by">${r.apps ?? html`<span class="muted">no application</span>`}</td>
+          ? roles.map((r) => html`<tr><td data-label="${tx('wsp.db_role')}"><code>${r.role_name}</code>${r.exists ? '' : html` <span class="tag tag-error">${tx('wsp.missing')}</span>`}</td>
+              <td data-label="${tx('wsp.used_by')}">${r.apps ?? html`<span class="muted">${tx('wsp.no_app')}</span>`}</td>
               <td><form method="post" action="${BASE}/workspaces/${w.id}/roles">${csrf(s)}<input type="hidden" name="role" value="${r.role_name}">
-                <button class="btn btn-sm" name="action" value="remove">Remove</button></form></td></tr>`)
-          : html`<tr><td colspan="3" class="empty">No database roles: applications here can't run as a role of their own.</td></tr>`}</tbody></table></div>
+                <button class="btn btn-sm" name="action" value="remove">${tx('wsp.remove')}</button></form></td></tr>`)
+          : html`<tr><td colspan="3" class="empty">${tx('wsp.no_roles')}</td></tr>`}</tbody></table></div>
       <form method="post" action="${BASE}/workspaces/${w.id}/roles" class="u-mt1">${csrf(s)}
-        ${input('role', 'Add a database role', '', { help: 'An existing role (not a superuser, not one that creates roles or bypasses row-level security). Its rights become this workspace\'s; it can\'t belong to another workspace.' })}
-        <div class="buttons"><button class="btn" name="action" value="add">${icon('plus')} Add role</button></div></form>
+        ${input('role', tx('wsp.add_role'), '', { help: tx('wsp.add_role_help') })}
+        <div class="buttons"><button class="btn" name="action" value="add">${icon('plus')} ${tx('wsp.add_role_btn')}</button></div></form>
       <form method="post" action="${BASE}/workspaces/${w.id}/isolation" class="danger-zone">${csrf(s)}<input type="hidden" name="isolated" value="false">
-        <button class="btn btn-danger" data-confirm="Make ${w.name} shared again? Its applications then run on the shared runtime connection, and its developers' SQL as the owner.">Make shared</button></form>`
-    : html`<p class="u-mt0">Shared: the applications run on the shared runtime connection and the developers' SQL as the owner, like every shared workspace's.</p>
-      <p class="muted small">Isolating gives the workspace two database logins of its own and the database roles its applications use now. Application code then reaches only those roles and this workspace's applications; its developers' SQL Workshop runs on the workspace's login instead of the owner. New applications get a new role and schema of their own.</p>
-      ${problem ? html`<div class="alert alert-error" role="alert">To isolate a workspace, ${problem}</div>` : ''}
+        <button class="btn btn-danger" data-confirm="${tx('wsp.make_shared_confirm', { name: w.name })}">${tx('wsp.make_shared')}</button></form>`
+    : html`<p class="u-mt0">${tx('wsp.shared_text')}</p>
+      <p class="muted small">${tx('wsp.iso_help')}</p>
+      ${problem ? html`<div class="alert alert-error" role="alert">${tx('wsp.to_isolate', { problem })}</div>` : ''}
       <form method="post" action="${BASE}/workspaces/${w.id}/isolation">${csrf(s)}<input type="hidden" name="isolated" value="true">
-        <div class="buttons"><button class="btn btn-hot"${problem ? raw(' disabled') : ''} data-confirm="Isolate ${w.name}?">${icon('lock')} Isolate this workspace</button></div></form>`;
-  return region('Isolation', body);
+        <div class="buttons"><button class="btn btn-hot"${problem ? raw(' disabled') : ''} data-confirm="${tx('wsp.isolate_confirm', { name: w.name })}">${icon('lock')} ${tx('wsp.isolate')}</button></div></form>`;
+  return region(tx('wsp.isolation'), body);
 }
 
 /** (091) Manage service: the workspace message and the environment banner. */
 function serviceRegion(s: Session, w: { id: number; message: string | null; banner_label: string | null; banner_color: string }) {
-  return region('Manage service', html`<form method="post" action="${BASE}/workspaces/${w.id}/service">${csrf(s)}
-      <div class="field"><label class="label" for="f_message">Workspace message</label>
+  const tx = tr(s);
+  return region(tx('wsp.service'), html`<form method="post" action="${BASE}/workspaces/${w.id}/service">${csrf(s)}
+      <div class="field"><label class="label" for="f_message">${tx('wsp.message')}</label>
         <textarea id="f_message" name="message" rows="3" maxlength="2000">${w.message ?? ''}</textarea>
-        <small class="help">Shown to this workspace's developers on the App Builder home, e.g. a maintenance window. Plain text.</small></div>
+        <small class="help">${tx('wsp.message_help')}</small></div>
       <div class="form-grid">
-        ${input('banner_label', 'Environment banner', w.banner_label ?? '', { placeholder: 'DEVELOPMENT', help: 'A short label shown at the top of every builder page while this workspace is current. Empty: no banner.' })}
-        ${select('banner_color', 'Banner colour', w.banner_color, BANNER_COLORS.map((c): [string, string] => [c, c[0].toUpperCase() + c.slice(1)]))}
+        ${input('banner_label', tx('wsp.banner'), w.banner_label ?? '', { placeholder: 'DEVELOPMENT', help: tx('wsp.banner_help') })}
+        ${select('banner_color', tx('wsp.banner_colour'), w.banner_color, BANNER_COLORS.map((c): [string, string] => [c, c[0].toUpperCase() + c.slice(1)]))}
       </div>
-      <div class="buttons"><button class="btn">Save</button></div></form>`, '', 'service');
+      <div class="buttons"><button class="btn">${tx('wsp.save')}</button></div></form>`, '', 'service');
 }
 
 /** (093) Workspace preferences: the SQL Workshop and the applications' REST modules on or off. */
 function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null }) {
   const check = (name: string, on: boolean, label: string, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
-  return region('Workspace preferences', html`<form method="post" action="${BASE}/workspaces/${w.id}/preferences">${csrf(s)}
-      ${check('sql_workshop', w.sql_workshop, 'Enable the SQL Workshop', 'Off: the SQL Worksheet, the Object Browser, SQL scripts, data loading and unloading, Quick SQL, the query builder, DDL, Compare and AI are refused while this workspace is current, for every developer.')}
-      ${check('rest_services', w.rest_services, 'Enable RESTful services', 'Off: the REST modules of this workspace\'s applications answer 404 (Not found) at /a/<alias>/rest/…; they can still be edited.')}
-      ${select('builder_home', 'Builder links open', w.builder_home === 'home' ? 'home' : 'apps', [['apps', 'App Builder'], ['home', 'Workspace home']], 'Where a link to /builder (a bookmark from before the Workspace home) leads in this workspace. Signing in always opens the Workspace home; the App Builder is at /builder/apps.')}
-      <div class="buttons"><button class="btn">Save preferences</button></div></form>`, '', 'preferences');
+  const tx = tr(s);
+  return region(tx('wsp.prefs'), html`<form method="post" action="${BASE}/workspaces/${w.id}/preferences">${csrf(s)}
+      ${check('sql_workshop', w.sql_workshop, tx('wsp.sql_on'), tx('wsp.sql_on_help'))}
+      ${check('rest_services', w.rest_services, tx('wsp.rest_on'), tx('wsp.rest_on_help', { path: '/a/<alias>/rest/…' }))}
+      ${select('builder_home', tx('wsp.builder_home'), w.builder_home === 'home' ? 'home' : 'apps', [['apps', tx('wsp.home.apps')], ['home', tx('wsp.home.home')]], tx('wsp.builder_home_help'))}
+      <div class="buttons"><button class="btn">${tx('wsp.save_prefs')}</button></div></form>`, '', 'preferences');
 }
 
 /** (093) Extension links: links to other tools in the builder's Extensions menu. */
 function linksRegion(s: Session, w: { id: number }, links: { id: number; label: string; url: string; description: string | null; position: number }[]) {
-  return region('Extension links', html`<p class="muted u-mt0">Links to other tools this workspace's developers use (monitoring, a wiki, a ticket system), in the builder's <strong>Extensions</strong> menu while the workspace is current. They open in a new tab.</p>
+  const tx = tr(s);
+  return region(tx('wsp.links'), html`<p class="muted u-mt0">${tx.rich('wsp.links_help', { menu: html`<strong>${tx('wsp.extensions')}</strong>` })}</p>
       <div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Label</th><th>URL</th><th class="num">Order</th><th></th></tr></thead>
+        <thead><tr><th>${tx('wsp.label')}</th><th>${tx('wsp.url')}</th><th class="num">${tx('wsp.order')}</th><th></th></tr></thead>
         <tbody>${links.length
-          ? links.map((l) => html`<tr><td data-label="Label">${l.label}${l.description ? html` <span class="muted">${l.description}</span>` : ''}</td>
-              <td data-label="URL" class="u-break"><a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.url}</a></td>
-              <td class="num" data-label="Order">${l.position}</td>
-              <td><form method="post" action="${BASE}/workspaces/${w.id}/links/${l.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the link ${l.label}?">Delete</button></form></td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No extension links.</td></tr>`}</tbody></table></div>
+          ? links.map((l) => html`<tr><td data-label="${tx('wsp.label')}">${l.label}${l.description ? html` <span class="muted">${l.description}</span>` : ''}</td>
+              <td data-label="${tx('wsp.url')}" class="u-break"><a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.url}</a></td>
+              <td class="num" data-label="${tx('wsp.order')}">${l.position}</td>
+              <td><form method="post" action="${BASE}/workspaces/${w.id}/links/${l.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('wsp.delete_link_confirm', { label: l.label })}">${tx('wsp.delete')}</button></form></td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('wsp.no_links')}</td></tr>`}</tbody></table></div>
       <form method="post" action="${BASE}/workspaces/${w.id}/links" class="u-mt1">${csrf(s)}
         <div class="form-grid">
-          ${input('label', 'Label', '', { required: true, placeholder: 'Monitoring' })}
-          ${input('url', 'URL', '', { required: true, type: 'url', placeholder: 'https://grafana.example.com', help: 'http:// or https://' })}
-          ${input('description', 'Description', '')}
-          ${input('position', 'Order', '0', { type: 'number' })}
+          ${input('label', tx('wsp.label'), '', { required: true, placeholder: tx('wsp.label_ph') })}
+          ${input('url', tx('wsp.url'), '', { required: true, type: 'url', placeholder: 'https://grafana.example.com', help: 'http:// or https://' })}
+          ${input('description', tx('wsp.description'), '')}
+          ${input('position', tx('wsp.order'), '0', { type: 'number' })}
         </div>
-        <div class="buttons"><button class="btn">${icon('plus')} Add link</button></div></form>`, '', 'links');
+        <div class="buttons"><button class="btn">${icon('plus')} ${tx('wsp.add_link')}</button></div></form>`, '', 'links');
 }
 
 const LINK_LABEL = /^\S(.{0,58}\S)?$/;
@@ -254,13 +259,14 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const w = s.workspaces?.find((x) => String(x.id) === req.body?.workspace);
     if (!w) return reply.code(404).send('Not found');
     s.state.__WS = String(w.id);
-    flash(s, `Workspace ${w.name}.`);
+    flash(s, tr(s)('wsp.switched', { name: w.name }));
     return back(reply, s, BASE);
   });
 
   app.get(`${BASE}/workspaces`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply))) return;
+    const tx = tr(s);
     const rows = (
       await owner.query(
         `select w.id, w.name, w.description, w.isolated,
@@ -270,22 +276,22 @@ export async function workspaceRoutes(app: FastifyInstance) {
       )
     ).rows;
     const main = html`
-      <div class="title-row"><h1>Workspaces</h1></div>
-      <p class="muted u-mt0">A workspace groups applications and the developers who build them. Developers see and change the applications of their own workspaces; administrators see all of them. A shared workspace is not a security boundary between developers who write SQL: its SQL Workshop and application code run with this installation's rights. An <strong>isolated</strong> workspace is: its applications and SQL run on database logins of its own that reach only its database roles and its own applications.</p>
+      <div class="title-row"><h1>${tx('wsp.title')}</h1></div>
+      <p class="muted u-mt0">${tx.rich('wsp.intro', { isolated: html`<strong>${tx('wsp.isolated_word')}</strong>` })}</p>
       <div class="columns wide-left">
-        ${region('Workspaces', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>Workspace</th><th class="num">Applications</th><th>Developers</th></tr></thead>
+        ${region(tx('wsp.title'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('wsp.workspace')}</th><th class="num">${tx('wsp.applications')}</th><th>${tx('wsp.developers')}</th></tr></thead>
           <tbody>${rows.map((w) => html`<tr>
-            <td data-label="Workspace"><a href="${BASE}/workspaces/${w.id}">${w.name}</a>${w.isolated ? html` <span class="tag">${icon('lock')} isolated</span>` : ''}${w.description ? html` <span class="muted">${w.description}</span>` : ''}</td>
-            <td class="num" data-label="Applications">${w.apps}</td>
-            <td data-label="Developers">${w.members ?? html`<span class="muted">administrators only</span>`}</td></tr>`)}</tbody></table></div>`)}
-        ${region('Add workspace', html`<form method="post" action="${BASE}/workspaces">${csrf(s)}
-          ${input('name', 'Name', '', { required: true, help: 'For example the team or department that builds its applications here.' })}
-          ${input('description', 'Description', '')}
-          <p class="muted small">You become its first developer; add others on its page.</p>
-          <div class="buttons"><button class="btn btn-hot">${icon('plus')} Add workspace</button></div></form>`)}
+            <td data-label="${tx('wsp.workspace')}"><a href="${BASE}/workspaces/${w.id}">${w.name}</a>${w.isolated ? html` <span class="tag">${icon('lock')} ${tx('wsp.isolated_tag')}</span>` : ''}${w.description ? html` <span class="muted">${w.description}</span>` : ''}</td>
+            <td class="num" data-label="${tx('wsp.applications')}">${w.apps}</td>
+            <td data-label="${tx('wsp.developers')}">${w.members ?? html`<span class="muted">${tx('wsp.admins_text')}</span>`}</td></tr>`)}</tbody></table></div>`)}
+        ${region(tx('wsp.add'), html`<form method="post" action="${BASE}/workspaces">${csrf(s)}
+          ${input('name', tx('wsp.name'), '', { required: true, help: tx('wsp.name_help') })}
+          ${input('description', tx('wsp.description'), '')}
+          <p class="muted small">${tx('wsp.first_dev')}</p>
+          <div class="buttons"><button class="btn btn-hot">${icon('plus')} ${tx('wsp.add')}</button></div></form>`)}
       </div>`;
-    return send(reply, s, shell(s, 'Workspaces', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Workspaces']], main));
+    return send(reply, s, shell(s, tx('wsp.title'), [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [tx('wsp.title')]], main));
   });
 
   app.post(`${BASE}/workspaces`, async (req: Req, reply) => {
@@ -293,7 +299,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     if (!s || !(await adminOnly(s, reply))) return;
     const name = String(req.body?.name ?? '').trim();
     if (!NAME.test(name)) {
-      flash(s, 'The name is 1 to 60 characters.', 'error');
+      flash(s, tr(s)('wsp.err.name'), 'error');
       return back(reply, s, `${BASE}/workspaces`);
     }
     try {
@@ -303,10 +309,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
         return w;
       });
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `created workspace ${name}` });
-      flash(s, `Workspace ${name} added.`);
+      flash(s, tr(s)('wsp.added', { name }));
       return back(reply, s, `${BASE}/workspaces/${id}`);
     } catch (e) {
-      flash(s, nameError(e), 'error');
+      flash(s, nameError(e, tr(s)), 'error');
       return back(reply, s, `${BASE}/workspaces`);
     }
   });
@@ -315,6 +321,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
     const full = await isAdmin(s.username);
+    const tx = tr(s);
     const w = await owner.one('select * from meta.workspace where id = $1', [req.params.id]);
     if (!w) return reply.code(404).send('Not found');
     const [devs, apps, others, rolesQ] = await Promise.all([
@@ -337,41 +344,41 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1>${w.name}</h1></div>
       <div class="columns wide-left">
-        ${region('Settings', html`<form method="post" action="${BASE}/workspaces/${w.id}">${csrf(s)}
-            ${input('name', 'Name', w.name, { required: true })}
-            ${input('description', 'Description', w.description ?? '')}
-            <div class="buttons"><button class="btn btn-hot">Save</button></div></form>
+        ${region(tx('wsp.settings'), html`<form method="post" action="${BASE}/workspaces/${w.id}">${csrf(s)}
+            ${input('name', tx('wsp.name'), w.name, { required: true })}
+            ${input('description', tx('wsp.description'), w.description ?? '')}
+            <div class="buttons"><button class="btn btn-hot">${tx('wsp.save')}</button></div></form>
           ${!full ? '' : w.id === 1
-            ? html`<p class="muted small">The Default workspace can't be deleted: imported applications and applications made with the command line start here.</p>`
+            ? html`<p class="muted small">${tx('wsp.default_no_delete')}</p>`
             : html`<form method="post" action="${BASE}/workspaces/${w.id}/delete" class="danger-zone">${csrf(s)}
-                <button class="btn btn-danger" data-confirm="Delete workspace ${w.name}?"${apps.rows.length ? raw(' disabled') : ''}>Delete workspace</button>
-                ${apps.rows.length ? html`<p class="muted small">Move its applications to another workspace first.</p>` : ''}</form>`}`)}
-        ${region('Developers', html`<p class="muted u-mt0">Developers of this workspace see and change its applications. Administrators see every workspace.</p>
+                <button class="btn btn-danger" data-confirm="${tx('wsp.delete_confirm', { name: w.name })}"${apps.rows.length ? raw(' disabled') : ''}>${tx('wsp.delete_ws')}</button>
+                ${apps.rows.length ? html`<p class="muted small">${tx('wsp.move_first')}</p>` : ''}</form>`}`)}
+        ${region(tx('wsp.developers'), html`<p class="muted u-mt0">${tx('wsp.devs_help')}</p>
           <form method="post" action="${BASE}/workspaces/${w.id}/members">${csrf(s)}
-            <fieldset class="field"><legend class="sr-only">Developers</legend><div class="radio-group">
-            ${devs.rows.map((d) => html`<label class="check"><input type="checkbox" name="member" value="${d.username}"${d.member ? raw(' checked') : ''}> ${d.username}${d.is_admin ? html` <span class="muted">(administrator)</span>` : ''}</label>`)}
+            <fieldset class="field"><legend class="sr-only">${tx('wsp.developers')}</legend><div class="radio-group">
+            ${devs.rows.map((d) => html`<label class="check"><input type="checkbox" name="member" value="${d.username}"${d.member ? raw(' checked') : ''}> ${d.username}${d.is_admin ? html` <span class="muted">${tx('wsp.administrator')}</span>` : ''}</label>`)}
             </div></fieldset>
-            <fieldset class="field"><legend class="label">Workspace administrators</legend><div class="radio-group">
+            <fieldset class="field"><legend class="label">${tx('wsp.ws_admins')}</legend><div class="radio-group">
             ${devs.rows.filter((d) => d.member && !d.is_admin).map((d) => html`<label class="check"><input type="checkbox" name="admin" value="${d.username}"${d.ws_admin ? raw(' checked') : ''}> ${d.username}</label>`)}
-            </div><small class="help">They manage this workspace's name and developers. Isolation, database roles, moving applications and deleting the workspace stay with administrators.</small></fieldset>
-            <div class="buttons"><button class="btn">Save developers</button></div></form>`)}
+            </div><small class="help">${tx('wsp.ws_admins_help')}</small></fieldset>
+            <div class="buttons"><button class="btn">${tx('wsp.save_devs')}</button></div></form>`)}
       </div>
       ${serviceRegion(s, w)}
-      ${region('Mail and network access', html`<p class="u-mt0">This workspace's own <a href="${BASE}/workspaces/${w.id}/mail">mail service</a> for its applications without one of their own, its <a href="${BASE}/network?ws=${w.id}">network access</a> list (which hosts its applications may call, within the installation's list), and the <a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">mail queue</a>.</p>`, '', 'mail-network')}
+      ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>`, '', 'mail-network')}
       <div class="columns">${preferencesRegion(s, w)}${linksRegion(s, w, links)}</div>
-      ${full ? isolationRegion(s, w, roles.rows) : region('Isolation', html`<p class="u-mt0">${w.isolated ? 'Isolated: its applications and SQL run on database logins of its own.' : 'Shared.'} Administrators change it.</p>`)}
-      ${!full ? '' : region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Application</th><th>Move to</th></tr></thead>
+      ${full ? isolationRegion(s, w, roles.rows) : region(tx('wsp.isolation'), html`<p class="u-mt0">${w.isolated ? tx('wsp.iso_short_on') : tx('wsp.iso_short_off')} ${tx('wsp.admins_change')}</p>`)}
+      ${!full ? '' : region(tx('wsp.applications'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('wsp.application')}</th><th>${tx('wsp.move_to')}</th></tr></thead>
         <tbody>${apps.rows.length
-          ? apps.rows.map((a) => html`<tr><td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">${a.id} · /a/${a.alias}</span></td>
-              <td data-label="Move to">${others.rows.length
+          ? apps.rows.map((a) => html`<tr><td data-label="${tx('wsp.application')}"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">${a.id} · /a/${a.alias}</span></td>
+              <td data-label="${tx('wsp.move_to')}">${others.rows.length
                 ? html`<form method="post" action="${BASE}/workspaces/${w.id}/move" class="search u-mwnone">${csrf(s)}<input type="hidden" name="app" value="${a.id}">
-                    <label class="sr-only" for="move-${a.id}">Move ${a.name} to</label>
+                    <label class="sr-only" for="move-${a.id}">${tx('wsp.move_label', { app: a.name })}</label>
                     <select id="move-${a.id}" name="to">${others.rows.map((o) => html`<option value="${o.id}">${o.name}</option>`)}</select>
-                    <button class="btn">Move</button></form>`
-                : html`<span class="muted">no other workspace</span>`}</td></tr>`)
-          : html`<tr><td colspan="2" class="empty">No applications.</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, w.name, full ? crumbs([[w.name]]) : [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [w.name]], main));
+                    <button class="btn">${tx('wsp.move')}</button></form>`
+                : html`<span class="muted">${tx('wsp.no_other')}</span>`}</td></tr>`)
+          : html`<tr><td colspan="2" class="empty">${tx('wsp.no_apps')}</td></tr>`}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, w.name, full ? crumbs(tx, [[w.name]]) : [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [w.name]], main));
   });
 
   app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)`, async (req: Req, reply) => {
@@ -379,11 +386,11 @@ export async function workspaceRoutes(app: FastifyInstance) {
     if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
     const name = String(req.body?.name ?? '').trim();
     try {
-      if (!NAME.test(name)) throw new Error('The name is 1 to 60 characters.');
+      if (!NAME.test(name)) throw new Error(tr(s)('wsp.err.name'));
       const r = await owner.query('update meta.workspace set name = $2, description = $3 where id = $1', [req.params.id, name, String(req.body?.description ?? '').trim() || null]);
-      flash(s, r.rowCount ? 'Workspace saved.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+      flash(s, tr(s)(r.rowCount ? 'wsp.saved' : 'wsp.not_found'), r.rowCount ? 'ok' : 'error');
     } catch (e) {
-      flash(s, nameError(e), 'error');
+      flash(s, nameError(e, tr(s)), 'error');
     }
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
   });
@@ -406,7 +413,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       );
     });
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `developers of workspace ${req.params.id}: ${names.join(', ').slice(0, 1000)}` });
-    flash(s, 'Developers saved.');
+    flash(s, tr(s)('wsp.devs_saved'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
   });
 
@@ -436,13 +443,13 @@ export async function workspaceRoutes(app: FastifyInstance) {
         await c.query('delete from meta.app_group_member where app_id = $1', [appId]);
       });
     } catch (e) {
-      flash(s, `Not moved: ${roleError(e)}`, 'error');
+      flash(s, tr(s)('wsp.not_moved', { why: roleError(e, tr(s)) }), 'error');
       return back(reply, s, `${BASE}/workspaces/${from}`);
     } finally {
       await workspacesChanged();
     }
     await logActivity({ appId, username: s.username, event: 'workspace', ip: clientIp(req), detail: `moved from workspace ${from} to ${to.id}` });
-    flash(s, `Application moved to ${to.name}.`);
+    flash(s, tr(s)('wsp.moved', { name: to.name }));
     return back(reply, s, `${BASE}/workspaces/${from}`);
   });
 
@@ -451,20 +458,20 @@ export async function workspaceRoutes(app: FastifyInstance) {
     if (!s || !(await adminOnly(s, reply))) return;
     const id = Number(req.params.id);
     if (id === DEFAULT_WORKSPACE) {
-      flash(s, 'The Default workspace cannot be deleted.', 'error');
+      flash(s, tr(s)('wsp.err.default'), 'error');
       return back(reply, s, `${BASE}/workspaces/${id}`);
     }
     if (await owner.one('select 1 as ok from meta.workspace where id = $1 and isolated', [id])) {
-      flash(s, 'Make the workspace shared (not isolated) before deleting it.', 'error');
+      flash(s, tr(s)('wsp.err.isolated'), 'error');
       return back(reply, s, `${BASE}/workspaces/${id}`);
     }
     if (await owner.one('select 1 as ok from meta.workspace_app where workspace_id = $1 limit 1', [id])) {
-      flash(s, 'Move the applications of this workspace to another workspace first.', 'error');
+      flash(s, tr(s)('wsp.err.has_apps'), 'error');
       return back(reply, s, `${BASE}/workspaces/${id}`);
     }
     const r = await owner.one<{ name: string }>('delete from meta.workspace where id = $1 returning name', [id]);
     if (r) await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `deleted workspace ${r.name}` });
-    flash(s, r ? `Workspace ${r.name} deleted.` : 'Not found.', r ? 'ok' : 'error');
+    flash(s, r ? tr(s)('wsp.deleted', { name: r.name }) : tr(s)('wsp.not_found'), r ? 'ok' : 'error');
     return back(reply, s, `${BASE}/workspaces`);
   });
 
@@ -475,14 +482,14 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const id = Number(req.params.id);
     const on = req.body?.isolated === 'true';
     try {
-      const problem = on ? isolationProblem() : null;
+      const problem = on ? isolationProblem(tr(s)) : null;
       if (problem) throw new Error(problem);
       const r = await owner.query('update meta.workspace set isolated = $2 where id = $1', [id, on]);
       if (!r.rowCount) return reply.code(404).send('Not found');
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${id} ${on ? 'isolated' : 'shared'}` });
-      flash(s, on ? 'The workspace is isolated: its applications and SQL now run on its own database logins.' : 'The workspace is shared again: its applications run on the shared runtime connection.');
+      flash(s, tr(s)(on ? 'wsp.isolated_now' : 'wsp.shared_now'));
     } catch (e) {
-      flash(s, `${on ? 'Not isolated' : 'Not changed'}: ${roleError(e)}`, 'error');
+      flash(s, tr(s)(on ? 'wsp.not_isolated' : 'wsp.not_changed', { why: roleError(e, tr(s)) }), 'error');
     } finally {
       await workspacesChanged();
     }
@@ -497,20 +504,20 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const role = String(req.body?.role ?? '').trim();
     const remove = req.body?.action === 'remove';
     try {
-      if (!ROLE.test(role)) throw new Error('A role name is a letter or _ followed by letters, digits, _ or $ (at most 63).');
-      if (!remove && !(await owner.one('select 1 as ok from pg_roles where rolname = $1', [role]))) throw new Error(`There is no database role ${role}.`);
+      if (!ROLE.test(role)) throw new Error(tr(s)('wsp.err.role_name'));
+      if (!remove && !(await owner.one('select 1 as ok from pg_roles where rolname = $1', [role]))) throw new Error(tr(s)('wsp.err.no_role', { role }));
       if (remove) {
         const used = await owner.one<{ aliases: string }>(
           `select string_agg(alias, ', ') as aliases from meta.app a where a.db_role = $2 and meta.app_workspace(a.id) = $1 having count(*) > 0`,
           [id, role],
         );
-        if (used) throw new Error(`${used.aliases} run${used.aliases.includes(',') ? '' : 's'} as ${role}: give ${used.aliases.includes(',') ? 'them' : 'it'} another role first.`);
+        if (used) throw new Error(tr(s)(used.aliases.includes(',') ? 'wsp.err.role_used' : 'wsp.err.role_used_one', { apps: used.aliases, role }));
         await owner.query('delete from meta.workspace_role where workspace_id = $1 and role_name = $2', [id, role]);
       } else await owner.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2)', [id, role]);
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${id}: ${remove ? 'removed' : 'added'} role ${role}` });
-      flash(s, remove ? `Role ${role} removed.` : `Role ${role} added.`);
+      flash(s, tr(s)(remove ? 'wsp.role_removed' : 'wsp.role_added', { role }));
     } catch (e) {
-      flash(s, `Not saved: ${roleError(e)}`, 'error');
+      flash(s, tr(s)('wsp.not_saved', { why: roleError(e, tr(s)) }), 'error');
     } finally {
       await workspacesChanged();
     }
@@ -525,12 +532,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const label = String(req.body?.banner_label ?? '').trim();
     const color = BANNER_COLORS.includes(String(req.body?.banner_color)) ? String(req.body?.banner_color) : 'blue';
     try {
-      if (message.length > 2000) throw new Error('The message is at most 2000 characters.');
-      if (label && !/^\S(.{0,38}\S)?$/.test(label)) throw new Error('The banner label is at most 40 characters.');
+      if (message.length > 2000) throw new Error(tr(s)('wsp.err.message'));
+      if (label && !/^\S(.{0,38}\S)?$/.test(label)) throw new Error(tr(s)('wsp.err.banner'));
       const r = await owner.query('update meta.workspace set message = $2, banner_label = $3, banner_color = $4 where id = $1', [req.params.id, message || null, label || null, color]);
       if (!r.rowCount) return reply.code(404).send('Not found');
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: message and banner` });
-      flash(s, 'Message and banner saved.');
+      flash(s, tr(s)('wsp.service_saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -548,7 +555,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const r = await owner.query('update meta.workspace set sql_workshop = $2, rest_services = $3, builder_home = $4 where id = $1', [req.params.id, sql, rest, home]);
     if (!r.rowCount) return reply.code(404).send('Not found');
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}, /builder opens ${home ?? 'apps'}` });
-    flash(s, 'Preferences saved.');
+    flash(s, tr(s)('wsp.prefs_saved'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
   });
 
@@ -561,16 +568,16 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const description = String(req.body?.description ?? '').trim();
     const position = Number(req.body?.position || 0);
     try {
-      if (!LINK_LABEL.test(label)) throw new Error('The label is 1 to 60 characters.');
-      if (!LINK_URL.test(url) || url.length > 2000 || !URL.canParse(url)) throw new Error('The URL starts with http:// or https://.');
-      if (description.length > 500) throw new Error('The description is at most 500 characters.');
-      if (!Number.isInteger(position) || Math.abs(position) > 100000) throw new Error('The order is a whole number.');
+      if (!LINK_LABEL.test(label)) throw new Error(tr(s)('wsp.err.label'));
+      if (!LINK_URL.test(url) || url.length > 2000 || !URL.canParse(url)) throw new Error(tr(s)('wsp.err.url'));
+      if (description.length > 500) throw new Error(tr(s)('wsp.err.description'));
+      if (!Number.isInteger(position) || Math.abs(position) > 100000) throw new Error(tr(s)('wsp.err.order'));
       await owner.query('insert into meta.workspace_link (workspace_id, label, url, description, position) values ($1, $2, $3, $4, $5)', [req.params.id, label, url, description || null, position]);
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: extension link ${label}` });
-      flash(s, `Link ${label} added.`);
+      flash(s, tr(s)('wsp.link_added', { label }));
     } catch (e) {
       const err = e as { code?: string; message: string };
-      flash(s, err.code === '23505' ? `There is a link ${label} already.` : err.code === '23503' ? 'Not found.' : err.code ? 'The link was not saved.' : err.message, 'error');
+      flash(s, err.code === '23505' ? tr(s)('wsp.link_exists', { label }) : err.code === '23503' ? tr(s)('wsp.not_found') : err.code ? tr(s)('wsp.link_not_saved') : err.message, 'error');
     }
     return back(reply, s, `${BASE}/workspaces/${req.params.id}#links`);
   });
@@ -579,7 +586,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
     const r = await owner.query('delete from meta.workspace_link where id = $2 and workspace_id = $1', [req.params.id, req.params.lid]);
-    flash(s, r.rowCount ? 'Link deleted.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+    flash(s, tr(s)(r.rowCount ? 'wsp.link_deleted' : 'wsp.not_found'), r.rowCount ? 'ok' : 'error');
     return back(reply, s, `${BASE}/workspaces/${req.params.id}#links`);
   });
 
@@ -587,6 +594,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.get(`${BASE}/workspaces/:id(^\\d{1,9}$)/utilization`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const tx = tr(s);
     const w = await owner.one<{ id: number; name: string }>('select id, name from meta.workspace where id = $1', [req.params.id]);
     if (!w) return reply.code(404).send('Not found');
     const [apps, schemas, totals] = await Promise.all([
@@ -621,24 +629,24 @@ export async function workspaceRoutes(app: FastifyInstance) {
     ]);
     const size = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(2)} GB`);
     const sum = (k: string) => apps.rows.reduce((t, r) => t + Number(r[k]), 0);
-    const main = html`<div class="title-row"><h1>Workspace utilization: ${w.name}</h1></div>
+    const main = html`<div class="title-row"><h1>${tx('wsp.util_title', { name: w.name })}</h1></div>
       <div class="stat-grid u-mb1">
-        ${[['Applications', apps.rows.length], ['Pages', sum('pages')], ['Developers', totals.developers], ['Page views (30 days)', sum('views')], ['SQL scripts', totals.scripts]]
+        ${[[tx('wsp.applications'), apps.rows.length], [tx('wsp.pages'), sum('pages')], [tx('wsp.developers'), totals.developers], [tx('wsp.views30'), sum('views')], [tx('wsp.scripts'), totals.scripts]]
           .map(([l, v]) => html`<div class="stat"><b>${String(v)}</b><span>${l}</span></div>`)}
       </div>
-      ${region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Application</th><th class="num">Pages</th><th class="num">Regions</th><th class="num">Items</th><th class="num">Page views (30 days)</th><th class="num">Users (30 days)</th><th class="num">Static files</th></tr></thead>
-        <tbody>${apps.rows.length ? apps.rows.map((a) => html`<tr><td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
-          <td class="num" data-label="Pages">${a.pages}</td><td class="num" data-label="Regions">${a.regions}</td><td class="num" data-label="Items">${a.items}</td>
-          <td class="num" data-label="Page views">${a.views}</td><td class="num" data-label="Users">${a.users}</td><td class="num" data-label="Static files">${size(Number(a.files))}</td></tr>`)
-          : html`<tr><td colspan="7" class="empty">No applications.</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('wsp.applications'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('wsp.application')}</th><th class="num">${tx('wsp.pages')}</th><th class="num">${tx('wsp.regions')}</th><th class="num">${tx('wsp.items')}</th><th class="num">${tx('wsp.views30')}</th><th class="num">${tx('wsp.users30')}</th><th class="num">${tx('wsp.static')}</th></tr></thead>
+        <tbody>${apps.rows.length ? apps.rows.map((a) => html`<tr><td data-label="${tx('wsp.application')}"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
+          <td class="num" data-label="${tx('wsp.pages')}">${a.pages}</td><td class="num" data-label="${tx('wsp.regions')}">${a.regions}</td><td class="num" data-label="${tx('wsp.items')}">${a.items}</td>
+          <td class="num" data-label="${tx('wsp.views')}">${a.views}</td><td class="num" data-label="${tx('wsp.users')}">${a.users}</td><td class="num" data-label="${tx('wsp.static')}">${size(Number(a.files))}</td></tr>`)
+          : html`<tr><td colspan="7" class="empty">${tx('wsp.no_apps')}</td></tr>`}</tbody></table></div>`)}
       <div class="u-spacer"></div>
-      ${region('Schemas', html`<p class="muted u-mt0">The schemas the workspace's database roles may use, with the storage of their tables, indexes and TOAST data.</p>
+      ${region(tx('wsp.schemas'), html`<p class="muted u-mt0">${tx('wsp.schemas_help')}</p>
         <div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Schema</th><th>Owner</th><th class="num">Tables</th><th class="num">Storage</th></tr></thead>
-        <tbody>${schemas.rows.length ? schemas.rows.map((r) => html`<tr><td data-label="Schema">${r.schema}</td><td data-label="Owner"><code>${r.owner}</code></td>
-          <td class="num" data-label="Tables">${r.tables}</td><td class="num" data-label="Storage">${size(Number(r.bytes))}</td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No schemas: the workspace's applications have no database role of their own.</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, `Utilization: ${w.name}`, [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [w.name, `${BASE}/workspaces/${w.id}`], ['Utilization']], main));
+        <thead><tr><th>${tx('wsp.schema')}</th><th>${tx('wsp.owner')}</th><th class="num">${tx('wsp.tables')}</th><th class="num">${tx('wsp.storage')}</th></tr></thead>
+        <tbody>${schemas.rows.length ? schemas.rows.map((r) => html`<tr><td data-label="${tx('wsp.schema')}">${r.schema}</td><td data-label="${tx('wsp.owner')}"><code>${r.owner}</code></td>
+          <td class="num" data-label="${tx('wsp.tables')}">${r.tables}</td><td class="num" data-label="${tx('wsp.storage')}">${size(Number(r.bytes))}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('wsp.no_schemas')}</td></tr>`}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, tx('wsp.util_crumb', { name: w.name }), [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [w.name, `${BASE}/workspaces/${w.id}`], [tx('wsp.utilization')]], main));
   });
 }

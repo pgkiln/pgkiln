@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The administration screens in the builder languages** (WS-7, part 4): the user directory (accounts, an account's
+  password and application access, account settings), identity providers, Developers and Workspaces (a workspace's
+  developers, isolation, database roles, message and banner, preferences, extension links, utilization) follow the
+  developer's builder language, with their messages. Role hints under a roles field too (also on Shared Components →
+  Access control).
+
 ## [0.58.0] - 2026-10-21
 
 ### Added

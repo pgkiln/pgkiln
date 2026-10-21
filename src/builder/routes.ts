@@ -689,37 +689,38 @@ export async function builderRoutes(app: FastifyInstance) {
     const devs = (await owner.query('select username, is_admin, email from meta.developer order by 1')).rows;
     const admin = devs.some((d) => d.username === s.username && d.is_admin);
     const me = devs.find((d) => d.username === s.username);
-    const main = html`<h1 class="u-mb1">Developers</h1>
+    const tx = tr(s);
+    const main = html`<h1 class="u-mb1">${tx('dev.title')}</h1>
       <div class="columns">
-        ${region('Change your password', html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
+        ${region(tx('dev.change_pw'), html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
           <div class="form-grid">
-            ${input('current', 'Current password', '', { type: 'password', required: true, auto: 'current-password' })}
-            ${input('password', 'New password', '', { type: 'password', required: true, auto: 'new-password', help: 'At least 8 characters.' })}
+            ${input('current', tx('dev.current'), '', { type: 'password', required: true, auto: 'current-password' })}
+            ${input('password', tx('dev.new'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min8') })}
           </div>
-          <div class="buttons"><button class="btn btn-hot">Change password</button></div></form>`)}
-        ${region('Your e-mail address', html`<form method="post" action="${BASE}/developers/email">${csrf(s)}<input type="hidden" name="username" value="${s.username}">
-          <div class="form-grid">${input('email', 'E-mail address', me?.email ?? '', { type: 'email', auto: 'email', help: '"Find my workspace" on the sign-in page sends your workspaces to it. Empty: none.' })}</div>
-          <div class="buttons"><button class="btn">Save</button></div></form>`)}
-        ${region('Developer accounts', html`
-          <p class="muted u-mt0">Administrators add and remove developers and can break other developers' page and application locks.</p>
-          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Username</th><th>Role</th><th>E-mail</th><th></th></tr></thead><tbody>
-            ${devs.map((d) => html`<tr><td data-label="Username">${d.username}${d.username === s.username ? ' (you)' : ''}</td><td data-label="Role">${d.is_admin ? 'Administrator' : 'Developer'}</td>
-              <td data-label="E-mail">${admin && d.username !== s.username
-                ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="E-mail address of ${d.username}" placeholder="none"><button class="btn">Save</button></form>`
+          <div class="buttons"><button class="btn btn-hot">${tx('dev.change_btn')}</button></div></form>`)}
+        ${region(tx('dev.your_email'), html`<form method="post" action="${BASE}/developers/email">${csrf(s)}<input type="hidden" name="username" value="${s.username}">
+          <div class="form-grid">${input('email', tx('dev.email'), me?.email ?? '', { type: 'email', auto: 'email', help: tx('dev.email_help') })}</div>
+          <div class="buttons"><button class="btn">${tx('dev.save')}</button></div></form>`)}
+        ${region(tx('dev.accounts'), html`
+          <p class="muted u-mt0">${tx('dev.accounts_help')}</p>
+          <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('dev.username')}</th><th>${tx('dev.role')}</th><th>${tx('dev.email_col')}</th><th></th></tr></thead><tbody>
+            ${devs.map((d) => html`<tr><td data-label="${tx('dev.username')}">${d.username}${d.username === s.username ? ` ${tx('dev.you')}` : ''}</td><td data-label="${tx('dev.role')}">${d.is_admin ? tx('dev.administrator') : tx('dev.developer')}</td>
+              <td data-label="${tx('dev.email_col')}">${admin && d.username !== s.username
+                ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="${tx('dev.email_of', { user: d.username })}" placeholder="${tx('dev.none')}"><button class="btn">${tx('dev.save')}</button></form>`
                 : html`<span class="wrap-anywhere">${d.email ?? ''}</span>`}</td><td>${d.username === s.username || !admin ? '' : html`
-              <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? 'Make developer' : 'Make administrator'}</button></form>
-              · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="Remove developer ${d.username}?">Remove</button></form>`}</td></tr>`)}
+              <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? tx('dev.make_dev') : tx('dev.make_admin')}</button></form>
+              · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="${tx('dev.remove_confirm', { user: d.username })}">${tx('dev.remove')}</button></form>`}</td></tr>`)}
           </tbody></table></div>
           ${admin
-            ? html`<h3>Add developer</h3>
+            ? html`<h3>${tx('dev.add')}</h3>
               <form method="post" action="${BASE}/developers">${csrf(s)}
-                <div class="form-grid">${input('username', 'Username', '', { required: true })}${input('password', 'Password', '', { type: 'password', required: true, auto: 'new-password' })}${input('email', 'E-mail address', '', { type: 'email', help: 'Optional: for "Find my workspace".' })}</div>
-                <div class="field"><label class="check"><input type="checkbox" name="is_admin" value="true"> Administrator</label></div>
-                <div class="buttons"><button class="btn btn-hot">Add developer</button></div>
+                <div class="form-grid">${input('username', tx('dev.username'), '', { required: true })}${input('password', tx('dev.password'), '', { type: 'password', required: true, auto: 'new-password' })}${input('email', tx('dev.email'), '', { type: 'email', help: tx('dev.optional_email') })}</div>
+                <div class="field"><label class="check"><input type="checkbox" name="is_admin" value="true"> ${tx('dev.administrator')}</label></div>
+                <div class="buttons"><button class="btn btn-hot">${tx('dev.add')}</button></div>
               </form>`
-            : html`<p class="muted">Only administrators add and remove developers.</p>`}`)}
+            : html`<p class="muted">${tx('dev.admins_only')}</p>`}`)}
       </div>`;
-    return send(reply, s, shell(s, 'Developers', [['Developers']], main, 'developers'));
+    return send(reply, s, shell(s, tx('dev.title'), [['Developers']], main, 'developers'));
   });
 
   app.post(`${BASE}/developers`, async (req: Req, reply) => {
@@ -732,7 +733,7 @@ export async function builderRoutes(app: FastifyInstance) {
       const ws = currentWorkspace(s);
       await owner.tx(async (c) => {
         const email = String(req.body?.email ?? '').trim();
-        if (email && !EMAIL.test(email)) throw new Error('The e-mail address is not valid.');
+        if (email && !EMAIL.test(email)) throw new Error(tr(s)('dev.err.email'));
         await c.query('insert into meta.developer (username, password_hash, is_admin, email) values ($1, meta.hash_password($2), $3, $4)', [req.body?.username?.trim(), req.body?.password, req.body?.is_admin === 'true', email || null]);
         // (064) a new developer works in the current workspace; more on Workspace utilities → Workspaces
         // (the insert trigger put them in Default)
@@ -741,7 +742,7 @@ export async function builderRoutes(app: FastifyInstance) {
           await c.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, req.body?.username?.trim()]);
         }
       });
-      flash(s, ws > 0 ? `Developer added to workspace ${s.workspace!.name}.` : 'Developer added.');
+      flash(s, ws > 0 ? tr(s)('dev.added_ws', { name: s.workspace!.name }) : tr(s)('dev.added'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -759,11 +760,11 @@ export async function builderRoutes(app: FastifyInstance) {
           where username = $1 and password_hash = crypt($2, password_hash)`,
         [s.username, req.body?.current ?? '', req.body?.password],
       );
-      if (r.rowCount !== 1) throw new Error('The current password is not correct.');
+      if (r.rowCount !== 1) throw new Error(tr(s)('dev.err.current'));
       // End all other builder sessions of this developer.
       await owner.query('delete from meta.session where app_id is null and username = $1 and id <> $2', [s.username, s.id]);
       delete s.state.__WEAK;
-      flash(s, 'Password changed.');
+      flash(s, tr(s)('dev.pw_changed'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -777,10 +778,10 @@ export async function builderRoutes(app: FastifyInstance) {
     const who = String(req.body?.username ?? s.username);
     if (who !== s.username && !(await isAdmin(s.username))) return reply.code(403).send('Only administrators change other developers\' addresses.');
     const email = String(req.body?.email ?? '').trim();
-    if (email && (!EMAIL.test(email) || email.length > 254)) flash(s, 'The e-mail address is not valid.', 'error');
+    if (email && (!EMAIL.test(email) || email.length > 254)) flash(s, tr(s)('dev.err.email'), 'error');
     else {
       const r = await owner.query('update meta.developer set email = $2 where username = $1', [who, email || null]);
-      flash(s, r.rowCount ? 'E-mail address saved.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+      flash(s, tr(s)(r.rowCount ? 'dev.email_saved' : 'dev.not_found'), r.rowCount ? 'ok' : 'error');
     }
     return back(reply, s, `${BASE}/developers`);
   });
@@ -791,7 +792,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators change roles.');
     if (req.body?.username && req.body.username !== s.username) {
       await owner.query('update meta.developer set is_admin = $2 where username = $1', [req.body.username, req.body.is_admin === 'true']);
-      flash(s, 'Role changed.');
+      flash(s, tr(s)('dev.role_changed'));
     }
     return back(reply, s, `${BASE}/developers`);
   });
@@ -803,7 +804,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (req.body?.username && req.body.username !== s.username) {
       await owner.query('delete from meta.developer where username = $1', [req.body.username]);
       await owner.query('delete from meta.session where app_id is null and username = $1', [req.body.username]);
-      flash(s, 'Developer removed.');
+      flash(s, tr(s)('dev.removed'));
     }
     return back(reply, s, `${BASE}/developers`);
   });

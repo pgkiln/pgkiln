@@ -311,6 +311,28 @@ describe('choosing the builder language', () => {
     await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
   });
 
+  test('(sprint 125) the user directory, identity providers, developers and workspaces in German', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const account = (await owner.one<{ id: number }>('select id from meta.account order by id limit 1'))!.id;
+    const pages: [string, BuilderKey[]][] = [
+      ['/builder/users', ['us.title', 'us.create', 'us.settings', 'us.providers_btn']],
+      [`/builder/users/${account}`, ['us.details', 'us.app_access', 'us.set_password']],
+      ['/builder/users/providers', ['idp.title', 'idp.add', 'idp.username_claim']],
+      ['/builder/developers', ['dev.change_pw', 'dev.accounts', 'dev.add']],
+      ['/builder/workspaces', ['wsp.title', 'wsp.add', 'wsp.first_dev']],
+      ['/builder/workspaces/1', ['wsp.developers', 'wsp.service', 'wsp.prefs', 'wsp.links', 'wsp.default_no_delete']],
+      ['/builder/workspaces/1/utilization', ['wsp.views30', 'wsp.schemas_help']],
+    ];
+    for (const [url, keys] of pages) {
+      const body = (await b.get(url)).body;
+      for (const k of keys) assert.ok(body.includes(esc(de[k])), `${url}: ${k}`);
+      const text = body.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '').replace(/<[^>]+>/g, ' ');
+      assert.deepEqual(Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `)), [], `${url}: raw keys`);
+    }
+    await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
+  });
+
   test('the builder error pages follow the device language', async () => {
     const b = new Browser(app, { accept: 'text/html' });
     await b.get('/builder/login?lang=de');
