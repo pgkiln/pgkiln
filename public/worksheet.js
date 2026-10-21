@@ -22,7 +22,7 @@
   const form = document.getElementById('ws');
   if (!form) return;
   // (sprint 123) texts in the builder's language: #builder-texts (shell(), keys js.*), English in en.ts
-  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.textContent || '{}'); } catch { return {}; } })();
+  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
   const msg = (key, params = {}) => (TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
   const ta = form.querySelector('textarea[name=sql]');
   const out = form.querySelector('.ws-output');
@@ -663,7 +663,7 @@
 // to open it; Open shows the Object Browser's detail in a panel at the side (its tabs and pages load in the panel).
 (() => {
   'use strict';
-  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.textContent || '{}'); } catch { return {}; } })();
+  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
   const msg = (key) => TEXTS[key] ?? key;
   document.addEventListener('contextmenu', (e) => {
     const item = e.target.closest?.('.ws-obj, .ob-item');

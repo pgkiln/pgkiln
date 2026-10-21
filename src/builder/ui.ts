@@ -208,7 +208,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         <span class="ide-status-version">pgkiln ${VERSION}</span>
       </footer>
     </div>
-    <script type="application/json" id="builder-texts">${raw(JSON.stringify(clientTexts(tx.lang)).replace(/</g, '\\u003c'))}</script>`,
+    <div id="builder-texts" hidden data-texts="${JSON.stringify(clientTexts(tx.lang))}"></div>`,
     `builder-body ide${opts.full ? ' ide-full' : ''}`,
     {},
     builderHead(),

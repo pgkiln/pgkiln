@@ -88,8 +88,8 @@ const LABELS: Record<string, BuilderKey> = {
 
 /**
  * (sprint 123) The texts the builder's own JavaScript shows (keys js.*), in the language: shell() puts them in the
- * page as <script type="application/json" id="builder-texts"> (data, never run; CSP is not involved), and
- * public/*.js read them with a small helper. English fills any gap.
+ * page as JSON in an attribute (<div id="builder-texts" hidden data-texts="…">, escaped like any value; no inline
+ * script), and public/*.js read them with a small helper. English fills any gap.
  */
 export function clientTexts(lang: BuilderLang): Record<string, string> {
   const own = MESSAGES[lang];

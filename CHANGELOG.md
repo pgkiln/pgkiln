@@ -10,7 +10,7 @@ All notable changes to this project are documented here. The format follows
   status bar, the transaction badge and its messages, the file menu, find and replace), the Object Browser (object
   types, tabs, column actions and their messages) and Table Properties now follow the developer's builder language
   (Deutsch, Español, Français, Nederlands, Português). The builder's JavaScript gets its texts from the page
-  (`#builder-texts`, keys `js.*`); the coverage check covers `public/*.js` too
+  (`#builder-texts`, keys `js.*`, no inline script); the coverage check covers `public/*.js` too
   ([chapter 12](docs/guide/12-development.md#builder-texts-in-more-languages)). Still English: Table Properties'
   validation messages, and the other SQL Workshop tools.
 

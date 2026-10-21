@@ -263,10 +263,11 @@ describe('choosing the builder language', () => {
     for (const k of ['ws.run_statement', 'ws.run_script', 'ws.tab.result', 'ws.tab.history', 'ws.continue', 'ws.commit.auto'] as BuilderKey[])
       assert.ok(ws.includes(esc(de[k])), `worksheet: ${k}`);
     assert.doesNotMatch(ws, />Run Statement</);
-    // the browser's texts: a JSON block (never run) in the developer's language, without a "<" that could end it
-    const json = /<script type="application\/json" id="builder-texts">([^<]*)<\/script>/.exec(ws);
-    assert.ok(json, 'the builder-texts block');
-    const texts = JSON.parse(json![1]);
+    // the browser's texts: JSON in an attribute (escaped like any value; no inline script), in the developer's language
+    const json = /<div id="builder-texts" hidden data-texts="([^"]*)"><\/div>/.exec(ws);
+    assert.ok(json, 'the builder-texts element');
+    assert.doesNotMatch(ws, /<script(?![^>]*src=)/, 'no inline script');
+    const texts = JSON.parse(json![1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
     assert.equal(texts['js.ws.txn_none'], de['js.ws.txn_none']);
     assert.ok(Object.keys(texts).length > 10 && Object.keys(texts).every((k) => k.startsWith('js.')), 'only the js.* keys');
     // a run: the status bar in German

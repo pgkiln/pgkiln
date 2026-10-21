@@ -590,12 +590,12 @@ display position, button position, component kind and SQL Workshop tool has its 
 language file has exactly the English keys, the same `{placeholders}`, no empty texts and is mostly translated.
 
 **Texts in the browser** (sprint 123). The builder's own JavaScript (`public/*.js`) asks for texts with keys
-`js.<screen>.<what>`: `shell()` puts every `js.*` key in the developer's language into the page as
-`<script type="application/json" id="builder-texts">` (data that never runs, so the Content Security Policy is not
-involved; `<` is written as `\u003c`). A script reads it once and fills placeholders itself:
+`js.<screen>.<what>`: `shell()` puts every `js.*` key in the developer's language into the page as JSON in an
+attribute, `<div id="builder-texts" hidden data-texts="…">` (escaped like any value; builder pages keep having no
+inline script). A script reads it once and fills placeholders itself:
 
 ```js
-const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.textContent || '{}'); } catch { return {}; } })();
+const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
 const msg = (key, params = {}) => (TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
 announce(msg('js.ws.copied', { what }));
 ```
