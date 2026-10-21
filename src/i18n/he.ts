@@ -406,6 +406,7 @@ export const he: Record<MessageKey, string> = {
   'smart.suggested': "מסננים מוצעים:",
   'smart.matching': "סינון לפי:",
   'smart.no_match': "אין מסנן שמתאים לחיפוש; הטקסט מחופש בכל העמודות.",
+  'smart.understood': "הובן כ:",
   'rds.label': "אזורים",
   'rds.region': "אזור",
   'rds.show_all': "הצגת הכול",

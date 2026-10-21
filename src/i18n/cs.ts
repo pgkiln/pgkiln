@@ -406,6 +406,7 @@ export const cs: Record<MessageKey, string> = {
   'smart.suggested': "Navrhované filtry:",
   'smart.matching': "Filtrovat podle:",
   'smart.no_match': "Hledání neodpovídá žádný filtr; text se hledá ve všech sloupcích.",
+  'smart.understood': "Pochopeno jako:",
   'rds.label': "Oblasti",
   'rds.region': "Oblast",
   'rds.show_all': "Zobrazit vše",

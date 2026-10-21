@@ -192,4 +192,62 @@ describe('App Gallery', () => {
       assert.doesNotMatch(res.body, /class="alert alert-error"/);
     }
   });
+
+  // (sprint 122, WS-8) the samples added for more topics do what their pages say
+  const installed = async (alias: string) => {
+    if (!(await owner.one('select 1 as ok from meta.app where alias = $1', [alias]))) {
+      await admin.get('/builder/gallery');
+      assert.equal((await admin.submit(`/builder/gallery/samples/${alias}`, {})).statusCode, 303);
+    }
+    const u = new Browser(app);
+    await u.login('demo', 'demo', alias);
+    return u;
+  };
+
+  test('Sample Data Loading: its example files merge by code, through the definition, and skip the bad rows', async () => {
+    const u = await installed('sample-data-loading');
+    const file = async (name: string) => ({ name, type: 'text/csv', data: Buffer.from((await u.get(`/a/sample-data-loading/static/${name}`)).rawPayload) });
+    await u.get('/a/sample-data-loading/3');
+    let res = await u.upload('/a/sample-data-loading/3', { __request: 'LOAD' }, { P3_FILE: await file('products.csv') });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    assert.match((await u.get('/a/sample-data-loading/3')).body, /3 products added, 1 updated/);
+    assert.equal((await owner.one(`select price::text from sample_loading.product where code = 'TL-002'`)).price, '17.95');
+    await u.get('/a/sample-data-loading/4');
+    res = await u.upload('/a/sample-data-loading/4', { __request: 'LOAD' }, { P4_FILE: await file('supplier-list.csv') });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    assert.deepEqual(await owner.one(`select name, category, added::text from sample_loading.product where code = 'GD-003'`), { name: 'Watering Can', category: 'GARDEN', added: '2026-05-02' });
+    await u.get('/a/sample-data-loading/5');
+    res = await u.upload('/a/sample-data-loading/5', { __request: 'LOAD' }, { P5_FILE: await file('with-errors.csv') });
+    const page = res.statusCode === 303 ? (await u.get('/a/sample-data-loading/5')).body : res.body;
+    assert.match(page, /2 added, 0 updated, 2 skipped/);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_loading.product where code in ('OF-003', 'OF-005')`)).n, 2);
+  });
+
+  test('Sample Approvals: a small request is approved by the workflow, a large one by an approver', async () => {
+    const { runWorkflows } = await import('../src/workflow.ts');
+    const u = await installed('sample-approvals');
+    const ask = async (title: string, amount: string) => {
+      const form = formFields((await u.get('/a/sample-approvals/3?clear=3')).body);
+      const res = await u.submit('/a/sample-approvals/3', { ...form, P3_TITLE: title, P3_SUPPLIER: 'Test', P3_AMOUNT: amount, __request: 'CREATE' });
+      assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+      for (let i = 0; i < 3; i++) await runWorkflows();
+      return owner.one(`select id, status, requested_by, decided_by from sample_approvals.purchase where title = $1`, [title]);
+    };
+    const small = await ask('Sticky notes', '25');
+    assert.deepEqual([small.status, small.requested_by, small.decided_by], ['APPROVED', 'demo', 'workflow']);
+    const big = await ask('Laptops', '4800');
+    assert.equal(big.status, 'PENDING');
+    const task = (await owner.one(`select t.id from meta.task t join meta.app x on x.id = t.app_id where x.alias = 'sample-approvals' and t.detail_pk = $1`, [String(big.id)])).id;
+    // demo sees it under Requested by me, but nobody approves their own request
+    await u.get('/a/sample-approvals/4');
+    await u.post(`/a/sample-approvals/tasks/${task}`, { __csrf: u.lastCsrf, next: '/a/sample-approvals/4', action: 'approve' });
+    assert.notEqual((await owner.one('select state from meta.task where id = $1', [task])).state, 'completed');
+    const a = new Browser(app);
+    await a.login('approver', 'approver', 'sample-approvals');
+    assert.match((await a.get('/a/sample-approvals/4')).body, /Purchase: Laptops \(4800/);
+    await a.post(`/a/sample-approvals/tasks/${task}`, { __csrf: a.lastCsrf, next: '/a/sample-approvals/4', action: 'approve', comment: 'Needed' });
+    for (let i = 0; i < 3; i++) await runWorkflows();
+    assert.deepEqual(await owner.one(`select status, decided_by, note from sample_approvals.purchase where id = $1`, [big.id]), { status: 'APPROVED', decided_by: 'approver', note: 'Needed' });
+    assert.equal((await owner.one(`select w.state from meta.workflow w join meta.app x on x.id = w.app_id where x.alias = 'sample-approvals' and w.detail_pk = $1`, [String(big.id)])).state, 'completed');
+  });
 });

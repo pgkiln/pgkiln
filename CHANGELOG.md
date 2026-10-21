@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Four more sample apps in the App Gallery** (WS-8 leftover; APEX: Sample Maps, Sample Approvals, Sample Data
+  Loading, Sample File Upload and Download): **Sample Maps** (markers and clusters, layers with GeoJSON and a heat
+  map, a map filtering a list by distance, a location item, without PostGIS), **Sample Approvals** (a workflow
+  started by a form, an approval task for the role approver, the task list and the workflow console), **Sample Data
+  Loading** (by column name, through a data load definition, skipping bad rows; example files included) and **Sample
+  Files** (a file in the record's columns, several files in a child table, a cropped photo). Sample Reporting's smart
+  filters read a phrase. The Sample Apps tab now has thirteen apps ([chapter 3](docs/guide/03-builder.md#app-gallery)).
+- **Ask in your own words on faceted search and smart filters** (WS-5 leftover; APEX 26.2). A condition that a
+  facet on the page can hold sets that facet instead of a report filter: values (*only clerks*), excluded values
+  (*not clerks*, with `exclude`), custom ranges (*salary between 1000 and 3000*) and stars (*rating at least 4*); the
+  facets' selections are chips of the Ask box with Remove, and Undo and *start over* include them. A smart filters
+  region with `"ask": true` reads its search text as a phrase and offers what its facets can hold as one
+  *Understood as* suggestion ([chapter 4](docs/guide/04-pages-and-regions.md#smart_filters)).
+
 ## [0.55.0] - 2026-10-21
 
 ### Added

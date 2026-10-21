@@ -15,7 +15,7 @@ export const REGION_CONFIG_HELP: [string[], string][] = [
   [['grid'], '{"page_size":25,"allow":{"insert":true,"update":true,"delete":true},"readonly":["col"],"columns":{"deptno":{"lov":"LOV:DEPARTMENTS","required":true}},"aggregates":{"sal":["sum","avg"]},"layout":{"order":["col"],"hidden":["col"],"widths":{"col":160},"frozen":1},"row_actions":{"edit":{"page":3,"items":{"P3_ID":"#id#"}},"duplicate":true,"delete":true,"links":[{"label":"…","page":4,"items":{}}]},"select_row":{"column":"id","item":"P1_ID"} (a master),"master":{"item":"P1_ID","column":"parent_id"} (a detail; any region type),"actions":true,"saved_reports":true,"public_reports":"SCHEME","views":["row","group","chart"] (views besides the grid; left out: all three)}'],
   [['calendar'], '{"link":{...}}'],
   [['facets'], '{"report":<region id>,"search":true,"facets":[{"column":"job","label":"Job","exclude":true},{"column":"sal","type":"range","ranges":[{"to":1000},{"from":1000}],"custom":true},{"column":"rating","type":"star","max":5}]}'],
-  [['smart_filters'], '{"report":<region id>,"suggestions":3,"placeholder":"…","facets":[…as facets]}'],
+  [['smart_filters'], '{"report":<region id>,"suggestions":3,"placeholder":"…","ask":true,"facets":[…as facets]}'],
   [['display_selector'], '{"style":"tabs"|"select","show_all":true,"remember":true}'],
   [['list'], '{"list":"NAME","template":"links"|"badges"|"cards"|"tabs"} (lists under Shared Components → Lists)'],
   [['*'], '{"display_selector":true} puts it in the page\'s display selector'],

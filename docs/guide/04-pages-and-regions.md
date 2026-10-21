@@ -312,6 +312,23 @@ klerken*, *bonus is 10% van salaris*) and German (*Gehalt über 3000*, *sortiere
 absteigend*, *Summe von Gehalt pro Abteilung*, *nur Angestellte*) work the same way; another
 language adds a phrase table to `src/runtime/ir-phrases.ts`.
 
+**With faceted search or smart filters** on the same report (sprint 122; APEX 26.2), a condition
+that one of their facets can hold sets **that facet** instead of becoming a report filter, so the
+facet panel or the smart filter chips show it and the facet counts follow. The facets' selections
+are chips of the box too (with Remove; the facet region edits them), and Undo and *start over*
+include them:
+
+| Condition | Facet |
+|---|---|
+| *only clerks*, *clerks and analysts* (equals) | a checkbox facet: its values |
+| *not clerks* (differs from) | a checkbox facet with `exclude`: the value, excluded |
+| *salary between 1000 and 3000*, *at least 2000*, *hired in 1981* | a range facet with custom ranges (`custom`): from / to |
+| *rating at least 4* | a star facet: *4 stars & up* |
+
+Anything else (*salary over 3000*, *name contains*, a column without a facet) stays a report
+filter. Only facets of regions the user sees count. A smart filters region can also read its own
+search field this way (`"ask": true`, [below](#smart_filters)).
+
 **With an AI service** (`"ai_filter": {"service": "NAME"}`, an [AI
 service](06-processing.md#generate-text-with-ai) the application may use), the request goes to the
 service with the report's shown columns (names, headings and kinds: text, number, date, boolean),
@@ -950,6 +967,15 @@ that filter. If nothing matches, the term searches all columns of the report.
 | `facets` | As for [`facets`](#facets-faceted-search) (checkbox, range and star; `exclude` and `custom` are for the facets panel) |
 | `suggestions` | Suggestions per facet, 0–10 (default 3) |
 | `placeholder` | The text in the empty search field (translatable) |
+| `ask` | `true`: also read the search text as a phrase (sprint 122; APEX 26.2) |
+
+With `"ask": true` the text typed in the search field is also read as a phrase, with the built-in
+phrases of [*Ask in your own words*](#ask-in-your-own-words-ai-interactive-reports) (no AI service
+needed): *"clerks in sales with salary between 1000 and 3000"*, *"not clerks, salary at least
+2000"*. What the region's facets can hold is offered as the first suggestion, **Understood as:**
+*Job: CLERK · Department: SALES · Salary: 1000 – 3000*; choosing it sets those facets and clears the
+search. Values are looked up in the report's own rows (as query parameters). A single value
+(*"clerk"*) stays the ordinary matching suggestion.
 
 Everything is a link or a GET form on the report's own URL parameters, so it works without
 JavaScript, can be bookmarked and is kept in saved reports. A facets panel and smart filters may

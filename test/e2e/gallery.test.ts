@@ -147,6 +147,26 @@ describe('the sample apps of the App Gallery', () => {
     }
   });
 
+  test('Sample Reporting on a phone: a phrase in the smart filters is understood and sets the facets', async () => {
+    const c = await context(VIEWPORTS.phone);
+    try {
+      const page = await signIn(c, 'sample-reporting');
+      await page.goto(`${base}/a/sample-reporting/5`);
+      await page.fill('.sf-input', 'novels published between 1850 and 1900');
+      await Promise.all([page.waitForNavigation(), page.press('.sf-input', 'Enter')]);
+      const understood = page.locator('.sf-understood a.chip-suggest');
+      assert.match(await understood.innerText(), /Novel.*1850 – 1900/s);
+      await check(page, 'smart-understood');
+      await Promise.all([page.waitForNavigation(), understood.click()]);
+      assert.match(await page.locator('.sf-chips').first().innerText(), /Genre: Novel[\s\S]*Published: 1850 – 1900/);
+      assert.match(await page.content(), /Middlemarch/);
+      assert.doesNotMatch(await page.content(), /Pride and Prejudice/, '1813');
+      await check(page, 'smart-applied');
+    } finally {
+      await c.close();
+    }
+  });
+
   test('the gallery: four tabs fit a phone, and the search filters as you type', async () => {
     const c = await context(VIEWPORTS.phone);
     try {

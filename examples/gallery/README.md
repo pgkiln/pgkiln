@@ -23,6 +23,10 @@ The builder's **App Gallery** (`/builder/gallery`) lists what `gallery.json` nam
 | `sample-grids.sql` | Sample Interactive Grids | an editable grid, select lists, totals, frozen column, row menu, master-detail, views |
 | `sample-dynamic-actions.sql` | Sample Dynamic Actions | show/hide/enable, set value, refresh, messages, wait popup, classes, inline dialog |
 | `sample-reporting.sql` | Sample Reporting | interactive report, faceted search, smart filters, a classic report with column options |
+| `sample-maps.sql` | Sample Maps | markers and clusters, layers with GeoJSON and a heat map, a map filtering a list by distance, a location item |
+| `sample-approvals.sql` | Sample Approvals | a workflow started by a form, an approval task and the task list, the workflow console (accounts demo and approver) |
+| `sample-data-loading.sql` | Sample Data Loading | `data_load` processes: by column name and merged, through a data load definition, skipping rows with errors |
+| `sample-files.sql` | Sample Files | a file in the record's columns, several files in a child table, a photo cropped before upload |
 | `ux-patterns.sql` | UX Pattern Catalog | region templates and options, buttons, items and form layouts, content and page patterns |
 
 Each script creates its own schema (`sample_charts`, …), a role (`app_sample_charts`, …) granted to the runtime, the

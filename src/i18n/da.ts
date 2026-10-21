@@ -406,6 +406,7 @@ export const da: Record<MessageKey, string> = {
   'smart.suggested': "Foreslåede filtre:",
   'smart.matching': "Filtrér på:",
   'smart.no_match': "Intet filter passer til søgningen; teksten søges i alle kolonner.",
+  'smart.understood': "Forstået som:",
   'rds.label': "Regioner",
   'rds.region': "Region",
   'rds.show_all': "Vis alle",

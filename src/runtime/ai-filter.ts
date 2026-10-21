@@ -11,6 +11,8 @@ import { REPORT_CHART_KINDS } from './charts.ts';
 import { bindValues, dbg, publicError, stripSemicolon, type PageContext } from './context.ts';
 import { applyPlan, checkPlan, chipsOf, ChipRefused, editChip, planIsEmpty, removeChip, type Chip, type Column, type Kind, type Plan } from './ir-plan.ts';
 import { parseQuestion, type Lookup } from './ir-phrases.ts';
+import { applyFacetSettings, clearFacets, facetSettings } from './ask-facets.ts';
+import { describeFacetFilter, reportFacetDefs, type FacetFilter } from './facet-state.ts';
 import { AGGREGATES, fieldsOf, headingOf, HIGHLIGHT_COLORS, isNumeric, opLabel, OPERATORS, q, reportState, visibleColumns, withComputations } from './report.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { loadContext, simplePage, txContext, type Req } from './routes.ts';
@@ -37,6 +39,10 @@ import { loadContext, simplePage, txContext, type Req } from './routes.ts';
 // small form) and Remove; Undo returns to the settings before the last
 // change. All are buttons of one POST form (CSRF-checked), so they work
 // without JavaScript; the undo history is kept in the session.
+//
+// (sprint 122) With a faceted search or smart filters region on the same
+// report, a condition one of its facets can hold sets that facet instead of
+// a report filter (ask-facets.ts); the facets' selections are chips too.
 
 export { type Column } from './ir-plan.ts';
 
@@ -108,7 +114,7 @@ async function askColumns(ctx: PageContext, r: Region, params: URLSearchParams) 
 }
 
 /** Stored values of the report's text columns matching the candidates (a query parameter): for "only clerks". */
-function valueLookup(ctx: PageContext, columns: Column[], src: string): Lookup {
+export function valueLookup(ctx: PageContext, columns: Column[], src: string): Lookup {
   return async (column, candidates) => {
     const cols = columns.filter((c) => c.kind === 'text' && !c.computed && (column === null || c.name === column)).slice(0, MAX_LOOKUP_COLUMNS);
     const cands = [...new Set(candidates.map((x) => x.slice(0, 200).replace(/\0/g, '')).filter(Boolean))].slice(0, MAX_CANDIDATES);
@@ -234,10 +240,14 @@ export const checkAnswer = (json: unknown, columns: Column[]) => checkPlan(json,
 
 type T = PageContext['locale']['t'];
 
-function describePlan(p: Plan, t: T, label: (n: string) => string) {
+/** The page's facets on the report (their selections are chips and Ask may set them). */
+const pageFacets = (ctx: PageContext, rid: number) => reportFacetDefs(ctx.page.regions, rid);
+
+function describePlan(p: Plan, t: T, label: (n: string) => string, facets: FacetFilter[] = []) {
   return [
     ...(p.reset ? [t('report.reset')] : []),
     ...p.filters.map((f) => `${label(f.column)} ${opLabel(t, f.operator)}${f.value ? ` ${f.value}` : ''}`),
+    ...facets.map((f) => describeFacetFilter(f, label(f.column), t)),
     ...(p.search ? [`"${p.search}"`] : []),
     ...(p.sort ? [t('ai_filter.sort', { column: `${p.sort.label}${p.desc ? ' ↓' : ''}` })] : []),
     ...p.highlights.map((h) => `${t('report.highlight')}: ${label(h.column)} ${opLabel(t, h.operator)}${h.value ? ` ${h.value}` : ''}`),
@@ -268,6 +278,8 @@ function chipText(chip: Chip, t: T, label: (n: string) => string, byPos: (pos: n
     case 'chart': return `${t('report.chart')}: ${t(`chart.${chip.type}`)}, ${label(chip.label)}, ${t(`agg.${chip.fn}`)}: ${label(chip.value)}`;
     case 'hide': return `${t('report.hidden_column')}: ${label(chip.column)}`;
     case 'area': case 'near': return t('report.map_area');
+    case 'facet': return describeFacetFilter({ kind: 'values', column: chip.column, values: [chip.value], exclude: chip.exclude }, label(chip.column), t);
+    case 'facetrange': return describeFacetFilter({ kind: 'range', column: chip.column, from: chip.from, to: chip.to, custom: chip.custom }, label(chip.column), t, chip.def);
   }
 }
 
@@ -287,7 +299,7 @@ export async function renderAiFilter(ctx: PageContext, r: Region): Promise<Raw |
     <input type="hidden" name="__csrf" value="${ctx.session.csrf_token}"><input type="hidden" name="params" value="${params}"></form>`);
 
   // the chips: the report's settings in the URL, each with Edit and Remove
-  const chips = chipsOf(ctx.params, r.id);
+  const chips = chipsOf(ctx.params, r.id, pageFacets(ctx, r.id));
   let columns: Column[] = [];
   let computeErrors: Awaited<ReturnType<typeof askColumns>>['errors'] = [];
   if (chips.length && ctx.client)
@@ -444,7 +456,7 @@ export async function aiFilterRoutes(app: FastifyInstance) {
         dbg(ctx, 6, 'ai', () => `report settings from the phrases: ${JSON.stringify(plan)}; not understood: ${JSON.stringify(parsed.left)}`);
         if (planIsEmpty(plan)) throw new AiError('output', [t('ai_filter.no_match'), ...(parsed.left.length ? [t('ai_filter.not_understood', { what: parsed.left.join('; ') })] : [])].join(' '));
       } else {
-        const current = chipsOf(params, r.id).map((ch) => chipText(ch, t, label, (pos) => columns.find((c) => c.pos === pos)?.label ?? `#${pos}`)).join('; ');
+        const current = chipsOf(params, r.id, pageFacets(ctx, r.id)).map((ch) => chipText(ch, t, label, (pos) => columns.find((c) => c.pos === pos)?.label ?? `#${pos}`)).join('; ');
         const res = await generate(conf.service!, { system: planSystem(columns, new Date().toISOString().slice(0, 10), current), prompt: question, schema: planSchema(columns), maxTokens: 3000 }, {
           appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, source: 'nl2ir', debug: (l, x) => dbg(ctx, l, 'ai', x),
         });
@@ -452,9 +464,13 @@ export async function aiFilterRoutes(app: FastifyInstance) {
         dbg(ctx, 6, 'ai', () => `report settings from the question: ${JSON.stringify(plan)}`);
         if (planIsEmpty(plan)) throw new AiError('output', t('ai_filter.nothing'));
       }
+      // conditions a facet on the page can hold set that facet (the facets of regions the user sees)
+      const facets = facetSettings(plan, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions), columns);
+      if (plan.reset) clearFacets(params, r.id);
       applyPlan(params, r.id, plan);
+      applyFacetSettings(params, r.id, facets);
       if (params.toString() !== before) pushUndo(ctx, r.id, before);
-      ctx.session.state.__FLASH = [t('ai_filter.applied', { what: describePlan(plan, t, label) }), ...(parsed?.left.length ? [t('ai_filter.not_understood', { what: parsed.left.join('; ') })] : [])].join(' ');
+      ctx.session.state.__FLASH = [t('ai_filter.applied', { what: describePlan(plan, t, label, facets) }), ...(parsed?.left.length ? [t('ai_filter.not_understood', { what: parsed.left.join('; ') })] : [])].join(' ');
     } catch (e) {
       if (e instanceof Forbidden) return refuse(`ai filter: region ${r.id} on page ${ctx.page.page_no}`);
       ctx.session.state.__FLASH_ERROR = e instanceof AiError ? e.message : await publicError(ctx, e, 'AI report filter');
@@ -476,7 +492,7 @@ export async function aiFilterRoutes(app: FastifyInstance) {
       await saveState(ctx.session);
       return back(reply, ctx, r.id, prev === null ? params : new URLSearchParams(prev));
     }
-    const chips = chipsOf(params, r.id);
+    const chips = chipsOf(params, r.id, pageFacets(ctx, r.id));
     const which = typeof body.edit === 'string' ? body.edit : typeof body.remove === 'string' ? body.remove : '';
     const i = /^\d{1,3}$/.test(which) ? Number(which) : -1;
     const chip = chips[i];

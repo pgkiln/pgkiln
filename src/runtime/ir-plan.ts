@@ -1,5 +1,6 @@
 import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql } from './compute.ts';
+import { facetFilters, facetKeys, facetParamNames, type FacetDef } from './facet-state.ts';
 import { AGGREGATES, HIGHLIGHT_COLORS, MAX_COMPUTATIONS, OPERATORS } from './report.ts';
 
 // (sprint 112) What "Ask in your own words" may do to an interactive report
@@ -15,7 +16,8 @@ import { AGGREGATES, HIGHLIGHT_COLORS, MAX_COMPUTATIONS, OPERATORS } from './rep
 //
 // The settings in force are shown as chips (chipsOf): each one is a URL
 // parameter value of the report, so a chip can be edited or removed
-// (editChip, removeChip) and nothing else is stored.
+// (editChip, removeChip) and nothing else is stored. (sprint 122) The page's
+// facets on the report are chips too (Remove only: the facet region edits them).
 
 export type Kind = 'number' | 'date' | 'text' | 'boolean';
 
@@ -243,12 +245,14 @@ export type Chip =
   | { kind: 'chart'; key: string; type: string; label: string; fn: string; value: string }
   | { kind: 'hide'; key: string; column: string }
   | { kind: 'area'; key: string }
-  | { kind: 'near'; key: string };
+  | { kind: 'near'; key: string }
+  | { kind: 'facet'; key: string; column: string; value: string; exclude: boolean }
+  | { kind: 'facetrange'; key: string; column: string; from: string; to: string; custom: boolean; def: FacetDef };
 
 const MAX_CHIPS = 60;
 
 /** The report's settings in the URL as chips (what reportState() reads, in the same limits). */
-export function chipsOf(params: URLSearchParams, rid: number): Chip[] {
+export function chipsOf(params: URLSearchParams, rid: number, facets?: Map<string, FacetDef>): Chip[] {
   const k = (x: string) => `r${rid}_${x}`;
   const out: Chip[] = [];
   const q = (params.get(k('q')) ?? '').trim();
@@ -287,6 +291,9 @@ export function chipsOf(params: URLSearchParams, rid: number): Chip[] {
   for (const x of params.getAll(k('x')).filter(Boolean).slice(0, 100)) out.push({ kind: 'hide', key: `x:${x}`, column: x });
   if (params.get(k('bb'))) out.push({ kind: 'area', key: 'bb' });
   if (params.get(k('near'))) out.push({ kind: 'near', key: 'near' });
+  for (const f of facets ? facetFilters(params, rid, facets) : [])
+    if (f.kind === 'values') for (const value of f.values) out.push({ kind: 'facet', key: `fx:${f.column}:${value}`, column: f.column, value, exclude: f.exclude });
+    else out.push({ kind: 'facetrange', key: `fr:${f.column}:${f.from}|${f.to}`, column: f.column, from: f.from, to: f.to, custom: f.custom, def: facets!.get(f.column)! });
   return out.slice(0, MAX_CHIPS);
 }
 
@@ -334,6 +341,13 @@ export function removeChip(params: URLSearchParams, rid: number, chip: Chip) {
     case 'hide': dropValue(params, k('x'), chip.column); break;
     case 'area': params.delete(k('bb')); break;
     case 'near': params.delete(k('near')); break;
+    case 'facet': {
+      const name = facetKeys(rid).values + chip.column;
+      dropValue(params, name, chip.value);
+      if (!params.getAll(name).length) params.delete(facetKeys(rid).exclude + chip.column);
+      break;
+    }
+    case 'facetrange': for (const n of facetParamNames(rid, chip.column)) params.delete(n); break;
   }
   params.delete(k('p'));
   params.delete(k('k'));

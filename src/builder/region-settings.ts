@@ -356,6 +356,7 @@ export function mergeSmartFiltersSettings(config: Config, b: Body, a: Allowed): 
   const n = Number(b.suggestions);
   set('suggestions', b.suggestions !== undefined && b.suggestions !== '' && Number.isInteger(n) && n >= 0 && n <= 10 && n !== 3 ? n : undefined);
   set('placeholder', b.placeholder?.trim().slice(0, 100) || undefined);
+  set('ask', b.ask === 'true' ? true : undefined);
   return out;
 }
 
@@ -647,7 +648,8 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
         ? html`<div class="field"><label class="label" for="${id('suggestions')}">Suggestions per facet (0–10)</label>
             <input id="${id('suggestions')}" name="suggestions" type="number" min="0" max="10" value="${cfg.suggestions ?? 3}"></div>
           <div class="field" data-wide><label class="label" for="${id('placeholder')}">Placeholder of the search field</label>
-            <input id="${id('placeholder')}" name="placeholder" maxlength="100" value="${cfg.placeholder ?? ''}" placeholder="Search or filter…"></div>`
+            <input id="${id('placeholder')}" name="placeholder" maxlength="100" value="${cfg.placeholder ?? ''}" placeholder="Search or filter…"></div>
+          ${check('ask', 'Read the search as a phrase ("clerks with salary between 1000 and 3000") and offer it as filters', cfg.ask === true)}`
         : html`${check('search', 'A search field (searches all columns of the report)', cfg.search === true)}`}
     </div></fieldset>
     ${cols && 'error' in cols ? columnsHint(cols) : ''}

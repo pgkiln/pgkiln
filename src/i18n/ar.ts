@@ -406,6 +406,7 @@ export const ar: Record<MessageKey, string> = {
   'smart.suggested': "عوامل تصفية مقترحة:",
   'smart.matching': "التصفية حسب:",
   'smart.no_match': "لا يطابق أي عامل تصفية البحث؛ يُبحث عن النص في كل الأعمدة.",
+  'smart.understood': "فُهم على أنه:",
   'rds.label': "المناطق",
   'rds.region': "المنطقة",
   'rds.show_all': "إظهار الكل",
