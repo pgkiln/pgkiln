@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The administration screens in the builder languages** (WS-7, part 4): the user directory (accounts, an account's
+  password and application access, account settings), identity providers, Developers and Workspaces (a workspace's
+  developers, isolation, database roles, message and banner, preferences, extension links, utilization) follow the
+  developer's builder language, with their messages. Role hints under a roles field too (also on Shared Components →
+  Access control).
+
+### Added
 - **Shared Components and the application settings in the builder languages** (WS-7, part 3): the Shared Components
   overview (its groups and links), every component type's list, its editor frame and messages, access control,
   breadcrumbs and component settings, and an application's Settings (all tabs, the security checklist and the
