@@ -15,6 +15,13 @@ npx tsx src/cli/main.ts apps         # directly
 ./bin/pgkiln.js apps                 # the package's bin entry (also after npm link)
 ```
 
+Without a checkout, from the npm package or in the Docker container:
+
+```sh
+npx -y pgkiln apps                                       # npm (Node.js 22+); or npm install -g pgkiln, then: pgkiln apps
+docker compose exec pgkiln node bin/pgkiln.js apps       # the Docker installation (from the directory with compose.yaml)
+```
+
 It connects with `DATABASE_URL` (the owner role) from the environment or `.env`, the same as
 the server and `npm run db:migrate`; `--db <url>` overrides it. Every command has `--help`.
 

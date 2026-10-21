@@ -103,6 +103,9 @@ SQL inline), edit them, show the diff, and import them again in one transaction.
 claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp
 ```
 
+Without a checkout, `npx -y pgkiln mcp` (with `DATABASE_URL` set) or, for the Docker installation,
+`docker compose exec -T pgkiln node bin/pgkiln.js mcp` starts the same server.
+
 Then ask things like *"explain what happens when I press Save on page 3 of hr"* or *"add a hire
 date column to the employee report and show me the diff"*. Queries it runs are read-only. See
 [AI coding agents](docs/guide/20-ai-agents.md).
