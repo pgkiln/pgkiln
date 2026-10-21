@@ -12,6 +12,8 @@ All notable changes to this project are documented here. The format follows
   developer's builder language, with their messages. Role hints under a roles field too (also on Shared Components →
   Access control).
 
+## [0.58.0] - 2026-10-21
+
 ### Added
 - **Shared Components and the application settings in the builder languages** (WS-7, part 3): the Shared Components
   overview (its groups and links), every component type's list, its editor frame and messages, access control,
