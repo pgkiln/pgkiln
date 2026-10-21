@@ -3,6 +3,7 @@ import pg from 'pg';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { readSchema } from '../ddl.ts';
+import { tr } from './i18n.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, workshopDb } from './workspaces.ts';
 import { objectMenu } from './object-actions.ts';
@@ -50,6 +51,7 @@ const TABLE_TABS = [
   ['columns', 'Columns'], ['data', 'Data'], ['indexes', 'Indexes'], ['constraints', 'Constraints'], ['triggers', 'Triggers'],
   ['grants', 'Grants'], ['rls', 'Row level security'], ['dependencies', 'Dependencies'], ['statistics', 'Statistics'], ['ddl', 'DDL'],
 ] as const;
+type TabKey = (typeof TABLE_TABS)[number][0];
 
 /** CREATE statements the + menu and the tiles start with (the SQL Worksheet shows them; nothing runs until Run). */
 export function createTemplate(kind: string, schema: string): string | null {
@@ -110,6 +112,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/objects`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const db = await workshopDb(s);
     const q = req.query ?? {};
     const system = q.system === '1';
@@ -131,18 +134,18 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
     const link = (extra: Record<string, string>) => `?${new URLSearchParams({ schema, ...(system ? { system: '1' } : {}), ...(filter ? { q: filter } : {}), ...extra })}`;
 
     const tree = html`<form method="get" class="ob-filter" role="search"><input type="hidden" name="schema" value="${schema}">${system ? html`<input type="hidden" name="system" value="1">` : ''}
-        <label class="sr-only" for="ob-q">Filter objects</label><input id="ob-q" name="q" type="search" value="${filter}" placeholder="Filter" data-filter-tree="ob-tree"></form>
+        <label class="sr-only" for="ob-q">${tx('ob.filter_label')}</label><input id="ob-q" name="q" type="search" value="${filter}" placeholder="${tx('ob.filter')}" data-filter-tree="ob-tree"></form>
       <div id="ob-tree">${OB_TYPES.map(([t, label, ic]) => {
         const list = shown.filter((o) => o.type === t);
         if (!list.length && filter) return '';
         return html`<details class="ob-folder"${list.length && (filter || list.length <= 50 || selected?.type === t) ? raw(' open') : ''}>
-          <summary>${icon(ic)}<span>${label}</span><span class="kind">${list.length}</span></summary>
-          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">extension</span>` : ''}</a>${objectMenu(schema, o)}</li>`)}</ul>
+          <summary>${icon(ic)}<span>${tx.dyn(`ob.type.${t}`, label)}</span><span class="kind">${list.length}</span></summary>
+          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">${tx('ob.extension')}</span>` : ''}</a>${objectMenu(schema, o)}</li>`)}</ul>
         </details>`;
       })}</div>`;
 
     let detail: Raw;
-    if (!schema) detail = html`<p class="muted">No schema you may use.</p>`;
+    if (!schema) detail = html`<p class="muted">${tx('ob.no_schema')}</p>`;
     else if (selected) {
       // (sprint 96) pin the object to the SQL Workshop's home
       const href = `${BASE}/sql/objects?${new URLSearchParams({ schema, k: selected.type, o: selected.ref })}`;
@@ -150,33 +153,33 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
       detail = html`<div class="ob-pin">${pin}</div>${await objectDetail(db, s, schema, selected, String(q.tab ?? ''), Number(q.p) || 1, link)}`;
     }
     else
-      detail = region(`Create database objects in ${schema}`, html`<div class="ob-tiles">
-        <a class="create-source" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema })}">${icon('table')}<span><b>Table (form)</b><small class="muted">Columns, keys, indexes and security in a form</small></span></a>${[
-        ['table', 'table', 'Table'], ['view', 'layers', 'View'], ['function', 'code', 'Function'], ['sequence', 'hash', 'Sequence'], ['index', 'list', 'Index'],
-      ].map(([k, ic, label]) => html`<a class="create-source" href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon(ic)}<span><b>${label}</b><small class="muted">Start a CREATE ${label.toUpperCase()} statement</small></span></a>`)}
-        <a class="create-source" href="${BASE}/sql/quick">${icon('bolt')}<span><b>Quick SQL</b><small class="muted">A data model in shorthand</small></span></a>
-        <a class="create-source" href="${BASE}/sql/load">${icon('upload')}<span><b>Load data</b><small class="muted">A table from a file</small></span></a></div>
-        <p class="muted">Select an object in the tree, or filter it by name.</p>`);
+      detail = region(tx('ob.create_in', { schema }), html`<div class="ob-tiles">
+        <a class="create-source" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema })}">${icon('table')}<span><b>${tx('ob.tile.table_form')}</b><small class="muted">${tx('ob.tile.table_form.desc')}</small></span></a>${(['table', 'view', 'function', 'sequence', 'index'] as const).map((k) => [k, { table: 'table', view: 'layers', function: 'code', sequence: 'hash', index: 'list' }[k]] as const)
+        .map(([k, ic]) => html`<a class="create-source" href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon(ic)}<span><b>${tx(`ob.kind.${k}`)}</b><small class="muted">${tx('ob.tile.start', { what: k.toUpperCase() })}</small></span></a>`)}
+        <a class="create-source" href="${BASE}/sql/quick">${icon('bolt')}<span><b>${tx('ob.tile.quick')}</b><small class="muted">${tx('ob.tile.quick.desc')}</small></span></a>
+        <a class="create-source" href="${BASE}/sql/load">${icon('upload')}<span><b>${tx('ob.tile.load')}</b><small class="muted">${tx('ob.tile.load.desc')}</small></span></a></div>
+        <p class="muted">${tx('ob.select_hint')}</p>`);
 
     const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects', s)}
       <div class="ob-head">
         <form method="get" class="ob-schema">${filter ? html`<input type="hidden" name="q" value="${filter}">` : ''}
-          <label class="label" for="ob-schema">Schema</label>
+          <label class="label" for="ob-schema">${tx('ob.schema')}</label>
           <select id="ob-schema" name="schema" data-autosubmit>${schemas.map((n) => html`<option value="${n}"${n === schema ? raw(' selected') : ''}>${n}</option>`)}</select>
-          <label class="check"><input type="checkbox" name="system" value="1"${system ? raw(' checked') : ''} data-autosubmit> Show system objects</label>
-          <button class="btn btn-sm">Show</button></form>
-        <details class="menu ob-create"><summary class="btn btn-hot">${icon('plus')} Create</summary>
-          <div class="menu-panel align-right"><div class="menu-section menu-links">${['table', 'view', 'function', 'sequence', 'index'].map((k) =>
-            html`<a href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon('plus')} ${k[0].toUpperCase() + k.slice(1)}</a>`)}</div></div></details>
+          <label class="check"><input type="checkbox" name="system" value="1"${system ? raw(' checked') : ''} data-autosubmit> ${tx('ob.system')}</label>
+          <button class="btn btn-sm">${tx('common.show')}</button></form>
+        <details class="menu ob-create"><summary class="btn btn-hot">${icon('plus')} ${tx('ob.create')}</summary>
+          <div class="menu-panel align-right"><div class="menu-section menu-links">${(['table', 'view', 'function', 'sequence', 'index'] as const).map((k) =>
+            html`<a href="${BASE}/sql/worksheet?${new URLSearchParams({ template: k, schema })}">${icon('plus')} ${tx(`ob.kind.${k}`)}</a>`)}</div></div></details>
       </div>
-      <div class="designer"><aside class="region region-standard ob-tree" aria-label="Database objects">${tree}</aside><div>${detail}</div></div>`;
-    return send(reply, s, shell(s, 'Object Browser', [['SQL Workshop', `${BASE}/sql`], ['Object Browser']], main, 'sql'));
+      <div class="designer"><aside class="region region-standard ob-tree" aria-label="${tx('ob.db_objects')}">${tree}</aside><div>${detail}</div></div>`;
+    return send(reply, s, shell(s, tx('ob.title'), [['SQL Workshop', `${BASE}/sql`], [tx('ob.title')]], main, 'sql'));
   });
 
   // column actions: the ALTER TABLE statement, into the SQL Worksheet to review and run
   app.post(`${BASE}/sql/objects/alter`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const db = await workshopDb(s);
     const b = req.body ?? {};
     const table = await db.one<{ q: string; ok: boolean }>(
@@ -188,7 +191,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
     ).catch(() => undefined);
     const backTo = `${BASE}/sql/objects?${new URLSearchParams({ schema: String(b.schema ?? ''), k: 'table', o: String(b.table ?? ''), tab: 'columns' })}`;
     if (!table?.ok) {
-      flash(s, 'Choose a table you may use.', 'error');
+      flash(s, tx('ob.err.table'), 'error');
       return back(reply, s, `${BASE}/sql/objects`);
     }
     const col = String(b.column ?? '').trim();
@@ -198,14 +201,14 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
     let problem = '';
     if (b.action === 'add') {
       const type = String(b.type ?? '').trim();
-      if (!NAME_RE.test(col)) problem = 'A column name is a letter or _ followed by letters, digits, _ or $.';
-      else if (cols.includes(col)) problem = `${col} is a column already.`;
-      else if (!TYPE_RE.test(type)) problem = 'A type is a name with an optional size, e.g. text, numeric(9,2), varchar(40), int[].';
+      if (!NAME_RE.test(col)) problem = tx('ob.err.col_name');
+      else if (cols.includes(col)) problem = tx('ob.err.col_exists', { column: col });
+      else if (!TYPE_RE.test(type)) problem = tx('ob.err.type');
       else sql = `alter table ${table.q} add column ${ident(col)} ${type}${b.not_null === 'true' ? ' not null' : ''};`;
     } else if (b.action === 'rename') {
       const to = String(b.new_name ?? '').trim();
-      if (!cols.includes(col)) problem = 'Choose a column of the table.';
-      else if (!NAME_RE.test(to) || cols.includes(to)) problem = 'The new name must be a valid name that the table doesn\'t have yet.';
+      if (!cols.includes(col)) problem = tx('ob.err.choose_col');
+      else if (!NAME_RE.test(to) || cols.includes(to)) problem = tx('ob.err.new_name');
       else sql = `alter table ${table.q} rename column ${ident(col)} to ${ident(to)};`;
     } else if (b.action === 'modify') {
       // (sprint 89, SQL-4) type, nulls and default in one ALTER TABLE; a default is one expression, never a statement
@@ -213,28 +216,28 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
       const expr = String(b.default ?? '').trim();
       const parts: string[] = [];
       const c = ident(col);
-      if (!cols.includes(col)) problem = 'Choose a column of the table.';
-      else if (type && !TYPE_RE.test(type)) problem = 'A type is a name with an optional size, e.g. text, numeric(9,2), varchar(40), int[].';
-      else if (b.default_action === 'set' && (!expr || expr.length > 200 || /;|--|\/\*/.test(expr))) problem = 'A default is one expression (at most 200 characters, without ; or comments), e.g. now(), 0 or \'new\'.';
+      if (!cols.includes(col)) problem = tx('ob.err.choose_col');
+      else if (type && !TYPE_RE.test(type)) problem = tx('ob.err.type');
+      else if (b.default_action === 'set' && (!expr || expr.length > 200 || /;|--|\/\*/.test(expr))) problem = tx('ob.err.default');
       else {
         if (type) parts.push(`alter column ${c} type ${type} using ${c}::${type}`);
         if (b.nullable === 'not_null') parts.push(`alter column ${c} set not null`);
         else if (b.nullable === 'null') parts.push(`alter column ${c} drop not null`);
         if (b.default_action === 'set') parts.push(`alter column ${c} set default ${expr}`);
         else if (b.default_action === 'drop') parts.push(`alter column ${c} drop default`);
-        if (!parts.length) problem = 'Nothing to change: choose a new type, nulls or a default.';
+        if (!parts.length) problem = tx('ob.err.nothing');
         else sql = `alter table ${table.q}\n  ${parts.join(',\n  ')};`;
       }
     } else if (b.action === 'drop') {
-      if (!cols.includes(col)) problem = 'Choose a column of the table.';
+      if (!cols.includes(col)) problem = tx('ob.err.choose_col');
       else sql = `alter table ${table.q} drop column ${ident(col)};`;
-    } else problem = 'Unknown action.';
+    } else problem = tx('ob.err.action');
     if (!sql) {
       flash(s, problem, 'error');
       return back(reply, s, backTo);
     }
     s.state.__SQLDRAFT = sql;
-    flash(s, 'Review the statement and press Run: nothing has been changed yet.');
+    flash(s, tx('ob.review'));
     return back(reply, s, `${BASE}/sql/worksheet`);
   });
 }
@@ -270,8 +273,9 @@ export async function listObjects(db: Awaited<ReturnType<typeof workshopDb>>, sc
   return system ? rows : rows.filter((o) => !o.ext);
 }
 
-export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: { csrf_token: string }, schema: string, o: Obj, tabAsked: string, page: number, link: (x: Record<string, string>) => string): Promise<Raw> {
-  const table = (rows: Record<string, unknown>[], empty = 'None.') =>
+export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s: Pick<Session, 'csrf_token' | 'state'>, schema: string, o: Obj, tabAsked: string, page: number, link: (x: Record<string, string>) => string): Promise<Raw> {
+  const tx = tr(s);
+  const table = (rows: Record<string, unknown>[], empty = tx('ob.none')) =>
     rows.length
       ? html`<div class="table-wrap"><table class="report"><thead><tr>${Object.keys(rows[0]).map((k) => html`<th scope="col">${k}</th>`)}</tr></thead>
         <tbody>${rows.map((r) => html`<tr>${Object.values(r).map((v) => html`<td>${v === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v)}</td>`)}</tr>`)}</tbody></table></div>`
@@ -279,22 +283,22 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
   const ddlOf = async (match: (x: { kind: string; name: string; table?: string }) => boolean) => {
     const objects = await readSchema(db.pool as pg.Pool, schema).catch(() => []);
     const text = objects.filter(match).map((x) => x.ddl).join('\n\n');
-    return text ? html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="DDL of ${o.name}">${text}</pre>` : html`<p class="muted">No DDL (an extension's object, or not readable with this connection).</p>`;
+    return text ? html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="${tx('ob.ddl_of', { name: o.name })}">${text}</pre>` : html`<p class="muted">${tx('ob.no_ddl')}</p>`;
   };
   const relname = o.ref.includes('.') ? o.ref.slice(o.ref.lastIndexOf('.') + 1).replace(/^"|"$/g, '') : o.ref.replace(/^"|"$/g, '');
 
   if (o.type === 'function' || o.type === 'procedure') {
     const src = await db.one<{ def: string }>('select pg_get_functiondef($1::regprocedure) as def', [o.ref]).catch(() => undefined);
-    return region(o.name, src ? html`<pre class="source" data-code-view="plpgsql" tabindex="0" aria-label="Source of ${o.name}">${src.def}</pre>` : html`<p class="muted">An aggregate or window function: no source.</p>`);
+    return region(o.name, src ? html`<pre class="source" data-code-view="plpgsql" tabindex="0" aria-label="${tx('ob.source_of', { name: o.name })}">${src.def}</pre>` : html`<p class="muted">${tx('ob.no_source')}</p>`);
   }
   if (o.type === 'trigger') {
     const [rel, name] = o.ref.split('|');
     const t = await db.one<{ def: string }>('select pg_get_triggerdef(oid, true) as def from pg_trigger where tgrelid = $1::regclass and tgname = $2', [rel, name]);
-    return region(o.name, html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="Definition of ${o.name}">${t?.def ?? ''}</pre>`);
+    return region(o.name, html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="${tx('ob.definition_of', { name: o.name })}">${t?.def ?? ''}</pre>`);
   }
   if (o.type === 'index') {
     const i = await db.one<{ def: string; size: string }>('select pg_get_indexdef($1::regclass) as def, pg_size_pretty(pg_relation_size($1::regclass)) as size', [o.ref]);
-    return region(o.name, html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="Definition of ${o.name}">${i?.def ?? ''};</pre><p class="muted">Size: ${i?.size ?? ''}</p>`);
+    return region(o.name, html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="${tx('ob.definition_of', { name: o.name })}">${i?.def ?? ''};</pre><p class="muted">${tx('ob.size', { size: i?.size ?? '' })}</p>`);
   }
   if (o.type === 'sequence') {
     const q = await db.one<Record<string, unknown>>(
@@ -313,11 +317,11 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
   const tab = tabs.some(([k]) => k === tabAsked) ? tabAsked : 'columns';
   // (sprint 89, SQL-4) the tabs on one row: the main ones and the current one, the rest under More
   const MAIN = ['columns', 'data', 'indexes', 'constraints', 'ddl'];
-  const tabLink = ([k, label]: readonly [string, string]) => html`<a href="${link({ k: o.type, o: o.ref, tab: k })}"${k === tab ? raw(' aria-current="page"') : ''}>${label}</a>`;
+  const tabLink = ([k]: readonly [string, string]) => html`<a href="${link({ k: o.type, o: o.ref, tab: k })}"${k === tab ? raw(' aria-current="page"') : ''}>${tx(`ob.tab.${k as TabKey}`)}</a>`;
   const shownTabs = tabs.filter(([k]) => MAIN.includes(k) || k === tab);
   const moreTabs = tabs.filter(([k]) => !shownTabs.some(([x]) => x === k));
   const nav = html`<nav class="settings-tabs ob-tabs" aria-label="${o.name}">${shownTabs.map(tabLink)}${moreTabs.length
-    ? html`<details class="menu ob-more"><summary>More ${icon('chevron-down')}</summary><div class="menu-panel"><div class="menu-section menu-links">${moreTabs.map(tabLink)}</div></div></details>`
+    ? html`<details class="menu ob-more"><summary>${tx('ob.more')} ${icon('chevron-down')}</summary><div class="menu-panel"><div class="menu-section menu-links">${moreTabs.map(tabLink)}</div></div></details>`
     : ''}</nav>`;
   let body: Raw;
   switch (tab) {
@@ -333,30 +337,30 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
       ).rows;
       const names = cols.map((c) => String(c.column));
       const hidden = html`${raw(`<input type="hidden" name="__csrf" value="${s.csrf_token}">`)}<input type="hidden" name="table" value="${o.ref}"><input type="hidden" name="schema" value="${schema}">`;
-      const pick = (id: string) => html`<label class="label" for="${id}">Column</label><select id="${id}" name="column">${names.map((n) => html`<option>${n}</option>`)}</select>`;
+      const pick = (id: string) => html`<label class="label" for="${id}">${tx('ob.column')}</label><select id="${id}" name="column">${names.map((n) => html`<option>${n}</option>`)}</select>`;
       // (sprint 89, SQL-4; APEX: the Columns toolbar) Add, Modify, Rename and Drop above the columns, each a small form
       body = html`${isTable
-        ? html`<div class="ob-toolbar" role="toolbar" aria-label="Columns">
-            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('plus')} Add column</summary><div class="menu-panel">
+        ? html`<div class="ob-toolbar" role="toolbar" aria-label="${tx('ob.tab.columns')}">
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('plus')} ${tx('ob.add_col')}</summary><div class="menu-panel">
               <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="add">
-                <label class="label" for="ob-add-name">Name</label><input id="ob-add-name" name="column" placeholder="name" required>
-                <label class="label" for="ob-add-type">Type</label><input id="ob-add-type" name="type" placeholder="text" required>
-                <label class="check"><input type="checkbox" name="not_null" value="true"> not null</label><button class="btn btn-sm btn-hot">Show the SQL</button></form></div></details>
-            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('edit')} Modify column</summary><div class="menu-panel">
+                <label class="label" for="ob-add-name">${tx('ob.name')}</label><input id="ob-add-name" name="column" placeholder="name" required>
+                <label class="label" for="ob-add-type">${tx('ob.type')}</label><input id="ob-add-type" name="type" placeholder="text" required>
+                <label class="check"><input type="checkbox" name="not_null" value="true"> not null</label><button class="btn btn-sm btn-hot">${tx('ob.show_sql')}</button></form></div></details>
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('edit')} ${tx('ob.modify_col')}</summary><div class="menu-panel">
               <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="modify">
                 ${pick('ob-mod-col')}
-                <label class="label" for="ob-mod-type">New type</label><input id="ob-mod-type" name="type" placeholder="the same">
-                <label class="label" for="ob-mod-null">Nulls</label><select id="ob-mod-null" name="nullable"><option value="">the same</option><option value="null">allowed</option><option value="not_null">not null</option></select>
-                <label class="label" for="ob-mod-def">Default</label><select id="ob-mod-def" name="default_action"><option value="">the same</option><option value="set">set to</option><option value="drop">none</option></select>
-                <label class="sr-only" for="ob-mod-expr">Default expression</label><input id="ob-mod-expr" name="default" placeholder="now(), 0, 'x'">
-                <button class="btn btn-sm btn-hot">Show the SQL</button></form></div></details>
-            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('tag')} Rename column</summary><div class="menu-panel">
+                <label class="label" for="ob-mod-type">${tx('ob.new_type')}</label><input id="ob-mod-type" name="type" placeholder="${tx('ob.the_same')}">
+                <label class="label" for="ob-mod-null">${tx('ob.nulls')}</label><select id="ob-mod-null" name="nullable"><option value="">${tx('ob.the_same')}</option><option value="null">${tx('ob.allowed')}</option><option value="not_null">not null</option></select>
+                <label class="label" for="ob-mod-def">${tx('ob.default')}</label><select id="ob-mod-def" name="default_action"><option value="">${tx('ob.the_same')}</option><option value="set">${tx('ob.set_to')}</option><option value="drop">${tx('ob.default_none')}</option></select>
+                <label class="sr-only" for="ob-mod-expr">${tx('ob.default_expr')}</label><input id="ob-mod-expr" name="default" placeholder="now(), 0, 'x'">
+                <button class="btn btn-sm btn-hot">${tx('ob.show_sql')}</button></form></div></details>
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('tag')} ${tx('ob.rename_col')}</summary><div class="menu-panel">
               <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="rename">
-                ${pick('ob-ren-col')}<label class="label" for="ob-ren-to">New name</label><input id="ob-ren-to" name="new_name" placeholder="new name" required><button class="btn btn-sm btn-hot">Show the SQL</button></form></div></details>
-            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('trash')} Drop column</summary><div class="menu-panel">
+                ${pick('ob-ren-col')}<label class="label" for="ob-ren-to">${tx('ob.new_name')}</label><input id="ob-ren-to" name="new_name" placeholder="${tx('ob.new_name_ph')}" required><button class="btn btn-sm btn-hot">${tx('ob.show_sql')}</button></form></div></details>
+            <details class="menu ob-tool"><summary class="btn btn-sm">${icon('trash')} ${tx('ob.drop_col')}</summary><div class="menu-panel">
               <form method="post" action="${BASE}/sql/objects/alter" class="ob-action">${hidden}<input type="hidden" name="action" value="drop">
-                ${pick('ob-drop-col')}<button class="btn btn-sm btn-danger">Show the SQL</button></form></div></details>
-            <span class="muted ob-toolbar-note">Each writes the ALTER TABLE statement into the SQL Worksheet: review it there and run it.</span>
+                ${pick('ob-drop-col')}<button class="btn btn-sm btn-danger">${tx('ob.show_sql')}</button></form></div></details>
+            <span class="muted ob-toolbar-note">${tx('ob.toolbar_note')}</span>
           </div>`
         : ''}${table(cols)}`;
       break;
@@ -369,9 +373,9 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
         const more = data.rows.length > PAGE_SIZE;
         const rows = data.rows.slice(0, PAGE_SIZE).map((r: unknown[]) => Object.fromEntries(data.fields.map((f, i) => [f.name, r[i]])));
         const p = offset / PAGE_SIZE + 1;
-        body = html`${table(rows, 'No rows.')}<nav class="pager" aria-label="Pages">${p > 1 ? html`<a href="${link({ k: o.type, o: o.ref, tab: 'data', p: String(p - 1) })}">‹ Previous</a>` : ''}
-          <span>Rows ${rows.length ? offset + 1 : 0}–${offset + rows.length}</span>${more ? html`<a href="${link({ k: o.type, o: o.ref, tab: 'data', p: String(p + 1) })}">Next ›</a>` : ''}</nav>
-          <p class="muted">To change rows, use the SQL Worksheet, or an interactive grid on the table in an application.</p>`;
+        body = html`${table(rows, tx('ob.no_rows'))}<nav class="pager" aria-label="${tx('ob.pages')}">${p > 1 ? html`<a href="${link({ k: o.type, o: o.ref, tab: 'data', p: String(p - 1) })}">${tx('ob.previous')}</a>` : ''}
+          <span>${tx('ob.rows_range', { from: rows.length ? offset + 1 : 0, to: offset + rows.length })}</span>${more ? html`<a href="${link({ k: o.type, o: o.ref, tab: 'data', p: String(p + 1) })}">${tx('ob.next')}</a>` : ''}</nav>
+          <p class="muted">${tx('ob.change_rows')}</p>`;
       }
       break;
     }
@@ -392,25 +396,25 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
       break;
     case 'rls': {
       const on = await db.one<{ rls: boolean; force: boolean }>('select relrowsecurity as rls, relforcerowsecurity as force from pg_class where oid = $1::regclass', [o.ref]);
-      body = html`<p>${on?.rls ? html`<b>Row level security is on</b>${on.force ? ' (forced for the owner too)' : ''}.` : 'Row level security is off.'}</p>
-        ${table((await db.query(`select policyname as policy, permissive, cmd, roles::text, qual as "using", with_check from pg_policies where schemaname = $1 and tablename = $2 order by policyname`, [schema, relname])).rows, 'No policies.')}`;
+      body = html`<p>${on?.rls ? html`<b>${tx('ob.rls_on')}</b>${on.force ? ` ${tx('ob.rls_forced')}` : ''}.` : tx('ob.rls_off')}</p>
+        ${table((await db.query(`select policyname as policy, permissive, cmd, roles::text, qual as "using", with_check from pg_policies where schemaname = $1 and tablename = $2 order by policyname`, [schema, relname])).rows, tx('ob.no_policies'))}`;
       break;
     }
     case 'dependencies':
-      body = html`<h3>Used by</h3>${table((await db.query(
+      body = html`<h3>${tx('ob.used_by')}</h3>${table((await db.query(
         `select distinct dc.oid::regclass::text as object, case dc.relkind when 'v' then 'view' when 'm' then 'materialized view' else 'table' end as type
            from pg_depend d join pg_rewrite r on r.oid = d.objid join pg_class dc on dc.oid = r.ev_class
           where d.classid = 'pg_rewrite'::regclass and d.refobjid = $1::regclass and dc.oid <> $1::regclass
          union
          select conrelid::regclass::text, 'foreign key ' || conname from pg_constraint where confrelid = $1::regclass and contype = 'f' and conrelid <> $1::regclass
-         order by 1`, [o.ref])).rows, 'Nothing refers to it.')}
-        <h3>Uses</h3>${table((await db.query(
+         order by 1`, [o.ref])).rows, tx('ob.nothing_refers'))}
+        <h3>${tx('ob.uses')}</h3>${table((await db.query(
         `select distinct d.refobjid::regclass::text as object, 'table or view' as type
            from pg_rewrite r join pg_depend d on d.objid = r.oid and d.classid = 'pg_rewrite'::regclass and d.refclassid = 'pg_class'::regclass
           where r.ev_class = $1::regclass and d.refobjid <> $1::regclass
          union
          select confrelid::regclass::text, 'foreign key ' || conname from pg_constraint where conrelid = $1::regclass and contype = 'f' and confrelid <> $1::regclass
-         order by 1`, [o.ref])).rows, 'It refers to nothing else.')}`;
+         order by 1`, [o.ref])).rows, tx('ob.refers_nothing'))}`;
       break;
     case 'statistics':
       body = table([(await db.one(
@@ -422,5 +426,5 @@ export async function objectDetail(db: Awaited<ReturnType<typeof workshopDb>>, s
       body = await ddlOf((x) => (x.kind === 'table' || x.kind === 'view' || x.kind === 'materialized view') ? x.name === relname : x.table === relname);
   }
   return html`<h2 class="ob-title">${icon(OB_TYPES.find(([t]) => t === o.type)![2])} ${o.ref}${o.rls ? html` <span class="tag">RLS</span>` : ''}${o.type === 'table'
-    ? html` <a class="btn btn-sm" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}">${icon('edit')} Edit table</a> <a class="btn btn-sm" href="${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}">${icon('shield')} Security</a>` : ''}</h2>${nav}${region(tabs.find(([k]) => k === tab)![1], body)}`;
+    ? html` <a class="btn btn-sm" href="${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}">${icon('edit')} ${tx('ob.edit_table')}</a> <a class="btn btn-sm" href="${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}">${icon('shield')} ${tx('ob.security')}</a>` : ''}</h2>${nav}${region(tx(`ob.tab.${tab as TabKey}`), body)}`;
 }

@@ -76,6 +76,15 @@ describe('builder language in a browser', () => {
     await page.goto(`${base}/builder/sql`);
     assert.ok((await page.locator('.sw-tabs').innerText()).includes(de['sql.tool.objects']));
     await fits(page, 'SQL Workshop (Deutsch)');
+    // (sprint 123) the SQL Worksheet, the Object Browser and Table Properties in German, and the worksheet's own script
+    for (const url of ['/builder/sql/worksheet', '/builder/sql/objects?schema=hr&k=table&o=hr.emp', '/builder/sql/objects/table?o=hr.emp']) {
+      await page.goto(`${base}${url}`);
+      await fits(page, `${url} (Deutsch)`);
+    }
+    await page.goto(`${base}/builder/sql/worksheet`);
+    assert.equal((await page.locator('.ws-wtab-new').getAttribute('title')), de['js.ws.new_tab'], 'a text from the browser code');
+    assert.ok((await page.locator('[data-ws-commit-note]').innerText()).includes(de['js.ws.commit_auto']));
+    await page.goto(`${base}/builder/sql`);
 
     // the status bar's language menu: opens within the screen, switches to French
     await page.click('.ide-lang > summary');

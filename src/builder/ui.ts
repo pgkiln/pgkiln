@@ -10,7 +10,7 @@ import { getSession, saveState, takeFlash, type Session } from '../session.ts';
 import { SQL_TOOLS, TOOL_GROUPS, toolLabel } from './sql-tools.ts';
 import { ensureDevbar } from '../runtime/devbar.ts';
 import { noteChange } from './app-updates.ts';
-import { tr } from './i18n.ts';
+import { clientTexts, tr } from './i18n.ts';
 import { languageMenu, loadLanguage } from './language.ts';
 
 // Shared building blocks of the builder UI.
@@ -207,7 +207,8 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${languageMenu(s)}
         <span class="ide-status-version">pgkiln ${VERSION}</span>
       </footer>
-    </div>`,
+    </div>
+    <script type="application/json" id="builder-texts">${raw(JSON.stringify(clientTexts(tx.lang)).replace(/</g, '\\u003c'))}</script>`,
     `builder-body ide${opts.full ? ' ide-full' : ''}`,
     {},
     builderHead(),

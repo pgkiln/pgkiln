@@ -589,6 +589,20 @@ translated label (German nouns). Flash messages are translated where they are se
 display position, button position, component kind and SQL Workshop tool has its run-time key; and that every
 language file has exactly the English keys, the same `{placeholders}`, no empty texts and is mostly translated.
 
+**Texts in the browser** (sprint 123). The builder's own JavaScript (`public/*.js`) asks for texts with keys
+`js.<screen>.<what>`: `shell()` puts every `js.*` key in the developer's language into the page as
+`<script type="application/json" id="builder-texts">` (data that never runs, so the Content Security Policy is not
+involved; `<` is written as `\u003c`). A script reads it once and fills placeholders itself:
+
+```js
+const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.textContent || '{}'); } catch { return {}; } })();
+const msg = (key, params = {}) => (TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
+announce(msg('js.ws.copied', { what }));
+```
+
+The coverage check also scans `public/*.js` for `msg('js.…')` and fails when a key has no English text. Text
+from the server (a JSON answer's `message`) is translated on the server.
+
 Stays English by design: the property editor's field names and help, links to the guide, generated SQL, and pages
 not moved yet. The builder's language is separate from an application's languages (`src/i18n.ts`).
 

@@ -6,6 +6,7 @@ import { owner } from '../db.ts';
 import { devDbForApp } from '../workspace-db.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, bicon, BASE, csrf, developer, flash, send, shell, workshopTabs, type Req } from './ui.ts';
+import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 import { clearCompletions } from './code-editor.ts';
 import { createTemplate, listObjects, OB_TYPES, pickSchema, SYSTEM_SCHEMAS, type Obj } from './object-browser.ts';
 import { objectMenu } from './object-actions.ts';
@@ -92,8 +93,8 @@ async function recordHistory(s: Session, run: WorksheetRun) {
 }
 
 /** The navigator's tree for a schema and an object type. */
-async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema: string, type: string): Promise<Raw> {
-  if (!schema) return html`<p class="muted ws-nav-empty">No schema you may use.</p>`;
+async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema: string, type: string, tx: BuilderTranslate): Promise<Raw> {
+  if (!schema) return html`<p class="muted ws-nav-empty">${tx('ws.nav.no_schema')}</p>`;
   let objects: (Obj | { type: 'policy'; name: string; ref: string; rls: false; ext: false })[] = await listObjects(db, schema, false);
   if (type === 'all' || type === 'policy') {
     const pol = (await db.query<{ name: string; ref: string }>(
@@ -114,26 +115,27 @@ async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema:
     for (const r of rows) cols.set(r.ref, [...(cols.get(r.ref) ?? []), r]);
   }
   const iconOf = (t: string) => (OB_TYPES.find(([k]) => k === t)?.[2] ?? 'shield');
-  const label = (t: string) => NAV_TYPES.find(([k]) => k === t)?.[1] ?? t;
-  if (!objects.length) return html`<p class="muted ws-nav-empty">No ${type === 'all' ? 'objects' : label(type).toLowerCase()} in ${schema}.</p>`;
+  const label = (t: string) => tx.dyn(`ob.type.${t}`, NAV_TYPES.find(([k]) => k === t)?.[1] ?? t);
+  // English lower-cases the type in the sentence; other languages keep the label as it is (German nouns)
+  if (!objects.length) return html`<p class="muted ws-nav-empty">${type === 'all' ? tx('ws.nav.no_objects', { schema }) : tx('ws.nav.no_type', { type: tx.lang === 'en' ? label(type).toLowerCase() : label(type), schema })}</p>`;
   return html`<ul class="ws-tree" id="ws-tree">${objects.map((o) => {
     const list = cols.get(o.ref);
     const obLink = `${BASE}/sql/objects?${new URLSearchParams(o.type === 'policy' ? { schema, k: 'table', o: o.ref, tab: 'rls' } : { schema, k: o.type, o: o.ref })}`;
     if (!list) return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}"><a href="${obLink}" title="${label(o.type)}">${icon(iconOf(o.type))}<span>${o.name}</span></a>${objectMenu(schema, o)}</li>`;
     const st = objectStatements(schema, o.name, list, o.type);
     return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}">${objectMenu(schema, o)}<details>
-      <summary draggable="true" data-ws-sql="${st.select}" title="${label(o.type).replace(/s$/, '')}: drag into the editor for a SELECT">${icon(iconOf(o.type))}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}</summary>
+      <summary draggable="true" data-ws-sql="${st.select}" title="${tx('ws.nav.drag', { type: tx.lang === 'en' ? label(o.type).replace(/s$/, '') : label(o.type) })}">${icon(iconOf(o.type))}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}</summary>
       <ul class="ws-cols">${list.map((c) => html`<li title="${c.type}${c.notnull ? ' not null' : ''}">${c.pk ? icon('key') : icon('minus')}<span>${c.name}</span><small class="muted">${c.type}</small></li>`)}</ul>
       <div class="ws-obj-actions">
         ${Object.entries(st).map(([k, sql]) => html`<button type="button" class="btn btn-sm" data-ws-insert="${sql}" hidden>${k.toUpperCase()}</button>`)}
-        <a class="btn btn-sm" href="${obLink}">Open</a>
+        <a class="btn btn-sm" href="${obLink}">${tx('ws.nav.open')}</a>
       </div>
     </details></li>`;
-  })}</ul>${objects.length > rels.length && rels.length === MAX_COLUMN_OBJECTS ? html`<p class="muted small ws-nav-empty">Columns are listed for the first ${MAX_COLUMN_OBJECTS} tables and views.</p>` : ''}`;
+  })}</ul>${objects.length > rels.length && rels.length === MAX_COLUMN_OBJECTS ? html`<p class="muted small ws-nav-empty">${tx('ws.nav.cols_limit', { n: MAX_COLUMN_OBJECTS })}</p>` : ''}`;
 }
 
 /** The output panes of a run (empty: the page as opened). */
-function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
+function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
   const results = run?.results ?? [];
   const ran = results.filter((r) => r.status !== 'not_run');
   const query = [...ran].reverse().find((r) => r.columns);
@@ -141,111 +143,114 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
   const warnings = run?.notices.filter((n) => n.level === 'WARNING').length ?? 0;
   const oneLine = (sql: string) => { const x = sql.replace(/\s+/g, ' '); return x.length > 80 ? `${x.slice(0, 79)}…` : x; };
 
-  const rowsLabel = (q: NonNullable<typeof query>) => `${q.rows ?? q.data!.length} row${q.rows === 1 ? '' : 's'}`;
+  const rowsLabel = (q: NonNullable<typeof query>) => tx(q.rows === 1 ? 'ws.rows_one' : 'ws.rows', { n: q.rows ?? q.data!.length });
+  const errorText = (line: number | undefined, col: number | undefined, error: string | undefined) =>
+    line ? (col ? tx('ws.error_at_col', { line, col, error }) : tx('ws.error_at', { line, error })) : tx('ws.error', { error });
   let download: Raw | '' = '';
   if (query) {
     try {
       unloadStatement(query.sql);
-      download = html`<details class="menu ws-dl"><summary class="btn btn-sm">${icon('download')}<span>Download</span></summary>
+      download = html`<details class="menu ws-dl"><summary class="btn btn-sm">${icon('download')}<span>${tx('ws.download')}</span></summary>
         <div class="menu-panel align-right"><div class="menu-section menu-links">${(['csv', 'json', 'xml', 'xlsx', 'sql'] as const).map((f) =>
-          html`<button form="ws-dl" name="format" value="${f}">${{ csv: 'CSV', json: 'JSON', xml: 'XML', xlsx: 'Excel', sql: 'SQL inserts' }[f]}</button>`)}</div></div></details>`;
+          html`<button form="ws-dl" name="format" value="${f}">${{ csv: 'CSV', json: 'JSON', xml: 'XML', xlsx: 'Excel', sql: tx('ws.dl.sql') }[f]}</button>`)}</div></div></details>`;
     } catch {
       download = '';
     }
   }
   const result: Raw = query
     ? html`<div class="ws-result-bar">
-        <p class="muted small ws-info">${rowsLabel(query)} · ${query.ms} ms${query.more ? html` · showing the first ${query.data!.length}` : ''} · line ${query.line}</p>
+        <p class="muted small ws-info">${rowsLabel(query)} · ${query.ms} ms${query.more ? html` · ${tx('ws.result.showing', { n: query.data!.length })}` : ''} · ${tx('ws.line', { n: query.line })}</p>
         <span class="ws-spacer"></span>
-        ${query.more ? html`<button class="btn btn-sm" name="mode" value="statement_all" title="Run the statement again and show up to ${ALL_ROWS.toLocaleString('en')} rows">All rows</button>` : ''}
-        <button class="btn btn-sm" name="mode" value="chart" title="Create Chart (Ctrl+F11)">${icon('chart')}<span>Chart</span></button>
-        <button type="button" class="btn btn-sm" data-ws-copy hidden>${icon('copy')}<span>Copy</span></button>
+        ${query.more ? html`<button class="btn btn-sm" name="mode" value="statement_all" title="${tx('ws.all_rows.title', { n: ALL_ROWS.toLocaleString(tx.lang) })}">${tx('ws.all_rows')}</button>` : ''}
+        <button class="btn btn-sm" name="mode" value="chart" title="${tx('ws.chart.title')}">${icon('chart')}<span>${tx('ws.tab.chart')}</span></button>
+        <button type="button" class="btn btn-sm" data-ws-copy hidden>${icon('copy')}<span>${tx('ws.copy')}</span></button>
         ${download}
       </div>
       <div class="table-wrap ws-grid"><table class="report" data-ws-grid><thead><tr><th scope="col" class="ws-rownum">#</th>${query.columns!.map((c, k) => html`<th scope="col"${query.numeric?.[k] ? raw(' class="num"') : ''}><button type="button" class="ws-sort" data-ws-sort="${k}" hidden>${c}</button><span class="ws-sort-label">${c}</span></th>`)}</tr></thead>
       <tbody>${query.data!.map((r, k) => html`<tr><td class="ws-rownum">${k + 1}</td>${r.map((v, i) => html`<td${query.numeric?.[i] ? raw(' class="num"') : ''}>${v === null ? html`<span class="null">(null)</span>` : v}</td>`)}</tr>`)}</tbody></table></div>
-      <dialog class="ws-cell" id="ws-cell" aria-labelledby="ws-cell-title"><div class="ws-cell-head"><strong id="ws-cell-title">Value</strong><button type="button" class="btn btn-sm" data-ws-cell-close>Close</button></div><pre></pre></dialog>`
+      <dialog class="ws-cell" id="ws-cell" aria-labelledby="ws-cell-title"><div class="ws-cell-head"><strong id="ws-cell-title">${tx('ws.value')}</strong><button type="button" class="btn btn-sm" data-ws-cell-close>${tx('ws.close')}</button></div><pre></pre></dialog>`
     : run && mode !== 'explain' && mode !== 'autotrace'
-      ? html`<p class="muted">${errors.length ? 'The statement failed: see Script Output.' : 'No rows: the last statement was not a query. See Script Output.'}</p>`
-      : html`<p class="muted">Run a query (Ctrl+Enter) to see its rows here.</p>`;
+      ? html`<p class="muted">${errors.length ? tx('ws.result.failed') : tx('ws.result.no_rows')}</p>`
+      : html`<p class="muted">${tx('ws.result.empty')}</p>`;
 
   const log = run
     ? html`<pre class="ws-log">${results.map((r) => {
-        if (r.status === 'not_run') return html`<span class="muted">-- ${r.n}. line ${r.line}: not run (an earlier statement failed)\n</span>`;
-        const head = html`<span class="ws-log-sql">-- ${r.n}. line ${r.line}: ${oneLine(r.sql)}</span>\n`;
+        if (r.status === 'not_run') return html`<span class="muted">${tx('ws.log.not_run', { n: r.n, line: r.line })}\n</span>`;
+        const head = html`<span class="ws-log-sql">${tx('ws.log.head', { n: r.n, line: r.line, sql: oneLine(r.sql) })}</span>\n`;
         if (r.status === 'skipped') return html`${head}<span class="ws-log-warn">${r.error}</span>\n\n`;
-        if (r.status === 'error') return html`${head}<span class="ws-log-err">Error${r.errorLine ? ` at line ${r.errorLine}${r.errorColumn ? `, column ${r.errorColumn}` : ''}` : ''}: ${r.error}</span>\n\n`;
-        const body = r.columns ? `${textTable(r.columns, r.data ?? [])}\n${r.more ? `(first ${r.data!.length} of ${r.rows} rows)\n` : ''}` : '';
+        if (r.status === 'error') return html`${head}<span class="ws-log-err">${errorText(r.errorLine, r.errorColumn, r.error)}</span>\n\n`;
+        const body = r.columns ? `${textTable(r.columns, r.data ?? [])}\n${r.more ? `${tx('ws.log.first', { n: r.data!.length, rows: r.rows })}\n` : ''}` : '';
         const notes = run.notices.filter((n) => n.n === r.n).map((n) => `${n.level}: ${n.message}\n`).join('');
         return html`${head}${body}${notes}<span class="ws-log-ok">${r.tag}</span> <span class="muted">(${r.ms} ms)</span>\n\n`;
-      })}<span class="muted">${ran.length} statement${ran.length === 1 ? '' : 's'} run, ${errors.length} failed, ${run.ms} ms.</span></pre>`
-    : html`<p class="muted">Run Script (F5) runs every statement and logs each one here.</p>`;
+      })}<span class="muted">${tx(ran.length === 1 ? 'ws.log.summary_one' : 'ws.log.summary', { n: ran.length, failed: errors.length, ms: run.ms })}</span></pre>`
+    : html`<p class="muted">${tx('ws.log.empty')}</p>`;
 
   const notices = run?.notices.length
-    ? html`<ul class="ws-notices">${run.notices.map((n) => html`<li><span class="tag${n.level === 'WARNING' ? ' tag-warn' : ''}">${n.level}</span> <span>${n.message}</span> <small class="muted">statement ${n.n} · ${n.at}</small></li>`)}</ul>`
-    : html`<p class="muted">RAISE NOTICE, INFO and WARNING messages of the last run show here.</p>`;
+    ? html`<ul class="ws-notices">${run.notices.map((n) => html`<li><span class="tag${n.level === 'WARNING' ? ' tag-warn' : ''}">${n.level}</span> <span>${n.message}</span> <small class="muted">${tx('ws.notice.meta', { n: n.n, at: n.at })}</small></li>`)}</ul>`
+    : html`<p class="muted">${tx('ws.notice.empty')}</p>`;
 
   const planOf = (m: RunMode, empty: string) => mode === m && run
-    ? (run.tree ? planView(run.tree, run.plan ?? '') : html`<p class="alert alert-error">${run.results[0]?.error ?? 'No plan.'}</p>`)
+    ? (run.tree ? planView(run.tree, run.plan ?? '') : html`<p class="alert alert-error">${run.results[0]?.error ?? tx('ws.no_plan')}</p>`)
     : html`<p class="muted">${empty}</p>`;
 
   const when = (at: string) => new Date(at).toISOString().slice(0, 16).replace('T', ' ');
   const hist = history.length
     ? html`<div class="ws-hist-bar" hidden>
-        <label class="sr-only" for="ws-hist-q">Search the history</label><input id="ws-hist-q" type="search" placeholder="Search the history" data-ws-hist-q>
-        <label class="sr-only" for="ws-hist-s">Status</label><select id="ws-hist-s" data-ws-hist-s><option value="">All</option><option value="ok">Succeeded</option><option value="error">Failed</option></select>
+        <label class="sr-only" for="ws-hist-q">${tx('ws.hist.search')}</label><input id="ws-hist-q" type="search" placeholder="${tx('ws.hist.search')}" data-ws-hist-q>
+        <label class="sr-only" for="ws-hist-s">${tx('ws.hist.status')}</label><select id="ws-hist-s" data-ws-hist-s><option value="">${tx('ws.hist.all')}</option><option value="ok">${tx('ws.hist.ok')}</option><option value="error">${tx('ws.hist.failed')}</option></select>
       </div>
       <ul class="ws-history">${history.map((h) => html`<li data-status="${h.status}" data-sql="${h.sql.toLowerCase()}">
-        <span class="ws-hist-icon ${h.status === 'error' ? 'is-err' : 'is-ok'}" title="${h.status === 'error' ? `Failed: ${h.error ?? ''}` : 'Succeeded'}">${icon(h.status === 'error' ? 'x-circle' : 'check-circle')}</span>
-        <a href="${BASE}/sql/worksheet?history=${h.id}" data-ws-history="${h.sql}" title="Insert at the cursor: ${h.sql.slice(0, 500)}"><code>${oneLine(h.sql)}</code></a>
-        <small class="muted ws-hist-meta">${h.status === 'ok' && h.rows !== null ? `${h.rows} row${h.rows === '1' ? '' : 's'} · ` : ''}${h.ms ?? 0} ms${h.runs > 1 ? ` · ${h.runs}×` : ''} · ${when(h.at)}</small>
-        <button type="button" class="btn btn-sm" data-ws-run="${h.sql}" title="Put it in the editor and run it" hidden>Run</button>
-        <button type="button" class="btn btn-sm btn-icon" data-ws-copy-text="${h.sql}" title="Copy" hidden>${icon('copy')}<span class="sr-only">Copy</span></button>
+        <span class="ws-hist-icon ${h.status === 'error' ? 'is-err' : 'is-ok'}" title="${h.status === 'error' ? tx('ws.hist.failed_title', { error: h.error ?? '' }) : tx('ws.hist.ok')}">${icon(h.status === 'error' ? 'x-circle' : 'check-circle')}</span>
+        <a href="${BASE}/sql/worksheet?history=${h.id}" data-ws-history="${h.sql}" title="${tx('ws.hist.insert', { sql: h.sql.slice(0, 500) })}"><code>${oneLine(h.sql)}</code></a>
+        <small class="muted ws-hist-meta">${h.status === 'ok' && h.rows !== null ? `${tx(h.rows === '1' ? 'ws.rows_one' : 'ws.rows', { n: h.rows })} · ` : ''}${h.ms ?? 0} ms${h.runs > 1 ? ` · ${h.runs}×` : ''} · ${when(h.at)}</small>
+        <button type="button" class="btn btn-sm" data-ws-run="${h.sql}" title="${tx('ws.hist.run_title')}" hidden>${tx('common.run')}</button>
+        <button type="button" class="btn btn-sm btn-icon" data-ws-copy-text="${h.sql}" title="${tx('ws.copy')}" hidden>${icon('copy')}<span class="sr-only">${tx('ws.copy')}</span></button>
       </li>`)}</ul>`
-    : html`<p class="muted">Your statements show here after you run them.</p>`;
+    : html`<p class="muted">${tx('ws.hist.empty')}</p>`;
 
   const active: Tab = chart && run ? 'chart' : !run ? (TABS.find(([k]) => k === tabAsked)?.[0] ?? 'result') : mode === 'explain' ? 'explain' : mode === 'autotrace' ? 'autotrace' : mode === 'script' || !query || errors.length ? 'output' : 'result';
   const time = new Date().toTimeString().slice(0, 8);
-  const last = !run ? 'Ready.' : errors.length
-    ? `Error${errors[0].errorLine ? ` at line ${errors[0].errorLine}` : ''}: ${errors[0].error}`
-    : mode === 'explain' || mode === 'autotrace' ? `${mode === 'explain' ? 'Explain plan' : 'Autotrace'} in ${run.ms} ms.`
-      : query && ran.length === 1 ? `${query.rows} row${query.rows === 1 ? '' : 's'} in ${query.ms} ms.`
-        : `${ran.length} statement${ran.length === 1 ? '' : 's'} in ${run.ms} ms.`;
-  const status = html`<span class="ws-count ${errors.length ? 'is-err' : ''}" title="Errors">${icon('x-circle')} ${errors.length}</span>
-    <span class="ws-count ${warnings ? 'is-warn' : ''}" title="Warnings">${icon('alert')} ${warnings}</span>
-    <span class="ws-busy" hidden>${icon('refresh')} Running…</span>
+  const last = !run ? tx('ws.ready') : errors.length
+    ? errorText(errors[0].errorLine, undefined, errors[0].error)
+    : mode === 'explain' || mode === 'autotrace' ? tx(mode === 'explain' ? 'ws.status.explain' : 'ws.status.autotrace', { ms: run.ms })
+      : query && ran.length === 1 ? tx(query.rows === 1 ? 'ws.status.rows_one' : 'ws.status.rows', { n: query.rows, ms: query.ms })
+        : tx(ran.length === 1 ? 'ws.status.stmts_one' : 'ws.status.stmts', { n: ran.length, ms: run.ms });
+  const status = html`<span class="ws-count ${errors.length ? 'is-err' : ''}" title="${tx('ws.errors')}">${icon('x-circle')} ${errors.length}</span>
+    <span class="ws-count ${warnings ? 'is-warn' : ''}" title="${tx('ws.warnings')}">${icon('alert')} ${warnings}</span>
+    <span class="ws-busy" hidden>${icon('refresh')} ${tx('ws.running')}</span>
     <span class="ws-last">${last}</span><span class="muted ws-time">${run ? time : ''}</span>`;
-  return { panes: { result, chart: chart ?? html`<p class="muted">Create Chart (Ctrl+F11) draws the last query: a label column and number columns.</p>`, output: log, notices, explain: planOf('explain', 'Explain Plan (F10) shows how PostgreSQL would run the statement at the cursor; nothing runs.'), autotrace: planOf('autotrace', 'Autotrace (F6) runs the statement at the cursor with EXPLAIN ANALYZE and rolls it back: actual rows, time and buffers per step.'), history: hist }, active, status };
+  return { panes: { result, chart: chart ?? html`<p class="muted">${tx('ws.chart.empty')}</p>`, output: log, notices, explain: planOf('explain', tx('ws.explain.empty')), autotrace: planOf('autotrace', tx('ws.autotrace.empty')), history: hist }, active, status };
 }
 
 /** (sprint 107) The idle timeout in words. */
-const idleLabel = () => {
+const idleLabel = (tx: BuilderTranslate) => {
   const sec = txnIdleSeconds();
-  return sec % 60 ? `${sec} seconds` : `${sec / 60} minute${sec === 60 ? '' : 's'}`;
+  return sec % 60 ? tx('ws.idle.seconds', { n: sec }) : tx(sec === 60 ? 'ws.idle.minute' : 'ws.idle.minutes', { n: sec / 60 });
 };
 
 /** (sprint 107) The transaction badge's text (public/worksheet.js writes the same after a reload or a tab switch). */
-export function txnBadge(state: 'open' | 'aborted' | 'none', statements: number, startedMs: number | null, note: string | null): string {
-  if (state === 'none') return note ?? 'No open transaction';
+export function txnBadge(state: 'open' | 'aborted' | 'none', statements: number, startedMs: number | null, note: string | null, tx: BuilderTranslate = translatorFor('en')): string {
+  if (state === 'none') return note ?? tx('ws.txn.none');
   const min = startedMs ? Math.floor((Date.now() - startedMs) / 60_000) : 0;
-  const age = min < 1 ? 'under a minute' : `${min} min`;
-  return `${state === 'aborted' ? 'Transaction failed' : 'Transaction open'} · ${statements} statement${statements === 1 ? '' : 's'} · ${age}`;
+  const age = min < 1 ? tx('ws.txn.under_minute') : tx('ws.txn.min', { n: min });
+  return `${tx(state === 'aborted' ? 'ws.txn.failed' : 'ws.txn.open')} · ${tx(statements === 1 ? 'ws.stmt_one' : 'ws.stmt', { n: statements })} · ${age}`;
 }
 
 /** (sprint 107) Commit or Rollback a worksheet tab's transaction (the toolbar's buttons, and the JSON endpoint). */
 async function finishTxn(req: Req, s: Session, tab: string, t: WorksheetTxn | undefined, action: 'commit' | 'rollback'): Promise<{ ok: boolean; message: string; busy?: boolean }> {
-  if (!t) return { ok: false, message: 'This worksheet has no open transaction.' };
-  if (t.busy) return { ok: false, busy: true, message: 'A run is still going on in this worksheet: wait for it to finish.' };
+  const tx = tr(s);
+  if (!t) return { ok: false, message: tx('ws.txn.no_txn') };
+  if (t.busy) return { ok: false, busy: true, message: tx('ws.txn.busy') };
   const n = t.statements;
   const failed = txnState(t) === 'aborted';
   const ended = await endTxn(t, action);
   clearTxnNote(s.id, tab);
   if (ended.ddl.length) await recordChanges({ workspaceId: t.workspaceId, author: s.username ?? '?', source: 'worksheet', defaultSchema: t.defaultSchema, statements: ended.ddl });
   await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: ended.tag.toLowerCase() });
-  if (ended.error) return { ok: false, message: `${action.toUpperCase()} failed: ${ended.error}. The connection was closed, so the transaction is rolled back.` };
-  if (action === 'commit' && ended.tag !== 'COMMIT') return { ok: false, message: 'The transaction had failed, so COMMIT rolled it back: nothing was saved.' };
-  const what = `${n} statement${n === 1 ? '' : 's'}`;
-  return { ok: true, message: action === 'commit' ? `Committed (${what}).` : `Rolled back (${what} undone${failed ? '; the transaction had failed' : ''}).` };
+  if (ended.error) return { ok: false, message: tx('ws.txn.end_failed', { action: action.toUpperCase(), error: ended.error }) };
+  if (action === 'commit' && ended.tag !== 'COMMIT') return { ok: false, message: tx('ws.txn.commit_rolled') };
+  const what = tx(n === 1 ? 'ws.stmt_one' : 'ws.stmt', { n });
+  return { ok: true, message: tx(action === 'commit' ? 'ws.txn.committed' : failed ? 'ws.txn.rolled_back_failed' : 'ws.txn.rolled_back', { what }) };
 }
 
 /** (sprint 107) A tab's transaction as JSON, for the badge after a reload or a tab switch. */
@@ -255,7 +260,7 @@ function txnStatus(s: Session, tab: string) {
   const note = state === 'none' ? txnNote(s.id, tab) : null;
   return {
     state, statements: t?.statements ?? 0, startedMs: t?.startedMs ?? null, lastMs: t?.lastMs ?? null, idleSeconds: txnIdleSeconds(),
-    runsAs: t?.runsAs ?? null, note, badge: txnBadge(state, t?.statements ?? 0, t?.startedMs ?? null, note), now: Date.now(),
+    runsAs: t?.runsAs ?? null, note, badge: txnBadge(state, t?.statements ?? 0, t?.startedMs ?? null, note, tr(s)), now: Date.now(),
   };
 }
 
@@ -268,6 +273,7 @@ async function runAsApps(s: Session) {
 async function worksheet(req: Req, reply: FastifyReply) {
   const s = await developer(req, reply);
   if (!s) return;
+  const tx = tr(s);
   const db = await workshopDb(s);
   const body = req.body ?? {};
   const isPost = req.method === 'POST';
@@ -303,14 +309,14 @@ async function worksheet(req: Req, reply: FastifyReply) {
       return reply.header('content-disposition', `attachment; filename="${file}.sql"`).header('cache-control', 'private, no-store').type('application/sql; charset=utf-8').send(text);
     }
     try {
-      if (name.length > 200) fileError = 'A name has at most 200 characters.';
-      else if (text.length > 5_000_000) fileError = 'A script holds at most 5 MB.';
+      if (name.length > 200) fileError = tx('ws.file.name_long');
+      else if (text.length > 5_000_000) fileError = tx('ws.file.too_big');
       else if (body.mode === 'save' && script) {
         await owner.query('update meta.sql_script set content = $2, updated_by = $3, updated_at = now() where id = $1 and workspace_id = $4', [script.id, text, s.username, currentWorkspace(s)]);
       } else if (body.mode === 'rename' && script) {
-        if (!name) fileError = 'Enter the new name.';
+        if (!name) fileError = tx('ws.file.new_name');
         else await owner.query('update meta.sql_script set name = $2, updated_by = $3, updated_at = now() where id = $1 and workspace_id = $4', [script.id, name, s.username, currentWorkspace(s)]);
-      } else if (!name) fileError = 'Name the worksheet to save it as a script.';
+      } else if (!name) fileError = tx('ws.file.need_name');
       else {
         const r = await owner.one<{ id: number }>(
           `insert into meta.sql_script (name, content, created_by, updated_by, workspace_id) values ($1, $2, $3, $3, $4) returning id`, [name, text, s.username, currentWorkspace(s)]);
@@ -318,10 +324,10 @@ async function worksheet(req: Req, reply: FastifyReply) {
       }
     } catch (e) {
       if ((e as { code?: string }).code !== '23505') throw e;
-      fileError = `A script named “${name}” already exists.`;
+      fileError = tx('ws.file.exists', { name });
     }
     if (!fileError && script) {
-      flash(s, body.mode === 'rename' ? `Renamed to “${name}”.` : `Saved as the script “${body.mode === 'save' ? script.name : name}”.`);
+      flash(s, body.mode === 'rename' ? tx('ws.file.renamed', { name }) : tx('ws.file.saved', { name: body.mode === 'save' ? script.name : name }));
       return back(reply, s, `${BASE}/sql/worksheet?${new URLSearchParams({ script: String(script.id), ...(tabKey ? { wstab: tabKey } : {}) })}`);
     }
   }
@@ -387,7 +393,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   let txnError = '';
   let txnInfo = '';
   if (txn && txn.workspaceId !== currentWorkspace(s)) {
-    await endTxn(txn, 'rollback', 'You switched workspaces: the transaction was rolled back.');
+    await endTxn(txn, 'rollback', tx('ws.txn.switched'));
     txn = undefined;
   }
   if (isPost && (body.mode === 'commit' || body.mode === 'rollback')) {
@@ -424,11 +430,11 @@ async function worksheet(req: Req, reply: FastifyReply) {
     const useTxn = statements.length > 0 && txnAsked && (!explaining || (!!txn && txnState(txn) !== 'none'));
     if (statements.length) {
       const blocked = txnAsked && !explaining ? statements.find((x) => !x.psql && outsideTxnOnly(x.sql)) : undefined;
-      if (txn && !txnAsked) txnError = 'This worksheet has an open transaction: Commit or Rollback it first, or switch back to Transaction.';
-      else if (txnAsked && !tabKey) txnError = 'Transaction mode needs JavaScript (the worksheet tab it belongs to); this run was refused.';
-      else if (txn && (asApp?.id ?? null) !== txn.asAppId) txnError = `This worksheet's transaction runs as ${txn.runsAs}: Commit or Rollback it before changing Run as.`;
-      else if (txn?.busy) txnError = 'A run is still going on in this worksheet: wait for it to finish.';
-      else if (blocked) txnError = `Line ${blocked.line}: ${outsideTxnOnly(blocked.sql)} can't run inside a transaction. Switch the worksheet to Autocommit to run it.`;
+      if (txn && !txnAsked) txnError = tx('ws.txn.open_first');
+      else if (txnAsked && !tabKey) txnError = tx('ws.txn.needs_js');
+      else if (txn && (asApp?.id ?? null) !== txn.asAppId) txnError = tx('ws.txn.runs_as', { who: txn.runsAs });
+      else if (txn?.busy) txnError = tx('ws.txn.busy');
+      else if (blocked) txnError = tx('ws.txn.not_in_txn', { line: blocked.line, what: outsideTxnOnly(blocked.sql) });
     }
     if (statements.length && !txnError) {
       ran = { start: statements[0].start, end: statements[statements.length - 1].end };
@@ -441,11 +447,11 @@ async function worksheet(req: Req, reply: FastifyReply) {
         if (!txn) {
           const note = txnNote(s.id, tabKey);
           const began = await beginTxn({ sessionId: s.id, username: s.username!, workspaceId: currentWorkspace(s), tab: tabKey, db: asApp ? await devDbForApp(asApp.id) : db,
-            asApp: asApp ?? null, runsAs: asApp ? `the role ${asApp.db_role} of ${asApp.name}` : workshopRunsAs(db), searchSchema });
+            asApp: asApp ?? null, runsAs: asApp ? tx('ws.runs_as_role', { role: asApp.db_role, app: asApp.name }) : workshopRunsAs(db), searchSchema });
           if (typeof began === 'string') txnError = began;
           else {
             txn = began;
-            if (note) txnInfo = `${note} A new transaction started.`;
+            if (note) txnInfo = tx('ws.txn.new_started', { note });
           }
         }
         if (txn) {
@@ -474,7 +480,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
           // (sprint 107) a BEGIN typed in Autocommit lasts for the run only: say so when it was left open
           if (!explaining && c.getTransactionStatus() !== 'I') {
             await c.query('rollback').catch(() => {});
-            run.notices.push({ level: 'WARNING', message: 'The transaction started with BEGIN was still open at the end of the run and was rolled back. Switch the worksheet to Transaction to keep a transaction open between runs.', n: run.results.filter((r) => r.status !== 'not_run').length, at: new Date().toISOString().slice(11, 23) });
+            run.notices.push({ level: 'WARNING', message: tx('ws.txn.begin_left'), n: run.results.filter((r) => r.status !== 'not_run').length, at: new Date().toISOString().slice(11, 23) });
           }
         } catch (e) {
           run = failedRun(e);
@@ -491,7 +497,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
         if (txnState(txn) === 'none' && findTxn(s.id, tabKey) === txn) {
           await endTxn(txn, 'rollback'); // nothing open: just closes the connection
           txn = undefined;
-          txnInfo = 'The transaction ended with the COMMIT or ROLLBACK in the editor; the next run starts a new one.';
+          txnInfo = tx('ws.txn.ended_editor');
         }
       }
       if (txn && findTxn(s.id, tabKey) !== txn) txn = undefined; // the database ended the connection
@@ -515,19 +521,19 @@ async function worksheet(req: Req, reply: FastifyReply) {
   let chartCss = '';
   if (chartAsked && lastQuery?.columns) {
     const spec = chartSpec(lastQuery.columns, lastQuery.numeric ?? [], askedSpec(body));
-    if (!spec) chartPane = html`<p class="muted">Nothing to draw: the query needs a number column next to its labels.</p>`;
+    if (!spec) chartPane = html`<p class="muted">${tx('ws.chart.nothing')}</p>`;
     else {
       const d = drawChart('', lastQuery.columns, lastQuery.data ?? [], spec);
       chartCss = d.css;
       chartPane = html`${chartControls(lastQuery.columns, spec)}
-        <div class="ch-actions"><button class="btn btn-sm" name="mode" value="chart">${icon('refresh')} Draw again</button>
+        <div class="ch-actions"><button class="btn btn-sm" name="mode" value="chart">${icon('refresh')} ${tx('ws.chart.again')}</button>
           <input type="hidden" name="chart_sql" value="${lastQuery.sql}">
-          <label class="sr-only" for="ws-chart-name">Chart name</label><input id="ws-chart-name" name="chart_name" placeholder="Chart name" maxlength="120">
-          <button class="btn btn-sm btn-hot" formaction="${BASE}/sql/charts">${icon('save')} Save chart</button></div>
+          <label class="sr-only" for="ws-chart-name">${tx('ws.chart.name')}</label><input id="ws-chart-name" name="chart_name" placeholder="${tx('ws.chart.name')}" maxlength="120">
+          <button class="btn btn-sm btn-hot" formaction="${BASE}/sql/charts">${icon('save')} ${tx('ws.chart.save')}</button></div>
         <div class="ch-view">${d.body}</div>`;
     }
   }
-  const { panes, active, status } = outputPanes(run, mode, history, String(req.query?.tab ?? ''), chartPane);
+  const { panes, active, status } = outputPanes(run, mode, history, String(req.query?.tab ?? ''), chartPane, tx);
   const downloadable = (() => {
     try {
       return lastQuery ? unloadStatement(lastQuery.sql) : null;
@@ -539,137 +545,137 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const files = (await owner.query<{ id: number; name: string; updated_at: string }>(
     'select id, name, updated_at from meta.sql_script where workspace_id = $1 order by lower(name) limit 300', [currentWorkspace(s)])).rows;
   const bindDialog = askValues ? html`<dialog class="ws-binds" id="ws-binds" open aria-labelledby="ws-binds-title" data-ws-binds>
-      <h2 id="ws-binds-title">Values for the run</h2>
-      <p class="muted small">Bind variables (<code>:NAME</code>) get a value as a quoted literal; substitution variables (<code>&amp;NAME.</code>) put the text into the statement as it is. Empty is NULL for a bind variable.</p>
+      <h2 id="ws-binds-title">${tx('ws.binds.title')}</h2>
+      <p class="muted small">${tx.rich('ws.binds.help', { bind: html`<code>:NAME</code>`, sub: html`<code>&amp;NAME.</code>` })}</p>
       <input type="hidden" name="binds_given" value="1">
       <div class="ws-binds-fields">${askValues.binds.map((n) => html`<label class="field"><span class="label"><code>:${n}</code></span><input name="bind_${n}" value="${remembered[`:${n}`] ?? ''}" autocomplete="off"></label>`)}${askValues.subs.map((n) => html`<label class="field"><span class="label"><code>&amp;${n}.</code></span><input name="sub_${n}" value="${remembered[`&${n}`] ?? ''}" autocomplete="off"></label>`)}</div>
-      <div class="buttons"><button class="btn btn-hot" name="mode" value="${askValues.mode}">${icon('play')} Run</button><button class="btn" name="mode" value="nav" data-ws-binds-cancel>Cancel</button></div>
+      <div class="buttons"><button class="btn btn-hot" name="mode" value="${askValues.mode}">${icon('play')} ${tx('common.run')}</button><button class="btn" name="mode" value="nav" data-ws-binds-cancel>${tx('common.cancel')}</button></div>
     </dialog>` : '';
-  const runsAs = asApp ? `the role ${asApp.db_role} of ${asApp.name}` : workshopRunsAs(db);
+  const runsAs = asApp ? tx('ws.runs_as_role', { role: asApp.db_role, app: asApp.name }) : workshopRunsAs(db);
   // (sprint 107) the transaction badge: the real state of the tab's transaction on the server
   const tState = txnState(txn);
   const tNote = !txn && tabKey ? txnNote(s.id, tabKey) : null;
-  if (tState === 'aborted' && !txnError) txnError = 'A statement failed, so the transaction is aborted: Rollback ends it (COMMIT would roll it back too).';
+  if (tState === 'aborted' && !txnError) txnError = tx('ws.txn.aborted');
   const txnOn = txnAsked || !!txn;
-  const badge = txnBadge(tState, txn?.statements ?? 0, txn?.startedMs ?? null, tNote);
+  const badge = txnBadge(tState, txn?.statements ?? 0, txn?.startedMs ?? null, tNote, tx);
 
   const toolBtn = (m: RunMode, ic: string, label: string, key: string, hot = false) =>
     html`<button class="btn btn-sm${hot ? ' btn-hot' : ''}" name="mode" value="${m}" title="${label} (${key})" data-ws-key="${key}">${icon(ic)}<span>${label}</span></button>`;
   const main = html`${chartCss ? html`<style nonce="${req.cspNonce}">${raw(chartCss.replace(/</g, ''))}</style>` : ''}<div class="ws-page">
-    <h1 class="sr-only">SQL Worksheet</h1>
+    <h1 class="sr-only">${tx('ws.title')}</h1>
     ${workshopTabs('sql', s)}
     <form method="post" action="${BASE}/sql/worksheet" class="ws" id="ws" data-ran="${ran ? `${ran.start},${ran.end}` : ''}" data-error-line="${firstError?.errorLine ?? ''}"
       data-source="${source}" data-script-id="${script?.id ?? ''}" data-script-name="${script?.name ?? ''}" data-tab="${tabKey}">${csrf(s)}
-      <button class="ws-default" name="mode" value="nav" tabindex="-1">Refresh the navigator</button>
+      <button class="ws-default" name="mode" value="nav" tabindex="-1">${tx('ws.refresh_nav')}</button>
       <input type="hidden" name="sel_start" value=""><input type="hidden" name="sel_end" value="">
       <input type="hidden" name="script_id" value="${script?.id ?? ''}"><input type="hidden" name="ws_tab" value="${tabKey}">
       ${bindDialog}
-      <aside class="ws-nav" id="ws-nav" aria-label="Navigator">
-        <div class="ws-nav-switch" role="tablist" aria-label="Navigator" hidden>
-          <button type="button" role="tab" aria-selected="true" aria-controls="ws-nav-objects" data-ws-navtab="objects">Objects</button>
-          <button type="button" role="tab" aria-selected="false" aria-controls="ws-files" data-ws-navtab="files">Files</button>
+      <aside class="ws-nav" id="ws-nav" aria-label="${tx('ws.navigator')}">
+        <div class="ws-nav-switch" role="tablist" aria-label="${tx('ws.navigator')}" hidden>
+          <button type="button" role="tab" aria-selected="true" aria-controls="ws-nav-objects" data-ws-navtab="objects">${tx('ws.objects')}</button>
+          <button type="button" role="tab" aria-selected="false" aria-controls="ws-files" data-ws-navtab="files">${tx('ws.files')}</button>
         </div>
         <div id="ws-nav-objects" class="ws-nav-panel">
         <div class="ws-nav-head">
-          <label class="sr-only" for="ws-schema">Schema</label>
+          <label class="sr-only" for="ws-schema">${tx('ws.schema')}</label>
           <select id="ws-schema" name="nav_schema" data-ws-nav>${navSchemas.map((n) => html`<option value="${n}"${n === navSchema ? raw(' selected') : ''}>${n}</option>`)}</select>
-          <label class="sr-only" for="ws-type">Object type</label>
-          <select id="ws-type" name="nav_type" data-ws-nav>${NAV_TYPES.map(([k, label]) => html`<option value="${k}"${k === navType ? raw(' selected') : ''}>${label}</option>`)}</select>
+          <label class="sr-only" for="ws-type">${tx('ws.object_type')}</label>
+          <select id="ws-type" name="nav_type" data-ws-nav>${NAV_TYPES.map(([k, label]) => html`<option value="${k}"${k === navType ? raw(' selected') : ''}>${tx.dyn(`ob.type.${k}`, label)}</option>`)}</select>
           <div class="ws-nav-search">
-            <label class="sr-only" for="ws-filter">Search objects</label>
-            <input id="ws-filter" type="search" placeholder="Search" autocomplete="off" data-ws-filter>
-            <button class="btn btn-sm btn-icon" name="mode" value="nav" title="Refresh">${icon('refresh')}<span class="sr-only">Refresh</span></button>
+            <label class="sr-only" for="ws-filter">${tx('ws.search_objects')}</label>
+            <input id="ws-filter" type="search" placeholder="${tx('common.search')}" autocomplete="off" data-ws-filter>
+            <button class="btn btn-sm btn-icon" name="mode" value="nav" title="${tx('ws.refresh')}">${icon('refresh')}<span class="sr-only">${tx('ws.refresh')}</span></button>
           </div>
         </div>
-        <div class="ws-nav-body" id="ws-nav-body">${await navigatorTree(db, navSchema, navType)}</div>
+        <div class="ws-nav-body" id="ws-nav-body">${await navigatorTree(db, navSchema, navType, tx)}</div>
         </div>
-        <section id="ws-files" class="ws-nav-panel ws-files" aria-label="Files">
-          <h2 class="ws-files-title">Files <small class="muted">(SQL Scripts)</small></h2>
-          ${files.length ? html`<ul>${files.map((f) => html`<li><a href="${BASE}/sql/worksheet?script=${f.id}"${script?.id === f.id ? raw(' aria-current="true"') : ''}>${icon('file')}<span>${f.name}</span></a></li>`)}</ul>` : html`<p class="muted small">No scripts yet: Save a worksheet to make one.</p>`}
+        <section id="ws-files" class="ws-nav-panel ws-files" aria-label="${tx('ws.files')}">
+          <h2 class="ws-files-title">${tx('ws.files')} <small class="muted">${tx('ws.sql_scripts')}</small></h2>
+          ${files.length ? html`<ul>${files.map((f) => html`<li><a href="${BASE}/sql/worksheet?script=${f.id}"${script?.id === f.id ? raw(' aria-current="true"') : ''}>${icon('file')}<span>${f.name}</span></a></li>`)}</ul>` : html`<p class="muted small">${tx('ws.no_scripts')}</p>`}
         </section>
       </aside>
-      <div class="ws-split ws-split-v" role="separator" aria-orientation="vertical" aria-label="Resize the navigator" tabindex="0" data-ws-split="nav" hidden></div>
-      <section class="ws-main" aria-label="Worksheet">
-        <div class="ws-toolbar" role="toolbar" aria-label="Worksheet">
-          <button type="button" class="btn btn-sm btn-icon" data-ws-toggle-nav title="Hide or show the navigator" hidden>${bicon('left')}<span class="sr-only">Navigator</span></button>
-          <details class="menu ws-file"><summary class="btn btn-sm" title="Save, open, rename or download the worksheet (Ctrl+S saves)">${icon('file')}<span class="ws-file-name">${script?.name ?? 'Untitled'}</span></summary>
+      <div class="ws-split ws-split-v" role="separator" aria-orientation="vertical" aria-label="${tx('ws.resize_nav')}" tabindex="0" data-ws-split="nav" hidden></div>
+      <section class="ws-main" aria-label="${tx('ws.worksheet')}">
+        <div class="ws-toolbar" role="toolbar" aria-label="${tx('ws.worksheet')}">
+          <button type="button" class="btn btn-sm btn-icon" data-ws-toggle-nav title="${tx('ws.toggle_nav')}" hidden>${bicon('left')}<span class="sr-only">${tx('ws.navigator')}</span></button>
+          <details class="menu ws-file"><summary class="btn btn-sm" title="${tx('ws.file.menu')}">${icon('file')}<span class="ws-file-name">${script?.name ?? tx('ws.untitled')}</span></summary>
             <div class="menu-panel"><div class="menu-section ws-file-panel">
-              <label class="label" for="ws-name">Name</label>
+              <label class="label" for="ws-name">${tx('ws.name')}</label>
               <input id="ws-name" name="ws_name" value="${script?.name ?? ''}" maxlength="200" autocomplete="off">
               <div class="ws-file-actions">
-                <button class="btn btn-sm btn-hot" name="mode" value="save" title="Save (Ctrl+S)">${icon('save')} Save</button>
-                ${script ? html`<button class="btn btn-sm" name="mode" value="save_as">Save as new</button><button class="btn btn-sm" name="mode" value="rename">Rename</button>` : ''}
-                <button class="btn btn-sm" name="mode" value="download">${icon('download')} Download</button>
+                <button class="btn btn-sm btn-hot" name="mode" value="save" title="${tx('ws.save_title')}">${icon('save')} ${tx('ws.key.save')}</button>
+                ${script ? html`<button class="btn btn-sm" name="mode" value="save_as">${tx('ws.save_as')}</button><button class="btn btn-sm" name="mode" value="rename">${tx('ws.rename')}</button>` : ''}
+                <button class="btn btn-sm" name="mode" value="download">${icon('download')} ${tx('ws.download')}</button>
               </div>
-              <div class="ws-file-actions"><a class="btn btn-sm" href="${BASE}/sql/worksheet?new=1" data-ws-new>${icon('plus')} New</a><a class="btn btn-sm" href="#ws-files" data-ws-open>Open…</a>
+              <div class="ws-file-actions"><a class="btn btn-sm" href="${BASE}/sql/worksheet?new=1" data-ws-new>${icon('plus')} ${tx('ws.new')}</a><a class="btn btn-sm" href="#ws-files" data-ws-open>${tx('ws.open_file')}</a>
                 ${script ? html`<input type="hidden" name="pin_href" value="${BASE}/sql/worksheet?script=${script.id}"><input type="hidden" name="pin_label" value="${script.name}"><input type="hidden" name="back" value="${BASE}/sql/worksheet?script=${script.id}">
-                  <button class="btn btn-sm" formaction="${BASE}/pins" title="Pin this worksheet to the SQL Workshop home">${icon('pin')} Pin</button>` : ''}</div>
+                  <button class="btn btn-sm" formaction="${BASE}/pins" title="${tx('ws.pin_title')}">${icon('pin')} ${tx('ws.pin')}</button>` : ''}</div>
             </div></div></details>
-          ${toolBtn('statement', 'play', 'Run Statement', 'Ctrl+Enter', true)}
-          ${toolBtn('script', 'file', 'Run Script', 'F5')}
-          ${toolBtn('explain', 'route', 'Explain Plan', 'F10')}
-          ${toolBtn('autotrace', 'activity', 'Autotrace', 'F6')}
-          <label class="ws-check"><input type="checkbox" name="continue_on_error"${continueOnError ? raw(' checked') : ''}> Continue on error</label>
+          ${toolBtn('statement', 'play', tx('ws.run_statement'), 'Ctrl+Enter', true)}
+          ${toolBtn('script', 'file', tx('ws.run_script'), 'F5')}
+          ${toolBtn('explain', 'route', tx('ws.tab.explain'), 'F10')}
+          ${toolBtn('autotrace', 'activity', tx('ws.tab.autotrace'), 'F6')}
+          <label class="ws-check"><input type="checkbox" name="continue_on_error"${continueOnError ? raw(' checked') : ''}> ${tx('ws.continue')}</label>
           <span class="ws-spacer"></span>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-format title="Format (Ctrl+F7)" hidden>${icon('sliders')}<span class="sr-only">Format</span></button>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-case title="Convert case of the selection (Ctrl+B)" hidden><span aria-hidden="true" class="ws-aa">Aa</span><span class="sr-only">Convert case</span></button>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-find title="Find and replace (Ctrl+F, Ctrl+H)" hidden>${icon('search')}<span class="sr-only">Find</span></button>
-          <a class="btn btn-sm btn-icon" href="${BASE}/sql/load?schema=${encodeURIComponent(navSchema)}" title="Load data into a table">${icon('upload')}<span class="sr-only">Load data</span></a>
-          <details class="menu ws-keys"><summary class="btn btn-sm btn-icon" title="Keyboard shortcuts">?<span class="sr-only">Keyboard shortcuts</span></summary>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-format title="${tx('ws.format_title')}" hidden>${icon('sliders')}<span class="sr-only">${tx('ws.format')}</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-case title="${tx('ws.case_title')}" hidden><span aria-hidden="true" class="ws-aa">Aa</span><span class="sr-only">${tx('ws.case')}</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-find title="${tx('ws.find_title')}" hidden>${icon('search')}<span class="sr-only">${tx('ws.find')}</span></button>
+          <a class="btn btn-sm btn-icon" href="${BASE}/sql/load?schema=${encodeURIComponent(navSchema)}" title="${tx('ws.load_title')}">${icon('upload')}<span class="sr-only">${tx('ws.load')}</span></a>
+          <details class="menu ws-keys"><summary class="btn btn-sm btn-icon" title="${tx('ws.keys')}">?<span class="sr-only">${tx('ws.keys')}</span></summary>
             <div class="menu-panel align-right"><div class="menu-section"><dl class="ws-keylist">
-              <dt>Ctrl+Enter</dt><dd>Run Statement</dd><dt>F5</dt><dd>Run Script</dd><dt>F10</dt><dd>Explain Plan</dd><dt>F6</dt><dd>Autotrace</dd>
-              <dt>Ctrl+S</dt><dd>Save</dd><dt>Ctrl+F7</dt><dd>Format</dd><dt>Ctrl+B</dt><dd>Convert case</dd><dt>Ctrl+F / Ctrl+H</dt><dd>Find / replace</dd>
-              <dt>Ctrl+G</dt><dd>Go to line</dd><dt>Ctrl+/</dt><dd>Comment the lines</dd><dt>Ctrl+Space</dt><dd>Suggestions</dd><dt>F1</dt><dd>Help</dd><dt>Escape</dt><dd>Leave fullscreen</dd>
+              <dt>Ctrl+Enter</dt><dd>${tx('ws.run_statement')}</dd><dt>F5</dt><dd>${tx('ws.run_script')}</dd><dt>F10</dt><dd>${tx('ws.tab.explain')}</dd><dt>F6</dt><dd>${tx('ws.tab.autotrace')}</dd>
+              <dt>Ctrl+S</dt><dd>${tx('ws.key.save')}</dd><dt>Ctrl+F7</dt><dd>${tx('ws.format')}</dd><dt>Ctrl+B</dt><dd>${tx('ws.case')}</dd><dt>Ctrl+F / Ctrl+H</dt><dd>${tx('ws.key.find')}</dd>
+              <dt>Ctrl+G</dt><dd>${tx('ws.key.goto')}</dd><dt>Ctrl+/</dt><dd>${tx('ws.key.comment')}</dd><dt>Ctrl+Space</dt><dd>${tx('ws.key.suggest')}</dd><dt>F1</dt><dd>${tx('ws.key.help')}</dd><dt>Escape</dt><dd>${tx('ws.key.fullscreen')}</dd>
             </dl>
-            <label class="ws-kwcase" hidden>Format keywords in <select data-ws-kwcase><option value="lower">lower case</option><option value="upper">UPPER CASE</option></select></label>
-            <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>Help on the SQL Worksheet</a></div></div></details>
+            <label class="ws-kwcase" hidden>${tx('ws.kwcase')} <select data-ws-kwcase><option value="lower">${tx('ws.lower')}</option><option value="upper">${tx('ws.upper')}</option></select></label>
+            <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>${tx('ws.help')}</a></div></div></details>
           <span class="ws-txn" data-ws-txn data-state="${tState}" data-statements="${txn?.statements ?? 0}" data-started="${txn?.startedMs ?? ''}" data-last="${txn?.lastMs ?? ''}" data-idle="${txnIdleSeconds()}" data-note="${tNote ?? ''}" data-now="${Date.now()}" hidden>
-            <label class="ws-runas"><span>Commit</span><select name="txn" data-ws-txn-mode title="Autocommit: each statement commits on its own. Transaction: the statements stay in one transaction until Commit or Rollback.">
-              <option value="">Autocommit</option><option value="on"${txnOn ? raw(' selected') : ''}>Transaction</option></select></label>
-            <span class="ws-txn-badge" data-ws-txn-badge data-state="${tState}" role="status" title="${tState === 'none' ? '' : `Runs as ${txn?.runsAs ?? ''}`}">${badge}</span>
-            <button class="btn btn-sm" name="mode" value="commit" data-ws-txn-commit title="Commit the worksheet's transaction"${txn ? '' : raw(' disabled')}>${icon('check')}<span>Commit</span></button>
-            <button class="btn btn-sm" name="mode" value="rollback" data-ws-txn-rollback title="Roll back the worksheet's transaction"${txn ? '' : raw(' disabled')}>${icon('undo')}<span>Rollback</span></button>
+            <label class="ws-runas"><span>${tx('ws.commit_label')}</span><select name="txn" data-ws-txn-mode title="${tx('ws.txn.mode_title')}">
+              <option value="">${tx('ws.autocommit')}</option><option value="on"${txnOn ? raw(' selected') : ''}>${tx('ws.transaction')}</option></select></label>
+            <span class="ws-txn-badge" data-ws-txn-badge data-state="${tState}" role="status" title="${tState === 'none' ? '' : tx('ws.txn.runs_as_title', { who: txn?.runsAs ?? '' })}">${badge}</span>
+            <button class="btn btn-sm" name="mode" value="commit" data-ws-txn-commit title="${tx('ws.txn.commit_title')}"${txn ? '' : raw(' disabled')}>${icon('check')}<span>${tx('ws.commit_label')}</span></button>
+            <button class="btn btn-sm" name="mode" value="rollback" data-ws-txn-rollback title="${tx('ws.txn.rollback_title')}"${txn ? '' : raw(' disabled')}>${icon('undo')}<span>${tx('ws.rollback')}</span></button>
           </span>
-          <label class="ws-runas"><span>Run as</span>
-            <select name="as_app" title="Who the statements run as">
-              <option value="">${db === owner ? 'Owner connection' : 'Workspace login'}</option>
+          <label class="ws-runas"><span>${tx('ws.run_as')}</span>
+            <select name="as_app" title="${tx('ws.run_as_title')}">
+              <option value="">${db === owner ? tx('ws.owner_conn') : tx('ws.ws_login')}</option>
               ${apps.map((a) => html`<option value="${a.id}"${asApp?.id === a.id ? raw(' selected') : ''}>${a.name} (${a.db_role})</option>`)}
             </select></label>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-clear title="Clear the editor" hidden>${icon('trash')}<span class="sr-only">Clear</span></button>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-fullscreen title="Fullscreen (Escape leaves)" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">Fullscreen</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-clear title="${tx('ws.clear_title')}" hidden>${icon('trash')}<span class="sr-only">${tx('ws.clear')}</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-fullscreen title="${tx('ws.fullscreen_title')}" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">${tx('ws.fullscreen')}</span></button>
         </div>
-        <p class="ws-runs-as muted small">Runs as ${runsAs}${searchSchema ? html`; <code>${searchSchema}</code> first in the search path (<a href="${BASE}/sql">change</a>)` : ''}. <span data-ws-commit-note>${txnOn
-          ? `The statements stay in one transaction until Commit or Rollback; it is rolled back after ${idleLabel()} without a run.`
-          : 'Each statement commits on its own.'}</span></p>
+        <p class="ws-runs-as muted small">${tx('ws.runs_as', { who: runsAs })}${searchSchema ? html`; ${tx.rich('ws.search_path', { schema: html`<code>${searchSchema}</code>`, change: html`<a href="${BASE}/sql">${tx('ws.change')}</a>` })}` : ''}. <span data-ws-commit-note>${txnOn
+          ? tx('ws.commit.txn', { idle: idleLabel(tx) })
+          : tx('ws.commit.auto')}</span></p>
         ${fileError ? html`<p class="alert alert-error ws-file-error" role="alert">${fileError}</p>` : ''}
         ${txnError ? html`<p class="alert alert-error ws-txn-alert" role="alert">${txnError}</p>` : txnInfo ? html`<p class="alert alert-info ws-txn-alert" role="status">${txnInfo}</p>` : ''}
-        <div class="ws-wtabs" role="group" aria-label="Worksheets" hidden></div>
+        <div class="ws-wtabs" role="group" aria-label="${tx('ws.worksheets')}" hidden></div>
         <div class="ws-findbar" hidden>
-          <label class="sr-only" for="ws-find-q">Find</label><input id="ws-find-q" type="search" placeholder="Find" autocomplete="off" data-ws-find-q>
-          <label class="sr-only" for="ws-find-r">Replace with</label><input id="ws-find-r" placeholder="Replace with" autocomplete="off" data-ws-find-r>
-          <label class="ws-check"><input type="checkbox" data-ws-find-re> Regex</label>
-          <label class="ws-check"><input type="checkbox" data-ws-find-cs> Match case</label>
-          <button type="button" class="btn btn-sm" data-ws-find-next>Next</button>
-          <button type="button" class="btn btn-sm" data-ws-find-replace>Replace</button>
-          <button type="button" class="btn btn-sm" data-ws-find-all>Replace all</button>
-          <label class="sr-only" for="ws-goto">Go to line</label><input id="ws-goto" type="number" min="1" placeholder="Line" class="ws-goto" data-ws-goto>
+          <label class="sr-only" for="ws-find-q">${tx('ws.find')}</label><input id="ws-find-q" type="search" placeholder="${tx('ws.find')}" autocomplete="off" data-ws-find-q>
+          <label class="sr-only" for="ws-find-r">${tx('ws.replace_with')}</label><input id="ws-find-r" placeholder="${tx('ws.replace_with')}" autocomplete="off" data-ws-find-r>
+          <label class="ws-check"><input type="checkbox" data-ws-find-re> ${tx('ws.regex')}</label>
+          <label class="ws-check"><input type="checkbox" data-ws-find-cs> ${tx('ws.match_case')}</label>
+          <button type="button" class="btn btn-sm" data-ws-find-next>${tx('ws.next')}</button>
+          <button type="button" class="btn btn-sm" data-ws-find-replace>${tx('ws.replace')}</button>
+          <button type="button" class="btn btn-sm" data-ws-find-all>${tx('ws.replace_all')}</button>
+          <label class="sr-only" for="ws-goto">${tx('ws.key.goto')}</label><input id="ws-goto" type="number" min="1" placeholder="${tx('ws.line_ph')}" class="ws-goto" data-ws-goto>
           <span class="muted small" data-ws-find-msg></span>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-find-close title="Close (Escape)">${icon('x-circle')}<span class="sr-only">Close</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-find-close title="${tx('ws.close_esc')}">${icon('x-circle')}<span class="sr-only">${tx('ws.close')}</span></button>
         </div>
         <div class="ws-editor">
           <textarea id="ws-sql" name="sql" aria-label="SQL" class="code sql-editor" rows="14" spellcheck="false" data-code="plpgsql">${text || (isPost ? '' : 'select current_user, version();')}</textarea>
         </div>
-        <div class="ws-split ws-split-h" role="separator" aria-orientation="horizontal" aria-label="Resize the output" tabindex="0" data-ws-split="out" hidden></div>
+        <div class="ws-split ws-split-h" role="separator" aria-orientation="horizontal" aria-label="${tx('ws.resize_out')}" tabindex="0" data-ws-split="out" hidden></div>
         <div class="ws-output" data-active="${active}">
-          <div class="ws-tabs" role="tablist" aria-label="Output">${TABS.map(([k, label]) => html`<button type="button" role="tab" id="ws-tab-${k}" aria-controls="ws-pane-${k}" aria-selected="${k === active ? 'true' : 'false'}" data-ws-tab="${k}">${label}</button>`)}</div>
-          ${TABS.map(([k, label]) => html`<section class="ws-pane" id="ws-pane-${k}" role="tabpanel" aria-labelledby="ws-tab-${k}" data-pane="${k}"><h2 class="ws-pane-title">${label}</h2>${panes[k]}</section>`)}
+          <div class="ws-tabs" role="tablist" aria-label="${tx('ws.output')}">${TABS.map(([k]) => html`<button type="button" role="tab" id="ws-tab-${k}" aria-controls="ws-pane-${k}" aria-selected="${k === active ? 'true' : 'false'}" data-ws-tab="${k}">${tx(`ws.tab.${k}`)}</button>`)}</div>
+          ${TABS.map(([k]) => html`<section class="ws-pane" id="ws-pane-${k}" role="tabpanel" aria-labelledby="ws-tab-${k}" data-pane="${k}"><h2 class="ws-pane-title">${tx(`ws.tab.${k}`)}</h2>${panes[k]}</section>`)}
         </div>
       </section>
       <footer class="ws-status" role="status" aria-live="polite">${status}</footer>
     </form>
     ${downloadable ? html`<form method="post" action="${BASE}/sql/unload" id="ws-dl" class="ws-dl-form">${csrf(s)}<input type="hidden" name="source" value="query"><input type="hidden" name="query" value="${downloadable}"><input type="hidden" name="header" value="1"><input type="hidden" name="bom" value="1"></form>` : ''}
   </div>`;
-  return send(reply, s, shell(s, 'SQL Worksheet', [['SQL Workshop', `${BASE}/sql`], ['SQL Worksheet']], main, 'sql', { full: true }));
+  return send(reply, s, shell(s, tx('ws.title'), [['SQL Workshop', `${BASE}/sql`], [tx('ws.title')]], main, 'sql', { full: true }));
 }
 
 export async function worksheetRoutes(app: FastifyInstance) {
@@ -719,6 +725,6 @@ export async function worksheetRoutes(app: FastifyInstance) {
     if (req.query?.schema && !schemas.includes(String(req.query.schema))) return reply.code(404).send('Not found');
     const schema = await pickSchema(s, db, schemas, req.query?.schema);
     const type = NAV_TYPES.some(([k]) => k === req.query?.type) ? String(req.query!.type) : 'all';
-    return reply.header('Cache-Control', 'private, no-store').type('text/html').send(String(await navigatorTree(db, schema, type)));
+    return reply.header('Cache-Control', 'private, no-store').type('text/html').send(String(await navigatorTree(db, schema, type, tr(s))));
   });
 }
