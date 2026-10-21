@@ -122,7 +122,7 @@ select pg_temp.page_id('sample-reporting', r.page), r.seq, r.title, r.type, r.co
 
   -- 5 Smart filters
   (5, 5, 'About this page', 'static', 12, 'plain',
-   '<p class="lead">A <code>smart_filters</code> region is the compact alternative: one search field above the report, the filters in use as chips and suggestions below it. Type <em>dutch</em> or <em>crime</em> and choose a suggestion.</p>',
+   '<p class="lead">A <code>smart_filters</code> region is the compact alternative: one search field above the report, the filters in use as chips and suggestions below it. Type <em>dutch</em> or <em>crime</em> and choose a suggestion. With <code>"ask": true</code> it also reads a phrase: type <em>novels published between 1850 and 1900</em> and choose <strong>Understood as</strong>.</p>',
    '{}', null),
   (5, 10, 'Search', 'smart_filters', 12, 'plain', null, '{}', 'smart'),
   (5, 20, 'Books', 'report', 12, 'standard',
@@ -144,8 +144,9 @@ select pg_temp.page_id('sample-reporting', r.page), r.seq, r.title, r.type, r.co
 
 update meta.region set config = jsonb_build_object(
     'report', pg_temp.region_id('sample-reporting', 5, 'smart-report'),
-    'placeholder', 'Search or filter the books…',
+    'placeholder', 'Search, filter, or type e.g. novels published between 1850 and 1900',
+    'ask', true,
     'facets', '[{"column": "genre", "label": "Genre"}, {"column": "language", "label": "Language"},
-                {"column": "published", "label": "Published", "type": "range",
+                {"column": "published", "label": "Published", "type": "range", "custom": true,
                  "ranges": [{"to": 1900}, {"from": 1900, "to": 1950}, {"from": 1950}]}]'::jsonb)
  where id = pg_temp.region_id('sample-reporting', 5, 'smart');
