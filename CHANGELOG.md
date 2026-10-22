@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Passkeys for developers** (SEC-2, part 2): besides authenticator apps, a developer adds passkeys or security
+  keys (WebAuthn: fingerprint, face, screen lock, a USB or NFC key) on the Security page and signs in with
+  **Use a passkey** at the second step. pgkiln checks them without a library: the challenge, the address, the relying
+  party, user presence, the signature (ES256, EdDSA, RS256) and the signature counter. A passkey belongs to the host
+  of `PUBLIC_URL` (or the browser's); `PGKILN_RP_ID` may name a parent domain; passkeys made for another domain are
+  marked. Adding one needs JavaScript; codes keep working without it.
+- **Trusted browsers**: Instance settings → Two-factor sign-in → *Trust a browser (days)* (0 by default) offers
+  *Trust this browser* at the second step; a trusted browser skips it for that many days. Only a hash of the token is
+  stored; a new password, removing a factor, a reset or *Forget trusted browsers* ends the trust. Migration 129.
+
 ## [0.60.0] - 2026-10-21
 
 ### Added

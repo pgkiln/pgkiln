@@ -108,7 +108,8 @@ export async function saveInstanceSettings(values: Record<string, string | undef
 export const CONFIGURATION: readonly { env: string; secret?: boolean; default: string; help: string }[] = [
   { env: 'PORT', default: '3100', help: 'HTTP port' },
   { env: 'HOST', default: '127.0.0.1', help: 'Address the server listens on' },
-  { env: 'PUBLIC_URL', default: '(none)', help: 'The public address (single sign-on redirects, links)' },
+  { env: 'PUBLIC_URL', default: '(none)', help: 'The public address (single sign-on redirects, links, passkeys)' },
+  { env: 'PGKILN_RP_ID', default: '(the host of PUBLIC_URL)', help: 'A parent domain for developers\' passkeys' },
   { env: 'DATABASE_URL', secret: true, default: '(none)', help: 'Owner connection (migrations, builder, SQL Workshop)' },
   { env: 'RUNTIME_DATABASE_URL', secret: true, default: 'DATABASE_URL', help: 'Least-privilege connection that runs applications' },
   { env: 'COOKIE_SECURE', default: 'false', help: 'Cookies only over HTTPS' },
