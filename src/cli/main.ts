@@ -477,9 +477,9 @@ const COMMANDS: Record<string, Command> = {
       'pgkiln admin reset-2fa <developer> [--reason <text>]\n' +
       'pgkiln admin set-2fa-policy off|admins|all [--grace <days>]\n\n' +
       "reset-2fa removes the developer's authenticator apps and recovery codes and ends their builder\n" +
-      'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works;\n' +
-      'admins and all need at least two administrators with two-factor sign-in (or every one, when there\n' +
-      'are fewer). Both are written to the activity log and mailed to the administrators.',
+      'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works\n' +
+      "(and clears the workspaces' own two-factor rules); admins and all need at least two administrators\n" +
+      'with two-factor sign-in (or every one, when there are fewer). Both are written to the activity log and mailed to the administrators.',
     options: { reason: { type: 'string' }, grace: { type: 'string' } },
     optionHelp: [
       ['--reason <text>', 'reset-2fa: why (in the activity log and the mail)'],
@@ -509,9 +509,11 @@ const COMMANDS: Record<string, Command> = {
           const policy = arg as 'off' | 'admins' | 'all';
           if (await mfa.policyProblem(policy)) throw new Error('at least two administrators (or every one, when there are fewer) need two-factor sign-in first');
           await mfa.setPolicy(policy, grace);
-          await logActivity({ event: '2fa_policy', ip: 'cli', detail: `${policy}, grace ${grace} days (${by})` });
+          // (sprint 128) off means off: no workspace requires a second factor either
+          const cleared = policy === 'off' ? await mfa.clearWorkspaceRequirements() : 0;
+          await logActivity({ event: '2fa_policy', ip: 'cli', detail: `${policy}, grace ${grace} days${cleared ? `, ${cleared} workspace rule(s) cleared` : ''} (${by})` });
           const sent = await mfa.notifyMfa(await mfa.adminEmails(), `pgkiln: two-factor sign-in policy is now ${policy}`, `${by} set the two-factor policy to ${policy} on the server.`);
-          out(`Two-factor policy: ${policy}${policy === 'off' ? '' : `, grace ${grace} days`}.${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
+          out(`Two-factor policy: ${policy}${policy === 'off' ? '' : `, grace ${grace} days`}.${cleared ? ` ${cleared} workspace(s) no longer require it.` : ''}${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
           return EXIT.ok;
         }
         throw new UsageError(`unknown action ${action}: use reset-2fa or set-2fa-policy`);

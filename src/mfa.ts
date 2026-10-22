@@ -11,6 +11,8 @@ import { decryptSecret, encryptSecret } from './secrets.ts';
 // factors and turns the policy off without signing in (src/cli/main.ts, `pgkiln admin`).
 // (sprint 127) Passkeys and security keys (WebAuthn, src/webauthn.ts) are the second kind of factor, and a
 // developer may trust a browser for a number of days (meta.setting mfa_trust_days; 0 = never).
+// (sprint 128) A passkey the authenticator verified the developer with may stand in for both the password and
+// the second factor (mfa_passkey_signin), and a workspace may require a second factor of its developers.
 
 export const TOTP_STEP = 30;
 export const TOTP_DIGITS = 6;
@@ -137,6 +139,26 @@ export async function passkeysOf(username: string, rpId: string): Promise<Passke
   return (await owner.query<Passkey>(
     `select id, name, credential_id, public_key, alg, sign_count, transports from meta.developer_factor
       where username = $1 and kind = 'passkey' and rp_id = $2 order by id`, [username, rpId])).rows;
+}
+
+/** (sprint 128) The passkey with this credential id for this relying party, and whose it is (sign-in without a user name). */
+export async function passkeyByCredential(credentialId: string, rpId: string): Promise<(Passkey & { username: string }) | null> {
+  if (!credentialId || credentialId.length > 1400) return null;
+  return (await owner.one<Passkey & { username: string }>(
+    `select id, username, name, credential_id, public_key, alg, sign_count, transports from meta.developer_factor
+      where kind = 'passkey' and credential_id = $1 and rp_id = $2`, [credentialId, rpId])) ?? null;
+}
+
+/** The user handle a developer's passkeys carry: stable, and not the user name. */
+export const userHandle = (username: string) => createHash('sha256').update(`pgkiln-developer:${username}`).digest().subarray(0, 16).toString('base64url');
+
+/** (sprint 128) Whether a passkey alone (user verified) may sign a developer in. */
+export async function passkeySignin(): Promise<boolean> {
+  return (await owner.one<{ value: string }>(`select value from meta.setting where name = 'mfa_passkey_signin'`))?.value !== 'off';
+}
+
+export async function setPasskeySignin(on: boolean) {
+  await owner.query(`insert into meta.setting (name, value) values ('mfa_passkey_signin', $1) on conflict (name) do update set value = excluded.value`, [on ? 'on' : 'off']);
 }
 
 /** Record a sign-in with a passkey; false when another sign-in moved the counter first (a replay or a clone). */
@@ -285,13 +307,46 @@ export async function setPolicy(policy: MfaPolicy, graceDays: number) {
 }
 
 /**
+ * (sprint 128) Whether a second factor is required of this developer, by the instance's policy or by one of
+ * their workspaces, and since when (the grace period counts from the earliest).
+ */
+export async function requirement(username: string, isAdmin: boolean): Promise<{ required: boolean; since: Date | null; graceDays: number; workspaces: string[] }> {
+  const [{ policy, since, graceDays }, ws] = await Promise.all([
+    mfaPolicy(),
+    owner.query<{ name: string; since: Date }>(
+      `select w.name, w.mfa_required_since as since from meta.workspace w join meta.workspace_member m on m.workspace_id = w.id
+        where m.username = $1 and w.mfa_required_since is not null order by w.mfa_required_since`, [username]),
+  ]);
+  const byInstance = requiredFor(policy, isAdmin);
+  const times = [...(byInstance ? [since ?? new Date()] : []), ...ws.rows.map((r) => new Date(r.since))];
+  return {
+    required: times.length > 0,
+    since: times.length ? new Date(Math.min(...times.map((t) => t.getTime()))) : null,
+    graceDays,
+    workspaces: ws.rows.map((r) => r.name),
+  };
+}
+
+/** (sprint 128) Require a second factor of a workspace's developers (from now), or stop requiring it. */
+export async function setWorkspaceRequired(workspaceId: number, on: boolean): Promise<boolean> {
+  return !!(await owner.query(
+    `update meta.workspace set mfa_required_since = case when $2 then coalesce(mfa_required_since, now()) end where id = $1`,
+    [workspaceId, on])).rowCount;
+}
+
+/** The command line's "off": no workspace requires a second factor either. */
+export async function clearWorkspaceRequirements(): Promise<number> {
+  return (await owner.query('update meta.workspace set mfa_required_since = null where mfa_required_since is not null')).rowCount ?? 0;
+}
+
+/**
  * A developer without a factor while the policy requires one: 'grace' until the grace period ends (a
  * banner), then 'enrol' (only the Security page and signing out until they enrol); null otherwise.
  */
 export async function enrolmentDue(username: string, isAdmin: boolean): Promise<{ due: 'grace' | 'enrol'; until: Date } | null> {
-  const { policy, since, graceDays } = await mfaPolicy();
-  if (!requiredFor(policy, isAdmin) || (await hasFactor(username))) return null;
-  const until = new Date((since ?? new Date()).getTime() + graceDays * 86_400_000);
+  const r = await requirement(username, isAdmin);
+  if (!r.required || (await hasFactor(username))) return null;
+  const until = new Date((r.since ?? new Date()).getTime() + r.graceDays * 86_400_000);
   return { due: Date.now() < until.getTime() ? 'grace' : 'enrol', until };
 }
 

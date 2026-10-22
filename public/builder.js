@@ -1337,6 +1337,7 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
 // (sprint 127) Passkeys: a [data-passkey] button asks the server (its URL) for WebAuthn options, calls
 // navigator.credentials.create() (Security page) or .get() (the second sign-in step) and posts the answer in
 // its own form, to data-passkey-submit when set, so the server answers with a redirect as for any form.
+// (sprint 128) On the sign-in page the list of allowed passkeys is empty: the browser offers the ones it holds.
 // Without WebAuthn or JavaScript the buttons stay hidden; codes keep working.
 (() => {
   'use strict';
@@ -1377,13 +1378,14 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
           set('transports', (c.response.getTransports ? c.response.getTransports() : []).join(','));
         } else {
           const c = await navigator.credentials.get({ publicKey: {
-            challenge: bytes(o.challenge), rpId: o.rpId, userVerification: 'preferred', timeout: 120000,
+            challenge: bytes(o.challenge), rpId: o.rpId, userVerification: o.uv || 'preferred', timeout: 120000,
             allowCredentials: o.allow.map((a) => ({ type: 'public-key', id: bytes(a.id), transports: a.transports })),
           } });
           set('credentialId', b64(c.rawId));
           set('clientDataJSON', b64(c.response.clientDataJSON));
           set('authenticatorData', b64(c.response.authenticatorData));
           set('signature', b64(c.response.signature));
+          if (c.response.userHandle) set('userHandle', b64(c.response.userHandle));
         }
         if (btn.dataset.passkeySubmit) form.action = btn.dataset.passkeySubmit;
         form.submit();

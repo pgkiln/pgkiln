@@ -1,4 +1,5 @@
-// Sprint 127 (SEC-2 part 2): passkeys for developers and trusted browsers. A software authenticator (an EC
+// Sprint 127 (SEC-2 part 2): passkeys for developers and trusted browsers; sprint 128: a passkey alone, a
+// workspace's two-factor rule and the default password while two-factor sign-in is required. A software authenticator (an EC
 // P-256 or Ed25519 key made here) answers the server's WebAuthn options the way a browser would.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,11 +8,13 @@ import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
-import { setPolicy, setTrustDays } from '../src/mfa.ts';
+import { clearWorkspaceRequirements, requirement, setPasskeySignin, setPolicy, setTrustDays, setWorkspaceRequired, userHandle } from '../src/mfa.ts';
 import { cborDecode, relyingParty, verifyAssertion, verifyRegistration, WebAuthnError } from '../src/webauthn.ts';
 import { Browser } from './helpers.ts';
 
 const DEV = 'pk127_dev';
+const DEV2 = 'pk128_dev';
+const WEAK = 'pk128_weak';
 const PW = 'Pk127-password!';
 const ORIGIN = 'http://localhost:80';
 let app: FastifyInstance;
@@ -68,9 +71,9 @@ class Authenticator {
     const attestationObject = cbor(new Map<string, unknown>([['fmt', 'none'], ['attStmt', new Map()], ['authData', this.authData(rpId, true)]]));
     return { clientDataJSON: b64u(clientDataJSON), attestationObject: b64u(attestationObject) };
   }
-  get(challenge: string, origin = ORIGIN, rpId = 'localhost') {
+  get(challenge: string, origin = ORIGIN, rpId = 'localhost', flags = 0x05) {
     const clientDataJSON = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge, origin }));
-    const authenticatorData = this.authData(rpId, false);
+    const authenticatorData = this.authData(rpId, false, flags);
     const data = Buffer.concat([authenticatorData, sha(clientDataJSON)]);
     const signature = this.kind === 'es256' ? sign('sha256', data, this.priv) : sign(null, data, this.priv);
     return { credentialId: b64u(this.id), clientDataJSON: b64u(clientDataJSON), authenticatorData: b64u(authenticatorData), signature: b64u(signature) };
@@ -90,12 +93,19 @@ async function options(b: Browser, url: string) {
 }
 
 before(async () => {
-  await owner.query('delete from meta.developer where username = $1', [DEV]);
-  await owner.query('insert into meta.developer (username, password_hash) values ($1, meta.hash_password($2))', [DEV, PW]);
+  await owner.query('delete from meta.developer where username = any($1)', [[DEV, DEV2, WEAK]]);
+  await owner.query(`delete from meta.workspace where name = 'pk128 ws'`);
+  await owner.query('insert into meta.developer (username, password_hash) values ($1, meta.hash_password($2)), ($3, meta.hash_password($2))', [DEV, PW, DEV2]);
+  // the password is the user name: what builder sign-in calls the default password
+  await owner.query('insert into meta.developer (username, password_hash) values ($1, meta.hash_password($1))', [WEAK]);
   app = await buildApp({ logger: false });
 });
 after(async () => {
-  await owner.query('delete from meta.developer where username = $1', [DEV]);
+  await owner.query('delete from meta.developer where username = any($1)', [[DEV, DEV2, WEAK]]);
+  await owner.query(`delete from meta.workspace where name = 'pk128 ws'`);
+  // the refused sign-ins here must not throttle the next test file (failures per IP address)
+  await owner.query(`delete from meta.activity_log where app_id is null and event = 'login_failed'`);
+  await setPasskeySignin(true);
   await setTrustDays(0);
   await setPolicy('off', 7);
   await app.close();
@@ -284,5 +294,113 @@ describe('passkeys for developers', () => {
     await b.submit(`/builder/security/factor/${f!.id}/delete`, { [`password_${f!.id}`]: PW });
     assert.equal(await owner.one('select 1 from meta.developer_factor where username = $1', [DEV]), undefined);
     assert.equal(await owner.one('select 1 from meta.developer_recovery_code where username = $1', [DEV]), undefined);
+  });
+});
+
+const key = new Authenticator(); // DEV2's passkey (sprint 128)
+
+/** Sign in with the passkey alone. */
+async function signInWithPasskey(b: Browser, extra: Record<string, string> = {}) {
+  await b.get('/builder/login');
+  const o = await options(b, '/builder/login/passkey/options');
+  return b.submit('/builder/login/passkey', { ...key.get(o.challenge), ...extra });
+}
+
+describe('a passkey alone (sprint 128)', () => {
+
+  test('the sign-in page offers it; the passkey signs in without user name or password', async () => {
+    const b = new Browser(app);
+    await signIn(b, DEV2);
+    await b.get('/builder/security');
+    const o = await options(b, '/builder/security/passkey/options');
+    assert.equal(o.user.id, userHandle(DEV2));
+    await b.submit('/builder/security/passkey', { pk_name: 'Phone', ...key.create(o.challenge) });
+    await b.get('/builder/security');
+    await b.submit('/builder/security/codes/confirm', { saved: '1' });
+
+    const c = new Browser(app);
+    const page = (await c.get('/builder/login')).body;
+    assert.match(page, /<button[^>]*hidden[^>]*data-passkey="\/builder\/login\/passkey\/options"[^>]*data-passkey-submit="\/builder\/login\/passkey"/);
+    const po = await options(c, '/builder/login/passkey/options');
+    assert.deepEqual([po.allow, po.uv, po.rpId], [[], 'required', 'localhost'], 'any passkey of this site; the device must verify the developer');
+    const r = await c.submit('/builder/login/passkey', { ...key.get(po.challenge), userHandle: userHandle(DEV2), next: '/builder/apps' });
+    assert.equal(r.headers.location, '/builder/apps');
+    assert.equal((await c.get('/builder/apps')).statusCode, 200);
+    assert.ok(await owner.one(`select 1 from meta.activity_log where username = $1 and event = 'login' and detail = 'builder passkey'`, [DEV2]));
+  });
+
+  test('refused: no user verification, a wrong user handle, an unknown key, another workspace', async () => {
+    const tries: [string, (ch: string) => Record<string, string>][] = [
+      ['the authenticator did not verify the user', (ch) => key.get(ch, ORIGIN, 'localhost', 0x01)],
+      ['the user handle does not match', (ch) => ({ ...key.get(ch), userHandle: userHandle(DEV) })],
+      ['unknown passkey', (ch) => new Authenticator().get(ch)],
+      ['not a workspace of the developer', (ch) => ({ ...key.get(ch), workspace: 'no such workspace' })],
+    ];
+    for (const [why, answer] of tries) {
+      const c = new Browser(app);
+      await c.get('/builder/login');
+      const o = await options(c, '/builder/login/passkey/options');
+      const r = await c.submit('/builder/login/passkey', answer(o.challenge));
+      assert.match(String(r.headers.location), /^\/builder\/login/, why);
+      assert.notEqual((await c.get('/builder/apps')).statusCode, 200, why);
+      assert.ok(await owner.one(`select 1 from meta.activity_log where event = 'login_failed' and detail = $1`, [`builder passkey: ${why}`]), why);
+    }
+    // without the options first (no challenge), or without the page's CSRF token
+    const d = new Browser(app);
+    await d.get('/builder/login');
+    await d.submit('/builder/login/passkey', key.get('made-up'));
+    assert.notEqual((await d.get('/builder/apps')).statusCode, 200);
+    assert.equal((await d.request('POST', '/builder/login/passkey/options', {})).statusCode, 403);
+  });
+
+  test('administrators can turn it off: no button, no options', async () => {
+    await setPasskeySignin(false);
+    try {
+      const c = new Browser(app);
+      assert.doesNotMatch((await c.get('/builder/login')).body, /login\/passkey\/options/);
+      assert.equal((await c.request('POST', '/builder/login/passkey/options', { __csrf: c.lastCsrf })).statusCode, 404);
+    } finally {
+      await setPasskeySignin(true);
+    }
+  });
+});
+
+describe('a workspace requires two-factor sign-in (sprint 128)', () => {
+  test('an administrator turns it on; only its members are covered; the command line clears it', async () => {
+    const ws = (await owner.one<{ id: number }>(`insert into meta.workspace (name) values ('pk128 ws') returning id`))!.id;
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, WEAK]);
+    assert.equal((await requirement(WEAK, false)).required, false);
+    // an administrator turns it on from the workspace's page
+    await owner.query('update meta.developer set is_admin = true where username = $1', [DEV2]);
+    const admin = new Browser(app);
+    await signInWithPasskey(admin);
+    assert.match((await admin.get(`/builder/workspaces/${ws}`)).body, /name="required"/);
+    await admin.submit(`/builder/workspaces/${ws}/mfa`, { required: 'true' });
+    const r = await requirement(WEAK, false);
+    assert.deepEqual([r.required, r.workspaces], [true, ['pk128 ws']]);
+    assert.equal((await requirement(DEV, false)).required, false, 'not a member');
+    await setWorkspaceRequired(ws, false);
+    assert.equal((await requirement(WEAK, false)).required, false);
+    await setWorkspaceRequired(ws, true);
+    assert.equal(await clearWorkspaceRequirements() >= 1, true, 'the command line clears it');
+    assert.equal((await requirement(WEAK, false)).required, false);
+    await owner.query('update meta.developer set is_admin = false where username = $1', [DEV2]);
+  });
+
+  test('signed in with the default password while two-factor is required: change it first', async () => {
+    const ws = (await owner.one<{ id: number }>(`select id from meta.workspace where name = 'pk128 ws'`))!.id;
+    await setWorkspaceRequired(ws, true);
+    const b = new Browser(app);
+    await signIn(b, WEAK, WEAK);
+    const r = await b.get('/builder/apps');
+    assert.equal(r.statusCode, 302);
+    assert.equal(r.headers.location, '/builder/developers');
+    const page = (await b.get('/builder/developers')).body;
+    assert.match(page, /change the default password before you continue/);
+    await b.submit('/builder/developers/password', { current: WEAK, password: 'A-better-password-128' });
+    const after = await b.get('/builder/apps');
+    assert.equal(after.statusCode, 200, 'in the grace period after the new password');
+    assert.match(after.body, /Two-factor sign-in is required\. Set it up before/);
+    await setWorkspaceRequired(ws, false);
   });
 });

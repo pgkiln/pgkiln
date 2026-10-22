@@ -675,6 +675,7 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 .signin-reveal { flex: none; border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 0.85rem; padding: 0.25rem; }
 .signin-remember { font-size: 0.9rem; }
 .signin-submit { padding: 0.75rem; font-size: 1rem; border-radius: var(--radius); }
+[data-passkey-status]:empty { display: none; }
 .signin-hint { margin: 0; text-align: center; }
 .signin-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .signin-actions a { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--gold); text-decoration: none; }

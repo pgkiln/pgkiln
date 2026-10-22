@@ -7,7 +7,7 @@ import '../src/env.ts';
 process.env.PGKILN_SECRET_KEY ||= 'test-only-secret-key-0123456789abcdef';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
-import { base32, matchTotp, mfaPolicy, setPolicy, stepNow, totpAt, unbase32 } from '../src/mfa.ts';
+import { base32, matchTotp, mfaPolicy, setPolicy, stepNow, totpAt, unbase32, setPasskeySignin } from '../src/mfa.ts';
 import { Browser } from './helpers.ts';
 
 const DEV = 'mfa126_dev';
@@ -19,6 +19,7 @@ let app: FastifyInstance;
 async function cleanup() {
   await owner.query('delete from meta.developer where username = any($1)', [[DEV, A1, A2]]);
   await setPolicy('off', 7);
+  await setPasskeySignin(true); // the policy form without the checkbox turns it off
 }
 
 async function signIn(b: Browser, username: string, password = PW) {
@@ -166,7 +167,11 @@ describe('two-factor sign-in for developers', () => {
   test('an administrator during the grace period sees the banner; a developer does not', async () => {
     const admin = new Browser(app);
     await signIn(admin, 'admin', 'admin');
-    assert.match((await admin.get('/builder/apps')).body, /Two-factor sign-in is required/);
+    // (sprint 128) the default password: changed first, on Developers (which shows the banner too)
+    assert.equal((await admin.get('/builder/apps')).headers.location, '/builder/developers');
+    const page = (await admin.get('/builder/developers')).body;
+    assert.match(page, /Two-factor sign-in is required/);
+    assert.match(page, /change the default password before you continue/);
     const b = new Browser(app);
     await signIn(b, DEV);
     await b.get('/builder/login/2fa');
@@ -178,10 +183,19 @@ describe('two-factor sign-in for developers', () => {
     await owner.query(`update meta.setting set value = (now() - interval '8 days')::text where name = 'mfa_required_since'`);
     const admin = new Browser(app);
     await signIn(admin, 'admin', 'admin');
-    const r = await admin.get('/builder/apps');
-    assert.equal(r.statusCode, 302);
-    assert.equal(r.headers.location, '/builder/security');
-    assert.equal((await admin.get('/builder/security')).statusCode, 200);
+    // the default password first (sprint 128), with no loop between the two pages
+    assert.equal((await admin.get('/builder/security')).headers.location, '/builder/developers');
+    assert.equal((await admin.get('/builder/developers')).statusCode, 200);
+    // with a password of their own: only the Security page
+    await admin.submit('/builder/developers/password', { current: 'admin', password: 'Admin-own-password-128' });
+    try {
+      const r = await admin.get('/builder/apps');
+      assert.equal(r.statusCode, 302);
+      assert.equal(r.headers.location, '/builder/security');
+      assert.equal((await admin.get('/builder/security')).statusCode, 200);
+    } finally {
+      await owner.query(`update meta.developer set password_hash = meta.hash_password('admin') where username = 'admin'`);
+    }
     await setPolicy('off', 7);
   });
 

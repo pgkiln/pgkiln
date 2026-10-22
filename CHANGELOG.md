@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Sign in with a passkey alone** (SEC-2, part 3): the builder sign-in page has *Sign in with a passkey*; the browser
+  offers the developer's passkeys for the site (no user name, no password). The device must verify the developer
+  (fingerprint, face, PIN), so the passkey counts as both factors. Instance settings → Two-factor sign-in can turn it
+  off (on by default). Failures count with wrong passwords.
+- **A workspace can require two-factor sign-in** of its developers (the workspace's page, *Preferences*), on top of
+  the instance's policy, with the instance's grace period; the page lists who has no factor yet.
+  `pgkiln admin set-2fa-policy off` clears the workspaces' rules too. Migration 130.
+
+### Changed
+- A developer who signs in with the default password while two-factor sign-in is required of them must change it
+  (on Developers) before anything else.
+
 ## [0.61.0] - 2026-10-22
 
 ### Added

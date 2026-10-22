@@ -11445,8 +11445,26 @@ describe('sprint 126: two-factor sign-in for developers', () => {
     const b = await signIn(U1);
     await b.get('/builder/security');
     for (const url of ['/builder/security/totp/start', '/builder/security/codes', '/builder/instance/mfa', '/builder/developers/reset-2fa',
-      '/builder/security/passkey/options', '/builder/security/passkey', '/builder/security/forget-browsers'])
+      '/builder/security/passkey/options', '/builder/security/passkey', '/builder/security/forget-browsers', '/builder/workspaces/1/mfa'])
       assert.equal((await b.post(url, { __csrf: 'forged' })).statusCode, 403, url);
+  });
+
+  test('(sprint 128) a workspace\'s two-factor rule: workspace administrators only; passkey sign-in needs the page\'s token', async () => {
+    const U3 = 'sec128_c';
+    await owner.query('delete from meta.developer where username = $1', [U3]);
+    await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)', [U3, PW]);
+    const b = await signIn(U3);
+    await b.get('/builder/security');
+    const res = await b.post('/builder/workspaces/1/mfa', { __csrf: b.lastCsrf, required: 'true' });
+    assert.equal(res.statusCode, 403);
+    assert.equal((await owner.one<{ since: string | null }>('select mfa_required_since as since from meta.workspace where id = 1'))!.since, null);
+    const c = new Browser();
+    await c.get('/builder/login');
+    assert.equal((await c.post('/builder/login/passkey/options', { __csrf: 'forged' })).statusCode, 403);
+    const r = await c.post('/builder/login/passkey', { __csrf: 'forged', credentialId: 'x' });
+    assert.equal(r.statusCode, 303);
+    assert.notEqual((await c.get('/builder/apps')).statusCode, 200);
+    await owner.query('delete from meta.developer where username = $1', [U3]);
   });
 
   test('a developer can\'t remove another developer\'s factor', async () => {

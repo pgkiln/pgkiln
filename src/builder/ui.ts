@@ -12,7 +12,7 @@ import { ensureDevbar } from '../runtime/devbar.ts';
 import { noteChange } from './app-updates.ts';
 import { clientTexts, tr } from './i18n.ts';
 import { languageMenu, loadLanguage } from './language.ts';
-import { enrolmentDue } from '../mfa.ts';
+import { enrolmentDue, requirement } from '../mfa.ts';
 
 // Shared building blocks of the builder UI.
 
@@ -323,9 +323,19 @@ export async function developer(req: Req, reply: FastifyReply) {
   if (s.state.__BLANG === undefined) await loadLanguage(s);
   // (sprint 126, SEC-2) the two-factor policy: a banner during the grace period, then only the Security page until they enrol
   delete s.state.__MFA_DUE;
-  const due = await enrolmentDue(s.username, await isAdmin(s.username));
+  const admin = await isAdmin(s.username);
+  // (sprint 128) signed in with the default password while a second factor is required: change it first
+  // (on Developers), then the enrolment below
+  const weakFirst = !!s.state.__WEAK && (await requirement(s.username, admin)).required;
+  if (weakFirst && !/^\/builder\/(developers|logout|language|theme)(?:[/?#]|$)/.test(req.url)) {
+    flash(s, tr(s)('mfa.weak_required'), 'error');
+    await saveState(s);
+    reply.redirect(`${BASE}/developers`);
+    return null;
+  }
+  const due = await enrolmentDue(s.username, admin);
   if (due?.due === 'grace') s.state.__MFA_DUE = due.until.toISOString();
-  else if (due && !/^\/builder\/(security|logout|language|theme)(?:[/?]|$)/.test(req.url)) {
+  else if (due && !weakFirst && !/^\/builder\/(security|logout|language|theme)(?:[/?]|$)/.test(req.url)) {
     reply.redirect(`${BASE}/security`);
     return null;
   }

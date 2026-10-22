@@ -1,7 +1,8 @@
 // Passkeys in a real browser (sprint 127, SEC-2): Chromium's virtual authenticator (DevTools protocol) stands in
 // for a fingerprint reader. A developer adds a passkey on the Security page, saves the recovery codes, signs out
 // and signs in again with the passkey; nothing violates the Content-Security-Policy. WebAuthn needs a host name,
-// so the test uses localhost (an IP address is not a valid relying party).
+// so the test uses localhost (an IP address is not a valid relying party). Sprint 128: then the passkey alone,
+// from the sign-in page.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
@@ -78,6 +79,16 @@ describe('passkeys in a browser', () => {
     await csp(page);
     const row = await owner.one<{ name: string; last_used_at: string }>(`select name, last_used_at from meta.developer_factor where username = $1 and kind = 'passkey'`, [DEV]);
     assert.equal(row?.name, 'Virtual key');
+
+    // (sprint 128) the passkey alone, from the sign-in page: no user name, no password
+    await Promise.all([page.waitForNavigation(), page.locator('form[action$="/logout"] button').first().evaluate((b: HTMLButtonElement) => b.click())]);
+    await page.goto(`${base}/builder/login`);
+    const alone = page.locator('[data-passkey-submit="/builder/login/passkey"]');
+    await alone.waitFor({ state: 'visible' });
+    await Promise.all([page.waitForURL((u) => !/\/login/.test(u.pathname)), alone.click()]);
+    assert.doesNotMatch(page.url(), /login/);
+    await csp(page);
+    assert.ok(await owner.one(`select 1 from meta.activity_log where username = $1 and event = 'login' and detail = 'builder passkey'`, [DEV]));
     await c.close();
   });
 });
