@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.60.0 (October 2026): two-factor sign-in for developers (authenticator apps, recovery codes, a require policy and lockout recovery on the command line).
+- **Current release:** 0.61.0 (October 2026): passkeys for developers next to authenticator apps, and trusted browsers.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
