@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.61.0] - 2026-10-22
+
 ### Added
 - **Passkeys for developers** (SEC-2, part 2): besides authenticator apps, a developer adds passkeys or security
   keys (WebAuthn: fingerprint, face, screen lock, a USB or NFC key) on the Security page and signs in with
