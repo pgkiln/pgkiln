@@ -87,7 +87,9 @@ describe('two-factor sign-in for application users', () => {
     const page = await b.get('/a/hr/login/2fa');
     assert.match(page.body, /authenticator app, or one of your recovery codes/);
     assert.doesNotMatch(page.body, /mfa-secret/, 'no new app');
-    assert.equal((await b.post('/a/hr/login/2fa', { __csrf: b.lastCsrf, code: code(secret) })).statusCode, 401, 'the same step once');
+    // the step the first code was accepted for (a new 30-second step may have begun since)
+    const used = Number((await owner.one(`select last_step from meta.account_factor where account_id = (select id from meta.account where username = 'king')`)).last_step);
+    assert.equal((await b.post('/a/hr/login/2fa', { __csrf: b.lastCsrf, code: totpAt(unbase32(secret), used) })).statusCode, 401, 'the same step once');
     const ok = await b.post('/a/hr/login/2fa', { __csrf: b.lastCsrf, code: code(secret, 1) });
     assert.equal(ok.statusCode, 303);
     assert.equal(await signedIn(b), true);
