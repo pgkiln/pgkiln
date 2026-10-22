@@ -27,7 +27,8 @@ import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
 import { cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
-import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeysOf, trustBrowser, trustDays, usePasskey } from '../mfa.ts';
+import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeyByCredential, passkeySignin, passkeysOf, trustBrowser, trustDays, usePasskey, userHandle } from '../mfa.ts';
+import { isIP } from 'node:net';
 import { giveChallenge, takeChallenge } from './security.ts';
 import { relyingParty, verifyAssertion, WebAuthnError } from '../webauthn.ts';
 import { chooseLanguage, langCookieOptions, languageRoutes, signInLanguageLinks } from './language.ts';
@@ -67,6 +68,8 @@ export async function builderRoutes(app: FastifyInstance) {
     await saveState(s);
     const r = remembered(req);
     const next = safeNext(req.query?.next);
+    // (sprint 128) a passkey alone, when the instance allows it and the address is a host name
+    const alone = (await passkeySignin()) && !isIP(relyingParty(req).rpId);
     const field = (name: string, label: string, ic: string, value: string, opts: { type?: string; required?: boolean; auto?: string; placeholder?: string; reveal?: boolean }) =>
       html`<div class="field signin-field"><label class="sr-only" for="f_${name}">${label}</label>
         <div class="signin-input">${icon(ic)}<input id="f_${name}" name="${name}" type="${opts.type ?? 'text'}" value="${value}" placeholder="${opts.placeholder ?? label}"${opts.required ? raw(' required') : ''}${opts.auto ? raw(` autocomplete="${opts.auto}"`) : ''}>
@@ -92,6 +95,9 @@ export async function builderRoutes(app: FastifyInstance) {
               ${field('password', tx('signin.password'), 'key', '', { type: 'password', required: true, auto: 'current-password', reveal: true })}
               <label class="check signin-remember"><input type="checkbox" name="remember" value="1"${r ? raw(' checked') : ''}> ${tx('signin.remember')}</label>
               <button class="btn btn-hot signin-submit">${tx('signin.submit')}</button>
+              ${alone ? html`<input type="hidden" name="credentialId"><input type="hidden" name="clientDataJSON"><input type="hidden" name="authenticatorData"><input type="hidden" name="signature"><input type="hidden" name="userHandle">
+                <button class="btn signin-submit signin-passkey" hidden data-passkey="${BASE}/login/passkey/options" data-passkey-submit="${BASE}/login/passkey" data-passkey-error="${tx('mfa.passkey_failed')}">${icon('fingerprint')} ${tx('signin.passkey')}</button>
+                <p class="small" role="status" data-passkey-status></p>` : ''}
               <p class="muted small signin-hint">${tx('signin.hint')}</p>
               <nav class="signin-actions" aria-label="${tx('signin.quick')}">
                 <a href="${BASE}/find-workspace">${icon('search')} ${tx('signin.find_ws')}</a>
@@ -138,15 +144,7 @@ export async function builderRoutes(app: FastifyInstance) {
       [username, password],
     );
     // a workspace, when given, must be one of the developer's (administrators: any); the same answer otherwise
-    const ws = dev && workspace
-      ? await owner.one<{ id: number }>(
-          `select w.id from meta.workspace w
-            where lower(w.name) = lower($1)
-              and (exists (select 1 from meta.developer d where d.username = $2 and d.is_admin)
-                   or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $2))`,
-          [workspace, dev.username],
-        )
-      : undefined;
+    const ws = dev && workspace ? await workspaceOf(workspace, dev.username) : undefined;
     if (!dev || (workspace && !ws)) {
       await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: workspace ? 'builder (workspace)' : 'builder' });
       flash(s, tx(workspace ? 'signin.invalid_ws' : 'signin.invalid'), 'error');
@@ -160,6 +158,75 @@ export async function builderRoutes(app: FastifyInstance) {
       return reply.redirect(`${BASE}/login/2fa`, 303);
     }
     return finishSignIn(req, reply, s, { username: dev.username, language: dev.language }, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: password === 'admin' || password === dev.username, picked, detail: 'builder' });
+  });
+
+  /** A workspace by name, when it is one of the developer's (administrators: any). */
+  const workspaceOf = (workspace: string, username: string) =>
+    owner.one<{ id: number }>(
+      `select w.id from meta.workspace w
+        where lower(w.name) = lower($1)
+          and (exists (select 1 from meta.developer d where d.username = $2 and d.is_admin)
+               or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $2))`,
+      [workspace, username],
+    );
+
+  // (sprint 128, SEC-2) signing in with a passkey alone: no user name, no password. The browser offers the
+  // passkeys it holds for this site (discoverable credentials); the authenticator must verify the developer
+  // (fingerprint, face, PIN), so the passkey counts as both factors. Failures count with wrong passwords.
+  app.post(`${BASE}/login/passkey/options`, async (req: Req, reply) => {
+    const s = await getSession(req, reply, null, BASE);
+    if (req.body?.__csrf !== s.csrf_token) return reply.code(403).send('Reload the page.');
+    if (!(await passkeySignin())) return reply.code(404).send('Passkey sign-in is off.');
+    const challenge = giveChallenge(s as Parameters<typeof giveChallenge>[0], 'get');
+    await saveState(s);
+    reply.header('cache-control', 'no-store');
+    return reply.send({ mode: 'get', challenge, rpId: relyingParty(req).rpId, allow: [], uv: 'required' });
+  });
+  app.post(`${BASE}/login/passkey`, async (req: Req, reply) => {
+    const s = await getSession(req, reply, null, BASE);
+    const ip = clientIp(req);
+    const picked = validBuilderLanguage(s.state.__BLANG);
+    const tx = translatorFor(picked ?? cookieLanguage(req));
+    const workspace = String(req.body?.workspace ?? '').trim().slice(0, 60);
+    const next = safeNext(req.body?.next);
+    const again = next === `${BASE}/home` ? `${BASE}/login` : `${BASE}/login?next=${encodeURIComponent(next)}`;
+    const challenge = takeChallenge(s as Parameters<typeof takeChallenge>[0], 'get');
+    if (req.body?.__csrf !== s.csrf_token || !(await passkeySignin())) {
+      flash(s, tx('signin.expired'), 'error');
+      return back(reply, s, again);
+    }
+    const rp = relyingParty(req);
+    const key = await passkeyByCredential(String(req.body?.credentialId ?? ''), rp.rpId);
+    const who = key?.username ?? '';
+    if (await loginThrottled(null, who, ip)) {
+      logActivity({ username: who, event: 'login_locked', ip, detail: 'builder passkey' });
+      flash(s, tx('signin.throttled'), 'error');
+      return back(reply, s, again);
+    }
+    let why = key ? '' : 'unknown passkey';
+    if (key && !challenge) why = 'no or an expired challenge';
+    else if (key && req.body?.userHandle && req.body.userHandle !== userHandle(key.username)) why = 'the user handle does not match';
+    else if (key && challenge) {
+      try {
+        const r = verifyAssertion(
+          { clientDataJSON: String(req.body?.clientDataJSON ?? ''), authenticatorData: String(req.body?.authenticatorData ?? ''), signature: String(req.body?.signature ?? '') },
+          { alg: key.alg, jwk: key.public_key, signCount: Number(key.sign_count) }, { challenge, ...rp });
+        if (!r.userVerified) why = 'the authenticator did not verify the user';
+        else if (!(await usePasskey(key.id, key.sign_count, r.signCount))) why = 'used at the same time elsewhere';
+      } catch (e) {
+        why = e instanceof WebAuthnError ? e.message : 'unreadable answer';
+      }
+    }
+    const ws = !why && workspace ? await workspaceOf(workspace, who) : undefined;
+    if (!why && workspace && !ws) why = 'not a workspace of the developer';
+    if (why) {
+      await logActivity({ username: who.slice(0, 100), event: 'login_failed', ip, detail: `builder passkey: ${why}` });
+      flash(s, tx(why === 'not a workspace of the developer' ? 'signin.invalid_ws' : 'mfa.passkey_failed'), 'error');
+      return back(reply, s, again);
+    }
+    const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [who]);
+    if (!dev) return back(reply, s, again);
+    return finishSignIn(req, reply, s, dev, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: false, picked, detail: 'builder passkey' });
   });
 
   /** The session after a successful sign-in (password, and the second factor when the developer has one). */

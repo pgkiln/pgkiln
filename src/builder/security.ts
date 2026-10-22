@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
@@ -6,13 +5,13 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import {
   addPasskey, addTotp, adminEmails, adminFactors, codesLeft, confirmRecoveryCodes, factorsOf, forgetBrowsers, hasFactor, matchTotp, MFA_POLICIES, mfaPolicy,
-  newRecoveryCodes, newTotpSecret, notifyMfa, otpauthUri, passkeysOf, policyProblem, requiredFor, resetFactors, setPolicy, setTrustDays, trustDays,
-  trustedBrowsers, unbase32, type MfaPolicy,
+  newRecoveryCodes, newTotpSecret, notifyMfa, otpauthUri, passkeysOf, policyProblem, requirement, resetFactors, setPolicy, setTrustDays, trustDays,
+  trustedBrowsers, unbase32, userHandle, passkeySignin, setPasskeySignin, type MfaPolicy,
 } from '../mfa.ts';
 import { qrSvg } from '../qrcode.ts';
 import { secretKeyConfigured } from '../secrets.ts';
 import { clientIp, logActivity, saveState, type Session } from '../session.ts';
-import { ALGORITHMS, b64url, newChallenge, relyingParty, verifyRegistration, WebAuthnError } from '../webauthn.ts';
+import { ALGORITHMS, newChallenge, relyingParty, verifyRegistration, WebAuthnError } from '../webauthn.ts';
 import { tr } from './i18n.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
@@ -59,9 +58,9 @@ export async function securityRoutes(app: FastifyInstance) {
     if (!s) return;
     const tx = tr(s);
     const me = s.username!;
-    const [factors, left, pol, admin, days, trusted] = await Promise.all([factorsOf(me), codesLeft(me), mfaPolicy(), isAdmin(me), trustDays(), trustedBrowsers(me)]);
+    const [factors, left, admin, days, trusted] = await Promise.all([factorsOf(me), codesLeft(me), isAdmin(me), trustDays(), trustedBrowsers(me)]);
     const rp = relyingParty(req);
-    const required = requiredFor(pol.policy, admin);
+    const { required } = await requirement(me, admin);
     const pending = (() => {
       try {
         const p = JSON.parse(String(s.state.__TOTP_NEW ?? ''));
@@ -222,7 +221,7 @@ export async function securityRoutes(app: FastifyInstance) {
     if (last) {
       const pol = await mfaPolicy();
       const admin = await isAdmin(me);
-      if (requiredFor(pol.policy, admin)) {
+      if ((await requirement(me, admin)).required) {
         flash(s, tx('mfa.cannot_remove_required'), 'error');
         return back(reply, s, `${BASE}/security`);
       }
@@ -257,7 +256,7 @@ export async function securityRoutes(app: FastifyInstance) {
     return reply.send({
       mode: 'create', challenge, rp: { id: rp.rpId, name: 'pgkiln' }, algs: ALGORITHMS,
       // a stable handle that isn't the user name (the authenticator may show it, but it says nothing)
-      user: { id: b64url(createHash('sha256').update(`pgkiln-developer:${me}`).digest().subarray(0, 16)), name: me, displayName: me },
+      user: { id: userHandle(me), name: me, displayName: me },
       exclude: (await passkeysOf(me, rp.rpId)).map((p) => p.credential_id),
     });
   });
@@ -341,9 +340,11 @@ export async function securityRoutes(app: FastifyInstance) {
       flash(s, tx('mfa.policy_needs_admins'), 'error');
       return back(reply, s, `${BASE}/instance#mfa`);
     }
+    const alone = req.body?.passkey_signin === '1';
     await setPolicy(policy, grace);
     await setTrustDays(trust);
-    await logActivity({ username: s.username, event: '2fa_policy', ip: clientIp(req), detail: `${policy}, grace ${grace} days, trust browsers ${trust} days` });
+    await setPasskeySignin(alone);
+    await logActivity({ username: s.username, event: '2fa_policy', ip: clientIp(req), detail: `${policy}, grace ${grace} days, trust browsers ${trust} days, passkey sign-in ${alone ? 'on' : 'off'}` });
     await notifyMfa(await adminEmails(), `pgkiln: two-factor sign-in policy is now ${policy}`, `${s.username} set the two-factor policy to ${policy} (grace period ${grace} days).`);
     flash(s, tx('mfa.policy_saved'));
     return back(reply, s, `${BASE}/instance#mfa`);
@@ -353,8 +354,8 @@ export async function securityRoutes(app: FastifyInstance) {
 /** The Instance settings region for the policy (administrators). */
 export async function policyRegion(s: Session): Promise<Raw> {
   const tx = tr(s);
-  const [pol, af, days, without] = await Promise.all([
-    mfaPolicy(), adminFactors(), trustDays(),
+  const [pol, af, days, alone, without] = await Promise.all([
+    mfaPolicy(), adminFactors(), trustDays(), passkeySignin(),
     owner.query<{ username: string; is_admin: boolean }>('select username, is_admin from meta.developer d where not exists (select 1 from meta.developer_factor f where f.username = d.username) order by username'),
   ]);
   const opt = (v: MfaPolicy) => html`<option value="${v}"${pol.policy === v ? raw(' selected') : ''}>${tx(({ off: 'mfa.policy_off', admins: 'mfa.policy_admins', all: 'mfa.policy_all' } as const)[v])}</option>`;
@@ -364,6 +365,8 @@ export async function policyRegion(s: Session): Promise<Raw> {
         ${input('grace_days', tx('mfa.grace'), pol.graceDays, { type: 'number', help: tx('mfa.grace_help') })}
         ${input('trust_days', tx('mfa.trust_days'), days, { type: 'number', help: tx('mfa.trust_days_help') })}
       </div>
+      <div class="field"><label class="check"><input type="checkbox" name="passkey_signin" value="1"${alone ? raw(' checked') : ''}> ${tx('mfa.passkey_signin')}</label>
+        <small class="help">${tx('mfa.passkey_signin_help')}</small></div>
       <p class="muted small">${tx('mfa.policy_help', { enrolled: af.enrolled, admins: af.admins })}</p>
       <div class="buttons"><button class="btn btn-hot">${tx('mfa.policy_save')}</button></div></form>
     ${without.rows.length ? html`<p class="small">${tx('mfa.without', { list: without.rows.map((d) => `${d.username}${d.is_admin ? ' (admin)' : ''}`).join(', ') })}</p>` : ''}

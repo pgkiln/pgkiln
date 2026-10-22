@@ -8,6 +8,7 @@ import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type BuilderWorkspace, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
+import { setWorkspaceRequired } from '../mfa.ts';
 import { back, BANNER_COLORS, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // Workspaces (064; APEX: workspaces). A workspace groups applications and the
@@ -215,7 +216,7 @@ function serviceRegion(s: Session, w: { id: number; message: string | null; bann
 }
 
 /** (093) Workspace preferences: the SQL Workshop and the applications' REST modules on or off. */
-function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null }) {
+function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null; mfa_required_since: Date | null }, without: string[]) {
   const check = (name: string, on: boolean, label: string, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
   const tx = tr(s);
@@ -223,7 +224,12 @@ function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; r
       ${check('sql_workshop', w.sql_workshop, tx('wsp.sql_on'), tx('wsp.sql_on_help'))}
       ${check('rest_services', w.rest_services, tx('wsp.rest_on'), tx('wsp.rest_on_help', { path: '/a/<alias>/rest/…' }))}
       ${select('builder_home', tx('wsp.builder_home'), w.builder_home === 'home' ? 'home' : 'apps', [['apps', tx('wsp.home.apps')], ['home', tx('wsp.home.home')]], tx('wsp.builder_home_help'))}
-      <div class="buttons"><button class="btn">${tx('wsp.save_prefs')}</button></div></form>`, '', 'preferences');
+      <div class="buttons"><button class="btn">${tx('wsp.save_prefs')}</button></div></form>
+    <h3 id="mfa">${tx('wsp.mfa')}</h3>
+    <form method="post" action="${BASE}/workspaces/${w.id}/mfa">${csrf(s)}
+      ${check('required', !!w.mfa_required_since, tx('wsp.mfa_required'), tx('wsp.mfa_required_help'))}
+      ${w.mfa_required_since ? html`<p class="small">${tx('wsp.mfa_since', { date: new Date(w.mfa_required_since).toISOString().slice(0, 10) })}${without.length ? html` ${tx('wsp.mfa_without', { list: without.join(', ') })}` : ''}</p>` : ''}
+      <div class="buttons"><button class="btn">${tx('wsp.mfa_save')}</button></div></form>`, '', 'preferences');
 }
 
 /** (093) Extension links: links to other tools in the builder's Extensions menu. */
@@ -341,6 +347,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
     ]);
     const roles = rolesQ;
     const links = (await owner.query('select id, label, url, description, position from meta.workspace_link where workspace_id = $1 order by position, lower(label)', [w.id])).rows;
+    // (sprint 128) the members still without a second factor
+    const without = (await owner.query<{ username: string }>(
+      `select m.username from meta.workspace_member m where m.workspace_id = $1
+          and not exists (select 1 from meta.developer_factor f where f.username = m.username) order by 1`, [w.id])).rows.map((r) => r.username);
     const main = html`
       <div class="title-row"><h1>${w.name}</h1></div>
       <div class="columns wide-left">
@@ -365,7 +375,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       </div>
       ${serviceRegion(s, w)}
       ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>`, '', 'mail-network')}
-      <div class="columns">${preferencesRegion(s, w)}${linksRegion(s, w, links)}</div>
+      <div class="columns">${preferencesRegion(s, w, without)}${linksRegion(s, w, links)}</div>
       ${full ? isolationRegion(s, w, roles.rows) : region(tx('wsp.isolation'), html`<p class="u-mt0">${w.isolated ? tx('wsp.iso_short_on') : tx('wsp.iso_short_off')} ${tx('wsp.admins_change')}</p>`)}
       ${!full ? '' : region(tx('wsp.applications'), html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>${tx('wsp.application')}</th><th>${tx('wsp.move_to')}</th></tr></thead>
@@ -557,6 +567,17 @@ export async function workspaceRoutes(app: FastifyInstance) {
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}, /builder opens ${home ?? 'apps'}` });
     flash(s, tr(s)('wsp.prefs_saved'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
+  });
+
+  // (sprint 128, SEC-2) a workspace requires a second factor of its developers (the instance's grace period from now)
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/mfa`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const on = req.body?.required === 'true';
+    if (!(await setWorkspaceRequired(Number(req.params.id), on))) return reply.code(404).send('Not found');
+    await logActivity({ appId: null, username: s.username, event: '2fa_policy', ip: clientIp(req), detail: `workspace ${req.params.id}: two-factor sign-in ${on ? 'required' : 'not required'}` });
+    flash(s, tr(s)(on ? 'wsp.mfa_on' : 'wsp.mfa_off'));
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}#mfa`);
   });
 
   // (093) extension links

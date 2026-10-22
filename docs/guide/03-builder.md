@@ -68,6 +68,13 @@ one passkey on several sub-domains, set `PGKILN_RP_ID` to the parent domain (`ex
 instance key changes. pgkiln accepts any authenticator (attestation *none*), checks the signature, the address and
 the relying party on every sign-in, and refuses a key whose signature counter goes back (a copied key).
 
+**A passkey alone** (0.62): the sign-in page has **Sign in with a passkey** next to the password form. The browser
+offers the passkeys it holds for this site, and you choose one; no user name, no password. It only works when the
+device verified you (fingerprint, face or PIN), so the passkey counts as both factors; a workspace typed in the form
+still applies. Administrators can turn it off in Instance settings → *Two-factor sign-in* (*Developers may sign in
+with a passkey alone*, on by default). A security key without a PIN, or a passkey made before 0.61 that the browser
+doesn't offer, still works at the second step after the password.
+
 The app's secret is stored encrypted with the instance key (`PGKILN_SECRET_KEY`, [chapter 1](01-installation.md));
 without the key the page says so and you can't add an app. Recovery codes are stored as SHA-256 hashes, so they keep
 working if the key is lost. Wrong codes count with wrong passwords for the [sign-in lockout](08-security.md#what-sign-in-protects-against).
@@ -76,6 +83,15 @@ working if the key is lost. Wrong codes count with wrong passwords for the [sign
 sign-in*: **Nobody** (optional, the default), **Administrators** or **All developers**, with a **grace period**
 (default 7 days). During the grace period a developer without an app sees a reminder on every page; after it, they
 see only their Security page until they add one. The region lists the developers who have no app yet.
+
+**Per workspace** (0.62): a workspace's page (Workspace utilities → Workspaces → the workspace, *Preferences*) has
+*Require two-factor sign-in of this workspace's developers*, for administrators and the workspace's own
+administrators. It adds to the instance's policy: the workspace's developers get the instance's grace period from the
+moment it was turned on, then only their Security page. The page lists the members who have no factor yet.
+
+**The default password** (0.62): a developer who signs in with the default password (`admin`, or their user name)
+while two-factor sign-in is required of them sees only **Developers**, to change it, before anything else (then the
+grace period or the Security page as above).
 
 **Trusted browsers** (0.61): *Trust a browser (days)* in the same region (0, the default: never) adds *Trust this
 browser for N days* to the second step. A trusted browser skips the second step for that developer until the days
@@ -103,7 +119,7 @@ setting the days to 0 stops every trusted browser at once.
 | Lost phone, keys and codes | Ask another administrator to reset your two-factor sign-in on Developers |
 | A passkey no longer works after a move to another domain | Sign in with an app code or a recovery code and add a new passkey ([above](#two-factor-sign-in)) |
 | No administrator can sign in | On the server: `pgkiln admin reset-2fa <developer> --reason "…"` ([chapter 18](18-cli.md)), then sign in with the password |
-| The policy locks everyone out | On the server: `pgkiln admin set-2fa-policy off` |
+| The policy locks everyone out | On the server: `pgkiln admin set-2fa-policy off` (also clears the workspaces' own rules) |
 | Codes are always wrong | Check the time on the phone and on the server (codes allow 30 seconds either way) |
 | The instance key was lost or changed | The apps' secrets can't be read: reset the developers (`pgkiln admin reset-2fa`); recovery codes still work |
 
