@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.63.0] - 2026-10-22
+
 ### Added
 - **Single sign-on for developers** (SEC-1): the OpenID Connect and SAML providers and LDAP directories that
   applications use can sign developers in to the builder too (*Builder sign-in* on the provider's or directory's

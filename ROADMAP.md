@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.62.0 (October 2026): passkey sign-in without a password, a workspace two-factor rule, and no default password while two-factor sign-in is required.
+- **Current release:** 0.63.0 (October 2026): single sign-on for developers through identity providers and LDAP directories, with break-glass administrators.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
