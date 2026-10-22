@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { testDirectory, type Directory } from '../ldap.ts';
 import { administrator, back, BASE, csrf, flash, input, region, send, shell, type Req } from './ui.ts';
+import { builderSignInRegion } from './builder-sso.ts';
 
 // Users → LDAP directories: the directories an application's password form
 // can check (enabled per app under Settings → Sign-in methods). The bind
@@ -114,6 +115,7 @@ export async function ldapRoutes(app: FastifyInstance) {
           <form method="post" action="${BASE}/users/directories/${d.id}/test" class="search u-mwnone">${csrf(s)}
             <input name="username" placeholder="Username (optional)" aria-label="Username to look up" maxlength="100">
             <button class="btn">Test</button></form>`)}
+        ${await builderSignInRegion(s, 'directory', d)}
       </div>`;
     return send(reply, s, shell(s, d.display_name, [['Users', `${BASE}/users`], ['LDAP directories', `${BASE}/users/directories`], [d.display_name]], main, 'users'));
   });

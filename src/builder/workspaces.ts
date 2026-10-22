@@ -9,6 +9,7 @@ import { icon } from '../icons.ts';
 import { clientIp, logActivity, type BuilderWorkspace, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { setWorkspaceRequired } from '../mfa.ts';
+import { breakGlassAdmins } from '../devsso.ts';
 import { back, BANNER_COLORS, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // Workspaces (064; APEX: workspaces). A workspace groups applications and the
@@ -216,7 +217,7 @@ function serviceRegion(s: Session, w: { id: number; message: string | null; bann
 }
 
 /** (093) Workspace preferences: the SQL Workshop and the applications' REST modules on or off. */
-function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null; mfa_required_since: Date | null }, without: string[]) {
+function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null; mfa_required_since: Date | null; sso_only: boolean }, without: string[], unlinked: string[]) {
   const check = (name: string, on: boolean, label: string, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
   const tx = tr(s);
@@ -229,7 +230,12 @@ function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; r
     <form method="post" action="${BASE}/workspaces/${w.id}/mfa">${csrf(s)}
       ${check('required', !!w.mfa_required_since, tx('wsp.mfa_required'), tx('wsp.mfa_required_help'))}
       ${w.mfa_required_since ? html`<p class="small">${tx('wsp.mfa_since', { date: new Date(w.mfa_required_since).toISOString().slice(0, 10) })}${without.length ? html` ${tx('wsp.mfa_without', { list: without.join(', ') })}` : ''}</p>` : ''}
-      <div class="buttons"><button class="btn">${tx('wsp.mfa_save')}</button></div></form>`, '', 'preferences');
+      <div class="buttons"><button class="btn">${tx('wsp.mfa_save')}</button></div></form>
+    <h3 id="sso">${tx('wsp.sso')}</h3>
+    <form method="post" action="${BASE}/workspaces/${w.id}/sso">${csrf(s)}
+      ${check('sso_only', w.sso_only, tx('wsp.sso_only'), tx('wsp.sso_only_help'))}
+      ${w.sso_only && unlinked.length ? html`<p class="small">${tx('wsp.sso_unlinked', { list: unlinked.join(', ') })}</p>` : ''}
+      <div class="buttons"><button class="btn">${tx('wsp.sso_save')}</button></div></form>`, '', 'preferences');
 }
 
 /** (093) Extension links: links to other tools in the builder's Extensions menu. */
@@ -351,6 +357,11 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const without = (await owner.query<{ username: string }>(
       `select m.username from meta.workspace_member m where m.workspace_id = $1
           and not exists (select 1 from meta.developer_factor f where f.username = m.username) order by 1`, [w.id])).rows.map((r) => r.username);
+    // (sprint 129) the members who could not sign in while single sign-on is required: no linked identity, not break-glass
+    const unlinked = (await owner.query<{ username: string }>(
+      `select m.username from meta.workspace_member m join meta.developer d on d.username = m.username
+        where m.workspace_id = $1 and not d.break_glass
+          and not exists (select 1 from meta.developer_identity i where i.username = m.username) order by 1`, [w.id])).rows.map((r) => r.username);
     const main = html`
       <div class="title-row"><h1>${w.name}</h1></div>
       <div class="columns wide-left">
@@ -375,7 +386,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       </div>
       ${serviceRegion(s, w)}
       ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>`, '', 'mail-network')}
-      <div class="columns">${preferencesRegion(s, w, without)}${linksRegion(s, w, links)}</div>
+      <div class="columns">${preferencesRegion(s, w, without, unlinked)}${linksRegion(s, w, links)}</div>
       ${full ? isolationRegion(s, w, roles.rows) : region(tx('wsp.isolation'), html`<p class="u-mt0">${w.isolated ? tx('wsp.iso_short_on') : tx('wsp.iso_short_off')} ${tx('wsp.admins_change')}</p>`)}
       ${!full ? '' : region(tx('wsp.applications'), html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>${tx('wsp.application')}</th><th>${tx('wsp.move_to')}</th></tr></thead>
@@ -578,6 +589,29 @@ export async function workspaceRoutes(app: FastifyInstance) {
     await logActivity({ appId: null, username: s.username, event: '2fa_policy', ip: clientIp(req), detail: `workspace ${req.params.id}: two-factor sign-in ${on ? 'required' : 'not required'}` });
     flash(s, tr(s)(on ? 'wsp.mfa_on' : 'wsp.mfa_off'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}#mfa`);
+  });
+
+  // (sprint 129, SEC-1) a workspace requires single sign-on of its developers: not while no break-glass
+  // administrator could sign in with the password, and not by someone who would lock themselves out
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/sso`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const tx = tr(s);
+    const on = req.body?.sso_only === 'true';
+    if (on && !(await breakGlassAdmins()).length) {
+      flash(s, tx('wsp.sso_no_break_glass'), 'error');
+      return back(reply, s, `${BASE}/workspaces/${req.params.id}#sso`);
+    }
+    if (on && !(await owner.one(`select 1 as ok from meta.developer d where d.username = $1
+        and (d.break_glass or exists (select 1 from meta.developer_identity i where i.username = d.username))`, [s.username]))) {
+      flash(s, tx('wsp.sso_link_first'), 'error');
+      return back(reply, s, `${BASE}/workspaces/${req.params.id}#sso`);
+    }
+    const r = await owner.query('update meta.workspace set sso_only = $2 where id = $1', [req.params.id, on]);
+    if (!r.rowCount) return reply.code(404).send('Not found');
+    await logActivity({ appId: null, username: s.username, event: 'sso_policy', ip: clientIp(req), detail: `workspace ${req.params.id}: single sign-on ${on ? 'required' : 'not required'}` });
+    flash(s, tx(on ? 'wsp.sso_on' : 'wsp.sso_off'));
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}#sso`);
   });
 
   // (093) extension links

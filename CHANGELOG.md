@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Single sign-on for developers** (SEC-1): the OpenID Connect and SAML providers and LDAP directories that
+  applications use can sign developers in to the builder too (*Builder sign-in* on the provider's or directory's
+  page). The sign-in page shows *Sign in with …* for each provider and a *Sign in with* choice for directories.
+  Developers are found by the provider's stable subject; a developer links an identity on Security, or an existing
+  one is linked by user name when the administrator allows it (never a break-glass administrator). New developers
+  can be created from a developers group, and an administrators group decides who is an administrator at every
+  sign-in. A provider's sign-in skips pgkiln's own second step (the provider decides). Migration 131.
+- **A workspace can require single sign-on** of its developers (the workspace's page, *Single sign-on*): the pgkiln
+  password and a passkey alone are refused, except for **break-glass administrators** (Developers → *Make
+  break-glass*), who must exist before the rule can be turned on. `pgkiln admin builder-sign-in password` turns the
+  rule off on the server.
+
 ## [0.62.0] - 2026-10-22
 
 ### Added

@@ -56,6 +56,8 @@ src/
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
+  devsso.ts                (sprint 129) developers through identity providers and directories: resolveDeveloper (subject, link, create,
+                           administrators group), linkDeveloper, ssoRequired (a workspace's rule, break-glass), clearSsoOnly
   headerauth.ts            HTTP-header authentication: trusted proxies (PGKILN_AUTH_HEADER_PROXIES), header checks, accounts
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
@@ -343,6 +345,7 @@ src/
     quicksql.ts            SQL Workshop → Quick SQL page (preview, save as script, run)
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
     users.ts               user directory and identity providers
+    builder-sso.ts         (sprint 129) a provider's or directory's Builder sign-in region, Security's identities, unlink, break-glass
     datapump.ts            (sprint 103, DA-16) SQL Workshop → Schema Export / Import (/builder/sql/data-pump, administrators only):
                            jobs, export form, upload (streamed to PGKILN_DUMP_DIR), archive preview and import options, job log, download
     db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL

@@ -7,6 +7,7 @@ import { accountSettings, clearAccountSettings, passwordProblem } from '../accou
 import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { acsUrl, metadataUrl, spEntityId } from '../saml.ts';
 import { discover, publicUrl, redirectUri } from '../sso.ts';
+import { builderSignInRegion } from './builder-sso.ts';
 import { administrator, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // The workspace user directory (like APEX's workspace users with
@@ -476,6 +477,7 @@ export async function usersRoutes(app: FastifyInstance) {
           <p class="muted">${tx.rich('idp.public_url', { env: html`<code>PUBLIC_URL</code>` })}</p>
           <p>${tx.rich('idp.grant', { type: html`<b>${tx('idp.auth_code')}</b>`, scopes: html`<code>${pr.scopes}</code>`, claim: html`<code>${pr.groups_claim}</code>` })}</p>
           <form method="post" action="${BASE}/users/providers/${pr.id}/test">${csrf(s)}<button class="btn">${tx('idp.test')}</button></form>`)}
+        ${await builderSignInRegion(s, 'provider', pr)}
       </div>`;
     return send(reply, s, shell(s, pr.display_name, [['Users', `${BASE}/users`], [tx('idp.title'), `${BASE}/users/providers`], [pr.display_name]], main, 'users'));
   });

@@ -148,7 +148,8 @@ select id, 'alice', meta.hash_password('a-strong-password'), '{manager}' from me
 ### Single sign-on (OpenID Connect)
 
 Applications can let people sign in with your organisation's identity provider: Microsoft Entra
-ID, Google Workspace, Okta, Keycloak, Auth0 or any other OpenID Connect provider.
+ID, Google Workspace, Okta, Keycloak, Auth0 or any other OpenID Connect provider. (0.63) The same providers, SAML
+ones and LDAP directories can sign developers in to the builder too ([chapter 3](03-builder.md#single-sign-on-for-developers)).
 
 **1. Register pgkiln at the provider** as a *web application* (confidential client) using the
 authorization code flow. The redirect URI is `<PUBLIC_URL>/sso/callback/<name>`, for example
