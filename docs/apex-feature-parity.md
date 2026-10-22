@@ -138,7 +138,7 @@ the 26.2 comparison.)
 | APEX accounts | ✅ | Instance-wide user directory, bcrypt, session rotation, idle and absolute timeouts |
 | Application Access Control (roles per app, any-user switch) | ✅ | Access control per application |
 | Social sign-in / OpenID Connect | ✅ | Any OIDC provider (Entra ID, Google, Okta, Keycloak, …): PKCE, group → role mapping, account linking, automatic accounts |
-| Multi-factor authentication | ✅ | As in APEX: through the identity provider (OpenID Connect, SAML). Beyond APEX (sprints 126–128): the builder itself has two-factor sign-in with passkeys (WebAuthn, also on their own without a password), authenticator apps (TOTP) and recovery codes, trusted browsers, an instance and per-workspace policy with a grace period and lockout recovery ([chapter 3](guide/03-builder.md#two-factor-sign-in)); two-factor for application users follows (SEC-3) |
+| Multi-factor authentication | ✅ | As in APEX: through the identity provider (OpenID Connect, SAML). Beyond APEX (sprints 126–128): the builder itself has two-factor sign-in with passkeys (WebAuthn, also on their own without a password), authenticator apps (TOTP) and recovery codes, trusted browsers, an instance and per-workspace policy with a grace period and lockout recovery ([chapter 3](guide/03-builder.md#two-factor-sign-in)). Sprint 130: application users too, per application (off, optional, required, required for roles) with authenticator apps and recovery codes, added while signing in or on My account, reset from Users ([chapter 8](guide/08-security.md#two-factor-sign-in)) |
 | Change own password | ✅ | A built-in *My account* page (APEX offers the API `CHANGE_CURRENT_USER_PW`) |
 | Password expiry, change on first use, admin reset, complexity | ✅ | Lifetime in days, expire/unexpire, admin reset, length and letters+digits rules, unlock |
 | Lockout after failed sign-ins | ✅ | Per user and per IP, time-based (APEX: until an administrator unlocks) |
@@ -300,6 +300,9 @@ Small but real differences, for teams comparing the two:
   passkey alone), authenticator apps (TOTP), recovery codes, a policy for administrators, all developers or a
   workspace's developers with a grace period, and lockout recovery on the
   command line ([chapter 3](guide/03-builder.md#two-factor-sign-in)). APEX relies on the identity provider.
+- (sprint 130) **Two-factor sign-in for application users**: per application and per role, with authenticator apps
+  and recovery codes, added while signing in when required ([chapter 8](guide/08-security.md#two-factor-sign-in)).
+  APEX's application authentication schemes have no second factor.
 - One RLS policy set protects both the web UI and the REST API.
 - An import can be checked before it commits (`pgkiln import --check`): SQL that names a missing
   table or column refuses the deployment instead of failing at run time.

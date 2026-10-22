@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Two-factor sign-in for application users** (SEC-3, part 1; APEX has none for its accounts): Application
+  settings → Sign-in methods → *Two-factor sign-in*: off, optional, required, or required for some roles. After the
+  user directory's password or an LDAP directory, users give a code from an authenticator app or a recovery code;
+  without an app, a user the application requires it of adds one while signing in (QR code, first code, ten recovery
+  codes shown once). *My account* adds and removes apps and makes new recovery codes; Users shows who has an app and
+  resets it with a reason. Wrong codes count as failed sign-ins. A *Keep me signed in* or shared sign-in skips the
+  step only when it was made with one. The Advisor warns when users with the role `admin` sign in with only a
+  password. Migration 132.
+
+### Changed
+- A sign-in through an identity provider is remembered (*Keep me signed in*, session sharing) with its own method
+  (`sso:<provider>`) instead of `password`.
+
 ## [0.63.0] - 2026-10-22
 
 ### Added

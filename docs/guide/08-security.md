@@ -410,6 +410,46 @@ opening another application of the group signs the user in there without the sig
 
 Applications of different groups, and applications without a group, sign in on their own.
 
+### Two-factor sign-in
+
+APEX has no second factor for an application's own accounts: its documented route is an identity provider whose
+sign-on policy asks for one, or a hand-written TOTP check in a custom authentication scheme. pgkiln has it built in.
+**Application settings → Sign-in methods → Two-factor sign-in → Second step**:
+
+| Setting | Who gives a code after the password |
+|---|---|
+| **Off** (the default) | Nobody |
+| **Optional** | Users who added an authenticator app on *My account* |
+| **Required** | Everybody. A user without an app adds one while signing in: a QR code, the app's first code, then ten recovery codes shown once |
+| **Required for some roles** | Users with one of the roles in *Required for roles* (for example `admin, manager`); others as with *Optional* |
+
+How it works:
+
+- The second step follows the user directory's **password** and **LDAP** directories. An identity provider
+  ([OpenID Connect](#single-sign-on-openid-connect), [SAML](#single-sign-on-saml-20)) asks for its own second factor;
+  database accounts, custom authentication and HTTP header authentication are not covered.
+- The code comes from any authenticator app (TOTP, RFC 6238: Google Authenticator, Microsoft Authenticator,
+  1Password …), each code once, one 30-second step either side for clock drift. A **recovery code** (ten per account,
+  each usable once) works instead, and leads to *My account*, which says how many are left.
+- Until the code is right there is no session: the pending sign-in waits five minutes (ten while adding an app) in
+  the signed-out session. Wrong codes count as failed sign-ins, so the usual lockout applies.
+- An account's apps serve every application it uses, and each application decides whether it asks for them.
+- **My account → Two-factor sign-in** adds an app (QR code or key, then its first code), shows new recovery codes,
+  and removes an app with a current code or a recovery code. The last app can't be removed while the application
+  requires a code of the user.
+- A *Keep me signed in* or session-sharing sign-in skips the second step only when it was made with one (its method
+  ends in `+2fa`, shown in the Activity monitor); one made with just a password signs in again with the code.
+- **Users → account → Two-factor sign-in** shows who has an app; **Reset two-factor sign-in** (with a reason, logged
+  as `2fa_reset`) removes the apps and recovery codes after a lost phone and signs the account out everywhere. Where
+  an application requires the step, the user adds a new app at the next sign-in.
+- The apps' secrets are encrypted with the instance key `PGKILN_SECRET_KEY` (in `meta.account_factor`, readable by
+  the owner connection only); without that key *Required* can't be chosen, and the sign-in refuses rather than skips
+  the step. Recovery codes are stored as SHA-256 hashes.
+- The **Advisor** warns when users with the role `admin` sign in with only a password.
+
+Passkeys, e-mail codes, asking again before a sensitive page (step-up) and tokens for REST and MCP that need a
+two-factor sign-in come in a later release.
+
 ### What sign-in protects against
 
 - **Brute force**: after 5 failed attempts for a username (or 50 from one IP address) within 15
@@ -418,12 +458,12 @@ Applications of different groups, and applications without a group, sign in on t
   time.
 - **Session fixation**: the session token is replaced at sign-in.
 - **Stale sessions**: 60 minutes idle or 8 hours total (configurable).
+- **Stolen passwords**: [two-factor sign-in](#two-factor-sign-in) asks for a code from an authenticator app, for every
+  user or for some roles; with an identity provider ([OpenID Connect](#single-sign-on-openid-connect),
+  [SAML](#single-sign-on-saml-20)) the provider asks for its own. Developers have
+  [two-factor sign-in](03-builder.md#two-factor-sign-in) for the builder too.
 
 All sign-ins, failures and lockouts appear in the **Activity** monitor.
-
-A second factor for an application's users comes from the identity provider ([OpenID Connect](#single-sign-on-openid-connect),
-[SAML](#single-sign-on-saml-20)). Developers can use an authenticator app for the builder itself:
-[two-factor sign-in](03-builder.md#two-factor-sign-in).
 
 ## Authorization: what may the user do?
 
@@ -643,4 +683,5 @@ decision.
 4. Checksum protection on pages (the default).
 5. Business rules in constraints, triggers or functions, not only in validations.
 6. Debug mode and debug messages off.
-7. Review the app's **Settings → Security checklist** and **Activity** monitor now and then.
+7. [Two-factor sign-in](#two-factor-sign-in) required at least for administrators (the Advisor checks it).
+8. Review the app's **Settings → Security checklist** and **Activity** monitor now and then.

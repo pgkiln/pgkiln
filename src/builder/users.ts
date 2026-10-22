@@ -4,6 +4,9 @@ import { owner } from '../db.ts';
 import { appAllowed } from './workspaces.ts';
 import { html, raw } from '../html.ts';
 import { accountSettings, clearAccountSettings, passwordProblem } from '../accounts.ts';
+import { accountCodesLeft, accountFactors, resetAccountFactors } from '../account-mfa.ts';
+import { icon } from '../icons.ts';
+import { clientIp, logActivity } from '../session.ts';
 import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { acsUrl, metadataUrl, spEntityId } from '../saml.ts';
 import { discover, publicUrl, redirectUri } from '../sso.ts';
@@ -107,7 +110,8 @@ export async function usersRoutes(app: FastifyInstance) {
     const users = (
       await owner.query(
         `select a.*, coalesce((select jsonb_agg(jsonb_build_object('alias', p.alias, 'roles', aa.roles) order by p.alias)
-                                 from meta.app_access aa join meta.app p on p.id = aa.app_id where aa.account_id = a.id), '[]') as apps
+                                 from meta.app_access aa join meta.app p on p.id = aa.app_id where aa.account_id = a.id), '[]') as apps,
+                exists (select 1 from meta.account_factor f where f.account_id = a.id) as mfa
            from meta.account a
           where $1 = '' or a.username ilike '%' || $1 || '%' or a.display_name ilike '%' || $1 || '%' or a.email ilike '%' || $1 || '%'
           order by lower(a.username)
@@ -125,16 +129,17 @@ export async function usersRoutes(app: FastifyInstance) {
             <input type="search" name="q" value="${q}" placeholder="${tx('us.search_ph')}" aria-label="${tx('us.search_label')}"><button class="btn">${tx('us.search')}</button>
           </form>
           <div class="table-wrap"><table class="report report-reflow">
-            <thead><tr><th>${tx('us.username')}</th><th>${tx('us.name')}</th><th>${tx('us.apps_roles')}</th><th>${tx('us.signin')}</th><th>${tx('us.status')}</th></tr></thead>
+            <thead><tr><th>${tx('us.username')}</th><th>${tx('us.name')}</th><th>${tx('us.apps_roles')}</th><th>${tx('us.signin')}</th><th>${tx('mfa.column')}</th><th>${tx('us.status')}</th></tr></thead>
             <tbody>${users.length
               ? users.map((u) => html`<tr>
                   <td data-label="${tx('us.username')}"><a href="${BASE}/users/${u.id}">${u.username}</a></td>
                   <td data-label="${tx('us.name')}">${u.display_name ?? ''}${u.email ? html`<div class="muted">${u.email}</div>` : ''}</td>
                   <td data-label="${tx('us.applications')}">${u.apps.length ? u.apps.map((x: any) => html`<span class="chip">${x.alias}${x.roles.length ? `: ${x.roles.join(', ')}` : ''}</span> `) : html`<span class="muted">${tx('us.none')}</span>`}</td>
                   <td data-label="${tx('us.signin')}">${u.password_hash ? tx('us.password') : html`<span class="muted">${tx('us.no_password')}</span>`}</td>
+                  <td data-label="${tx('mfa.column')}">${u.mfa ? html`${icon('lock')} ${tx('mfa.on')}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td>
                   <td data-label="${tx('us.status')}">${u.active ? tx('us.active') : html`<b>${tx('us.inactive')}</b>`}${u.last_login_at ? html`<div class="muted">${tx('us.last', { at: String(u.last_login_at).slice(0, 16) })}</div>` : ''}</td>
                 </tr>`)
-              : html`<tr><td colspan="5" class="empty">${tx('us.no_accounts')}</td></tr>`}</tbody>
+              : html`<tr><td colspan="6" class="empty">${tx('us.no_accounts')}</td></tr>`}</tbody>
           </table></div>`)}
         ${region(tx('us.create'), html`
           <form method="post" action="${BASE}/users">${csrf(s)}
@@ -215,6 +220,7 @@ export async function usersRoutes(app: FastifyInstance) {
       owner.query(`select id, name, alias from meta.app where id not in (select app_id from meta.app_access where account_id = $1) order by name`, [u.id]),
     ]);
     const hints = await roleHints([...access.rows.map((a) => a.app_id), ...apps.rows.map((a) => a.id)]);
+    const [factors, codes] = await Promise.all([accountFactors(u.id), accountCodesLeft(u.id)]);
     const main = html`
       <div class="title-row"><h1>${u.username}</h1></div>
       <div class="columns">
@@ -244,6 +250,13 @@ export async function usersRoutes(app: FastifyInstance) {
             <div class="buttons"><button class="btn">${tx('us.set_password')}</button>
               ${u.password_hash ? html`<button class="btn" name="remove" value="1" data-confirm="${tx('us.remove_confirm')}">${tx('us.remove_password')}</button>` : ''}</div>
           </form>
+          <h3 id="two-factor">${tx('us.mfa_title')}</h3>
+          <p>${factors.length ? tx('us.mfa_status', { n: factors.length, codes }) : tx('us.mfa_none')}</p>
+          ${factors.length
+            ? html`<form method="post" action="${BASE}/users/${u.id}/reset-2fa" class="danger-zone">${csrf(s)}
+                <div class="form-grid">${input('reason', tx('mfa.reason'), '', { required: true, help: tx('us.mfa_reset_help', { user: u.username }) })}</div>
+                <div class="buttons"><button class="btn btn-danger">${tx('mfa.reset_btn')}</button></div></form>`
+            : ''}
           <form method="post" action="${BASE}/users/${u.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="${tx('us.delete_confirm', { user: u.username })}">${tx('us.delete')}</button>
           </form>`)}
@@ -324,6 +337,24 @@ export async function usersRoutes(app: FastifyInstance) {
     if (acc) await owner.query(`insert into meta.activity_log (username, event, detail) values ($1, 'login_unlocked', $2)`, [acc.username, `by ${s.username}`]);
     flash(s, tr(s)('us.unlocked'));
     return back(reply, s, `${BASE}/users/${req.params.id}`);
+  });
+
+  // (sprint 130, SEC-3) remove an account's authenticator apps and recovery codes (a lost phone), with a reason
+  app.post(`${BASE}/users/:id(^\\d+$)/reset-2fa`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const tx = tr(s);
+    const reason = String(req.body?.reason ?? '').trim().slice(0, 200);
+    const acc = await owner.one<{ id: number; username: string }>('select id, username from meta.account where id = $1', [req.params.id]);
+    if (!acc) return reply.code(404).send('Not found');
+    if (!reason) {
+      flash(s, tx('us.mfa_reason_needed'), 'error');
+      return back(reply, s, `${BASE}/users/${acc.id}#two-factor`);
+    }
+    await resetAccountFactors(acc.id);
+    await logActivity({ username: acc.username, event: '2fa_reset', ip: clientIp(req), detail: `by ${s.username}: ${reason}` });
+    flash(s, tx('us.mfa_reset_done', { user: acc.username }));
+    return back(reply, s, `${BASE}/users/${acc.id}`);
   });
 
   app.post(`${BASE}/users/:id(^\\d+$)/delete`, async (req: Req, reply) => {

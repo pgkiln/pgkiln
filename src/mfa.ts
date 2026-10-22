@@ -94,6 +94,75 @@ export function newRecoveryCode(): string {
 export const normaliseCode = (code: string) => code.toLowerCase().replace(/[^a-z0-9]/g, '');
 export const hashCode = (code: string) => createHash('sha256').update(normaliseCode(code)).digest('hex');
 
+// ---------------------------------------------------------------- where factors are kept
+
+/**
+ * (sprint 130, SEC-3) The tables of one kind of user: developers (128, by user name) or application accounts
+ * (132, by account id). The code checks, recovery codes and the "each step once" rule are the same for both.
+ */
+export interface FactorStore { factors: string; codes: string; key: string }
+export const DEVELOPERS: FactorStore = { factors: 'meta.developer_factor', codes: 'meta.developer_recovery_code', key: 'username' };
+export const ACCOUNTS: FactorStore = { factors: 'meta.account_factor', codes: 'meta.account_recovery_code', key: 'account_id' };
+type Who = string | number;
+
+export async function storeCodesLeft(st: FactorStore, who: Who): Promise<number> {
+  return (await owner.one<{ n: number }>(`select count(*)::int as n from ${st.codes} where ${st.key} = $1 and confirmed and used_at is null`, [who]))!.n;
+}
+
+export async function storeHasFactor(st: FactorStore, who: Who): Promise<boolean> {
+  return !!(await owner.one(`select 1 as ok from ${st.factors} where ${st.key} = $1`, [who]));
+}
+
+export async function storeAddTotp(st: FactorStore, who: Who, name: string, secret: string, step: number) {
+  await owner.query(
+    `insert into ${st.factors} (${st.key}, kind, name, secret_enc, last_step, last_used_at) values ($1, 'totp', $2, $3, $4, now())`,
+    [who, name.trim().slice(0, 60) || 'Authenticator', encryptSecret(secret), step],
+  );
+}
+
+export async function storeNewCodes(st: FactorStore, who: Who): Promise<string[]> {
+  const codes = Array.from({ length: RECOVERY_CODES }, newRecoveryCode);
+  await owner.tx(async (c) => {
+    await c.query(`delete from ${st.codes} where ${st.key} = $1`, [who]);
+    for (const code of codes) await c.query(`insert into ${st.codes} (${st.key}, code_hash) values ($1, $2)`, [who, hashCode(code)]);
+  });
+  return codes;
+}
+
+export async function storeConfirmCodes(st: FactorStore, who: Who) {
+  await owner.query(`update ${st.codes} set confirmed = true where ${st.key} = $1 and used_at is null`, [who]);
+}
+
+/**
+ * Check a second-factor code: an authenticator code (each step once) or a confirmed, unused recovery code
+ * (then used up). Returns what matched, or null.
+ */
+export async function storeCheck(st: FactorStore, who: Who, code: string): Promise<{ kind: 'totp' | 'recovery'; name?: string } | null> {
+  const digits = code.replace(/\s/g, '');
+  if (/^\d{6}$/.test(digits)) {
+    const rows = (await owner.query<{ id: number; name: string; secret_enc: string; last_step: string | null }>(
+      `select id, name, secret_enc, last_step from ${st.factors} where ${st.key} = $1 and kind = 'totp'`, [who])).rows;
+    for (const f of rows) {
+      let secret: Buffer;
+      try {
+        secret = unbase32(decryptSecret(f.secret_enc));
+      } catch {
+        continue; // the instance key changed: recovery codes still work
+      }
+      const step = matchTotp(secret, digits, f.last_step === null ? null : Number(f.last_step));
+      // the update only wins once per step, also with two requests at the same time
+      if (step !== null && (await owner.query(`update ${st.factors} set last_step = $2, last_used_at = now() where id = $1 and (last_step is null or last_step < $2)`, [f.id, step])).rowCount)
+        return { kind: 'totp', name: f.name };
+    }
+    return null;
+  }
+  if (normaliseCode(code).length !== 10) return null;
+  const used = await owner.query(
+    `update ${st.codes} set used_at = now() where ${st.key} = $1 and code_hash = $2 and confirmed and used_at is null`,
+    [who, hashCode(code)]);
+  return used.rowCount ? { kind: 'recovery' } : null;
+}
+
 // ---------------------------------------------------------------- the developer's factors
 
 export interface Factor { id: number; kind: 'totp' | 'passkey'; name: string; created_at: string; last_used_at: string | null; rp_id: string | null }
@@ -103,22 +172,13 @@ export async function factorsOf(username: string, db: Pick<pg.ClientBase, 'query
 }
 
 /** Recovery codes left (confirmed, unused). */
-export async function codesLeft(username: string): Promise<number> {
-  return (await owner.one<{ n: number }>('select count(*)::int as n from meta.developer_recovery_code where username = $1 and confirmed and used_at is null', [username]))!.n;
-}
+export const codesLeft = (username: string) => storeCodesLeft(DEVELOPERS, username);
 
 /** Whether the developer has a working second factor (an authenticator app; recovery codes back it up). */
-export async function hasFactor(username: string): Promise<boolean> {
-  return !!(await owner.one('select 1 as ok from meta.developer_factor where username = $1', [username]));
-}
+export const hasFactor = (username: string) => storeHasFactor(DEVELOPERS, username);
 
 /** Add an authenticator app (after the developer confirmed a code from it). */
-export async function addTotp(username: string, name: string, secret: string, step: number) {
-  await owner.query(
-    `insert into meta.developer_factor (username, kind, name, secret_enc, last_step, last_used_at) values ($1, 'totp', $2, $3, $4, now())`,
-    [username, name.trim().slice(0, 60) || 'Authenticator', encryptSecret(secret), step],
-  );
-}
+export const addTotp = (username: string, name: string, secret: string, step: number) => storeAddTotp(DEVELOPERS, username, name, secret, step);
 
 // ---------------------------------------------------------------- passkeys (sprint 127)
 
@@ -211,48 +271,12 @@ export async function forgetBrowsers(username: string) {
 }
 
 /** New recovery codes (the old ones stop working); shown once, counted only when confirmed. */
-export async function newRecoveryCodes(username: string): Promise<string[]> {
-  const codes = Array.from({ length: RECOVERY_CODES }, newRecoveryCode);
-  await owner.tx(async (c) => {
-    await c.query('delete from meta.developer_recovery_code where username = $1', [username]);
-    for (const code of codes) await c.query('insert into meta.developer_recovery_code (username, code_hash) values ($1, $2)', [username, hashCode(code)]);
-  });
-  return codes;
-}
+export const newRecoveryCodes = (username: string) => storeNewCodes(DEVELOPERS, username);
 
-export async function confirmRecoveryCodes(username: string) {
-  await owner.query('update meta.developer_recovery_code set confirmed = true where username = $1 and used_at is null', [username]);
-}
+export const confirmRecoveryCodes = (username: string) => storeConfirmCodes(DEVELOPERS, username);
 
-/**
- * Check a second-factor code at sign-in: an authenticator code (each step once) or a confirmed, unused
- * recovery code (then used up). Returns what matched, or null.
- */
-export async function checkSecondFactor(username: string, code: string): Promise<{ kind: 'totp' | 'recovery'; name?: string } | null> {
-  const digits = code.replace(/\s/g, '');
-  if (/^\d{6}$/.test(digits)) {
-    const rows = (await owner.query<{ id: number; name: string; secret_enc: string; last_step: string | null }>(
-      'select id, name, secret_enc, last_step from meta.developer_factor where username = $1 and kind = $2', [username, 'totp'])).rows;
-    for (const f of rows) {
-      let secret: Buffer;
-      try {
-        secret = unbase32(decryptSecret(f.secret_enc));
-      } catch {
-        continue; // the instance key changed: recovery codes still work
-      }
-      const step = matchTotp(secret, digits, f.last_step === null ? null : Number(f.last_step));
-      // the update only wins once per step, also with two requests at the same time
-      if (step !== null && (await owner.query('update meta.developer_factor set last_step = $2, last_used_at = now() where id = $1 and (last_step is null or last_step < $2)', [f.id, step])).rowCount)
-        return { kind: 'totp', name: f.name };
-    }
-    return null;
-  }
-  if (normaliseCode(code).length !== 10) return null;
-  const used = await owner.query(
-    'update meta.developer_recovery_code set used_at = now() where username = $1 and code_hash = $2 and confirmed and used_at is null',
-    [username, hashCode(code)]);
-  return used.rowCount ? { kind: 'recovery' } : null;
-}
+/** Check a developer's second-factor code at sign-in (see storeCheck). */
+export const checkSecondFactor = (username: string, code: string) => storeCheck(DEVELOPERS, username, code);
 
 // ---------------------------------------------------------------- policy
 

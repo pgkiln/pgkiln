@@ -48,6 +48,8 @@ import { resolveLocale, THEME_COOKIE, themeCookieOptions, translateApp, translat
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 import { LOGIN_ERROR, LOGIN_USER, safeNext, signInForm } from './signin.ts';
 import { passwordResetRoutes } from './password-reset.ts';
+import { passwordSignIn, twoStepRoutes } from './two-step.ts';
+import { carriesSecondStep } from '../account-mfa.ts';
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
 import { feedbackRoutes } from './feedback.ts';
@@ -229,7 +231,8 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   // the session ended, but the browser was remembered: sign in again silently (a new token each time)
   if (app.authentication === 'app_users' && !session.username) {
     const remembered = await useRemember(req, reply, app);
-    if (remembered)
+    // (sprint 130) one made before the application asked this user for a second step doesn't stand in for it
+    if (remembered && (await carriesSecondStep(app, remembered.username, remembered.roles, remembered.method)))
       session = await signIn(req, reply, app, session, remembered.username, {
         extraRoles: remembered.roles, groups: remembered.groups, method: remembered.method,
         remember: true, rememberUntil: remembered.expiresAt, detail: 'remember me',
@@ -238,7 +241,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   // (067) another application of the session sharing group was signed in to: sign in here too
   if (!session.username && sharingGroup(app)) {
     const shared = await useShared(req, reply, app);
-    if (shared)
+    if (shared && (await carriesSecondStep(app, shared.username, shared.roles, shared.method)))
       session = await signIn(req, reply, app, session, shared.username, {
         extraRoles: shared.roles, groups: shared.groups, method: shared.method, shared: shared.hash, detail: 'shared sign-in',
       });
@@ -619,6 +622,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
   fileRoutes(app, loadContext, txContext, forbidden);
   // (087) "Forgot password?"
   passwordResetRoutes(app);
+  twoStepRoutes(app);
   // (079) the developer toolbar's session state viewer and actions
   devbarRoutes(app, loadContext);
   // (084) users' feedback
@@ -1272,7 +1276,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
           logActivity({ appId: a.id, username: account, event: 'login_failed', ip, detail: `ldap:${d.name}: no access` });
           return fail(locale.t('login.no_access', { user: account, app: a.name }), 403);
         }
-        return completeLogin(req, reply, a, session, account, {
+        return passwordSignIn(req, reply, a, session, account, {
           next, remember, extraRoles: access.roles, groups: user.groups, method: `ldap:${d.name}`, detail: `ldap:${d.name}`,
         });
       }
@@ -1283,7 +1287,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       logActivity({ appId: a.id, username: r.username, event: 'password_expired', ip });
       return reply.type('text/html').send(expiredPage(a, locale, session, r.username, safeNext(a, next)));
     }
-    return completeLogin(req, reply, a, session, r.username, { next, remember });
+    return passwordSignIn(req, reply, a, session, r.username, { next, remember });
   });
 
   app.post('/a/:alias/password', async (req: Req, reply) => {
@@ -1309,7 +1313,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
     logActivity({ appId: a.id, username, event: 'password_changed', ip });
     const canonical = (await runtime.one<{ username: string }>('select username from meta.account where lower(username) = lower($1)', [username]))!.username;
-    return completeLogin(req, reply, a, session, canonical, { next });
+    return passwordSignIn(req, reply, a, session, canonical, { next });
   });
 
   // ---------------------------------------------------------------- single sign-on (OpenID Connect)
@@ -1374,7 +1378,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return simplePage(reply, 403, locale.t('login.no_access_title'), locale.t('login.no_access', { user: result.username, app: a.name }), `/a/${a.alias}/login`, locale);
     }
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
-    return completeLogin(req, reply, a, session, result.username, { extraRoles: access.roles, next: result.next ?? undefined, detail: `sso:${p.name}` });
+    return completeLogin(req, reply, a, session, result.username, { extraRoles: access.roles, next: result.next ?? undefined, method: `sso:${p.name}`, detail: `sso:${p.name}` });
   };
 
   // SAML: the IdP posts the response cross-site, where SameSite=Lax cookies aren't sent; post it on

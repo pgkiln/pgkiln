@@ -1870,4 +1870,10 @@ export const pt: BuilderMessages = {
   'wsp.sso_off': 'Os desenvolvedores do espaço de trabalho podem voltar a usar a senha do pgkiln.',
   'wsp.sso_no_break_glass': 'Primeiro dê acesso de emergência a um administrador (Desenvolvedores), para que alguém possa entrar se o provedor de identidade falhar.',
   'wsp.sso_link_first': 'Vincule primeiro uma identidade na sua página de segurança, ou você mesmo não conseguiria entrar.',
+  'us.mfa_title': 'Login em duas etapas',
+  'us.mfa_status': 'Aplicativos autenticadores: {n}. Códigos de recuperação restantes: {codes}.',
+  'us.mfa_none': 'Nenhum aplicativo autenticador ainda.',
+  'us.mfa_reset_help': 'Remove os aplicativos autenticadores e os códigos de recuperação de {user} e encerra todas as sessões. Onde um aplicativo exigir login em duas etapas, um novo aplicativo será adicionado no próximo login. Registrado.',
+  'us.mfa_reset_done': 'O login em duas etapas de {user} foi redefinido.',
+  'us.mfa_reason_needed': 'Informe um motivo para a redefinição.',
 };

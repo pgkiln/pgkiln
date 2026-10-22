@@ -73,7 +73,7 @@ export async function useShared(req: FastifyRequest, reply: FastifyReply, a: Sha
     await owner.query('delete from meta.shared_login where token_hash = $1', [hash]);
     return clear(), null;
   }
-  if (row.method === 'password' && (await passwordDaysLeft(row.username)) === 0) return null;
+  if (row.method.split('+')[0] === 'password' && (await passwordDaysLeft(row.username)) === 0) return null;
   const access = await ssoAccess(a.id, row.username, row.groups);
   if (!access.allowed) return null; // no access to this app: its own sign-in page (the shared sign-in stays for the others)
   return { username: row.username, roles: access.roles, groups: row.groups, method: row.method, hash };
