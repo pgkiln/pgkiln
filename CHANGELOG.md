@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.62.0] - 2026-10-22
+
 ### Added
 - **Sign in with a passkey alone** (SEC-2, part 3): the builder sign-in page has *Sign in with a passkey*; the browser
   offers the developer's passkeys for the site (no user name, no password). The device must verify the developer
