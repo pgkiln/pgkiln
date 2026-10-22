@@ -676,6 +676,10 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
 .signin-remember { font-size: 0.9rem; }
 .signin-submit { padding: 0.75rem; font-size: 1rem; border-radius: var(--radius); }
 [data-passkey-status]:empty { display: none; }
+/* (sprint 129) linked identities, builder sign-in */
+.plain-list { list-style: none; padding: 0; margin: .25rem 0 .75rem; }
+.plain-list li { padding: .2rem 0; }
+.signin-idp { display: flex; align-items: center; justify-content: center; gap: .5rem; text-decoration: none; }
 .signin-hint { margin: 0; text-align: center; }
 .signin-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem 1.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
 .signin-actions a { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--gold); text-decoration: none; }

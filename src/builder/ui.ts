@@ -333,7 +333,8 @@ export async function developer(req: Req, reply: FastifyReply) {
     reply.redirect(`${BASE}/developers`);
     return null;
   }
-  const due = await enrolmentDue(s.username, admin);
+  // (sprint 129) signed in through an identity provider: it decides on the second factor
+  const due = s.state.__SSO ? null : await enrolmentDue(s.username, admin);
   if (due?.due === 'grace') s.state.__MFA_DUE = due.until.toISOString();
   else if (due && !weakFirst && !/^\/builder\/(security|logout|language|theme)(?:[/?]|$)/.test(req.url)) {
     reply.redirect(`${BASE}/security`);

@@ -32,6 +32,11 @@ import { isIP } from 'node:net';
 import { giveChallenge, takeChallenge } from './security.ts';
 import { relyingParty, verifyAssertion, WebAuthnError } from '../webauthn.ts';
 import { chooseLanguage, langCookieOptions, languageRoutes, signInLanguageLinks } from './language.ts';
+import { builderSsoRoutes, leavesNoBreakGlass } from './builder-sso.ts';
+import { builderDirectory, builderProvider, builderSources, linkDeveloper, resolveDeveloper, ssoRequired } from '../devsso.ts';
+import { ldapAuthenticate, LdapError } from '../ldap.ts';
+import { onBuilderSso, SsoError, startSignIn } from '../sso.ts';
+import { startSamlSignIn } from '../saml.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -70,6 +75,8 @@ export async function builderRoutes(app: FastifyInstance) {
     const next = safeNext(req.query?.next);
     // (sprint 128) a passkey alone, when the instance allows it and the address is a host name
     const alone = (await passkeySignin()) && !isIP(relyingParty(req).rpId);
+    // (sprint 129, SEC-1) identity providers and directories that sign developers in
+    const sources = await builderSources();
     const field = (name: string, label: string, ic: string, value: string, opts: { type?: string; required?: boolean; auto?: string; placeholder?: string; reveal?: boolean }) =>
       html`<div class="field signin-field"><label class="sr-only" for="f_${name}">${label}</label>
         <div class="signin-input">${icon(ic)}<input id="f_${name}" name="${name}" type="${opts.type ?? 'text'}" value="${value}" placeholder="${opts.placeholder ?? label}"${opts.required ? raw(' required') : ''}${opts.auto ? raw(` autocomplete="${opts.auto}"`) : ''}>
@@ -91,6 +98,10 @@ export async function builderRoutes(app: FastifyInstance) {
               ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
               ${csrf(s)}<input type="hidden" name="next" value="${next}">
               ${field('workspace', tx('signin.workspace'), 'database', r?.w ?? '', { placeholder: tx('signin.workspace_placeholder'), auto: 'organization' })}
+              ${sources.directories.length ? html`<div class="field signin-field"><label class="sr-only" for="f_method">${tx('signin.method')}</label>
+                <div class="signin-input">${icon('server')}<select id="f_method" name="method" aria-label="${tx('signin.method')}">
+                  <option value="">${tx('signin.method_pgkiln')}</option>
+                  ${sources.directories.map((d) => html`<option value="ldap:${d.name}">${d.display_name}</option>`)}</select></div></div>` : ''}
               ${field('username', tx('signin.username'), 'user', r?.u ?? '', { required: true, auto: 'username' })}
               ${field('password', tx('signin.password'), 'key', '', { type: 'password', required: true, auto: 'current-password', reveal: true })}
               <label class="check signin-remember"><input type="checkbox" name="remember" value="1"${r ? raw(' checked') : ''}> ${tx('signin.remember')}</label>
@@ -98,6 +109,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${alone ? html`<input type="hidden" name="credentialId"><input type="hidden" name="clientDataJSON"><input type="hidden" name="authenticatorData"><input type="hidden" name="signature"><input type="hidden" name="userHandle">
                 <button class="btn signin-submit signin-passkey" hidden data-passkey="${BASE}/login/passkey/options" data-passkey-submit="${BASE}/login/passkey" data-passkey-error="${tx('mfa.passkey_failed')}">${icon('fingerprint')} ${tx('signin.passkey')}</button>
                 <p class="small" role="status" data-passkey-status></p>` : ''}
+              ${sources.providers.map((p) => html`<a class="btn signin-submit signin-idp" href="${BASE}/sso/${p.name}${next === `${BASE}/home` ? '' : `?next=${encodeURIComponent(next)}`}">${icon('log-in')} ${tx('signin.with', { provider: p.display_name })}</a>`)}
               <p class="muted small signin-hint">${tx('signin.hint')}</p>
               <nav class="signin-actions" aria-label="${tx('signin.quick')}">
                 <a href="${BASE}/find-workspace">${icon('search')} ${tx('signin.find_ws')}</a>
@@ -135,29 +147,63 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, tx('signin.throttled'), 'error');
       return back(reply, s, again);
     }
-    // bcrypt always runs (dummy salt for unknown users) so timing does not reveal accounts
-    const dev = await owner.one(
-      `select d.username, d.language
-         from (select $1::text as u) x
-         left join meta.developer d on d.username = x.u
-        where crypt($2, coalesce(d.password_hash, gen_salt('bf', 10))) = d.password_hash`,
-      [username, password],
-    );
+    // (sprint 129, SEC-1) an LDAP directory checks the password; the developer is the one linked to the entry
+    const method = String(req.body?.method ?? '');
+    const directory = method.startsWith('ldap:') ? await builderDirectory(method.slice(5)) : undefined;
+    if (method && !directory) {
+      flash(s, tx('signin.expired'), 'error');
+      return back(reply, s, again);
+    }
+    let dev: { username: string; language: string | null } | undefined;
+    if (directory) {
+      let why = 'invalid';
+      try {
+        const u = await ldapAuthenticate(directory, username, password);
+        if (u) {
+          const name = await resolveDeveloper({ kind: 'directory', ...directory }, { subject: u.subject, username: u.username, name: u.displayName, email: u.email, mayLink: true, groups: u.groups });
+          dev = await owner.one('select username, language from meta.developer where username = $1', [name]);
+        }
+      } catch (e) {
+        if (!(e instanceof SsoError)) req.log.warn({ err: e, directory: directory.name }, 'builder ldap sign-in failed');
+        why = e instanceof SsoError ? e.message : e instanceof LdapError ? e.message : 'unreachable';
+      }
+      if (!dev) {
+        await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: `builder ldap:${directory.name}: ${why}` });
+        flash(s, why === 'invalid' ? tx('signin.invalid') : why === 'unreachable' ? tx('signin.ldap_unavailable', { directory: directory.display_name }) : why, 'error');
+        return back(reply, s, again);
+      }
+    } else
+      // bcrypt always runs (dummy salt for unknown users) so timing does not reveal accounts
+      dev = await owner.one(
+        `select d.username, d.language
+           from (select $1::text as u) x
+           left join meta.developer d on d.username = x.u
+          where crypt($2, coalesce(d.password_hash, gen_salt('bf', 10))) = d.password_hash`,
+        [username, password],
+      );
     // a workspace, when given, must be one of the developer's (administrators: any); the same answer otherwise
     const ws = dev && workspace ? await workspaceOf(workspace, dev.username) : undefined;
     if (!dev || (workspace && !ws)) {
-      await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: workspace ? 'builder (workspace)' : 'builder' });
+      await logActivity({ username: username.slice(0, 100), event: 'login_failed', ip, detail: directory ? `builder ldap:${directory.name} (workspace)` : workspace ? 'builder (workspace)' : 'builder' });
       flash(s, tx(workspace ? 'signin.invalid_ws' : 'signin.invalid'), 'error');
       return back(reply, s, again);
     }
+    // (sprint 129) a workspace of the developer requires single sign-on: not the pgkiln password (break-glass excepted)
+    if (!directory && (await ssoRequired(dev.username))) {
+      await logActivity({ username: dev.username, event: 'login_failed', ip, detail: 'builder: single sign-on required' });
+      flash(s, tx('signin.sso_required'), 'error');
+      return back(reply, s, again);
+    }
+    const weak = !directory && (password === 'admin' || password === dev.username);
+    const detail = directory ? `builder ldap:${directory.name}` : 'builder';
     // (sprint 126, SEC-2) a developer with a second factor: the password was right, the session comes after the code;
     // (sprint 127) unless this browser was trusted after a second factor, for the instance's number of days
     if ((await hasFactor(dev.username)) && !(await isTrustedBrowser(dev.username, req.cookies?.[TRUST_COOKIE]))) {
-      s.state.__MFA = JSON.stringify({ u: dev.username, ws: ws ? String(ws.id) : null, w: workspace, next, remember: req.body?.remember === '1', weak: password === 'admin' || password === dev.username, at: Date.now() });
+      s.state.__MFA = JSON.stringify({ u: dev.username, ws: ws ? String(ws.id) : null, w: workspace, next, remember: req.body?.remember === '1', weak, at: Date.now() });
       await saveState(s);
       return reply.redirect(`${BASE}/login/2fa`, 303);
     }
-    return finishSignIn(req, reply, s, { username: dev.username, language: dev.language }, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: password === 'admin' || password === dev.username, picked, detail: 'builder' });
+    return finishSignIn(req, reply, s, { username: dev.username, language: dev.language }, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak, picked, detail });
   });
 
   /** A workspace by name, when it is one of the developer's (administrators: any). */
@@ -169,6 +215,57 @@ export async function builderRoutes(app: FastifyInstance) {
                or exists (select 1 from meta.workspace_member m where m.workspace_id = w.id and m.username = $2))`,
       [workspace, username],
     );
+
+  // (sprint 129, SEC-1) signing in through an identity provider (OpenID Connect or SAML; devsso.ts). The
+  // provider returns to the runtime's callback (/sso/…, registered at the provider for applications too),
+  // which hands sign-ins without an application to the function below.
+  const SSO_COOKIE = 'pgkiln_sso';
+  app.get(`${BASE}/sso/:provider`, async (req: Req, reply) => {
+    const p = await builderProvider(String(req.params.provider));
+    if (!p) return reply.code(404).send('Not found');
+    try {
+      const next = safeNext(req.query?.next);
+      const { url, browserKey } = p.protocol === 'saml' ? await startSamlSignIn(p, null, next) : await startSignIn(p, null, next);
+      reply.setCookie(SSO_COOKIE, browserKey, { path: '/sso', httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 600 });
+      return reply.redirect(url);
+    } catch (e) {
+      req.log.warn({ err: e }, 'builder sso start failed');
+      const s = await getSession(req, reply, null, BASE);
+      flash(s, translatorFor(validBuilderLanguage(s.state.__BLANG) ?? cookieLanguage(req))('signin.sso_unavailable', { provider: p.display_name }), 'error');
+      return back(reply, s, `${BASE}/login`);
+    }
+  });
+  /** Linking an identity from the Security page (security.ts): the signed-in developer starts it. */
+  app.post(`${BASE}/security/link/:provider`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const p = await builderProvider(String(req.params.provider));
+    if (!p) return reply.code(404).send('Not found');
+    try {
+      const { url, browserKey } = p.protocol === 'saml' ? await startSamlSignIn(p, null, `${BASE}/security`, s.username!) : await startSignIn(p, null, `${BASE}/security`, s.username!);
+      reply.setCookie(SSO_COOKIE, browserKey, { path: '/sso', httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 600 });
+      return reply.redirect(url, 303);
+    } catch (e) {
+      req.log.warn({ err: e }, 'builder sso link failed');
+      flash(s, tr(s)('signin.sso_unavailable', { provider: p.display_name }), 'error');
+      return back(reply, s, `${BASE}/security`);
+    }
+  });
+  // the end of both (the runtime's callback; SsoError → an error page there)
+  onBuilderSso(async (req: Req, reply, p, result, ip) => {
+    if (!p.builder || !result.identity) throw new SsoError('This identity provider does not sign developers in.');
+    const src = { kind: 'provider' as const, ...p };
+    if (result.link) {
+      // the browser that started this was signed in as result.link (the start needs the session and its CSRF token)
+      await linkDeveloper(src, result.identity.subject, result.link);
+      logActivity({ username: result.link, event: 'sso_linked', ip, detail: p.name });
+      return reply.redirect(`${BASE}/security?linked=${encodeURIComponent(p.name)}`, 303);
+    }
+    const username = await resolveDeveloper(src, { ...result.identity, username: result.username, groups: result.groups });
+    const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [username]);
+    if (!dev) throw new SsoError('The developer was removed.');
+    return finishSignIn(req, reply, null, dev, { ws: null, workspace: '', next: safeNext(result.next), remember: false, weak: false, picked: null, detail: `builder sso:${p.name}`, sso: p.name });
+  });
 
   // (sprint 128, SEC-2) signing in with a passkey alone: no user name, no password. The browser offers the
   // passkeys it holds for this site (discoverable credentials); the authenticator must verify the developer
@@ -219,9 +316,11 @@ export async function builderRoutes(app: FastifyInstance) {
     }
     const ws = !why && workspace ? await workspaceOf(workspace, who) : undefined;
     if (!why && workspace && !ws) why = 'not a workspace of the developer';
+    // (sprint 129) a passkey alone is not single sign-on
+    if (!why && (await ssoRequired(who))) why = 'single sign-on required';
     if (why) {
       await logActivity({ username: who.slice(0, 100), event: 'login_failed', ip, detail: `builder passkey: ${why}` });
-      flash(s, tx(why === 'not a workspace of the developer' ? 'signin.invalid_ws' : 'mfa.passkey_failed'), 'error');
+      flash(s, tx(why === 'not a workspace of the developer' ? 'signin.invalid_ws' : why === 'single sign-on required' ? 'signin.sso_required' : 'mfa.passkey_failed'), 'error');
       return back(reply, s, again);
     }
     const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [who]);
@@ -229,12 +328,15 @@ export async function builderRoutes(app: FastifyInstance) {
     return finishSignIn(req, reply, s, dev, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: false, picked, detail: 'builder passkey' });
   });
 
-  /** The session after a successful sign-in (password, and the second factor when the developer has one). */
-  async function finishSignIn(req: Req, reply: Parameters<typeof back>[0], s: Awaited<ReturnType<typeof getSession>>, dev: { username: string; language: string | null },
-    o: { ws: string | null; workspace: string; next: string; remember: boolean; weak: boolean; picked: ReturnType<typeof validBuilderLanguage>; detail: string }) {
+  /**
+   * The session after a successful sign-in (password, and the second factor when the developer has one;
+   * or an identity provider, sso: its name; s null: the sign-in page's session is not at hand there).
+   */
+  async function finishSignIn(req: Req, reply: Parameters<typeof back>[0], s: Awaited<ReturnType<typeof getSession>> | null, dev: { username: string; language: string | null },
+    o: { ws: string | null; workspace: string; next: string; remember: boolean; weak: boolean; picked: ReturnType<typeof validBuilderLanguage>; detail: string; sso?: string }) {
     const ip = clientIp(req);
     const { picked, next, workspace } = o;
-    await destroySession(reply, s, BASE);
+    if (s) await destroySession(reply, s, BASE);
     const ns = await createSession(reply, null, BASE, dev.username);
     // the builder theme chosen earlier on this device
     const theme = validTheme(req.cookies?.[THEME_COOKIE]);
@@ -247,8 +349,12 @@ export async function builderRoutes(app: FastifyInstance) {
       if (dev.language && ns.state.__BLANG !== 'en') reply.setCookie(LANG_COOKIE, ns.state.__BLANG, langCookieOptions());
     }
     if (o.weak) ns.state.__WEAK = '1';
+    // (sprint 129) the identity provider decided on the second factor: no enrolment in pgkiln (ui.ts)
+    if (o.sso) ns.state.__SSO = o.sso;
     await saveState(ns);
-    if (o.remember)
+    if (o.sso) {
+      // the sign-in page's "remember" stays as it was
+    } else if (o.remember)
       reply.setCookie(REMEMBER_COOKIE, Buffer.from(JSON.stringify({ w: workspace, u: dev.username })).toString('base64url'), {
         path: BASE, httpOnly: true, sameSite: 'lax', maxAge: 365 * 24 * 3600, secure: process.env.COOKIE_SECURE === 'true',
       });
@@ -447,6 +553,7 @@ export async function builderRoutes(app: FastifyInstance) {
   await workspaceRoutes(app);
   await instanceRoutes(app);
   await securityRoutes(app);
+  await builderSsoRoutes(app);
   await wizardRoutes(app);
   await appFromFileRoutes(app);
 
@@ -928,7 +1035,10 @@ export async function builderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/developers`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const devs = (await owner.query(`select username, is_admin, email, exists (select 1 from meta.developer_factor f where f.username = d.username) as mfa
+    const devs = (await owner.query(`select username, is_admin, email, break_glass, exists (select 1 from meta.developer_factor f where f.username = d.username) as mfa,
+                                            (select string_agg(coalesce(p.display_name, l.display_name), ', ' order by 1) from meta.developer_identity i
+                                               left join meta.auth_provider p on p.id = i.provider_id left join meta.ldap_directory l on l.id = i.directory_id
+                                              where i.username = d.username) as identities
                                        from meta.developer d order by 1`)).rows;
     const admin = devs.some((d) => d.username === s.username && d.is_admin);
     const me = devs.find((d) => d.username === s.username);
@@ -947,7 +1057,7 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region(tx('dev.accounts'), html`
           <p class="muted u-mt0">${tx('dev.accounts_help')}</p>
           <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('dev.username')}</th><th>${tx('dev.role')}</th><th>${tx('dev.email_col')}</th><th>${tx('mfa.column')}</th><th></th></tr></thead><tbody>
-            ${devs.map((d) => html`<tr><td data-label="${tx('dev.username')}">${d.username}${d.username === s.username ? ` ${tx('dev.you')}` : ''}</td><td data-label="${tx('dev.role')}">${d.is_admin ? tx('dev.administrator') : tx('dev.developer')}</td>
+            ${devs.map((d) => html`<tr><td data-label="${tx('dev.username')}">${d.username}${d.username === s.username ? ` ${tx('dev.you')}` : ''}</td><td data-label="${tx('dev.role')}">${d.is_admin ? tx('dev.administrator') : tx('dev.developer')}${d.break_glass ? html` <span class="badge badge-warn" title="${tx('bsso.break_glass_help')}">${tx('bsso.break_glass')}</span>` : ''}${d.identities ? html`<br><span class="muted small">${icon('log-in')} ${d.identities}</span>` : ''}</td>
               <td data-label="${tx('dev.email_col')}">${admin && d.username !== s.username
                 ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="${tx('dev.email_of', { user: d.username })}" placeholder="${tx('dev.none')}"><button class="btn">${tx('dev.save')}</button></form>`
                 : html`<span class="wrap-anywhere">${d.email ?? ''}</span>`}</td>
@@ -955,6 +1065,7 @@ export async function builderRoutes(app: FastifyInstance) {
                   ${input(`reason_${d.username}`.replace(/[^\w]/g, '_'), tx('mfa.reason'), '', { required: true, help: tx('mfa.reset_help', { user: d.username }) })}
                   <button class="btn btn-sm btn-danger">${tx('mfa.reset_btn')}</button></form></div></details>` : ''}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td><td>${d.username === s.username || !admin ? '' : html`
               <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? tx('dev.make_dev') : tx('dev.make_admin')}</button></form>
+              ${d.is_admin ? html`· <form method="post" action="${BASE}/developers/break-glass" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="break_glass" value="${d.break_glass ? 'false' : 'true'}"><button class="link-button" title="${tx('bsso.break_glass_help')}">${d.break_glass ? tx('bsso.break_glass_remove') : tx('bsso.break_glass_make')}</button></form>` : ''}
               · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="${tx('dev.remove_confirm', { user: d.username })}">${tx('dev.remove')}</button></form>`}</td></tr>`)}
           </tbody></table></div>
           ${admin
@@ -1042,7 +1153,12 @@ export async function builderRoutes(app: FastifyInstance) {
         flash(s, tr(s)('mfa.keep_admins'), 'error');
         return back(reply, s, `${BASE}/developers`);
       }
-      await owner.query('update meta.developer set is_admin = $2 where username = $1', [req.body.username, req.body.is_admin === 'true']);
+      // (sprint 129) break-glass is for administrators: a developer loses it, unless they are the last one needed
+      if (req.body.is_admin !== 'true' && (await leavesNoBreakGlass(req.body.username))) {
+        flash(s, tr(s)('bsso.keep_break_glass'), 'error');
+        return back(reply, s, `${BASE}/developers`);
+      }
+      await owner.query('update meta.developer set is_admin = $2, break_glass = break_glass and $2 where username = $1', [req.body.username, req.body.is_admin === 'true']);
       flash(s, tr(s)('dev.role_changed'));
     }
     return back(reply, s, `${BASE}/developers`);
@@ -1053,7 +1169,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators remove developers.');
     if (req.body?.username && req.body.username !== s.username) {
-      if (await leavesTooFewAdmins(req.body.username)) {
+      if ((await leavesTooFewAdmins(req.body.username)) || (await leavesNoBreakGlass(req.body.username))) {
         flash(s, tr(s)('mfa.keep_admins'), 'error');
         return back(reply, s, `${BASE}/developers`);
       }

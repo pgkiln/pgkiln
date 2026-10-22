@@ -16,7 +16,7 @@ import { accountRoles, loadApp, loadPage, type App, type Page, type Region } fro
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
 import { checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
-import { enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type SsoResult } from '../sso.ts';
+import { builderSsoFinish, enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type Provider, type SsoResult } from '../sso.ts';
 import { sessionLimits, clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
@@ -1350,8 +1350,19 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   /** The end of a single sign-on (OpenID Connect or SAML): the app's access rules, then the session. */
-  const finishSso = (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) =>
-    withAppDb(result.appId, () => finishSsoForApp(req, reply, p, result, ip));
+  const finishSso = (req: FastifyRequest, reply: FastifyReply, p: Provider, result: SsoResult, ip: string) => {
+    // (sprint 129) a sign-in to the builder
+    if (result.appId === null) {
+      const builder = builderSsoFinish();
+      if (!builder) return simplePage(reply, 404, english('error.not_found'), english('login.method_unavailable'));
+      return builder(req, reply, p, result, ip).catch((e) => {
+        if (!(e instanceof SsoError)) throw e;
+        logActivity({ username: result.link ?? result.username.slice(0, 100), event: 'login_failed', ip, detail: `builder sso:${p.name}: ${e.message}` });
+        return simplePage(reply, 403, english('login.sso_failed'), e.message, result.link ? '/builder/security' : '/builder/login');
+      });
+    }
+    return withAppDb(result.appId, () => finishSsoForApp(req, reply, p, result, ip));
+  };
   const finishSsoForApp = async (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) => {
     const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
     const loaded = alias ? await appWithLocale(req, alias) : undefined;

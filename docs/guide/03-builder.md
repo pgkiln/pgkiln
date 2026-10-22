@@ -111,6 +111,51 @@ setting the days to 0 stops every trusted browser at once.
   `2fa_enrolled`, `2fa_recovery_used`), and resets and policy changes are mailed to the administrators when the
   builder has a mail service (*Builder mail*).
 
+### Single sign-on for developers
+
+(0.63) Developers can sign in to the builder through the organisation's **identity provider** (OpenID Connect or SAML
+2.0) or an **LDAP directory**, the ones applications use (Workspace utilities → Users → *Identity providers*,
+*LDAP directories*; [chapter 8](08-security.md)). APEX does this with the workspace's authentication scheme.
+
+**Turning it on.** On the provider's or directory's page, administrators fill in **Builder sign-in**:
+
+- *Developers can sign in to the builder with it*: the sign-in page shows **Sign in with Company IdP** under the
+  password form. A directory adds a **Sign in with** choice above the user name (*pgkiln account* or the directory),
+  and the password goes to the directory. The provider's redirect URI (or SAML ACS URL) is the one registered for
+  applications already.
+- *Create developers on their first sign-in*, for members of the **Developers group** (anyone, when it is empty).
+  They start as developers in the Default workspace, with the provider's e-mail address and a password nobody knows.
+- **Administrators group**: when set, its members are instance administrators and nobody else is, checked at every
+  sign-in (break-glass administrators, below, are never demoted).
+- *Link an existing developer with the same user name*: once, at the first sign-in, never a break-glass
+  administrator, and an e-mail address as user name only when the provider says it is verified. Leave it off unless
+  you trust the provider's user names; developers can link themselves instead.
+
+**Linking.** A developer is found by the provider's stable subject (`sub`, the SAML NameID, the entry's `entryUUID`),
+never by a name the provider sends. A developer who signs in with the password links an identity on **Security** →
+*Single sign-on* → **Link Company IdP**: the provider's page opens and the identity is linked to the developer who
+started it (in the same browser). The region lists linked identities, with **Unlink**. A provider's page lists the
+developers linked to it; administrators unlink any of them.
+
+Signing in through a provider skips pgkiln's own second step and the enrolment on Security: the provider decides on
+the second factor. A directory checks a password, so pgkiln's second step follows as with the pgkiln password.
+
+**Requiring it per workspace.** A workspace's page (*Preferences* → *Single sign-on*) has *This workspace's
+developers must sign in through an identity provider* (or a directory). Its developers' pgkiln password and a passkey
+alone are refused from then on; the page lists members without a linked identity, who can't sign in until they link
+one. It can be turned on only while there is a **break-glass administrator**, and only by someone who has a linked
+identity or is break-glass, so nobody locks themselves out.
+
+**Break-glass administrators.** On **Developers**, an administrator makes another administrator *break-glass*: they
+may still sign in with the pgkiln password where a workspace requires single sign-on, for when the identity provider
+is down or misconfigured. Give them a second factor and a long password, and keep the password somewhere safe. The
+last break-glass administrator can't lose it while a workspace requires single sign-on, nor be made a developer or
+removed. If nobody can sign in at all: `pgkiln admin builder-sign-in password` on the server turns the workspaces'
+rule off ([chapter 18](18-cli.md)).
+
+Sign-ins are in the activity log as `login` with *builder sso:company* or *builder ldap:corp*; failures as
+`login_failed` with the reason; linking, unlinking and settings as `sso_linked`, `sso_unlinked` and `sso_policy`.
+
 ### Locked out?
 
 | Situation | What to do |
@@ -120,6 +165,7 @@ setting the days to 0 stops every trusted browser at once.
 | A passkey no longer works after a move to another domain | Sign in with an app code or a recovery code and add a new passkey ([above](#two-factor-sign-in)) |
 | No administrator can sign in | On the server: `pgkiln admin reset-2fa <developer> --reason "…"` ([chapter 18](18-cli.md)), then sign in with the password |
 | The policy locks everyone out | On the server: `pgkiln admin set-2fa-policy off` (also clears the workspaces' own rules) |
+| The identity provider is down and a workspace requires single sign-on | A break-glass administrator signs in with the password and turns the workspace's rule off; without one, on the server: `pgkiln admin builder-sign-in password` |
 | Codes are always wrong | Check the time on the phone and on the server (codes allow 30 seconds either way) |
 | The instance key was lost or changed | The apps' secrets can't be read: reset the developers (`pgkiln admin reset-2fa`); recovery codes still work |
 

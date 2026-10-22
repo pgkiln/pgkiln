@@ -471,15 +471,18 @@ const COMMANDS: Record<string, Command> = {
   },
   // (sprint 126, SEC-6) lockout recovery on the server, when nobody can sign in to the builder
   admin: {
-    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all [options]',
-    summary: 'lockout recovery: reset a developer\'s two-factor sign-in, set the two-factor policy',
+    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all | builder-sign-in password [options]',
+    summary: 'lockout recovery: reset a developer\'s two-factor sign-in, set the two-factor policy, allow the password again',
     details:
       'pgkiln admin reset-2fa <developer> [--reason <text>]\n' +
-      'pgkiln admin set-2fa-policy off|admins|all [--grace <days>]\n\n' +
+      'pgkiln admin set-2fa-policy off|admins|all [--grace <days>]\n' +
+      'pgkiln admin builder-sign-in password\n\n' +
       "reset-2fa removes the developer's authenticator apps and recovery codes and ends their builder\n" +
       'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works\n' +
       "(and clears the workspaces' own two-factor rules); admins and all need at least two administrators\n" +
-      'with two-factor sign-in (or every one, when there are fewer). Both are written to the activity log and mailed to the administrators.',
+      'with two-factor sign-in (or every one, when there are fewer). builder-sign-in password turns off the\n' +
+      "workspaces' single sign-on rule, for when the identity provider fails and no break-glass administrator\n" +
+      'can sign in. All are written to the activity log and mailed to the administrators.',
     options: { reason: { type: 'string' }, grace: { type: 'string' } },
     optionHelp: [
       ['--reason <text>', 'reset-2fa: why (in the activity log and the mail)'],
@@ -516,7 +519,18 @@ const COMMANDS: Record<string, Command> = {
           out(`Two-factor policy: ${policy}${policy === 'off' ? '' : `, grace ${grace} days`}.${cleared ? ` ${cleared} workspace(s) no longer require it.` : ''}${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
           return EXIT.ok;
         }
-        throw new UsageError(`unknown action ${action}: use reset-2fa or set-2fa-policy`);
+        // (sprint 129, SEC-1) every workspace allows the pgkiln password again
+        if (action === 'builder-sign-in') {
+          if (arg !== 'password') throw new UsageError('builder-sign-in takes password');
+          const { clearSsoOnly } = await import('../devsso.ts');
+          const cleared = await clearSsoOnly();
+          await logActivity({ event: 'sso_policy', ip: 'cli', detail: `password sign-in allowed again, ${cleared} workspace rule(s) cleared (${by})` });
+          const sent = await mfa.notifyMfa(await mfa.adminEmails(), 'pgkiln: the builder password works again',
+            `${by} turned off the single sign-on rule of ${cleared} workspace(s) on the server: developers may sign in with the pgkiln password.`);
+          out(`Developers may sign in with the pgkiln password again; ${cleared} workspace(s) no longer require single sign-on.${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
+          return EXIT.ok;
+        }
+        throw new UsageError(`unknown action ${action}: use reset-2fa, set-2fa-policy or builder-sign-in`);
       } finally {
         await closePools();
       }

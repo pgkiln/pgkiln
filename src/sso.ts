@@ -34,6 +34,12 @@ export interface Provider {
   protocol: 'oidc' | 'saml';
   idp_sso_url: string | null;
   idp_cert: string | null;
+  /** (131) developers sign in to the builder with this provider too (devsso.ts) */
+  builder: boolean;
+  builder_auto_create: boolean;
+  builder_link_existing: boolean;
+  builder_group: string | null;
+  builder_admin_group: string | null;
 }
 
 interface Discovery {
@@ -86,8 +92,11 @@ function jwks(doc: Discovery) {
   return set;
 }
 
-/** Start: returns the provider URL to redirect to, and the browser-binding cookie value. */
-export async function startSignIn(p: Provider, appId: number, next: string | undefined) {
+/**
+ * Start: returns the provider URL to redirect to, and the browser-binding cookie value.
+ * appId null: a sign-in to the builder; link: the signed-in developer linking this identity.
+ */
+export async function startSignIn(p: Provider, appId: number | null, next: string | undefined, link?: string) {
   const doc = await discover(p.issuer);
   const state = b64url(randomBytes(32));
   const nonce = b64url(randomBytes(32));
@@ -95,9 +104,9 @@ export async function startSignIn(p: Provider, appId: number, next: string | und
   const browserKey = b64url(randomBytes(32));
   await owner.query(`delete from meta.sso_pending where created_at < now() - make_interval(mins => $1)`, [PENDING_MINUTES]);
   await owner.query(
-    `insert into meta.sso_pending (state, app_id, provider_id, code_verifier, nonce, browser_hash, next)
-     values ($1, $2, $3, $4, $5, $6, $7)`,
-    [state, appId, p.id, verifier, nonce, sha256(browserKey), next ?? null],
+    `insert into meta.sso_pending (state, app_id, provider_id, code_verifier, nonce, browser_hash, next, link_username)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [state, appId, p.id, verifier, nonce, sha256(browserKey), next ?? null, link ?? null],
   );
   const url = new URL(doc.authorization_endpoint);
   url.search = new URLSearchParams({
@@ -113,16 +122,29 @@ export async function startSignIn(p: Provider, appId: number, next: string | und
   return { url: url.toString(), browserKey };
 }
 
+// (sprint 129) the builder finishes its own sign-ins (app_id null); the callback routes are the runtime's
+type BuilderFinish = (req: any, reply: any, p: Provider, result: SsoResult, ip: string) => Promise<unknown>;
+let builderFinish: BuilderFinish | null = null;
+export const onBuilderSso = (f: BuilderFinish) => {
+  builderFinish = f;
+};
+export const builderSsoFinish = () => builderFinish;
+
 /** Read a claim by name or dot path (e.g. realm_access.roles). */
 function claim(payload: JWTPayload, path: string): unknown {
   return path.split('.').reduce<any>((v, k) => (v && typeof v === 'object' ? v[k] : undefined), payload);
 }
 
 export interface SsoResult {
-  appId: number;
+  /** null: a sign-in to the builder (131); username is then the provider's, not resolved to an account */
+  appId: number | null;
   next: string | null;
   username: string;
   groups: string[];
+  /** builder sign-ins: the identity, for devsso.ts */
+  identity?: { subject: string; name: string | null; email: string | null; mayLink: boolean };
+  /** builder: the signed-in developer who links this identity (Security page) */
+  link?: string | null;
 }
 
 /** Callback: validate state/browser, exchange the code, verify the ID token, resolve the account. */
@@ -132,7 +154,7 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
   const code = params.get('code') ?? '';
   const pending = await owner.one(
     `delete from meta.sso_pending where state = $1 and provider_id = $2 and created_at > now() - make_interval(mins => $3)
-     returning app_id, code_verifier, nonce, browser_hash, next`,
+     returning app_id, code_verifier, nonce, browser_hash, next, link_username`,
     [state, p.id, PENDING_MINUTES],
   );
   if (!pending) throw new SsoError('This sign-in link has expired or was already used. Please try again.');
@@ -181,6 +203,14 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
 
   // an unverified e-mail address never links an existing account
   const verified = p.username_claim !== 'email' || payload.email_verified === true;
+  if (pending.app_id === null) {
+    // the builder: devsso.ts finds the developer (sprint 129)
+    const email = payload.email_verified === false ? null : typeof payload.email === 'string' ? payload.email : null;
+    return {
+      appId: null, next: pending.next, username, groups, link: pending.link_username,
+      identity: { subject: payload.sub, name: typeof payload.name === 'string' ? payload.name : null, email, mayLink: verified },
+    };
+  }
   const account = await resolveAccount(p, payload, username, { mayLink: verified });
   return { appId: pending.app_id, next: pending.next, username: account, groups };
 }

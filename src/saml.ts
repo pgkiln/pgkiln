@@ -76,7 +76,7 @@ function client(p: Provider, cache: CacheProvider) {
 }
 
 /** Start: the IdP URL with the AuthnRequest, and the browser-binding cookie value. */
-export async function startSamlSignIn(p: Provider, appId: number, next: string | undefined) {
+export async function startSamlSignIn(p: Provider, appId: number | null, next: string | undefined, link?: string) {
   const state = b64url(randomBytes(32));
   const browserKey = b64url(randomBytes(32));
   await owner.query(`delete from meta.sso_pending where created_at < now() - make_interval(mins => $1)`, [PENDING_MINUTES]);
@@ -86,9 +86,9 @@ export async function startSamlSignIn(p: Provider, appId: number, next: string |
   if (!requestId) throw new SsoError('The AuthnRequest has no ID.');
   // code_verifier is unused for SAML; nonce holds the AuthnRequest ID the response must answer
   await owner.query(
-    `insert into meta.sso_pending (state, app_id, provider_id, code_verifier, nonce, browser_hash, next)
-     values ($1, $2, $3, '', $4, $5, $6)`,
-    [state, appId, p.id, requestId, sha256(browserKey), next ?? null],
+    `insert into meta.sso_pending (state, app_id, provider_id, code_verifier, nonce, browser_hash, next, link_username)
+     values ($1, $2, $3, '', $4, $5, $6, $7)`,
+    [state, appId, p.id, requestId, sha256(browserKey), next ?? null, link ?? null],
   );
   return { url, browserKey };
 }
@@ -99,7 +99,7 @@ const values = (v: unknown): string[] => (v === undefined || v === null ? [] : (
 export async function finishSamlSignIn(p: Provider, body: { SAMLResponse?: string; RelayState?: string }, browserKey: string | undefined): Promise<SsoResult> {
   const pending = await owner.one(
     `delete from meta.sso_pending where state = $1 and provider_id = $2 and created_at > now() - make_interval(mins => $3)
-     returning app_id, nonce, browser_hash, next`,
+     returning app_id, nonce, browser_hash, next, link_username`,
     [body.RelayState ?? '', p.id, PENDING_MINUTES],
   );
   if (!pending) throw new SsoError('This sign-in has expired or was already used. Please try again.');
@@ -117,8 +117,14 @@ export async function finishSamlSignIn(p: Provider, body: { SAMLResponse?: strin
   if (!profile?.nameID) throw new SsoError('The SAML response names no user.');
   const username = p.username_claim === 'nameID' ? profile.nameID : values(profile[p.username_claim])[0];
   if (!usableUsername(username)) throw new SsoError(`The SAML response has no usable "${p.username_claim}" attribute.`);
-  const account = await resolveAccount(p, { sub: profile.nameID, name: values(profile.displayName ?? profile.cn)[0], email: profile.email ?? profile.mail }, username);
-  return { appId: pending.app_id, next: pending.next, username: account, groups: values(profile[p.groups_claim]) };
+  const name = values(profile.displayName ?? profile.cn)[0];
+  const email = values(profile.email ?? profile.mail)[0];
+  const groups = values(profile[p.groups_claim]);
+  if (pending.app_id === null)
+    // the builder: devsso.ts finds the developer (sprint 129)
+    return { appId: null, next: pending.next, username, groups, link: pending.link_username, identity: { subject: profile.nameID, name: name ?? null, email: email ?? null, mayLink: true } };
+  const account = await resolveAccount(p, { sub: profile.nameID, name, email: profile.email ?? profile.mail }, username);
+  return { appId: pending.app_id, next: pending.next, username: account, groups };
 }
 
 /** Service provider metadata (entity ID, ACS) to register pgkiln at the IdP. */

@@ -14,6 +14,7 @@ import { clientIp, logActivity, saveState, type Session } from '../session.ts';
 import { ALGORITHMS, newChallenge, relyingParty, verifyRegistration, WebAuthnError } from '../webauthn.ts';
 import { tr } from './i18n.ts';
 import { isAdmin } from './locks.ts';
+import { identitiesRegion } from './builder-sso.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 
 // (sprint 126, SEC-2 and SEC-6) Developer › Security: a developer's second factors (authenticator apps, TOTP)
@@ -135,7 +136,8 @@ export async function securityRoutes(app: FastifyInstance) {
           ${days || trusted ? html`<h3>${tx('mfa.trusted_title')}</h3>
             <p class="u-mt0">${days ? tx('mfa.trusted_count', { n: trusted, days }) : tx('mfa.trusted_off')}</p>
             ${trusted ? html`<form method="post" action="${BASE}/security/forget-browsers">${csrf(s)}<button class="btn">${tx('mfa.forget_browsers')}</button></form>` : ''}` : ''}`)}
-      </div>`;
+      </div>
+      ${await identitiesRegion(s, typeof req.query?.linked === 'string' ? req.query.linked : undefined)}`;
     return send(reply, s, shell(s, tx('mfa.title'), [[tx('mfa.title')]], main, 'developers'));
   });
 

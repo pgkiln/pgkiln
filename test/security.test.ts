@@ -11445,7 +11445,8 @@ describe('sprint 126: two-factor sign-in for developers', () => {
     const b = await signIn(U1);
     await b.get('/builder/security');
     for (const url of ['/builder/security/totp/start', '/builder/security/codes', '/builder/instance/mfa', '/builder/developers/reset-2fa',
-      '/builder/security/passkey/options', '/builder/security/passkey', '/builder/security/forget-browsers', '/builder/workspaces/1/mfa'])
+      '/builder/security/passkey/options', '/builder/security/passkey', '/builder/security/forget-browsers', '/builder/workspaces/1/mfa',
+      '/builder/workspaces/1/sso', '/builder/developers/break-glass', '/builder/developers/identity/1/unlink', '/builder/security/link/x', '/builder/users/providers/1/builder'])
       assert.equal((await b.post(url, { __csrf: 'forged' })).statusCode, 403, url);
   });
 
@@ -11465,6 +11466,32 @@ describe('sprint 126: two-factor sign-in for developers', () => {
     assert.equal(r.statusCode, 303);
     assert.notEqual((await c.get('/builder/apps')).statusCode, 200);
     await owner.query('delete from meta.developer where username = $1', [U3]);
+  });
+
+  test('(sprint 129) builder single sign-on: break-glass, provider settings, the workspace rule and others\' identities need the right role', async () => {
+    const U3 = 'sec129_c';
+    const OTHER = 'sec129_other';
+    await owner.query('delete from meta.developer where username = any($1)', [[U3, OTHER]]);
+    await owner.query(`delete from meta.auth_provider where name = 'sec129'`);
+    await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false), ($3, meta.hash_password($2), true)', [U3, PW, OTHER]);
+    const p = await owner.one<{ id: number }>(`insert into meta.auth_provider (name, display_name, issuer, client_id) values ('sec129', 'Sec 129', 'https://idp.example.org', 'x') returning id`);
+    const i = await owner.one<{ id: number }>(`insert into meta.developer_identity (provider_id, subject, username) values ($1, 'sub-other', $2) returning id`, [p!.id, OTHER]);
+    const b = await signIn(U3);
+    await b.get('/builder/security');
+    assert.equal((await b.post('/builder/developers/break-glass', { __csrf: b.lastCsrf, username: U3, break_glass: 'true' })).statusCode, 403);
+    assert.notEqual((await b.post(`/builder/users/providers/${p!.id}/builder`, { __csrf: b.lastCsrf, builder: 'true', builder_auto_create: 'true' })).statusCode, 302);
+    assert.equal((await b.post('/builder/workspaces/1/sso', { __csrf: b.lastCsrf, sso_only: 'true' })).statusCode, 403);
+    assert.equal((await b.post(`/builder/developers/identity/${i!.id}/unlink`, { __csrf: b.lastCsrf })).statusCode, 404);
+    // a provider that does not sign developers in can't be started or linked
+    assert.equal((await b.get('/builder/sso/sec129')).statusCode, 404);
+    assert.equal((await b.post('/builder/security/link/sec129', { __csrf: b.lastCsrf })).statusCode, 404);
+    const row = await owner.one<{ builder: boolean; auto: boolean }>('select builder, builder_auto_create as auto from meta.auth_provider where id = $1', [p!.id]);
+    assert.deepEqual(row, { builder: false, auto: false });
+    assert.equal((await owner.one<{ sso_only: boolean }>('select sso_only from meta.workspace where id = 1'))!.sso_only, false);
+    assert.equal((await owner.one<{ break_glass: boolean }>('select break_glass from meta.developer where username = $1', [U3]))!.break_glass, false);
+    assert.ok(await owner.one('select 1 from meta.developer_identity where id = $1', [i!.id]));
+    await owner.query(`delete from meta.auth_provider where name = 'sec129'`);
+    await owner.query('delete from meta.developer where username = any($1)', [[U3, OTHER]]);
   });
 
   test('a developer can\'t remove another developer\'s factor', async () => {

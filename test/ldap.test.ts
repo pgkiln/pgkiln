@@ -59,6 +59,8 @@ before(async () => {
 async function cleanup() {
   await owner.query(`delete from meta.ldap_directory where name in ('test-ldap', 'down', 'builder-test')`);
   await owner.query(`delete from meta.account where username in ('dora', 'eve')`);
+  await owner.query(`delete from meta.developer where username in ('dora', 'eve')`);
+  await owner.query(`delete from meta.activity_log where app_id is null and detail like 'builder ldap:%'`);
   await owner.query(`update meta.app set ldap_directories = '{}', remember_me_days = null where id = $1`, [appId]);
   await owner.query(`delete from meta.app_group_role where app_id = $1 and group_name = 'hr-managers' and role = 'ldap-manager'`, [appId]);
 }
@@ -113,6 +115,32 @@ describe('LDAP sign-in', () => {
     const eve = await signIn('eve', 'eve-ldap');
     assert.equal(eve.res.statusCode, 403);
     assert.match(eve.res.body, /eve/);
+  });
+
+  test('(sprint 129) developers sign in to the builder with a directory: from its developers group, linked by entry', async (t) => {
+    if (!reachable) return t.skip(`no LDAP server at ${URL}`);
+    await owner.query(`update meta.ldap_directory set builder = true, builder_auto_create = true, builder_group = 'hr-managers' where name = 'test-ldap'`);
+    const b = new Browser(app);
+    assert.match((await b.get('/builder/login')).body, /<option value="ldap:test-ldap">Test directory<\/option>/);
+    const post = (username: string, password: string) => b.post('/builder/login', { __csrf: b.lastCsrf, method: 'ldap:test-ldap', username, password });
+    assert.equal((await post('eve', 'eve-ldap')).headers.location, '/builder/login', 'not in the developers group');
+    assert.equal(await owner.one(`select 1 from meta.developer where username = 'eve'`), undefined);
+    await b.get('/builder/login');
+    assert.equal((await post('dora', 'wrong')).headers.location, '/builder/login');
+    await b.get('/builder/login');
+    const res = await post('dora', 'dora-ldap');
+    assert.equal(res.headers.location, '/builder/home');
+    const d = await owner.one(`select d.is_admin, d.email, i.subject from meta.developer d join meta.developer_identity i on i.username = d.username
+                                 join meta.ldap_directory l on l.id = i.directory_id where d.username = 'dora' and l.name = 'test-ldap'`);
+    assert.equal(d.is_admin, false);
+    assert.equal(d.email, 'dora@example.org');
+    assert.match(d.subject, /^[0-9a-f-]{36}$/, 'linked by entryUUID');
+    assert.equal((await b.get('/builder/developers')).statusCode, 200);
+    // an unknown or a non-builder directory is refused
+    await owner.query(`update meta.ldap_directory set builder = false where name = 'test-ldap'`);
+    const c = new Browser(app);
+    await c.get('/builder/login');
+    assert.equal((await c.post('/builder/login', { __csrf: c.lastCsrf, method: 'ldap:test-ldap', username: 'dora', password: 'dora-ldap' })).headers.location, '/builder/login');
   });
 
   test('wrong or empty passwords and filter injection are refused', async (t) => {
