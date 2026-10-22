@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.64.0] - 2026-10-22
+
 ### Added
 - **Two-factor sign-in for application users** (SEC-3, part 1; APEX has none for its accounts): Application
   settings → Sign-in methods → *Two-factor sign-in*: off, optional, required, or required for some roles. After the
