@@ -27,7 +27,9 @@ import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
 import { cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
-import { checkSecondFactor, codesLeft, hasFactor, leavesTooFewAdmins } from '../mfa.ts';
+import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeysOf, trustBrowser, trustDays, usePasskey } from '../mfa.ts';
+import { giveChallenge, takeChallenge } from './security.ts';
+import { relyingParty, verifyAssertion, WebAuthnError } from '../webauthn.ts';
 import { chooseLanguage, langCookieOptions, languageRoutes, signInLanguageLinks } from './language.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
@@ -150,8 +152,9 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, tx(workspace ? 'signin.invalid_ws' : 'signin.invalid'), 'error');
       return back(reply, s, again);
     }
-    // (sprint 126, SEC-2) a developer with a second factor: the password was right, the session comes after the code
-    if (await hasFactor(dev.username)) {
+    // (sprint 126, SEC-2) a developer with a second factor: the password was right, the session comes after the code;
+    // (sprint 127) unless this browser was trusted after a second factor, for the instance's number of days
+    if ((await hasFactor(dev.username)) && !(await isTrustedBrowser(dev.username, req.cookies?.[TRUST_COOKIE]))) {
       s.state.__MFA = JSON.stringify({ u: dev.username, ws: ws ? String(ws.id) : null, w: workspace, next, remember: req.body?.remember === '1', weak: password === 'admin' || password === dev.username, at: Date.now() });
       await saveState(s);
       return reply.redirect(`${BASE}/login/2fa`, 303);
@@ -187,8 +190,17 @@ export async function builderRoutes(app: FastifyInstance) {
     return reply.redirect(next, 303);
   }
 
-  // (sprint 126, SEC-2) the second step: a code from the authenticator app, or a recovery code
+  // (sprint 126, SEC-2) the second step: a code from the authenticator app, or a recovery code;
+  // (sprint 127) or a passkey, and "trust this browser" when the instance allows it
   const MFA_SECONDS = 300;
+  const TRUST_COOKIE = 'pgkiln_btrust';
+  const trustThisBrowser = async (req: Req, reply: Parameters<typeof back>[0], username: string) => {
+    const days = await trustDays();
+    if (!days || req.body?.trust !== '1') return;
+    const token = await trustBrowser(username, days, String(req.headers['user-agent'] ?? ''));
+    reply.setCookie(TRUST_COOKIE, token, { path: BASE, httpOnly: true, sameSite: 'lax', maxAge: days * 86400, secure: process.env.COOKIE_SECURE === 'true' });
+    logActivity({ username, event: '2fa_trusted_browser', ip: clientIp(req), detail: `${days} days` });
+  };
   const pendingMfa = (s: { state: Record<string, any> }) => {
     try {
       const p = JSON.parse(String(s.state.__MFA ?? ''));
@@ -209,6 +221,7 @@ export async function builderRoutes(app: FastifyInstance) {
     }
     const error = takeFlash(s, '__ERROR');
     await saveState(s);
+    const [keys, days] = await Promise.all([passkeysOf(p.u, relyingParty(req).rpId), trustDays()]);
     return reply.type('text/html').send(documentShell(
       `${tx('mfa.step_title')} · ${tx('shell.builder')}`,
       html`<main class="signin">
@@ -223,10 +236,14 @@ export async function builderRoutes(app: FastifyInstance) {
             <p class="muted u-mt0">${tx('mfa.step_intro', { user: p.u })}</p>
             ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
             ${csrf(s)}
+            ${keys.length ? html`<input type="hidden" name="credentialId"><input type="hidden" name="clientDataJSON"><input type="hidden" name="authenticatorData"><input type="hidden" name="signature">
+              <button class="btn btn-hot signin-submit" hidden data-passkey="${BASE}/login/2fa/passkey/options" data-passkey-submit="${BASE}/login/2fa/passkey" data-passkey-error="${tx('mfa.passkey_failed')}">${icon('fingerprint')} ${tx('mfa.use_passkey')}</button>
+              <p class="small" role="status" data-passkey-status></p>` : ''}
             <div class="field signin-field"><label class="label" for="f_code">${tx('mfa.code')}</label>
               <div class="signin-input">${icon('key')}<input id="f_code" name="code" required autocomplete="one-time-code" autofocus maxlength="20" spellcheck="false" autocapitalize="off"></div>
               <small class="help">${tx('mfa.code_help')}</small></div>
-            <button class="btn btn-hot signin-submit">${tx('mfa.verify')}</button>
+            ${days ? html`<label class="check"><input type="checkbox" name="trust" value="1"> ${tx('mfa.trust_browser', { days })}</label>` : ''}
+            <button class="btn${keys.length ? '' : ' btn-hot'} signin-submit">${tx('mfa.verify')}</button>
             <p class="muted small signin-hint"><a href="${BASE}/login">${tx('mfa.cancel')}</a> · ${tx('mfa.locked_out')}</p>
           </form>
         </section>
@@ -265,9 +282,67 @@ export async function builderRoutes(app: FastifyInstance) {
       const left = await codesLeft(p.u);
       await logActivity({ username: p.u, event: '2fa_recovery_used', ip, detail: `${left} left` });
       // to the Security page: one code fewer, maybe time for new ones
+      await trustThisBrowser(req, reply, p.u);
       return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: `${BASE}/security`, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (recovery code)' });
     }
+    await trustThisBrowser(req, reply, p.u);
     return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa' });
+  });
+
+  // (sprint 127) the second step with a passkey: options for navigator.credentials.get(), then the browser's answer
+  app.post(`${BASE}/login/2fa/passkey/options`, async (req: Req, reply) => {
+    const s = await getSession(req, reply, null, BASE);
+    const p = pendingMfa(s);
+    if (req.body?.__csrf !== s.csrf_token || !p) return reply.code(403).send('Sign in again.');
+    const rp = relyingParty(req);
+    const keys = await passkeysOf(p.u, rp.rpId);
+    if (!keys.length) return reply.code(404).send('No passkey for this site.');
+    const challenge = giveChallenge(s as Parameters<typeof giveChallenge>[0], 'get');
+    await saveState(s);
+    reply.header('cache-control', 'no-store');
+    return reply.send({ mode: 'get', challenge, rpId: rp.rpId, allow: keys.map((k) => ({ id: k.credential_id, transports: k.transports })) });
+  });
+  app.post(`${BASE}/login/2fa/passkey`, async (req: Req, reply) => {
+    const s = await getSession(req, reply, null, BASE);
+    const ip = clientIp(req);
+    const picked = validBuilderLanguage(s.state.__BLANG);
+    const tx = translatorFor(picked ?? cookieLanguage(req));
+    const p = pendingMfa(s);
+    const challenge = takeChallenge(s as Parameters<typeof takeChallenge>[0], 'get');
+    if (req.body?.__csrf !== s.csrf_token || !p) {
+      delete s.state.__MFA;
+      flash(s, tx(p ? 'signin.expired' : 'mfa.expired'), 'error');
+      return back(reply, s, `${BASE}/login`);
+    }
+    if (await loginThrottled(null, p.u, ip)) {
+      logActivity({ username: p.u, event: 'login_locked', ip, detail: 'builder 2fa' });
+      delete s.state.__MFA;
+      flash(s, tx('signin.throttled'), 'error');
+      return back(reply, s, `${BASE}/login`);
+    }
+    const rp = relyingParty(req);
+    const key = (await passkeysOf(p.u, rp.rpId)).find((k) => k.credential_id === String(req.body?.credentialId ?? ''));
+    let why = 'unknown passkey';
+    if (key && challenge) {
+      try {
+        const r = verifyAssertion(
+          { clientDataJSON: String(req.body?.clientDataJSON ?? ''), authenticatorData: String(req.body?.authenticatorData ?? ''), signature: String(req.body?.signature ?? '') },
+          { alg: key.alg, jwk: key.public_key, signCount: Number(key.sign_count) }, { challenge, ...rp });
+        if (await usePasskey(key.id, key.sign_count, r.signCount)) why = '';
+        else why = 'used at the same time elsewhere';
+      } catch (e) {
+        why = e instanceof WebAuthnError ? e.message : 'unreadable answer';
+      }
+    } else if (!challenge) why = 'no or an expired challenge';
+    if (why) {
+      await logActivity({ username: p.u, event: 'login_failed', ip, detail: `builder 2fa passkey: ${why}` });
+      flash(s, tx('mfa.passkey_failed'), 'error');
+      return back(reply, s, `${BASE}/login/2fa`);
+    }
+    const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [p.u]);
+    if (!dev) return back(reply, s, `${BASE}/login`);
+    await trustThisBrowser(req, reply, p.u);
+    return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (passkey)' });
   });
 
   app.post(`${BASE}/logout`, async (req: Req, reply) => {
@@ -865,8 +940,9 @@ export async function builderRoutes(app: FastifyInstance) {
         [s.username, req.body?.current ?? '', req.body?.password],
       );
       if (r.rowCount !== 1) throw new Error(tr(s)('dev.err.current'));
-      // End all other builder sessions of this developer.
+      // End all other builder sessions of this developer, and (sprint 127) forget the browsers they trusted.
       await owner.query('delete from meta.session where app_id is null and username = $1 and id <> $2', [s.username, s.id]);
+      await forgetBrowsers(s.username!);
       delete s.state.__WEAK;
       flash(s, tr(s)('dev.pw_changed'));
     } catch (e) {

@@ -11444,7 +11444,8 @@ describe('sprint 126: two-factor sign-in for developers', () => {
   test('the Security page\'s forms need the CSRF token', async () => {
     const b = await signIn(U1);
     await b.get('/builder/security');
-    for (const url of ['/builder/security/totp/start', '/builder/security/codes', '/builder/instance/mfa', '/builder/developers/reset-2fa'])
+    for (const url of ['/builder/security/totp/start', '/builder/security/codes', '/builder/instance/mfa', '/builder/developers/reset-2fa',
+      '/builder/security/passkey/options', '/builder/security/passkey', '/builder/security/forget-browsers'])
       assert.equal((await b.post(url, { __csrf: 'forged' })).statusCode, 403, url);
   });
 

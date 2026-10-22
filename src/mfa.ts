@@ -9,6 +9,8 @@ import { decryptSecret, encryptSecret } from './secrets.ts';
 // setting; it can only be required while two administrators (or every administrator, when there are fewer)
 // have a working second factor, so it never locks the instance out. The command line resets a developer's
 // factors and turns the policy off without signing in (src/cli/main.ts, `pgkiln admin`).
+// (sprint 127) Passkeys and security keys (WebAuthn, src/webauthn.ts) are the second kind of factor, and a
+// developer may trust a browser for a number of days (meta.setting mfa_trust_days; 0 = never).
 
 export const TOTP_STEP = 30;
 export const TOTP_DIGITS = 6;
@@ -92,10 +94,10 @@ export const hashCode = (code: string) => createHash('sha256').update(normaliseC
 
 // ---------------------------------------------------------------- the developer's factors
 
-export interface Factor { id: number; kind: 'totp'; name: string; created_at: string; last_used_at: string | null }
+export interface Factor { id: number; kind: 'totp' | 'passkey'; name: string; created_at: string; last_used_at: string | null; rp_id: string | null }
 
 export async function factorsOf(username: string, db: Pick<pg.ClientBase, 'query'> = owner.pool): Promise<Factor[]> {
-  return (await db.query<Factor>('select id, kind, name, created_at, last_used_at from meta.developer_factor where username = $1 order by id', [username])).rows;
+  return (await db.query<Factor>('select id, kind, name, created_at, last_used_at, rp_id from meta.developer_factor where username = $1 order by kind desc, id', [username])).rows;
 }
 
 /** Recovery codes left (confirmed, unused). */
@@ -114,6 +116,76 @@ export async function addTotp(username: string, name: string, secret: string, st
     `insert into meta.developer_factor (username, kind, name, secret_enc, last_step, last_used_at) values ($1, 'totp', $2, $3, $4, now())`,
     [username, name.trim().slice(0, 60) || 'Authenticator', encryptSecret(secret), step],
   );
+}
+
+// ---------------------------------------------------------------- passkeys (sprint 127)
+
+export interface Passkey { id: number; name: string; credential_id: string; public_key: Record<string, string>; alg: number; sign_count: string; transports: string[] }
+
+/** Add a passkey (after src/webauthn.ts checked the browser's answer). */
+export async function addPasskey(username: string, name: string, p: { credentialId: string; jwk: Record<string, string>; alg: number; signCount: number; rpId: string; transports: string[] }) {
+  await owner.query(
+    `insert into meta.developer_factor (username, kind, name, credential_id, public_key, alg, sign_count, rp_id, transports, last_used_at)
+     values ($1, 'passkey', $2, $3, $4, $5, $6, $7, $8, now())`,
+    [username, name.trim().slice(0, 60) || 'Passkey', p.credentialId, JSON.stringify(p.jwk), p.alg, p.signCount, p.rpId,
+     p.transports.filter((t) => /^[a-z-]{1,20}$/.test(t)).slice(0, 8)],
+  );
+}
+
+/** The developer's passkeys for this relying party (a passkey only works on the domain it was made for). */
+export async function passkeysOf(username: string, rpId: string): Promise<Passkey[]> {
+  return (await owner.query<Passkey>(
+    `select id, name, credential_id, public_key, alg, sign_count, transports from meta.developer_factor
+      where username = $1 and kind = 'passkey' and rp_id = $2 order by id`, [username, rpId])).rows;
+}
+
+/** Record a sign-in with a passkey; false when another sign-in moved the counter first (a replay or a clone). */
+export async function usePasskey(id: number, oldCount: string, newCount: number): Promise<boolean> {
+  return !!(await owner.query(
+    'update meta.developer_factor set sign_count = $3, last_used_at = now() where id = $1 and sign_count = $2::bigint',
+    [id, oldCount, newCount])).rowCount;
+}
+
+// ---------------------------------------------------------------- trusted browsers (sprint 127)
+
+/** Days a browser may skip the second step after one (0 = never). */
+export async function trustDays(): Promise<number> {
+  const v = Number((await owner.one<{ value: string }>(`select value from meta.setting where name = 'mfa_trust_days'`))?.value);
+  return Number.isInteger(v) && v >= 0 && v <= 90 ? v : 0;
+}
+
+export async function setTrustDays(days: number) {
+  await owner.query(`insert into meta.setting (name, value) values ('mfa_trust_days', $1) on conflict (name) do update set value = excluded.value`, [String(days)]);
+  if (days === 0) await owner.query('delete from meta.developer_trusted_browser');
+  else await owner.query(`delete from meta.developer_trusted_browser where expires_at > now() + make_interval(days => $1)`, [days]);
+}
+
+const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
+
+/** Trust this browser: a random token for the cookie (only its hash is stored). */
+export async function trustBrowser(username: string, days: number, userAgent: string): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  await owner.query(
+    `insert into meta.developer_trusted_browser (token_hash, username, expires_at, user_agent) values ($1, $2, now() + make_interval(days => $3), $4)`,
+    [tokenHash(token), username, days, userAgent.slice(0, 200)]);
+  return token;
+}
+
+/** Whether this browser's token is trusted for this developer (and trusting is still on). */
+export async function isTrustedBrowser(username: string, token: string | undefined): Promise<boolean> {
+  if (!token || token.length > 100) return false;
+  return !!(await owner.one(
+    `select 1 as ok from meta.developer_trusted_browser t where token_hash = $1 and username = $2 and expires_at > now()
+        and exists (select 1 from meta.setting where name = 'mfa_trust_days' and value <> '0')`,
+    [tokenHash(token), username]));
+}
+
+export async function trustedBrowsers(username: string): Promise<number> {
+  return (await owner.one<{ n: number }>('select count(*)::int as n from meta.developer_trusted_browser where username = $1 and expires_at > now()', [username]))!.n;
+}
+
+export async function forgetBrowsers(username: string) {
+  await owner.query('delete from meta.developer_trusted_browser where username = $1', [username]);
 }
 
 /** New recovery codes (the old ones stop working); shown once, counted only when confirmed. */
@@ -230,6 +302,7 @@ export async function resetFactors(username: string): Promise<boolean> {
     if (!known) return false;
     await c.query('delete from meta.developer_factor where username = $1', [username]);
     await c.query('delete from meta.developer_recovery_code where username = $1', [username]);
+    await c.query('delete from meta.developer_trusted_browser where username = $1', [username]);
     await c.query('delete from meta.session where app_id is null and username = $1', [username]);
     return true;
   });

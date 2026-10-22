@@ -40,8 +40,9 @@ joins the workspace you are working in; one made with the command line or SQL jo
 ### Two-factor sign-in
 
 (0.60) Developers can sign in to the builder with a second factor: a 6-digit code from an **authenticator app**
-(Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden, any app for TOTP codes per RFC 6238).
-APEX has no built-in second factor for the builder; there it comes from an identity provider.
+(Google Authenticator, Microsoft Authenticator, 1Password, Bitwarden, any app for TOTP codes per RFC 6238) or
+(0.61) a **passkey**: the fingerprint reader, face recognition or screen lock of a laptop or phone, or a security key
+(WebAuthn). APEX has no built-in second factor for the builder; there it comes from an identity provider.
 
 **Setting it up.** Your account menu → **Two-factor sign-in** opens **Security** (`/builder/security`):
 
@@ -49,10 +50,23 @@ APEX has no built-in second factor for the builder; there it comes from an ident
 2. Enter the code the app shows, give the app a name (*Phone*) and **Confirm and turn on**.
 3. You get **ten recovery codes**, shown once. Save them away from your phone and tick *I saved these codes*.
 
-From then on, signing in asks for a code after the password. A recovery code works instead of an app code, once;
+**A passkey** instead (or as well): on Security, give it a name (*Laptop*) and click **Add a passkey**; the browser asks
+for your fingerprint, face, screen lock or security key. Add one on each device you use, or one that syncs (iCloud
+Keychain, Google Password Manager, 1Password). The first factor you add, app or passkey, gives you the recovery codes.
+
+From then on, signing in asks for a code, or a passkey with **Use a passkey**, after the password. A recovery code works instead of an app code, once;
 signing in with one opens Security, which shows how many are left and makes new ones (the old ones stop working).
-Removing an app asks for your password. Each code is accepted once, and one 30-second step either side of the
-server's clock.
+Removing an app or a passkey asks for your password. Each code is accepted once, and one 30-second step either side
+of the server's clock.
+
+A passkey belongs to the **address** it was made at. With `PUBLIC_URL` set, that is its host name; otherwise the
+host name in the browser's address bar. Passkeys need a host name: at `http://127.0.0.1:3100` the page asks you to
+use `http://localhost:3100` instead. If the builder moves to another domain, passkeys made for the old one are
+marked *for old.example.com* and stop working there; add new ones (apps and recovery codes keep working). To use
+one passkey on several sub-domains, set `PGKILN_RP_ID` to the parent domain (`example.com` for
+`builder.example.com`; [chapter 1](01-installation.md)). Passkeys are public keys: they keep working when the
+instance key changes. pgkiln accepts any authenticator (attestation *none*), checks the signature, the address and
+the relying party on every sign-in, and refuses a key whose signature counter goes back (a copied key).
 
 The app's secret is stored encrypted with the instance key (`PGKILN_SECRET_KEY`, [chapter 1](01-installation.md));
 without the key the page says so and you can't add an app. Recovery codes are stored as SHA-256 hashes, so they keep
@@ -62,6 +76,12 @@ working if the key is lost. Wrong codes count with wrong passwords for the [sign
 sign-in*: **Nobody** (optional, the default), **Administrators** or **All developers**, with a **grace period**
 (default 7 days). During the grace period a developer without an app sees a reminder on every page; after it, they
 see only their Security page until they add one. The region lists the developers who have no app yet.
+
+**Trusted browsers** (0.61): *Trust a browser (days)* in the same region (0, the default: never) adds *Trust this
+browser for N days* to the second step. A trusted browser skips the second step for that developer until the days
+are over; only a hash of the cookie's random token is stored. The developer's Security page shows how many browsers
+they trust and **Forget trusted browsers**; changing the password, removing a factor or a reset forgets them too, and
+setting the days to 0 stops every trusted browser at once.
 
 **So nobody is locked out:**
 
@@ -79,8 +99,9 @@ see only their Security page until they add one. The region lists the developers
 
 | Situation | What to do |
 |---|---|
-| Lost your phone, still have recovery codes | Sign in with a recovery code, remove the old app on Security and add the new phone |
-| Lost phone and codes | Ask another administrator to reset your two-factor sign-in on Developers |
+| Lost your phone or key, still have recovery codes | Sign in with a recovery code, remove the old app or passkey on Security and add the new one |
+| Lost phone, keys and codes | Ask another administrator to reset your two-factor sign-in on Developers |
+| A passkey no longer works after a move to another domain | Sign in with an app code or a recovery code and add a new passkey ([above](#two-factor-sign-in)) |
 | No administrator can sign in | On the server: `pgkiln admin reset-2fa <developer> --reason "…"` ([chapter 18](18-cli.md)), then sign in with the password |
 | The policy locks everyone out | On the server: `pgkiln admin set-2fa-policy off` |
 | Codes are always wrong | Check the time on the phone and on the server (codes allow 30 seconds either way) |

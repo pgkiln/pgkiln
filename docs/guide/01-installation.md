@@ -141,7 +141,8 @@ which is read at startup; real environment variables take precedence.
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
-| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgkiln at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it |
+| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgkiln at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it, and developers' passkeys belong to its host name |
+| `PGKILN_RP_ID` | the host of `PUBLIC_URL` | (0.61) A parent domain for developers' passkeys (`example.com` when the builder is at `builder.example.com`), so one passkey works on its sub-domains. Ignored unless it is the host or a parent of it |
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST serves the REST API ([chapter 13](13-rest-api.md)) |
 | `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS: marks cookies `Secure` and sends HSTS |

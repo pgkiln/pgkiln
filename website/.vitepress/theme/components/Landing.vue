@@ -17,7 +17,7 @@ const features = [
   { icon: '⚡', title: 'Generated from your tables', text: 'Point a wizard at a table and get a report and form, a grid, cards, a calendar, a chart, a map or a faceted search, with defaults from the catalog.' },
   { icon: '🛡️', title: 'Secure by default', text: 'A least-privilege runtime role, a database role per app, row level security, checksummed URLs, CSRF protection, a strict CSP, and isolated workspaces with their own database logins for teams or tenants.' },
   { icon: '🐘', title: 'Your logic stays in PostgreSQL', text: 'Business rules live in PL/pgSQL. Raise an exception and the message appears on the right form field.' },
-  { icon: '🔐', title: 'Sign-in your way', text: 'Built-in accounts with roles, OpenID Connect, SAML 2.0, LDAP, HTTP headers or database accounts, and authorization schemes.' },
+  { icon: '🔐', title: 'Sign-in your way', text: 'Built-in accounts with roles, OpenID Connect, SAML 2.0, LDAP, HTTP headers or database accounts, and authorization schemes. The builder itself has two-factor sign-in with passkeys and authenticator apps, built in.' },
   { icon: '📱', title: 'Phone, tablet and desktop', text: 'Responsive pages, installable as a Progressive Web App, with offline pages and forms sent when the network is back.' },
   { icon: '🔌', title: 'REST and e-mail', text: 'REST modules and OAuth clients for your API, PostgREST alongside, regions on other web services, and e-mail through SMTP with OAuth2, Microsoft 365, Amazon SES, Resend and more.' },
   { icon: '🧩', title: 'Extend it', text: 'Template components and plug-ins with their own JavaScript, CSS and PL/pgSQL, packed in one file.' },
