@@ -98,7 +98,8 @@ APEX's "Social Sign-In" scheme, with identity-provider groups mapped to applicat
 in to a second app is then silent via the identity provider's session. See
 [chapter 8](08-security.md#single-sign-on-openid-connect). **SAML 2.0** providers and **LDAP /
 Active Directory** passwords work the same way (groups → roles), and *Keep me signed in* matches
-APEX's persistent authentication. **Database accounts** sign in with PostgreSQL login roles, and
+APEX's persistent authentication. Unlike APEX, the user directory's accounts can have
+[two-factor sign-in](08-security.md#two-factor-sign-in) (an authenticator app), per application and per role. **Database accounts** sign in with PostgreSQL login roles, and
 **custom authentication** calls your own PL/pgSQL function (APEX: a custom PL/SQL scheme), see
 [chapter 8](08-security.md#custom-authentication-a-plpgsql-function). The **login page** (APEX: page 9999 with
 the Login region template) is a page you design in the Page Designer around a **Login** region, and

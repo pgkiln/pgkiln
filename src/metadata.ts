@@ -78,6 +78,9 @@ export interface App {
   password_reset: boolean;
   /** (067) session sharing group (src/sharedlogin.ts) */
   session_group: string | null;
+  /** (132) two-step sign-in for the application's users (src/account-mfa.ts) */
+  mfa: 'off' | 'optional' | 'required' | 'roles';
+  mfa_roles: string[];
   /** LDAP directories the password form checks after local accounts */
   ldap_directories: string[];
   /** Progressive Web App: installable, offline pages, offline form queue */
@@ -369,7 +372,7 @@ const agg = (table: string, fk: string, parent: string, appId: string) =>
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.version, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.login_page, a.password_reset, a.session_group, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
+    `select a.id, a.alias, a.name, a.version, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.login_page, a.password_reset, a.session_group, a.mfa, a.mfa_roles, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
             a.availability, a.availability_message, a.availability_users, a.feedback, a.error_function, a.session_warning_seconds, a.component_settings,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,

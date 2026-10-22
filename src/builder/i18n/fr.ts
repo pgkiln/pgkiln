@@ -1870,4 +1870,10 @@ export const fr: BuilderMessages = {
   'wsp.sso_off': 'Les développeurs de l’espace de travail peuvent de nouveau utiliser le mot de passe pgkiln.',
   'wsp.sso_no_break_glass': 'Donnez d’abord l’accès de secours à un administrateur (Développeurs), pour que quelqu’un puisse se connecter si le fournisseur d’identité tombe en panne.',
   'wsp.sso_link_first': 'Liez d’abord une identité sur votre page Sécurité, sinon vous ne pourriez plus vous connecter.',
+  'us.mfa_title': 'Connexion à deux facteurs',
+  'us.mfa_status': 'Applications d’authentification : {n}. Codes de récupération restants : {codes}.',
+  'us.mfa_none': 'Aucune application d’authentification pour l’instant.',
+  'us.mfa_reset_help': 'Supprime les applications d’authentification et les codes de récupération de {user} et le déconnecte partout. Là où une application exige la connexion à deux facteurs, une nouvelle application est ajoutée à la prochaine connexion. Journalisé.',
+  'us.mfa_reset_done': 'La connexion à deux facteurs de {user} a été réinitialisée.',
+  'us.mfa_reason_needed': 'Indiquez la raison de la réinitialisation.',
 };

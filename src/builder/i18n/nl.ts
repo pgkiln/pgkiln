@@ -1870,4 +1870,10 @@ export const nl: BuilderMessages = {
   'wsp.sso_off': 'De ontwikkelaars van de werkruimte mogen weer het pgkiln-wachtwoord gebruiken.',
   'wsp.sso_no_break_glass': 'Geef eerst een beheerder noodtoegang (Ontwikkelaars), zodat iemand kan aanmelden als de identiteitsprovider uitvalt.',
   'wsp.sso_link_first': 'Koppel eerst een identiteit op uw beveiligingspagina, anders kunt u zelf niet aanmelden.',
+  'us.mfa_title': 'Aanmelden in twee stappen',
+  'us.mfa_status': 'Authenticator-apps: {n}. Resterende herstelcodes: {codes}.',
+  'us.mfa_none': 'Nog geen authenticator-app.',
+  'us.mfa_reset_help': 'Verwijdert de authenticator-apps en herstelcodes van {user} en meldt het account overal af. Waar een applicatie aanmelden in twee stappen vereist, voegt de gebruiker bij de volgende aanmelding een nieuwe app toe. Wordt gelogd.',
+  'us.mfa_reset_done': 'Aanmelden in twee stappen van {user} is gereset.',
+  'us.mfa_reason_needed': 'Geef een reden voor de reset.',
 };

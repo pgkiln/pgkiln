@@ -1870,4 +1870,10 @@ export const es: BuilderMessages = {
   'wsp.sso_off': 'Los desarrolladores del espacio de trabajo pueden volver a usar la contraseña de pgkiln.',
   'wsp.sso_no_break_glass': 'Primero dé acceso de emergencia a un administrador (Desarrolladores), para que alguien pueda entrar si falla el proveedor de identidad.',
   'wsp.sso_link_first': 'Vincule primero una identidad en su página de seguridad, o usted mismo no podría iniciar sesión.',
+  'us.mfa_title': 'Inicio de sesión en dos pasos',
+  'us.mfa_status': 'Aplicaciones de autenticación: {n}. Códigos de recuperación restantes: {codes}.',
+  'us.mfa_none': 'Aún no hay ninguna aplicación de autenticación.',
+  'us.mfa_reset_help': 'Quita las aplicaciones de autenticación y los códigos de recuperación de {user} y cierra todas sus sesiones. Donde una aplicación exija el inicio de sesión en dos pasos, añadirá una aplicación nueva en su próximo inicio de sesión. Queda registrado.',
+  'us.mfa_reset_done': 'Se restableció el inicio de sesión en dos pasos de {user}.',
+  'us.mfa_reason_needed': 'Indique un motivo para el restablecimiento.',
 };

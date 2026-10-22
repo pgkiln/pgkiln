@@ -56,7 +56,7 @@ export async function useRemember(req: FastifyRequest, reply: FastifyReply, a: R
   );
   if (!row || !row.active) return clear(), null;
   // an expired password needs the password form; access may have been withdrawn
-  if (row.method === 'password' && (await passwordDaysLeft(row.username)) === 0) return clear(), null;
+  if (row.method.split('+')[0] === 'password' && (await passwordDaysLeft(row.username)) === 0) return clear(), null;
   const access = await ssoAccess(a.id, row.username, row.groups);
   if (!access.allowed) return clear(), null;
   return { username: row.username, roles: access.roles, groups: row.groups, method: row.method, expiresAt: new Date(row.expires_at) };

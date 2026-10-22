@@ -187,6 +187,14 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
     else if (!all.some((x) => x.kind === 'region' && x.row.type === 'login' && Number(x.row.page_no) === Number(app.login_page)))
       findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
   }
+  // (sprint 130, SEC-3) administrators of the application who sign in with only a password
+  if (app.authentication === 'app_users' && (app.local_login || (app.ldap_directories ?? []).length)) {
+    const covered = app.mfa === 'required' || (app.mfa === 'roles' && (app.mfa_roles ?? []).includes('admin'));
+    const admins = covered ? 0 : (await one(`select count(*)::int as n from meta.app_access where app_id = $1 and 'admin' = any(roles)`, [appId])).n;
+    if (admins)
+      findings.push({ severity: 'warning', entry: null, field: 'Application settings → Two-factor sign-in',
+        message: `${admins === 1 ? 'A user' : `${admins} users`} with the admin role sign${admins === 1 ? 's' : ''} in with only a password: require two-factor sign-in (Required, or Required for roles: admin).` });
+  }
   // (089) a page's group exists
   for (const p of (await query(`select p.page_no, p.page_group from meta.page p where p.app_id = $1 and p.page_group is not null
                                    and not exists (select 1 from meta.page_group g where g.app_id = p.app_id and g.name = p.page_group) order by 1`, [appId])).rows)

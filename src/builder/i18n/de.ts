@@ -1870,4 +1870,10 @@ export const de: BuilderMessages = {
   'wsp.sso_off': 'Die Entwickler des Workspace dürfen wieder das pgkiln-Kennwort verwenden.',
   'wsp.sso_no_break_glass': 'Geben Sie zuerst einem Administrator Notfallzugang (Entwickler), damit sich jemand anmelden kann, wenn der Identitätsanbieter ausfällt.',
   'wsp.sso_link_first': 'Verknüpfen Sie zuerst auf Ihrer Sicherheitsseite eine Identität, sonst könnten Sie sich selbst nicht anmelden.',
+  'us.mfa_title': 'Zwei-Faktor-Anmeldung',
+  'us.mfa_status': 'Authenticator-Apps: {n}. Verbleibende Wiederherstellungscodes: {codes}.',
+  'us.mfa_none': 'Noch keine Authenticator-App.',
+  'us.mfa_reset_help': 'Entfernt die Authenticator-Apps und Wiederherstellungscodes von {user} und meldet das Konto überall ab. Wo eine Anwendung die Zwei-Faktor-Anmeldung verlangt, wird bei der nächsten Anmeldung eine neue App hinzugefügt. Wird protokolliert.',
+  'us.mfa_reset_done': 'Die Zwei-Faktor-Anmeldung von {user} wurde zurückgesetzt.',
+  'us.mfa_reason_needed': 'Geben Sie einen Grund für das Zurücksetzen an.',
 };

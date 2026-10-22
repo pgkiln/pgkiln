@@ -11446,7 +11446,8 @@ describe('sprint 126: two-factor sign-in for developers', () => {
     await b.get('/builder/security');
     for (const url of ['/builder/security/totp/start', '/builder/security/codes', '/builder/instance/mfa', '/builder/developers/reset-2fa',
       '/builder/security/passkey/options', '/builder/security/passkey', '/builder/security/forget-browsers', '/builder/workspaces/1/mfa',
-      '/builder/workspaces/1/sso', '/builder/developers/break-glass', '/builder/developers/identity/1/unlink', '/builder/security/link/x', '/builder/users/providers/1/builder'])
+      '/builder/workspaces/1/sso', '/builder/developers/break-glass', '/builder/developers/identity/1/unlink', '/builder/security/link/x', '/builder/users/providers/1/builder',
+      '/builder/users/1/reset-2fa'])
       assert.equal((await b.post(url, { __csrf: 'forged' })).statusCode, 403, url);
   });
 
@@ -11517,3 +11518,73 @@ describe('sprint 126: two-factor sign-in for developers', () => {
   });
 });
 
+describe('(sprint 130, SEC-3) two-factor sign-in for application users', () => {
+  const ids = async () => (await owner.query<{ id: number; username: string }>(`select id, username from meta.account where username in ('king', 'scott')`)).rows;
+  const clear = async () => {
+    const all = (await ids()).map((r) => r.id);
+    await owner.query('delete from meta.account_factor where account_id = any($1)', [all]);
+    await owner.query('delete from meta.account_recovery_code where account_id = any($1)', [all]);
+    await owner.query(`insert into meta.activity_log (username, event, detail) values ('king', 'login_unlocked', 'test'), ('scott', 'login_unlocked', 'test')`);
+  };
+  before(async () => {
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    await clear();
+    const { addAccountTotp } = await import('../src/account-mfa.ts');
+    for (const r of await ids()) await addAccountTotp(r.id, 'Phone', 'JBSWY3DPEHPK3PXP', 1);
+    await owner.query(`update meta.app set mfa = 'optional', mfa_roles = '{}' where id = $1`, [appId]);
+  });
+  after(async () => {
+    await owner.query(`update meta.app set mfa = 'off', mfa_roles = '{}' where id = $1`, [appId]);
+    await clear();
+  });
+
+  test('the password alone gives no session: pages, AJAX and other browsers see nobody', async () => {
+    const b = new Browser();
+    const res = await b.login('king');
+    assert.equal(res.headers.location, '/a/hr/login/2fa');
+    const page = await b.get('/a/hr/2');
+    assert.equal(page.statusCode, 302);
+    assert.match(String(page.headers.location), /\/a\/hr\/login/);
+    assert.equal((await b.get('/a/hr/account')).statusCode, 302);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.session where app_id = $1 and username = 'king' and state ? '__MFA'`, [appId])).n, 0, 'the pending sign-in is in a signed-out session');
+    const other = new Browser();
+    assert.equal((await other.get('/a/hr/login/2fa')).statusCode, 410);
+  });
+
+  test('the second step needs the page\'s CSRF token, and a forged one ends it', async () => {
+    const b = new Browser();
+    await b.login('king');
+    await b.get('/a/hr/login/2fa');
+    assert.equal((await b.post('/a/hr/login/2fa', { __csrf: 'forged', code: '123456' })).statusCode, 410);
+    assert.equal((await b.get('/a/hr/login/2fa')).statusCode, 410, 'nothing pending any more');
+  });
+
+  test('My account: the forms need the CSRF token, and a user can\'t remove another account\'s app', async () => {
+    await owner.query(`update meta.app set mfa = 'off' where id = $1`, [appId]);
+    const scott = await as('scott');
+    await owner.query(`update meta.app set mfa = 'optional' where id = $1`, [appId]);
+    await scott.get('/a/hr/account');
+    const king = (await ids()).find((r) => r.username === 'king')!;
+    const f = await owner.one<{ id: number }>('select id from meta.account_factor where account_id = $1', [king.id]);
+    await scott.post(`/a/hr/account/2fa/${f!.id}/delete`, { __csrf: scott.lastCsrf, code: 'abcde-fghjk' });
+    assert.ok(await owner.one('select 1 from meta.account_factor where id = $1', [f!.id]), 'not scott\'s app');
+    const before = (await owner.one<{ state: Record<string, unknown> }>(`select state from meta.session where app_id = $1 and username = 'scott' order by created_at desc limit 1`, [appId]))!.state;
+    assert.equal(before.__TOTP_NEW, undefined);
+    const res = await scott.post('/a/hr/account/2fa/start', { __csrf: 'forged' });
+    assert.equal(res.statusCode, 303);
+    const after = (await owner.one<{ state: Record<string, unknown> }>(`select state from meta.session where app_id = $1 and username = 'scott' order by created_at desc limit 1`, [appId]))!.state;
+    assert.equal(after.__TOTP_NEW, undefined, 'a forged form starts nothing');
+    await scott.post('/a/hr/account/2fa/codes', { __csrf: 'forged' });
+    assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from meta.account_recovery_code r join meta.account a on a.id = r.account_id where a.username = 'scott'`))!.n, 0);
+  });
+
+  test('a remembered sign-in without the second step doesn\'t stand in for it', async () => {
+    const { carriesSecondStep } = await import('../src/account-mfa.ts');
+    const a = { authentication: 'app_users', mfa: 'optional' as const, mfa_roles: [] };
+    assert.equal(await carriesSecondStep(a, 'king', [], 'password'), false);
+    assert.equal(await carriesSecondStep(a, 'king', [], 'ldap:corp'), false);
+    assert.equal(await carriesSecondStep(a, 'king', [], 'password+2fa'), true);
+    assert.equal(await carriesSecondStep(a, 'king', [], 'sso:entra'), true, 'the identity provider decides');
+    assert.equal(await carriesSecondStep({ ...a, mfa: 'off' }, 'king', [], 'password'), true);
+  });
+});

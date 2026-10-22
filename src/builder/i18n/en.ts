@@ -1873,4 +1873,10 @@ export const en = {
   'wsp.sso_off': 'The workspace’s developers may use the pgkiln password again.',
   'wsp.sso_no_break_glass': 'Make an administrator break-glass first (Developers), so someone can still sign in when the identity provider fails.',
   'wsp.sso_link_first': 'Link an identity on your Security page first, or you could not sign in yourself.',
+  'us.mfa_title': 'Two-factor sign-in',
+  'us.mfa_status': 'Authenticator apps: {n}. Recovery codes left: {codes}.',
+  'us.mfa_none': 'No authenticator app yet.',
+  'us.mfa_reset_help': 'Removes the authenticator apps and recovery codes of {user} and signs them out everywhere. Where an application requires two-factor sign-in, they add a new app at their next sign-in. Logged.',
+  'us.mfa_reset_done': 'Two-factor sign-in of {user} was reset.',
+  'us.mfa_reason_needed': 'Give a reason for the reset.',
 } as const;

@@ -1,12 +1,15 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
+import { APP_MFA, type AppMfa } from '../account-mfa.ts';
 import { html, raw } from '../html.ts';
+import { secretKeyConfigured } from '../secrets.ts';
 import { back, BASE, developer, flash, type Req } from './ui.ts';
 
 // Application settings → Sign-in methods (migration 087): the application's
 // own login page (APEX: the login page, usually 9999) and "Forgot password?".
 // "Create login page" adds a minimal public page with a login region and
-// makes it the login page.
+// makes it the login page. (sprint 130, SEC-3) Two-factor sign-in for the
+// application's users: off, optional, required, or required for some roles.
 
 interface AppRow {
   id: number;
@@ -15,6 +18,8 @@ interface AppRow {
   local_login: boolean;
   login_page: number | null;
   password_reset: boolean;
+  mfa: AppMfa;
+  mfa_roles: string[];
 }
 
 /** The fields in the settings form. */
@@ -41,14 +46,33 @@ export async function loginSettingsFields(a: AppRow) {
             ? html`Sent through mail service ${mail!.service} as ${mail!.from_address}.`
             : html`<strong>Not offered yet:</strong> the application needs an enabled mail service with a From address (Workspace utilities → Mail services).`}
           Only for the user directory's own passwords: not for LDAP, single sign-on, database accounts or custom authentication.</small></div>
+    </div>
+    <h3 id="two-factor">Two-factor sign-in</h3>
+    <div class="form-grid">
+      <div class="field"><label class="label" for="f_mfa">Second step</label>
+        <select id="f_mfa" name="mfa" aria-describedby="f_mfa_help">${(APP_MFA as string[]).map((m) => opt(m, MFA_LABELS[m as AppMfa], a.mfa))}</select>
+        <small class="help" id="f_mfa_help">After the password (or an LDAP directory), users give a code from an authenticator app or a recovery code. They add the app on <em>My account</em>, or while signing in when it is required. An identity provider asks for its own second factor. Accounts share their apps across applications.
+          ${secretKeyConfigured() ? '' : html`<strong>Not available yet:</strong> the server needs <code>PGKILN_SECRET_KEY</code> to keep the apps' secrets.`}</small></div>
+      <div class="field"><label class="label" for="f_mfa_roles">Required for roles</label>
+        <input id="f_mfa_roles" name="mfa_roles" value="${(a.mfa_roles ?? []).join(', ')}" placeholder="admin, manager" aria-describedby="f_mfa_roles_help">
+        <small class="help" id="f_mfa_roles_help">With <em>Required for some roles</em>: users with one of these roles must use it, others may.</small></div>
     </div>`;
 }
+
+const MFA_LABELS: Record<AppMfa, string> = { off: 'Off', optional: 'Optional (users may add an app)', required: 'Required', roles: 'Required for some roles' };
 
 /** Save them (with the rest of the settings form). */
 export async function saveLoginSettings(appId: string, b: Record<string, string | undefined>) {
   const page = b.login_page?.trim() ? Number(b.login_page) : null;
   if (page !== null && !(await owner.one('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, page]))) throw new Error(`Login page: there is no page ${b.login_page}.`);
-  await owner.query('update meta.app set login_page = $2, password_reset = $3 where id = $1', [appId, page, b.password_reset === 'true']);
+  const mfa = (APP_MFA as string[]).includes(b.mfa ?? '') ? (b.mfa as AppMfa) : 'off';
+  const roles = [...new Set((b.mfa_roles ?? '').split(',').map((r) => r.trim().toLowerCase()).filter(Boolean))];
+  if (roles.some((r) => r.length > 100)) throw new Error('Two-factor sign-in: a role name is too long.');
+  if (mfa === 'roles' && !roles.length) throw new Error('Two-factor sign-in: name the roles that must use it.');
+  // without the instance key, users could not add an app: requiring one would lock them out
+  if ((mfa === 'required' || mfa === 'roles') && !secretKeyConfigured()) throw new Error('Two-factor sign-in: the server needs PGKILN_SECRET_KEY before it can be required.');
+  await owner.query('update meta.app set login_page = $2, password_reset = $3, mfa = $4, mfa_roles = $5 where id = $1',
+    [appId, page, b.password_reset === 'true', mfa, roles]);
 }
 
 export async function loginPageRoutes(app: FastifyInstance) {

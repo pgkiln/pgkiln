@@ -2164,3 +2164,13 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
   .region[aria-busy="true"]::after { animation: busy-slide 1.2s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite; }
 }
 @keyframes busy-slide { from { background-position: -60% 0, 0 0; } to { background-position: 160% 0, 0 0; } }
+
+/* (sprint 130) two-step sign-in: the QR code for an authenticator app, its key and the recovery codes */
+.mfa-qr { margin: .5rem 0 1rem; }
+.mfa-qr svg { width: 200px; max-width: 100%; height: auto; background: #fff; padding: 8px; border-radius: 6px; }
+.mfa-secret { word-break: break-all; letter-spacing: .05em; }
+.mfa-steps { padding-left: 1.25rem; margin: 0; }
+.mfa-codes { columns: 2; column-gap: 2rem; padding-left: 1.5rem; }
+.mfa-factors { list-style: none; padding: 0; margin: 0 0 .75rem; }
+.mfa-factors li { padding: .4rem 0; border-bottom: 1px solid var(--border); }
+@media (max-width: 480px) { .mfa-codes { columns: 1; } }

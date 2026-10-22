@@ -337,6 +337,7 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `sso_providers` | text[] | Names of identity providers (OpenID Connect or SAML) offered on the login page |
 | `ldap_directories` | text[] | LDAP directories the password form checks, after local accounts |
 | `remember_me_days` | int | Days a "Keep me signed in" sign-in lasts; NULL = not offered |
+| `mfa`, `mfa_roles` | text, text[] | [Two-factor sign-in](08-security.md#two-factor-sign-in): `off`, `optional`, `required` or `roles` (required for `mfa_roles`) |
 | `pwa`, `pwa_short_name`, `pwa_icon`, `pwa_offline_pages`, `pwa_offline_submit` | boolean, text, bytea, boolean, boolean | Progressive Web App ([chapter 17](17-mobile.md)) |
 | `db_role` | text | Database role every request runs as |
 | `api_role` | text | Database role of REST API tokens for this app (PostgREST switches to it) |
@@ -510,7 +511,8 @@ navigation entries and application processes have the same `build_option` column
 | `supporting_script` | Supporting objects per app (see above) | no |
 | `document_template` | Document templates per app: `name`, `description`, `query`, `template`, `layout`, `filename`, `authz` | yes (read) |
 | `ldap_identity` | Links an account to a directory entry (`directory_id`, `subject` = entryUUID or DN) | no |
-| `persistent_login` | "Keep me signed in" tokens: `token_hash`, `account_id`, `app_id`, `groups`, `method`, `expires_at` | no |
+| `persistent_login` | "Keep me signed in" tokens: `token_hash`, `account_id`, `app_id`, `groups`, `method` (`+2fa` after a second step), `expires_at` | no |
+| `account_factor`, `account_recovery_code` | An account's authenticator apps (secret encrypted with the instance key) and recovery codes (SHA-256) | no |
 | `instance_setting` | Secrets, e.g. the URL checksum key | no |
 | `setting` | Account settings: `password_min_length`, `password_require_mixed`, `password_lifetime_days` | yes (read) |
 | `text_message` | Per app: `name`, `language`, `text` | yes |
@@ -609,6 +611,8 @@ pgkiln's icons; its filter box also searches the Lucide icons by name and search
 | any page `?doc=NAME` | Download a document template filled with the page's values |
 | `POST /a/:alias/account/devices` | Sign out on all devices ("Keep me signed in") |
 | `POST /a/:alias/password` | Change an expired password while signing in |
+| `GET/POST /a/:alias/login/2fa`, `POST /a/:alias/login/2fa/done` | The second step of signing in: a code, or adding the first app and seeing the recovery codes |
+| `POST /a/:alias/account/2fa/start`, `…/cancel`, `…/confirm`, `…/codes`, `…/codes/confirm`, `…/:id/delete` | My account → Two-factor sign-in |
 | `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme`, `POST /a/:alias/account/style` | My account, own password, the light/dark switch, the [style variant](14-globalization.md#style-variants-theme-roller) switch |
 | `POST /a/:alias/tz` | The browser's time zone for the session (automatic time zone; sent by `app.js`, CSRF token required) |
 | any page `?lang=xx` | Switch the language for the session |
