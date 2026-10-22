@@ -326,10 +326,15 @@ describe('SQL Worksheet', () => {
     await page.keyboard.press('Control+k');
     await page.locator('.palette[open] input').fill('dept');
     await page.locator('.palette-list [role=option]', { hasText: 'dept' }).first().waitFor();
+    // other applications of the workspace may have a "dept" page that ranks first: walk down to this test's table
+    const kinds = await page.locator('.palette-list [role=option] small').allTextContents();
+    const t = kinds.findIndex((k) => k.trim() === `Table · ${S}`);
+    assert.ok(t >= 0, kinds.join(' | '));
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowUp');
+    for (let i = 0; i < t; i++) await page.keyboard.press('ArrowDown');
     await Promise.all([page.waitForNavigation(), page.keyboard.press('Enter')]);
-    assert.match(page.url(), /\/builder\/sql\/objects\?schema=/);
+    assert.match(page.url(), new RegExp(`/builder/sql/objects\\?schema=${S}`));
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
