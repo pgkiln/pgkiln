@@ -121,10 +121,14 @@ describe('builder and every client', () => {
     assert.match(page.body, /runs hr/);
     assert.match(page.body, /using|own/);
     assert.match((await b.get(`/builder/sql/objects?schema=${S}&k=table&o=${S}.pay`)).body, /href="\/builder\/sql\/objects\/security\?o=ds119\.pay"/, 'the Object Browser links to it');
-    // hr_app reads id and owner only; amount for managers, iban as *** + last 4 for everyone
+    // hr_app reads id and owner only; amount for managers, iban as *** + last 4 for everyone. The matrix lists every
+    // application's role of the workspace, so find hr_app's row rather than assuming it is the first.
+    const roles = [...page.body.matchAll(/<th scope="row"><code>([^<]+)<\/code>/g)].map((m) => m[1]);
+    const g = roles.indexOf('hr_app');
+    assert.ok(g >= 0, roles.join(', '));
     const form = {
       ref: `${S}.pay`, shown_roles: 'manager',
-      'g.0.s.0': 'on', 'g.0.s.1': 'on', 'g.0.u.1': 'on',
+      [`g.${g}.s.0`]: 'on', [`g.${g}.s.1`]: 'on', [`g.${g}.u.1`]: 'on',
       view: 'on', view_name: 'pay_masked', roles: 'manager',
       'm.2.mask': 'null', 'm.2.see.0': 'on', 'm.3.mask': 'partial',
     };
@@ -186,7 +190,7 @@ describe('builder and every client', () => {
     });
 
     // switching the view off drops it; the column privileges stay as they are
-    const off = await b.submit('/builder/sql/objects/security', { ref: `${S}.pay`, shown_roles: 'manager', 'g.0.s.0': 'on', 'g.0.s.1': 'on', 'g.0.u.1': 'on', view_name: 'pay_masked', roles: 'manager', mode: 'apply' });
+    const off = await b.submit('/builder/sql/objects/security', { ref: `${S}.pay`, shown_roles: 'manager', [`g.${g}.s.0`]: 'on', [`g.${g}.s.1`]: 'on', [`g.${g}.u.1`]: 'on', view_name: 'pay_masked', roles: 'manager', mode: 'apply' });
     assert.equal(off.statusCode, 303, off.body);
     assert.equal((await owner.query(`select from pg_class where relname = 'pay_masked' and relnamespace = '${S}'::regnamespace`)).rowCount, 0);
     assert.equal(await priv('amount'), false);
