@@ -16,6 +16,26 @@ export const b64url = (b: Buffer | Uint8Array) => Buffer.from(b).toString('base6
 export const unb64url = (s: string) => Buffer.from(String(s ?? ''), 'base64url');
 export const newChallenge = () => b64url(randomBytes(32));
 
+const CHALLENGE_SECONDS = 300;
+type WithState = { state: Record<string, unknown> };
+
+/** A one-time challenge kept in the session (for this purpose only), or null when there is none or it expired. */
+export function takeChallenge(s: WithState, purpose: 'create' | 'get'): string | null {
+  try {
+    const p = JSON.parse(String(s.state.__PK ?? ''));
+    delete s.state.__PK;
+    return p && p.purpose === purpose && Date.now() - Number(p.at) < CHALLENGE_SECONDS * 1000 && typeof p.c === 'string' ? p.c : null;
+  } catch {
+    delete s.state.__PK;
+    return null;
+  }
+}
+export function giveChallenge(s: WithState, purpose: 'create' | 'get'): string {
+  const c = newChallenge();
+  s.state.__PK = JSON.stringify({ c, purpose, at: Date.now() });
+  return c;
+}
+
 // ------------------------------------------------------------------ CBOR (RFC 8949), only what WebAuthn uses
 
 type Cbor = number | bigint | string | Buffer | boolean | null | undefined | Cbor[] | Map<Cbor, Cbor>;

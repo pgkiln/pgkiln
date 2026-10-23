@@ -420,6 +420,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'type', label: 'Type', kind: 'select', options: ['role', 'sql'] },
       { name: 'value', label: 'Role name / SQL expression', kind: 'code', wide: true, help: "role: e.g. admin · sql: e.g. meta.has_role('manager') or :APP_USER = 'boss'" },
       { name: 'error_message', label: 'Error message', kind: 'text', wide: true },
+      { name: 'mfa_minutes', label: 'Second step within (minutes)', kind: 'int', help: 'Step-up: the scheme passes only when the user gave a second factor (code or passkey) at most this many minutes ago; a page that needs it asks again, then opens. Users without one are refused. Empty: no step-up.' },
     ],
   },
   lov: {

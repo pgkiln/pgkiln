@@ -4299,3 +4299,65 @@ document.addEventListener('change', (e) => {
     }
   });
 })();
+
+// (sprint 131) Passkeys for application users, as in the builder (public/builder.js): a [data-passkey] button asks
+// the server (its URL) for WebAuthn options, calls navigator.credentials.create() (My account, adding one while
+// signing in) or .get() (the second step) and posts the answer in its own form. Without WebAuthn or JavaScript
+// the buttons stay hidden; codes keep working.
+(() => {
+  'use strict';
+  if (!window.PublicKeyCredential || !navigator.credentials) return;
+  const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const bytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+  for (const btn of document.querySelectorAll('[data-passkey]')) {
+    const form = btn.closest('form');
+    if (!form) continue;
+    btn.hidden = false;
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const status = form.querySelector('[data-passkey-status]');
+      const set = (name, value) => {
+        const field = form.querySelector(`[name="${name}"]`);
+        if (field) field.value = value;
+      };
+      btn.disabled = true;
+      if (status) status.textContent = '';
+      try {
+        const res = await fetch(btn.dataset.passkey, {
+          method: 'POST', credentials: 'same-origin', headers: { accept: 'application/json' },
+          body: new URLSearchParams({ __csrf: form.querySelector('[name="__csrf"]').value }),
+        });
+        if (!res.ok) throw new Error(String(res.status));
+        const o = await res.json();
+        if (o.mode === 'create') {
+          const c = await navigator.credentials.create({ publicKey: {
+            challenge: bytes(o.challenge), rp: o.rp,
+            user: { id: bytes(o.user.id), name: o.user.name, displayName: o.user.displayName },
+            pubKeyCredParams: o.algs.map((alg) => ({ type: 'public-key', alg })),
+            excludeCredentials: o.exclude.map((id) => ({ type: 'public-key', id: bytes(id) })),
+            authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+            attestation: 'none', timeout: 120000,
+          } });
+          set('clientDataJSON', b64(c.response.clientDataJSON));
+          set('attestationObject', b64(c.response.attestationObject));
+          set('transports', (c.response.getTransports ? c.response.getTransports() : []).join(','));
+        } else {
+          const c = await navigator.credentials.get({ publicKey: {
+            challenge: bytes(o.challenge), rpId: o.rpId, userVerification: o.uv || 'preferred', timeout: 120000,
+            allowCredentials: o.allow.map((a) => ({ type: 'public-key', id: bytes(a.id), transports: a.transports })),
+          } });
+          set('credentialId', b64(c.rawId));
+          set('clientDataJSON', b64(c.response.clientDataJSON));
+          set('authenticatorData', b64(c.response.authenticatorData));
+          set('signature', b64(c.response.signature));
+          if (c.response.userHandle) set('userHandle', b64(c.response.userHandle));
+        }
+        if (btn.dataset.passkeySubmit) form.action = btn.dataset.passkeySubmit;
+        form.submit();
+      } catch (err) {
+        btn.disabled = false;
+        if (status) status.textContent = btn.dataset.passkeyError || String(err);
+      }
+    });
+  }
+})();

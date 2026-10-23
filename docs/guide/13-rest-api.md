@@ -362,6 +362,10 @@ curl https://api.example.com/employees -H "Authorization: Bearer eyJ…"
 Under **REST API → Issue a token**, pick an account and a lifetime (1 hour to 30 days). The token
 is shown once and not stored. Issuing is logged in the activity log (`api_token`).
 
+An account the application requires two-factor sign-in of gets no token here: with **Users create their
+own tokens** on, it creates one on *My account → REST API token* after a recent second step
+([chapter 8](08-security.md#rest-api-tokens)).
+
 Such a token contains `role`, `app` and `app_user`, but **no roles**. `meta.has_role()` reads the
 account's roles in the application at every request, and `meta.api_check()` rejects the token as
 soon as the account is deactivated or loses access. Changing `API_JWT_SECRET` (in pgkiln and

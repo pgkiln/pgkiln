@@ -12,13 +12,15 @@ import { chrome, clientTexts } from './render.ts';
 import { appStyles, choosable, chosenStyleName, styleChoice } from './styles.ts';
 import { loadApp } from '../metadata.ts';
 import { pushSection } from './push.ts';
-import { twoStepSection } from './two-step.ts';
+import { relyingParty } from '../webauthn.ts';
+import { tokenSection, twoStepSection } from './two-step.ts';
 import { appWithLocale, loadContext, safeNext, txContext, type Req } from './routes.ts';
 
 // "My account": details, own password, and preferences (light/dark and
 // language). APEX has the APIs for this (APEX_UTIL.CHANGE_CURRENT_USER_PW,
 // theme style per user); pgkiln provides the page itself. (sprint 130)
-// Two-step sign-in: authenticator apps and recovery codes (two-step.ts).
+// Two-step sign-in: authenticator apps and recovery codes (two-step.ts). (sprint 131) Passkeys, and a REST API
+// token the user creates (when the application allows it).
 
 /** Keep a signed-in user's style variant for this app (meta.account_style; '' = the base colours). */
 async function saveStyle(appId: number, username: string, style: string) {
@@ -117,7 +119,8 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
               <form method="post" action="${ctx.base}/account/devices">${csrf}<button class="btn">${t('account.forget_devices')}</button></form>
             </div></section>`
           : ''}
-        ${await twoStepSection(ctx)}
+        ${await twoStepSection(ctx, relyingParty(reply.request).rpId)}
+        ${await tokenSection(ctx)}
         ${await pushSection(ctx)}
       </div>
     </div>

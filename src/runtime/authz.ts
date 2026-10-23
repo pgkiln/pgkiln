@@ -1,10 +1,14 @@
+import { secondStepWithin } from '../account-mfa.ts';
 import { applyBinds } from '../binds.ts';
+import type { AuthzScheme } from '../metadata.ts';
 import { savepoint } from '../db.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext, type Visibility } from './context.ts';
 import { saveButton, saveRequest } from './grid.ts';
 import { selectionOf } from './report.ts';
 
 export class Forbidden extends Error {}
+/** (sprint 131) The page needs a second step more recent than the session's: ask for one, then come back. */
+export class StepUp extends Forbidden {}
 
 /**
  * Evaluate an authorization reference ("ADMIN", "!ADMIN", or the built-in
@@ -20,13 +24,26 @@ export async function isAuthorized(ctx: PageContext, ref: string | null | undefi
     if (name === 'MUST_NOT_BE_PUBLIC_USER') ok = ctx.user !== 'nobody';
     else {
       const scheme = ctx.app.authz_schemes.find((s) => s.name === name);
-      if (!scheme) ok = false;
-      else if (scheme.type === 'role') ok = ctx.roles.includes(scheme.value.toLowerCase());
-      else ok = await sqlTrue(ctx, scheme.value, `authorization ${name}`);
+      ok = !!scheme && (await schemePasses(ctx, scheme)) && (!scheme.mfa_minutes || secondStepWithin(ctx.session?.state ?? {}, scheme.mfa_minutes));
     }
     ctx.authzCache.set(name, ok);
   }
   return negate ? !ok : ok;
+}
+
+async function schemePasses(ctx: PageContext, scheme: AuthzScheme): Promise<boolean> {
+  if (scheme.type === 'role') return ctx.roles.includes(scheme.value.toLowerCase());
+  return sqlTrue(ctx, scheme.value, `authorization ${scheme.name}`);
+}
+
+/**
+ * (sprint 131) Whether a reference fails only for its step-up: a scheme with mfa_minutes that the user passes, in a
+ * session whose last second step is too old (or never happened).
+ */
+export async function onlyStepUpMissing(ctx: PageContext, ref: string | null | undefined): Promise<boolean> {
+  if (!ref || ref.startsWith('!') || ctx.user === 'nobody') return false;
+  const scheme = ctx.app.authz_schemes.find((s) => s.name === ref.trim().toUpperCase());
+  return !!scheme?.mfa_minutes && !secondStepWithin(ctx.session?.state ?? {}, scheme.mfa_minutes) && (await schemePasses(ctx, scheme));
 }
 
 /**
@@ -51,7 +68,9 @@ export function authzMessage(ctx: PageContext, ref: string | null) {
 }
 
 export async function checkPageAccess(ctx: PageContext) {
-  if (!(await isAuthorized(ctx, ctx.page.authz))) throw new Forbidden(authzMessage(ctx, ctx.page.authz));
+  if (await isAuthorized(ctx, ctx.page.authz)) return;
+  if (await onlyStepUpMissing(ctx, ctx.page.authz)) throw new StepUp(authzMessage(ctx, ctx.page.authz));
+  throw new Forbidden(authzMessage(ctx, ctx.page.authz));
 }
 
 /** Can the current user open this page? Used to hide links and menu entries. */

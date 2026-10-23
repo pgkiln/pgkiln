@@ -185,21 +185,31 @@ export const addTotp = (username: string, name: string, secret: string, step: nu
 export interface Passkey { id: number; name: string; credential_id: string; public_key: Record<string, string>; alg: number; sign_count: string; transports: string[] }
 
 /** Add a passkey (after src/webauthn.ts checked the browser's answer). */
-export async function addPasskey(username: string, name: string, p: { credentialId: string; jwk: Record<string, string>; alg: number; signCount: number; rpId: string; transports: string[] }) {
+export async function storeAddPasskey(st: FactorStore, who: Who, name: string, p: { credentialId: string; jwk: Record<string, string>; alg: number; signCount: number; rpId: string; transports: string[] }) {
   await owner.query(
-    `insert into meta.developer_factor (username, kind, name, credential_id, public_key, alg, sign_count, rp_id, transports, last_used_at)
+    `insert into ${st.factors} (${st.key}, kind, name, credential_id, public_key, alg, sign_count, rp_id, transports, last_used_at)
      values ($1, 'passkey', $2, $3, $4, $5, $6, $7, $8, now())`,
-    [username, name.trim().slice(0, 60) || 'Passkey', p.credentialId, JSON.stringify(p.jwk), p.alg, p.signCount, p.rpId,
+    [who, name.trim().slice(0, 60) || 'Passkey', p.credentialId, JSON.stringify(p.jwk), p.alg, p.signCount, p.rpId,
      p.transports.filter((t) => /^[a-z-]{1,20}$/.test(t)).slice(0, 8)],
   );
 }
 
-/** The developer's passkeys for this relying party (a passkey only works on the domain it was made for). */
-export async function passkeysOf(username: string, rpId: string): Promise<Passkey[]> {
+/** The passkeys for this relying party (a passkey only works on the domain it was made for). */
+export async function storePasskeys(st: FactorStore, who: Who, rpId: string): Promise<Passkey[]> {
   return (await owner.query<Passkey>(
-    `select id, name, credential_id, public_key, alg, sign_count, transports from meta.developer_factor
-      where username = $1 and kind = 'passkey' and rp_id = $2 order by id`, [username, rpId])).rows;
+    `select id, name, credential_id, public_key, alg, sign_count, transports from ${st.factors}
+      where ${st.key} = $1 and kind = 'passkey' and rp_id = $2 order by id`, [who, rpId])).rows;
 }
+
+/** Record a sign-in with a passkey; false when another sign-in moved the counter first (a replay or a clone). */
+export async function storeUsePasskey(st: FactorStore, id: number, oldCount: string, newCount: number): Promise<boolean> {
+  return !!(await owner.query(
+    `update ${st.factors} set sign_count = $3, last_used_at = now() where id = $1 and sign_count = $2::bigint`,
+    [id, oldCount, newCount])).rowCount;
+}
+
+export const addPasskey = (username: string, name: string, p: Parameters<typeof storeAddPasskey>[3]) => storeAddPasskey(DEVELOPERS, username, name, p);
+export const passkeysOf = (username: string, rpId: string) => storePasskeys(DEVELOPERS, username, rpId);
 
 /** (sprint 128) The passkey with this credential id for this relying party, and whose it is (sign-in without a user name). */
 export async function passkeyByCredential(credentialId: string, rpId: string): Promise<(Passkey & { username: string }) | null> {
@@ -221,12 +231,7 @@ export async function setPasskeySignin(on: boolean) {
   await owner.query(`insert into meta.setting (name, value) values ('mfa_passkey_signin', $1) on conflict (name) do update set value = excluded.value`, [on ? 'on' : 'off']);
 }
 
-/** Record a sign-in with a passkey; false when another sign-in moved the counter first (a replay or a clone). */
-export async function usePasskey(id: number, oldCount: string, newCount: number): Promise<boolean> {
-  return !!(await owner.query(
-    'update meta.developer_factor set sign_count = $3, last_used_at = now() where id = $1 and sign_count = $2::bigint',
-    [id, oldCount, newCount])).rowCount;
-}
+export const usePasskey = (id: number, oldCount: string, newCount: number) => storeUsePasskey(DEVELOPERS, id, oldCount, newCount);
 
 // ---------------------------------------------------------------- trusted browsers (sprint 127)
 

@@ -63,9 +63,12 @@ src/
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   mfa.ts                   second factors: TOTP, recovery codes, a FactorStore per kind of user (developers, accounts);
-                           the developers' policy, passkeys, trusted browsers (webauthn.ts: WebAuthn checks)
+                           the developers' policy, passkeys, trusted browsers (webauthn.ts: WebAuthn checks and the
+                           session's one-time challenge)
   account-mfa.ts           (sprint 130) two-factor sign-in for application accounts: the application's rule (off, optional,
-                           required, roles), secondStep, carriesSecondStep (remembered/shared sign-ins), resets
+                           required, roles), secondStep, carriesSecondStep (remembered/shared sign-ins), resets;
+                           (sprint 131) account passkeys, e-mail codes (emailCodeTarget, queueEmailCode), the session's
+                           last second step (__MFA_AT, secondStepWithin) for step-up, accountMustUseMfa (API tokens)
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), invoke_api steps
                            (the call between two transactions, with a lease), Advisor references, the diagram;
                            (sprint 114) send_mail and draft steps, switch cases on task outcomes, the diagram as a standalone SVG
@@ -176,9 +179,12 @@ src/
     signin.ts              the sign-in form (built-in page and the login region of an application's own login page), safeNext, passwordResetAvailable
     password-reset.ts      Forgot password: request (same answer either way), the link (token into the session), the new password
     two-step.ts            (sprint 130) the second step of signing in (/login/2fa: a code, or the first app and its recovery
-                           codes), passwordSignIn, and My account → Two-factor sign-in
+                           codes), passwordSignIn, and My account → Two-factor sign-in; (sprint 131) passkeys at the
+                           second step and as the first factor, e-mail codes, step-up (?next=, a signed-in user), My
+                           account → REST API token (tokenSection)
     context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
-    authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons)
+    authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons); (sprint 131)
+                           step-up (mfa_minutes; StepUp sends the page's user to /login/2fa?next=)
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions

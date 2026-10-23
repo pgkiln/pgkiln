@@ -419,8 +419,8 @@ sign-on policy asks for one, or a hand-written TOTP check in a custom authentica
 | Setting | Who gives a code after the password |
 |---|---|
 | **Off** (the default) | Nobody |
-| **Optional** | Users who added an authenticator app on *My account* |
-| **Required** | Everybody. A user without an app adds one while signing in: a QR code, the app's first code, then ten recovery codes shown once |
+| **Optional** | Users who added an authenticator app or a passkey on *My account* |
+| **Required** | Everybody. A user without one adds an app (a QR code, then its first code) or a passkey while signing in, then sees ten recovery codes once |
 | **Required for some roles** | Users with one of the roles in *Required for roles* (for example `admin, manager`); others as with *Optional* |
 
 How it works:
@@ -447,8 +447,41 @@ How it works:
   the step. Recovery codes are stored as SHA-256 hashes.
 - The **Advisor** warns when users with the role `admin` sign in with only a password.
 
-Passkeys, e-mail codes, asking again before a sensitive page (step-up) and tokens for REST and MCP that need a
-two-factor sign-in come in a later release.
+#### Passkeys
+
+Next to authenticator apps, users add **passkeys** (WebAuthn: a fingerprint, face or screen lock on the device, or a
+security key) on *My account*, or while signing in when the application requires a second step and they have none
+yet (the page offers an app and a passkey). At the second step **Use a passkey** replaces the code. pgkiln checks the
+answer itself (challenge, origin, relying party, signature, counter), as for [developers](03-builder.md#two-factor-sign-in).
+A passkey works only at the host name it was made for (`PUBLIC_URL`'s host, or `PGKILN_RP_ID`), not at an IP address,
+and needs JavaScript; codes keep working without either. Passkeys are public keys: they don't need the instance key.
+The first factor a user adds, app or passkey, brings ten recovery codes.
+
+#### A code by e-mail
+
+**Offer a code by e-mail** (same settings) adds *E-mail me a code instead* to the second step, for users who have an
+authenticator app or a passkey and an e-mail address in the user directory. The code (six digits, valid 10 minutes,
+once) goes through the application's mail service; at most three per sign-in and five per account per hour. It is
+**never someone's only factor**: it is not offered while a user adds their first one, so a lost mailbox or a mail
+outage never locks anyone out and a stolen mailbox alone never signs anyone in.
+
+#### Asking again before a sensitive page (step-up)
+
+An authorization scheme's **Second step within (minutes)** makes it pass only when the session's last second step
+(code, passkey, e-mail code or recovery code) is at most that old. A page behind such a scheme sends a user who passes
+the scheme otherwise to *Confirm it's you* (the second-step page) and back to the page afterwards; regions, buttons and
+processes behind it stay hidden or skipped until then. A user without a factor is told to add one on *My account*.
+Typical: `SALARY_EDIT` (role `hr_manager`, second step within 15 minutes) on the page that changes salaries. A
+*Keep me signed in*, shared or single sign-on session has no recent second step of pgkiln's own, so it is asked too.
+A form posted after the time ran out is not processed: the user confirms, comes back to the page and submits again.
+
+#### REST API tokens
+
+A developer's **REST API → Issue a token** acts as an account without its sign-in, so it is refused for accounts the
+application requires a second step of. Turn on **REST API → Users create their own tokens** and those users (and
+everyone else) create a token on *My account → REST API token* instead; one who must use two-factor sign-in gives a
+second step first when their last one is older than 15 minutes. The token is shown once. MCP has no tokens for
+application users, so nothing to cover there.
 
 ### What sign-in protects against
 
@@ -458,8 +491,8 @@ two-factor sign-in come in a later release.
   time.
 - **Session fixation**: the session token is replaced at sign-in.
 - **Stale sessions**: 60 minutes idle or 8 hours total (configurable).
-- **Stolen passwords**: [two-factor sign-in](#two-factor-sign-in) asks for a code from an authenticator app, for every
-  user or for some roles; with an identity provider ([OpenID Connect](#single-sign-on-openid-connect),
+- **Stolen passwords**: [two-factor sign-in](#two-factor-sign-in) asks for a code from an authenticator app or a
+  passkey, for every user or for some roles, and again before sensitive pages ([step-up](#asking-again-before-a-sensitive-page-step-up)); with an identity provider ([OpenID Connect](#single-sign-on-openid-connect),
   [SAML](#single-sign-on-saml-20)) the provider asks for its own. Developers have
   [two-factor sign-in](03-builder.md#two-factor-sign-in) for the builder too.
 
@@ -480,6 +513,8 @@ Plus the built-in `MUST_NOT_BE_PUBLIC_USER` (signed in). Reference a scheme by n
 `authz` property of a page, region, item, button, process, dynamic action or navigation entry;
 prefix it with `!` to negate (`!ADMIN`). Unknown schemes **fail closed** (deny). Each scheme is
 evaluated at most once per request, and its `error_message` is shown when a page is refused.
+With **Second step within (minutes)** it also needs a recent second factor
+([step-up](#asking-again-before-a-sensitive-page-step-up)).
 
 What happens when a scheme fails:
 
