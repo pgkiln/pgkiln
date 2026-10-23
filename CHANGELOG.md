@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.67.0] - 2026-10-23
+
 ### Added
 - **Lockout checks** (SEC-6, the rest): Instance settings starts with what could keep people out later, and the
   Workspace home tells administrators how many need attention: stored secrets that `PGKILN_SECRET_KEY` can't decrypt

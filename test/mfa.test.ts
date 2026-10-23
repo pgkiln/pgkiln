@@ -116,7 +116,9 @@ describe('two-factor sign-in for developers', () => {
     const b = new Browser(app);
     await signIn(b, DEV);
     await b.get('/builder/login/2fa');
-    await b.submit('/builder/login/2fa', { code: totpAt(unbase32(secret), stepNow() + 1) });
+    // the step the last sign-in used (stepNow() + 1 is a fresh code again once a 30-second step has passed)
+    const used = Number((await owner.one<{ s: string }>(`select last_step::text as s from meta.developer_factor where username = $1 and kind = 'totp'`, [DEV]))!.s);
+    await b.submit('/builder/login/2fa', { code: totpAt(unbase32(secret), used) });
     assert.notEqual((await b.get('/builder/apps')).statusCode, 200);
   });
 
