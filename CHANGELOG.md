@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.66.0] - 2026-10-23
+
 ### Added
 - **Checking that an identity provider really did multi-factor sign-in** (SEC-4; APEX trusts the provider's policy):
   Users → Identity providers → *Multi-factor sign-in*. *Require multi-factor sign-in at this provider* refuses
