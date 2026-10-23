@@ -1576,3 +1576,9 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mfa-steps { padding-left: 1.25rem; }
 .mfa-codes { columns: 2; column-gap: 2rem; padding-left: 1.5rem; font-size: 1.05em; }
 @media (max-width: 480px) { .mfa-codes { columns: 1; } }
+
+/* Settings → Sign-in: a checkbox under a grid of fields gets room, and long help stays readable */
+.settings-panel[data-tab="signin"] .form-grid + .field { margin-top: 0.75rem; }
+.settings-panel[data-tab="signin"] .field > .help,
+.settings-panel[data-tab="signin"] p.small { max-width: 75ch; }
+.settings-panel[data-tab="signin"] h3:not(:first-child) { margin-top: 1.5rem; }

@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   application's two-factor rule (and a developer's factor in the builder) after the provider, for providers that
   cannot enforce MFA. Migration 134.
 
+### Changed
+- Application settings → **Sign-in** is regrouped: *Sign-in methods* (password, LDAP directories and identity
+  providers together), *Sign-in page*, *Staying signed in* (Keep me signed in, session sharing) and *Two-factor
+  sign-in*, with shorter help texts.
+
 ## [0.65.0] - 2026-10-23
 
 ### Added
