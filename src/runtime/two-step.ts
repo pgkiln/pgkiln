@@ -55,6 +55,8 @@ interface Pending {
   /** while adding an app: the new secret, then (after its first code) the recovery codes to show once */
   secret?: string;
   codes?: string[];
+  /** (sprint 131) what was added while signing in, for the activity log */
+  added?: 'app' | 'passkey';
   /** (sprint 131) a code sent by e-mail: its hash, when, and how many were sent in this step */
   mail?: { h: string; at: number; n: number };
 }
@@ -282,6 +284,7 @@ export async function twoStepRoutes(app: FastifyInstance) {
       await addAccountTotp(id, t('mfa.app_default'), p.secret, step);
       await logActivity({ appId: a.id, username: p.u, event: '2fa_enrolled', ip, detail: 'authenticator app (sign-in)' });
       p.codes = await newAccountCodes(id);
+      p.added = 'app';
       delete p.secret;
       keep(s, p);
       await saveState(s);
@@ -406,6 +409,7 @@ export async function twoStepRoutes(app: FastifyInstance) {
       return reply.code(422).type('text/html').send(stepPage(a, locale, s, p, await offersFor(req, a, p, id), t(added === 'known' ? 'mfa.passkey_known' : 'mfa.passkey_failed')));
     }
     p.codes = await newAccountCodes(id);
+    p.added = 'passkey';
     delete p.secret;
     keep(s, p);
     await saveState(s);
@@ -422,7 +426,7 @@ export async function twoStepRoutes(app: FastifyInstance) {
     if (id === null) return expired(reply, a, locale, s);
     if (req.body?.saved !== '1') return reply.code(422).type('text/html').send(stepPage(a, locale, s, p, await offersFor(req, a, p, id)));
     await confirmAccountCodes(id);
-    return finish(req, reply, a, s, p, '2fa (new factor)');
+    return finish(req, reply, a, s, p, `2fa (new ${p.added === 'passkey' ? 'passkey' : 'app'})`);
   });
 
   // ---------------------------------------------------------------- My account → Two-step sign-in
