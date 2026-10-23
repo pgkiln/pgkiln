@@ -404,6 +404,29 @@ describe('pgkiln command line', () => {
     assert.equal(cli('admin', 'frob', 'x').code, 2);
   });
 
+  test('admin: the instance key and the lockout checks (sprint 133)', async () => {
+    const saved = (await owner.one(`select value from meta.setting where name = 'secret_key_backup'`))?.value;
+    process.env.PGKILN_SECRET_KEY ||= 'test-only-secret-key-0123456789abcdef'; // CI has no .env; the CLI inherits it
+    try {
+      const check = cli('admin', 'check', '--url', 'https://new.example.test');
+      assert.ok(check.code === 0 || check.code === 1, check.err);
+      assert.match(check.out, /Instance key/);
+      assert.match(check.out, /Clock/);
+      assert.match(check.out, /new\.example\.test/, 'passkeys checked against the given address');
+      assert.equal(cli('admin', 'check', '--url', 'ftp://x').code, 2);
+      const backed = cli('admin', 'key-backed-up');
+      assert.equal(backed.code, 0, backed.err);
+      assert.match((await owner.one(`select value from meta.setting where name = 'secret_key_backup'`)).value, /pgkiln admin/);
+      const rotate = cli('admin', 'rotate-key');
+      assert.equal(rotate.code, 2, 'needs PGKILN_OLD_SECRET_KEY');
+      assert.match(rotate.err, /PGKILN_OLD_SECRET_KEY/);
+      assert.equal(cli('admin', 'check', 'extra').code, 2);
+    } finally {
+      if (saved === undefined) await owner.query(`delete from meta.setting where name = 'secret_key_backup'`);
+      else await owner.query(`update meta.setting set value = $1 where name = 'secret_key_backup'`, [saved]);
+    }
+  });
+
   test('the builder downloads the directory as a zip, and the CLI imports it', async () => {
     const dev = new Browser(app);
     await dev.get('/builder/login');

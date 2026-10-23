@@ -14,26 +14,36 @@ export class SecretKeyMissing extends Error {
   }
 }
 
-function key() {
-  const k = process.env.PGKILN_SECRET_KEY ?? '';
+function key(k = process.env.PGKILN_SECRET_KEY ?? '') {
   if (k.length < 32) throw new SecretKeyMissing();
   return createHash('sha256').update(`pgkiln-secret-v1\0${k}`).digest();
 }
 
 export const secretKeyConfigured = () => (process.env.PGKILN_SECRET_KEY ?? '').length >= 32;
 
-export function encryptSecret(plain: string): string {
+/**
+ * (sprint 133, SEC-6) A short fingerprint of a key, to tell which key a backup confirmation was for. A
+ * different derivation than the encryption key's, so it reveals nothing about that key.
+ */
+export function keyFingerprint(k = process.env.PGKILN_SECRET_KEY ?? ''): string | null {
+  if (k.length < 32) return null;
+  return createHash('sha256').update(`pgkiln-key-fingerprint\0${k}`).digest('hex').slice(0, 16).replace(/(.{4})(?!$)/g, '$1-');
+}
+
+/** Encrypt with the server's key, or (rotate-key) with the key given. */
+export function encryptSecret(plain: string, withKey?: string): string {
   const iv = randomBytes(12);
-  const c = createCipheriv('aes-256-gcm', key(), iv);
+  const c = createCipheriv('aes-256-gcm', key(withKey), iv);
   const ct = Buffer.concat([c.update(plain, 'utf8'), c.final()]);
   return VERSION + Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64');
 }
 
-export function decryptSecret(stored: string): string {
+/** Decrypt with the server's key, or (rotate-key, checks) with the key given. */
+export function decryptSecret(stored: string, withKey?: string): string {
   if (!stored.startsWith(VERSION)) throw new Error('Unknown secret format.');
   const buf = Buffer.from(stored.slice(VERSION.length), 'base64');
   if (buf.length < 28) throw new Error('Damaged secret.');
-  const d = createDecipheriv('aes-256-gcm', key(), buf.subarray(0, 12));
+  const d = createDecipheriv('aes-256-gcm', key(withKey), buf.subarray(0, 12));
   d.setAuthTag(buf.subarray(12, 28));
   try {
     return Buffer.concat([d.update(buf.subarray(28)), d.final()]).toString('utf8');

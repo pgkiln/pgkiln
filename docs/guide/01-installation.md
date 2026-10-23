@@ -185,7 +185,8 @@ which is read at startup; real environment variables take precedence.
 | `OPENAI_API_KEY` | *(none)* | Default API key of AI services with the provider OpenAI that have no key of their own |
 | `GEMINI_API_KEY` | *(none)* | (sprint 111) Default API key of AI services with the provider Gemini that have no key of their own |
 | `OPENAI_COMPATIBLE_API_KEY` | *(none)* | (sprint 111) Default API key of OpenAI-compatible AI services (Ollama, vLLM, Azure OpenAI) that have no key of their own; without either, no key is sent (`none`) |
-| `PGKILN_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials and the API keys of AI services; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; changing it means entering the secrets again ([chapter 19](19-rest-data-sources.md)) |
+| `PGKILN_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials and the API keys of AI services; at least 32 characters (e.g. `openssl rand -base64 32`). Keep it outside the database; change it with `pgkiln admin rotate-key` ([chapter 3](03-builder.md#lockout-checks)), otherwise the secrets must be entered again |
+| `PGKILN_OLD_SECRET_KEY` | *(none)* | (0.67) Only for `pgkiln admin rotate-key`: the key the secrets are stored with now |
 | `PGKILN_REST_ALLOWED_HOSTS` | *(none: no outgoing calls)* | Hosts REST data sources and `invoke_api` may call: `api.example.com`, `*.example.com`, `host:8443`, `*` (any public host) ([chapter 19](19-rest-data-sources.md#server-configuration-and-the-allow-list)); a workspace's [network access list](03-builder.md#network-access) can narrow it, and the SMTP server of a workspace's own mail service must be on it |
 | `PGKILN_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (also allows them) |
 | `PGKILN_PUSH_HOSTS` | the browsers' push services | The hosts push notifications may be posted to: `fcm.googleapis.com,updates.push.services.mozilla.com,web.push.apple.com,*.notify.windows.com` when unset ([chapter 17](17-mobile.md#push-notifications)) |
@@ -272,7 +273,9 @@ fixed version in `PGKILN_IMAGE`, change it first); `up -d` replaces the containe
 container migrates the database before it starts serving. A `compose.yaml` from pgkiln 0.51.0 or older has
 `pull_policy: missing` under `pgkiln`, which makes `docker compose pull` skip an image that is already present:
 delete that line (or take the current `deploy/compose.yaml`) before the first upgrade this way. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
-Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys) can't be decrypted.
+Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys, authenticator apps) can't
+be decrypted. Keep a copy outside the server and confirm it on Instance settings; to change it, use
+`pgkiln admin rotate-key` ([chapter 3](03-builder.md#lockout-checks)).
 
 ## Upgrading
 

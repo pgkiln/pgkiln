@@ -171,6 +171,8 @@ export const de: BuilderMessages = {
   'wh.how_upgrade': 'So aktualisieren Sie',
   'wh.upgrade_steps': 'Zum Aktualisieren: Sichern Sie die Datenbank, installieren Sie die neue Version ({npm} oder das Docker-Image {docker}), führen Sie {migrate} aus und starten Sie den Server neu.',
   'wh.check_off': 'Die Prüfung auf neue Versionen ist deaktiviert.',
+  'wh.lockout': 'Prüfungen gegen Aussperren, die Aufmerksamkeit brauchen: {count}.',
+  'wh.lockout_open': 'Instanzeinstellungen',
   'wh.check_failed': 'Die letzte Prüfung ist fehlgeschlagen ({error}).',
   'wh.check_failed_older': 'Die letzte Prüfung ist fehlgeschlagen ({error}); das obige Ergebnis ist älter.',
   'wh.checked': 'Geprüft {ago}.',

@@ -29,6 +29,12 @@ export interface Release {
 
 let cache: { at: number; release: Release | null; error: string | null } | null = null;
 let inflight: Promise<void> | null = null;
+let remoteClock: { at: number; offsetMs: number } | null = null;
+
+/** How far this server's clock was ahead of GitHub's at the last release check (null: not asked yet). */
+export function remoteClockOffset() {
+  return remoteClock;
+}
 
 /** The address asked (PGKILN_RELEASE_URL for tests and mirrors; http(s) only). */
 function releaseUrl() {
@@ -91,6 +97,9 @@ async function fetchLatest(): Promise<Release | null> {
     redirect: 'error',
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
+  // (sprint 133, SEC-6) GitHub's clock, for the clock check on Instance settings (the header has whole seconds)
+  const date = Date.parse(res.headers.get('date') ?? '');
+  if (!Number.isNaN(date)) remoteClock = { at: Date.now(), offsetMs: Date.now() - date };
   if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -136,4 +145,5 @@ export function cachedRelease() {
 /** Forget the cache (tests). */
 export function resetReleaseCache() {
   cache = null;
+  remoteClock = null;
 }

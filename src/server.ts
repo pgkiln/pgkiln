@@ -14,3 +14,13 @@ await startWorkflowRunner();
 await startProcessJobRunner();
 await startPushListener();
 await startMailListener();
+// (sprint 133, SEC-6) say at start-up what could lock people out: a changed instance key or address, the clock
+try {
+  const { instanceChecks } = await import('./instance-checks.ts');
+  const { rpIdOf } = await import('./webauthn.ts');
+  const pub = process.env.PUBLIC_URL;
+  for (const c of await instanceChecks(pub && URL.canParse(pub) ? rpIdOf(new URL(pub).origin) : null))
+    if (c.level === 'error' || (c.level === 'warning' && c.key !== 'key_backup')) console.warn(`pgkiln: ${c.title}: ${c.detail}`);
+} catch (e) {
+  console.warn('pgkiln: lockout checks failed:', (e as Error).message);
+}

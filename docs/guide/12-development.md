@@ -22,6 +22,10 @@ src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); logs each run that applies
   instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
+  instance-checks.ts       (sprint 133, SEC-6) lockout checks: instance key (unreadable secrets, backup confirmed per fingerprint in
+                           meta.setting secret_key_backup), clock against the database and GitHub's Date header, passkeys of another
+                           RP ID, break-glass administrators; rotateKey() re-encrypts every *_enc column in one transaction;
+                           used by Instance settings, the Workspace home (cached count), server start-up and `pgkiln admin check`
   release-check.ts         (sprint 109) "pgkiln X is available": meta.setting 'release_check' over PGKILN_RELEASE_CHECK (off by default);
                            GitHub's releases/latest (PGKILN_RELEASE_URL in tests), 5 s timeout, 1 MB, cached a day per process,
                            never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
@@ -143,7 +147,8 @@ src/
                            nextRuns in a time zone, describeSchedule in words, the builder's presets and fields
   pgcron.ts                (sprint 101, DA-12) pg_cron for SQL Workshop → Scheduling: cronState (installed, loaded, cron.database_name,
                            access), jobs and runs, jobSql/activeSql/unscheduleSql/purgeSql (reviewed, then applySql), runNow
-  secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY
+  secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY (or a key given, for rotate-key);
+                           keyFingerprint()
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
                            tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
                            (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
@@ -420,7 +425,8 @@ src/
                            write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
-    instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview)
+    instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview;
+                           Lockout checks from src/instance-checks.ts and POST /instance/key-backup)
     gallery.ts             the App Gallery (sprint 61, 120): examples/gallery/gallery.json, sample apps (administrators: migrate --example,
                            or one SQL file of examples/ or examples/gallery/samples/ in one transaction), starter and utility apps
                            (blueprints of starters/ and utilities/ → openBlueprint's review), custom apps (the workspace's boilerplates);

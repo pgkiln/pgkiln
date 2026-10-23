@@ -171,6 +171,8 @@ export const es: BuilderMessages = {
   'wh.how_upgrade': 'Cómo actualizar',
   'wh.upgrade_steps': 'Para actualizar: haga una copia de seguridad de la base de datos, instale la nueva versión ({npm}, o la imagen Docker {docker}), ejecute {migrate} y reinicie el servidor.',
   'wh.check_off': 'La comprobación de nuevas versiones está desactivada.',
+  'wh.lockout': 'Comprobaciones de bloqueo que requieren atención: {count}.',
+  'wh.lockout_open': 'Ajustes de la instancia',
   'wh.check_failed': 'La última comprobación ha fallado ({error}).',
   'wh.check_failed_older': 'La última comprobación ha fallado ({error}); el resultado anterior es más antiguo.',
   'wh.checked': 'Comprobado {ago}.',

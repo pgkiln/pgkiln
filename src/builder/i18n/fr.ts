@@ -171,6 +171,8 @@ export const fr: BuilderMessages = {
   'wh.how_upgrade': 'Comment mettre à niveau',
   'wh.upgrade_steps': "Pour mettre à niveau : sauvegardez la base de données, installez la nouvelle version ({npm}, ou l'image Docker {docker}), exécutez {migrate} et redémarrez le serveur.",
   'wh.check_off': 'La recherche de nouvelles versions est désactivée.',
+  'wh.lockout': 'Contrôles contre le verrouillage à examiner : {count}.',
+  'wh.lockout_open': 'Paramètres de l’instance',
   'wh.check_failed': 'La dernière vérification a échoué ({error}).',
   'wh.check_failed_older': 'La dernière vérification a échoué ({error}) ; le résultat ci-dessus est plus ancien.',
   'wh.checked': 'Vérifié {ago}.',

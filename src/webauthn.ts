@@ -218,8 +218,12 @@ export function relyingParty(req: { protocol: string; host: string }): { rpId: s
       // a bad PUBLIC_URL: the browser's address
     }
   }
+  return { rpId: rpIdOf(origin), origin };
+}
+
+/** The RP ID of an origin: its host, or PGKILN_RP_ID when that is the host or a parent domain of it. */
+export function rpIdOf(origin: string): string {
   const host = new URL(origin).hostname;
   const wanted = (process.env.PGKILN_RP_ID ?? '').trim().toLowerCase();
-  const rpId = wanted && (host === wanted || host.endsWith(`.${wanted}`)) ? wanted : host;
-  return { rpId, origin };
+  return wanted && (host === wanted || host.endsWith(`.${wanted}`)) ? wanted : host;
 }

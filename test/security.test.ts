@@ -11789,3 +11789,57 @@ describe('(sprint 132, SEC-4) the identity provider did multi-factor sign-in', (
     await assert.rejects(runtime.query('select stepup_session from meta.sso_pending'));
   });
 });
+
+describe('(sprint 133, SEC-6) lockout checks and the instance key', () => {
+  const DEV = 'sec133_dev';
+  const PW = 'Sec133-password!';
+  let saved: string | undefined;
+  before(async () => {
+    saved = (await owner.one(`select value from meta.setting where name = 'secret_key_backup'`))?.value;
+    await owner.query(`delete from meta.setting where name = 'secret_key_backup'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)', [DEV, PW]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    if (saved === undefined) await owner.query(`delete from meta.setting where name = 'secret_key_backup'`);
+    else await owner.query(`insert into meta.setting (name, value) values ('secret_key_backup', $1) on conflict (name) do update set value = excluded.value`, [saved]);
+  });
+  const signIn = async (username: string, password: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password });
+    return b;
+  };
+
+  test('only an administrator confirms a key backup, with the CSRF token', async () => {
+    const dev = await signIn(DEV, PW);
+    await dev.get('/builder/apps');
+    const r = await dev.post('/builder/instance/key-backup', { __csrf: dev.lastCsrf });
+    assert.equal(r.statusCode, 403);
+    assert.equal((await dev.get('/builder/instance')).statusCode, 403);
+    assert.doesNotMatch((await dev.get('/builder/home')).body, /Lockout checks that need attention/, 'only administrators see the count');
+    const admin = await signIn('admin', 'admin');
+    await admin.get('/builder/instance');
+    await admin.post('/builder/instance/key-backup', { __csrf: 'forged' });
+    assert.equal(await owner.one(`select 1 from meta.setting where name = 'secret_key_backup'`), undefined, 'forged CSRF');
+  });
+
+  test('the checks escape what they show, and never show the key', async () => {
+    await owner.query(`insert into meta.developer_factor (username, kind, name, credential_id, public_key, alg, rp_id) values ($1, 'passkey', 'Key', 'sec133-cred', '{}', -7, '<b>evil</b>.example')`, [DEV]);
+    try {
+      const page = (await (await signIn('admin', 'admin')).get('/builder/instance')).body;
+      assert.match(page, /&lt;b&gt;evil&lt;\/b&gt;\.example/);
+      assert.doesNotMatch(page, /<b>evil<\/b>/);
+      if (process.env.PGKILN_SECRET_KEY) assert.ok(!page.includes(process.env.PGKILN_SECRET_KEY));
+    } finally {
+      await owner.query('delete from meta.developer_factor where username = $1', [DEV]);
+    }
+  });
+
+  test('the runtime role can read no encrypted secret', async () => {
+    const { encryptedColumns } = await import('../src/instance-checks.ts');
+    for (const c of await encryptedColumns())
+      await assert.rejects(runtime.query(`select "${c.column}" from "${c.schema}"."${c.table}" limit 1`), Error, `${c.table}.${c.column}`);
+  });
+});

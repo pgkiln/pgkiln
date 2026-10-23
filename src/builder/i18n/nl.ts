@@ -171,6 +171,8 @@ export const nl: BuilderMessages = {
   'wh.how_upgrade': 'Zo upgrade je',
   'wh.upgrade_steps': 'Upgraden: maak een back-up van de database, installeer de nieuwe versie ({npm}, of de Docker-image {docker}), voer {migrate} uit en herstart de server.',
   'wh.check_off': 'Het controleren op nieuwe versies staat uit.',
+  'wh.lockout': 'Controles tegen buitensluiten die aandacht nodig hebben: {count}.',
+  'wh.lockout_open': 'Instantie-instellingen',
   'wh.check_failed': 'De laatste controle is mislukt ({error}).',
   'wh.check_failed_older': 'De laatste controle is mislukt ({error}); het resultaat hierboven is ouder.',
   'wh.checked': '{ago} gecontroleerd.',

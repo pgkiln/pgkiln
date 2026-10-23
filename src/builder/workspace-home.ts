@@ -9,6 +9,7 @@ import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, workspaceAdmin } from './workspaces.ts';
 import { teamHomeBlock } from './team.ts';
+import { attentionCount } from '../instance-checks.ts';
 import { tr } from './i18n.ts';
 
 // (sprint 109, WS-1) The Workspace home (APEX: the workspace home page), the page the builder opens after
@@ -112,7 +113,12 @@ async function systemMessage(s: Session, admin: boolean) {
           ? html`<button class="btn btn-sm" name="check" value="now">${icon('refresh')} ${tx('wh.check_now')}</button><button class="btn btn-sm" name="check" value="off">${tx('wh.turn_off')}</button>`
           : html`<button class="btn btn-sm" name="check" value="on">${tx('wh.check_on')}</button>`}</div></form>`
     : '';
-  return region(tx('wh.system'), html`${body}${admins}`, '', 'system-message');
+  // (sprint 133, SEC-6) administrators hear about lockout risks here, not only on Instance settings
+  const lockout = admin ? await attentionCount() : 0;
+  const checks = lockout
+    ? html`<p class="alert alert-warning" role="status">${icon('alert')} ${tx('wh.lockout', { count: lockout })} <a href="${BASE}/instance#lockout-checks">${tx('wh.lockout_open')}</a></p>`
+    : '';
+  return region(tx('wh.system'), html`${checks}${body}${admins}`, '', 'system-message');
 }
 
 /** (Instance settings page) the release check: on, off, or as the environment says. */

@@ -120,7 +120,7 @@ export const CONFIGURATION: readonly { env: string; secret?: boolean; default: s
   { env: 'BACKGROUND_PROCESSES', default: 'on', help: 'This server runs background execution chains' },
   { env: 'PGKILN_REST_ALLOWED_HOSTS', default: '(none)', help: 'Hosts REST data sources may call' },
   { env: 'PGKILN_REST_PRIVATE_HOSTS', default: '(none)', help: 'Hosts that may resolve to private addresses' },
-  { env: 'PGKILN_SECRET_KEY', secret: true, default: '(none)', help: 'Encrypts web credential secrets and AI keys' },
+  { env: 'PGKILN_SECRET_KEY', secret: true, default: '(none)', help: 'Encrypts authenticator apps, web credential secrets, mail and AI keys (pgkiln admin rotate-key changes it)' },
   { env: 'API_URL', default: '(none)', help: 'PostgREST address (REST API pages)' },
   { env: 'API_JWT_SECRET', secret: true, default: '(none)', help: 'Signs REST API tokens' },
   { env: 'ANTHROPIC_API_KEY', secret: true, default: '(none)', help: 'Default key of Claude AI services' },
