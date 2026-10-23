@@ -398,6 +398,9 @@ export async function usersRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- identity providers (OpenID Connect)
+  /** (134) the values a new provider counts as a second factor: amr "mfa" (Entra ID, Okta), Entra ID's and SAML's own */
+  const DEFAULT_MFA_VALUES = ['mfa', 'http://schemas.microsoft.com/claims/multipleauthn',
+    'urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract', 'urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorUnregistered'];
   const providerForm = (pr: any, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean, tx: BuilderTranslate) => html`
     <form method="post" action="${action}">${csrfField}
       <div class="form-grid">
@@ -419,6 +422,16 @@ export async function usersRoutes(app: FastifyInstance) {
         <small class="help">${tx('idp.auto_create_help')}</small></div>
       <div class="field"><label class="check"><input type="checkbox" name="link_existing" value="true"${pr.link_existing ? raw(' checked') : ''}> ${tx('idp.link')}</label>
         <small class="help">${tx('idp.link_help')}</small></div>
+      <fieldset class="prop-group u-mt075"><legend>${tx('idp.mfa_title')}</legend>
+        <div class="field"><label class="check"><input type="checkbox" name="mfa_required" value="true"${pr.mfa_required ? raw(' checked') : ''}> ${tx('idp.mfa_required')}</label>
+          <small class="help">${tx('idp.mfa_required_help')}</small></div>
+        <div class="form-grid">
+          ${input('mfa_request', tx('idp.mfa_request'), pr.mfa_request ?? '', { help: tx('idp.mfa_request_help') })}
+          ${input('mfa_values', tx('idp.mfa_values'), (pr.mfa_values ?? DEFAULT_MFA_VALUES).join(' '), { help: tx('idp.mfa_values_help') })}
+        </div>
+        <div class="field"><label class="check"><input type="checkbox" name="local_second_step" value="true"${pr.local_second_step ? raw(' checked') : ''}> ${tx('idp.local_step')}</label>
+          <small class="help">${tx('idp.local_step_help')}</small></div>
+      </fieldset>
       <div class="field"><label class="check"><input type="checkbox" name="enabled" value="true"${pr.enabled !== false ? raw(' checked') : ''}> ${tx('idp.enabled')}</label></div>
       ${!isNew && pr.has_secret ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_secret" value="true"> ${tx('idp.remove_secret')}</label></div>` : ''}
       <div class="buttons"><button class="btn btn-hot">${isNew ? tx('idp.add') : tx('us.save')}</button></div>
@@ -439,13 +452,17 @@ export async function usersRoutes(app: FastifyInstance) {
     b.auto_create === 'true', b.enabled === 'true',
     protocol === 'saml' ? b.idp_sso_url?.trim() || null : null, protocol === 'saml' ? pem(b.idp_cert) : null,
     b.link_existing === 'true',
+    // (sprint 132, SEC-4) multi-factor sign-in at the provider
+    b.mfa_required === 'true', b.mfa_request?.trim().replace(/\s+/g, ' ').slice(0, 500) || null,
+    words(b.mfa_values).length ? words(b.mfa_values) : DEFAULT_MFA_VALUES, b.local_second_step === 'true',
   ];
+  const words = (v: string | undefined) => [...new Set((v ?? '').split(/\s+/).filter(Boolean))].slice(0, 20);
 
   app.get(`${BASE}/users/providers`, async (req: Req, reply) => {
     const s = await administrator(req, reply, 'Identity providers');
     if (!s) return;
     const tx = tr(s);
-    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create, link_existing,
+    const rows = (await owner.query(`select id, name, display_name, issuer, enabled, auto_create, link_existing, mfa_required,
         (select count(*) from meta.account_identity i where i.provider_id = p.id)::int as linked,
         (select string_agg(a.alias, ', ' order by a.alias) from meta.app a where p.name = any(a.sso_providers)) as apps
       from meta.auth_provider p order by display_name`)).rows;
@@ -460,7 +477,7 @@ export async function usersRoutes(app: FastifyInstance) {
             <td data-label="${tx('idp.issuer_col')}">${r.issuer}</td>
             <td data-label="${tx('idp.used_by')}">${r.apps ?? html`<span class="muted">${tx('idp.no_apps')}</span>`}</td>
             <td data-label="${tx('idp.linked')}">${r.linked}</td>
-            <td data-label="${tx('us.status')}">${r.enabled ? tx('idp.enabled_s') : html`<b>${tx('idp.disabled_s')}</b>`}${r.auto_create ? ` · ${tx('idp.auto_s')}` : ''}${r.link_existing ? ` · ${tx('idp.links_s')}` : ''}</td>
+            <td data-label="${tx('us.status')}">${r.enabled ? tx('idp.enabled_s') : html`<b>${tx('idp.disabled_s')}</b>`}${r.auto_create ? ` · ${tx('idp.auto_s')}` : ''}${r.link_existing ? ` · ${tx('idp.links_s')}` : ''}${r.mfa_required ? ` · ${tx('idp.mfa_s')}` : ''}</td>
           </tr>`) : html`<tr><td colspan="5" class="empty">${tx('idp.none')}</td></tr>`}</tbody></table></div>`)}
         ${region(tx('idp.add'), providerForm({}, `${BASE}/users/providers`, csrf(s), true, tx))}
       </div>`;
@@ -473,8 +490,9 @@ export async function usersRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       const r = await owner.one(
-        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, link_existing, protocol, client_secret)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
+        `insert into meta.auth_provider (name, display_name, issuer, client_id, scopes, username_claim, groups_claim, auto_create, enabled, idp_sso_url, idp_cert, link_existing,
+                                         mfa_required, mfa_request, mfa_values, local_second_step, protocol, client_secret)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) returning id`,
         [b.name?.trim().toLowerCase(), ...providerValues(b, protocolOf(b.protocol), b.name?.trim().toLowerCase() ?? ''), protocolOf(b.protocol), b.client_secret || null],
       );
       flash(s, tr(s)('idp.added'));
@@ -523,7 +541,8 @@ export async function usersRoutes(app: FastifyInstance) {
       await owner.query(
         `update meta.auth_provider set display_name = $2, issuer = $3, client_id = $4, scopes = $5, username_claim = $6,
                 groups_claim = $7, auto_create = $8, enabled = $9, idp_sso_url = $10, idp_cert = $11, link_existing = $12,
-                client_secret = case when $14 then null when $13::text is null then client_secret else $13 end
+                mfa_required = $13, mfa_request = $14, mfa_values = $15, local_second_step = $16,
+                client_secret = case when $18 then null when $17::text is null then client_secret else $17 end
           where id = $1`,
         [req.params.id, ...providerValues(b, current.protocol, current.name), b.client_secret || null, b.remove_secret === 'true'],
       );

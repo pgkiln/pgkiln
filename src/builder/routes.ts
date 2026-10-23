@@ -264,7 +264,16 @@ export async function builderRoutes(app: FastifyInstance) {
     const username = await resolveDeveloper(src, { ...result.identity, username: result.username, groups: result.groups });
     const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [username]);
     if (!dev) throw new SsoError('The developer was removed.');
-    return finishSignIn(req, reply, null, dev, { ws: null, workspace: '', next: safeNext(result.next), remember: false, weak: false, picked: null, detail: `builder sso:${p.name}`, sso: p.name });
+    // (sprint 132, SEC-4) the provider leaves the second step to pgkiln: as after a password (the trusted-browser
+    // cookie belongs to /builder and doesn't reach this callback, so the step is always asked); a developer without a
+    // factor signs in without __SSO, so a 2FA rule makes them add one (ui.ts)
+    if (p.local_second_step && (await hasFactor(dev.username))) {
+      const ns = await createSession(reply, null, BASE);
+      ns.state.__MFA = JSON.stringify({ u: dev.username, ws: null, w: '', next: safeNext(result.next), remember: false, weak: false, at: Date.now() });
+      await saveState(ns);
+      return reply.redirect(`${BASE}/login/2fa`, 303);
+    }
+    return finishSignIn(req, reply, null, dev, { ws: null, workspace: '', next: safeNext(result.next), remember: false, weak: false, picked: null, detail: `builder sso:${p.name}${result.mfa ? ' (mfa)' : ''}`, sso: p.local_second_step ? undefined : p.name });
   });
 
   // (sprint 128, SEC-2) signing in with a passkey alone: no user name, no password. The browser offers the

@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Checking that an identity provider really did multi-factor sign-in** (SEC-4; APEX trusts the provider's policy):
+  Users → Identity providers → *Multi-factor sign-in*. *Require multi-factor sign-in at this provider* refuses
+  sign-ins, to applications and to the builder, unless the ID token's `amr` or `acr` (OpenID Connect) or the
+  assertion's `AuthnContextClassRef` (SAML) is one of *Values that mean multi-factor* (default `mfa`, Entra ID's
+  `multipleauthn` and SAML's two-factor classes); *Ask the provider for* sends `acr_values` or a
+  `RequestedAuthnContext`. **Step-up through the provider**: a single sign-on session that opens a page behind a
+  scheme with *Second step within (minutes)* goes back to its provider (`prompt=login`, `max_age=0`; SAML
+  `ForceAuthn`), which must answer with a fresh multi-factor sign-in of the same identity. A provider's multi-factor
+  sign-in counts as a recent second step. *Ask pgkiln's own second step after this provider* applies the
+  application's two-factor rule (and a developer's factor in the builder) after the provider, for providers that
+  cannot enforce MFA. Migration 134.
+
 ## [0.65.0] - 2026-10-23
 
 ### Added

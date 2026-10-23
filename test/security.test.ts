@@ -11735,3 +11735,57 @@ describe('(sprint 131, SEC-3 part 2) passkeys, e-mail codes, step-up and API tok
     }
   });
 });
+
+describe('(sprint 132, SEC-4) the identity provider did multi-factor sign-in', () => {
+  const NAME = 'sec132';
+  let id: number;
+  before(async () => {
+    await owner.query('delete from meta.auth_provider where name = $1', [NAME]);
+    id = (await owner.one(`insert into meta.auth_provider (name, display_name, issuer, client_id) values ($1, 'Sec 132', 'https://idp.example.test', 'c') returning id`, [NAME])).id;
+  });
+  after(() => owner.query('delete from meta.auth_provider where name = $1', [NAME]));
+
+  test('the provider form: CSRF checked; values capped and de-duplicated; an over-long request refused', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/users/providers/${id}`);
+    const base = { display_name: 'Sec 132', issuer: 'https://idp.example.test', client_id: 'c', enabled: 'true' };
+    await dev.post(`/builder/users/providers/${id}`, { __csrf: 'forged', ...base, mfa_required: 'true' });
+    assert.equal((await owner.one('select mfa_required from meta.auth_provider where id = $1', [id])).mfa_required, false, 'forged CSRF');
+    const many = Array.from({ length: 30 }, (_, i) => `v${i}`).join(' ');
+    await dev.get(`/builder/users/providers/${id}`);
+    await dev.post(`/builder/users/providers/${id}`, { __csrf: dev.lastCsrf, ...base, mfa_required: 'true', mfa_request: ' urn:a   urn:b ', mfa_values: `mfa mfa ${many}` });
+    const r = await owner.one('select mfa_required, mfa_request, mfa_values from meta.auth_provider where id = $1', [id]);
+    assert.equal(r.mfa_required, true);
+    assert.equal(r.mfa_request, 'urn:a urn:b');
+    assert.equal(r.mfa_values.length, 20);
+    assert.equal(r.mfa_values.filter((v: string) => v === 'mfa').length, 1);
+    await assert.rejects(owner.query('update meta.auth_provider set mfa_request = $2 where id = $1', [id, 'x'.repeat(501)]));
+  });
+
+  test('a step-up result needs a second factor, a fresh sign-in and an identity linked to an active account', async () => {
+    const { stepUpResult } = await import('../src/sso.ts');
+    const p = { id, mfa_values: ['mfa'] };
+    const pending = { app_id: appId, next: null, stepup_session: '00000000-0000-0000-0000-000000000000' };
+    const acc = (await owner.one(`select id from meta.account where username = 'king'`)).id;
+    await owner.query('insert into meta.account_identity (provider_id, subject, account_id) values ($1, $2, $3)', [id, 'king-sub', acc]);
+    try {
+      await assert.rejects(stepUpResult(p, pending, 'king-sub', false, Date.now()), /did not confirm a second factor/);
+      await assert.rejects(stepUpResult(p, pending, 'king-sub', true, null), /did not ask you to sign in again/);
+      await assert.rejects(stepUpResult(p, pending, 'king-sub', true, Date.now() - 3600_000), /did not ask you to sign in again/);
+      await assert.rejects(stepUpResult(p, pending, 'someone-else', true, Date.now()), /not linked/);
+      assert.equal((await stepUpResult(p, pending, 'king-sub', true, Date.now())).username, 'king');
+      await owner.query(`update meta.account set active = false where id = $1`, [acc]);
+      await assert.rejects(stepUpResult(p, pending, 'king-sub', true, Date.now()), /not linked/, 'a disabled account');
+    } finally {
+      await owner.query(`update meta.account set active = true where id = $1`, [acc]);
+      await owner.query('delete from meta.account_identity where provider_id = $1', [id]);
+    }
+  });
+
+  test('the runtime role reads neither the provider settings nor pending step-ups', async () => {
+    await assert.rejects(runtime.query('select mfa_values from meta.auth_provider'));
+    await assert.rejects(runtime.query('select stepup_session from meta.sso_pending'));
+  });
+});

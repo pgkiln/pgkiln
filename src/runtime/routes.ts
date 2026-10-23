@@ -49,7 +49,7 @@ import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts
 import { LOGIN_ERROR, LOGIN_USER, safeNext, signInForm } from './signin.ts';
 import { passwordResetRoutes } from './password-reset.ts';
 import { passwordSignIn, twoStepRoutes } from './two-step.ts';
-import { carriesSecondStep } from '../account-mfa.ts';
+import { carriesSecondStep, markSecondStep } from '../account-mfa.ts';
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
 import { feedbackRoutes } from './feedback.ts';
@@ -141,6 +141,8 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   // (067) session sharing: the session belongs to the group's shared sign-in (a new one after a real sign-in)
   const shared = opts.shared ?? (await issueShared(req, reply, a, username, { groups: opts.groups, method: opts.method }));
   if (shared) s.state.__SHARED = shared;
+  // (sprint 132) how the session signed in: a step-up after "sso:<provider>" goes back to that provider
+  if (opts.method) s.state.__SIGNIN = opts.method;
   await saveState(s);
 
   // the application processes "after login", then (102) the application computations "after authentication"
@@ -161,6 +163,9 @@ export async function signIn(req: FastifyRequest, reply: FastifyReply, a: App, o
   if (opts.remember) await issueRemember(req, reply, a, username, { groups: opts.groups, method: opts.method, expiresAt: opts.rememberUntil });
   return s;
 }
+
+/** (sprint 132) Set by the runtime routes: a step-up through an identity provider (two-step.ts). */
+export let ssoStepUp: (reply: FastifyReply, a: App, s: Session, p: Provider, next: string) => Promise<unknown>;
 
 export async function completeLogin(req: FastifyRequest, reply: FastifyReply, a: App, oldSession: Session, username: string, opts: SignInOptions & { next?: string } = {}) {
   await signIn(req, reply, a, oldSession, username, opts);
@@ -1345,6 +1350,13 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
   });
 
+  /** (sprint 132) A step-up through the identity provider the session signed in with (two-step.ts). */
+  ssoStepUp = async (reply: FastifyReply, a: App, s: Session, p: Provider, next: string) => {
+    const { url, browserKey } = p.protocol === 'saml' ? await startSamlSignIn(p, a.id, next, undefined, s.id) : await startSignIn(p, a.id, next, undefined, s.id);
+    reply.setCookie(SSO_COOKIE, browserKey, { path: '/sso', httpOnly: true, sameSite: 'lax', secure: process.env.COOKIE_SECURE === 'true', maxAge: 600 });
+    return reply.redirect(url, 303);
+  };
+
   app.get<{ Params: { provider: string } }>('/sso/callback/:provider', async (req, reply) => {
     const ip = clientIp(req);
     const p = await loadProvider(req.params.provider);
@@ -1375,9 +1387,24 @@ export async function runtimeRoutes(app: FastifyInstance) {
         return simplePage(reply, 403, english('login.sso_failed'), e.message, result.link ? '/builder/security' : '/builder/login');
       });
     }
+    if (result.stepup) return withAppDb(result.appId, () => finishSsoStepUp(req, reply, p, result, ip));
     return withAppDb(result.appId, () => finishSsoForApp(req, reply, p, result, ip));
   };
-  const finishSsoForApp = async (req: FastifyRequest, reply: FastifyReply, p: { name: string }, result: SsoResult, ip: string) => {
+  /** (sprint 132) A step-up confirmed by the provider: the session that asked for it gets its second step. */
+  const finishSsoStepUp = async (req: FastifyRequest, reply: FastifyReply, p: Provider, result: SsoResult, ip: string) => {
+    const s = await runtime.one<{ id: string; app_id: number; username: string | null; state: Record<string, unknown> }>(
+      'select id, app_id, username, state from meta.session where id = $1', [result.stepup]);
+    const a = s ? await loadApp((await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [s.app_id]))?.alias ?? '') : undefined;
+    if (!s || !a || s.app_id !== result.appId || s.username?.toLowerCase() !== result.username.toLowerCase()) {
+      logActivity({ appId: result.appId, username: result.username, event: 'login_failed', ip, detail: `sso:${p.name}: step-up for another session or user` });
+      return simplePage(reply, 403, english('login.sso_failed'), english('login.sso_incomplete'));
+    }
+    markSecondStep(s.state);
+    await runtime.query('update meta.session set state = $2 where id = $1', [s.id, s.state]);
+    await logActivity({ appId: a.id, username: s.username, event: '2fa_stepup', ip, detail: `sso:${p.name}` });
+    return reply.redirect(safeNext(a, result.next ?? undefined), 303);
+  };
+  const finishSsoForApp = async (req: FastifyRequest, reply: FastifyReply, p: Provider, result: SsoResult, ip: string) => {
     const alias = (await runtime.one<{ alias: string }>('select alias from meta.app where id = $1', [result.appId]))?.alias;
     const loaded = alias ? await appWithLocale(req, alias) : undefined;
     if (!loaded || loaded.app.authentication !== 'app_users' || !loaded.app.sso_providers.includes(p.name)) return simplePage(reply, 403, english('login.sso_failed'), english('login.method_unavailable'));
@@ -1388,7 +1415,16 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return simplePage(reply, 403, locale.t('login.no_access_title'), locale.t('login.no_access', { user: result.username, app: a.name }), `/a/${a.alias}/login`, locale);
     }
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
-    return completeLogin(req, reply, a, session, result.username, { extraRoles: access.roles, next: result.next ?? undefined, method: `sso:${p.name}`, detail: `sso:${p.name}` });
+    const opts = { extraRoles: access.roles, next: result.next ?? undefined, method: `sso:${p.name}`, detail: `sso:${p.name}${result.mfa ? ' (mfa)' : ''}` };
+    // (sprint 132) pgkiln's own second step after the provider, as after a password
+    if (p.local_second_step) return passwordSignIn(req, reply, a, session, result.username, opts);
+    const s = await signIn(req, reply, a, session, result.username, opts);
+    // the provider's second factor counts for step-up (authorization schemes with mfa_minutes)
+    if (result.mfa) {
+      markSecondStep(s.state);
+      await saveState(s);
+    }
+    return reply.redirect(safeNext(a, opts.next), 303);
   };
 
   // SAML: the IdP posts the response cross-site, where SameSite=Lax cookies aren't sent; post it on

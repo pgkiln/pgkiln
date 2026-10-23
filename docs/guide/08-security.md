@@ -244,6 +244,40 @@ psql "$DATABASE_URL" -f examples/keycloak-saml.sql    # reads Keycloak's signing
 
 The HR login page then offers *Sign in with Keycloak (SAML)*, with the same Keycloak users.
 
+### Multi-factor sign-in at the identity provider
+
+With single sign-on the provider asks for the second factor, in its own sign-on policy (Entra ID Conditional Access,
+Okta and Keycloak authentication flows, OCI IAM sign-on policies). APEX trusts that policy blindly; pgkiln (0.66) can
+check that the provider really did it. On the provider (**Users → Identity providers**), under *Multi-factor sign-in*:
+
+| Field | Meaning |
+|---|---|
+| Require multi-factor sign-in at this provider | Refuse every sign-in through this provider, to applications and to the builder, that the provider does not mark as multi-factor. The user sees *The identity provider did not confirm a second factor*; the Activity monitor logs it as a failed sign-in |
+| Ask the provider for | Sent with every sign-in: OpenID Connect `acr_values`, or SAML `AuthnContextClassRef` values (a `RequestedAuthnContext`, comparison *exact*), separated by spaces. Empty: nothing is asked for |
+| Values that mean multi-factor | The values that count, separated by spaces; any one is enough. OpenID Connect: an entry of the ID token's `amr` claim (RFC 8176) or its `acr`. SAML: the assertion's `AuthnContextClassRef` |
+| Ask pgkiln's own second step after this provider | For providers that cannot require MFA themselves: see below |
+
+The default values are `mfa` (Entra ID, Okta and Auth0 put it in `amr` after a second factor), Entra ID's SAML
+`http://schemas.microsoft.com/claims/multipleauthn`, and SAML's `MobileTwoFactorContract` and
+`MobileTwoFactorUnregistered`. For Keycloak, name the level of your step-up flow (for example request and accept
+`gold`, or `2` with the default level-of-authentication mapping); for a SAML IdP, the class it sends after a second
+factor. Without *Require*, a provider that does say `mfa` still counts: the session then has a recent second step for
+[step-up](#asking-again-before-a-sensitive-page-step-up), and the Activity monitor shows `sso:<provider> (mfa)`.
+
+**Step-up through the provider.** A user who signed in through a provider and opens a page behind an authorization
+scheme with *Second step within (minutes)* goes back to that provider, which is asked to sign them in again
+(OpenID Connect `prompt=login` and `max_age=0`; SAML `ForceAuthn`) with the requested context. The answer must carry
+one of the multi-factor values, a sign-in time (`auth_time`, or the SAML `AuthnInstant`) of the last ten minutes,
+and the identity already linked to the signed-in account; nothing is created or linked on the way. The page then
+opens.
+
+**pgkiln's own second step after the provider.** With *Ask pgkiln's own second step after this provider* on, a sign-in
+through the provider is followed by the application's [two-factor rule](#two-factor-sign-in) exactly as after a
+password (users add an app or a passkey on *My account*, or while signing in when the application requires one), and
+step-up asks for that factor instead of going back to the provider. For the builder, a developer with a second factor
+gives it after the provider; one without is treated like a password sign-in, so a two-factor rule of the instance or
+workspace makes them add one.
+
 ### LDAP and Active Directory
 
 Applications can check passwords against **LDAP directories** (OpenLDAP, Active Directory,
@@ -426,7 +460,8 @@ sign-on policy asks for one, or a hand-written TOTP check in a custom authentica
 How it works:
 
 - The second step follows the user directory's **password** and **LDAP** directories. An identity provider
-  ([OpenID Connect](#single-sign-on-openid-connect), [SAML](#single-sign-on-saml-20)) asks for its own second factor;
+  ([OpenID Connect](#single-sign-on-openid-connect), [SAML](#single-sign-on-saml-20)) asks for its own second factor,
+  which pgkiln can [check](#multi-factor-sign-in-at-the-identity-provider), or leaves it to pgkiln's second step;
   database accounts, custom authentication and HTTP header authentication are not covered.
 - The code comes from any authenticator app (TOTP, RFC 6238: Google Authenticator, Microsoft Authenticator,
   1Password …), each code once, one 30-second step either side for clock drift. A **recovery code** (ten per account,
@@ -472,7 +507,9 @@ An authorization scheme's **Second step within (minutes)** makes it pass only wh
 the scheme otherwise to *Confirm it's you* (the second-step page) and back to the page afterwards; regions, buttons and
 processes behind it stay hidden or skipped until then. A user without a factor is told to add one on *My account*.
 Typical: `SALARY_EDIT` (role `hr_manager`, second step within 15 minutes) on the page that changes salaries. A
-*Keep me signed in*, shared or single sign-on session has no recent second step of pgkiln's own, so it is asked too.
+*Keep me signed in* or shared session has no recent second step of pgkiln's own, so it is asked too; a single sign-on
+session goes back to its [identity provider](#multi-factor-sign-in-at-the-identity-provider) for a new multi-factor
+sign-in (or to pgkiln's own second step, when the provider leaves it to pgkiln).
 A form posted after the time ran out is not processed: the user confirms, comes back to the page and submits again.
 
 #### REST API tokens
@@ -493,7 +530,8 @@ application users, so nothing to cover there.
 - **Stale sessions**: 60 minutes idle or 8 hours total (configurable).
 - **Stolen passwords**: [two-factor sign-in](#two-factor-sign-in) asks for a code from an authenticator app or a
   passkey, for every user or for some roles, and again before sensitive pages ([step-up](#asking-again-before-a-sensitive-page-step-up)); with an identity provider ([OpenID Connect](#single-sign-on-openid-connect),
-  [SAML](#single-sign-on-saml-20)) the provider asks for its own. Developers have
+  [SAML](#single-sign-on-saml-20)) the provider asks for its own, and pgkiln
+  [checks that it did](#multi-factor-sign-in-at-the-identity-provider). Developers have
   [two-factor sign-in](03-builder.md#two-factor-sign-in) for the builder too.
 
 All sign-ins, failures and lockouts appear in the **Activity** monitor.

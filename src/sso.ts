@@ -15,7 +15,9 @@ import { owner } from './db.ts';
 //    existing account is linked by username only when the provider allows
 //    it (link_existing), while it has no identity at that provider yet, and
 //    for the e-mail claim only with email_verified = true;
-//  * client secrets are read with the owner connection only.
+//  * client secrets are read with the owner connection only;
+//  * (sprint 132, SEC-4) with mfa_required, a sign-in counts only when the ID token's amr or acr names a second
+//    factor (mfa_values); a step-up asks the provider to sign the user in again and checks auth_time too.
 
 export interface Provider {
   id: number;
@@ -40,6 +42,14 @@ export interface Provider {
   builder_link_existing: boolean;
   builder_group: string | null;
   builder_admin_group: string | null;
+  /** (134, SEC-4) refuse sign-ins the provider does not mark as multi-factor */
+  mfa_required: boolean;
+  /** (134) acr_values / AuthnContextClassRef values to request, space separated */
+  mfa_request: string | null;
+  /** (134) amr / acr / AuthnContextClassRef values that count as a second factor */
+  mfa_values: string[];
+  /** (134) pgkiln asks its own second step after a sign-in through this provider */
+  local_second_step: boolean;
 }
 
 interface Discovery {
@@ -54,6 +64,8 @@ export class SsoError extends Error {}
 
 const ALGORITHMS = ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512', 'EdDSA'];
 const PENDING_MINUTES = 10;
+/** (sprint 132) A step-up through the provider: how old its new sign-in may be. */
+export const STEPUP_AUTH_SECONDS = 600;
 const b64url = (b: Buffer) => b.toString('base64url');
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -92,11 +104,23 @@ function jwks(doc: Discovery) {
   return set;
 }
 
+/** (sprint 132) What the provider is asked for: its acr values (or AuthnContextClassRefs), split. */
+export const mfaRequest = (p: Pick<Provider, 'mfa_request'>) => (p.mfa_request ?? '').split(/\s+/).filter(Boolean);
+
+/** (sprint 132, SEC-4) Whether the provider says a second factor was used: one of its mfa_values among these. */
+export function provedMfa(p: Pick<Provider, 'mfa_values'>, said: string[]): boolean {
+  const accepted = new Set(p.mfa_values ?? []);
+  return said.some((v) => accepted.has(v));
+}
+
+export const MFA_REFUSED = 'The identity provider did not confirm a second factor (multi-factor sign-in), which this sign-in requires. Ask an administrator how to set one up at the identity provider.';
+
 /**
  * Start: returns the provider URL to redirect to, and the browser-binding cookie value.
- * appId null: a sign-in to the builder; link: the signed-in developer linking this identity.
+ * appId null: a sign-in to the builder; link: the signed-in developer linking this identity;
+ * stepup (sprint 132): the signed-in session a fresh multi-factor sign-in at the provider confirms.
  */
-export async function startSignIn(p: Provider, appId: number | null, next: string | undefined, link?: string) {
+export async function startSignIn(p: Provider, appId: number | null, next: string | undefined, link?: string, stepup?: string) {
   const doc = await discover(p.issuer);
   const state = b64url(randomBytes(32));
   const nonce = b64url(randomBytes(32));
@@ -104,12 +128,12 @@ export async function startSignIn(p: Provider, appId: number | null, next: strin
   const browserKey = b64url(randomBytes(32));
   await owner.query(`delete from meta.sso_pending where created_at < now() - make_interval(mins => $1)`, [PENDING_MINUTES]);
   await owner.query(
-    `insert into meta.sso_pending (state, app_id, provider_id, code_verifier, nonce, browser_hash, next, link_username)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [state, appId, p.id, verifier, nonce, sha256(browserKey), next ?? null, link ?? null],
+    `insert into meta.sso_pending (state, app_id, provider_id, code_verifier, nonce, browser_hash, next, link_username, stepup_session)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+    [state, appId, p.id, verifier, nonce, sha256(browserKey), next ?? null, link ?? null, stepup ?? null],
   );
   const url = new URL(doc.authorization_endpoint);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     response_type: 'code',
     client_id: p.client_id,
     redirect_uri: redirectUri(p),
@@ -118,7 +142,15 @@ export async function startSignIn(p: Provider, appId: number | null, next: strin
     nonce,
     code_challenge: b64url(createHash('sha256').update(verifier).digest()),
     code_challenge_method: 'S256',
-  }).toString();
+  });
+  // (sprint 132) what the provider should ask for; a step-up signs the user in again
+  const acr = mfaRequest(p);
+  if (acr.length) params.set('acr_values', acr.join(' '));
+  if (stepup) {
+    params.set('prompt', 'login');
+    params.set('max_age', '0');
+  }
+  url.search = params.toString();
   return { url: url.toString(), browserKey };
 }
 
@@ -145,6 +177,10 @@ export interface SsoResult {
   identity?: { subject: string; name: string | null; email: string | null; mayLink: boolean };
   /** builder: the signed-in developer who links this identity (Security page) */
   link?: string | null;
+  /** (sprint 132) the provider said a second factor was used (amr / acr, AuthnContextClassRef) */
+  mfa?: boolean;
+  /** (sprint 132) a step-up: the signed-in session this sign-in confirms (username: that session's account) */
+  stepup?: string | null;
 }
 
 /** Callback: validate state/browser, exchange the code, verify the ID token, resolve the account. */
@@ -154,7 +190,7 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
   const code = params.get('code') ?? '';
   const pending = await owner.one(
     `delete from meta.sso_pending where state = $1 and provider_id = $2 and created_at > now() - make_interval(mins => $3)
-     returning app_id, code_verifier, nonce, browser_hash, next, link_username`,
+     returning app_id, code_verifier, nonce, browser_hash, next, link_username, stepup_session`,
     [state, p.id, PENDING_MINUTES],
   );
   if (!pending) throw new SsoError('This sign-in link has expired or was already used. Please try again.');
@@ -198,6 +234,12 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
   const username = claim(payload, p.username_claim);
   if (!usableUsername(username)) throw new SsoError(`The identity token has no usable "${p.username_claim}" claim.`);
   if (p.username_claim === 'email' && payload.email_verified === false) throw new SsoError('Your e-mail address is not verified at the identity provider.');
+  // (sprint 132, SEC-4) how the user signed in: RFC 8176 amr values and the acr
+  const amr = Array.isArray(payload.amr) ? payload.amr.filter((v): v is string => typeof v === 'string') : [];
+  const mfa = provedMfa(p, typeof payload.acr === 'string' ? [...amr, payload.acr] : amr);
+  if (pending.stepup_session)
+    return stepUpResult(p, pending, payload.sub, mfa, typeof payload.auth_time === 'number' ? payload.auth_time * 1000 : null);
+  if (p.mfa_required && !mfa) throw new SsoError(MFA_REFUSED);
   const rawGroups = claim(payload, p.groups_claim);
   const groups = Array.isArray(rawGroups) ? rawGroups.filter((g): g is string => typeof g === 'string').map((g) => g.replace(/^\//, '')) : [];
 
@@ -207,12 +249,31 @@ export async function finishSignIn(p: Provider, params: URLSearchParams, browser
     // the builder: devsso.ts finds the developer (sprint 129)
     const email = payload.email_verified === false ? null : typeof payload.email === 'string' ? payload.email : null;
     return {
-      appId: null, next: pending.next, username, groups, link: pending.link_username,
+      appId: null, next: pending.next, username, groups, link: pending.link_username, mfa,
       identity: { subject: payload.sub, name: typeof payload.name === 'string' ? payload.name : null, email, mayLink: verified },
     };
   }
   const account = await resolveAccount(p, payload, username, { mayLink: verified });
-  return { appId: pending.app_id, next: pending.next, username: account, groups };
+  return { appId: pending.app_id, next: pending.next, username: account, groups, mfa };
+}
+
+/**
+ * (sprint 132) The end of a step-up through the provider (OpenID Connect or SAML): a new sign-in (at most
+ * STEPUP_AUTH_SECONDS old) with a second factor, by the identity already linked to the session's account.
+ * Nothing is created or linked here.
+ */
+export async function stepUpResult(
+  p: Pick<Provider, 'id' | 'mfa_values'>, pending: { app_id: number | null; next: string | null; stepup_session: string },
+  subject: string, mfa: boolean, authAt: number | null,
+): Promise<SsoResult> {
+  if (!mfa) throw new SsoError(MFA_REFUSED);
+  if (authAt === null || Date.now() - authAt > STEPUP_AUTH_SECONDS * 1000 + 60_000)
+    throw new SsoError('The identity provider did not ask you to sign in again. Please try again.');
+  const acc = await owner.one<{ username: string }>(
+    `select a.username from meta.account_identity i join meta.account a on a.id = i.account_id
+      where i.provider_id = $1 and i.subject = $2 and a.active`, [p.id, subject]);
+  if (!acc) throw new SsoError('This identity is not linked to an account here.');
+  return { appId: pending.app_id, next: pending.next, username: acc.username, groups: [], mfa: true, stepup: pending.stepup_session };
 }
 
 /** A username from an identity provider: text without white space or colons, at most 100 characters. */
