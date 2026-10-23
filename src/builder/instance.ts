@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { html } from '../html.ts';
+import { attention, confirmKeyBackup, forgetAttention, instanceChecks, type Level } from '../instance-checks.ts';
+import { relyingParty } from '../webauthn.ts';
 import { configurationValue, CONFIGURATION, INSTANCE_SETTINGS, instanceSetting, origin, refreshInstanceSettings, saveInstanceSettings } from '../instance.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
@@ -18,6 +20,20 @@ async function adminOnly(s: Session, reply: FastifyReply) {
   const main = html`<h1 class="u-mb1">Instance settings</h1><div class="alert alert-error" role="alert">Only administrators change instance settings.</div>`;
   await send(reply.code(403), s, shell(s, 'Instance settings', crumbs, main));
   return false;
+}
+
+const LEVEL_TEXT: Record<Level, string> = { ok: 'OK', info: 'Note', warning: 'Warning', error: 'Error' };
+
+/** (sprint 133, SEC-6) Lockout checks: what could keep people out later (src/instance-checks.ts). */
+async function checksRegion(s: Session, rpId: string) {
+  const checks = await instanceChecks(rpId);
+  const n = attention(checks);
+  return region('Lockout checks', html`<p class="muted u-mt0">${n ? `${n} of these need attention.` : 'Nothing needs attention.'}
+      The same checks run on the server with <code>pgkiln admin check</code>; <code>--url</code> shows which passkeys a new address would break.</p>
+    <ul class="hits findings">${checks.map((c) => html`<li class="finding-${c.level}"><strong>${c.title}</strong><span></span>
+      <span class="tag tag-${c.level}">${LEVEL_TEXT[c.level]}</span><span class="hit-snippet">${c.detail}</span>
+      ${c.key === 'key_backup' && c.level === 'warning' ? html`<form method="post" action="${BASE}/instance/key-backup" class="u-mt0">${csrf(s)}
+        <button class="btn btn-sm">I have a copy of this key</button></form>` : ''}</li>`)}</ul>`, '', 'lockout-checks');
 }
 
 const ORIGIN_TEXT = { builder: 'set here', environment: 'environment variable', default: 'default' } as const;
@@ -39,6 +55,7 @@ export async function instanceRoutes(app: FastifyInstance) {
               <small class="help">${x.help} In effect: <b>${instanceSetting(x.key)}</b> (${ORIGIN_TEXT[from]}; <code>${x.env}</code>, default ${x.default}).</small></div>`;
           })}</div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div></form>`)}
+        ${await checksRegion(s, relyingParty(req).rpId)}
         ${await releaseCheckRegion(s)}
         ${await policyRegion(s)}
         ${region('Configuration', html`<p class="muted u-mt0">Environment variables of this server (chapter 1 of the guide). Secrets show only whether they are set.</p>
@@ -49,6 +66,16 @@ export async function instanceRoutes(app: FastifyInstance) {
           })}</tbody></table></div>`)}
       </div>`;
     return send(reply, s, shell(s, 'Instance settings', crumbs, main));
+  });
+
+  app.post(`${BASE}/instance/key-backup`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await adminOnly(s, reply))) return;
+    const ok = await confirmKeyBackup(s.username!);
+    forgetAttention();
+    if (ok) await logActivity({ username: s.username, event: 'secret_key', ip: clientIp(req), detail: 'backup confirmed' });
+    flash(s, ok ? 'Backup of the instance key confirmed.' : 'PGKILN_SECRET_KEY is not set.', ok ? 'ok' : 'error');
+    return back(reply, s, `${BASE}/instance#lockout-checks`);
   });
 
   app.post(`${BASE}/instance`, async (req: Req, reply) => {

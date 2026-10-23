@@ -471,24 +471,35 @@ const COMMANDS: Record<string, Command> = {
   },
   // (sprint 126, SEC-6) lockout recovery on the server, when nobody can sign in to the builder
   admin: {
-    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all | builder-sign-in password [options]',
-    summary: 'lockout recovery: reset a developer\'s two-factor sign-in, set the two-factor policy, allow the password again',
+    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all | builder-sign-in password | rotate-key | key-backed-up | check [options]',
+    summary: 'lockout recovery and checks: two-factor reset and policy, the builder password, the instance key',
     details:
       'pgkiln admin reset-2fa <developer> [--reason <text>]\n' +
       'pgkiln admin set-2fa-policy off|admins|all [--grace <days>]\n' +
-      'pgkiln admin builder-sign-in password\n\n' +
+      'pgkiln admin builder-sign-in password\n' +
+      'pgkiln admin rotate-key [--dry-run]\n' +
+      'pgkiln admin key-backed-up\n' +
+      'pgkiln admin check [--url <public url>]\n\n' +
       "reset-2fa removes the developer's authenticator apps and recovery codes and ends their builder\n" +
       'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works\n' +
       "(and clears the workspaces' own two-factor rules); admins and all need at least two administrators\n" +
       'with two-factor sign-in (or every one, when there are fewer). builder-sign-in password turns off the\n' +
       "workspaces' single sign-on rule, for when the identity provider fails and no break-glass administrator\n" +
-      'can sign in. All are written to the activity log and mailed to the administrators.',
-    options: { reason: { type: 'string' }, grace: { type: 'string' } },
+      'can sign in. All are written to the activity log and mailed to the administrators.\n\n' +
+      'rotate-key re-encrypts every stored secret (authenticator apps, web credentials, mail and AI keys)\n' +
+      'from PGKILN_OLD_SECRET_KEY to PGKILN_SECRET_KEY in one transaction; stop the servers first and start\n' +
+      'them with the new key. key-backed-up records that the current key is kept outside the server.\n' +
+      'check prints the lockout checks of Instance settings (instance key, clock, passkey domain,\n' +
+      'break-glass administrators); --url shows which passkeys a move to that address would break.\n' +
+      'Exit code 1 when a check needs attention.',
+    options: { reason: { type: 'string' }, grace: { type: 'string' }, 'dry-run': { type: 'boolean' }, url: { type: 'string' } },
     optionHelp: [
       ['--reason <text>', 'reset-2fa: why (in the activity log and the mail)'],
       ['--grace <days>', 'set-2fa-policy: days developers have to set up an app (0 to 90, default 7)'],
+      ['--dry-run', 'rotate-key: count what would be re-encrypted, change nothing'],
+      ['--url <url>', 'check: the public address to check passkeys against (default PUBLIC_URL)'],
     ],
-    positionals: [2, 2],
+    positionals: [1, 2],
     async run(v, [action, arg]) {
       process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL; // the CLI runs as the owner
       const mfa = await import('../mfa.ts');
@@ -497,6 +508,7 @@ const COMMANDS: Record<string, Command> = {
       const by = `pgkiln admin (${userInfo().username})`;
       try {
         if (action === 'reset-2fa') {
+          if (!arg) throw new UsageError('reset-2fa takes a developer');
           const reason = String(v.reason ?? 'command line').slice(0, 200);
           if (!(await mfa.resetFactors(arg))) throw new Error(`no developer ${arg}`);
           await logActivity({ username: arg, event: '2fa_reset', ip: 'cli', detail: `${arg}: ${reason} (${by})` });
@@ -530,7 +542,46 @@ const COMMANDS: Record<string, Command> = {
           out(`Developers may sign in with the pgkiln password again; ${cleared} workspace(s) no longer require single sign-on.${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
           return EXIT.ok;
         }
-        throw new UsageError(`unknown action ${action}: use reset-2fa, set-2fa-policy or builder-sign-in`);
+        // (sprint 133, SEC-6) the instance key and the lockout checks
+        if (action === 'rotate-key' || action === 'key-backed-up' || action === 'check') {
+          if (arg !== undefined) throw new UsageError(`${action} takes no argument`);
+          const checks = await import('../instance-checks.ts');
+          if (action === 'rotate-key') {
+            const oldKey = process.env.PGKILN_OLD_SECRET_KEY ?? '';
+            const newKey = process.env.PGKILN_SECRET_KEY ?? '';
+            if (!oldKey) throw new UsageError('set PGKILN_OLD_SECRET_KEY to the key the secrets are stored with, and PGKILN_SECRET_KEY to the new one');
+            const dry = !!v['dry-run'];
+            const counts = await checks.rotateKey(oldKey, newKey, { dryRun: dry });
+            const rotated = counts.reduce((n, c) => n + c.rotated, 0);
+            for (const c of counts) out(`  ${c.schema}.${c.table}.${c.column}: ${c.rotated} ${dry ? 'to re-encrypt' : 're-encrypted'}${c.already ? `, ${c.already} already with the new key` : ''}\n`);
+            if (dry) {
+              out(`Dry run: ${rotated} secret(s) would be re-encrypted; nothing changed.\n`);
+              return EXIT.ok;
+            }
+            await logActivity({ event: 'secret_key', ip: 'cli', detail: `rotated, ${rotated} secret(s) re-encrypted (${by})` });
+            const sent = await mfa.notifyMfa(await mfa.adminEmails(), 'pgkiln: the instance key was rotated',
+              `${by} re-encrypted ${rotated} stored secret(s) with a new PGKILN_SECRET_KEY on the server. Keep a copy of the new key and confirm it on Instance settings.`);
+            out(`${rotated} secret(s) re-encrypted with the new key. Start the servers with it, keep a copy, then run 'pgkiln admin key-backed-up'.${sent ? ` ${sent} administrator(s) told by mail.` : ''}\n`);
+            return EXIT.ok;
+          }
+          if (action === 'key-backed-up') {
+            if (!(await checks.confirmKeyBackup(by))) throw new Error('PGKILN_SECRET_KEY is not set (at least 32 characters)');
+            await logActivity({ event: 'secret_key', ip: 'cli', detail: `backup confirmed (${by})` });
+            out('Backup of the instance key confirmed.\n');
+            return EXIT.ok;
+          }
+          let rpId: string | null = null;
+          const url = (v.url as string | undefined) ?? process.env.PUBLIC_URL;
+          if (url) {
+            if (!URL.canParse(url) || !/^https?:$/.test(new URL(url).protocol)) throw new UsageError('--url takes an http(s) address');
+            rpId = (await import('../webauthn.ts')).rpIdOf(new URL(url).origin);
+          }
+          const list = await checks.instanceChecks(rpId);
+          for (const c of list) out(`${c.level.toUpperCase().padEnd(7)}  ${c.title}\n         ${c.detail}\n`);
+          if (!rpId) out('(passkey domain not checked: set PUBLIC_URL or pass --url)\n');
+          return checks.attention(list) ? EXIT.differences : EXIT.ok;
+        }
+        throw new UsageError(`unknown action ${action}: use reset-2fa, set-2fa-policy, builder-sign-in, rotate-key, key-backed-up or check`);
       } finally {
         await closePools();
       }

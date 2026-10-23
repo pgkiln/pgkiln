@@ -63,8 +63,8 @@ sources (including write-back, synchronisation and the response cache), `meta.we
 API, token endpoints, object storage and REST source catalogs. Refusals are logged in the
 application's debug log and listed under *Refused calls*.
 
-**Changing `PGKILN_SECRET_KEY`** makes the stored secrets unreadable: pgkiln then reports that
-the secret must be entered again. Keep the key with your other server secrets, outside the
+**Changing `PGKILN_SECRET_KEY`** without `pgkiln admin rotate-key` ([chapter 3](03-builder.md#lockout-checks))
+makes the stored secrets unreadable: pgkiln then reports that the secret must be entered again. Keep the key with your other server secrets, outside the
 database: a database dump alone does not reveal the secrets.
 
 ## Web credentials

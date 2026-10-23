@@ -170,12 +170,45 @@ Sign-ins are in the activity log as `login` with *builder sso:company* or *build
 | No administrator can sign in | On the server: `pgkiln admin reset-2fa <developer> --reason "…"` ([chapter 18](18-cli.md)), then sign in with the password |
 | The policy locks everyone out | On the server: `pgkiln admin set-2fa-policy off` (also clears the workspaces' own rules) |
 | The identity provider is down and a workspace requires single sign-on | A break-glass administrator signs in with the password and turns the workspace's rule off; without one, on the server: `pgkiln admin builder-sign-in password` |
-| Codes are always wrong | Check the time on the phone and on the server (codes allow 30 seconds either way) |
-| The instance key was lost or changed | The apps' secrets can't be read: reset the developers (`pgkiln admin reset-2fa`); recovery codes still work |
+| Codes are always wrong | Check the time on the phone and on the server (codes allow 30 seconds either way); *Lockout checks* compares the server's clock |
+| The instance key was changed | Set the old key again and rotate properly: `pgkiln admin rotate-key` ([below](#lockout-checks)) |
+| The instance key was lost | The apps' secrets can't be read: reset the developers (`pgkiln admin reset-2fa`); passkeys and recovery codes still work |
 
 The command line needs the owner's database connection (`DATABASE_URL`), so only someone with access to the server
 can use it. It writes to the activity log and mails the administrators too. With Docker:
 `docker compose exec pgkiln node bin/pgkiln.js admin reset-2fa admin`.
+
+### Lockout checks
+
+(0.67) **Instance settings** starts with *Lockout checks*: what could keep developers or application users out later,
+found before it happens. The Workspace home tells administrators how many need attention.
+
+| Check | Needs attention when |
+|---|---|
+| Instance key | Secrets are stored but `PGKILN_SECRET_KEY` is not set, or some can't be decrypted with it (the key changed without a rotation) |
+| Instance key backed up | No administrator confirmed a copy of the current key (*I have a copy of this key*, or `pgkiln admin key-backed-up`). The confirmation is kept per key fingerprint, so a new key asks again |
+| Clock | The server's clock is 10 seconds or more off the database's, or GitHub's when the [release check](#workspace-home) is on; from 30 seconds authenticator codes fail |
+| Passkey domain | Passkeys were made for another domain than `PUBLIC_URL` (or `PGKILN_RP_ID`) gives, with the number of people who have no other factor |
+| Break-glass administrators | A workspace requires single sign-on and there is no break-glass administrator, or one without a second factor while two-factor sign-in is required |
+
+The server writes the same problems to its log when it starts, and `pgkiln admin check` prints them on the server
+(exit code 1 when one needs attention). **Before moving to another address**, run `pgkiln admin check --url
+https://new.example.com`: it lists the passkeys that won't work there and who has no other factor, so they can add an
+authenticator app or keep their recovery codes at hand first.
+
+**Rotating the instance key.** Authenticator apps of developers and app users, web credentials, mail and AI keys and
+the push key are encrypted with `PGKILN_SECRET_KEY`; passkeys and recovery codes are not. To change the key, stop the
+servers (or accept that sign-ins with an authenticator app fail for the minute in between), then on the server:
+
+```bash
+PGKILN_OLD_SECRET_KEY='the current key' PGKILN_SECRET_KEY='the new key' pgkiln admin rotate-key --dry-run
+PGKILN_OLD_SECRET_KEY='the current key' PGKILN_SECRET_KEY='the new key' pgkiln admin rotate-key
+```
+
+It re-encrypts every stored secret in one transaction: a secret that neither key decrypts stops it and nothing
+changes; a secret already under the new key is left alone, so running it twice is harmless. Start the servers with the
+new key (an isolated workspace's database logins get their new passwords on first use), keep a copy of it and confirm
+that on Instance settings. The rotation is in the activity log (`secret_key`) and mailed to the administrators.
 
 ## Workspaces
 

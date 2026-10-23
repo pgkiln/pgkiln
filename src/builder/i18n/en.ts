@@ -174,6 +174,8 @@ export const en = {
   'wh.how_upgrade': 'How to upgrade',
   'wh.upgrade_steps': 'To upgrade: back up the database, install the new version ({npm}, or the Docker image {docker}), run {migrate} and restart the server.',
   'wh.check_off': 'The check for new versions is off.',
+  'wh.lockout': 'Lockout checks that need attention: {count}.',
+  'wh.lockout_open': 'Instance settings',
   'wh.check_failed': 'The last check failed ({error}).',
   'wh.check_failed_older': 'The last check failed ({error}); the result above is older.',
   'wh.checked': 'Checked {ago}.',

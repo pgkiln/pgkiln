@@ -171,6 +171,8 @@ export const pt: BuilderMessages = {
   'wh.how_upgrade': 'Como atualizar',
   'wh.upgrade_steps': 'Para atualizar: faça backup do banco de dados, instale a nova versão ({npm}, ou a imagem Docker {docker}), execute {migrate} e reinicie o servidor.',
   'wh.check_off': 'A verificação de novas versões está desativada.',
+  'wh.lockout': 'Verificações contra bloqueio que precisam de atenção: {count}.',
+  'wh.lockout_open': 'Configurações da instância',
   'wh.check_failed': 'A última verificação falhou ({error}).',
   'wh.check_failed_older': 'A última verificação falhou ({error}); o resultado acima é mais antigo.',
   'wh.checked': 'Verificado {ago}.',

@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Lockout checks** (SEC-6, the rest): Instance settings starts with what could keep people out later, and the
+  Workspace home tells administrators how many need attention: stored secrets that `PGKILN_SECRET_KEY` can't decrypt
+  (or no key at all), whether an administrator confirmed a backup of the current key (*I have a copy of this key*,
+  kept per key fingerprint), the server's clock against the database's and GitHub's (authenticator codes fail from
+  about 30 seconds), passkeys made for another domain than `PUBLIC_URL` gives with who has no other factor, and a
+  workspace that requires single sign-on without a break-glass administrator (or one without a second factor). The
+  server logs the same problems when it starts.
+- `pgkiln admin rotate-key [--dry-run]` re-encrypts every stored secret from `PGKILN_OLD_SECRET_KEY` to
+  `PGKILN_SECRET_KEY` in one transaction (nothing changes when a secret fits neither key; a second run is harmless);
+  `pgkiln admin key-backed-up` confirms a copy of the key; `pgkiln admin check [--url <address>]` prints the checks
+  and, before a move to another address, which passkeys would stop working.
+
 ## [0.66.0] - 2026-10-23
 
 ### Added
