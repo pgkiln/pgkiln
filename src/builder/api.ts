@@ -123,6 +123,8 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
         <form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
           <div class="form-grid">
             ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'For PostgREST: grant it only the api schema’s views and functions, and grant it to pgkiln_authenticator. Empty: tokens work for the REST modules pgkiln serves (Shared Components → REST modules) only.' })}
+            <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="api_self_tokens" value="true"${a.api_self_tokens ? raw(' checked') : ''}> Users create their own tokens</label>
+              <small class="help">On <em>My account</em>, signed-in users create a token that acts as them. A user the application requires two-factor sign-in of gives a second step first (if their last one is older than 15 minutes); for such users this is the only way to get a token.</small></div>
           </div>
           <div class="buttons"><button class="btn btn-hot">Save</button></div>
         </form>
@@ -171,7 +173,7 @@ export async function apiRoutes(app: FastifyInstance) {
     try {
       const problem = role ? await apiRoleProblem(role) : null;
       if (problem) throw new Error(problem);
-      await owner.query('update meta.app set api_role = $2, updated_at = now() where id = $1', [req.params.id, role]);
+      await owner.query('update meta.app set api_role = $2, api_self_tokens = $3, updated_at = now() where id = $1', [req.params.id, role, req.body?.api_self_tokens === 'true']);
       flash(s, role ? `API role set to ${role}.` : 'API role removed; new tokens work for the REST modules pgkiln serves only.');
     } catch (e) {
       flash(s, (e as Error).message, 'error');

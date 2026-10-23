@@ -599,7 +599,7 @@ export async function restModuleRoutes(app: FastifyInstance) {
       const headers: Record<string, string> = {};
       if (as) {
         if (!(await tryAccounts(m.app_id)).includes(as)) throw new Error('Choose an account with access to the application.');
-        headers.authorization = `Bearer ${(await issueApiToken(m.app_id, as, 1)).token}`;
+        headers.authorization = `Bearer ${(await issueApiToken(m.app_id, as, 1, { internal: true })).token}`;
       }
       const raw = h.method === 'GET' || h.method === 'DELETE' ? '' : String(b.body ?? '').trim();
       if (raw) {

@@ -1,4 +1,5 @@
 import { SignJWT } from 'jose';
+import { accountMustUseMfa } from './account-mfa.ts';
 import { owner } from './db.ts';
 
 // Tokens for the REST API that PostgREST serves next to pgkiln. They're
@@ -47,9 +48,11 @@ export async function apiStatus(): Promise<{ ok: boolean; detail: string }> {
  * active and have access to the app. Roles are not put in the token:
  * meta.has_role() reads them from meta.app_access at each request, and
  * meta.api_check() rejects the token once the account loses access.
+ * (sprint 131) `self`: the user asked for it on My account (two-step.ts checked the second step); `internal`: the
+ * token never leaves the server (the builder's Try it).
  */
-export async function issueApiToken(appId: number, username: string, hours: number) {
-  const app = await owner.one('select alias, api_role, access_control from meta.app where id = $1', [appId]);
+export async function issueApiToken(appId: number, username: string, hours: number, opts: { self?: boolean; internal?: boolean } = {}) {
+  const app = await owner.one('select id, alias, api_role, access_control, authentication, mfa, mfa_roles from meta.app where id = $1', [appId]);
   if (!app) throw new Error('No such application.');
   // without an API role the token is for pgkiln's own REST modules only (they run as the app's role)
   const problem = app.api_role ? await apiRoleProblem(app.api_role) : null;
@@ -63,6 +66,10 @@ export async function issueApiToken(appId: number, username: string, hours: numb
   if (!acc) throw new Error(`There is no account "${username}".`);
   if (!acc.active) throw new Error('This account is inactive.');
   if (!acc.has_access && app.access_control !== 'any_user') throw new Error('This account has no access to the application.');
+  // (sprint 131, SEC-3) a user who must sign in in two steps gets a token only from their own sign-in, after a second
+  // step (My account, src/runtime/two-step.ts), never one a developer issues for them
+  if (!opts.self && !opts.internal && (await accountMustUseMfa(app, acc.username)))
+    throw new Error(`The application requires two-factor sign-in of "${acc.username}": they create their own on My account, after a second step (REST API → Users create their own tokens).`);
   const ttl = Math.max(1, Math.min(MAX_TOKEN_HOURS, Math.round(hours)));
   const token = await new SignJWT({ ...(app.api_role ? { role: app.api_role } : {}), app_user: acc.username, app: app.alias })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })

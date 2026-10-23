@@ -6,6 +6,8 @@ export interface AuthzScheme {
   type: 'role' | 'sql';
   value: string;
   error_message: string;
+  /** (133) step-up: passes only when the session's last second step is at most this many minutes old */
+  mfa_minutes?: number | null;
 }
 
 export interface NavEntry {
@@ -81,6 +83,10 @@ export interface App {
   /** (132) two-step sign-in for the application's users (src/account-mfa.ts) */
   mfa: 'off' | 'optional' | 'required' | 'roles';
   mfa_roles: string[];
+  /** (133) a code by e-mail at the second step, for users with another factor */
+  mfa_email: boolean;
+  /** (133) users create their own REST API token on My account */
+  api_self_tokens: boolean;
   /** LDAP directories the password form checks after local accounts */
   ldap_directories: string[];
   /** Progressive Web App: installable, offline pages, offline form queue */
@@ -372,7 +378,7 @@ const agg = (table: string, fk: string, parent: string, appId: string) =>
 // No caching on purpose: edits made in the builder show up on the next request.
 export async function loadApp(alias: string) {
   return runtime.one<App>(
-    `select a.id, a.alias, a.name, a.version, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.login_page, a.password_reset, a.session_group, a.mfa, a.mfa_roles, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
+    `select a.id, a.alias, a.name, a.version, a.home_page, a.authentication, a.access_control, a.sso_providers, a.local_login, a.remember_me_days, a.login_page, a.password_reset, a.session_group, a.mfa, a.mfa_roles, a.mfa_email, a.api_self_tokens, a.ldap_directories, a.header_name, a.header_auto_create, a.logout_url, a.db_auth_roles, a.db_auth_member_of, a.custom_auth_function, a.custom_auth_code, a.custom_auth_post_code, a.nav_list, a.navbar_list, a.pwa, a.pwa_short_name, a.pwa_icon is not null as pwa_has_icon, a.pwa_offline_pages, a.pwa_offline_submit, a.pwa_push, a.db_role, a.debug, a.debug_level, a.theme,
             a.availability, a.availability_message, a.availability_users, a.feedback, a.error_function, a.session_warning_seconds, a.component_settings,
             a.language, a.languages, a.language_from, a.date_format, a.timestamp_format, a.time_zone, a.time_zone_auto, a.currency,
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
@@ -381,7 +387,7 @@ export async function loadApp(alias: string) {
                        'dialog_position', p.dialog_position, 'dialog_size', p.dialog_size))
                         from meta.page p where p.app_id = a.id and meta.build_option_on(a.id, p.build_option)), '[]') as pages,
             ${agg('meta.nav_entry', 'app_id', 'a', 'a.id')} as nav,
-            coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message))
+            coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message, 'mfa_minutes', s.mfa_minutes))
                         from meta.authz_scheme s where s.app_id = a.id), '[]') as authz_schemes,
             coalesce((select jsonb_agg(i.name) from meta.app_item i where i.app_id = a.id), '[]') as app_items,
             ${agg('meta.app_process', 'app_id', 'a', 'a.id')} as app_processes,

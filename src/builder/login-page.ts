@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
-import { APP_MFA, type AppMfa } from '../account-mfa.ts';
+import { APP_MFA, EMAIL_CODE_MINUTES, EMAIL_CODES_PER_HOUR, type AppMfa } from '../account-mfa.ts';
 import { html, raw } from '../html.ts';
 import { secretKeyConfigured } from '../secrets.ts';
 import { back, BASE, developer, flash, type Req } from './ui.ts';
@@ -9,7 +9,7 @@ import { back, BASE, developer, flash, type Req } from './ui.ts';
 // own login page (APEX: the login page, usually 9999) and "Forgot password?".
 // "Create login page" adds a minimal public page with a login region and
 // makes it the login page. (sprint 130, SEC-3) Two-factor sign-in for the
-// application's users: off, optional, required, or required for some roles.
+// application's users: off, optional, required, or required for some roles. (sprint 131) A code by e-mail.
 
 interface AppRow {
   id: number;
@@ -20,6 +20,7 @@ interface AppRow {
   password_reset: boolean;
   mfa: AppMfa;
   mfa_roles: string[];
+  mfa_email: boolean;
 }
 
 /** The fields in the settings form. */
@@ -56,7 +57,11 @@ export async function loginSettingsFields(a: AppRow) {
       <div class="field"><label class="label" for="f_mfa_roles">Required for roles</label>
         <input id="f_mfa_roles" name="mfa_roles" value="${(a.mfa_roles ?? []).join(', ')}" placeholder="admin, manager" aria-describedby="f_mfa_roles_help">
         <small class="help" id="f_mfa_roles_help">With <em>Required for some roles</em>: users with one of these roles must use it, others may.</small></div>
-    </div>`;
+      <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="mfa_email" value="true"${a.mfa_email ? raw(' checked') : ''}> Offer a code by e-mail</label>
+        <small class="help">At the second step, users who have an authenticator app or a passkey may ask for a one-time code by e-mail instead (valid ${EMAIL_CODE_MINUTES} minutes, at most ${EMAIL_CODES_PER_HOUR} an hour). It is never someone's only factor: a user who must add one still adds an app or a passkey.
+          ${mailOk ? '' : html`<strong>Not offered yet:</strong> the application needs an enabled mail service with a From address.`}</small></div>
+    </div>
+    <p class="muted small">Users also add <strong>passkeys</strong> (fingerprint, face, PIN or a security key) on <em>My account</em> or while signing in; they need the application at a host name, not an IP address. To ask for the second step again before a page opens (step-up), give its authorization scheme <em>Second step within (minutes)</em> in Shared Components.</p>`;
 }
 
 const MFA_LABELS: Record<AppMfa, string> = { off: 'Off', optional: 'Optional (users may add an app)', required: 'Required', roles: 'Required for some roles' };
@@ -71,8 +76,8 @@ export async function saveLoginSettings(appId: string, b: Record<string, string 
   if (mfa === 'roles' && !roles.length) throw new Error('Two-factor sign-in: name the roles that must use it.');
   // without the instance key, users could not add an app: requiring one would lock them out
   if ((mfa === 'required' || mfa === 'roles') && !secretKeyConfigured()) throw new Error('Two-factor sign-in: the server needs PGKILN_SECRET_KEY before it can be required.');
-  await owner.query('update meta.app set login_page = $2, password_reset = $3, mfa = $4, mfa_roles = $5 where id = $1',
-    [appId, page, b.password_reset === 'true', mfa, roles]);
+  await owner.query('update meta.app set login_page = $2, password_reset = $3, mfa = $4, mfa_roles = $5, mfa_email = $6 where id = $1',
+    [appId, page, b.password_reset === 'true', mfa, roles, b.mfa_email === 'true']);
 }
 
 export async function loginPageRoutes(app: FastifyInstance) {

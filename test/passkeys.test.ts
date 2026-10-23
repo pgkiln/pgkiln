@@ -3,82 +3,20 @@
 // P-256 or Ed25519 key made here) answers the server's WebAuthn options the way a browser would.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash, generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { clearWorkspaceRequirements, requirement, setPasskeySignin, setPolicy, setTrustDays, setWorkspaceRequired, userHandle } from '../src/mfa.ts';
 import { cborDecode, relyingParty, verifyAssertion, verifyRegistration, WebAuthnError } from '../src/webauthn.ts';
+import { Authenticator, b64u, ORIGIN } from './authenticator.ts';
 import { Browser } from './helpers.ts';
 
 const DEV = 'pk127_dev';
 const DEV2 = 'pk128_dev';
 const WEAK = 'pk128_weak';
 const PW = 'Pk127-password!';
-const ORIGIN = 'http://localhost:80';
 let app: FastifyInstance;
-
-// ------------------------------------------------------------------ a small CBOR encoder (for the test only)
-
-function cbor(v: unknown): Buffer {
-  const head = (major: number, n: number) => {
-    if (n < 24) return Buffer.from([(major << 5) | n]);
-    if (n < 256) return Buffer.from([(major << 5) | 24, n]);
-    if (n < 65536) { const b = Buffer.alloc(3); b[0] = (major << 5) | 25; b.writeUInt16BE(n, 1); return b; }
-    const b = Buffer.alloc(5); b[0] = (major << 5) | 26; b.writeUInt32BE(n, 1); return b;
-  };
-  if (typeof v === 'number') return v >= 0 ? head(0, v) : head(1, -1 - v);
-  if (Buffer.isBuffer(v)) return Buffer.concat([head(2, v.length), v]);
-  if (typeof v === 'string') { const b = Buffer.from(v); return Buffer.concat([head(3, b.length), b]); }
-  if (v instanceof Map) return Buffer.concat([head(5, v.size), ...[...v].flatMap(([k, x]) => [cbor(k), cbor(x)])]);
-  throw new Error('unsupported');
-}
-
-const b64u = (b: Buffer) => b.toString('base64url');
-const sha = (b: Buffer | string) => createHash('sha256').update(b).digest();
-
-class Authenticator {
-  readonly id: Buffer;
-  readonly priv: KeyObject;
-  readonly pub: KeyObject;
-  count = 0;
-  constructor(readonly kind: 'es256' | 'ed25519' = 'es256', readonly counts = true) {
-    this.id = Buffer.from(Array.from({ length: 16 }, () => Math.floor(Math.random() * 256)));
-    const k = kind === 'es256' ? generateKeyPairSync('ec', { namedCurve: 'P-256' }) : generateKeyPairSync('ed25519');
-    this.priv = k.privateKey;
-    this.pub = k.publicKey;
-  }
-  cose() {
-    const j = this.pub.export({ format: 'jwk' });
-    return this.kind === 'es256'
-      ? new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, Buffer.from(j.x!, 'base64url')], [-3, Buffer.from(j.y!, 'base64url')]])
-      : new Map<number, unknown>([[1, 1], [3, -8], [-1, 6], [-2, Buffer.from(j.x!, 'base64url')]]);
-  }
-  authData(rpId: string, attested: boolean, flags = 0x05) {
-    const c = Buffer.alloc(4);
-    c.writeUInt32BE(this.counts ? ++this.count : 0);
-    const parts: Buffer[] = [sha(rpId), Buffer.from([flags | (attested ? 0x40 : 0)]), c];
-    if (attested) {
-      const len = Buffer.alloc(2);
-      len.writeUInt16BE(this.id.length);
-      parts.push(Buffer.alloc(16), len, this.id, cbor(this.cose()));
-    }
-    return Buffer.concat(parts);
-  }
-  create(challenge: string, origin = ORIGIN, rpId = 'localhost') {
-    const clientDataJSON = Buffer.from(JSON.stringify({ type: 'webauthn.create', challenge, origin }));
-    const attestationObject = cbor(new Map<string, unknown>([['fmt', 'none'], ['attStmt', new Map()], ['authData', this.authData(rpId, true)]]));
-    return { clientDataJSON: b64u(clientDataJSON), attestationObject: b64u(attestationObject) };
-  }
-  get(challenge: string, origin = ORIGIN, rpId = 'localhost', flags = 0x05) {
-    const clientDataJSON = Buffer.from(JSON.stringify({ type: 'webauthn.get', challenge, origin }));
-    const authenticatorData = this.authData(rpId, false, flags);
-    const data = Buffer.concat([authenticatorData, sha(clientDataJSON)]);
-    const signature = this.kind === 'es256' ? sign('sha256', data, this.priv) : sign(null, data, this.priv);
-    return { credentialId: b64u(this.id), clientDataJSON: b64u(clientDataJSON), authenticatorData: b64u(authenticatorData), signature: b64u(signature) };
-  }
-}
 
 async function signIn(b: Browser, username = DEV, password = PW) {
   await b.get('/builder/login');

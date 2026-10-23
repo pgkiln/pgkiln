@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Two-factor sign-in for application users, part 2** (SEC-3; beyond APEX): **passkeys** (WebAuthn: fingerprint,
+  face, screen lock, security key) on *My account* and at the second step, also as the first factor a user adds while
+  signing in; **Offer a code by e-mail** (Sign-in methods) for users who have an app or a passkey, never as their only
+  factor (three per sign-in, five per hour); **step-up**: an authorization scheme's *Second step within (minutes)*
+  makes its pages ask for the second factor again (*Confirm it's you*) and then open; **REST API tokens**: the
+  builder's *Issue a token* refuses accounts the application requires two-factor sign-in of, and *REST API → Users
+  create their own tokens* lets users create one on *My account*, after a recent second step when required. Shared
+  Components → Access control shows who has a second factor. Migration 133.
+
 ## [0.64.0] - 2026-10-22
 
 ### Added

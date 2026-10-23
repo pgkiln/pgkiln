@@ -156,7 +156,8 @@ export async function sharedRoutes(app: FastifyInstance) {
       rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where app_id = $1 order by ${ORDER[kind] ?? 'name'}`, [a.id])).rows;
     const users = (
       await owner.query(
-        `select ac.id, ac.username, ac.display_name, ac.active, ac.last_login_at, aa.roles
+        `select ac.id, ac.username, ac.display_name, ac.active, ac.last_login_at, aa.roles,
+                exists (select 1 from meta.account_factor f where f.account_id = ac.id) as mfa
            from meta.app_access aa join meta.account ac on ac.id = aa.account_id
           where aa.app_id = $1 order by lower(ac.username)`,
         [a.id],
@@ -247,7 +248,7 @@ export async function sharedRoutes(app: FastifyInstance) {
           <button class="btn u-selfend">${tx('sc.save')}</button>
         </form>
         <p class="muted">${tx.rich('sc.access_help', { directory: html`<a href="${BASE}/users">${tx('sc.directory')}</a>`, app: html`<b>${a.name}</b>`, fn: html`<code>meta.has_role()</code>` })}</p>
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('sc.account')}</th><th>${tx('sc.roles_in_app')}</th><th>${tx('sc.last_signin')}</th><th></th></tr></thead><tbody>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('sc.account')}</th><th>${tx('sc.roles_in_app')}</th><th>${tx('sc.last_signin')}</th><th>${tx('mfa.column')}</th><th></th></tr></thead><tbody>
           ${users.length
             ? users.map((u) => html`<tr>
                 <td data-label="${tx('sc.account')}"><a href="${BASE}/users/${u.id}">${u.username}</a>${u.display_name ? html` <span class="muted">${u.display_name}</span>` : ''}${u.active ? '' : html` <b>${tx('sc.inactive')}</b>`}</td>
@@ -255,9 +256,10 @@ export async function sharedRoutes(app: FastifyInstance) {
                   <input name="roles" value="${u.roles.join(', ')}" aria-label="${tx('sc.roles_of', { user: u.username })}" placeholder="${tx('sc.no_roles')}"><button class="btn">${tx('sc.save')}</button>
                   ${roleHintsHtml(appHints, tx('us.hints_add'), tx)}</form></td>
                 <td data-label="${tx('sc.last_signin')}">${u.last_login_at ? String(u.last_login_at).slice(0, 16) : '—'}</td>
+                <td data-label="${tx('mfa.column')}">${u.mfa ? html`${icon('lock')} ${tx('mfa.on')}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td>
                 <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/access/${u.id}/revoke">${csrf(s)}<button class="link-button" data-confirm="${tx('sc.revoke_confirm', { user: u.username, app: a.name })}">${tx('sc.revoke')}</button></form></td>
               </tr>`)
-            : html`<tr><td colspan="4" class="empty">${tx('sc.no_access')}</td></tr>`}
+            : html`<tr><td colspan="5" class="empty">${tx('sc.no_access')}</td></tr>`}
         </tbody></table></div>
         ${groupMap}
         <h3>${tx('sc.grant')}</h3>

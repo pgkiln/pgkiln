@@ -18,7 +18,7 @@ import { english, type Translate } from '../i18n.ts';
 import { checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
 import { builderSsoFinish, enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type Provider, type SsoResult } from '../sso.ts';
 import { sessionLimits, clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
-import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
+import { checkPageAccess, computeVisibility, Forbidden, isAuthorized, StepUp } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
 import { startDebug } from '../debug.ts';
 import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
@@ -316,6 +316,13 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   };
 }
 
+/** (sprint 131) Step-up: the page's authorization needs a recent second step; ask for it, then come back. */
+async function stepUp(ctx: PageContext, reply: FastifyReply, next: string) {
+  dbg(ctx, 2, 'access', `step-up: a second step is needed for page ${ctx.page.page_no}`);
+  await saveState(ctx.session);
+  return reply.redirect(`${ctx.base}/login/2fa?next=${encodeURIComponent(next)}`, 303);
+}
+
 async function forbidden(ctx: PageContext, reply: FastifyReply, message: string, detail: string) {
   dbg(ctx, 2, 'access', `refused (403): ${detail}`);
   logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
@@ -487,6 +494,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         return { html: await timed(ctx, 4, 'page', 'render page', () => renderPage(ctx)) };
       });
     } catch (e) {
+      if (e instanceof StepUp) return stepUp(ctx, reply, req.url);
       if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `page ${ctx.page.page_no}`);
       throw e;
     }
@@ -583,6 +591,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         return pressed;
       });
     } catch (e) {
+      // the second step expired while the page was open: ask again, then back to the page (the input is lost)
+      if (e instanceof StepUp) return stepUp(ctx, reply, `${ctx.base}/${ctx.page.page_no}`);
       if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `forged or unavailable request "${body.__request}" on page ${ctx.page.page_no}`);
       if (e instanceof ValidationFailed) {
         ctx.errors = e.errors;

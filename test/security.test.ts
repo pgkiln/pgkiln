@@ -11588,3 +11588,150 @@ describe('(sprint 130, SEC-3) two-factor sign-in for application users', () => {
     assert.equal(await carriesSecondStep({ ...a, mfa: 'off' }, 'king', [], 'password'), true);
   });
 });
+
+describe('(sprint 131, SEC-3 part 2) passkeys, e-mail codes, step-up and API tokens for application users', () => {
+  const SCHEME = 'T_S131_SEC';
+  const SECRET = 'JBSWY3DPEHPK3PXP';
+  let oldAuthz: string | null = null;
+  const ids = async () => (await owner.query<{ id: number; username: string }>(`select id, username from meta.account where username in ('king', 'scott')`)).rows;
+  const clear = async () => {
+    const all = (await ids()).map((r) => r.id);
+    await owner.query('delete from meta.account_factor where account_id = any($1)', [all]);
+    await owner.query('delete from meta.account_recovery_code where account_id = any($1)', [all]);
+    await owner.query(`delete from meta.mail_queue where template = 'SIGNIN_CODE'`);
+    await owner.query(`insert into meta.activity_log (username, event, detail) values ('king', 'login_unlocked', 'test'), ('scott', 'login_unlocked', 'test')`);
+  };
+  const code = async (offset = 0) => {
+    const { stepNow, totpAt, unbase32 } = await import('../src/mfa.ts');
+    return totpAt(unbase32(SECRET), stepNow() + offset);
+  };
+  /** king through password and code; the browser is signed in with a fresh second step */
+  const kingIn = async () => {
+    // each 30-second step is accepted once: let this sign-in use the current one again
+    await owner.query(`update meta.account_factor set last_step = null where account_id = (select id from meta.account where username = 'king')`);
+    const b = new Browser();
+    await b.login('king');
+    await b.get('/a/hr/login/2fa');
+    const r = await b.post('/a/hr/login/2fa', { __csrf: b.lastCsrf, code: await code() });
+    assert.equal(r.statusCode, 303);
+    return b;
+  };
+  before(async () => {
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    await clear();
+    const { addAccountTotp } = await import('../src/account-mfa.ts');
+    const { stepNow } = await import('../src/mfa.ts');
+    for (const r of await ids()) await addAccountTotp(r.id, 'Phone', SECRET, stepNow() - 10);
+    await owner.query(`update meta.app set mfa = 'optional', mfa_roles = '{}', mfa_email = true where id = $1`, [appId]);
+    await owner.query('delete from meta.authz_scheme where app_id = $1 and name = $2', [appId, SCHEME]);
+    await owner.query(`insert into meta.authz_scheme (app_id, name, type, value, mfa_minutes) values ($1, $2, 'sql', 'true', 10)`, [appId, SCHEME]);
+    oldAuthz = (await owner.one('select authz from meta.page where app_id = $1 and page_no = 2', [appId])).authz;
+  });
+  after(async () => {
+    await owner.query('update meta.page set authz = $2 where app_id = $1 and page_no = 2', [appId, oldAuthz]);
+    await owner.query('delete from meta.authz_scheme where app_id = $1 and name = $2', [appId, SCHEME]);
+    await owner.query(`update meta.app set mfa = 'off', mfa_roles = '{}', mfa_email = false, api_self_tokens = false where id = $1`, [appId]);
+    await clear();
+  });
+
+  test('step-up: ?next= never leaves the application, and a signed-out visit creates nothing', async () => {
+    assert.equal((await new Browser().get('/a/hr/login/2fa?next=%2Fa%2Fhr%2F2')).statusCode, 410, 'nobody: no step-up');
+    const b = await kingIn();
+    await b.get(`/a/hr/login/2fa?next=${encodeURIComponent('https://evil.example/x')}`);
+    const r = await b.post('/a/hr/login/2fa', { __csrf: b.lastCsrf, code: await code(1) });
+    assert.equal(r.statusCode, 303);
+    assert.match(String(r.headers.location), /^\/a\/hr\//);
+    const { safeNext } = await import('../src/runtime/signin.ts');
+    for (const next of ['//evil.example/x', '/a/other/1', 'javascript:alert(1)', '/\\evil.example'])
+      assert.match(safeNext({ alias: 'hr', home_page: 1 } as never, next), /^\/a\/hr\//, next);
+  });
+
+  test('step-up: a negated scheme or an anonymous user is never sent to the second step', async () => {
+    const { onlyStepUpMissing } = await import('../src/runtime/authz.ts');
+    const ctx = { user: 'king', roles: [], session: { state: {} }, app: { authz_schemes: [{ name: SCHEME, type: 'role', value: 'x', error_message: '', mfa_minutes: 10 }] } } as never;
+    assert.equal(await onlyStepUpMissing(ctx, `!${SCHEME}`), false);
+    assert.equal(await onlyStepUpMissing({ ...(ctx as object), user: 'nobody' } as never, SCHEME), false);
+    assert.equal(await onlyStepUpMissing(ctx, SCHEME), false, 'not the role: refused, not asked');
+    await assert.rejects(owner.query('update meta.authz_scheme set mfa_minutes = 0 where app_id = $1 and name = $2', [appId, SCHEME]));
+    await assert.rejects(owner.query('update meta.authz_scheme set mfa_minutes = 5000 where app_id = $1 and name = $2', [appId, SCHEME]));
+  });
+
+  test('step-up: a remembered or SSO session without a recent second step is asked; regions behind the scheme stay hidden', async () => {
+    await owner.query('update meta.page set authz = $2 where app_id = $1 and page_no = 2', [appId, SCHEME]);
+    try {
+      const b = await kingIn();
+      assert.equal((await b.get('/a/hr/2')).statusCode, 200);
+      await owner.query(`update meta.session set state = state - '__MFA_AT' where app_id = $1 and username = 'king'`, [appId]);
+      const r = await b.get('/a/hr/2');
+      assert.equal(r.statusCode, 303);
+      assert.match(String(r.headers.location), /^\/a\/hr\/login\/2fa\?next=/);
+      // a POST to the page is not processed either
+      const p = await b.post('/a/hr/2', { __csrf: b.lastCsrf, __request: 'SAVE' });
+      assert.equal(p.statusCode, 303);
+      assert.match(String(p.headers.location), /^\/a\/hr\/login\/2fa\?next=/);
+    } finally {
+      await owner.query('update meta.page set authz = $2 where app_id = $1 and page_no = 2', [appId, oldAuthz]);
+    }
+  });
+
+  test('e-mail codes: CSRF, the per-hour limit across sign-ins, and wrong codes count as failed sign-ins', async () => {
+    await owner.query(`update meta.account set email = coalesce(email, 'king@example.com') where username = 'king'`);
+    const b = new Browser();
+    await b.login('king');
+    await b.get('/a/hr/login/2fa');
+    assert.equal((await b.post('/a/hr/login/2fa/email', { __csrf: 'forged' })).statusCode, 410);
+    assert.equal((await new Browser().post('/a/hr/login/2fa/email', { __csrf: 'x' })).statusCode, 410);
+    const { EMAIL_CODES_PER_HOUR } = await import('../src/account-mfa.ts');
+    for (let i = 0; i < EMAIL_CODES_PER_HOUR; i++)
+      await owner.query(`insert into meta.mail_queue (app_id, username, from_address, to_addresses, subject, body_text, template, status)
+                         values ($1, 'king', 'hr@example.com', '{king@example.com}', 's', 'b', 'SIGNIN_CODE', 'cancelled')`, [appId]);
+    const c = new Browser();
+    await c.login('king');
+    await c.get('/a/hr/login/2fa');
+    assert.equal((await c.post('/a/hr/login/2fa/email', { __csrf: c.lastCsrf })).statusCode, 429, 'no more this hour, whatever the sign-in');
+    const before = (await owner.one(`select count(*)::int as n from meta.activity_log where username = 'king' and event = 'login_failed'`)).n;
+    assert.equal((await c.post('/a/hr/login/2fa', { __csrf: c.lastCsrf, code: '123456' === (await code()) ? '654321' : '123456' })).statusCode, 401);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.activity_log where username = 'king' and event = 'login_failed'`)).n, before + 1);
+    await owner.query(`delete from meta.mail_queue where template = 'SIGNIN_CODE'`);
+    await owner.query(`insert into meta.activity_log (username, event, detail) values ('king', 'login_unlocked', 'test')`);
+  });
+
+  test('passkeys: no options without a pending step, and another account\'s passkey is refused', async () => {
+    assert.equal((await new Browser().post('/a/hr/login/2fa/passkey/options', { __csrf: 'x' })).statusCode, 403);
+    assert.equal((await new Browser().post('/a/hr/login/2fa/passkey/new/options', { __csrf: 'x' })).statusCode, 403);
+    const { Authenticator } = await import('./authenticator.ts');
+    const { accountId, addAccountPasskey } = await import('../src/account-mfa.ts');
+    const { coseToJwk, cborDecode, parseAuthData, unb64url } = await import('../src/webauthn.ts');
+    // scott's passkey, stored as the server would
+    const key = new Authenticator();
+    const att = key.create('c');
+    const [obj] = cborDecode(unb64url(att.attestationObject)) as [Map<string, Buffer>, number];
+    const auth = parseAuthData(obj.get('authData')!);
+    const { alg, jwk } = coseToJwk(auth.publicKey as never);
+    await addAccountPasskey((await accountId('scott'))!, 'Scott key', { credentialId: key.id.toString('base64url'), jwk, alg, signCount: 0, rpId: 'localhost', transports: [] });
+    const b = new Browser();
+    await b.login('king');
+    await b.get('/a/hr/login/2fa');
+    assert.equal((await b.post('/a/hr/login/2fa/passkey/options', { __csrf: b.lastCsrf })).statusCode, 404, 'king has no passkey');
+    const r = await b.post('/a/hr/login/2fa/passkey', { __csrf: b.lastCsrf, ...key.get('anything') });
+    assert.equal(r.statusCode, 401);
+    assert.equal((await b.get('/a/hr/2')).statusCode, 302, 'still signed out');
+  });
+
+  test('API tokens: CSRF and the application setting are checked; the builder refuses users who must use 2FA', async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    process.env.API_JWT_SECRET ??= 'ci-only-api-secret-not-for-production-0123456789';
+    await owner.query(`update meta.app set api_self_tokens = true, mfa = 'required' where id = $1`, [appId]);
+    try {
+      await assert.rejects(issueApiToken(appId, 'KING', 1), /requires two-factor sign-in/, 'whatever the case of the name');
+      const b = await kingIn();
+      await b.get('/a/hr/account');
+      const forged = await b.post('/a/hr/account/token', { __csrf: 'forged', hours: '1' });
+      assert.equal(forged.statusCode, 303);
+      assert.doesNotMatch((await b.get('/a/hr/account')).body, /id="api_token"/);
+      assert.equal((await new Browser().post('/a/hr/account/token', { __csrf: 'x' })).statusCode, 302, 'signed out: to the sign-in page');
+    } finally {
+      await owner.query(`update meta.app set api_self_tokens = false, mfa = 'optional' where id = $1`, [appId]);
+    }
+  });
+});

@@ -11,7 +11,7 @@ import {
 import { qrSvg } from '../qrcode.ts';
 import { secretKeyConfigured } from '../secrets.ts';
 import { clientIp, logActivity, saveState, type Session } from '../session.ts';
-import { ALGORITHMS, newChallenge, relyingParty, verifyRegistration, WebAuthnError } from '../webauthn.ts';
+import { ALGORITHMS, giveChallenge, relyingParty, takeChallenge, verifyRegistration, WebAuthnError } from '../webauthn.ts';
 import { tr } from './i18n.ts';
 import { isAdmin } from './locks.ts';
 import { identitiesRegion } from './builder-sso.ts';
@@ -28,24 +28,8 @@ import { back, BASE, csrf, developer, flash, input, region, send, shell, type Re
 // (public/builder.js, [data-passkey]); without JavaScript the button stays hidden. Trusted browsers can be
 // forgotten here; the instance decides how long a browser may be trusted (0 = never).
 
-const CHALLENGE_SECONDS = 300;
-
-/** A one-time WebAuthn challenge kept in the session (for this purpose only), or null when there is none or it expired. */
-export function takeChallenge(s: Session, purpose: 'create' | 'get'): string | null {
-  try {
-    const p = JSON.parse(String(s.state.__PK ?? ''));
-    delete s.state.__PK;
-    return p && p.purpose === purpose && Date.now() - Number(p.at) < CHALLENGE_SECONDS * 1000 && typeof p.c === 'string' ? p.c : null;
-  } catch {
-    delete s.state.__PK;
-    return null;
-  }
-}
-export function giveChallenge(s: Session, purpose: 'create' | 'get'): string {
-  const c = newChallenge();
-  s.state.__PK = JSON.stringify({ c, purpose, at: Date.now() });
-  return c;
-}
+// (sprint 131) the challenge helpers moved to src/webauthn.ts: application users have passkeys too
+export { giveChallenge, takeChallenge };
 
 const SECRET_MINUTES = 10;
 
