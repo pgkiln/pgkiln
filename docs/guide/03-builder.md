@@ -138,7 +138,11 @@ started it (in the same browser). The region lists linked identities, with **Unl
 developers linked to it; administrators unlink any of them.
 
 Signing in through a provider skips pgkiln's own second step and the enrolment on Security: the provider decides on
-the second factor. A directory checks a password, so pgkiln's second step follows as with the pgkiln password.
+the second factor. (0.66) The provider's *Require multi-factor sign-in at this provider* makes pgkiln check that it
+did (the ID token's `amr` / `acr`, SAML's `AuthnContextClassRef`) and refuse the sign-in otherwise; *Ask pgkiln's own
+second step after this provider* makes a developer with a second factor give it after the provider too
+([chapter 8](08-security.md#multi-factor-sign-in-at-the-identity-provider)). A directory checks a password, so
+pgkiln's second step follows as with the pgkiln password.
 
 **Requiring it per workspace.** A workspace's page (*Preferences* → *Single sign-on*) has *This workspace's
 developers must sign in through an identity provider* (or a directory). Its developers' pgkiln password and a passkey

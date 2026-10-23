@@ -19,7 +19,8 @@ import { ALGORITHMS, giveChallenge, relyingParty, takeChallenge, verifyAssertion
 import type { PageContext } from './context.ts';
 import type { Locale } from './locale.ts';
 import { pwaHead } from './pwa.ts';
-import { appWithLocale, completeLogin, loadContext, rootAttrs, safeNext, signIn, type Req } from './routes.ts';
+import { loadProvider, type Provider } from '../sso.ts';
+import { appWithLocale, completeLogin, loadContext, rootAttrs, safeNext, signIn, ssoStepUp, type Req } from './routes.ts';
 
 // (sprint 130, SEC-3) The second step of signing in to an application, and "Two-step sign-in" on My account.
 //
@@ -34,6 +35,9 @@ import { appWithLocale, completeLogin, loadContext, rootAttrs, safeNext, signIn,
 // and on My account, also as the first factor a user adds while signing in; a code by e-mail when the application
 // allows it, for users who have another factor; step-up: a signed-in user whose page needs a more recent second step
 // comes here with ?next= and goes back after it (the session's __MFA_AT); and My account → REST API token.
+//
+// (sprint 132, SEC-4) A session signed in through an identity provider steps up there instead: the provider signs the
+// user in again with a second factor (sso.ts, saml.ts), unless the provider leaves the second step to pgkiln.
 
 const PENDING = '__MFA';
 const STEP_SECONDS = 300;
@@ -228,6 +232,15 @@ async function locked(reply: FastifyReply, a: App, locale: Locale, s: Session, p
   return reply.code(429).type('text/html').send(card(a, locale, locale.t('mfa.step_title'), alert(locale.t('login.throttled', { minutes: loginWindowMinutes() }))));
 }
 
+/** (sprint 132) The identity provider a step-up goes back to: the one the session signed in with, if it decides itself. */
+async function stepUpProvider(a: App, s: Session): Promise<Provider | null> {
+  const method = String(s.state.__SIGNIN ?? '');
+  if (!method.startsWith('sso:')) return null;
+  const name = method.slice(4).replace(/\+2fa$/, '');
+  const p = a.sso_providers.includes(name) ? await loadProvider(name) : undefined;
+  return p && !p.local_second_step ? p : null;
+}
+
 export async function twoStepRoutes(app: FastifyInstance) {
   app.get('/a/:alias/login/2fa', async (req: Req, reply) => {
     const r = await start(req, reply);
@@ -237,6 +250,13 @@ export async function twoStepRoutes(app: FastifyInstance) {
     // (sprint 131) step-up: a signed-in user sent here by a page that needs a more recent second step
     const next = typeof (req.query as { next?: unknown }).next === 'string' ? String((req.query as { next: string }).next).slice(0, 2000) : undefined;
     if (s.username && (!p || (next && p.next !== next))) {
+      const via = await stepUpProvider(a, s);
+      if (via)
+        return ssoStepUp(reply, a, s, via, next ?? `/a/${a.alias}/${a.home_page}`).catch((e) => {
+          req.log.warn({ err: e }, 'sso step-up failed');
+          return reply.code(502).type('text/html').send(card(a, locale, locale.t('mfa.stepup_title'),
+            alert(locale.t('login.sso_unavailable', { provider: via.display_name })), `/a/${a.alias}/${a.home_page}`));
+        });
       const id = await accountId(s.username);
       if (id === null || !(await accountHasFactor(id)))
         return reply.code(403).type('text/html').send(card(a, locale, locale.t('mfa.stepup_title'),

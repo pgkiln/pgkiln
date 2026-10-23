@@ -14,6 +14,7 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
 import { publicUrl } from '../src/sso.ts';
+import { authnContext } from '../src/saml.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -83,6 +84,8 @@ interface Opts {
   notOnOrAfter?: Date;
   key?: string | null; // null: unsigned
   cert?: string;
+  /** (sprint 132) the AuthnContextClassRef (default: Password) */
+  classRef?: string;
 }
 
 /** A Response with a signed Assertion, base64 encoded (HTTP-POST binding). */
@@ -99,7 +102,7 @@ function response(o: Opts) {
     + `<saml:Subject><saml:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified">${o.nameId ?? 'sam'}</saml:NameID>`
     + `<saml:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer"><saml:SubjectConfirmationData InResponseTo="${o.requestId}" NotOnOrAfter="${iso(later)}" Recipient="${ACS()}"/></saml:SubjectConfirmation></saml:Subject>`
     + `<saml:Conditions NotBefore="${iso(new Date(now.getTime() - 60_000))}" NotOnOrAfter="${iso(later)}"><saml:AudienceRestriction><saml:Audience>${o.audience ?? SP}</saml:Audience></saml:AudienceRestriction></saml:Conditions>`
-    + `<saml:AuthnStatement AuthnInstant="${iso(now)}" SessionIndex="_s1"><saml:AuthnContext><saml:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:Password</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>`
+    + `<saml:AuthnStatement AuthnInstant="${iso(now)}" SessionIndex="_s1"><saml:AuthnContext><saml:AuthnContextClassRef>${o.classRef ?? 'urn:oasis:names:tc:SAML:2.0:ac:classes:Password'}</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement>`
     + (Object.keys(attrs).length
       ? `<saml:AttributeStatement>${Object.entries(attrs).map(([k, vs]) => `<saml:Attribute Name="${k}">${vs.map((v) => `<saml:AttributeValue>${v}</saml:AttributeValue>`).join('')}</saml:Attribute>`).join('')}</saml:AttributeStatement>`
       : '')
@@ -167,6 +170,60 @@ describe('SAML sign-in', () => {
       assert.match(res.body, reason, name);
       assert.equal(await roles(b), '', `${name}: not signed in`);
     }
+  });
+
+  test('(sprint 132, SEC-4) Require multi-factor: the AuthnContextClassRef must be a multi-factor one; it is requested', async () => {
+    const TWO = 'urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract';
+    await owner.query(`update meta.auth_provider set mfa_required = true, mfa_request = $1 where name = 'mock-saml'`, [TWO]);
+    try {
+      const b = new Browser(app);
+      const res = await b.get('/a/hr/sso/mock-saml');
+      const request = inflateRawSync(Buffer.from(new URL(String(res.headers.location)).searchParams.get('SAMLRequest')!, 'base64')).toString('utf8');
+      assert.match(request, /<samlp:RequestedAuthnContext[^>]*Comparison="exact"/);
+      assert.match(request, new RegExp(`<saml:AuthnContextClassRef[^>]*>${TWO}</saml:AuthnContextClassRef>`));
+      assert.doesNotMatch(request, /ForceAuthn="true"/, 'a sign-in is not a step-up');
+
+      const p = await start(b);
+      const refused = await deliver(b, response({ requestId: p.requestId, groups: ['saml-managers'] }), p.relayState);
+      assert.equal(refused.statusCode, 403);
+      assert.match(refused.body, /did not confirm a second factor/);
+      assert.equal(await roles(b), '');
+      const q = await start(b);
+      assert.equal((await deliver(b, response({ requestId: q.requestId, groups: ['saml-managers'], classRef: TWO }), q.relayState)).statusCode, 303);
+      assert.match(await roles(b), /saml-manager/);
+    } finally {
+      await owner.query(`update meta.auth_provider set mfa_required = false, mfa_request = null where name = 'mock-saml'`);
+    }
+  });
+
+  test('(sprint 132) step-up through the SAML provider: ForceAuthn, then a multi-factor AuthnContextClassRef', async () => {
+    const TWO = 'urn:oasis:names:tc:SAML:2.0:ac:classes:MobileTwoFactorContract';
+    const b = new Browser(app);
+    const p = await start(b);
+    assert.equal((await deliver(b, response({ requestId: p.requestId, groups: ['saml-managers'] }), p.relayState)).statusCode, 303);
+    const stepUp = async (classRef?: string) => {
+      const go = await b.get('/a/hr/login/2fa?next=%2Fa%2Fhr%2F1');
+      assert.equal(go.statusCode, 303, go.body.slice(0, 200));
+      const url = new URL(String(go.headers.location));
+      const request = inflateRawSync(Buffer.from(url.searchParams.get('SAMLRequest')!, 'base64')).toString('utf8');
+      assert.match(request, /ForceAuthn="true"/);
+      const requestId = /ID="([^"]+)"/.exec(request)![1];
+      return deliver(b, response({ requestId, classRef }), url.searchParams.get('RelayState')!);
+    };
+    const refused = await stepUp();
+    assert.equal(refused.statusCode, 403);
+    assert.match(refused.body, /did not confirm a second factor/);
+    const ok = await stepUp(TWO);
+    assert.equal(ok.statusCode, 303, ok.body.slice(0, 300));
+    assert.equal(ok.headers.location, '/a/hr/1');
+    assert.ok(await owner.one(`select 1 as ok from meta.activity_log where app_id = $1 and username = 'sam' and event = '2fa_stepup' and detail = 'sso:mock-saml'`, [appId]));
+  });
+
+  test('(sprint 132) authnContext: classes and instant; a comment cannot shorten a class', () => {
+    const x = (ref: string) => `<saml:Assertion><saml:AuthnStatement AuthnInstant="2026-10-23T10:00:00Z"><saml:AuthnContext><saml:AuthnContextClassRef>${ref}</saml:AuthnContextClassRef></saml:AuthnContext></saml:AuthnStatement></saml:Assertion>`;
+    assert.deepEqual(authnContext(x('urn:a:mfa')), { classes: ['urn:a:mfa'], at: Date.parse('2026-10-23T10:00:00Z') });
+    assert.deepEqual(authnContext(x('mfa<!-- -->-not-really')).classes, ['mfa-not-really']);
+    assert.deepEqual(authnContext('<Assertion/>'), { classes: [], at: null });
   });
 
   test('a response works once, in the browser that started the sign-in', async () => {
