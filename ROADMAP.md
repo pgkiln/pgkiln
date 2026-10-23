@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.64.0 (October 2026): two-factor sign-in for application users, per application and per role, with authenticator apps and recovery codes.
+- **Current release:** 0.65.0 (October 2026): passkeys, e-mail codes, step-up before sensitive pages and REST API tokens after a second step for application users.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
