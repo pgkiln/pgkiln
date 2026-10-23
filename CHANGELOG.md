@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.65.0] - 2026-10-23
+
 ### Added
 - **Two-factor sign-in for application users, part 2** (SEC-3; beyond APEX): **passkeys** (WebAuthn: fingerprint,
   face, screen lock, security key) on *My account* and at the second step, also as the first factor a user adds while
