@@ -11607,6 +11607,8 @@ describe('(sprint 131, SEC-3 part 2) passkeys, e-mail codes, step-up and API tok
   };
   /** king through password and code; the browser is signed in with a fresh second step */
   const kingIn = async () => {
+    // each 30-second step is accepted once: let this sign-in use the current one again
+    await owner.query(`update meta.account_factor set last_step = null where account_id = (select id from meta.account where username = 'king')`);
     const b = new Browser();
     await b.login('king');
     await b.get('/a/hr/login/2fa');

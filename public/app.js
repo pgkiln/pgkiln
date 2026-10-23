@@ -4300,10 +4300,11 @@ document.addEventListener('change', (e) => {
   });
 })();
 
-// (sprint 131) Passkeys for application users, as in the builder (public/builder.js): a [data-passkey] button asks
-// the server (its URL) for WebAuthn options, calls navigator.credentials.create() (My account, adding one while
-// signing in) or .get() (the second step) and posts the answer in its own form. Without WebAuthn or JavaScript
-// the buttons stay hidden; codes keep working.
+// (sprint 127, moved here from builder.js in sprint 131) Passkeys, for developers (the builder loads app.js too) and
+// application users: a [data-passkey] button asks the server (its URL) for WebAuthn options, calls
+// navigator.credentials.create() (Security, My account, adding one while signing in) or .get() (the second step, a
+// passkey alone on the builder's sign-in page) and posts the answer in its own form, to data-passkey-submit when set.
+// Without WebAuthn or JavaScript the buttons stay hidden; codes keep working.
 (() => {
   'use strict';
   if (!window.PublicKeyCredential || !navigator.credentials) return;
