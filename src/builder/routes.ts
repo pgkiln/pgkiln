@@ -762,6 +762,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
     const directories = (await owner.query('select name, display_name, enabled from meta.ldap_directory order by display_name')).rows;
+    const signinFields = await loginSettingsFields(a);
     const lists = (await owner.query('select name from meta.list where app_id = $1 order by name', [a.id])).rows.map((r) => r.name as string);
     const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, tx('st.missing', { name: v })] as [string, string]] : [])];
     // (sprint 74) tabs like APEX's Edit Application Definition and Security Attributes: every tab of the
@@ -822,15 +823,21 @@ export async function builderRoutes(app: FastifyInstance) {
             <h3>${tx('st.methods')}</h3>
             <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> ${tx('st.local')}</label></div>
             ${directories.length
-              ? directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> ${tx('st.ldap', { name: d.display_name })}${d.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)
-              : html`<p class="muted">${tx.rich('st.no_ldap', { add: html`<a href="${BASE}/users/directories">${tx('st.add_one')}</a>` })}</p>`}
-            <small class="help">${tx('st.ldap_help')}</small>
-            <div class="form-grid">${input('session_group', tx('st.session_group'), a.session_group ?? '', { placeholder: tx('st.session_group_ph'), help: tx('st.session_group_help') })}</div>
-            ${await loginSettingsFields(a)}
-            <div class="form-grid">${input('remember_me_days', tx('st.remember'), a.remember_me_days ?? '', { type: 'number', placeholder: tx('st.remember_ph'), help: tx('st.remember_help') })}</div>
+              ? html`${directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> ${tx('st.ldap', { name: d.display_name })}${d.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)}
+                <small class="help">${tx('st.ldap_help')}</small>`
+              : html`<p class="muted small">${tx.rich('st.no_ldap', { add: html`<a href="${BASE}/users/directories">${tx('st.add_one')}</a>` })}</p>`}
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> ${tx('st.sso', { name: pr.display_name })}${pr.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)
-              : html`<p class="muted">${tx.rich('st.no_sso', { add: html`<a href="${BASE}/users/providers">${tx('st.add_one')}</a>` })}</p>`}
+              : html`<p class="muted small">${tx.rich('st.no_sso', { add: html`<a href="${BASE}/users/providers">${tx('st.add_one')}</a>` })}</p>`}
+            <h3>${tx('st.signin_page')}</h3>
+            ${signinFields.page}
+            <h3>${tx('st.staying')}</h3>
+            <div class="form-grid">
+              ${input('remember_me_days', tx('st.remember'), a.remember_me_days ?? '', { type: 'number', placeholder: tx('st.remember_ph'), help: tx('st.remember_help') })}
+              ${input('session_group', tx('st.session_group'), a.session_group ?? '', { placeholder: tx('st.session_group_ph'), help: tx('st.session_group_help') })}
+            </div>
+            <h3 id="two-factor">${tx('st.two_factor')}</h3>
+            ${signinFields.twoFactor}
             `)}${end}
             ${panel('ui')}${region(tx('st.tab.ui'), html`
             <h3>${tx('st.theme')}</h3>
