@@ -250,3 +250,45 @@ describe('builder sign-in through an identity provider (sprint 129)', () => {
     assert.equal((await new Browser(app).get('/builder/sso/bmock')).statusCode, 404, 'off: the start is gone');
   });
 });
+
+describe('(sprint 132, SEC-4) multi-factor sign-in at the provider, for developers', () => {
+  test('Require multi-factor refuses a developer whose token says only "pwd"', async () => {
+    await setProvider({ builder: true, builder_group: null, mfa_required: true });
+    try {
+      const r = await ssoSignIn(new Browser(app), { sub: 'sub-new-1', preferred_username: 'bsso_new', groups: ['pgkiln-devs'], amr: ['pwd'] });
+      assert.equal(r.statusCode, 403);
+      assert.match(r.body, /did not confirm a second factor/);
+      const ok = await ssoSignIn(new Browser(app), { sub: 'sub-new-1', preferred_username: 'bsso_new', groups: ['pgkiln-devs'], amr: ['pwd', 'mfa'] });
+      assert.equal(ok.statusCode, 303, ok.body.slice(0, 300));
+      let row;
+      // written after the response
+      for (let i = 0; i < 20 && !row; i++, await new Promise((r) => setTimeout(r, 50)))
+        row = await owner.one(`select 1 as ok from meta.activity_log where event = 'login' and username = 'bsso_new' and detail = 'builder sso:bmock (mfa)'`);
+      assert.ok(row);
+    } finally {
+      await setProvider({ mfa_required: false });
+    }
+  });
+
+  test("pgkiln's own second step after the provider: a developer with an authenticator app gives a code", async () => {
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    const { addTotp, stepNow, totpAt, unbase32 } = await import('../src/mfa.ts');
+    const SECRET = 'JBSWY3DPEHPK3PXP';
+    await addTotp('bsso_new', 'Phone', SECRET, stepNow() - 10);
+    await setProvider({ builder: true, local_second_step: true });
+    try {
+      const b = new Browser(app);
+      const r = await ssoSignIn(b, { sub: 'sub-new-1', preferred_username: 'bsso_new', groups: ['pgkiln-devs'] }, '?next=/builder/developers');
+      assert.equal(r.statusCode, 303);
+      assert.equal(r.headers.location, '/builder/login/2fa');
+      assert.notEqual((await b.get('/builder/developers')).statusCode, 200, 'not signed in yet');
+      await b.get('/builder/login/2fa');
+      const done = await b.submit('/builder/login/2fa', { code: totpAt(unbase32(SECRET), stepNow()) });
+      assert.equal(done.headers.location, '/builder/developers');
+      assert.equal((await b.get('/builder/developers')).statusCode, 200);
+    } finally {
+      await setProvider({ local_second_step: false });
+      await owner.query(`delete from meta.developer_factor where username = 'bsso_new'`);
+    }
+  });
+});
