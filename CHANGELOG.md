@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.68.0] - 2026-10-27
+
 ### Added
 - **Five more builder languages** (SEC-5; APEX: the builder's ten languages): Italiano, 中文 (简体), 中文 (繁體),
   日本語 and 한국어, on the sign-in page's links and in the status bar's language menu, next to Deutsch, English,
