@@ -73,6 +73,9 @@ const MAX_TEXT = 200;
 const COLUMN = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 const TABLE = /^([A-Za-z_][A-Za-z0-9_$]{0,62}\.)?[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 
+/** A client, a pool or pgkiln's Db: something that runs a query with parameters. */
+type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> };
+
 /** (135) The search types (later: vector, hybrid). */
 export const SEARCH_TYPES = ['standard', 'fulltext'] as const;
 const TS_CONFIG = /^[a-z_][a-z0-9_]{0,62}$/;
@@ -90,16 +93,16 @@ export const tsConfigFor = (language: string | null | undefined) => TS_BY_LANGUA
  * (135) The text search configuration to use: the one asked for, else the language's, if it exists in
  * pg_ts_config; else simple. Only a name that exists is returned (and it is still passed as a parameter).
  */
-export async function textSearchConfig(db: { query: pg.ClientBase['query'] }, wanted: string | null | undefined, language: string | null | undefined): Promise<string> {
+export async function textSearchConfig(db: Queryable, wanted: string | null | undefined, language: string | null | undefined): Promise<string> {
   const names = [wanted, tsConfigFor(language)].filter((x): x is string => !!x && TS_CONFIG.test(x));
   if (!names.length) return 'simple';
-  const found = (await db.query<{ cfgname: string }>('select cfgname from pg_catalog.pg_ts_config where cfgname = any($1::text[])', [names])).rows.map((r) => r.cfgname);
+  const found = (await db.query('select cfgname from pg_catalog.pg_ts_config where cfgname = any($1::text[])', [names])).rows.map((r: { cfgname: string }) => r.cfgname);
   return names.find((n) => found.includes(n)) ?? 'simple';
 }
 
 /** (135) The schema of pg_trgm when it is installed (its functions are called schema-qualified), else null. */
-export async function trigramSchema(db: { query: pg.ClientBase['query'] }): Promise<string | null> {
-  return (await db.query<{ s: string }>(`select n.nspname as s from pg_catalog.pg_extension e join pg_catalog.pg_namespace n on n.oid = e.extnamespace where e.extname = 'pg_trgm'`)).rows[0]?.s ?? null;
+export async function trigramSchema(db: Queryable): Promise<string | null> {
+  return (await db.query(`select n.nspname as s from pg_catalog.pg_extension e join pg_catalog.pg_namespace n on n.oid = e.extnamespace where e.extname = 'pg_trgm'`)).rows[0]?.s ?? null;
 }
 
 /** (135) The markers ts_headline puts around a matched word (private-use characters, removed from the text first). */

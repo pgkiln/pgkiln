@@ -248,7 +248,8 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         if (row.fts_config && cfg !== row.fts_config)
           findings.push({ severity: 'error', entry, field: 'Text search configuration', message: `Text search configuration ${row.fts_config} doesn't exist (pg_ts_config): ${cfg} is used instead.` });
         const lit = `${pg.escapeLiteral(cfg)}::regconfig`;
-        cols = `${cols === '*' ? 't.*' : cols}, ${tsvectorSql(row, lit)} @@ websearch_to_tsquery(${lit}, 'x')`;
+        // (ts_rank_cd takes only a tsvector: text @@ tsquery would pass)
+        cols = `${cols === '*' ? 't.*' : cols}, ts_rank_cd(${tsvectorSql(row, lit)}, websearch_to_tsquery(${lit}, 'x'))`;
       }
       checked++;
       const problem = await checkSql(c, `select ${cols} from ${row.source_type === 'table' ? row.source.trim() : `(${row.source})`} t`, 'select');
