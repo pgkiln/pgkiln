@@ -424,6 +424,7 @@ export const uk: Record<MessageKey, string> = {
   'lov.loading': "Завантаження…",
   'da.wait': "Зачекайте…",
   'lov.no_rows': "Нічого не знайдено.",
+  'search.did_you_mean': "Можливо, ви мали на увазі:",
   'error.lov_value': "{label}: виберіть значення зі списку.",
   'item.yes': "Так",
   'item.no': "Ні",

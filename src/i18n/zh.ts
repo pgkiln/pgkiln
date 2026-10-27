@@ -424,6 +424,7 @@ export const zh: Record<MessageKey, string> = {
   'lov.loading': "正在加载更多…",
   'da.wait': "请稍候…",
   'lov.no_rows': "未找到任何内容。",
+  'search.did_you_mean': "您是不是要找：",
   'error.lov_value': "{label}：请从列表中选择一个值。",
   'item.yes': "是",
   'item.no': "否",

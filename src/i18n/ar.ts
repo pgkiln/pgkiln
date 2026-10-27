@@ -424,6 +424,7 @@ export const ar: Record<MessageKey, string> = {
   'lov.loading': "جارٍ تحميل المزيد…",
   'da.wait': "يرجى الانتظار…",
   'lov.no_rows': "لم يُعثر على شيء.",
+  'search.did_you_mean': "هل تقصد:",
   'error.lov_value': "{label}: اختر قيمة من القائمة.",
   'item.yes': "نعم",
   'item.no': "لا",

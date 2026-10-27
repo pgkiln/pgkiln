@@ -424,6 +424,7 @@ export const it: Record<MessageKey, string> = {
   'lov.loading': "Caricamento di altri…",
   'da.wait': "Attendere prego…",
   'lov.no_rows': "Nessun risultato.",
+  'search.did_you_mean': "Forse cercavi:",
   'error.lov_value': "{label}: scegli un valore dall'elenco.",
   'item.yes': "Sì",
   'item.no': "No",

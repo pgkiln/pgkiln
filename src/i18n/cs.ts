@@ -424,6 +424,7 @@ export const cs: Record<MessageKey, string> = {
   'lov.loading': "Načítání dalších…",
   'da.wait': "Čekejte prosím…",
   'lov.no_rows': "Nic nenalezeno.",
+  'search.did_you_mean': "Měli jste na mysli:",
   'error.lov_value': "{label}: vyberte hodnotu ze seznamu.",
   'item.yes': "Ano",
   'item.no': "Ne",

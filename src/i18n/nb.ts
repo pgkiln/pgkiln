@@ -424,6 +424,7 @@ export const nb: Record<MessageKey, string> = {
   'lov.loading': "Laster inn flere…",
   'da.wait': "Vent litt…",
   'lov.no_rows': "Fant ingenting.",
+  'search.did_you_mean': "Mente du:",
   'error.lov_value': "{label}: velg en verdi fra listen.",
   'item.yes': "Ja",
   'item.no': "Nei",

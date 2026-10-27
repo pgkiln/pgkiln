@@ -722,8 +722,13 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     plural: 'Search configurations',
     icon: 'search',
     summary: (c) => `${c.name} (${c.source_type})`,
-    defaults: { source_type: 'table', seq: 10, max_results: 10, searchable_columns: [] },
+    defaults: { source_type: 'table', search_type: 'standard', seq: 10, max_results: 10, searchable_columns: [], did_you_mean: false },
     validate: (v) => searchConfigProblems(v as never).join(' ') || null,
+    // (135) empty means: built from the searchable columns / the application language's configuration
+    beforeSave: async (v) => {
+      for (const k of ['fts_vector', 'fts_config'] as const) if (typeof v[k] === 'string' && !(v[k] as string).trim()) v[k] = null;
+      if (typeof v.fts_config === 'string') v.fts_config = v.fts_config.trim().toLowerCase();
+    },
     fields: [
       { name: 'name', label: 'Name (static ID)', kind: 'upper', group: 'Identification', help: 'e.g. CUSTOMERS; a search region names it in {"configs": ["CUSTOMERS"]}.' },
       { name: 'label', label: 'Label', kind: 'text', group: 'Identification', help: 'The heading of its results, e.g. Customers.' },
@@ -733,6 +738,14 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source', help: 'table: sales.customers · sql: select id, name, city from sales.customers where active · list: the list\'s name.' },
       { name: 'searchable_columns', label: 'Searchable columns', kind: 'list', group: 'Source',
         help: 'Comma-separated columns the search text is looked for in (each word must be found in one of them). Empty: the title, subtitle and description columns.' },
+      { name: 'search_type', label: 'Search type', kind: 'select', options: ['standard', 'fulltext'], group: 'Search',
+        help: 'standard: each word anywhere in one of the searchable columns (case-insensitive) · fulltext: PostgreSQL full-text search: stemmed words ("running" finds "run"), "quoted phrases", or, -word; the best match first, the matched words highlighted (table, sql).' },
+      { name: 'fts_vector', label: 'tsvector column or expression', kind: 'code', wide: true, group: 'Search',
+        help: 'fulltext: a tsvector column of the source (e.g. search_vector, with a GIN index: SQL Workshop › Table Properties › Add full-text search), or an expression, e.g. to_tsvector(\'english\', title || \' \' || body). Empty: to_tsvector over the searchable columns (no index can help).' },
+      { name: 'fts_config', label: 'Text search configuration', kind: 'text', group: 'Search',
+        help: 'fulltext: english, dutch, german, french, simple … (pg_ts_config); the same one the tsvector was made with. Empty: the application\'s primary language\'s, else simple.' },
+      { name: 'did_you_mean', label: 'Did you mean', kind: 'bool', group: 'Search',
+        help: 'With the pg_trgm extension installed: when nothing is found, suggest the closest words from the searched columns (reads up to 10,000 rows). Without pg_trgm nothing is suggested.' },
       { name: 'title_column', label: 'Title column', kind: 'text', group: 'Result', help: 'Required (table, sql); results are ordered by it.' },
       { name: 'subtitle_column', label: 'Subtitle column', kind: 'text', group: 'Result' },
       { name: 'description_column', label: 'Description column', kind: 'text', group: 'Result' },

@@ -11,7 +11,7 @@ import { handlerProblems } from '../runtime/rest.ts';
 import { plpgsqlBlock } from '../runtime/rest-handlers.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
-import { configColumns, searchConfigProblems } from '../runtime/search.ts';
+import { configColumns, searchConfigProblems, textSearchConfig, tsvectorSql } from '../runtime/search.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
@@ -240,10 +240,45 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         findings.push({ severity: 'error', entry, field: 'Source', message: problems.join(' ') });
         continue;
       }
-      const cols = configColumns(row).map((x) => `t.${pg.escapeIdentifier(x)}`).join(', ') || '*';
+      let cols = configColumns(row).map((x) => `t.${pg.escapeIdentifier(x)}`).join(', ') || '*';
+      // (135) a full-text configuration: its tsvector matched with its text search configuration
+      const fulltext = row.search_type === 'fulltext';
+      if (fulltext) {
+        const cfg = await textSearchConfig(c, row.fts_config, app.language);
+        if (row.fts_config && cfg !== row.fts_config)
+          findings.push({ severity: 'error', entry, field: 'Text search configuration', message: `Text search configuration ${row.fts_config} doesn't exist (pg_ts_config): ${cfg} is used instead.` });
+        const lit = `${pg.escapeLiteral(cfg)}::regconfig`;
+        cols = `${cols === '*' ? 't.*' : cols}, ${tsvectorSql(row, lit)} @@ websearch_to_tsquery(${lit}, 'x')`;
+      }
       checked++;
       const problem = await checkSql(c, `select ${cols} from ${row.source_type === 'table' ? row.source.trim() : `(${row.source})`} t`, 'select');
-      if (problem) findings.push({ ...problem, entry, field: 'Source' });
+      if (problem) findings.push({ ...problem, entry, field: fulltext ? 'Source / tsvector' : 'Source' });
+      // (135) a full-text search on a table without a GIN index on its tsvector reads every row
+      if (fulltext && !problem && row.source_type === 'table') {
+        const vector = String(row.fts_vector ?? '').trim();
+        const column = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(vector) ? vector : null;
+        await c.query('savepoint advisor_fts');
+        const ix = (await c.query<{ checkable: boolean; gin: boolean }>(
+          `select cl.relkind in ('r', 'p', 'm') as checkable,
+                  exists (select from pg_catalog.pg_index i join pg_catalog.pg_class ic on ic.oid = i.indexrelid join pg_catalog.pg_am am on am.oid = ic.relam
+                           where i.indrelid = cl.oid and am.amname = 'gin'
+                             and case when $2::text is not null
+                                      then (select a.attnum from pg_catalog.pg_attribute a where a.attrelid = cl.oid and a.attname = $2 and not a.attisdropped) = any (i.indkey::int2[])
+                                      else i.indexprs is not null and pg_catalog.pg_get_indexdef(i.indexrelid) ~* 'to_tsvector' end) as gin
+             from pg_catalog.pg_class cl where cl.oid = $1::regclass`, [row.source.trim(), column]).catch(async () => {
+          await c.query('rollback to savepoint advisor_fts');
+          return { rows: [] };
+        })).rows[0];
+        if (ix?.checkable && (!ix.gin || !vector))
+          findings.push({
+            severity: 'warning', entry, field: 'tsvector column or expression',
+            message: column
+              ? `${row.source.trim()}.${column} has no GIN index: every search reads the whole table (create index … on ${row.source.trim()} using gin (${pg.escapeIdentifier(column)})).`
+              : vector
+                ? `${row.source.trim()} has no GIN index on a to_tsvector expression: every search reads the whole table.`
+                : `The tsvector is built from the searchable columns on every search, so no index can help: add a tsvector column with a GIN index (SQL Workshop › Table Properties › Add full-text search) and name it here.`,
+          });
+      }
     }
     // the search regions name existing configurations
     for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'search')) {

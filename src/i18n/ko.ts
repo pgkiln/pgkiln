@@ -424,6 +424,7 @@ export const ko: Record<MessageKey, string> = {
   'lov.loading': "더 불러오는 중…",
   'da.wait': "잠시 기다려 주세요…",
   'lov.no_rows': "찾은 항목이 없습니다.",
+  'search.did_you_mean': "이것을 찾으셨나요:",
   'error.lov_value': "{label}: 목록에서 값을 선택하세요.",
   'item.yes': "예",
   'item.no': "아니요",

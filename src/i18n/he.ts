@@ -424,6 +424,7 @@ export const he: Record<MessageKey, string> = {
   'lov.loading': "טוען עוד…",
   'da.wait': "נא להמתין…",
   'lov.no_rows': "לא נמצא דבר.",
+  'search.did_you_mean': "האם התכוונת ל:",
   'error.lov_value': "{label}: בחרו ערך מהרשימה.",
   'item.yes': "כן",
   'item.no': "לא",

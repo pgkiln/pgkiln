@@ -424,6 +424,7 @@ export const fi: Record<MessageKey, string> = {
   'lov.loading': "Ladataan lisää…",
   'da.wait': "Odota hetki…",
   'lov.no_rows': "Mitään ei löytynyt.",
+  'search.did_you_mean': "Tarkoititko:",
   'error.lov_value': "{label}: valitse arvo luettelosta.",
   'item.yes': "Kyllä",
   'item.no': "Ei",

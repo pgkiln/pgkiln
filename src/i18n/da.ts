@@ -424,6 +424,7 @@ export const da: Record<MessageKey, string> = {
   'lov.loading': "Indlæser flere…",
   'da.wait': "Vent venligst…",
   'lov.no_rows': "Intet fundet.",
+  'search.did_you_mean': "Mente du:",
   'error.lov_value': "{label}: vælg en værdi på listen.",
   'item.yes': "Ja",
   'item.no': "Nej",

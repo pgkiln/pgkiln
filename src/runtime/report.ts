@@ -17,6 +17,7 @@ import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql, type Computation } from './compute.ts';
 import { GRID_VIEWS, renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
+import { textSearchConfig } from './search.ts';
 import { facetFilterSql, facetFilters, hidesColumns, reportFacetDefs, searchSql, userColumnNames } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { checksumValid, signText } from '../security.ts';
@@ -410,6 +411,18 @@ export async function withComputations(ctx: PageContext, r: Region, src: string,
 }
 
 /**
+ * (135) The tsvector column a report's search also uses: the one its attributes name (`fulltext`, which may be a
+ * hidden column: the developer chose it), else the only tsvector column the user may see; null when there is none.
+ */
+export function fulltextColumn(r: Pick<Region, 'config'>, fields: { name: string; dataTypeID: number }[], userCols: Map<string, number>) {
+  const TSVECTOR = 3614;
+  const named = typeof r.config.fulltext === 'string' ? r.config.fulltext : null;
+  if (named) return fields.find((f) => f.name === named && f.dataTypeID === TSVECTOR)?.name ?? null;
+  const shown = fields.filter((f) => f.dataTypeID === TSVECTOR && userCols.has(f.name));
+  return shown.length === 1 ? shown[0].name : null;
+}
+
+/**
  * The report's query with the user's search, filters and facets applied:
  * the source, the WHERE clause, and the result's column names (only looked
  * up when a user-chosen column needs checking).
@@ -422,14 +435,25 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const p = new SqlParams();
   const hides = hidesColumns(r);
   const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions), undefined, appDateReader(ctx));
-  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort)) || (st.search && st.searchCol);
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort)) || st.search;
   // column name → type oid
   const fields = needCols ? await fieldsOf(ctx, src) : [];
   const cols = new Map<string, number>(fields.map((f) => [f.name, f.dataTypeID]));
   // the columns the user may choose (filters, highlights, control break, aggregates, views, sorting): not the hidden ones
   const userCols = new Map<string, number>(userColumnNames(r, [...cols.keys()]).map((n) => [n, cols.get(n)!]));
   // (sprint 76) the search in one column the user may see, or in all
-  if (st.search) where.push(searchSql(st.search, p, st.searchCol && userCols.has(st.searchCol) ? [st.searchCol] : hides ? [...userCols.keys()] : undefined));
+  if (st.search) {
+    const oneCol = !!st.searchCol && userCols.has(st.searchCol);
+    let cond = searchSql(st.search, p, oneCol ? [st.searchCol!] : hides ? [...userCols.keys()] : undefined);
+    // (135) a tsvector column in the source: the search also finds rows by full-text search (stemmed words,
+    // "phrases", or, -word), with a text search configuration from pg_ts_config as a query parameter
+    const fts = oneCol ? null : fulltextColumn(r, fields, userCols);
+    if (fts) {
+      const cfg = await textSearchConfig(ctx.client!, typeof r.config.fulltext_config === 'string' ? r.config.fulltext_config : null, ctx.app.language);
+      cond = `(${cond} or ${q(fts)} @@ websearch_to_tsquery(${p.add(cfg, 'regconfig')}, ${p.add(st.search, 'text')}))`;
+    }
+    where.push(cond);
+  }
   for (const f of st.filters) if (userCols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
   for (const f of facets) {
     const cond = facetFilterSql(f, cols, p);
