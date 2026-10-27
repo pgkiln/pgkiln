@@ -5,6 +5,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Full-text search configurations** (AP-2; APEX: a search configuration's search type *Oracle Text*): Shared
+  Components › Search configurations has a **search type**, `standard` (each word anywhere in a column, as before) or
+  `fulltext`: PostgreSQL full-text search on a `tsvector` column, an expression, or one built from the searchable
+  columns, in a text search configuration (`english`, `dutch`, `german`…; by default the application language's,
+  else `simple`; checked against `pg_ts_config` and passed as a query parameter). The user's text is read with
+  `websearch_to_tsquery` (`"phrases"`, `or`, `-word`), so *running shoes* finds *run* and *shoe*; the best match comes
+  first (`ts_rank_cd`) and the matched words are highlighted by `ts_headline` (escaped; only its own marks become
+  `<mark>`). With `pg_trgm` installed a configuration can suggest **Did you mean** when nothing is found; without it
+  nothing is suggested. Migration 135 (no change to the export format: the new fields travel with the configuration,
+  older exports get the defaults).
+- SQL Workshop › Table Properties › **Add full-text search…** (also in a table's ⋯ menu): text columns with weights
+  A–D and a text search configuration become a stored generated `tsvector` column and a GIN index; the DDL is
+  previewed first, applied in one transaction and recorded in the Change Log.
+- A report's search box also uses full-text search on a `tsvector` column of its source (the `fulltext` attribute,
+  or the only tsvector column the user may see; `fulltext_config` for its configuration): rows whose text contains
+  the search text or whose tsvector matches it.
+- The Advisor warns when a full-text configuration's tsvector column has no GIN index (or the tsvector is built on
+  every search), and reports a text search configuration that doesn't exist or a column that isn't a tsvector.
+- HR example part 71: `hr.policy` gets a generated `search_vector` with a GIN index, and page 42 *Search* searches
+  the policies with the full-text configuration `POLICIES`.
+
 ## [0.68.0] - 2026-10-27
 
 ### Added

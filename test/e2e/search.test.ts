@@ -53,4 +53,25 @@ describe('search region', () => {
       await page.close();
     }
   });
+
+  test('(sprint 135) the full-text configuration: stemmed words highlighted while typing', async () => {
+    const region = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+                                      where a.alias = 'hr' and p.page_no = 42 and r.type = 'search'`)).id;
+    const page = await browser.newPage();
+    try {
+      await page.goto(`${base}/a/hr/login`);
+      await page.fill('#username', 'king');
+      await page.fill('#password', 'king');
+      await Promise.all([page.waitForNavigation(), page.click('button.btn-hot')]);
+      await page.goto(`${base}/a/hr/42`);
+      await page.click(`#R${region}_q`);
+      await page.keyboard.type('works home');
+      // "works" finds "Working" and "work" (english stemming), highlighted
+      await page.locator(`#R${region}_results .search-title mark`, { hasText: 'Working' }).first().waitFor();
+      assert.equal(await page.locator(`#R${region}_results .search-group h3`, { hasText: 'HR policies' }).count(), 1);
+      assert.match(await page.locator(`#R${region}_results .search-description`).first().innerHTML(), /<mark>work<\/mark>/);
+    } finally {
+      await page.close();
+    }
+  });
 });

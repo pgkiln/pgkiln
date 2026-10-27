@@ -404,6 +404,8 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `lazy` | `false` | Load the region after the page shows (see [large tables](#large-tables)) |
 | `cache` | none | Keep the rendered region: `{"scope": "user" \| "session" \| "all", "seconds": 300}` |
 | `searchable` | `true` | Show the search box (`false` = a "classic report") |
+| `fulltext` | none | (sprint 135) A `tsvector` column of the source that the search box also uses: a row is found when its text contains the search text, **or** its tsvector matches it (`websearch_to_tsquery`: stemmed words, `"phrases"`, `or`, `-word`). It may be a `hidden` column (you chose it). Without it, the only `tsvector` column the user may see is used, if there is one. Not with a search in one column |
+| `fulltext_config` | language's | (sprint 135) The text search configuration of that search (`english`, `dutch`…, the one the tsvector was made with); by default the application's primary language's, else `simple`. Only names in `pg_ts_config` are used |
 | `interactive` | `true` | Show the Actions menu (only when searchable) |
 | `sortable` | `true` | Allow sorting (`false` keeps the query's order, e.g. for trees) |
 | `mobile` | `"reflow"` | `"scroll"` keeps a horizontally scrolling table on phones |
@@ -1639,6 +1641,10 @@ Search configurations):
 | Icon | An [icon name](09-reference.md#icons), or `#COLUMN#` for a column that holds icon names |
 | Link | Where a result goes: `{"page": 3, "items": {"P3_ID": "#ID#"}}` (`#COLUMN#` is the row's value; the link gets a checksum, a modal page opens as a dialog) |
 | Maximum results | Per configuration, 1–100 (default 10); "Showing the first *n* rows." when there are more |
+| Search type | (sprint 135) `standard`: the words as below · `fulltext`: PostgreSQL full-text search (table and sql sources; see [full-text search](#full-text-search)). The type is the place where later types (vector search, and a hybrid of both) will go |
+| tsvector column or expression | `fulltext`: a `tsvector` column of the source (best: with a GIN index), or an expression such as `to_tsvector('english', title \|\| ' ' \|\| body)`. Empty: `to_tsvector` over the searchable columns on every search |
+| Text search configuration | `fulltext`: `english`, `dutch`, `german`, `simple`… (`pg_ts_config`): the one the tsvector was made with. Empty: the application's primary language's, else `simple` |
+| Did you mean | With the `pg_trgm` extension installed: when nothing is found, a link that searches for the closest words of the searched columns (any search type; reads up to 10,000 rows). Without `pg_trgm` nothing is suggested |
 
 **How it searches.** Each word of the search text must be found (case-insensitively, anywhere in
 the value) in one of the searchable columns, so `clerk mil` finds MILLER the clerk. `%` and `_` are
@@ -1655,6 +1661,45 @@ select e.empno, initcap(e.ename) as name, initcap(e.job) as job, d.dname as depa
 with searchable columns `name, job, department`, title `name`, subtitle `job`, badge `department`
 and link `{"page": 3, "items": {"P3_EMPNO": "#EMPNO#"}}`.
 
+#### Full-text search
+
+A configuration of search type **fulltext** (APEX: the search type *Oracle Text*) uses PostgreSQL's full-text
+search instead of matching the words letter for letter:
+
+- **Stemming**: in the `english` configuration *running shoes* finds a row with *run* and *shoe*. The text is
+  read with `websearch_to_tsquery`, so users can write `"exact phrase"`, `shoes or boots` and `shoes -polish`.
+- **Ranking**: the best match first (`ts_rank_cd`; words close together and in a column with weight A count
+  more), then by the title.
+- **Highlights**: the title and subtitle come back with every matched word marked, the description as the
+  fragments around the matches (`ts_headline`). Everything is escaped: only ts_headline's own marks become
+  `<mark>`, the data's characters are always text.
+- **The tsvector**: name a `tsvector` column of the source. The quickest way to make one is SQL Workshop ›
+  Table Properties › **Add full-text search** ([chapter 3](03-builder.md)): a generated column over the text
+  columns, weighted, and a GIN index on it. An expression works too (a GIN index on the same expression helps);
+  with neither, the searchable columns are turned into a tsvector on every search, which reads the whole table.
+- **The text search configuration** is checked against `pg_ts_config` and passed as a query parameter; use the
+  one the tsvector was made with. Empty: the configuration of the application's primary language (`en` →
+  `english`, `nl` → `dutch`, `de` → `german`, `fr`, `es`, `it`, `pt`, `sv`, `da`, `nb`, `fi`, `ru`, `tr`, `el`,
+  `ar`…), else `simple` (no stemming; for Japanese, Chinese and Korean).
+- **Did you mean**: with `pg_trgm` installed (`create extension pg_trgm`), a configuration that asks for it
+  suggests, when nothing at all is found, the search text with each unknown word replaced by the most similar
+  word of its searched columns (as the user: row level security applies). Without `pg_trgm` nothing is
+  suggested and nothing fails.
+
+```sql
+-- what Add full-text search writes (HR example part 71, hr.policy)
+alter table hr.policy
+  add column search_vector tsvector generated always as (
+    setweight(to_tsvector('english'::regconfig, coalesce(title, '')), 'A') ||
+    setweight(to_tsvector('english'::regconfig, coalesce(body, '')), 'B')) stored;
+create index policy_search_vector_idx on hr.policy using gin (search_vector);
+```
+
+with search type `fulltext`, tsvector `search_vector`, configuration `english`, title `title` and description
+`body`. The Advisor warns when a fulltext configuration's column has no GIN index (or its tsvector is built on
+every search), reports a configuration name that doesn't exist, and a column that isn't a tsvector. A report's
+search box can use the same engine: see its `fulltext` attribute.
+
 **The region**: attributes
 
 | Key | Meaning |
@@ -1669,7 +1714,7 @@ The region's own field is a GET form (`?s<region id>=text`, so a search can be b
 without JavaScript; with JavaScript it searches while the user types and replaces only the results.
 The Advisor plans every configuration with the columns it names and reports names a region uses
 that don't exist. Search configurations are exported with the application. The HR example's page 42
-searches employees, departments and the shortcuts list.
+searches employees, departments, the HR policies (full-text, part 71) and the shortcuts list.
 
 ### `url` (URL region)
 
