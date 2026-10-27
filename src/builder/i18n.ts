@@ -19,20 +19,30 @@ import { de } from './i18n/de.ts';
 import { en } from './i18n/en.ts';
 import { es } from './i18n/es.ts';
 import { fr } from './i18n/fr.ts';
+import { it } from './i18n/it.ts';
+import { ja } from './i18n/ja.ts';
+import { ko } from './i18n/ko.ts';
 import { nl } from './i18n/nl.ts';
 import { pt } from './i18n/pt.ts';
+import { zhCN } from './i18n/zh-cn.ts';
+import { zhTW } from './i18n/zh-tw.ts';
 
 export type BuilderKey = keyof typeof en;
 export type BuilderMessages = Record<BuilderKey, string>;
 export type Params = Record<string, string | number | null | undefined>;
 
-/** The builder's languages, in the order of the language menu and the sign-in page's links (names in their own language). */
+/**
+ * The builder's languages, in the order of the language menu and the sign-in page's links (names in their own
+ * language): APEX's ten (sprint 134, SEC-5: Italiano, both Chinese scripts, Japanese, Korean) and Nederlands.
+ * The codes are BCP 47 tags, used as they are in <html lang>, the cookie and meta.developer.language.
+ */
 export const BUILDER_LANGUAGES = [
-  ['de', 'Deutsch'], ['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['nl', 'Nederlands'], ['pt', 'Português'],
+  ['de', 'Deutsch'], ['en', 'English'], ['es', 'Español'], ['fr', 'Français'], ['it', 'Italiano'], ['nl', 'Nederlands'], ['pt', 'Português'],
+  ['zh-CN', '中文 (简体)'], ['zh-TW', '中文 (繁體)'], ['ja', '日本語'], ['ko', '한국어'],
 ] as const;
 export type BuilderLang = (typeof BUILDER_LANGUAGES)[number][0];
 
-const MESSAGES: Record<BuilderLang, Readonly<Record<string, string>>> = { en, de, es, fr, nl, pt };
+const MESSAGES: Record<BuilderLang, Readonly<Record<string, string>>> = { en, de, es, fr, it, nl, pt, 'zh-CN': zhCN, 'zh-TW': zhTW, ja, ko };
 
 /** The cookie with the sign-in page's language on this device (the builder's path only). */
 export const LANG_COOKIE = 'pgkiln_blang';

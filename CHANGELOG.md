@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Five more builder languages** (SEC-5; APEX: the builder's ten languages): Italiano, 中文 (简体), 中文 (繁體),
+  日本語 and 한국어, on the sign-in page's links and in the status bar's language menu, next to Deutsch, English,
+  Español, Français, Nederlands and Português. They cover the same screens as the other languages, Developer ›
+  Security included. In Chinese, Japanese and Korean the builder uses the system's fonts for that language, and
+  Korean wraps between words. No migration: `meta.developer.language` already takes `zh-CN` and `zh-TW`.
+
 ## [0.67.0] - 2026-10-23
 
 ### Added

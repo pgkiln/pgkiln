@@ -284,7 +284,7 @@ src/
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
     i18n.ts                (sprint 121) the builder's own texts: BUILDER_LANGUAGES, tr(s) / translatorFor(lang) → tx(key, params),
                            tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels)
-    i18n/                  en.ts defines the builder's keys; de, es, fr, nl, pt are Records of the same keys
+    i18n/                  en.ts defines the builder's keys; de, es, fr, it, nl, pt, zh-cn, zh-tw, ja, ko (sprint 134) are Records of the same keys
     language.ts            (migration 127) the status bar's language menu (POST /builder/language), the sign-in page's
                            language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
@@ -583,8 +583,11 @@ test/
 ## Builder texts in more languages
 
 (sprint 121) The builder's own texts are keyed messages, like the runtime's: `src/builder/i18n/en.ts` defines every
-key (`<screen>.<what>`, e.g. `rail.app_builder`, `pd.menu.create`, `ab.count` with `{n}`), and `de.ts`, `es.ts`,
-`fr.ts`, `nl.ts` and `pt.ts` are `Record<BuilderKey, string>` of the same keys. A page takes its translator from the
+key (`<screen>.<what>`, e.g. `rail.app_builder`, `pd.menu.create`, `ab.count` with `{n}`), and the other ten files
+(`de.ts`, `es.ts`, `fr.ts`, `it.ts`, `nl.ts`, `pt.ts`, (sprint 134) `zh-cn.ts`, `zh-tw.ts`, `ja.ts`, `ko.ts`) are
+`Record<BuilderKey, string>` of the same keys. A language's code is its BCP 47 tag (`zh-CN`, `zh-TW`), used as it is in
+`<html lang>`, the cookie and `meta.developer.language`; `public/builder.css` gives the CJK languages their own font
+stacks by `:lang()`. A page takes its translator from the
 session and uses it for every text it shows:
 
 ```ts
@@ -599,7 +602,7 @@ an optional last argument (`appHeader(a, 'pages', s)`, `workshopTabs('sql', s)`)
 breadcrumb labels (`tx.label`) so pages that aren't moved yet still get a translated trail.
 
 **Moving a screen over**: replace its literal texts with `tx('key')`, add each key with its English text to `en.ts`
-(keep the English exactly as it was: tests and e2e tests assert it), then add the key to the five other files
+(keep the English exactly as it was: tests and e2e tests assert it), then add the key to the ten other files
 (TypeScript refuses a file with a missing or an unknown key). A sentence with a link is one key with a `{link}`
 placeholder and `tx.rich`, not pieces glued together; a count has a `_one` and a plural key; never lower-case a
 translated label (German nouns). Flash messages are translated where they are set.

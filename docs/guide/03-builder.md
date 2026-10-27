@@ -432,8 +432,11 @@ is in the server log, not on the page). Scripts get the plain answers they alway
 
 ### Choosing the builder language
 
-(sprint 121, APEX: the builder's language links) The builder speaks **Deutsch, English, Español, Français, Nederlands
-and Português** (Brazilian). English is the default.
+(sprint 121, APEX: the builder's language links) The builder speaks **Deutsch, English, Español, Français, Italiano,
+Nederlands, Português** (Brazilian), and (sprint 134) **中文 (简体)** (Simplified Chinese), **中文 (繁體)**
+(Traditional Chinese), **日本語** (Japanese) and **한국어** (Korean): APEX's ten builder languages and Dutch. English
+is the default. In Chinese, Japanese and Korean the builder uses your system's fonts for that language (PingFang,
+Microsoft YaHei / JhengHei, Hiragino, Yu Gothic, Apple SD Gothic Neo, Malgun Gothic, or Noto Sans CJK on Linux).
 
 - **On the sign-in page** the languages are links under the form: choosing one shows the sign-in page in that
   language and, when you then sign in, stores it as your builder language. The choice is remembered on this device

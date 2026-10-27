@@ -21,6 +21,7 @@ const PW = 'I18n-dev-password-1!';
 const ENGLISH = en as Record<string, string>;
 const de = builderMessages('de');
 const fr = builderMessages('fr');
+const ja = builderMessages('ja');
 
 let app: FastifyInstance;
 let appId: number;
@@ -108,7 +109,7 @@ describe('builder message files and their coverage', () => {
   });
 
   test('every language file has exactly the English keys, with the same placeholders, and is translated', () => {
-    assert.deepEqual(BUILDER_LANGUAGES.map(([c]) => c).sort(), ['de', 'en', 'es', 'fr', 'nl', 'pt']);
+    assert.deepEqual(BUILDER_LANGUAGES.map(([c]) => c).sort(), ['de', 'en', 'es', 'fr', 'it', 'ja', 'ko', 'nl', 'pt', 'zh-CN', 'zh-TW']);
     for (const [lang] of BUILDER_LANGUAGES) {
       if (lang === 'en') continue;
       const own = builderMessages(lang);
@@ -137,8 +138,8 @@ describe('builder message files and their coverage', () => {
   });
 
   test('only the known language codes are accepted', () => {
-    for (const ok of ['en', 'de', 'es', 'fr', 'nl', 'pt']) assert.equal(validBuilderLanguage(ok), ok);
-    for (const bad of ['', 'xx', 'DE', 'de-DE', 'de ', 'toString', '__proto__', 'constructor', null, undefined, 3, ['de']]) assert.equal(validBuilderLanguage(bad), null, String(bad));
+    for (const ok of ['en', 'de', 'es', 'fr', 'it', 'nl', 'pt', 'zh-CN', 'zh-TW', 'ja', 'ko']) assert.equal(validBuilderLanguage(ok), ok);
+    for (const bad of ['', 'xx', 'DE', 'de-DE', 'de ', 'zh', 'zh-cn', 'zh-Hans', 'ja-JP', 'toString', '__proto__', 'constructor', null, undefined, 3, ['de']]) assert.equal(validBuilderLanguage(bad), null, String(bad));
   });
 });
 
@@ -330,6 +331,41 @@ describe('choosing the builder language', () => {
       const text = body.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '').replace(/<[^>]+>/g, ' ');
       assert.deepEqual(Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `)), [], `${url}: raw keys`);
     }
+    await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
+  });
+
+  test('(sprint 134, SEC-5) eleven languages on the sign-in page; 日本語: the Workspace home, App Builder and Developer › Security in Japanese', async () => {
+    const b = new Browser(app);
+    const signin = (await b.get('/builder/login?lang=ja')).body;
+    const links = /<nav class="signin-langs"[\s\S]*?<\/nav>/.exec(signin)![0];
+    assert.equal(links.match(/<li>/g)?.length, 11, 'APEX\'s ten and Nederlands');
+    for (const name of ['Italiano', '中文 (简体)', '中文 (繁體)', '日本語', '한국어']) assert.ok(links.includes(`>${name}</a>`), name);
+    assert.ok(links.includes('href="/builder/login?lang=zh-TW" lang="zh-TW" hreflang="zh-TW"'));
+    assert.match(signin, /<html lang="ja"/);
+    assert.ok(signin.includes(`<h2>${esc(ja['signin.welcome'])}</h2>`) && signin.includes(`>${esc(ja['signin.submit'])}</button>`));
+    await signIn(DEV, { browser: b });
+    assert.equal(await stored(DEV), 'ja', 'stored for the developer');
+
+    const wh = (await b.get('/builder/home')).body;
+    assert.match(wh, /<html lang="ja"/);
+    for (const k of ['rail.home', 'rail.app_builder', 'user.sign_out', 'wh.summary', 'wh.card.apps'] as BuilderKey[]) assert.ok(wh.includes(esc(ja[k])), k);
+    const ab = (await b.get('/builder/apps')).body;
+    for (const k of ['ab.tile.create_text', 'ab.tile.import', 'ab.col.updated_by', 'ab.recent'] as BuilderKey[]) assert.ok(ab.includes(esc(ja[k])), k);
+    const sec = (await b.get('/builder/security')).body;
+    for (const k of ['mfa.title', 'mfa.intro', 'mfa.factors', 'mfa.add_app'] as BuilderKey[]) assert.ok(sec.includes(esc(ja[k])), k);
+    // Japanese, not English: written in kana and kanji
+    for (const k of ['wh.summary', 'ab.tile.create_text', 'mfa.intro'] as BuilderKey[]) assert.match(ja[k], /[\u3040-\u30ff\u4e00-\u9fff]/, k);
+    // no raw keys
+    for (const page of [wh, ab, sec]) {
+      const text = page.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '').replace(/<[^>]+>/g, ' ');
+      assert.deepEqual(Object.keys(ENGLISH).filter((k) => text.includes(` ${k} `)), []);
+    }
+    // the status bar's menu switches to Traditional Chinese
+    assert.equal((await b.submit('/builder/language', { language: 'zh-TW' })).statusCode, 303);
+    assert.equal(await stored(DEV), 'zh-TW');
+    const zh = (await b.get('/builder/apps')).body;
+    assert.match(zh, /<html lang="zh-TW"/);
+    assert.ok(zh.includes(esc(builderMessages('zh-TW')['ab.tile.create_text'])));
     await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
   });
 

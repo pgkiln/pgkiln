@@ -1,6 +1,6 @@
 // The builder's own texts in English (sprint 121, WS-7): the keys of every builder message file (i18n.ts).
 // A key is <screen>.<what>; {name} is a placeholder (filled by tx(key, { name })). Keep the other languages
-// (de, es, fr, nl, pt) in step: TypeScript and test/builder-i18n.test.ts refuse a missing or an extra key.
+// (de, es, fr, it, nl, pt, zh-cn, zh-tw, ja, ko) in step: TypeScript and test/builder-i18n.test.ts refuse a missing or an extra key.
 // Keys made at run time (gallery.*, pos.*, slot.*, comp.*, pd.new.* …, sql.tool.*, sql.group.*) are listed here
 // too; the test checks that every region type, item type, button action, position, slot and SQL Workshop tool has one.
 
