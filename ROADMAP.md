@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.67.0 (October 2026): lockout checks on Instance settings (instance key and its backup, clock, passkey domain, break-glass administrators) and `pgkiln admin rotate-key`.
+- **Current release:** 0.68.0 (October 2026): the builder in eleven languages, now also Italiano, 中文 (简体), 中文 (繁體), 日本語 and 한국어.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
