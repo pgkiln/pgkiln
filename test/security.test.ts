@@ -11843,3 +11843,57 @@ describe('(sprint 133, SEC-6) lockout checks and the instance key', () => {
       await assert.rejects(runtime.query(`select "${c.column}" from "${c.schema}"."${c.table}" limit 1`), Error, `${c.table}.${c.column}`);
   });
 });
+
+describe('sprint 134 SEC-5', () => {
+  // Five more builder languages, two of them with a region subtag (zh-CN, zh-TW): the codes are matched exactly
+  // (no case folding, no prefix match), in the sign-in link, the cookie and the status bar's menu; every text of
+  // every language reaches the page escaped, like the six earlier ones.
+  const A = 'sec134_a';
+  const PW = 'Sec134-dev-password!';
+  const stored = async (u: string) => (await owner.one<{ language: string | null }>('select language from meta.developer where username = $1', [u]))?.language ?? null;
+  before(async () => {
+    await owner.query('delete from meta.developer where username = $1', [A]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [A, PW]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.session where app_id is null and username = $1', [A]);
+    await owner.query('delete from meta.developer where username = $1', [A]);
+  });
+
+  test('only the exact codes: zh-CN and zh-TW, not zh, zh-cn, ZH-TW, zh-Hans or ja-JP', async () => {
+    for (const lang of ['zh', 'zh-cn', 'ZH-TW', 'zh-Hans', 'zh-TW%00', 'ja-JP', 'ko-KR', 'it-IT']) {
+      const b = new FileBrowser(app);
+      const r = await b.get(`/builder/login?lang=${lang}`);
+      assert.match(r.body, /<html lang="en"/, lang);
+      assert.equal(b.cookies.get('pgkiln_blang'), undefined, `${lang}: no cookie`);
+      const c = new FileBrowser(app);
+      c.cookies.set('pgkiln_blang', lang);
+      assert.match((await c.get('/builder/login')).body, /<html lang="en"/, `${lang} as a cookie`);
+    }
+    const ok = new FileBrowser(app);
+    assert.match((await ok.get('/builder/login?lang=zh-CN')).body, /<html lang="zh-CN"/);
+    assert.equal(ok.cookies.get('pgkiln_blang'), 'zh-CN');
+    // the menu refuses near-misses and stores an exact code
+    await ok.submit('/builder/login', { username: A, password: PW });
+    assert.equal(await stored(A), 'zh-CN');
+    for (const bad of ['zh-cn', 'zh', 'ja-JP', 'KO']) {
+      await ok.get('/builder/apps');
+      assert.equal((await ok.submit('/builder/language', { language: bad })).statusCode, 400, bad);
+    }
+    assert.equal(await stored(A), 'zh-CN');
+    await ok.get('/builder/apps');
+    assert.equal((await ok.submit('/builder/language', { language: 'ko' })).statusCode, 303);
+    assert.equal(await stored(A), 'ko');
+  });
+
+  test('every text of the new languages is escaped on the page (plain text, not markup)', async () => {
+    const { builderTranslator } = await import('../src/builder/i18n.ts');
+    const { html } = await import('../src/html.ts');
+    for (const lang of ['it', 'zh-CN', 'zh-TW', 'ja', 'ko'] as const) {
+      const own = { 'wh.summary': '<img src=x onerror=alert(1)>', 'ab.count': '{n} <b>' };
+      const tx = builderTranslator(lang, own);
+      assert.equal(String(html`<h2>${tx('wh.summary')}</h2>`), '<h2>&lt;img src=x onerror=alert(1)&gt;</h2>', lang);
+      assert.equal(String(tx.rich('ab.count', { n: '<i>' })), '&lt;i&gt; &lt;b&gt;', lang);
+    }
+  });
+});

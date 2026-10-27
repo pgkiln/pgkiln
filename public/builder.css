@@ -1582,3 +1582,18 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .settings-panel[data-tab="signin"] .field > .help,
 .settings-panel[data-tab="signin"] p.small { max-width: 75ch; }
 .settings-panel[data-tab="signin"] h3:not(:first-child) { margin-top: 1.5rem; }
+
+/* (sprint 134, SEC-5) The CJK builder languages: Inter has no Chinese, Japanese or Korean glyphs, so each language
+   names its own system fonts before the generic family (a Japanese font for Chinese text shows the wrong glyph
+   shapes for some characters, and the other way round). The language menu and the sign-in links show each name in
+   its own fonts. Korean wraps at spaces like Latin text rather than between any two syllables. */
+:is(.ide, .ide-login):lang(zh-CN), :is(.ide-lang-form, .signin-langs) :lang(zh-CN) {
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif; }
+:is(.ide, .ide-login):lang(zh-TW), :is(.ide-lang-form, .signin-langs) :lang(zh-TW) {
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "PingFang TC", "Microsoft JhengHei UI", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", "Source Han Sans TC", sans-serif; }
+:is(.ide, .ide-login):lang(ja), :is(.ide-lang-form, .signin-langs) :lang(ja) {
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, "Noto Sans JP", "Noto Sans CJK JP", "Source Han Sans JP", sans-serif; }
+:is(.ide, .ide-login):lang(ko), :is(.ide-lang-form, .signin-langs) :lang(ko) {
+  --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", "Source Han Sans KR", sans-serif; }
+:is(.ide-lang-form, .signin-langs) [lang] { font-family: var(--font); }
+:is(.ide, .ide-login):lang(ko) { word-break: keep-all; overflow-wrap: break-word; }

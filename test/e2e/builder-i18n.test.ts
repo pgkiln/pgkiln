@@ -14,6 +14,7 @@ const DEV = 'e2e_i18n';
 const PW = 'E2e-i18n-password-1!';
 const de = builderMessages('de');
 const fr = builderMessages('fr');
+const ja = builderMessages('ja');
 let base = '';
 let browser: Browser;
 let close: () => Promise<void>;
@@ -111,6 +112,45 @@ describe('builder language in a browser', () => {
     await Promise.all([page.waitForNavigation(), page.click('.ide-lang-form button[value="pt"]')]);
     assert.equal(await page.getAttribute('html', 'lang'), 'pt');
     await fits(page, 'SQL Workshop (Português)');
+    await c.close();
+  });
+
+  test('(sprint 134, SEC-5) 日本語 on the sign-in page with a CJK font, then 한국어, 中文 and Italiano: every screen fits a phone', async () => {
+    const { c, page } = await phone();
+    await page.goto(`${base}/builder/login`);
+    assert.equal(await page.locator('.signin-langs li').count(), 11);
+    await Promise.all([page.waitForNavigation(), page.click('.signin-langs a[lang="ja"]')]);
+    assert.equal(await page.getAttribute('html', 'lang'), 'ja');
+    assert.equal((await page.locator('.signin-form h2').innerText()).trim(), ja['signin.welcome']);
+    const font = await page.evaluate(() => getComputedStyle(document.body).fontFamily);
+    assert.match(font, /Hiragino Sans|Yu Gothic UI|Noto Sans JP/, `a Japanese font stack: ${font}`);
+    await fits(page, 'sign-in (日本語)');
+    await page.fill('#f_username', DEV);
+    await page.fill('#f_password', PW);
+    await Promise.all([page.waitForNavigation(), page.click('.signin-submit')]);
+    const pages = ['/builder/home', '/builder/apps', '/builder/security', '/builder/sql', '/builder/sql/worksheet', '/builder/developers'];
+    for (const url of pages) {
+      await page.goto(`${base}${url}`);
+      assert.equal(await page.getAttribute('html', 'lang'), 'ja');
+      await fits(page, `${url} (日本語)`);
+    }
+    await page.goto(`${base}/builder/security`);
+    assert.ok((await page.locator('main').innerText()).includes(ja['mfa.factors']), 'Developer › Security in Japanese');
+    // the menu shows eleven languages, each name in its own script, and still fits the screen
+    for (const lang of ['ko', 'zh-CN', 'zh-TW', 'it']) {
+      await page.click('.ide-lang > summary');
+      const panel = page.locator('.ide-lang .menu-panel');
+      await panel.waitFor({ state: 'visible' });
+      assert.equal(await panel.locator('button[name="language"]').count(), 11);
+      const box = (await panel.boundingBox())!;
+      assert.ok(box.y >= 0 && box.y + box.height <= 844, `the menu inside the screen: ${JSON.stringify(box)}`);
+      await Promise.all([page.waitForNavigation(), page.click(`.ide-lang-form button[value="${lang}"]`)]);
+      assert.equal(await page.getAttribute('html', 'lang'), lang);
+      for (const url of pages) {
+        await page.goto(`${base}${url}`);
+        await fits(page, `${url} (${lang})`);
+      }
+    }
     await c.close();
   });
 });
