@@ -145,6 +145,12 @@ src/
                            scramVerifier (SCRAM-SHA-256, SASLprep) and the password slot (maskSql for review and log, withVerifier to run)
   cron-schedule.ts         (sprint 101, DA-12) pg_cron schedules without a database: parseSchedule (cron fields, $, n seconds, macros),
                            nextRuns in a time zone, describeSchedule in words, the builder's presets and fields
+  vector.ts                (sprint 136, AP-1) pgvector: pgvectorStatus(), vectorSchema() (operators and the type schema-qualified),
+                           DISTANCES (cosine/l2/inner_product: operator, HNSW opclass, similarity), vectorColumnDims(); the embedding
+                           queue (meta.embedding_queue, migration 136): embeddingTick() (groups, FOR UPDATE SKIP LOCKED, batches
+                           within the provider's per-minute limit, written with devDbForApp(), retries with backoff), drainEmbeddings(),
+                           kickEmbeddings(), startEmbeddingRunner() (server.ts; EMBEDDINGS=off, EMBEDDING_INTERVAL_S), vectorTriggers()
+                           (meta.embedding_set / embedding_enqueue triggers and their arguments), backfill(), queueState()
   pgcron.ts                (sprint 101, DA-12) pg_cron for SQL Workshop → Scheduling: cronState (installed, loaded, cron.database_name,
                            access), jobs and runs, jobSql/activeSql/unscheduleSql/purgeSql (reviewed, then applySql), runNow
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY (or a key given, for rotate-key);
@@ -176,6 +182,11 @@ src/
                            (121) an agent's effort (Claude output_config.effort, OpenAI reasoning_effort) and output limit).
                            Providers (121): anthropic, openai, gemini (OpenAI-compatible endpoint, GEMINI_BASE_URL), openai_compatible
                            (Ollama, vLLM, Azure OpenAI; base URL required, key optional): service.ts serviceKey(), baseUrlFor(), providerLabel()
+                           (sprint 136, AP-1) embeddings.ts: vector providers (meta.app.vector_providers: ai_service with an embedding
+                           model, or a function), vectorProviderProblems(), embedTexts() (the openai SDK's embeddings API, float
+                           encoding, dimensions checked, daily limits via checkDailyLimit(), meta.ai_usage source "embedding"; a
+                           function provider through meta.embed on the caller's connection), embedQuery() (search texts remembered
+                           10 minutes per process), vectorLiteral()
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
@@ -255,7 +266,8 @@ src/
                            definitionProblems), agentFor(), prepareTools() (authorization schemes, navigate pages the user may
                            open, strict schemas), runAgentTool() (sql: read-only transaction as the app role with a time limit;
                            function: named arguments, committed; rest; javascript: queued for the browser; navigate: URL and
-                           checksum built here), logToolCall() (meta.ai_tool_call, debug level 4, 30-day purge)
+                           checksum built here), logToolCall() (meta.ai_tool_call, debug level 4, 30-day purge); (136) retrieve:
+                           retrieveTool() (QUERY only, search.ts retrieve() in a read-only transaction as the app role)
     ai-filter.ts           "Ask in your own words" on a report ("ai_filter", sprint 112: AI interactive reports): the box, the chips
                            form (Edit/Remove/Undo, undo history in the session), ask and chips routes; an AI service's structured
                            output (planSchema) or the phrase parser, then ir-plan.ts
@@ -270,6 +282,10 @@ src/
                            searchable columns), websearch_to_tsquery / ts_rank_cd / ts_headline between private-use markers
                            (headlined() escapes, only the markers become <mark>), textSearchConfig() (pg_ts_config names only,
                            passed as $1::regconfig; tsConfigFor(language)), trigramSchema() and "did you mean" with pg_trgm
+                           (sprint 136, migration 136) search types vector (vectorRows: the text embedded by the provider, nearest
+                           rows by the schema-qualified distance operator, the vector as $1, min_similarity) and hybrid (full-text
+                           and vector rankings, 50 rows each, reciprocal rank fusion 1/(60+rank) per key_column); retrieve() for
+                           an agent's Retrieve tool
     url-region.ts          URL region (migration 078): literal origins only (urlTarget), &ITEM. URL-encoded, sandbox and height,
                            frameOrigins() for the CSP's frame-src (security.ts)
     ajax.ts                Ajax callbacks (migration 085: POST …/ajax/:name, point "ajax" processes, x01 … x10 binds) and the
@@ -360,6 +376,13 @@ src/
     fulltext.ts            (sprint 135, AP-2) Table Properties › Add full-text search: GET/POST /sql/objects/fulltext?o= (text columns
                            with weights A–D, a configuration from pg_ts_config, fulltextDdl(): a generated tsvector column and a GIN
                            index), Preview / Apply (one transaction, recorded in the Change Log) / Open in the worksheet
+    vector-column.ts       (sprint 136, AP-1) Table Properties › Add vector column: GET/POST /sql/objects/vector?o= (a provider of the
+                           workspace's applications, source columns, distance; vectorDdl(): vector(n), HNSW index, the
+                           meta.embedding_set / embedding_enqueue trigger), Preview / Apply (Change Log; the rows queued) / worksheet;
+                           the table's vector columns with progress and Backfill (mode=backfill, all=on)
+    vector-providers.ts    (sprint 136, AP-1) Shared Components → Vector providers (/apps/:id/vector-providers: list, provider form,
+                           test, delete) and Workspace utilities → Vector providers (/vector-providers: pgvector status, Create
+                           extension for administrators, the workspace's providers and vector columns); pgvectorNote()
     data-security.ts       (sprint 119) a table's Security: GET/POST /sql/objects/security?o= (policies, roles × columns, masks), Preview / Apply
     object-actions.ts      (sprint 94) an object's ⋯ menu (objectMenu) in the worksheet and the Object Browser: Quick DDL (objectDdl), Drop with
                            dependents, Add index / trigger / policy as drafts; GET /sql/objects/action, /sql/objects/panel (Open in a panel)
@@ -505,6 +528,10 @@ test/
   fulltext-search.test.ts  (sprint 135) full-text search configurations: stemming, rank order, highlights, websearch syntax, the
                            configuration fallback, did you mean (pg_trgm when it can be installed), the report search on a tsvector
                            column, the Advisor's GIN check, Add full-text search (preview, apply, change log), export/import
+  vector-search.test.ts    (sprint 136) vector providers and their checks, meta.embed, Add vector column (preview, apply, the queue
+                           with the mock's embeddings, a change queued again, Backfill, a failing batch), vector and hybrid search
+                           ("time off for a family move" → Relocation leave; RLS), the Advisor, Retrieve tools on page 49, the
+                           builder pages, export; skips what needs pgvector when it isn't installed
   object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found
   data-modeler.test.ts     (sprint 98) Data Modeler: "hr core" with its FK lines, saved positions, SVG, objects, DDL, dictionary, geometry
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as
@@ -566,7 +593,9 @@ test/
   find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits
   ai-builder.test.ts       App Builder AI: the builder's service, SQL from a question, explain, describe tables, pages with AI
   ai-script-mock.ts        a scripted mock of Claude (SSE, tool_use with a thinking block) and OpenAI (tool calls), reply by reply
-  ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions
+  ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions; (136) OpenAI's
+                           embeddings (/embeddings, also in ai-script-mock.ts): conceptEmbedding(), eight "topics", the same
+                           as the HR example's hr.policy_embedding
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
   e2e/builder-i18n.test.ts (sprint 121) Deutsch on the sign-in page, the status bar's language menu, German screens at 390 px, CSP

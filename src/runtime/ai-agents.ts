@@ -7,6 +7,7 @@ import { checkArgs, toolSchema, type ParamDef, type ToolDef } from './assistant.
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, type PageContext } from './context.ts';
 import { txContext } from './routes.ts';
+import { retrieve } from './search.ts';
 
 // AI agents and AI tools (migration 121; APEX 26.1 / 26.2: Shared Components
 // → AI Agents). Both are lists in meta.app (ai_agents, ai_tools), exported
@@ -31,11 +32,18 @@ import { txContext } from './routes.ts';
 //   values of that page; pgkiln refuses a page the user may not open and
 //   builds the URL itself (item values with their checksum, bound to app,
 //   page and user). The link is shown under the answer; nothing opens it.
+// - retrieve (136): RAG. The model gives a text (QUERY); pgkiln runs the
+//   tool's search configuration (vector, hybrid, full-text or standard) as
+//   the application's role in a read-only transaction, so row level
+//   security decides which rows the model sees, and returns the best rows'
+//   title, text and score (max_rows, default 5).
 // Every tool call is logged with its arguments (meta.ai_tool_call, the
 // Activity → AI usage page) and in the page's debug messages.
 
-export type AiToolType = 'sql' | 'function' | 'rest' | 'javascript' | 'navigate';
-export const AI_TOOL_TYPES: AiToolType[] = ['sql', 'function', 'rest', 'javascript', 'navigate'];
+export type AiToolType = 'sql' | 'function' | 'rest' | 'javascript' | 'navigate' | 'retrieve';
+export const AI_TOOL_TYPES: AiToolType[] = ['sql', 'function', 'rest', 'javascript', 'navigate', 'retrieve'];
+/** (136) Rows a Retrieve tool returns by default. */
+const RETRIEVE_ROWS = 5;
 export const EFFORTS = ['low', 'medium', 'high'] as const;
 
 export interface AiTool {
@@ -47,6 +55,8 @@ export interface AiTool {
   source?: string;
   action?: string;
   pages?: number[];
+  /** (136) retrieve: the search configuration (static ID) */
+  search_config?: string;
   parameters?: Record<string, ParamDef>;
   max_rows?: number;
   timeout_s?: number;
@@ -116,6 +126,9 @@ export function aiToolProblems(t: unknown): string[] {
     if (!Array.isArray(t.pages) || !t.pages.length || t.pages.length > 50 || t.pages.some((p: unknown) => !intIn(p, 1, 2_147_483_647)))
       out.push(`${what}: "pages" lists the page numbers the agent may offer (1 to 50 pages).`);
     if (t.parameters !== undefined) out.push(`${what}: a navigate tool has no parameters (the model picks a page, a link text and item values).`);
+  } else if (t.type === 'retrieve') {
+    if (typeof t.search_config !== 'string' || !/^[A-Z][A-Z0-9_]{0,59}$/.test(t.search_config)) out.push(`${what}: "search_config" names a search configuration (e.g. POLICIES).`);
+    if (t.parameters !== undefined) out.push(`${what}: a retrieve tool has no parameters (the model gives the text to look for).`);
   } else out.push(...paramProblems(what, t.parameters));
   if (t.max_rows !== undefined && !intIn(t.max_rows, 1, 500)) out.push(`${what}: maximum rows 1 to 500.`);
   if (t.timeout_s !== undefined && !intIn(t.timeout_s, 1, 60)) out.push(`${what}: time limit 1 to 60 seconds.`);
@@ -201,6 +214,14 @@ export interface PreparedTool {
 
 const asToolDef = (t: AiTool): ToolDef => ({ name: t.name, description: t.description, parameters: t.parameters, max_rows: t.max_rows });
 
+/** (136) The one parameter of a Retrieve tool. */
+const RETRIEVE_SCHEMA = {
+  type: 'object',
+  properties: { QUERY: { type: 'string', description: 'What to look for, in your own words (a question or a few words); the search finds rows by meaning.' } },
+  required: ['QUERY'],
+  additionalProperties: false,
+};
+
 /**
  * The agent's tools this user may use (their authorization schemes), with their schemas. Navigate tools keep
  * only the pages the user may open (checked here, in the caller's transaction). Needs ctx.client.
@@ -209,6 +230,10 @@ export async function prepareTools(ctx: PageContext, tools: AiTool[]): Promise<P
   const out: PreparedTool[] = [];
   for (const tool of tools) {
     if (!(await isAuthorized(ctx, tool.authz))) continue;
+    if (tool.type === 'retrieve') {
+      out.push({ tool, chat: { name: tool.name, description: `${tool.description} Returns the best matching rows (title, text, score) the user may read.`, parameters: RETRIEVE_SCHEMA } });
+      continue;
+    }
     if (tool.type !== 'navigate') {
       const extra = tool.type === 'javascript' ? ' It runs in the user\'s browser after your answer; it returns no data.' : '';
       out.push({ tool, chat: { name: tool.name, description: tool.description + extra, parameters: toolSchema(asToolDef(tool)) } });
@@ -309,6 +334,7 @@ export async function runAgentTool(ctx: PageContext, p: PreparedTool, input: Rec
   const { tool } = p;
   if (tool.type === 'navigate') return navigate(ctx, p, input, extras);
   if (tool.type === 'rest') return rest({ ...asToolDef(tool), type: 'rest', source: tool.source }, input);
+  if (tool.type === 'retrieve') return retrieveTool(ctx, tool, input);
   const checked = checkArgs(asToolDef(tool), input);
   if ('error' in checked) return { content: checked.error, isError: true };
   if (tool.type === 'javascript') {
@@ -333,6 +359,31 @@ export async function runAgentTool(ctx: PageContext, p: PreparedTool, input: Rec
     return { content: rowsJson(rows, max) };
   } catch (e) {
     return { content: await publicError(ctx, e, `AI tool ${tool.name}`), isError: true };
+  }
+}
+
+/**
+ * (136) A Retrieve tool: the search configuration as the application's role in a read-only transaction with the
+ * tool's time limit (row level security applies), its best rows as JSON for the model.
+ */
+async function retrieveTool(ctx: PageContext, tool: AiTool, input: Record<string, unknown>): Promise<AgentOutcome> {
+  for (const k of Object.keys(input)) if (k !== 'QUERY') return { content: `Unknown argument "${k}".`, isError: true };
+  const query = typeof input.QUERY === 'string' ? input.QUERY.replace(/\s+/g, ' ').trim().slice(0, 1000) : '';
+  if (!query) return { content: 'QUERY is the text to look for.', isError: true };
+  const max = tool.max_rows ?? RETRIEVE_ROWS;
+  const before = ctx.client;
+  try {
+    const found = await appTx(txContext(ctx), async (c) => {
+      await c.query(`select set_config('statement_timeout', $1, true)`, [`${tool.timeout_s ?? DEFAULT_TIMEOUT_S}s`]);
+      await c.query('set transaction read only');
+      ctx.client = c;
+      return retrieve(ctx, tool.search_config!, query, max);
+    });
+    return { content: JSON.stringify(found) };
+  } catch (e) {
+    return { content: await publicError(ctx, e, `AI tool ${tool.name}`), isError: true };
+  } finally {
+    ctx.client = before;
   }
 }
 

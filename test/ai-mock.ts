@@ -1,7 +1,9 @@
 // A local stand-in for the Claude and OpenAI APIs (no real API calls in
 // tests): Claude's Messages API as a server-sent event stream under
 // <base>/claude/v1/messages, OpenAI's Chat Completions under
-// <base>/openai/v1/chat/completions. What it answers is set per test.
+// <base>/openai/v1/chat/completions, and (sprint 136) OpenAI's embeddings
+// under <base>/openai/v1/embeddings (deterministic "topic" vectors, see
+// conceptEmbedding). What it answers is set per test.
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -22,7 +24,44 @@ export interface AiMock {
   answer: string;
   /** the model the answer claims (default: the requested one) */
   model?: string;
+  /** (136) the length of the embeddings it returns (default 8) */
+  dims: number;
   close(): Promise<void>;
+}
+
+// (sprint 136) A deterministic stand-in for an embedding model, the same as the HR example's hr.policy_embedding
+// (examples/hr/hr_72_vector_search.sql): each word counts for one of eight topics (moving house, time off, home
+// working, sickness, pay, requests, public holidays; unknown words a little for the last), normalised. So "time off
+// for a family move" is close to "Relocation leave … relocate … house" though they share no word.
+const TOPICS: RegExp[] = [
+  /^(relocat|move|moving|removal|house|settl|city|family)/,
+  /^(leave|time|off|holiday|vacation|days|absence)$/,
+  /^(home|remote|working|work)$/,
+  /^(sick|ill|doctor)/,
+  /^(salar|pay|band|raise|wage|scale)/,
+  /^(request|approv|manager)/,
+  /^(public|closed|office)/,
+];
+export function conceptEmbedding(text: string, dims = 8): number[] {
+  const v = new Array(8).fill(0);
+  for (const w of String(text ?? '').toLowerCase().match(/[a-z]+/g) ?? []) {
+    const i = TOPICS.findIndex((re) => re.test(w));
+    if (i >= 0) v[i] += 1;
+    else v[7] += 0.05;
+  }
+  const n = Math.sqrt(v.reduce((a, x) => a + x * x, 0));
+  const out = n ? v.map((x) => x / n) : [0, 0, 0, 0, 0, 0, 0, 1];
+  return dims <= 8 ? out.slice(0, dims) : [...out, ...new Array(dims - 8).fill(0)];
+}
+
+/** (sprint 136) An embeddings answer like OpenAI's (float encoding), with `dims` numbers per input. */
+export function embeddingsBody(body: any, dims: number) {
+  const input: string[] = Array.isArray(body?.input) ? body.input : [String(body?.input ?? '')];
+  return {
+    object: 'list', model: body?.model ?? 'mock-embed',
+    data: input.map((t, index) => ({ object: 'embedding', index, embedding: conceptEmbedding(t, body?.dimensions ?? dims) })),
+    usage: { prompt_tokens: input.reduce((a, t) => a + t.split(/\s+/).length, 0), total_tokens: 0 },
+  };
 }
 
 const sse = (res: http.ServerResponse, events: [string, unknown][]) => {
@@ -32,7 +71,7 @@ const sse = (res: http.ServerResponse, events: [string, unknown][]) => {
 };
 
 export async function startAiMock(): Promise<AiMock> {
-  const mock: AiMock = { base: '', seen: [], mode: 'text', answer: 'A short summary.', close: async () => {} };
+  const mock: AiMock = { base: '', seen: [], mode: 'text', answer: 'A short summary.', dims: 8, close: async () => {} };
   const server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => (raw += c));
@@ -70,6 +109,10 @@ export async function startAiMock(): Promise<AiMock> {
             ['message_delta', { type: 'message_delta', delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 7 } }],
             ['message_stop', { type: 'message_stop' }],
           ]);
+        }
+        if (path.endsWith('/embeddings')) {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          return res.end(JSON.stringify(embeddingsBody(body, mock.dims)));
         }
         if (path === '/openai/v1/chat/completions') {
           res.writeHead(200, { 'content-type': 'application/json' });

@@ -99,7 +99,7 @@ export interface CallInfo {
   appId: number | null;
   pageNo?: number | null;
   user?: string | null;
-  source: 'process' | 'dynamic_action' | 'sql' | 'builder' | 'assistant' | 'nl2ir';
+  source: 'process' | 'dynamic_action' | 'sql' | 'builder' | 'assistant' | 'nl2ir' | 'embedding';
   /** debug messages of the request (level, text) */
   debug?: (level: number, text: string) => void;
 }
@@ -147,6 +147,17 @@ export async function serviceForApp(name: string, appId: number | null) {
   return { service: s, limits };
 }
 
+/** The application's daily request and token limits on a service (logged and refused when reached). */
+export async function checkDailyLimit(s: AiService, limits: { max_requests: number | null; max_tokens: string | null } | null, info: CallInfo, model = s.model) {
+  if (!limits || info.appId === null || (limits.max_requests === null && limits.max_tokens === null)) return;
+  const today = await usageToday(info.appId, s.id);
+  const over = (limits.max_requests !== null && today.requests >= limits.max_requests) || (limits.max_tokens !== null && today.tokens >= Number(limits.max_tokens));
+  if (over) {
+    await logUsage(info, { service: s, model, inputTokens: 0, outputTokens: 0, ms: 0, status: 'limited', message: 'daily limit' });
+    throw new AiError('limit', `This application has reached its daily limit for AI service ${s.name}: try again tomorrow.`);
+  }
+}
+
 /**
  * One AI request through a service: checks, daily limits, the call, the
  * usage log. A structured request returns the parsed JSON in `json`.
@@ -157,14 +168,7 @@ export async function generate(name: string, req: GenerateRequest, info: CallInf
   if (req.prompt.length > MAX_PROMPT_CHARS || (req.system?.length ?? 0) > MAX_SYSTEM_CHARS)
     throw new AiError('config', `The prompt is too long (at most ${MAX_PROMPT_CHARS} characters, the system prompt ${MAX_SYSTEM_CHARS}).`);
   if (!req.prompt.trim()) throw new AiError('config', 'The prompt is empty.');
-  if (limits && info.appId !== null && (limits.max_requests !== null || limits.max_tokens !== null)) {
-    const today = await usageToday(info.appId, s.id);
-    const over = (limits.max_requests !== null && today.requests >= limits.max_requests) || (limits.max_tokens !== null && today.tokens >= Number(limits.max_tokens));
-    if (over) {
-      await logUsage(info, { service: s, model: s.model, inputTokens: 0, outputTokens: 0, ms: 0, status: 'limited', message: 'daily limit' });
-      throw new AiError('limit', `This application has reached its daily limit for AI service ${s.name}: try again tomorrow.`);
-    }
-  }
+  await checkDailyLimit(s, limits, info);
   const provider = providerFor(s);
   const t0 = performance.now();
   info.debug?.(6, `AI service ${s.name} (${s.provider}, ${s.model})${req.schema ? ', structured output' : ''}`);

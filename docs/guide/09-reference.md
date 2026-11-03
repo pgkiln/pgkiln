@@ -167,6 +167,24 @@ select meta.ai_generate('CLAUDE', 'Classify: ' || :P5_TEXT, null,
   enabled and the application is allowed); whether the provider accepts the key shows only when a
   request is made.
 
+### Embeddings in SQL
+
+(sprint 136) `meta.embed(text, provider [, app_id])` returns the embedding of a text by a
+[vector provider](03-builder.md#vector-providers) of the current application (or of `app_id`, one the
+login may see) as `real[]`; cast it for pgvector: `meta.embed(:P1_Q, 'DOC_EMBEDDINGS')::vector`. It
+works for **function providers** and calls the function as the role of the query (security invoker:
+its grants apply), checking the dimensions. A provider that uses an AI service is called by the
+pgkiln server, never from SQL: `meta.embed` raises an error that says so (use a vector search
+configuration, a Retrieve tool or a vector column's queue). `meta.vector_provider(name [, app_id])`
+returns a provider's definition (they hold no secrets).
+
+```sql
+-- the nearest documents to a text, as the application's role (row level security applies)
+select title from sales.doc
+ order by embedding <=> meta.embed('how do I return an order?', 'DOC_EMBEDDINGS')::vector
+ limit 5;
+```
+
 ### Parsing files in SQL
 
 `meta.parse_data()` reads CSV/TSV and JSON in a `bytea` (an uploaded file in `meta.temp_files`, a
@@ -488,6 +506,7 @@ navigation entries and application processes have the same `build_option` column
 | `app_ai_service` | Which applications may use which AI service, with daily limits `max_requests` and `max_tokens` (null: no limit). Not exported | no (through `meta.ai_available`) |
 | `ai_usage` | One row per AI request: `at`, `app_id`, `page_no`, `username`, `service`, `provider`, `model`, `source`, `input_tokens`, `output_tokens`, `duration_ms`, `status`, `message` (an error class, never prompt or answer text). Not exported | no |
 | `ai_tool_call` | (121) Every tool call of an [AI assistant or agent](03-builder.md#ai-agents): `at`, `app_id`, `page_no`, `region_id`, `username`, `agent`, `tool`, `type`, `arguments` (the model's, cut to 4 KB), `status` (`ok`, `error`, `refused`), `duration_ms`, `message`. Kept 30 days, not exported | no |
+| `embedding_queue` | (136) Rows whose vector column the server re-embeds: `app_id`, `provider`, `tbl` (the table's oid), `vector_column`, `key_column`, `source_columns`, `key_value`, `queued_at`, `next_at`, `attempts`, `last_error`. Filled by `meta.embedding_enqueue` triggers and Backfill; not exported | no |
 | `ai_conversation` | [AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant) conversations: one per session and region (`messages`: the provider's history, `turns`: what the page shows); deleted with the session. Not exported | no |
 | `ai_table_note` | Descriptions of tables and columns for models ([App Builder AI](03-builder.md#app-builder-ai)): `schema_name`, `table_name`, `column_name` (`''` for the table), `note`. Installation data, not exported | no |
 | `blueprint` | Saved [blueprints](03-builder.md#creating-an-application-from-a-blueprint): `name`, `spec` (the JSON), `app_id` (the application last created from it), `created_by`. Builder data, not exported | no |

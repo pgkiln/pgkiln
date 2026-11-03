@@ -697,6 +697,10 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         table_editor: '/builder/sql/objects/table?o=hr.emp',
         // (sprint 135) Table Properties › Add full-text search
         table_fulltext: '/builder/sql/objects/fulltext?o=hr.emp',
+        // (sprint 136) Table Properties › Add vector column (hr.policy: its vector column with progress), Workspace utilities › Vector providers
+        table_vector: '/builder/sql/objects/vector?o=hr.policy',
+        table_vector_new: '/builder/sql/objects/vector?o=hr.emp',
+        vector_utilities: '/builder/vector-providers',
         // (sprint 119) a table's Security
         table_security: '/builder/sql/objects/security?o=hr.emp',
         // (sprint 97) Charts
@@ -961,6 +965,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             ai_agents: `/builder/apps/${appId}/ai-agents`, ai_agent: `/builder/apps/${appId}/ai-agents/agent?name=HR_AGENT`, ai_agent_new: `/builder/apps/${appId}/ai-agents/agent`,
             ai_tool: `/builder/apps/${appId}/ai-agents/tool?name=top_earners`, ai_tool_navigate: `/builder/apps/${appId}/ai-agents/tool?name=open_employee`,
             ai_usage_tool_calls: `/builder/apps/${appId}/ai`,
+            // (sprint 136) Shared Components → Vector providers, a provider, a Retrieve tool
+            vector_providers: `/builder/apps/${appId}/vector-providers`, vector_provider: `/builder/apps/${appId}/vector-providers/provider?name=POLICY_EMBEDDINGS`,
+            ai_tool_retrieve: `/builder/apps/${appId}/ai-agents/tool?name=policy_search`,
           };
         })()),
         // (sprint 110) App Builder → Data Reporter: datasets, a new one (schema step), the HR dataset with a preview, import, a reporting application

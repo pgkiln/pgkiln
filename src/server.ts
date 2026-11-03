@@ -5,6 +5,7 @@ import { startWorkflowRunner } from './workflow.ts';
 import { startProcessJobRunner } from './process-jobs.ts';
 import { startPushListener } from './push.ts';
 import { startMailListener } from './mail/mail.ts';
+import { startEmbeddingRunner } from './vector.ts';
 
 const app = await buildApp();
 await app.listen({ port: Number(process.env.PORT ?? 3100), host: process.env.HOST ?? '127.0.0.1' });
@@ -14,6 +15,8 @@ await startWorkflowRunner();
 await startProcessJobRunner();
 await startPushListener();
 await startMailListener();
+// (sprint 136) rows queued for their embeddings (EMBEDDINGS=off on servers that should not embed)
+startEmbeddingRunner();
 // (sprint 133, SEC-6) say at start-up what could lock people out: a changed instance key or address, the clock
 try {
   const { instanceChecks } = await import('./instance-checks.ts');

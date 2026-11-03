@@ -722,12 +722,20 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     plural: 'Search configurations',
     icon: 'search',
     summary: (c) => `${c.name} (${c.source_type})`,
-    defaults: { source_type: 'table', search_type: 'standard', seq: 10, max_results: 10, searchable_columns: [], did_you_mean: false },
+    defaults: { source_type: 'table', search_type: 'standard', seq: 10, max_results: 10, searchable_columns: [], did_you_mean: false, distance: 'cosine' },
     validate: (v) => searchConfigProblems(v as never).join(' ') || null,
     // (135) empty means: built from the searchable columns / the application language's configuration
     beforeSave: async (v) => {
       for (const k of ['fts_vector', 'fts_config'] as const) if (typeof v[k] === 'string' && !(v[k] as string).trim()) v[k] = null;
       if (typeof v.fts_config === 'string') v.fts_config = v.fts_config.trim().toLowerCase();
+      // (136) vector and hybrid search
+      for (const k of ['vector_column', 'key_column'] as const) if (typeof v[k] === 'string') v[k] = (v[k] as string).trim() || null;
+      if (typeof v.vector_provider === 'string') v.vector_provider = v.vector_provider.trim().toUpperCase() || null;
+      if (typeof v.min_similarity === 'string') {
+        const t = v.min_similarity.trim().replace(',', '.');
+        if (t && !Number.isFinite(Number(t))) throw new Error('Minimum similarity must be a number from -1 to 1.');
+        v.min_similarity = t ? Number(t) : null;
+      }
     },
     fields: [
       { name: 'name', label: 'Name (static ID)', kind: 'upper', group: 'Identification', help: 'e.g. CUSTOMERS; a search region names it in {"configs": ["CUSTOMERS"]}.' },
@@ -738,14 +746,24 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'source', label: 'Source', kind: 'code', wide: true, group: 'Source', help: 'table: sales.customers · sql: select id, name, city from sales.customers where active · list: the list\'s name.' },
       { name: 'searchable_columns', label: 'Searchable columns', kind: 'list', group: 'Source',
         help: 'Comma-separated columns the search text is looked for in (each word must be found in one of them). Empty: the title, subtitle and description columns.' },
-      { name: 'search_type', label: 'Search type', kind: 'select', options: ['standard', 'fulltext'], group: 'Search',
-        help: 'standard: each word anywhere in one of the searchable columns (case-insensitive) · fulltext: PostgreSQL full-text search: stemmed words ("running" finds "run"), "quoted phrases", or, -word; the best match first, the matched words highlighted (table, sql).' },
+      { name: 'search_type', label: 'Search type', kind: 'select', options: ['standard', 'fulltext', 'vector', 'hybrid'], group: 'Search',
+        help: 'standard: each word anywhere in one of the searchable columns (case-insensitive) · fulltext: PostgreSQL full-text search: stemmed words ("running" finds "run"), "quoted phrases", or, -word; the best match first, the matched words highlighted (table, sql) · vector: by meaning: the rows whose embedding is nearest to the search text\'s (pgvector) · hybrid: full-text and vector together (reciprocal rank fusion).' },
       { name: 'fts_vector', label: 'tsvector column or expression', kind: 'code', wide: true, group: 'Search',
         help: 'fulltext: a tsvector column of the source (e.g. search_vector, with a GIN index: SQL Workshop › Table Properties › Add full-text search), or an expression, e.g. to_tsvector(\'english\', title || \' \' || body). Empty: to_tsvector over the searchable columns (no index can help).' },
       { name: 'fts_config', label: 'Text search configuration', kind: 'text', group: 'Search',
         help: 'fulltext: english, dutch, german, french, simple … (pg_ts_config); the same one the tsvector was made with. Empty: the application\'s primary language\'s, else simple.' },
       { name: 'did_you_mean', label: 'Did you mean', kind: 'bool', group: 'Search',
         help: 'With the pg_trgm extension installed: when nothing is found, suggest the closest words from the searched columns (reads up to 10,000 rows). Without pg_trgm nothing is suggested.' },
+      { name: 'vector_provider', label: 'Vector provider', kind: 'upper', group: 'Vector search',
+        help: 'vector, hybrid: the static ID of a vector provider (Shared Components → Vector providers) that embeds the search text, the same one that embedded the rows.' },
+      { name: 'vector_column', label: 'Vector column', kind: 'text', group: 'Vector search',
+        help: 'vector, hybrid: the source\'s vector(n) column, e.g. embedding (SQL Workshop › Table Properties › Add vector column adds it, with an HNSW index, and keeps it current); n must be the provider\'s dimensions.' },
+      { name: 'key_column', label: 'Key column', kind: 'text', group: 'Vector search',
+        help: 'hybrid: the primary key (e.g. id) that matches the full-text and the vector results. The full-text side uses the tsvector and text search configuration above.' },
+      { name: 'distance', label: 'Distance', kind: 'select', options: ['cosine', 'l2', 'inner_product'], group: 'Vector search',
+        help: 'cosine (most embedding models), l2 (Euclidean) or inner_product; the HNSW index must use the same (vector_cosine_ops, vector_l2_ops, vector_ip_ops).' },
+      { name: 'min_similarity', label: 'Minimum similarity', kind: 'text', group: 'Vector search',
+        help: 'vector, hybrid: leave out rows less similar than this (cosine: 1 − distance, e.g. 0.3; inner product: the product; l2: 1 / (1 + distance)). Empty: the nearest rows, however far.' },
       { name: 'title_column', label: 'Title column', kind: 'text', group: 'Result', help: 'Required (table, sql); results are ordered by it.' },
       { name: 'subtitle_column', label: 'Subtitle column', kind: 'text', group: 'Result' },
       { name: 'description_column', label: 'Description column', kind: 'text', group: 'Result' },

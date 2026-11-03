@@ -33,6 +33,7 @@ export function objectMenu(schema: string, o: MenuObj): Raw {
       ${table ? item(`${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}`, 'shield', 'Security…') : ''}
       ${table ? item(`${BASE}/sql/load`, 'upload', 'Load data') : ''}
       ${table ? item(`${BASE}/sql/objects/fulltext?${new URLSearchParams({ o: o.ref })}`, 'search', 'Add full-text search…') : ''}
+      ${table ? item(`${BASE}/sql/objects/vector?${new URLSearchParams({ o: o.ref })}`, 'search', 'Add vector column…') : ''}
       ${table ? html`${item(q('index'), 'list', 'Add index')}${item(q('trigger'), 'bolt', 'Add trigger')}${item(q('policy'), 'shield', 'Add policy')}` : ''}
       ${RELATIONS.has(o.type) ? item(`${BASE}/sql/rest/object?${new URLSearchParams({ schema, name: o.name })}`, 'globe', 'REST › Enable / Disable') : ''}
       ${item(q('ddl'), 'code', 'Quick DDL to the worksheet')}

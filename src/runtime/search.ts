@@ -18,7 +18,14 @@
 // (between private-use markers that only then become <mark>, everything
 // else escaped); the text search configuration is checked against
 // pg_ts_config and passed as a parameter. With pg_trgm installed, a
-// configuration may suggest the closest words when nothing is found. The
+// configuration may suggest the closest words when nothing is found. Search
+// type vector (136): the search text embedded by the configuration's vector
+// provider (src/ai/embeddings.ts), the rows nearest by the vector column
+// (pgvector's cosine, L2 or inner product distance, operators
+// schema-qualified, the vector a query parameter), at least the minimum
+// similarity. Search type hybrid (136): the full-text and the vector
+// rankings merged by reciprocal rank fusion (1 / (60 + rank), summed per
+// key). Without pgvector both say what is missing. The
 // queries run as the application's role in the page's transaction, each in a
 // savepoint, so one configuration that fails shows its error and the others
 // still answer. Without JavaScript the field is a GET form; app.js searches
@@ -29,7 +36,9 @@ import { runtime, savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Region } from '../metadata.ts';
-import { bindValues, publicError, stripSemicolon, type PageContext } from './context.ts';
+import { embedQuery, vectorLiteral, vectorProviderFor } from '../ai/embeddings.ts';
+import { DISTANCES, distanceSql, isDistance, PGVECTOR_MISSING, vectorSchema, type Distance } from '../vector.ts';
+import { bindValues, dbg, publicError, stripSemicolon, type PageContext } from './context.ts';
 import { fillItems, linkAttrs } from './links.ts';
 import { listTree, type ListNode } from './lists.ts';
 
@@ -49,14 +58,24 @@ export interface SearchConfig {
   icon: string | null;
   link: { page?: number; items?: Record<string, string> } | null;
   max_results: number;
-  /** (135) standard: ILIKE per word · fulltext: PostgreSQL full-text search (later: vector, hybrid) */
-  search_type?: 'standard' | 'fulltext';
+  /** (135) standard: ILIKE per word · fulltext: PostgreSQL full-text search · (136) vector, hybrid */
+  search_type?: (typeof SEARCH_TYPES)[number];
   /** (135) fulltext: a tsvector column or expression; empty: to_tsvector over the searchable columns */
   fts_vector?: string | null;
   /** (135) fulltext: the text search configuration; empty: the application language's */
   fts_config?: string | null;
   /** (135) with pg_trgm: suggest the closest words when nothing is found */
   did_you_mean?: boolean;
+  /** (136) vector, hybrid: the vector provider (static ID) that embeds the search text */
+  vector_provider?: string | null;
+  /** (136) vector, hybrid: the source's vector column */
+  vector_column?: string | null;
+  /** (136) hybrid: the key that matches the full-text and the vector results */
+  key_column?: string | null;
+  /** (136) vector, hybrid: cosine, l2 or inner_product */
+  distance?: Distance;
+  /** (136) vector, hybrid: at least this similarity */
+  min_similarity?: number | null;
 }
 
 export interface SearchRegionConfig {
@@ -76,8 +95,11 @@ const TABLE = /^([A-Za-z_][A-Za-z0-9_$]{0,62}\.)?[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 /** A client, a pool or pgkiln's Db: something that runs a query with parameters. */
 type Queryable = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> };
 
-/** (135) The search types (later: vector, hybrid). */
-export const SEARCH_TYPES = ['standard', 'fulltext'] as const;
+/** (135) The search types; (136) vector and hybrid. */
+export const SEARCH_TYPES = ['standard', 'fulltext', 'vector', 'hybrid'] as const;
+/** (136) Rows each ranking of a hybrid search contributes, and reciprocal rank fusion's constant. */
+const HYBRID_DEPTH = 50;
+const RRF_K = 60;
 const TS_CONFIG = /^[a-z_][a-z0-9_]{0,62}$/;
 
 /** (135) The text search configuration of a language: pgkiln's languages that PostgreSQL has a stemmer for. */
@@ -156,6 +178,20 @@ export function searchConfigProblems(c: Partial<SearchConfig>): string[] {
     if (c.fts_config && !TS_CONFIG.test(c.fts_config)) out.push('The text search configuration is a name, e.g. english, dutch or simple.');
     if (c.fts_vector && /;|--|\/\*/.test(c.fts_vector)) out.push('The tsvector is one column or expression (no ; or comments).');
   }
+  if (c.search_type === 'vector' || c.search_type === 'hybrid') {
+    if (c.source_type === 'list') out.push('Vector search needs a table or SQL source.');
+    if (!c.vector_provider || !/^[A-Z][A-Z0-9_]{0,59}$/.test(c.vector_provider)) out.push('Choose the vector provider that embeds the search text.');
+    if (!c.vector_column || !COLUMN.test(c.vector_column)) out.push('Name the vector column of the source (e.g. embedding).');
+    if (c.distance !== undefined && c.distance !== null && !isDistance(c.distance)) out.push('The distance is cosine, l2 or inner_product.');
+    if (c.min_similarity !== undefined && c.min_similarity !== null && !(Number.isFinite(Number(c.min_similarity)) && Number(c.min_similarity) >= -1 && Number(c.min_similarity) <= 1))
+      out.push('The minimum similarity is a number from -1 to 1 (empty: none).');
+  }
+  if (c.search_type === 'hybrid') {
+    if (!c.key_column || !COLUMN.test(c.key_column)) out.push('A hybrid search needs the key column that matches full-text and vector results (e.g. id).');
+    if (c.fts_config && !TS_CONFIG.test(c.fts_config)) out.push('The text search configuration is a name, e.g. english, dutch or simple.');
+    if (c.fts_vector && /;|--|\/\*/.test(c.fts_vector)) out.push('The tsvector is one column or expression (no ; or comments).');
+  }
+  if (c.key_column && !COLUMN.test(c.key_column)) out.push(`"${c.key_column}" is not a column name.`);
   return out;
 }
 
@@ -167,7 +203,8 @@ async function configsOf(ctx: PageContext, r: Region): Promise<SearchConfig[]> {
     await runtime.query<SearchConfig>(
       `select name, label, seq, source_type, source, searchable_columns, title_column, subtitle_column, description_column,
               badge_column, icon, link, max_results,
-              search_type, fts_vector, fts_config, did_you_mean
+              search_type, fts_vector, fts_config, did_you_mean,
+              vector_provider, vector_column, key_column, distance, min_similarity
          from meta.search_config
         where app_id = $1 and meta.build_option_on(app_id, build_option) and (cardinality($2::text[]) = 0 or name = any($2))
         order by seq, name`,
@@ -185,6 +222,8 @@ interface Hit {
   href: Raw | null;
   /** (135) full-text search: title, subtitle and description as highlighted by ts_headline */
   headlines?: { title: Raw; subtitle: Raw | null; description: Raw | null };
+  /** (136) vector: the similarity; hybrid: the fused score */
+  score?: number;
 }
 
 const text = (v: unknown) => (v === null || v === undefined ? null : typeof v === 'object' ? JSON.stringify(v) : String(v));
@@ -225,7 +264,9 @@ async function searchRows(ctx: PageContext, c: SearchConfig, words: string[], qu
   const from = await sourceFrom(ctx, c);
   let rows: Record<string, unknown>[];
   const fulltext = c.search_type === 'fulltext';
-  if (fulltext) {
+  if (c.search_type === 'vector' || c.search_type === 'hybrid') {
+    rows = await vectorRows(ctx, c, from, query);
+  } else if (fulltext) {
     // $1 the text search configuration (a name from pg_ts_config), $2 the user's text, $3 the headline options,
     // $4 the marker characters (taken out of the values first, so only ts_headline's markers become markup)
     const cfg = await textSearchConfig(ctx.client!, c.fts_config, ctx.app.language);
@@ -261,7 +302,68 @@ async function searchRows(ctx: PageContext, c: SearchConfig, words: string[], qu
           ? linkAttrs(ctx, c.link.page!, fillItems(c.link.items, (name) => col(row, name) ?? undefined))
           : null,
       ...(fulltext ? { headlines: { title: h(row, 'title') ?? html`${col(row, c.title_column) ?? ''}`, subtitle: h(row, 'subtitle'), description: h(row, 'description') } } : {}),
+      ...(typeof row['pgkiln$score'] === 'number' ? { score: Math.round((row['pgkiln$score'] as number) * 10_000) / 10_000 } : {}),
     })),
+  };
+}
+
+/**
+ * (136) A vector or hybrid configuration's rows (up to max_results + 1), best first, each with "pgkiln$score"
+ * (vector: the similarity; hybrid: the fused score). Runs on ctx.client: the application's role, through RLS.
+ */
+async function vectorRows(ctx: PageContext, c: SearchConfig, from: string, query: string): Promise<Record<string, unknown>[]> {
+  const client = ctx.client!;
+  const schema = await vectorSchema(client);
+  if (!schema) throw new Error(PGVECTOR_MISSING);
+  const provider = await vectorProviderFor(ctx.app.id, c.vector_provider!);
+  const vector = await embedQuery(provider, query, { appId: ctx.app.id, pageNo: ctx.page?.page_no ?? null, user: ctx.user, debug: (l, x) => dbg(ctx, l, 'search', x) }, client);
+  const distance: Distance = isDistance(c.distance) ? c.distance : 'cosine';
+  const vcol = `t.${ident(c.vector_column!)}`;
+  const d = distanceSql(schema, distance, vcol, `$1::text::${ident(schema)}.vector`);
+  const minSim = c.min_similarity === null || c.min_similarity === undefined ? null : Number(c.min_similarity);
+  const sim = DISTANCES[distance].similarity;
+  if (c.search_type === 'vector') {
+    // the nearest rows (an HNSW index serves "order by distance limit n"), then those similar enough
+    const sql = `select s.*, ${sim('s."pgkiln$distance"')}::float8 as "pgkiln$score"
+      from (select t.*, ${d} as "pgkiln$distance" from ${from} where ${vcol} is not null order by ${d} limit ${c.max_results + 1}) s
+      where $2::float8 is null or ${sim('s."pgkiln$distance"')} >= $2::float8
+      order by s."pgkiln$distance"`;
+    return (await client.query(sql, [vectorLiteral(vector), minSim])).rows;
+  }
+  // hybrid: each ranking's best HYBRID_DEPTH rows, fused by reciprocal rank (1 / (60 + rank)) per key
+  const cfg = await textSearchConfig(client, c.fts_config, ctx.app.language);
+  const vec = tsvectorSql(c, '$3::regconfig');
+  const key = ident(c.key_column!);
+  const sql = `with v as (select k, row_number() over (order by dist) as r
+                  from (select t.${key} as k, ${d} as dist from ${from} where ${vcol} is not null order by ${d} limit ${HYBRID_DEPTH}) x
+                 where $2::float8 is null or ${sim('dist')} >= $2::float8),
+       f as (select k, row_number() over (order by rank desc) as r
+               from (select t.${key} as k, ts_rank_cd(${vec}, q.query) as rank from ${from}, websearch_to_tsquery($3::regconfig, $4) q(query)
+                      where ${vec} @@ q.query order by 2 desc limit ${HYBRID_DEPTH}) y),
+       s as (select k, sum(1.0 / (${RRF_K} + r))::float8 as score from (select k, r from v union all select k, r from f) z group by k)
+    select t.*, s.score as "pgkiln$score" from ${from} join s on s.k = t.${key}
+     order by s.score desc${c.title_column ? `, t.${ident(c.title_column)}` : ''} limit ${c.max_results + 1}`;
+  return (await client.query(sql, [vectorLiteral(vector), minSim, cfg, query])).rows;
+}
+
+/**
+ * (136) The Retrieve tool of an AI agent: a table or SQL configuration's best rows for a text, as the application's
+ * role (ctx.client, in the caller's read-only transaction): title, subtitle, description and badge, and the score.
+ */
+export async function retrieve(ctx: PageContext, name: string, query: string, max: number) {
+  const c = (await runtime.query<SearchConfig>(
+    `select name, label, seq, source_type, source, searchable_columns, title_column, subtitle_column, description_column,
+            badge_column, icon, link, max_results, search_type, fts_vector, fts_config, did_you_mean,
+            vector_provider, vector_column, key_column, distance, min_similarity
+       from meta.search_config where app_id = $1 and name = $2 and meta.build_option_on(app_id, build_option)`, [ctx.app.id, name.toUpperCase()])).rows[0];
+  if (!c) throw new Error(`There is no search configuration ${name.toUpperCase()}.`);
+  if (c.source_type === 'list') throw new Error(`Search configuration ${c.name} searches a list: a Retrieve tool needs a table or SQL source.`);
+  const problems = searchConfigProblems(c);
+  if (problems.length) throw new Error(`Search configuration ${c.name}: ${problems.join(' ')}`);
+  const { hits, more } = await searchRows(ctx, { ...c, max_results: max }, searchWords(query), query.slice(0, MAX_TEXT).trim());
+  return {
+    rows: hits.map((h) => ({ title: h.title, ...(h.subtitle ? { subtitle: h.subtitle } : {}), ...(h.description ? { text: h.description } : {}), ...(h.badge ? { badge: h.badge } : {}), ...(h.score !== undefined ? { score: h.score } : {}) })),
+    ...(more ? { more_rows: true } : {}),
   };
 }
 
@@ -350,14 +452,16 @@ async function searchResults(ctx: PageContext, r: Region, query: string): Promis
       if (!hits.length) continue;
       body = html`<ul class="search-hits">${hits.map((h) => {
         // (135) full-text results: ts_headline's highlights (stemmed words: "running" marks "run"); else the words
-        const title = h.headlines?.title ?? marked(h.title, words);
-        const subtitle = h.subtitle ? (h.headlines?.subtitle ?? marked(h.subtitle, words)) : null;
-        const description = h.description ? (h.headlines?.description ?? marked(h.description, words)) : null;
+        // (136) results by meaning: no word is marked (they need not contain the words)
+        const by = c.search_type === 'vector' || c.search_type === 'hybrid' ? [] : words;
+        const title = h.headlines?.title ?? marked(h.title, by);
+        const subtitle = h.subtitle ? (h.headlines?.subtitle ?? marked(h.subtitle, by)) : null;
+        const description = h.description ? (h.headlines?.description ?? marked(h.description, by)) : null;
         const inner = html`${h.icon ? html`<span class="search-icon">${icon(h.icon)}</span>` : ''}
           <span class="search-text"><span class="search-title">${title}</span>${
             subtitle ? html`<span class="search-subtitle">${subtitle}</span>` : ''}${
             description ? html`<span class="search-description">${description}</span>` : ''}</span>
-          ${h.badge ? html`<span class="badge-pill">${marked(h.badge, words)}</span>` : ''}`;
+          ${h.badge ? html`<span class="badge-pill">${marked(h.badge, by)}</span>` : ''}`;
         return html`<li>${h.href ? html`<a class="search-hit" ${h.href}>${inner}</a>` : html`<div class="search-hit">${inner}</div>`}</li>`;
       })}</ul>${more ? html`<p class="muted search-more">${ctx.locale.t('region.first_rows', { n: String(c.max_results) })}</p>` : ''}`;
     } catch (e) {

@@ -24,6 +24,7 @@ const TOOL_TYPES: [string, string][] = [
   ['rest', 'REST data source'],
   ['javascript', 'JavaScript action in the browser'],
   ['navigate', 'Navigate: a link to a page'],
+  ['retrieve', 'Retrieve (RAG): rows of a search configuration'],
 ];
 
 const when = (d: Date | string) => new Date(d).toISOString().slice(0, 19).replace('T', ' ');
@@ -87,6 +88,7 @@ async function agentForm(a: any, s: Session, x: Partial<AiAgent>, original: stri
 
 async function toolForm(a: any, s: Session, x: Partial<AiTool> & { parameters_text?: string }, original: string, problems: string[]): Promise<Raw> {
   const sources = (await owner.query<{ name: string }>('select name from meta.rest_source where app_id = $1 order by name', [a.id])).rows.map((r) => r.name);
+  const configs = (await owner.query<{ name: string; search_type: string }>(`select name, search_type from meta.search_config where app_id = $1 and source_type <> 'list' order by name`, [a.id])).rows;
   const params = x.parameters_text ?? (x.parameters ? JSON.stringify(x.parameters, null, 2) : '');
   const usedBy = original ? ((a.ai_agents ?? []) as AiAgent[]).filter((g) => (g.tools ?? []).includes(original)).map((g) => g.name) : [];
   return html`${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
@@ -100,7 +102,10 @@ async function toolForm(a: any, s: Session, x: Partial<AiTool> & { parameters_te
         ${select('source', 'REST data source (REST)', x.source ?? '', [['', '-'], ...sources.map((n): [string, string] => [n, n])], 'The parameters become the source\'s parameters.')}
         ${input('action', 'Action (JavaScript)', x.action ?? '', { placeholder: 'e.g. highlightOrder', help: 'After the answer the browser calls the function registered with pgkiln.actions.register(name) with {value: the arguments}, and the dynamic actions of the custom event of this name.' })}
         ${input('pages', 'Pages (Navigate)', (x.pages ?? []).join(', '), { placeholder: 'e.g. 3, 7', help: 'The page numbers the agent may link to. pgkiln offers only those the user may open and builds the URL (item values with their checksum).' })}
-        ${area('parameters', 'Parameters (JSON; not for Navigate)', params, 6, '{"DNAME": {"type": "string", "description": "A department name"}, "LIMIT": {"type": "integer", "optional": true}}. Types: string, integer, number, boolean, date; "enum" for a list of texts.', true)}
+        ${select('search_config', 'Search configuration (Retrieve)', x.search_config ?? '', [['', '-'], ...configs.map((c): [string, string] => [c.name, `${c.name} (${c.search_type})`]),
+          ...(x.search_config && !configs.some((c) => c.name === x.search_config) ? [[x.search_config, `${x.search_config} (does not exist)`] as [string, string]] : [])],
+          'The model gives a text; pgkiln runs this search configuration (best: vector or hybrid) as the application\'s role, so row level security applies, and returns the best rows\' title, text and score.')}
+        ${area('parameters', 'Parameters (JSON; not for Navigate or Retrieve)', params, 6, '{"DNAME": {"type": "string", "description": "A department name"}, "LIMIT": {"type": "integer", "optional": true}}. Types: string, integer, number, boolean, date; "enum" for a list of texts.', true)}
         ${input('max_rows', 'Maximum rows', x.max_rows ?? '', { type: 'number', placeholder: '50', help: 'Rows the model gets back (1 – 500).' })}
         ${input('timeout_s', 'Time limit (seconds)', x.timeout_s ?? '', { type: 'number', placeholder: '15', help: 'SQL and function tools (1 – 60).' })}
         ${authzSelect(await schemes(a.id), x.authz, 'Only users who pass it are offered the tool.')}
@@ -151,8 +156,9 @@ function toolFrom(b: Body, errors: string[]): AiTool & { parameters_text?: strin
   if (type === 'rest') x.source = one(b.source).trim().toUpperCase();
   if (type === 'javascript') x.action = one(b.action).trim();
   if (type === 'navigate') x.pages = one(b.pages).split(/[\s,;]+/).filter(Boolean).map(Number);
+  if (type === 'retrieve') x.search_config = one(b.search_config).trim().toUpperCase();
   const params = one(b.parameters).trim();
-  if (params && type !== 'navigate') {
+  if (params && type !== 'navigate' && type !== 'retrieve') {
     try {
       x.parameters = JSON.parse(params);
     } catch {
@@ -160,11 +166,11 @@ function toolFrom(b: Body, errors: string[]): AiTool & { parameters_text?: strin
       x.parameters_text = params;
     }
   }
-  if (type === 'sql' || type === 'function' || type === 'rest') {
+  if (type === 'sql' || type === 'function' || type === 'rest' || type === 'retrieve') {
     const rows = intOrUndef(one(b.max_rows), 'Maximum rows', errors);
     if (rows !== undefined) x.max_rows = rows;
   }
-  if (type === 'sql' || type === 'function') {
+  if (type === 'sql' || type === 'function' || type === 'retrieve') {
     const t = intOrUndef(one(b.timeout_s), 'Time limit', errors);
     if (t !== undefined) x.timeout_s = t;
   }
@@ -225,7 +231,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const problems = definitionProblems(agents, tools);
     const main = html`${appHeader(a, 'shared', s)}
       <div class="title-row"><h1>AI Agents</h1></div>
-      <p class="muted u-mt0">An agent answers in an AI assistant region and acts only through the tools you give it: SQL queries (read-only, as the application's database role, so row level security applies), PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and links to pages (pgkiln builds the URL and its checksum, only for pages the user may open). What users type and the tools' results go to the agent's AI service. <a href="${BASE}/apps/${a.id}/ai">AI usage</a> lists every tool call.</p>
+      <p class="muted u-mt0">An agent answers in an AI assistant region and acts only through the tools you give it: SQL queries (read-only, as the application's database role, so row level security applies), PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and links to pages (pgkiln builds the URL and its checksum, only for pages the user may open). A Retrieve tool gives the agent the rows of a search configuration that match a text by meaning (RAG), again as the application's role. What users type and the tools' results go to the agent's AI service. <a href="${BASE}/apps/${a.id}/ai">AI usage</a> lists every tool call.</p>
       ${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
       <div class="columns">
         ${region('Agents', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Agent</th><th>AI service</th><th>Tools</th><th>Authorization</th></tr></thead>
@@ -322,6 +328,8 @@ export async function aiAgentRoutes(app: FastifyInstance) {
       const out = aiToolProblems(tool);
       if (tool.type === 'rest' && tool.source && !(await owner.one('select 1 from meta.rest_source where app_id = $1 and name = $2', [a.id, tool.source])))
         out.push(`There is no REST data source ${tool.source}.`);
+      if (tool.type === 'retrieve' && tool.search_config && !(await owner.one(`select 1 from meta.search_config where app_id = $1 and name = $2 and source_type <> 'list'`, [a.id, tool.search_config])))
+        out.push(`There is no search configuration ${tool.search_config} with a table or SQL source.`);
       if (tool.type === 'navigate') {
         const known = new Set((await owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1', [a.id])).rows.map((p) => p.page_no));
         for (const p of tool.pages ?? []) if (!known.has(p)) out.push(`There is no page ${p}.`);

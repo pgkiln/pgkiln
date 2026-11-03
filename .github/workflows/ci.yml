@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17
+        # (sprint 136) with pgvector, for the vector search tests; the upgrade jobs keep postgres:17 (without pgvector)
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: pgkiln
           POSTGRES_PASSWORD: pgkiln

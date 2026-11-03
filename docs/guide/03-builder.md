@@ -1721,6 +1721,7 @@ scheme (only users who pass it are offered the tool) and one of these types:
 | **REST data source** | a REST data source of the application; the parameters become its parameters | as in [assistant regions](04-pages-and-regions.md#ai_assistant-ai-assistant) |
 | **JavaScript** | nothing on the server: after the answer the browser calls the function registered with `pgkiln.actions.register(action)` (with `{value: arguments}`) and the dynamic actions of the **custom event** of that name (the arguments as JSON) | once, right after the answer; the arguments are escaped data in the page |
 | **Navigate** | the model picks one of the tool's **pages**, a link text and item values of that page; pgkiln builds the URL with the item values' **checksum** (bound to application, page and user) and shows the link under the answer | only pages the user may open are offered (the page's authorization scheme and sign-in); only items of that page; the model's values are never substituted (`&ITEM.`); nothing opens the link by itself |
+| **Retrieve (RAG)** | (sprint 136) the model gives a text (`QUERY`); pgkiln runs the tool's **search configuration** (best: [vector or hybrid](04-pages-and-regions.md#vector-search)) and returns the best rows' title, text (the description column) and score | as the application's role in a **read-only transaction** with the time limit, so row level security decides which rows the model sees; at most *maximum rows* rows (default 5); no parameters of its own |
 
 The model's arguments are checked against the parameters before a tool runs; they are bind values
 (escaped literals), never SQL text, and can't replace the server's own names (`:APP_USER`, `:APP_ID`, …).
@@ -1742,6 +1743,70 @@ The HR example (`examples/hr/hr_64_ai_agent.sql`) has an agent `HR_AGENT` on pag
 earns most?* and it calls the SQL tool `top_earners` as the signed-in user's role, then offers
 *Open BLAKE's record*, a link to the employee form (page 3) with a valid checksum, only to users who
 may open that page.
+
+## Vector providers
+
+(sprint 136; APEX: Vector Providers) A **vector provider** turns a text into an **embedding**: a list of numbers
+(the *dimensions*) whose distance says how close two texts are in meaning. Vector columns, search configurations
+of type [vector or hybrid](04-pages-and-regions.md#vector-search) and the [Retrieve tools](#ai-agents) of AI
+agents use one. Providers are part of the application: Shared Components → Generative AI → **Vector providers**
+(kept in `meta.app.vector_providers`, exported with the application). A provider has:
+
+- a **name** (static ID, upper case, e.g. `DOC_EMBEDDINGS`) and a description;
+- a **type**:
+  - *AI service with an embedding model*: an [AI service](#ai-services) the application may use (OpenAI,
+    Gemini, or OpenAI-compatible such as Ollama; Claude has no embeddings API) and the model, exactly as the
+    provider names it: `text-embedding-3-small` (1536 dimensions; OpenAI shortens them to the provider's
+    dimensions), `text-embedding-3-large` (3072), `gemini-embedding-001`, `nomic-embed-text` (768),
+    `mxbai-embed-large` (1024) … The key, base URL and daily limits are the service's: **the key stays with the
+    AI service** (encrypted, write-only, never exported); the export carries only the service's name. Texts per
+    request and requests per minute limit the background embedding of queued rows;
+  - *SQL or PL/pgSQL function*: `schema.name` of a function `(text)` returning `vector`, `real[]` or
+    `float8[]`, e.g. a model inside the database (`pgml.embed`, `ai.openai_embed` of pgai) or your own;
+- the **dimensions**: every embedding is checked against them, and a vector column is `vector(n)` with this *n*
+  (an HNSW index takes up to 2,000).
+
+**Test** embeds a sample text and shows how many dimensions came back. A provider's page lists the search
+configurations and vector columns that use it. In SQL, `meta.embed(text, 'DOC_EMBEDDINGS')` returns a function
+provider's embedding as `real[]` (cast it: `meta.embed(…)::vector`), running the function **as the role of the
+query** (its grants apply: grant execute on it to the application's role). An AI service is called by the pgkiln
+server, never from SQL: `meta.embed` says so for such a provider; use it through a search configuration, a
+Retrieve tool or a vector column's queue.
+
+**pgvector.** Everything with vectors needs the [pgvector](https://github.com/pgvector/pgvector) extension in
+the database (pgkiln itself installs without it). Workspace utilities → **Vector providers** says whether it is
+installed; when the database server has the package, administrators get **Create extension vector** (pgvector is
+not a trusted extension: the owner connection must be a superuser; otherwise a superuser runs
+`create extension vector;`). Without the package: install it (`apt install postgresql-17-pgvector`, the
+`pgvector/pgvector:pg17` Docker image, or the managed database's *vector* extension). The same page lists every
+provider of the workspace's applications and the vector columns they keep current.
+
+**Add vector column** (SQL Workshop › Table Properties, or a table's ⋯ menu) needs a table with a one-column
+primary key: pick a provider of the workspace's applications, the **source columns** (their text, one per line,
+is embedded), the distance (`cosine`, `l2`, `inner_product`) and the column's and index's names. **Preview DDL**
+shows what Apply runs in one transaction (recorded in the Change Log); **Open in the worksheet** puts it there:
+
+```sql
+alter table sales.doc add column embedding public.vector(1536);
+create index doc_embedding_idx on sales.doc using hnsw (embedding vector_cosine_ops);
+create trigger embedding_embed after insert or update of title, body on sales.doc
+  for each row execute function meta.embedding_enqueue('12', 'DOC_EMBEDDINGS', 'embedding', 'id', 'title', 'body');
+```
+
+**Keeping it current.** With an AI service the trigger (`meta.embedding_enqueue`) puts the changed row's key in a
+queue (`meta.embedding_queue`; a change to other columns, or to the same text, queues nothing). The server embeds
+queued rows in batches of the provider's *texts per request*, at most its *requests per minute*, within the
+application's daily AI limits, logged under AI usage (source *embedding*), and writes the vectors with the
+workspace's developer connection (the one the SQL Workshop uses). A failing batch keeps its message and is tried
+again after 1, 2, 4 … minutes (six times). A function provider can instead set the embedding **in the trigger**
+(`meta.embedding_set`, before insert or update, as the role that writes the row). After Apply the rows already
+there are queued; the page shows each vector column with a progress bar (rows embedded, queued, failing, the last
+message) and **Backfill**, which queues the rows without an embedding (or, ticked, all rows: after changing the
+provider's model). The server polls the queue every `EMBEDDING_INTERVAL_S` seconds (default 5);
+`EMBEDDINGS=off` keeps a server from embedding (another one does it).
+
+**What goes to the provider**: the source columns' text of every row, and every search text. Choose a provider
+your organisation allows for that data; a function provider keeps it in the database.
 
 ## App Builder AI
 
@@ -1860,6 +1925,10 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     **Apply** runs both in one transaction and records them in the **Change Log**; **Open in the worksheet** puts them
     there. The column keeps itself up to date; adding it rewrites the table. Name the column in a search
     configuration of search type *fulltext*, or in a report's `fulltext` attribute.
+    (sprint 136) **Add vector column…** (Table Properties, or the ⋯ menu): an embedding column `vector(n)` from a
+    [vector provider](#vector-providers), an HNSW index for the distance and a trigger that re-embeds a row when its
+    source columns change (at once with a function provider, else through the server's queue); the page shows each
+    vector column's progress and **Backfill**. Without pgvector it says what is missing.
   - (sprint 119) **Security** (the Object Browser's *Security* button on a table, *Security…* in its ⋯ menu): the
     table's row level security policies, a matrix of database roles × columns with *read* and *update*, and masked
     columns per application role in a masking view; Preview SQL, Apply (one transaction, recorded in the Change Log)
