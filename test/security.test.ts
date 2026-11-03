@@ -12260,3 +12260,102 @@ describe('sprint 136 AP-1', () => {
     assert.equal((await b.post('/builder/vector-providers/extension', {})).statusCode, 403, 'CSRF');
   });
 });
+
+describe('sprint 138 AP-5', () => {
+  const DEV = 'sec138_dev';
+  const DEV_PW = 'Sec138-dev-password!';
+  const S = 'sec138';
+  let hr: number;
+  let otherWs: number;
+  let region: number;
+  const signIn = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username, password })).statusCode, 303);
+    return b;
+  };
+  before(async () => {
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec138 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    await owner.query(`drop schema if exists ${S} cascade; create schema ${S}; create table ${S}.keep (id int primary key)`);
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [hr])).id;
+    // a fragment that tries to end the parsed function and run a statement of its own
+    region = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 991, 'Sec138', 'report', $2) returning id`,
+      [page, `select 1 from hr.emp; end; drop table ${S}.keep; create function pg_temp.x() returns void language sql begin atomic select 1`])).id;
+  });
+  after(async () => {
+    await owner.query('delete from meta.region where id = $1', [region]);
+    await owner.query(`delete from meta.workspace where name = 'Sec138 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.ui_default where schema_name = $1 or (schema_name = 'hr' and table_name = 'dept')`, [S]);
+    await owner.query(`drop schema if exists ${S} cascade`);
+  });
+
+  test('developers only; another workspace\'s application doesn\'t exist; CSRF on every post', async () => {
+    for (const url of [`/builder/apps/${hr}/utilities`, `/builder/apps/${hr}/utilities/dependencies`, `/builder/apps/${hr}/utilities/history`, `/builder/apps/${hr}/utilities/upgrade`, '/builder/ui-defaults', '/builder/icons'])
+      assert.notEqual((await new FileBrowser(app).get(url)).statusCode, 200, url);
+    const d = await signIn(DEV, DEV_PW);
+    for (const url of [`/builder/apps/${hr}/utilities`, `/builder/apps/${hr}/utilities/dependencies`, `/builder/apps/${hr}/utilities/history`, `/builder/apps/${hr}/utilities/upgrade`])
+      assert.equal((await d.get(url)).statusCode, 404, url);
+    await d.get('/builder/icons');
+    assert.equal((await d.submit(`/builder/apps/${hr}/utilities/upgrade`, { rule: 'nav_appearance' })).statusCode, 404);
+    const a = await signIn('admin', 'admin');
+    assert.equal((await a.post(`/builder/apps/${hr}/utilities/upgrade`, { rule: 'nav_appearance' })).statusCode, 403, 'CSRF');
+    assert.equal((await a.post('/builder/ui-defaults', { schema: 'hr', table: 'dept', 'c.0.name': 'dname', 'c.0.label': 'X' })).statusCode, 403, 'CSRF');
+    assert.equal(await owner.one(`select 1 as ok from meta.ui_default where schema_name = 'hr' and table_name = 'dept'`), undefined);
+  });
+
+  test('object dependencies: a statement is parsed alone, as the application\'s role, and never run', async () => {
+    const { appDependencies } = await import('../src/builder/dependencies.ts');
+    const deps = await appDependencies(hr);
+    assert.ok(await owner.one(`select 1 as ok from pg_class where oid = to_regclass('${S}.keep')`), 'the table is still there');
+    assert.ok(deps.unscanned.some((u) => u.entry?.id === region && /multiple commands|syntax/i.test(u.message)), 'reported as not scanned');
+  });
+
+  test('change history: filters are parameters, a change of another application isn\'t shown', async () => {
+    const a = await signIn('admin', 'admin');
+    for (const q of [`?q=${encodeURIComponent("%' or 1=1 --")}`, '?from=2026-01-01%27', '?page=1;drop', '?dev=%27', '?c=1%20or%201=1'])
+      assert.equal((await a.get(`/builder/apps/${hr}/utilities/history${q}`)).statusCode, 200, q);
+    const other = (await owner.one(`select id from meta.app where id <> $1 order by id limit 1`, [hr]))?.id;
+    if (other) {
+      const id = (await owner.one(`insert into meta.component_change (app_id, component, label, op, before, after, changed_by) values ($1, 'app', 'Sec138 secret change', 'changed', '{"app.yaml": "a"}', '{"app.yaml": "b"}', 'x') returning id`, [other])).id;
+      assert.doesNotMatch((await a.get(`/builder/apps/${hr}/utilities/history?c=${id}`)).body, /Sec138 secret change/);
+      await owner.query('delete from meta.component_change where id = $1', [id]);
+    }
+    // a label with markup is escaped
+    const id = (await owner.one(`insert into meta.component_change (app_id, component, label, op, before, after, changed_by) values ($1, 'app', '<img src=x onerror=alert(1)>', 'changed', '{"app.yaml": "<script>a</script>"}', '{"app.yaml": "b"}', '<b>x</b>') returning id`, [hr])).id;
+    const body = (await a.get(`/builder/apps/${hr}/utilities/history?c=${id}`)).body;
+    assert.doesNotMatch(body, /<img src=x|<script>a|<b>x<\/b>/);
+    await owner.query('delete from meta.component_change where id = $1', [id]);
+  });
+
+  test('UI defaults: tables of the catalog only, known columns only, masks checked, values escaped', async () => {
+    const a = await signIn('admin', 'admin');
+    assert.equal((await a.get('/builder/ui-defaults?schema=meta&table=app')).body.includes('name="c.0.name"'), false, 'not pgkiln\'s own schema');
+    await a.get('/builder/ui-defaults?schema=hr&table=dept');
+    for (const [schema, table] of [['meta', 'app'], ['hr', 'nope'], ['hr', "dept'; drop table x; --"], ['pg_catalog', 'pg_authid']])
+      assert.equal((await a.submit('/builder/ui-defaults', { schema, table, 'c.0.name': 'id', 'c.0.label': 'X' })).statusCode, 404, `${schema}.${table}`);
+    await a.submit('/builder/ui-defaults', { schema: 'hr', table: 'dept', 'c.0.name': 'no_such_column', 'c.0.label': 'X', 'c.1.name': 'dname', 'c.1.format_mask': "9'); drop table x; --" });
+    assert.equal(await owner.one(`select 1 as ok from meta.ui_default where schema_name = 'hr' and table_name = 'dept'`), undefined);
+    await assert.rejects(owner.query(`insert into meta.ui_default (schema_name, table_name, column_name, format_mask) values ('hr', 'dept', 'dname', '9<script>')`), /format_mask_check/);
+    await assert.rejects(owner.query(`insert into meta.ui_default (schema_name, table_name, column_name, alignment) values ('hr', 'dept', 'dname', 'left')`), /alignment_check/);
+    await a.submit('/builder/ui-defaults', { schema: 'hr', table: 'dept', 'c.1.name': 'dname', 'c.1.label': '<script>alert(1)</script>' });
+    const page = (await a.get('/builder/ui-defaults?schema=hr&table=dept')).body;
+    assert.doesNotMatch(page, /<script>alert/);
+    assert.match(page, /&lt;script&gt;alert/);
+  });
+
+  test('upgrade application: only candidates found again are changed', async () => {
+    const a = await signIn('admin', 'admin');
+    await a.get(`/builder/apps/${hr}/utilities/upgrade`);
+    const other = await owner.one(`select i.id, i.type from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and i.type = 'text' limit 1`, [hr]);
+    for (const key of [`date_picker:${other.id}`, `popup_lov:${other.id} or 1=1`, `nav_appearance:app'; drop table x; --`])
+      await a.submit(`/builder/apps/${hr}/utilities/upgrade`, { key });
+    assert.equal((await owner.one('select type from meta.item where id = $1', [other.id])).type, other.type);
+    await a.submit(`/builder/apps/${hr}/utilities/upgrade`, { rule: 'no_such_rule' });
+    assert.equal((await owner.one('select type from meta.item where id = $1', [other.id])).type, other.type);
+  });
+});

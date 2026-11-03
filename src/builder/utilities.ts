@@ -142,7 +142,7 @@ export async function utilityRoutes(app: FastifyInstance) {
     const OPS: Record<string, string> = { added: 'tag-info', changed: 'tag-warning', deleted: 'tag-error' };
     const main = html`${appHeader(a, 'utilities', s)}
       ${region('Change history', html`<p class="muted u-mt0">Every change made in the builder (and every import, restore or merge) is compared with the application before it: each component that was added, changed or deleted is listed here with who and when. Changes from the command line or the MCP server have no developer.</p>
-        <form method="get" class="filter-row util-filters">
+        <form method="get" class="util-filters">
           ${select('dev', 'Developer', dev, [['', 'All'], ...devs.map((d): [string, string] => (d === null ? ['(command line)', 'Command line / import'] : [d, d]))])}
           <div class="field"><label class="label" for="f_from">From</label><input id="f_from" name="from" type="date" value="${from}"></div>
           <div class="field"><label class="label" for="f_to">To</label><input id="f_to" name="to" type="date" value="${to}"></div>
@@ -150,11 +150,11 @@ export async function utilityRoutes(app: FastifyInstance) {
           <div class="field"><label class="label" for="f_q">Component</label><input id="f_q" name="q" type="search" value="${text}" placeholder="e.g. P3_ID"></div>
           <div class="buttons"><button class="btn btn-sm">${icon('filter')} Show</button></div></form>
         ${rows.length
-          ? html`<div class="table-wrap"><table class="table util-history"><thead><tr><th scope="col">When</th><th scope="col">Developer</th><th scope="col">Component</th><th scope="col">Change</th><th scope="col"><span class="sr-only">Differences</span></th></tr></thead><tbody>
+          ? html`<div class="table-wrap"><table class="table util-history"><thead><tr><th scope="col">When</th><th scope="col">Developer</th><th scope="col">Component</th><th scope="col">Change</th><th scope="col">Differences</th></tr></thead><tbody>
               ${rows.map((r) => html`<tr${r.id === shown ? raw(' aria-current="true"') : ''}><td data-label="When">${when(r.changed_at)}</td><td data-label="Developer">${r.changed_by ?? html`<span class="muted">${r.source === 'import' ? 'import' : 'command line'}</span>`}</td>
                 <td data-label="Component"><a href="${componentUrl(a.id, r.page_no)}">${r.label}</a></td>
                 <td data-label="Change"><span class="tag ${OPS[r.op] ?? ''}">${r.op}</span>${r.source !== 'builder' ? html` <span class="tag">${r.source}</span>` : ''}</td>
-                <td><a class="btn btn-sm" href="${link(r.id)}">Show</a></td></tr>`)}</tbody></table></div>`
+                <td data-label="Differences"><a class="btn btn-sm" href="${link(r.id)}">Show</a></td></tr>`)}</tbody></table></div>`
           : html`<p class="muted">No changes${where.length > 1 ? ' with these filters' : ' recorded yet'}.</p>`}`)}
       ${detail ? region(`Differences: ${detail.label}`, html`<p class="muted u-mt0">${detail.op} by ${detail.changed_by ?? 'the command line'}, ${when(detail.changed_at)}. Lines with <code>-</code> are before the change, lines with <code>+</code> after it.</p>${changeDiff(detail.before, detail.after)}`, '', 'change') : ''}`;
     return send(reply, s, shell(s, `Change history · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Utilities', `${BASE}/apps/${a.id}/utilities`], ['Change history']], main));
@@ -171,10 +171,10 @@ export async function utilityRoutes(app: FastifyInstance) {
     const tile = (n: string) => html`<li><span class="icon-tile">${icon(n, 'icon icon-2x')}<code>${n}</code></span></li>`;
     const main = html`<h1 class="u-mb1">Icons</h1>
       ${region('Icon browser', html`<p class="muted u-mt0">The icons of the icon picker: pgkiln's own set and ${String(lucideNames().size)} Lucide icons (${LUCIDE_VERSION}, ISC licence). Use the name in an icon field; modifiers such as <code>lg</code>, <code>spin</code> or <code>success</code> may follow it (e.g. <code>truck lg success</code>), and Font APEX names work where Lucide has the same icon (<code>fa-users</code>).</p>
-        <form method="get" role="search" class="util-icon-search"><div class="field"><label class="label" for="f_icon_q">Search</label><input id="f_icon_q" name="q" type="search" value="${q}" placeholder="e.g. truck, money, arrow"></div>
+        <form method="get" role="search" class="util-filters"><div class="field"><label class="label" for="f_icon_q">Search</label><input id="f_icon_q" name="q" type="search" value="${q}" placeholder="e.g. truck, money, arrow"></div>
           <div class="buttons"><button class="btn btn-sm">${icon('search')} Search</button></div></form>
-        <h3>pgkiln (${own.length})</h3><ul class="icon-grid">${own.map(tile)}</ul>
-        ${needle ? html`<h3>Lucide (${lucide.length}${lucide.length === 300 ? '+' : ''})</h3>${lucide.length ? html`<ul class="icon-grid">${lucide.map(tile)}</ul>` : html`<p class="muted">No Lucide icon matches.</p>`}`
+        <h3>pgkiln (${own.length})</h3><ul class="util-icons">${own.map(tile)}</ul>
+        ${needle ? html`<h3>Lucide (${lucide.length}${lucide.length === 300 ? '+' : ''})</h3>${lucide.length ? html`<ul class="util-icons">${lucide.map(tile)}</ul>` : html`<p class="muted">No Lucide icon matches.</p>`}`
           : html`<p class="muted">Search to see the matching Lucide icons.</p>`}`)}`;
     return send(reply, s, shell(s, 'Icons', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Icons']], main));
   });

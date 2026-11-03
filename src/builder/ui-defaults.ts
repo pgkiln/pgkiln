@@ -71,7 +71,7 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
       : [];
     const t = schema ? await findTable(s, schema, q.table) : null;
     const counts = (await owner.query<{ schema_name: string; n: number }>('select schema_name, count(*)::int as n from meta.ui_default group by 1')).rows;
-    const pick = html`<form method="get" class="filter-row util-filters">
+    const pick = html`<form method="get" class="util-filters">
         <div class="field"><label class="label" for="f_schema">Schema</label><select id="f_schema" name="schema"><option value="">Choose a schema</option>
           ${schemas.map((n) => html`<option value="${n}"${n === schema ? raw(' selected') : ''}>${n}${counts.find((c) => c.schema_name === n) ? ` (${counts.find((c) => c.schema_name === n)!.n})` : ''}</option>`)}</select></div>
         ${schema ? html`<div class="field"><label class="label" for="f_table">Table or view</label><select id="f_table" name="table"><option value="">Choose a table</option>
@@ -85,11 +85,11 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
           <div class="table-wrap"><table class="table ui-defaults"><thead><tr><th scope="col">Column</th><th scope="col">Label</th><th scope="col">Format mask</th><th scope="col">Alignment</th><th scope="col">Help</th><th scope="col">List of values</th></tr></thead><tbody>
           ${cols.map((c, i) => html`<tr>
             <td data-label="Column"><code>${c.name}</code><br><span class="muted small">${c.type}</span><input type="hidden" name="c.${i}.name" value="${c.name}"></td>
-            <td data-label="Label"><label class="sr-only" for="f_l${i}">Label of ${c.name}</label><input id="f_l${i}" name="c.${i}.label" value="${c.d?.label ?? ''}" maxlength="200" placeholder="${c.wizard}"></td>
-            <td data-label="Format mask"><label class="sr-only" for="f_m${i}">Format mask of ${c.name}</label><input id="f_m${i}" name="c.${i}.format_mask" value="${c.d?.format_mask ?? ''}" maxlength="60" placeholder="${/numeric|integer|bigint|smallint|real|double/.test(c.type) ? '999G990D00' : /date|time/.test(c.type) ? 'DD.MM.YYYY' : ''}"></td>
-            <td data-label="Alignment"><label class="sr-only" for="f_a${i}">Alignment of ${c.name}</label><select id="f_a${i}" name="c.${i}.alignment">${ALIGNMENTS.map((x) => html`<option value="${x}"${(c.d?.alignment ?? '') === x ? raw(' selected') : ''}>${x || '–'}</option>`)}</select></td>
-            <td data-label="Help"><label class="sr-only" for="f_h${i}">Help of ${c.name}</label><textarea id="f_h${i}" name="c.${i}.help" rows="1" maxlength="4000">${c.d?.help ?? ''}</textarea></td>
-            <td data-label="List of values"><label class="sr-only" for="f_v${i}">List of values of ${c.name}</label><input id="f_v${i}" name="c.${i}.lov" value="${c.d?.lov ?? ''}" maxlength="4000" placeholder="LOV:NAME"></td>
+            <td data-label="Label"><input id="f_l${i}" aria-label="Label of ${c.name}" name="c.${i}.label" value="${c.d?.label ?? ''}" maxlength="200" placeholder="${c.wizard}"></td>
+            <td data-label="Format mask"><input id="f_m${i}" aria-label="Format mask of ${c.name}" name="c.${i}.format_mask" value="${c.d?.format_mask ?? ''}" maxlength="60" placeholder="${/numeric|integer|bigint|smallint|real|double/.test(c.type) ? '999G990D00' : /date|time/.test(c.type) ? 'DD.MM.YYYY' : ''}"></td>
+            <td data-label="Alignment"><select id="f_a${i}" aria-label="Alignment of ${c.name}" name="c.${i}.alignment">${ALIGNMENTS.map((x) => html`<option value="${x}"${(c.d?.alignment ?? '') === x ? raw(' selected') : ''}>${x || '–'}</option>`)}</select></td>
+            <td data-label="Help"><textarea id="f_h${i}" aria-label="Help of ${c.name}" name="c.${i}.help" rows="1" maxlength="4000">${c.d?.help ?? ''}</textarea></td>
+            <td data-label="List of values"><input id="f_v${i}" aria-label="List of values of ${c.name}" name="c.${i}.lov" value="${c.d?.lov ?? ''}" maxlength="4000" placeholder="LOV:NAME"></td>
           </tr>`)}</tbody></table></div>
           <div class="buttons"><button class="btn btn-hot" name="mode" value="save">${icon('save')} Save</button>
             <button class="btn" name="mode" value="seed">${icon('edit')} Seed from comments</button></div>

@@ -116,9 +116,9 @@ export async function upgradeRoutes(app: FastifyInstance) {
       const list = all.filter((c) => c.rule === rule);
       return html`<section class="util-upgrade" aria-labelledby="up-${rule}"><h3 id="up-${rule}">${RULES[rule].title} <span class="tag">${list.length}</span></h3>
         <p class="muted small">${RULES[rule].since}</p>
-        ${list.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th scope="col">Component</th><th scope="col">Why</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead><tbody>
+        ${list.length ? html`<div class="table-wrap"><table class="table"><thead><tr><th scope="col">Component</th><th scope="col">Why</th><th scope="col">Actions</th></tr></thead><tbody>
           ${list.map((c) => html`<tr${preview?.key === c.key ? raw(' aria-current="true"') : ''}><td data-label="Component"><a href="${c.url}">${c.label}</a></td><td data-label="Why">${c.reason}</td>
-            <td><div class="buttons"><a class="btn btn-sm" href="${u}?preview=${encodeURIComponent(c.key)}#preview">Preview</a>
+            <td data-label="Actions"><div class="buttons"><a class="btn btn-sm" href="${u}?preview=${encodeURIComponent(c.key)}#preview">Preview</a>
               <form method="post" action="${u}">${csrf(s)}<input type="hidden" name="key" value="${c.key}"><button class="btn btn-sm btn-hot">${icon('refresh')} Upgrade</button></form></div></td></tr>`)}</tbody></table></div>
           ${list.length > 1 ? html`<form method="post" action="${u}" class="u-mt075">${csrf(s)}<input type="hidden" name="rule" value="${rule}"><button class="btn btn-sm">${icon('refresh')} Upgrade all ${list.length}</button></form>` : ''}`
           : html`<p class="muted">Nothing to upgrade.</p>`}</section>`;

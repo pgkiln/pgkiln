@@ -167,8 +167,8 @@ export async function appDependencies(appId: number): Promise<Dependencies> {
         if (skipped.length) unscanned.push({ ...use, message: `Not scanned (only SELECT, INSERT, UPDATE, DELETE and MERGE are parsed): ${skipped.join(', ')}` });
         if (!statements.length) continue;
         scanned++;
-        // the extended protocol (a parameter list) takes exactly one statement
-        await c.query(`create function pg_temp.__pgkiln_deps() returns void language sql begin atomic ${statements.join(';\n')}; end`, []);
+        // the extended protocol takes exactly one statement: SQL that ends the function early (…; end; drop …) is refused
+        await c.query({ text: `create function pg_temp.__pgkiln_deps() returns void language sql begin atomic ${statements.join(';\n')}; end`, queryMode: 'extended' } as pg.QueryConfig);
         const deps = (await c.query<{ cls: 'pg_class' | 'pg_proc'; oid: number }>(
           `select distinct d.refclassid::regclass::text as cls, d.refobjid::int as oid from pg_depend d
             where d.classid = 'pg_proc'::regclass and d.objid = 'pg_temp.__pgkiln_deps()'::regprocedure
@@ -299,7 +299,7 @@ export async function dependencyRoutes(app: FastifyInstance) {
     const main = html`${appHeader(a, 'utilities', s)}
       ${region('Database object dependencies', html`<p class="muted u-mt0">The tables, views, sequences and functions the application's SQL uses (${deps.scanned} statements parsed as the role <code>${deps.role ?? '(the runtime connection)'}</code>; nothing is run), with the components that use them. Missing objects and privileges the role lacks are marked.</p>
         <p><span class="tag">${deps.objects.length} objects</span> <span class="tag tag-error">${missingN} missing</span> <span class="tag tag-warning">${grantsN} without the grants they need</span></p>
-        <form method="get" class="filter-bar" role="search">
+        <form method="get" class="util-filters" role="search">
           <div class="field"><label class="label" for="dep-q">Filter</label><input id="dep-q" name="q" type="search" value="${filter}" placeholder="e.g. sales.orders"></div>
           <div class="field"><label class="label" for="dep-show">Show</label><select id="dep-show" name="show"><option value="">All objects</option><option value="problems"${onlyProblems ? raw(' selected') : ''}>Only problems</option></select></div>
           <div class="buttons"><button class="btn">${icon('filter')} Filter</button></div>
