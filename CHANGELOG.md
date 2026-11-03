@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.71.0] - 2026-11-03
+
 ### Added
 - **Create page like APEX's Create a Page** (AP-3): *Create page* opens a grid of page types with small previews
   (tabs Component, Feature and Copy). A type on a table asks for the table first; the others go to their options at

@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.70.0 (November 2026): vector search on pgvector (vector providers, Add vector column, vector and hybrid search configurations) and a Retrieve tool for AI agents.
-- **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
+- **Current release:** 0.71.0 (November 2026): Create page like APEX's Create a Page (page types, Add feature, Create page as copy) and an application's Utilities (object dependencies, change history, Upgrade application, UI defaults, checksums).
+- **APEX parity (26.2):** 166 features compared: 162 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
 ## Next
