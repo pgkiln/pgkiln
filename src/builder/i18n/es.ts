@@ -285,6 +285,7 @@ export const es: BuilderMessages = {
   'app.tab.api': 'API REST',
   'app.tab.settings': 'Configuración',
   'app.tab.advisor': 'Asesor',
+  'app.tab.utilities': 'Utilidades',
   'app.lock_refused': 'Los cambios se rechazan hasta que se desbloquee.',
   'app.search_pages': 'Buscar páginas',
   'app.search_placeholder': 'Nombre o número de página',

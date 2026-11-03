@@ -285,6 +285,7 @@ export const zhCN: BuilderMessages = {
   'app.tab.api': 'REST API',
   'app.tab.settings': '设置',
   'app.tab.advisor': '顾问',
+  'app.tab.utilities': '实用工具',
   'app.lock_refused': '解锁前将拒绝所有更改。',
   'app.search_pages': '搜索页面',
   'app.search_placeholder': '页面名称或编号',

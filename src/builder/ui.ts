@@ -243,7 +243,7 @@ export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '', i
   html`<section class="region region-standard"${id ? raw(` id="${id.replace(/[^a-z0-9-]/g, '')}"`) : ''}><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
 /** Title and tabs of an application's builder pages (Pages, Shared Components, …), in the session's builder language. */
-export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor', s?: Pick<Session, 'state'>) => {
+export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor' | 'utilities', s?: Pick<Session, 'state'>) => {
   const tx = tr(s);
   const tab = (key: typeof active, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${bicon(ic)}<span>${label}</span></a>`;
@@ -266,6 +266,7 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
         ${tab('settings', `${BASE}/apps/${a.id}/settings`, 'settings', tx('app.tab.settings'))}
         ${tab('search', `${BASE}/apps/${a.id}/search`, 'search', tx('common.search'))}
         ${tab('advisor', `${BASE}/apps/${a.id}/advisor`, 'check', tx('app.tab.advisor'))}
+        ${tab('utilities', `${BASE}/apps/${a.id}/utilities`, 'wrench', tx('app.tab.utilities'))}
       </nav>
     </div>`;
 };

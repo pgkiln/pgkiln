@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { owner } from '../db.ts';
+import { recordHistory } from '../history.ts';
 import type { Session } from '../session.ts';
 import { BASE } from './ui.ts';
 
@@ -50,6 +51,8 @@ export function appUpdateHooks(app: FastifyInstance) {
       appId = Number(m[1]);
     }
     await recordChange(appId, n.s.username).catch((err) => req.log.warn({ err }, 'app_change not recorded'));
+    // (sprint 138) what changed, per component (src/history.ts)
+    await recordHistory(appId, n.s.username).catch((err) => req.log.warn({ err }, 'change history not recorded'));
     return payload;
   });
 }

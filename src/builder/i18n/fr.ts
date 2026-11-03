@@ -285,6 +285,7 @@ export const fr: BuilderMessages = {
   'app.tab.api': 'API REST',
   'app.tab.settings': 'Paramètres',
   'app.tab.advisor': 'Conseiller',
+  'app.tab.utilities': 'Utilitaires',
   'app.lock_refused': "Les modifications sont refusées jusqu'à son déverrouillage.",
   'app.search_pages': 'Rechercher des pages',
   'app.search_placeholder': 'Nom ou numéro de page',

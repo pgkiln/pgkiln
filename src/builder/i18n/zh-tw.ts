@@ -285,6 +285,7 @@ export const zhTW: BuilderMessages = {
   'app.tab.api': 'REST API',
   'app.tab.settings': '設定',
   'app.tab.advisor': '顧問',
+  'app.tab.utilities': '公用程式',
   'app.lock_refused': '在解除鎖定前，所有變更都會被拒絕。',
   'app.search_pages': '搜尋頁面',
   'app.search_placeholder': '頁面名稱或編號',

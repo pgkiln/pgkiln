@@ -285,6 +285,7 @@ export const nl: BuilderMessages = {
   'app.tab.api': 'REST-API',
   'app.tab.settings': 'Instellingen',
   'app.tab.advisor': 'Adviseur',
+  'app.tab.utilities': 'Hulpmiddelen',
   'app.lock_refused': 'Wijzigingen worden geweigerd tot de vergrendeling is opgeheven.',
   'app.search_pages': "Pagina's zoeken",
   'app.search_placeholder': 'Paginanaam of -nummer',
