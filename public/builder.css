@@ -1597,3 +1597,6 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
   --font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", "Source Han Sans KR", sans-serif; }
 :is(.ide-lang-form, .signin-langs) [lang] { font-family: var(--font); }
 :is(.ide, .ide-login):lang(ko) { word-break: keep-all; overflow-wrap: break-word; }
+
+/* (sprint 136) a button inside an alert (e.g. Add vector column without pgvector) wraps on a phone instead of overflowing */
+.alert .btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
