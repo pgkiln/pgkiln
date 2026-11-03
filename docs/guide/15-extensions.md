@@ -63,7 +63,7 @@ that includes them.
 | **[pg_cron](https://github.com/citusdata/pg_cron)** | Run SQL on a schedule inside the database (`select cron.schedule('nightly', '0 2 * * *', 'call hr.close_month()')`) | **Automations**, `DBMS_SCHEDULER` |
 | **[pgaudit](https://github.com/pgaudit/pgaudit)** | Statement-level audit logging (reads, writes, DDL, role changes) to the server log, for compliance | Oracle Unified Auditing |
 | **PostGIS** | Geometry and geography types, spatial indexes and functions: the foundation for a map region | **Map region**, Oracle Spatial |
-| **pgvector** | Vector similarity search (embeddings) for semantic search and retrieval-augmented generation | APEX AI (RAG sources), Oracle AI Vector Search |
+| **pgvector** | Vector similarity search (embeddings) for semantic search and retrieval-augmented generation; pgkiln's vector providers, vector and hybrid search configurations and Retrieve tools use it (sprint 136, [chapter 4](04-pages-and-regions.md#vector-search)) | APEX AI (RAG sources), Oracle AI Vector Search |
 | **[plpgsql_check](https://github.com/okbob/plpgsql_check)** | Static analysis of PL/pgSQL: wrong columns, unused variables, missing `RETURN`, hidden casts. Run it on your app's functions in CI | **Advisor** (for code) |
 
 Scheduling example with pg_cron. pg_cron must be in `shared_preload_libraries` (a server setting;

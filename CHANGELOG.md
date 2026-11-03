@@ -5,6 +5,43 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Vector providers** (AP-1; APEX: Vector Providers, `APEX_AI.GET_VECTOR_EMBEDDINGS`): Shared Components ›
+  Generative AI › **Vector providers** turn text into an embedding: an AI service with an embedding model (OpenAI
+  `text-embedding-3-*`, Gemini, any OpenAI-compatible endpoint such as Ollama; through the official `openai` SDK's
+  embeddings API, the key stays with the AI service, the application's daily limits apply, every call is logged
+  under AI usage as *embedding*) or a SQL / PL/pgSQL function returning `vector`. The dimensions are checked on every
+  embedding and against vector columns; **Test** embeds a sample text. Providers are exported with the application
+  (`meta.app.vector_providers`, migration 136; older exports get none). `meta.embed(text, provider)` returns a
+  function provider's embedding in SQL as `real[]`, running the function as the caller; an AI service is called by
+  the server only.
+- **pgvector detected**: Workspace utilities › **Vector providers** says whether the extension is installed, offers
+  administrators *Create extension vector* when the server has the package, explains what is missing otherwise, and
+  lists the workspace's providers and vector columns. pgkiln still installs without pgvector: nothing in `meta` uses
+  the `vector` type.
+- SQL Workshop › Table Properties › **Add vector column…** (also in a table's ⋯ menu): `vector(n)` from a provider,
+  an HNSW index for the distance (cosine, L2, inner product) and a trigger that re-embeds a row when its source
+  columns change: at once in the trigger (function providers) or through a queue (`meta.embedding_queue`) that the
+  server works in batches within the provider's requests per minute (`EMBEDDING_INTERVAL_S`, default 5 s;
+  `EMBEDDINGS=off` on servers that should not embed), retrying failed batches with backoff. The rows already there
+  are queued at Apply; **Backfill** (with progress: rows embedded, queued, failing) queues the rows without an
+  embedding, or all. Previewed, applied in one transaction, recorded in the Change Log.
+- **Vector and hybrid search configurations** (APEX: search type *Oracle Vector Search*): search type `vector` finds
+  the rows nearest to the search text's embedding (provider, vector column, distance, minimum similarity), `hybrid`
+  ranks full-text and vector results together by reciprocal rank fusion (key column). The searches run as the
+  application's role, so row level security decides what is found; the vector is a query parameter and pgvector's
+  operators are schema-qualified. The Advisor checks the provider, the column's dimensions and the HNSW index.
+- **Retrieve (RAG) tools for AI agents**: an AI tool of type *retrieve* names a search configuration; the model
+  gives a text and gets the best rows' title, text and score, as the application's role in a read-only
+  transaction, logged under AI usage › Tool calls like the other tools.
+- HR example part 72: `hr.policy` gets *Relocation leave*, a managers-only *Salary bands* and row level security;
+  with pgvector, the function provider `POLICY_EMBEDDINGS` (a stand-in model of eight topics), an `embedding`
+  column with an HNSW index and a trigger, the hybrid configuration `POLICIES_MEANING` on page 42 (*time off for a
+  family move* finds *Relocation leave*) and page 49 *Policy questions* with the agent `POLICY_AGENT` and its
+  Retrieve tool.
+- CI's main test job runs on the `pgvector/pgvector:pg17` image; the upgrade jobs stay on `postgres:17`, without
+  pgvector.
+
 ## [0.69.0] - 2026-11-03
 
 ### Added

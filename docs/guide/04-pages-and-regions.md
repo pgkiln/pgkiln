@@ -1641,10 +1641,15 @@ Search configurations):
 | Icon | An [icon name](09-reference.md#icons), or `#COLUMN#` for a column that holds icon names |
 | Link | Where a result goes: `{"page": 3, "items": {"P3_ID": "#ID#"}}` (`#COLUMN#` is the row's value; the link gets a checksum, a modal page opens as a dialog) |
 | Maximum results | Per configuration, 1–100 (default 10); "Showing the first *n* rows." when there are more |
-| Search type | (sprint 135) `standard`: the words as below · `fulltext`: PostgreSQL full-text search (table and sql sources; see [full-text search](#full-text-search)). The type is the place where later types (vector search, and a hybrid of both) will go |
+| Search type | (sprint 135) `standard`: the words as below · `fulltext`: PostgreSQL full-text search (table and sql sources; see [full-text search](#full-text-search)) · (sprint 136) `vector`: by meaning, the rows whose embedding is nearest to the search text's · `hybrid`: full-text and vector together (see [vector search](#vector-search)) |
 | tsvector column or expression | `fulltext`: a `tsvector` column of the source (best: with a GIN index), or an expression such as `to_tsvector('english', title \|\| ' ' \|\| body)`. Empty: `to_tsvector` over the searchable columns on every search |
 | Text search configuration | `fulltext`: `english`, `dutch`, `german`, `simple`… (`pg_ts_config`): the one the tsvector was made with. Empty: the application's primary language's, else `simple` |
 | Did you mean | With the `pg_trgm` extension installed: when nothing is found, a link that searches for the closest words of the searched columns (any search type; reads up to 10,000 rows). Without `pg_trgm` nothing is suggested |
+| Vector provider | `vector`, `hybrid`: the [vector provider](03-builder.md#vector-providers) (static ID) that embeds the search text: the same one that embedded the rows |
+| Vector column | `vector`, `hybrid`: the source's `vector(n)` column, *n* the provider's dimensions |
+| Key column | `hybrid`: the key (e.g. `id`) that matches the full-text and the vector results |
+| Distance | `cosine` (default; most embedding models), `l2` or `inner_product`; an HNSW index helps only when it is built for the same one |
+| Minimum similarity | `vector`, `hybrid`: rows less similar than this are left out (cosine: 1 − distance; inner product: the product; l2: 1 / (1 + distance)). Empty: the nearest rows, however far |
 
 **How it searches.** Each word of the search text must be found (case-insensitively, anywhere in
 the value) in one of the searchable columns, so `clerk mil` finds MILLER the clerk. `%` and `_` are
@@ -1700,6 +1705,41 @@ with search type `fulltext`, tsvector `search_vector`, configuration `english`, 
 every search), reports a configuration name that doesn't exist, and a column that isn't a tsvector. A report's
 search box can use the same engine: see its `fulltext` attribute.
 
+#### Vector search
+
+A configuration of search type **vector** (APEX: the search type *Oracle Vector Search*) finds rows by meaning:
+*time off for a family move* finds the policy *Relocation leave … relocate to another city … the new house*,
+though they share no word. It needs the [pgvector](https://github.com/pgvector/pgvector) extension (see
+[chapter 3](03-builder.md#vector-providers) for installing it), a vector provider and a vector column:
+
+1. **A vector provider** (Shared Components → Vector providers, [chapter 3](03-builder.md#vector-providers)): an
+   AI service with an embedding model (OpenAI `text-embedding-3-small`, Gemini, Ollama's `nomic-embed-text` …)
+   or a SQL function returning `vector`.
+2. **A vector column** on the table, kept current: SQL Workshop › Table Properties › **Add vector column**
+   ([chapter 3](03-builder.md)) adds `embedding vector(n)`, an HNSW index and a trigger, and queues the rows for
+   their embeddings.
+3. **The configuration**: search type `vector`, the provider, the vector column, title and description columns,
+   icon and link as for any configuration.
+
+When a user searches, pgkiln embeds the search text with the provider (an AI service: one request, remembered a
+few minutes for search-as-you-type, logged under AI usage; the text goes to that provider), then asks the
+database for the nearest rows (`order by embedding <=> $1 limit n`, which the HNSW index serves) as the
+application's role, so **row level security decides what is found**. The vector is a query parameter; pgvector's
+operators are called schema-qualified. Results are not marked word by word: they need not contain the words.
+
+**Hybrid** (`hybrid`) runs the full-text search (the tsvector and text search configuration above) and the vector
+search, takes the best 50 rows of each, and ranks them together by **reciprocal rank fusion**: each row scores
+1 / (60 + its rank) in each list it is in, summed, best first. Rows found by both rise to the top; a row that only
+one of them finds still shows. Hybrid needs the key column that tells which rows are the same.
+
+Without pgvector a vector or hybrid configuration shows that the extension is missing (and the Advisor reports
+it); the other configurations answer as before. The Advisor also checks that the provider exists, that the
+column is `vector(n)` with the provider's *n*, and warns when it has no HNSW index or one for another distance.
+The HR example (part 72) adds `POLICIES_MEANING` (hybrid, with a stand-in function provider) to page 42.
+
+An AI agent can use any table or SQL configuration as a **Retrieve** tool: the model gives a text, the agent gets
+the best rows ([AI agents](03-builder.md#ai-agents)).
+
 **The region**: attributes
 
 | Key | Meaning |
@@ -1714,7 +1754,7 @@ The region's own field is a GET form (`?s<region id>=text`, so a search can be b
 without JavaScript; with JavaScript it searches while the user types and replaces only the results.
 The Advisor plans every configuration with the columns it names and reports names a region uses
 that don't exist. Search configurations are exported with the application. The HR example's page 42
-searches employees, departments, the HR policies (full-text, part 71) and the shortcuts list.
+searches employees, departments, the HR policies (full-text, part 71; by meaning, part 72) and the shortcuts list.
 
 ### `url` (URL region)
 
