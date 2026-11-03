@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.69.0] - 2026-11-03
+
 ### Added
 - **Full-text search configurations** (AP-2; APEX: a search configuration's search type *Oracle Text*): Shared
   Components › Search configurations has a **search type**, `standard` (each word anywhere in a column, as before) or
