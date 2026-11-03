@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.69.0 (November 2026): full-text search configurations (stemming, ranking, highlighted snippets, "did you mean") and Add full-text search in Table Properties.
+- **Current release:** 0.70.0 (November 2026): vector search on pgvector (vector providers, Add vector column, vector and hybrid search configurations) and a Retrieve tool for AI agents.
 - **APEX parity (26.2):** 165 features compared: 161 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
