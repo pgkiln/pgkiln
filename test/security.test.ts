@@ -12030,3 +12030,233 @@ describe('sprint 135 AP-2', () => {
     assert.doesNotMatch(r, /[]/);
   });
 });
+
+const HAS_PGVECTOR_136 = !!(await owner.one(`select 1 as x from pg_extension where extname = 'vector'`));
+describe('sprint 136 AP-1', () => {
+  // Vector search and Retrieve tools: the search text only reaches the embedding service and then the query as a
+  // parameter (a vector literal of numbers); the queries run as the application's role, so row level security
+  // decides what is found and what the model is given; provider keys stay with the AI service (write-only, never
+  // exported, not readable by the runtime role); meta.embed runs a function provider as the caller and never calls
+  // an AI service from SQL; names that reach SQL are plain identifiers checked by the database and the builder;
+  // model output and found rows are escaped.
+  const S = 'sec136';
+  const env = { ...process.env };
+  const HAS = HAS_PGVECTOR_136;
+  const NEEDS = HAS ? {} : { skip: 'pgvector is not installed' };
+  const KEY = 'sk-sec136-embedding-secret';
+  const DEV = 'sec136_dev';
+  const DEV_PW = 'Sec136-dev-password!';
+  let pageId: number;
+  let region: number;
+  let r49: number;
+  let mock: Awaited<ReturnType<typeof import('./ai-script-mock.ts').startScriptMock>>;
+  let saved: { vector_providers: unknown; ai_tools: unknown; ai_agents: unknown };
+  const results = (body: string) => /<div class="search-results" id="R\d+_results" aria-live="polite">([\s\S]*?)<\/div>\s*(?:<\/div>|<\/section>)/.exec(body)?.[1] ?? '';
+  const embCalls = () => mock.seen.filter((r) => r.path.endsWith('/embeddings')).length;
+
+  before(async () => {
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.EMBEDDINGS = 'off';
+    const { startScriptMock } = await import('./ai-script-mock.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    mock = await startScriptMock();
+    pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    saved = (await owner.one('select vector_providers, ai_tools, ai_agents from meta.app where id = $1', [appId]))!;
+    await owner.query(`delete from meta.ai_service where name in ('SEC136_SVC', 'HR_ASSISTANT')`);
+    const svc = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc) values ('SEC136_SVC', 'openai_compatible', 'm', $1, $2) returning id`,
+      [`${mock.base}/openai/v1`, encryptSecret(KEY)])).id;
+    const chat = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc) values ('HR_ASSISTANT', 'anthropic', 'claude-opus-5-5', $1, $2) returning id`,
+      [`${mock.base}/claude`, encryptSecret('sk-ant-sec136')])).id;
+    await owner.query('insert into meta.app_ai_service (app_id, service_id) values ($1, $2), ($1, $3)', [appId, svc, chat]);
+    await owner.query(`drop schema if exists ${S} cascade; create schema ${S}; grant usage on schema ${S} to hr_app;
+      create function ${S}.secret_embed(t text) returns real[] language sql as $f$ select array_fill(0.5::real, array[8]) $f$;
+      revoke execute on function ${S}.secret_embed(text) from public;`);
+    await owner.query(`update meta.app set vector_providers = vector_providers || $2::jsonb where id = $1`, [appId, JSON.stringify([
+      { name: 'SEC136_EMB', type: 'ai_service', service: 'SEC136_SVC', model: 'mock-embed', dimensions: 8 },
+      { name: 'SEC136_SECRET', type: 'function', function: `${S}.secret_embed`, dimensions: 8 },
+    ])]);
+    if (HAS) {
+      await owner.query(`create table ${S}.doc (id int primary key, owner_name text not null, title text not null, body text, embedding vector(8));
+        alter table ${S}.doc enable row level security;
+        create policy doc_own on ${S}.doc for select using (lower(owner_name) = lower(meta.app_user()));
+        grant select on ${S}.doc to hr_app;
+        insert into ${S}.doc (id, owner_name, title, body) values
+          (1, 'king', 'King relocation notes', 'Relocate to another city: the new house'),
+          (2, 'allen', 'Allen relocation secret', 'Relocate, house, city, settle for allen'),
+          (3, 'king', '<img src=x onerror=alert(1)> moving', '<script>alert(1)</script> house city');
+        update ${S}.doc set embedding = translate(hr.policy_embedding(title || ' ' || body)::text, '{}', '[]')::vector;`);
+      await owner.query(`delete from meta.search_config where app_id = $1 and name like 'SEC136%'`, [appId]);
+      await owner.query(`insert into meta.search_config (app_id, name, label, source_type, source, search_type, vector_provider, vector_column, title_column, description_column)
+        values ($1, 'SEC136_VEC', 'Docs', 'table', '${S}.doc', 'vector', 'SEC136_EMB', 'embedding', 'title', 'body')`, [appId]);
+      region = (await owner.one(`insert into meta.region (page_id, seq, title, type, config) values ($1, 995, 'Search', 'search', '{"configs": ["SEC136_VEC"]}') returning id`, [pageId])).id;
+      r49 = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 49 and r.type = 'ai_assistant'`, [appId])).id;
+    }
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
+  });
+
+  after(async () => {
+    if (region) await owner.query('delete from meta.region where id = $1', [region]);
+    await owner.query(`delete from meta.search_config where app_id = $1 and name like 'SEC136%'`, [appId]);
+    await owner.query('update meta.app set vector_providers = $2, ai_tools = $3, ai_agents = $4 where id = $1',
+      [appId, JSON.stringify(saved.vector_providers), JSON.stringify(saved.ai_tools), JSON.stringify(saved.ai_agents)]);
+    await owner.query(`delete from meta.embedding_queue where provider like 'SEC136%'`);
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`delete from meta.ai_service where name in ('SEC136_SVC', 'HR_ASSISTANT')`);
+    await owner.query(`delete from meta.ai_conversation where app_id = $1`, [appId]);
+    await owner.query(`delete from meta.session where username = $1 and app_id is null`, [DEV]);
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await mock.close();
+    for (const k of ['PGKILN_SECRET_KEY', 'EMBEDDINGS']) if (env[k] === undefined) delete process.env[k];
+    else process.env[k] = env[k];
+  });
+
+  test('vector search: the text is a parameter, row level security decides what is found, results escaped', NEEDS, async () => {
+    const king = await as('king');
+    const allen = await as('allen');
+    for (const q of [`'); drop table ${S}.doc; --`, `relocate' or '1'='1`, '$1::text', '[1,2,3]', '\\', 'a'.repeat(500)]) {
+      const r = await king.get(`/a/hr/1?s${region}=${encodeURIComponent(q)}`);
+      assert.equal(r.statusCode, 200, q);
+      assert.doesNotMatch(r.body, /alert-error/, q);
+    }
+    assert.ok(await owner.one(`select to_regclass('${S}.doc') as t`).then((x) => x.t), 'the table is still there');
+    const k = results((await king.get(`/a/hr/1?s${region}=${encodeURIComponent('time off for a family move')}`)).body);
+    assert.match(k, /King relocation notes/);
+    assert.doesNotMatch(k, /Allen/);
+    assert.match(k, /&lt;img src=x onerror=alert\(1\)&gt; moving/);
+    assert.match(k, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    assert.doesNotMatch(k, /<script|<img/);
+    const a = results((await allen.get(`/a/hr/1?s${region}=${encodeURIComponent('time off for a family move')}`)).body);
+    assert.match(a, /Allen relocation secret/);
+    assert.doesNotMatch(a, /King/);
+  });
+
+  test('Retrieve: the model gets only the rows the user may read; its answer is escaped', NEEDS, async () => {
+    const tools = [...(saved.ai_tools as any[]), { name: 'sec_docs', type: 'retrieve', search_config: 'SEC136_VEC', description: 'Docs.' }];
+    const agents = (saved.ai_agents as any[]).map((g) => (g.name === 'POLICY_AGENT' ? { ...g, tools: ['sec_docs'] } : g));
+    await owner.query('update meta.app set ai_tools = $2, ai_agents = $3 where id = $1', [appId, JSON.stringify(tools), JSON.stringify(agents)]);
+    const f = new FileBrowser(app);
+    assert.equal((await f.login('king')).statusCode, 303);
+    await f.get('/a/hr/49');
+    mock.script = [{ tools: [{ name: 'sec_docs', input: { QUERY: 'relocation house city' } }] }, { text: 'See <img src=x onerror=alert(1)> and <b>this</b>.' }];
+    const before = mock.seen.length;
+    await f.submit(`/a/hr/49/assistant/${r49}/send`, { message: 'Where do I move?', params: '' });
+    const calls = mock.seen.slice(before).filter((r) => r.path === '/claude/v1/messages');
+    const given = calls[1].body.messages.at(-1).content[0].content as string;
+    assert.match(given, /King relocation notes/);
+    assert.doesNotMatch(given, /Allen/, 'allen\'s row never reaches the model');
+    const page = (await f.get('/a/hr/49')).body;
+    assert.match(page, /See &lt;img src=x onerror=alert\(1\)&gt; and/);
+    assert.doesNotMatch(page, /<img src=x/);
+    // a Retrieve tool's arguments: only QUERY; the configuration a plain name (definitions are checked)
+    const { aiToolProblems } = await import('../src/runtime/ai-agents.ts');
+    assert.ok(aiToolProblems({ name: 'x', type: 'retrieve', description: 'd', search_config: `SEC136_VEC'; drop table x; --` }).length);
+  });
+
+  test('provider keys: write-only, never exported or shown, not readable by the runtime role', async () => {
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as d`)).d);
+    assert.match(doc, /SEC136_EMB/, 'the provider travels with the application');
+    assert.ok(!doc.includes(KEY) && !doc.includes('api_key_enc'));
+    for (const t of ['ai_service', 'embedding_queue'])
+      await assert.rejects(runtime.query(`select * from meta.${t}`), /permission denied/, t);
+    const def = (await owner.one(`select meta.vector_provider('SEC136_EMB', $1) as d`, [appId])).d;
+    assert.deepEqual(Object.keys(def).sort(), ['dimensions', 'model', 'name', 'service', 'type']);
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    const page = (await b.get(`/builder/apps/${appId}/vector-providers/provider?name=SEC136_EMB`)).body;
+    assert.doesNotMatch(page, new RegExp(KEY));
+    // a Claude service can't be a provider's service (no embeddings): the call is refused before any request
+    const { embedTexts } = await import('../src/ai/embeddings.ts');
+    const n = embCalls();
+    await assert.rejects(embedTexts({ name: 'X', type: 'ai_service', service: 'HR_ASSISTANT', model: 'm', dimensions: 8 }, ['x'], { appId }), /Claude has no embeddings API/);
+    // an application that may not use the service can't embed with it
+    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec136-other', 'Sec136 other') returning id`)).id;
+    try {
+      await assert.rejects(embedTexts({ name: 'X', type: 'ai_service', service: 'SEC136_SVC', model: 'm', dimensions: 8 }, ['x'], { appId: other }), /may not use AI service SEC136_SVC/);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+    assert.equal(embCalls(), n);
+  });
+
+  test('meta.embed: a function provider as the caller (its grants apply); an AI service is never called from SQL', async () => {
+    const asApp = (sql: string, params: unknown[] = []) => runtime.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
+      await c.query('set local role hr_app');
+      return (await c.query(sql, params)).rows;
+    });
+    await assert.rejects(asApp(`select meta.embed('x', 'SEC136_SECRET')`), /permission denied for function secret_embed/);
+    assert.equal((await owner.one(`select cardinality(meta.embed('x', 'SEC136_SECRET', $1)) as n`, [appId])).n, 8, 'the owner may');
+    if (HAS) assert.equal((await asApp(`select cardinality(meta.embed('relocation', 'POLICY_EMBEDDINGS')) as n`))[0].n, 8, 'the HR stand-in is granted to hr_app');
+    const n = embCalls();
+    await assert.rejects(asApp(`select meta.embed('x', 'SEC136_EMB')`), /which the pgkiln server calls/);
+    assert.equal(embCalls(), n, 'no request from SQL');
+    // a function name stored past the builder is checked again before it is called
+    await owner.query(`update meta.app set vector_providers = vector_providers || $2::jsonb where id = $1`,
+      [appId, JSON.stringify([{ name: 'SEC136_EVIL', type: 'function', function: `${S}.secret_embed($1); drop schema ${S} cascade; --`, dimensions: 8 }])]);
+    await assert.rejects(owner.query(`select meta.embed('x', 'SEC136_EVIL', $1)`, [appId]), /is schema\.name/);
+    assert.ok(await owner.one(`select to_regnamespace('${S}') as s`).then((x) => x.s));
+    // the queue: trigger functions can't be called directly, the runtime role can't write the queue, bad trigger arguments are refused
+    await assert.rejects(asApp('select meta.embedding_enqueue()'), /trigger functions can only be called as triggers/);
+    await assert.rejects(runtime.query(`insert into meta.embedding_queue (app_id, provider, tbl, vector_column, key_column, source_columns, key_value) values ($1, 'X', 1, 'e', 'id', '{t}', '1')`, [appId]), /permission denied/);
+    await owner.query(`create table ${S}.t (id int primary key, body text);
+      create trigger bad after insert on ${S}.t for each row execute function meta.embedding_enqueue('${appId}', 'SEC136_EMB', 'e; drop table x', 'id', 'body')`);
+    await assert.rejects(owner.query(`insert into ${S}.t values (1, 'x')`), /the arguments are app id, provider, vector column/);
+  });
+
+  test('identifiers: the database refuses anything but plain names in vector search configurations', async () => {
+    const ins = (cols: Record<string, unknown>) => owner.query(
+      `insert into meta.search_config (app_id, name, label, source_type, source, search_type, vector_provider, vector_column, key_column, distance, min_similarity, title_column)
+       values ($1, 'SEC136_X', 'X', 'table', 'hr.policy', $2, $3, $4, $5, $6, $7, 'title')`,
+      [appId, cols.search_type ?? 'vector', cols.vector_provider ?? 'SEC136_EMB', cols.vector_column ?? 'embedding', cols.key_column ?? 'id', cols.distance ?? 'cosine', cols.min_similarity ?? null]);
+    for (const [k, v, re] of [
+      ['vector_column', 'embedding) or true; --', /vector_column_check/],
+      ['key_column', 'id; drop table x', /key_column_check/],
+      ['vector_provider', 'sec136_emb', /vector_provider_check/],
+      ['distance', 'manhattan', /distance_check/],
+      ['min_similarity', 5, /min_similarity_check/],
+      ['search_type', 'semantic', /search_type_check/],
+    ] as const) await assert.rejects(ins({ [k]: v }), re, k);
+    await assert.rejects(owner.query(`insert into meta.search_config (app_id, name, label, source_type, source, search_type, title_column) values ($1, 'SEC136_Y', 'Y', 'table', 'hr.policy', 'vector', 'title')`, [appId]), /search_config_vector_check/);
+  });
+
+  test('Table Properties › Add vector column: names from the catalog only, providers of the workspace; developers only; CSRF', NEEDS, async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    await owner.query(`create table ${S}.page (id int primary key, title text)`);
+    await b.get(`/builder/sql/objects/vector?o=${S}.page`);
+    const base = { o: `${S}.page`, provider: `${appId}:SEC136_EMB`, keep: 'queue', 'c.0.name': 'title', 'c.0.use': 'on', distance: 'cosine', column: 'embedding', index: 'page_embedding_idx', mode: 'apply' };
+    for (const [k, v, msg] of [
+      ['column', 'x vector; drop table x', /is not a valid name/],
+      ['index', 'i on x; drop table x', /is not a valid name/],
+      ['provider', `${appId}:NO_SUCH`, /Choose a vector provider/],
+      ['provider', `${appId}:SEC136_EMB'); drop table x; --`, /Choose a vector provider/],
+    ] as const) {
+      const r = await b.submit('/builder/sql/objects/vector', { ...base, [k]: v });
+      assert.equal(r.statusCode, 200, k);
+      assert.match(r.body, msg, `${k}: ${v}`);
+    }
+    // a distance outside the list and a column the table doesn't have don't reach the DDL
+    const w = (await b.submit('/builder/sql/objects/vector', { ...base, mode: 'preview', distance: `cosine); drop table x; --`, 'c.1.name': 'id); drop table x; --', 'c.1.use': 'on' })).body;
+    assert.match(w, /using hnsw \(embedding vector_cosine_ops\);/);
+    assert.doesNotMatch(w, /drop table/);
+    assert.equal((await owner.one(`select count(*)::int as n from pg_attribute where attrelid = '${S}.page'::regclass and attname = 'embedding'`)).n, 0);
+    assert.equal((await b.get('/builder/sql/objects/vector?o=meta.app')).statusCode, 404);
+    assert.equal((await b.get(`/builder/sql/objects/vector?o=${S}.nope`)).statusCode, 404);
+    assert.equal((await b.submit('/builder/sql/objects/vector', { o: `${S}.page`, column: 'title', mode: 'backfill' })).statusCode, 404, 'only a column a trigger keeps');
+    assert.notEqual((await new Browser().get(`/builder/sql/objects/vector?o=${S}.page`)).statusCode, 200);
+    assert.equal((await b.post('/builder/sql/objects/vector', { ...base })).statusCode, 403);
+  });
+
+  test('only administrators create the pgvector extension', async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: DEV, password: DEV_PW })).statusCode, 303);
+    const page = (await b.get('/builder/vector-providers')).body;
+    assert.doesNotMatch(page, /action="\/builder\/vector-providers\/extension"/);
+    assert.equal((await b.submit('/builder/vector-providers/extension', {})).statusCode, 403);
+    assert.equal((await b.post('/builder/vector-providers/extension', {})).statusCode, 403, 'CSRF');
+  });
+});
