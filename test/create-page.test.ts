@@ -60,6 +60,7 @@ after(async () => {
   // what the HR acceptance checks added
   await owner.query(`delete from meta.page where app_id = $1 and page_no in (9010, 9020, 870)`, [hrId]);
   await owner.query(`delete from meta.nav_entry where app_id = $1 and target_page in (9010, 9020, 870)`, [hrId]);
+  await owner.query(`update meta.build_option set status = 'exclude' where app_id = $1 and name = 'LEAVE_FORECAST'`, [hrId]);
   await app.close();
   await closePools();
 });
@@ -311,6 +312,25 @@ describe('Add feature (tab Feature)', () => {
     const v = new Browser(app);
     await v.login('king');
     assert.match((await v.get('/a/hr/9010')).body, /Page views per day/);
+  });
+
+  test('Configuration options on HR: administrators switch LEAVE_FORECAST (part 73) while the application runs', async () => {
+    const b = await builder();
+    const review = (await b.get(`/builder/apps/${hrId}/features/config`)).body;
+    assert.match(review, /name="options" value="LEAVE_FORECAST" checked/);
+    await b.submit(`/builder/apps/${hrId}/features/config`, { options: ['LEAVE_FORECAST'] });
+    const v = new Browser(app);
+    await v.login('king');
+    const page = (await v.get('/a/hr/9020')).body;
+    assert.match(page, /<input type="checkbox" id="P9020_OPTIONS" name="P9020_OPTIONS" value="LEAVE_FORECAST" role="switch">/);
+    const r = await v.post('/a/hr/9020', { ...formFields(page), P9020_OPTIONS: 'LEAVE_FORECAST', __request: 'SAVE' });
+    assert.ok([200, 303].includes(r.statusCode), r.body.slice(0, 300));
+    assert.equal((await owner.one(`select status from meta.build_option where app_id = $1 and name = 'LEAVE_FORECAST'`, [hrId])).status, 'include');
+    assert.match((await v.get('/a/hr/9020')).body, /value="LEAVE_FORECAST" role="switch" checked/);
+    // not for other users: the page needs ADMIN, and the function refuses them
+    const allen = new Browser(app);
+    await allen.login('allen');
+    assert.notEqual((await allen.get('/a/hr/9020')).statusCode, 200);
   });
 
   test('access control, feedback, about, theme; login page is not offered without sign-in', async () => {

@@ -80,7 +80,7 @@ begin
   if p_kind in ('search', 'tasks', 'workflows', 'dashboard') then
     v_out := jsonb_build_object('nav', true,
       'label', case p_kind when 'search' then 'Search' when 'tasks' then 'My Tasks' when 'workflows' then 'Workflows' else 'Dashboard' end,
-      'icon', case p_kind when 'search' then 'search' when 'tasks' then 'list-checks' when 'workflows' then 'workflow' else 'chart' end);
+      'icon', case p_kind when 'search' then 'search' when 'tasks' then 'check-circle' when 'workflows' then 'route' else 'dashboard' end);
     return v_out || case p_kind
       when 'search' then jsonb_build_object('configs', '[]'::jsonb, 'form_page', null)
       when 'tasks' then jsonb_build_object('context', 'my', 'completed', false)
@@ -111,8 +111,8 @@ begin
                when 'wizard' then 'Create ' || meta.wizard_table_label(p_table, false)
                when 'data_load' then 'Load ' || meta.wizard_table_label(p_table)
                else meta.wizard_table_label(p_table) end,
-    'icon', case p_kind when 'smart_filters' then 'filter' when 'tree' then 'git-branch' when 'timeline' then 'clock'
-                        when 'media_list' then 'image' when 'content_row' then 'layout-list' when 'comments' then 'message-square'
+    'icon', case p_kind when 'smart_filters' then 'filter' when 'tree' then 'org' when 'timeline' then 'clock'
+                        when 'media_list' then 'image' when 'content_row' then 'list' when 'comments' then 'comments'
                         when 'data_load' then 'upload' when 'wizard' then 'file' else 'table' end);
   case p_kind
   when 'report' then
