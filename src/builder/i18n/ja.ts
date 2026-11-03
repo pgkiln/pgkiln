@@ -285,6 +285,7 @@ export const ja: BuilderMessages = {
   'app.tab.api': 'REST API',
   'app.tab.settings': '設定',
   'app.tab.advisor': 'アドバイザ',
+  'app.tab.utilities': 'ユーティリティ',
   'app.lock_refused': 'ロックが解除されるまで、変更は拒否されます。',
   'app.search_pages': 'ページの検索',
   'app.search_placeholder': 'ページ名または番号',

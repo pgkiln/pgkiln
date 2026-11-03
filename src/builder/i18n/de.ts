@@ -285,6 +285,7 @@ export const de: BuilderMessages = {
   'app.tab.api': 'REST-API',
   'app.tab.settings': 'Einstellungen',
   'app.tab.advisor': 'Advisor',
+  'app.tab.utilities': 'Dienstprogramme',
   'app.lock_refused': 'Änderungen werden abgelehnt, bis die Sperre aufgehoben ist.',
   'app.search_pages': 'Seiten durchsuchen',
   'app.search_placeholder': 'Seitenname oder -nummer',

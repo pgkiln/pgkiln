@@ -1580,6 +1580,55 @@ Database code (views, functions, RLS policies) isn't part of the application, so
 
 Findings are errors, warnings or notes, each linking to the component.
 
+## Utilities
+
+**Utilities** (the last tab of an application, APEX: Application Utilities) gathers what an
+application's upkeep needs: tiles for the Advisor, Search, Debug messages, Activity, Backups,
+Working copies and Export, and the tools below. It also shows an **application dashboard** (pages,
+regions, items, processes, lists of values, changes in the last 7 days), the **recently updated
+pages** (from the change history) and the checksums.
+
+- **Database object dependencies** (`/builder/apps/:id/utilities/dependencies`): every piece of SQL
+  the Advisor plans, plus the tables of form and grid regions, is parsed as the application's
+  database role into a temporary SQL-standard function (`CREATE FUNCTION … BEGIN ATOMIC`, rolled
+  back, nothing runs), and PostgreSQL's own dependency records name the tables, views, sequences
+  and functions it uses, resolved with the role's search path. Each object links to the Object
+  Browser and lists the components (and pages) that use it. An object that doesn't exist (a dropped
+  view, say `sales.orders_v`) is marked **Missing** in red, and so is a privilege the role lacks
+  (**No grant**: SELECT for queries, INSERT / UPDATE / DELETE on the target of a DML statement,
+  USAGE on sequences, EXECUTE on functions, USAGE on the schema). PL/pgSQL blocks and statements
+  other than SELECT, INSERT, UPDATE, DELETE and MERGE are listed as not scanned.
+- **Change history** (`/builder/apps/:id/utilities/history`): after every change made in the
+  builder, and inside every import `--replace` (restoring a backup, merging a working copy, the
+  command line and the MCP server), the application's export is compared with the one after its
+  previous change, component by component as working copies compare (a page's settings, a region
+  with its SQL, an item, a list of values, …). Each added, changed or deleted component is kept with
+  who (the developer; none for the command line), when and its files before and after; **Show**
+  gives the differences as a diff. Filter by developer, date range, page and component name.
+  History is kept `CHANGE_HISTORY_DAYS` days (365 by default; 0 keeps everything) and starts with
+  the first change after the upgrade to the version that introduced it.
+- **Upgrade application** (`/builder/apps/:id/utilities/upgrade`): components made before pgkiln
+  gained a better default, each with the reason, a **Preview** of the change and **Upgrade** (or
+  *Upgrade all* of a kind): an application without a navigation appearance (→ Pillar Light), a text
+  item of a form on a `date` or `timestamp` column (→ a date or date-time item with the date
+  picker), a select list whose list of values reads a table of more than 1,000 rows (→ a popup list
+  of values, searched and paged on the server). Upgrades are recorded in the change history.
+- **UI defaults** (`/builder/ui-defaults`, also under Workspace utilities; APEX: Attribute
+  Dictionary): per table column a label, format mask, help text, alignment and list of values
+  (`LOV:NAME`, `STATIC:…` or a query). The page wizards and the Create Application wizard use the
+  label for report headings and form items, and a form item a wizard makes also gets the column's
+  format mask, help and list of values. **Seed from comments** fills the columns without a UI
+  default from their `COMMENT ON`: a short comment (60 characters at most) becomes the label, a
+  longer one the help. UI defaults belong to the installation (not exported with an application)
+  and apply to pages generated after the change. The tables offered are those the workspace's SQL
+  Workshop can see.
+- **Application checksum**: a SHA-256 of the application's definition (its export in the text
+  layout, without the alias), with a checksum per page: the same definition gives the same checksum
+  on any installation, so two installations, or an application and its working copy, compare at a
+  glance. Export sends it too, in the `X-Pgkiln-Checksum` response header.
+- **Icons** (`/builder/icons`): the icon picker's set, pgkiln's own icons and the Lucide icons by
+  search, with the names to use in icon fields.
+
 ## Activity monitor
 
 Per application: page views, distinct users and average page time over the last 24 hours;

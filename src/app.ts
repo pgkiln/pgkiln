@@ -41,6 +41,10 @@ import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
 import { appUpdateHooks } from './builder/app-updates.ts';
+import { historyHooks, utilityRoutes } from './builder/utilities.ts';
+import { dependencyRoutes } from './builder/dependencies.ts';
+import { upgradeRoutes } from './builder/upgrade.ts';
+import { uiDefaultRoutes } from './builder/ui-defaults.ts';
 import { dbUserRoutes } from './builder/db-users.ts';
 import { dataPumpRoutes } from './builder/datapump.ts';
 import { schedulingRoutes } from './builder/scheduling.ts';
@@ -165,6 +169,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   });
   builderErrorPages(app);
   appUpdateHooks(app); // (116) who changed an application last
+  historyHooks(app); // (138) a snapshot before an application's first recorded change
   await app.register(cookie);
   await app.register(formbody, { bodyLimit: 5 * 1024 * 1024 });
   // file upload items; oversized files are cut off and reported, not thrown
@@ -269,6 +274,11 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(mailQueueRoutes);
   await app.register(networkAccessRoutes);
   await app.register(workspaceMailRoutes);
+  // (sprint 138, AP-5) an application's Utilities
+  await app.register(utilityRoutes);
+  await app.register(dependencyRoutes);
+  await app.register(upgradeRoutes);
+  await app.register(uiDefaultRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder/home'));
   return app;
 }

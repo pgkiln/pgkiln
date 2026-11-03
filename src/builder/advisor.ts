@@ -44,7 +44,7 @@ export interface Finding {
 export type SqlShape = 'select' | 'boolean' | 'statements' | 'regex';
 
 /** Which fields hold SQL, and of what shape, per component kind (null: decided by the row). */
-function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] {
+export function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] {
   switch (kind) {
     case 'region':
       return [
@@ -105,7 +105,7 @@ function sqlFields(kind: string, row: any): { name: string; shape: SqlShape }[] 
 const conditionSql = (row: any): { name: string; shape: SqlShape }[] =>
   row.condition_type === 'sql' ? [{ name: 'condition_expr', shape: 'boolean' }] : row.condition_type === 'exists' || row.condition_type === 'not_exists' ? [{ name: 'condition_expr', shape: 'select' }] : [];
 
-const EXPLAINABLE = /^\s*(\(|select|with|values|table|insert|update|delete|merge)\b/i;
+export const EXPLAINABLE = /^\s*(\(|select|with|values|table|insert|update|delete|merge)\b/i;
 
 /**
  * The problem with one piece of SQL, or null. Runs inside the caller's

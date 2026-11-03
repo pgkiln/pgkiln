@@ -12,6 +12,7 @@
 import { randomBytes } from 'node:crypto';
 import type pg from 'pg';
 import { regionKeys } from '../appfiles.ts';
+import { ensureSnapshot, recordHistory } from '../history.ts';
 
 /** Tables of an application that are its definition: replaced. */
 export const REPLACED = [
@@ -86,7 +87,10 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (126) outgoing calls the network access lists refused (Administration → Network access; a log, 7 days)
   'network_refusal',
   // (136) rows queued for their embeddings (the vector providers travel in meta.app)
-  'embedding_queue'];
+  'embedding_queue',
+  // (138) the change history and the snapshot it compares with (this installation's record)
+  'app_snapshot', 'component_change',
+];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
@@ -140,6 +144,9 @@ export async function replaceApp(db: Db, doc: unknown, alias: string, opts: Repl
   const target = (await db.query<{ id: number }>('select id from meta.app where alias = $1 for update', [alias])).rows[0];
   if (!target) throw new Error(`application ${alias} not found`);
   const old = target.id;
+  // (sprint 138) the change history compares the application before and after (src/history.ts); not on a bare pool
+  const inTx = !('totalCount' in db);
+  if (inTx) await ensureSnapshot(old, db as pg.ClientBase);
   const backup = opts.backup === undefined ? { reason: 'import' as const } : opts.backup;
   if (backup) await db.query('select meta.backup_app($1, $2, $3, $4)', [old, backup.reason, backup.user ?? null, backup.note ?? null]);
   const tmpAlias = `pgkiln-replace-${randomBytes(6).toString('hex')}`;
@@ -251,5 +258,6 @@ export async function replaceApp(db: Db, doc: unknown, alias: string, opts: Repl
     [old, neu],
   );
   await db.query('delete from meta.app where id = $1', [neu]);
+  if (inTx) await recordHistory(old, opts.backup ? (opts.backup.user ?? null) : null, 'import', db as pg.ClientBase).catch(() => {});
   return old;
 }

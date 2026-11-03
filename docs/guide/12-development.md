@@ -190,6 +190,11 @@ src/
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
+  history.ts               (sprint 138, AP-5) change history and checksums: meta.app_snapshot (the export after the last recorded
+                           change), recordHistory() (export again, workingcopy.ts components() of both, each added/changed/deleted
+                           component with its files before and after into meta.component_change; called by app-updates.ts onSend,
+                           the upgrade page and cli/replace.ts replaceApp), ensureSnapshot() (before a first change), diffDocs(),
+                           appChecksum() / pageChecksums() (SHA-256 of the text layout without the alias), CHANGE_HISTORY_DAYS
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     signin.ts              the sign-in form (built-in page and the login region of an application's own login page), safeNext, passwordResetAvailable
@@ -416,6 +421,18 @@ src/
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
+    utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
+                           application and page checksums; Change history (filters, diffHtml of a change); the icon browser
+                           /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application)
+    dependencies.ts        (sprint 138) Utilities → Database object dependencies: appDependencies() (the Advisor's fragments, each
+                           parsed as the app role into a BEGIN ATOMIC temp function, one statement by the extended protocol;
+                           pg_depend → tables, views, sequences, functions; missing objects from the parser's errors; privileges
+                           needed vs the role's), the page with Object Browser links
+    upgrade.ts             (sprint 138) Utilities → Upgrade application: upgradeCandidates() (nav_appearance, date_picker,
+                           popup_lov), preview diff, POST upgrade by key or rule (found again first), recorded in the history
+    ui-defaults.ts         (sprint 138) UI defaults /builder/ui-defaults (meta.ui_default, migration 138): per column label, mask,
+                           help, alignment, list of values; seed from comments; tables of the workspace's catalog only. The wizards
+                           read them through meta.wizard_column_label and the meta.item trigger meta.ui_default_item
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts); (sprint 106) the Apply and record form
     changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
                            downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded)

@@ -288,6 +288,7 @@ export const en = {
   'app.tab.api': 'REST API',
   'app.tab.settings': 'Settings',
   'app.tab.advisor': 'Advisor',
+  'app.tab.utilities': 'Utilities',
   'app.lock_refused': 'Changes are refused until it is unlocked.',
   'app.search_pages': 'Search pages',
   'app.search_placeholder': 'Page name or number',

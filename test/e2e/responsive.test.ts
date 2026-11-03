@@ -674,6 +674,19 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         api: `/builder/apps/${appId}/api`,
         search: `/builder/apps/${appId}/search?q=empno`,
         advisor: `/builder/apps/${appId}/advisor`,
+        // (sprint 138) an application's Utilities: the page, object dependencies, change history (a change with its diff), upgrade, UI defaults, icons
+        app_utilities: `/builder/apps/${appId}/utilities`,
+        utilities_dependencies: `/builder/apps/${appId}/utilities/dependencies`,
+        utilities_history: await (async () => {
+          const id = (await owner.one(`insert into meta.component_change (app_id, component, label, page_no, op, before, after, changed_by)
+            values ($1, 'pages/0003/items/p3_sal', 'Page 3 › item p3_sal', 3, 'changed', $2, $3, 'admin') returning id`,
+            [appId, JSON.stringify({ 'pages/0003-employee/items/p3_sal.yaml': `name: P3_SAL\nlabel: Salary\nhelp: ${'a long help text without spaces '.repeat(3)}${'x'.repeat(200)}\n` }),
+              JSON.stringify({ 'pages/0003-employee/items/p3_sal.yaml': 'name: P3_SAL\nlabel: Monthly salary\n' })])).id;
+          return `/builder/apps/${appId}/utilities/history?c=${id}`;
+        })(),
+        utilities_upgrade: `/builder/apps/${appId}/utilities/upgrade`,
+        ui_defaults: '/builder/ui-defaults?schema=hr&table=leave_request',
+        icons: '/builder/icons?q=arrow',
         top_sql: `/builder/apps/${appId}/top-sql`,
         debug: `/builder/apps/${appId}/debug`,
         debug_view: `/builder/apps/${appId}/debug/${await (async () => {

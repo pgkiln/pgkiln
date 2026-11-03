@@ -285,6 +285,7 @@ export const ko: BuilderMessages = {
   'app.tab.api': 'REST API',
   'app.tab.settings': '설정',
   'app.tab.advisor': '어드바이저',
+  'app.tab.utilities': '유틸리티',
   'app.lock_refused': '잠금이 해제될 때까지 변경이 거부됩니다.',
   'app.search_pages': '페이지 검색',
   'app.search_placeholder': '페이지 이름 또는 번호',

@@ -28,6 +28,16 @@ All notable changes to this project are documented here. The format follows
   (`P<n>_` items renamed, also in the page's code; links to itself follow), with the shared components it refers to
   (lists of values, authorization schemes, build options, lists, template components, search configurations, data
   load definitions) mapped to the target's or copied; `meta.copy_page` and `meta.page_shared_refs`.
+- **Application Utilities** (AP-5; APEX: Application Utilities, migration 138): a *Utilities* tab per application with
+  the Advisor, Search, Debug, Activity, Backups, Working copies and Export, an application dashboard and recently
+  updated pages. **Database object dependencies**: the tables, views, sequences and functions the application's SQL
+  uses (parsed as its role, nothing runs), with the components that use them; missing objects and grants the role
+  lacks in red. **Change history**: every added, changed or deleted component with who, when and a diff, for builder
+  changes and imports with `--replace` (kept `CHANGE_HISTORY_DAYS`, default 365). **Upgrade application**: components
+  that can use a newer default (date pickers on date columns, popup lists of values on large tables, a navigation
+  appearance) with a preview. **UI defaults** (APEX's Attribute Dictionary): a label, format mask, help, alignment and
+  list of values per column, used by the page and application wizards and seeded from column comments. An
+  **application checksum** (SHA-256) with one per page, also sent by Export as `X-Pgkiln-Checksum`; an icon browser.
 
 ## [0.70.0] - 2026-11-03
 

@@ -1625,3 +1625,23 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .cp-step > .cp-preview { flex: 0 1 12rem; }
 .cp-step > p { flex: 1 1 14rem; margin: 0; }
 .cp-adds { padding-inline-start: 1.2rem; overflow-wrap: anywhere; }
+
+/* (sprint 138, AP-5) an application's Utilities: filters, the dashboard figures, object dependencies, icons, UI defaults */
+.util-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 0.75rem; margin-bottom: 0.75rem; }
+.util-filters .field { margin: 0; min-width: 0; flex: 1 1 9rem; }
+.util-filters .buttons { margin: 0; }
+.util-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: 0.75rem; margin: 0; }
+.util-stats div { border: 1px solid var(--border); border-radius: var(--radius-sm, 6px); padding: 0.5rem 0.75rem; }
+.util-stats dt { color: var(--muted); font-size: 0.8rem; }
+.util-stats dd { margin: 0; font-size: 1.4rem; font-weight: 650; }
+.util-sum code, .util-history td, .dep-table td { overflow-wrap: anywhere; }
+.util-sum code { word-break: break-all; }
+.tag-success { background: var(--success-soft); color: var(--success); }
+.dep-problem td:first-child, .dep-missing { color: var(--danger); }
+.dep-list { margin: 0.25rem 0 0; padding-left: 1rem; }
+.dep-list a { display: inline-flex; gap: 0.3rem; align-items: center; }
+.util-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); gap: 0.5rem; margin: 0 0 1rem; padding: 0; list-style: none; }
+.util-icons .icon-tile { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; padding: 0.6rem 0.25rem; border: 1px solid var(--border); border-radius: var(--radius-sm, 6px); text-align: center; }
+.util-icons code { font-size: 0.75rem; overflow-wrap: anywhere; }
+.ui-defaults :is(input, select, textarea) { width: 100%; min-width: 7rem; }
+.util-upgrade + .util-upgrade { margin-top: 1rem; }
