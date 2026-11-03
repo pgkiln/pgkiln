@@ -61,7 +61,8 @@ const axe = async (page: Page) => {
 
 describe('login page (browser)', () => {
   test('the application\'s own login page: regions around the sign-in form, sign-in works, no CSP or axe problems', async () => {
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    // UTC like the database: a browser in another zone makes the page load itself again once (automatic time zone), which races axe
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, timezoneId: 'UTC' });
     const page = await context.newPage();
     await open(page, '/a/hr/2');
     assert.match(page.url(), /\/a\/hr\/9997\?next=%2Fa%2Fhr%2F2$/);
@@ -82,7 +83,7 @@ describe('login page (browser)', () => {
   });
 
   test('forgot password: the request page and its answer have no CSP or axe problems', async () => {
-    const context = await browser.newContext();
+    const context = await browser.newContext({ timezoneId: 'UTC' });
     const page = await context.newPage();
     await open(page, '/a/hr/password/forgot');
     assert.deepEqual(await axe(page), []);
