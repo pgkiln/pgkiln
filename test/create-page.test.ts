@@ -322,7 +322,7 @@ describe('Add feature (tab Feature)', () => {
     const v = new Browser(app);
     await v.login('king');
     const page = (await v.get('/a/hr/9020')).body;
-    assert.match(page, /<input type="checkbox" id="P9020_OPTIONS" name="P9020_OPTIONS" value="LEAVE_FORECAST" role="switch">/);
+    assert.match(page, /<label class="check switch"><input type="checkbox" id="P9020_OPTIONS" name="P9020_OPTIONS" value="LEAVE_FORECAST" role="switch"(?! checked)/);
     const r = await v.post('/a/hr/9020', { ...formFields(page), P9020_OPTIONS: 'LEAVE_FORECAST', __request: 'SAVE' });
     assert.ok([200, 303].includes(r.statusCode), r.body.slice(0, 300));
     assert.equal((await owner.one(`select status from meta.build_option where app_id = $1 and name = 'LEAVE_FORECAST'`, [hrId])).status, 'include');

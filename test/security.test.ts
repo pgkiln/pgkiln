@@ -12380,10 +12380,15 @@ describe('sprint 137 AP-3', () => {
 
   test('configuration options: only as the application\'s role, for its administrators, only configurable options', async () => {
     await owner.query(`insert into meta.build_option (app_id, name, status, configurable) values ($1, 'SEC137_ON', 'exclude', true), ($1, 'SEC137_FIXED', 'include', false)`, [appId]);
-    const settings = (user: string) => ({ 'pgkiln.app_id': String(appId), 'pgkiln.app_user': user });
+    // has_role reads the session's roles: a session of king (admin) and of allen (none)
+    const session = async (user: string, roles: string[]) =>
+      (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values (encode(gen_random_bytes(16), 'hex'), $1, $2, $3) returning id`, [appId, user, roles])).id as string;
+    const sessions = { king: await session('king', ['admin', 'manager']), allen: await session('allen', []) };
+    const settings = (user: 'king' | 'allen') => ({ 'pgkiln.app_id': String(appId), 'pgkiln.app_user': user, 'pgkiln.session_id': sessions[user] });
     await asApp(settings('king'), async (q) => {
       assert.deepEqual((await q(`select name, enabled from meta.configurable_options() where name like 'SEC137%'`)), [{ name: 'SEC137_ON', enabled: false }]);
       assert.equal((await q(`select meta.set_configurable_options('SEC137_ON') as n`))[0].n, 1);
+      await q('reset role');
       assert.equal((await q(`select meta.build_option_on($1, 'SEC137_ON') as x`, [appId]))[0].x, true);
     });
     await asApp(settings('king'), async (q) => {
@@ -12391,11 +12396,13 @@ describe('sprint 137 AP-3', () => {
     });
     await asApp(settings('allen'), async (q) => {
       await assert.rejects(q(`select meta.set_configurable_options('SEC137_ON')`), /for the application's administrators/);
+    });
+    await asApp(settings('allen'), async (q) => {
       await assert.rejects(q(`select * from meta.configurable_options()`), /for the application's administrators/);
     });
     // another application's role (or the runtime's own) can't claim HR
     await owner.tx(async (c) => {
-      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true), set_config('pgkiln.session_id', $2, true)`, [String(appId), sessions.king]);
       await c.query('set local role pgkiln_runtime');
       await assert.rejects(c.query(`select meta.set_configurable_options('SEC137_ON')`), /outside the application's own database role/);
     }).catch((e) => {
@@ -12405,6 +12412,11 @@ describe('sprint 137 AP-3', () => {
     // an export made before 137 has no "configurable": the trigger fills false
     await owner.query(`insert into meta.build_option select (jsonb_populate_record(null::meta.build_option, '{"app_id": ${appId}, "name": "SEC137_OLD", "status": "include"}'::jsonb || jsonb_build_object('id', nextval('meta.build_option_id_seq')))).*`);
     assert.equal((await owner.one(`select configurable from meta.build_option where app_id = $1 and name = 'SEC137_OLD'`, [appId])).configurable, false);
+    // the application user's name alone (no session with the role) is not enough
+    await asApp({ 'pgkiln.app_id': String(appId), 'pgkiln.app_user': 'king' }, async (q) => {
+      await assert.rejects(q(`select meta.set_configurable_options('SEC137_ON')`), /for the application's administrators/);
+    });
+    await owner.query('delete from meta.session where id = any($1)', [Object.values(sessions)]);
   });
 
   test('the activity report by mail: only the application\'s automations and administrators', async () => {
@@ -12420,7 +12432,9 @@ describe('sprint 137 AP-3', () => {
     try {
       await asApp({ 'pgkiln.app_id': String(appId), 'pgkiln.automation_id': String(own) }, async (q) => {
         // past the check: the mail itself needs the application's mail service, or is sent
+        await q('savepoint s137');
         await q(`select meta.send_activity_report('x@example.com', 7)`).catch((e) => assert.match(String(e), /meta\.send_mail/));
+        await q('rollback to savepoint s137');
         assert.equal((await q(`select meta.send_activity_report('', 7) as x`))[0].x, null, 'no addresses: nothing is sent');
       });
     } finally {

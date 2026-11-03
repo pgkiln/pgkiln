@@ -833,6 +833,10 @@ begin
   returning id into v_page_id;
   -- an authorization or build option that is not a shared component (e.g. a built-in) stays as it was
   update meta.page p set authz = coalesce(p.authz, v_src.authz), build_option = coalesce(p.build_option, v_src.build_option) where p.id = v_page_id;
+  -- a page group the target application doesn't have is left out
+  update meta.page p set page_group = null
+   where p.id = v_page_id and p.page_group is not null and p_from <> p_to
+     and not exists (select 1 from meta.page_group g where g.app_id = p_to and g.name = p.page_group);
 
   v_old := 'P' || p_page || '_';
   v_new := 'P' || p_new || '_';
