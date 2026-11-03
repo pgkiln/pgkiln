@@ -424,6 +424,7 @@ export const ru: Record<MessageKey, string> = {
   'lov.loading': "Загрузка…",
   'da.wait': "Подождите…",
   'lov.no_rows': "Ничего не найдено.",
+  'search.did_you_mean': "Возможно, вы имели в виду:",
   'error.lov_value': "{label}: выберите значение из списка.",
   'item.yes': "Да",
   'item.no': "Нет",

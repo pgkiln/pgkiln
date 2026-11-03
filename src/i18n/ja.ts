@@ -424,6 +424,7 @@ export const ja: Record<MessageKey, string> = {
   'lov.loading': "さらに読み込み中…",
   'da.wait': "お待ちください…",
   'lov.no_rows': "見つかりません。",
+  'search.did_you_mean': "もしかして:",
   'error.lov_value': "{label}: 一覧から値を選んでください。",
   'item.yes': "はい",
   'item.no': "いいえ",

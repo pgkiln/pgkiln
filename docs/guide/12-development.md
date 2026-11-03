@@ -266,6 +266,10 @@ src/
     pdf.ts                 report PDFs with report layouts (pdfkit); rows from a cursor in batches (tablePdf takes batches)
     search.ts              search region and search configurations (migration 080): words as ILIKE parameters, table/sql/list
                            sources as the app role in savepoints, marked results, configColumns/searchConfigProblems for the Advisor
+                           (sprint 135, migration 135) search type fulltext: tsvectorSql (column, expression or built from the
+                           searchable columns), websearch_to_tsquery / ts_rank_cd / ts_headline between private-use markers
+                           (headlined() escapes, only the markers become <mark>), textSearchConfig() (pg_ts_config names only,
+                           passed as $1::regconfig; tsConfigFor(language)), trigramSchema() and "did you mean" with pg_trgm
     url-region.ts          URL region (migration 078): literal origins only (urlTarget), &ITEM. URL-encoded, sandbox and height,
                            frameOrigins() for the CSP's frame-src (security.ts)
     ajax.ts                Ajax callbacks (migration 085: POST …/ajax/:name, point "ajax" processes, x01 … x10 binds) and the
@@ -353,6 +357,9 @@ src/
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
     table-editor.ts        (sprint 95) Table Properties: GET/POST /sql/objects/table (create, edit ?o=, ?template=), fromForm(), Preview / Apply
                            (one transaction) / Open in the worksheet
+    fulltext.ts            (sprint 135, AP-2) Table Properties › Add full-text search: GET/POST /sql/objects/fulltext?o= (text columns
+                           with weights A–D, a configuration from pg_ts_config, fulltextDdl(): a generated tsvector column and a GIN
+                           index), Preview / Apply (one transaction, recorded in the Change Log) / Open in the worksheet
     data-security.ts       (sprint 119) a table's Security: GET/POST /sql/objects/security?o= (policies, roles × columns, masks), Preview / Apply
     object-actions.ts      (sprint 94) an object's ⋯ menu (objectMenu) in the worksheet and the Object Browser: Quick DDL (objectDdl), Drop with
                            dependents, Add index / trigger / policy as drafts; GET /sql/objects/action, /sql/objects/panel (Open in a panel)
@@ -495,6 +502,9 @@ test/
   changelog.test.ts        (sprint 106) DDL recognition and names, recording from Table Properties, the worksheet and Compare,
                            downloads (Flyway, Liquibase, SQL), stable numbers, the latest application export
   table-editor.test.ts     (sprint 95) the Table Properties page: preview, apply, a failing apply rolls back, template, worksheet
+  fulltext-search.test.ts  (sprint 135) full-text search configurations: stemming, rank order, highlights, websearch syntax, the
+                           configuration fallback, did you mean (pg_trgm when it can be installed), the report search on a tsvector
+                           column, the Advisor's GIN check, Add full-text search (preview, apply, change log), export/import
   object-actions.test.ts   (sprint 94) object menus: Quick DDL, Drop with dependents, Add index / trigger / policy, the panel, not-found
   data-modeler.test.ts     (sprint 98) Data Modeler: "hr core" with its FK lines, saved positions, SVG, objects, DDL, dictionary, geometry
   worksheet.test.ts        (sprint 91) the SQL Worksheet: statement at the cursor, Run Script log, plans, notices, history, navigator, Run as

@@ -1853,6 +1853,13 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     transaction (nothing changes when one fails, and the error shows under *Output*); **Open in the worksheet** puts
     them there instead. *Use as template* starts a new table with the same columns and keys (names with `_copy`).
     Defaults, checks and index expressions are single expressions (no `;` or comments).
+    (sprint 135) **Add full-text search…** (a table's Table Properties, or its ⋯ menu): pick the text columns, a
+    weight for each (A counts most in the ranking, D least: A for a title, B for a body), the **text search
+    configuration** (the languages PostgreSQL has, `english`, `dutch`, `german`…, or `simple` without stemming) and the
+    names of the column and the index. **Preview DDL** shows a stored generated `tsvector` column and a GIN index on it;
+    **Apply** runs both in one transaction and records them in the **Change Log**; **Open in the worksheet** puts them
+    there. The column keeps itself up to date; adding it rewrites the table. Name the column in a search
+    configuration of search type *fulltext*, or in a report's `fulltext` attribute.
   - (sprint 119) **Security** (the Object Browser's *Security* button on a table, *Security…* in its ⋯ menu): the
     table's row level security policies, a matrix of database roles × columns with *read* and *update*, and masked
     columns per application role in a masking view; Preview SQL, Apply (one transaction, recorded in the Change Log)

@@ -19,6 +19,7 @@ import { sqlUtilityRoutes } from './sql-utilities.ts';
 import { createTemplate, objectBrowserRoutes } from './object-browser.ts';
 import { objectActionRoutes } from './object-actions.ts';
 import { tableEditorRoutes } from './table-editor.ts';
+import { fulltextRoutes } from './fulltext.ts';
 import { dataSecurityRoutes } from './data-security.ts';
 import { dataModelerRoutes } from './data-modeler.ts';
 import { autoRestBuilderRoutes } from './autorest.ts';
@@ -134,6 +135,8 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(objectActionRoutes);
   // (sprint 95) Table Properties: create, edit or copy a table in a form
   await app.register(tableEditorRoutes);
+  // (sprint 135, AP-2) Table Properties › Add full-text search
+  await app.register(fulltextRoutes);
   await app.register(dataSecurityRoutes);
   // (sprint 98) the Data Modeler: relational diagrams, their DDL and data dictionary
   await app.register(dataModelerRoutes);

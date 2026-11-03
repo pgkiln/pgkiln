@@ -11897,3 +11897,136 @@ describe('sprint 134 SEC-5', () => {
     }
   });
 });
+
+describe('sprint 135 AP-2', () => {
+  // Full-text search configurations: the search text only ever as a parameter of websearch_to_tsquery; the text
+  // search configuration a name checked against pg_ts_config (and still a parameter at run time, a quoted literal
+  // in Table Properties' DDL); the queries as the application's role (row level security applies, to the
+  // suggestions too); ts_headline's output escaped, only its own markers become <mark>.
+  const S = 'sec135';
+  let pageId: number;
+  let region: number;
+  let report: number;
+  const results = (body: string) => /<div class="search-results" id="R\d+_results" aria-live="polite">([\s\S]*?)<\/div>\s*(?:<\/div>|<\/section>)/.exec(body)?.[1] ?? '';
+  before(async () => {
+    pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    await owner.query(`drop schema if exists ${S} cascade; create schema ${S}; grant usage on schema ${S} to hr_app;
+      create table ${S}.doc (id int primary key, owner_name text not null, title text not null, body text,
+        tsv tsvector generated always as (to_tsvector('english', title || ' ' || coalesce(body, ''))) stored);
+      create index doc_tsv_idx on ${S}.doc using gin (tsv);
+      alter table ${S}.doc enable row level security;
+      create policy doc_own on ${S}.doc for select using (lower(owner_name) = lower(meta.app_user()));
+      grant select on ${S}.doc to hr_app;
+      insert into ${S}.doc values
+        (1, 'king', 'King running notes', 'Running shoes for the king'),
+        (2, 'allen', 'Allen running notes', 'Running shoes and a zeppelin for allen'),
+        (3, 'king', '<img src=x onerror=alert(1)> running', E'<script>alert(1)</script> shoes \\uE000evil\\uE001 </mark><mark>');`);
+    await owner.query(`delete from meta.search_config where app_id = $1 and name like 'SEC135%'`, [appId]);
+    await owner.query(`insert into meta.search_config (app_id, name, label, source_type, source, search_type, fts_vector, fts_config, title_column, description_column, did_you_mean)
+      values ($1, 'SEC135_DOCS', 'Docs', 'table', '${S}.doc', 'fulltext', 'tsv', 'english', 'title', 'body', true)`, [appId]);
+    region = (await owner.one(`insert into meta.region (page_id, seq, title, type, config) values ($1, 997, 'Search', 'search', '{"configs": ["SEC135_DOCS"]}') returning id`, [pageId])).id;
+    report = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 996, 'Sec135 report', 'report', 'select id, title, tsv from ${S}.doc', '{"hidden": ["tsv"], "fulltext": "tsv"}') returning id`, [pageId])).id;
+  });
+  after(async () => {
+    await owner.query('delete from meta.region where id = any($1)', [[region, report]]);
+    await owner.query(`delete from meta.search_config where app_id = $1 and name like 'SEC135%'`, [appId]);
+    await owner.query(`drop schema if exists ${S} cascade`);
+  });
+
+  test('the search text is a parameter: SQL and tsquery syntax are only words', async () => {
+    const b = await as('king');
+    for (const q of [`'); drop table ${S}.doc; --`, `running' or '1'='1`, `!!! & | :* <-> ((`, '"unterminated', '$1 $2::regconfig', '\\', 'a'.repeat(500)]) {
+      const r = await b.get(`/a/hr/1?s${region}=${encodeURIComponent(q)}&r${report}_q=${encodeURIComponent(q)}`);
+      assert.equal(r.statusCode, 200, q);
+      assert.doesNotMatch(r.body, /alert-error/, q);
+    }
+    assert.ok(await owner.one(`select to_regclass('${S}.doc') as t`).then((x) => x.t), 'the table is still there');
+  });
+
+  test('the text search configuration: refused by the database unless a plain name, never interpolated', async () => {
+    for (const bad of [`english'; drop table ${S}.doc; --`, 'English', 'pg_catalog.english', 'a b'])
+      await assert.rejects(owner.query(`update meta.search_config set fts_config = $2 where app_id = $1 and name = 'SEC135_DOCS'`, [appId, bad]), /fts_config_check/, bad);
+    // a plain name that is no configuration: the application language's is used, nothing fails
+    await owner.query(`update meta.search_config set fts_config = 'no_such_config' where app_id = $1 and name = 'SEC135_DOCS'`, [appId]);
+    try {
+      const b = await as('king');
+      assert.match(results((await b.get(`/a/hr/1?s${region}=runs`)).body), /King <mark>running<\/mark> notes/);
+    } finally {
+      await owner.query(`update meta.search_config set fts_config = 'english' where app_id = $1 and name = 'SEC135_DOCS'`, [appId]);
+    }
+    // a report's fulltext_config is checked the same way
+    await owner.query(`update meta.region set config = config || $2::jsonb where id = $1`, [report, JSON.stringify({ fulltext_config: `english'::regconfig, 'x') or true or tsv @@ to_tsquery('` })]);
+    try {
+      const b = await as('king');
+      const r = await b.get(`/a/hr/1?r${report}_q=zzzz`);
+      assert.doesNotMatch(r.body, /alert-error/);
+      assert.doesNotMatch(r.body, /King running notes/, 'no row matches zzzz');
+    } finally {
+      await owner.query(`update meta.region set config = config - 'fulltext_config' where id = $1`, [report]);
+    }
+  });
+
+  test('Table Properties › Add full-text search: names and the configuration from the catalog only', async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    await owner.query(`create table ${S}.page (id int primary key, title text)`);
+    const base = { o: `${S}.page`, 'c.0.name': 'title', 'c.0.use': 'on', 'c.0.w': 'A', config: 'english', column: 'search_vector', index: 'page_sv_idx', mode: 'apply' };
+    await b.get(`/builder/sql/objects/fulltext?o=${S}.page`);
+    for (const [k, v, msg] of [
+      ['config', `english'::regconfig, title)) stored; drop table ${S}.doc; --`, /is not a text search configuration/],
+      ['column', 'x tsvector; drop table x', /is not a valid name/],
+      ['index', 'i on x; drop table x', /is not a valid name/],
+    ] as const) {
+      const r = await b.submit('/builder/sql/objects/fulltext', { ...base, [k]: v });
+      assert.equal(r.statusCode, 200, k);
+      assert.match(r.body, msg, k);
+    }
+    // a weight outside A–D and a column the table doesn't have don't reach the DDL
+    const w = (await b.submit('/builder/sql/objects/fulltext', { ...base, mode: 'preview', 'c.0.w': `A'); drop table x; --`, 'c.1.name': 'id); drop table x; --', 'c.1.use': 'on' })).body;
+    assert.match(w, /setweight\(to_tsvector\(&#39;english&#39;::regconfig, coalesce\(title::text, &#39;&#39;\)\), &#39;B&#39;\)\) stored;/);
+    assert.doesNotMatch(w, /drop table/);
+    assert.equal((await owner.one(`select count(*)::int as n from pg_attribute where attrelid = '${S}.page'::regclass and attname in ('search_vector', 'x')`)).n, 0);
+    assert.ok(await owner.one(`select to_regclass('${S}.doc') as t`).then((x) => x.t));
+    // only a usable table: not pgkiln's own, not a made-up one; developers only; CSRF
+    assert.equal((await b.get('/builder/sql/objects/fulltext?o=meta.app')).statusCode, 404);
+    assert.equal((await b.get(`/builder/sql/objects/fulltext?o=${S}.nope`)).statusCode, 404);
+    assert.notEqual((await new Browser().get(`/builder/sql/objects/fulltext?o=${S}.page`)).statusCode, 200);
+    assert.equal((await b.post('/builder/sql/objects/fulltext', { ...base })).statusCode, 403);
+    assert.equal((await owner.one(`select count(*)::int as n from pg_attribute where attrelid = '${S}.page'::regclass and attname = 'search_vector'`)).n, 0);
+  });
+
+  test('row level security applies to results, report searches and suggestions', async () => {
+    const king = await as('king');
+    const allen = await as('allen');
+    const k = results((await king.get(`/a/hr/1?s${region}=running`)).body);
+    assert.match(k, /King <mark>running<\/mark> notes/);
+    assert.doesNotMatch(k, /Allen/);
+    const a = results((await allen.get(`/a/hr/1?s${region}=running`)).body);
+    assert.match(a, /Allen <mark>running<\/mark> notes/);
+    assert.doesNotMatch(a, /King/);
+    assert.doesNotMatch((await king.get(`/a/hr/1?r${report}_q=zeppelin`)).body, /Allen running notes/);
+    // "did you mean" reads the words as the user: allen's zeppelin is never suggested to king
+    const installed = !!(await owner.one(`select 1 as x from pg_extension where extname = 'pg_trgm'`));
+    const created = !installed && (await owner.query(`create extension pg_trgm schema ${S}`).then(() => true, () => false));
+    if (created) await owner.query(`grant usage on schema ${S} to public`);
+    try {
+      if (installed || created) {
+        assert.match(results((await allen.get(`/a/hr/1?s${region}=zepelin`)).body), /Did you mean: <a [^>]*>zeppelin<\/a>/);
+        assert.doesNotMatch(results((await king.get(`/a/hr/1?s${region}=zepelin`)).body), /zeppelin/);
+      }
+    } finally {
+      if (created) await owner.query('drop extension if exists pg_trgm');
+    }
+  });
+
+  test('ts_headline output is escaped; only its markers become <mark>, not the data\'s', async () => {
+    const b = await as('king');
+    const r = results((await b.get(`/a/hr/1?s${region}=${encodeURIComponent('running shoes')}`)).body);
+    assert.match(r, /&lt;img src=x onerror=alert\(1\)&gt; <mark>running<\/mark>/);
+    // (a fragment leaves the data's tags out; HighlightAll keeps them, as text)
+    assert.match(r, /<span class="search-description">[^<]*alert\(1\)[^<]*<mark>shoes<\/mark> evil[^<]*<\/span>/);
+    assert.doesNotMatch(r, /<script|<img|<mark>evil/);
+    assert.doesNotMatch(r, /[]/);
+  });
+});

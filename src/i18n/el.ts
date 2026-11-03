@@ -424,6 +424,7 @@ export const el: Record<MessageKey, string> = {
   'lov.loading': "Φόρτωση περισσότερων…",
   'da.wait': "Παρακαλώ περιμένετε…",
   'lov.no_rows': "Δεν βρέθηκε τίποτα.",
+  'search.did_you_mean': "Μήπως εννοούσατε:",
   'error.lov_value': "{label}: επιλέξτε τιμή από τη λίστα.",
   'item.yes': "Ναι",
   'item.no': "Όχι",
