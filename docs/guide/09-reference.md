@@ -296,13 +296,16 @@ Run these as the owner (in the SQL Workshop, `psql` or migrations):
 |---|---|
 | `meta.generate_crud(app, table, report_page, form_page, label default null, icon default 'table')` | Report page + modal form page + menu entry for a table, with the column names as labels (kept as it was for existing scripts; `meta.generate_page` *report_form* makes the labelled pages of the wizards) |
 | `meta.generate_grid(app, table, page, label default null, icon default 'grid')` | Interactive grid page + menu entry |
-| `meta.generate_page(app, kind, table, page, options default '{}')` | The create page wizards: `kind` is `form`, `cards`, `calendar`, `chart`, `map`, `facets`, `master_detail` (or `report_form`, `grid`). Options left out take the defaults of `meta.wizard_defaults`; JSON `null` means none. Returns the new page's id (below) |
+| `meta.generate_page(app, kind, table, page, options default '{}')` | The create page wizards: `kind` is `form`, `cards`, `calendar`, `chart`, `map`, `facets`, `master_detail` (or `report_form`, `grid`); (137) also `report`, `smart_filters`, `tree`, `timeline`, `media_list`, `content_row`, `comments`, `data_load`, `wizard`, and without a table (`null`) `search`, `tasks`, `workflows`. Options left out take the defaults of `meta.wizard_defaults`; JSON `null` means none. Returns the new page's id (below; a wizard: its first page's) |
 | `meta.wizard_defaults(kind, table)` | The options a wizard proposes for a table, from the catalog |
 | `meta.wizard_catalog(table)` | The columns as the wizards see them: kind (`text`, `number`, `date`, `timestamp`, `boolean`, `point`, `geometry`, `binary`, `other`), key, unique, foreign key and the parent's display column |
 | `meta.wizard_label(name)`, `meta.wizard_table_label(table, plural default true)`, `meta.wizard_column_label(table, column)` | (097) The labels of the wizards: `hiredate` → *Hire Date*, `hr.emp` → *Employees* / *Employee*, `deptno` → *Department*; short comments win ([what the generated pages look like](03-builder.md#what-the-generated-pages-look-like)) |
 | `meta.wizard_report(table, columns default null)` | (097) A report on a table as the wizards make it: `{"source", "hidden", "headings", "formats"}` (foreign keys joined to their parent's display column) |
 | `meta.wizard_grid_labels(table)` | (100) An interactive grid's `{"headings", "formats"}` as the wizards make them: the labels of `meta.wizard_column_label` and the number format masks (keys get none) |
 | `meta.app_activity(days default 30)` | (098) The current application's page views, sign-ins and errors of the last days (1 to 366, at most 10,000 rows, no IP addresses), for a signed-in user with the `admin` role of that application; others get an error. The Activity page of the Create Application wizard reads it |
+| `meta.configurable_options()`, `meta.set_configurable_options(names)` | (137) The current application's [configurable build options](06-processing.md#build-options) (name, description, enabled), and switching them (`names` colon-separated: those are included, the other configurable ones excluded). Only as the application's own role, for a user with the `admin` role; other options are refused |
+| `meta.send_activity_report(to, days default 7)` | (137) Queue a mail with a summary of the current application's activity of the last days and the rows as `activity.csv`. For the application's automations and its signed-in administrators; empty `to`: nothing is sent. The *E-mail reporting* feature's automation calls it |
+| `meta.copy_page(from_app, page, to_app, new_page, name default null, map default '{}')` | (137) [Create page as copy](03-builder.md#create-page-as-copy) (owner only); `map` is `{"lov:JOBS": "JOB_TITLES"}`: a shared component to use instead of copying it. `meta.page_shared_refs(page_id, target_app)` lists what a page refers to by name |
 | `meta.wizard_files(table)` | (097) The `bytea` columns and the columns holding their file name, mime type, size and change time |
 | `meta.export_app(alias)` | The application as JSON (`pgkiln/2` format) |
 | `meta.import_app(json, alias default null)` | Import an export, optionally under a new alias; returns the new app id |
@@ -327,6 +330,17 @@ Options of `meta.generate_page` (all optional; column names must be columns of t
 | `facets` | `columns` (report columns, array), `facets` (array), `search` (boolean), `form_page` |
 | `master_detail` | `detail` (a table), `detail_column` (its column referring to this table) |
 | `report_form` | `form_page` (required) |
+| `report` | `form_page` (137: an interactive report alone) |
+| `smart_filters` | `facets` (array), `form_page` |
+| `tree` | `id_column`, `parent_column` (proposed: a foreign key to the table itself), `label_column`, `expanded` (levels open), `form_page` |
+| `timeline` | `title`, `when`, `who`, `body`, `form_page` |
+| `media_list`, `content_row` | `title`, `description`, `badge` (also its colour), `misc` (content row), `form_page` |
+| `comments` | `user`, `date`, `comment` |
+| `data_load` | `definition` (a data load definition's name: made for the table unless it exists), `mode` (`append`, `merge`, `replace`), `skip_errors` |
+| `wizard` | `columns` (array; NOT NULL columns without a default always), `steps` (1–10), `return_page` |
+| `search` | `configs` (search configurations by name); with a table: a new configuration on it, and `form_page` |
+| `tasks` | `context` (`my`, `initiated`, `admin`), `completed` (boolean) |
+| `workflows` | `context` (`initiator`, `admin`) |
 
 ```sql
 select meta.generate_page('shop', 'calendar', 'shop.meeting', 12, '{"form_page": 13, "drag": true}');

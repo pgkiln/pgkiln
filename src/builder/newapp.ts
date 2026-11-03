@@ -71,34 +71,52 @@ export const featuresFrom = (b: Record<string, unknown>, posted: boolean): Featu
 /** (sprint 73) The Activity page of a generated application. */
 export const ACTIVITY_PAGE = 9010;
 
-async function applyFeatures(c: Client, appId: number, f: Partial<Features>, notes: string[]) {
-  if (f.access) {
-    await c.query(
-      `insert into meta.authz_scheme (app_id, name, type, value, error_message) values
-         ($1, 'CONTRIBUTOR', 'sql', 'meta.has_role(''admin'') or meta.has_role(''contributor'')', 'Only contributors can do this.'),
-         ($1, 'READER', 'sql', 'meta.has_role(''admin'') or meta.has_role(''contributor'') or meta.has_role(''reader'')', 'Only readers can open this page.')
-       on conflict do nothing`,
-      [appId],
-    );
-  }
-  if (f.activity && !(await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, ACTIVITY_PAGE])).rowCount) {
-    const home = (await c.query('select home_page from meta.app where id = $1', [appId])).rows[0].home_page;
-    const page = (await c.query(`insert into meta.page (app_id, page_no, name, title, parent_page, authz) values ($1, $2, 'Activity', 'Activity', $3, 'ADMIN') returning id`, [appId, ACTIVITY_PAGE, home])).rows[0].id;
-    await c.query(
-      `insert into meta.region (page_id, seq, title, type, source, config) values
-         ($1, 10, 'Page views per day', 'chart', $2, '{"kind": "column"}'),
-         ($1, 20, 'Latest activity', 'report', $3, '{"headings": {"at": "Time", "username": "User", "event": "Event", "page_no": "Page", "elapsed_ms": "Time taken (ms)"}}')`,
-      [page,
-       `select to_char(date_trunc('day', at), 'YYYY-MM-DD') as "Day", count(*) as "Page views"
+/** (sprint 73; exported in 137 for Add feature) The authorization schemes CONTRIBUTOR and READER (and ADMIN when missing). */
+export async function addAccessSchemes(c: Client, appId: number) {
+  await ensureAdminScheme(c, appId);
+  await c.query(
+    `insert into meta.authz_scheme (app_id, name, type, value, error_message) values
+       ($1, 'CONTRIBUTOR', 'sql', 'meta.has_role(''admin'') or meta.has_role(''contributor'')', 'Only contributors can do this.'),
+       ($1, 'READER', 'sql', 'meta.has_role(''admin'') or meta.has_role(''contributor'') or meta.has_role(''reader'')', 'Only readers can open this page.')
+     on conflict do nothing`,
+    [appId],
+  );
+}
+
+/** (137) The authorization scheme ADMIN (role admin) that administrators' pages use, unless the application has one. */
+export async function ensureAdminScheme(c: Client, appId: number) {
+  await c.query(
+    `insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'ADMIN', 'role', 'admin', 'Only administrators can access this page.')
+     on conflict do nothing`,
+    [appId],
+  );
+}
+
+/** (sprint 73; exported in 137 for Add feature) The Activity page for administrators and its navigation entry; nothing when the page number is taken. */
+export async function addActivityPage(c: Client, appId: number) {
+  if ((await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, ACTIVITY_PAGE])).rowCount) return;
+  await ensureAdminScheme(c, appId);
+  const home = (await c.query('select home_page from meta.app where id = $1', [appId])).rows[0].home_page;
+  const page = (await c.query(`insert into meta.page (app_id, page_no, name, title, parent_page, authz) values ($1, $2, 'Activity', 'Activity', $3, 'ADMIN') returning id`, [appId, ACTIVITY_PAGE, home])).rows[0].id;
+  await c.query(
+    `insert into meta.region (page_id, seq, title, type, source, config) values
+       ($1, 10, 'Page views per day', 'chart', $2, '{"kind": "column"}'),
+       ($1, 20, 'Latest activity', 'report', $3, '{"headings": {"at": "Time", "username": "User", "event": "Event", "page_no": "Page", "elapsed_ms": "Time taken (ms)"}}')`,
+    [page,
+     `select to_char(date_trunc('day', at), 'YYYY-MM-DD') as "Day", count(*) as "Page views"
   from meta.app_activity(30)
  where event = 'page_view'
  group by 1
  order by 1`,
-       `select at, username, event, page_no, elapsed_ms
+     `select at, username, event, page_no, elapsed_ms
   from meta.app_activity(30)`],
-    );
-    await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page, authz) values ($1, 9010, 'Activity', 'activity', $2, 'ADMIN')`, [appId, ACTIVITY_PAGE]);
-  }
+  );
+  await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page, authz) values ($1, 9010, 'Activity', 'activity', $2, 'ADMIN')`, [appId, ACTIVITY_PAGE]);
+}
+
+async function applyFeatures(c: Client, appId: number, f: Partial<Features>, notes: string[]) {
+  if (f.access) await addAccessSchemes(c, appId);
+  if (f.activity) await addActivityPage(c, appId);
   if (f.feedback) await c.query('update meta.app set feedback = true where id = $1', [appId]);
   if (f.theme === false) await c.query(`update meta.app set theme = theme || '{"user_choice": false}' where id = $1`, [appId]);
   if (f.pwa || f.push) await c.query('update meta.app set pwa = true where id = $1', [appId]);

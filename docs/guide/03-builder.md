@@ -855,8 +855,8 @@ they are **not** run until you choose to.
 
 (sprint 74) Above the pages: a **search** by page name or number (the rows filter while you type),
 **Report** and **Icons** views, and **Create page** (the page wizards below). **Tasks** on the right: run the
-application, create pages (also with AI), Shared Components, page groups, export, backups, supporting
-objects, lock or delete the application.
+application, create pages (also with AI), (sprint 137) **Add feature page** and **Create page as copy**, Shared
+Components, page groups, export, backups, supporting objects, lock or delete the application.
 
 The **default-password** warning shows on the App Builder home (and Developers) only; dismiss it with × until the
 next sign-in. The avatar keeps a red dot until the password is changed.
@@ -867,9 +867,19 @@ authorization and protection. The tabs under its name lead to **Shared Component
 
 ### Create pages from a table (wizards)
 
-The wizards are two plain forms (they work without JavaScript). On the app's Pages tab, choose a
+(sprint 137; APEX: Create a Page) **Create page** opens a page with three tabs:
+
+- **Component**: the page types as a grid of tiles, each with a small picture of the page (Blank page,
+  Calendar, Cards, Chart, Comments, Content row, Dashboard, Data loading, Faceted search, Form, Interactive grid,
+  Interactive report, Map, Master detail, Media list, Report and form, Search page, Smart filters, Timeline, Tree,
+  Unified task list, Wizard, Workflow console) and **Create pages with AI**. A type that works on a table asks
+  for the table first; the others go to their options at once.
+- **Feature**: [features](#add-feature) to add to the application.
+- **Copy**: [a page of this or another application](#create-page-as-copy) under a new number.
+
+The wizards are plain forms (they work without JavaScript). Choose a
 **page type** and a **table or view** (tables the app's database role can't read are marked) and
-press **Next**. The second step proposes everything from the database catalog: the columns, the
+press **Next** (the App home's *Create pages from a table* form still does the same in one step). The second step proposes everything from the database catalog: the columns, the
 primary key, date and number columns, positions and foreign keys. Change what you like, choose the
 page number, name and menu icon, and press **Create page**: the builder opens the new page in the
 page designer. An error (a page number in use, a column that doesn't fit) shows on the second
@@ -886,6 +896,15 @@ step, which keeps the table and type.
 | **Map** | A [map](04-pages-and-regions.md#map) region with popups and, if ticked, an interactive report of the same rows that the map filters (*Show this area in the list*) | Position: a PostGIS geometry or geography (markers, and lines and areas as shapes), a `point`, `lat`/`lng`-like number columns, or a *location* text column with `latitude,longitude` |
 | **Faceted search** | An interactive report (9 columns wide) and a [facets](04-pages-and-regions.md#facets-faceted-search) panel (3 columns, collapsible) with a search field | Up to six facets: foreign keys (values of the parent's name, which the report shows instead of the key), booleans, text columns with few values, dates and numbers as ranges with *from*/*to* |
 | **Master detail** | One page with a grid of the table and an editable grid of the selected row's details below it (the grids' [master-detail](04-pages-and-regions.md#grid-interactive-grid)): a hidden item for the selection, both grids with a grid DML process; new detail rows get the master's key | The detail table: a table with a foreign key to this table's primary key |
+| **Interactive report** | (137) An [interactive report](04-pages-and-regions.md#report-interactive-report) of the table on a page of its own (parents' names next to foreign keys, labels and number formats), optionally with a modal form page | |
+| **Smart filters** | (137) An interactive report with a [smart filters](04-pages-and-regions.md#smart_filters) search field above it | The faceted search's facets |
+| **Tree** | (137) A [tree](04-pages-and-regions.md#tree) region: one node per row | Id: the primary key; parent: a foreign key to the table itself (`mgr` → `empno`); label: the name column |
+| **Timeline**, **Media list**, **Content row**, **Comments** | (137) A region of the [built-in template component](04-pages-and-regions.md#built-in-template-components) `ut_timeline`, `ut_media_list`, `ut_content_row` or `ut_comments`, all rows in one list | Title: the name column; when / date: a date or timestamp column (newest first); text: a comment-, body- or description-like column; who: a user- or author-like column, else the first foreign key |
+| **Data loading** | (137) A [data load definition](16-files.md#data-load-definitions) for the table (unless one of that name exists) and a page with a file item, **Load** and a `data_load` process | Mode *merge* for a table with a primary key, else *append* |
+| **Wizard** | (137) One page per step (APEX: Wizard), each with a [wizard progress](04-pages-and-regions.md#list-lists) list, the step's fields, Cancel, Previous and Next; **Finish** on the last step adds the row (an `INSERT` of every step's items as the app's role). The items keep their values in the session while the user goes back and forth | Every column but the key and generated ones, shared out over two to five steps |
+| **Search page** | (137) A [search region](04-pages-and-regions.md#search-search-region) over the application's search configurations you tick, and/or a new configuration on a table (its text columns searched, its name column as the title) | |
+| **Dashboard** | (137) A chart per table you tick (at most six), chosen from the data like a [new application's dashboard](#what-the-generated-pages-look-like) | |
+| **Unified task list**, **Workflow console** | (137) A [`tasks`](06-processing.md#approvals-and-the-task-list) region (my tasks, the ones I requested, or the ones I administer) or a [`workflows`](06-processing.md#workflows) region | |
 
 Cards, Calendar, Map and Faceted search take an optional **Form page** number: it adds a modal
 form page for a row, a link from each card, event, popup or report row, and a **Create** button
@@ -907,6 +926,41 @@ yet: check the proposals, change the type, table, numbers or labels, untick what
 and **Create the ticked pages**. They are made with `meta.generate_page` and the wizards' defaults,
 in one transaction (all or none); only page types of the list and tables the application can read
 are accepted, whatever the form says.
+
+### Add feature
+
+(sprint 137; APEX: Create a Page → Feature, and App home → Tasks → Add Feature Page) **Create page → Feature**
+(or **Add feature page** under Tasks) lists features to add to an existing application. Each one first shows
+what it adds, and adds it only when you press its button; once installed it is greyed out and can't be added
+twice (also when two developers press at the same moment).
+
+| Feature | What it adds |
+|---|---|
+| Access control | Authorization schemes `CONTRIBUTOR` and `READER` (and `ADMIN` when missing) for the roles admin, contributor and reader |
+| Activity reporting | Page 9010 *Activity* for administrators (authorization `ADMIN`): page views per day and the latest activity, from `meta.app_activity()`, and its navigation entry |
+| Configuration options | Page 9020 *Configuration* for administrators: the [configurable build options](06-processing.md#build-options) as switches, and Save; you tick which build options are configurable |
+| E-mail reporting | The application setting `EMAIL_REPORT_TO` and the automation `EMAIL_REPORTING`: every Monday at 07:00 UTC the [activity report by mail](06-processing.md#the-activity-report-by-mail) |
+| Feedback | [Feedback](#feedback) from the header |
+| About page | Page 9000 *About* in a Help menu of the navigation bar |
+| Login page | An editable [login page](08-security.md#the-login-page) (page 9999, or the next free number); not offered without sign-in |
+| Theme style selection | Users choose light or dark (Appearance in the user menu) |
+| Push notifications | Install as an app and push notifications, with the application's key pair; needs `PGKILN_SECRET_KEY` |
+
+A page number in use by another page blocks the feature that needs it (it says so).
+
+### Create page as copy
+
+(sprint 137; APEX: Create Page as Copy) **Create page → Copy** copies a page of this application or of another
+application of the same workspace: choose the application, then the page, then the new page number and name.
+Everything on the page comes along (regions, items, buttons, dynamic actions, validations, processes,
+computations and branches); items named `P20_…` are renamed to the new number, also where the page's SQL, links
+and conditions refer to them, and links to the page itself point to the copy.
+
+The page's **shared components** (lists of values, authorization schemes, build options, lists, template
+components, search configurations, data load definitions) are listed: for each, use one of this application's
+(the one with the same name is chosen when there is one), or, from another application, **copy it** along. The
+page's SQL runs as this application's database role afterwards: grant it what the other application's role
+could read. From SQL: `meta.copy_page(from_app, page, to_app, new_page, name, map)`.
 
 ### Create a blank page
 

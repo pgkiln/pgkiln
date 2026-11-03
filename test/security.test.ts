@@ -12260,3 +12260,186 @@ describe('sprint 136 AP-1', () => {
     assert.equal((await b.post('/builder/vector-providers/extension', {})).statusCode, 403, 'CSRF');
   });
 });
+
+describe('sprint 137 AP-3', () => {
+  // Create page (the grid of page types, Add feature, Create page as copy): developers only, CSRF on every post;
+  // a page is copied only from an application of the same workspace; a dashboard only charts tables the
+  // application's role can read; features never install twice and check their input; the Configuration page's
+  // functions switch only configurable build options, only for the application's administrators and only as its
+  // own role; the activity report by mail only for the application's automations and administrators.
+  const DEV = 'sec137_dev';
+  const DEV_PW = 'Sec137-dev-password!';
+  let otherWs: number;
+  let otherApp: number;
+  const admin = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    return b;
+  };
+  /** In a transaction that is rolled back: as the application's role, with these settings. */
+  const asApp = async (settings: Record<string, string>, fn: (q: (sql: string, p?: unknown[]) => Promise<any[]>) => Promise<void>) => {
+    const ROLLBACK = new Error('rollback');
+    await owner.tx(async (c) => {
+      for (const [k, v] of Object.entries(settings)) await c.query('select set_config($1, $2, true)', [k, v]);
+      await c.query('set local role hr_app');
+      await fn(async (sql, p) => (await c.query(sql, p as unknown[])).rows);
+      throw ROLLBACK;
+    }).catch((e) => {
+      if (e !== ROLLBACK) throw e;
+    });
+  };
+
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = 'sec137-other'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec137 Other'`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec137 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec137-other', 'Sec137 other', 'none') returning id`)).id;
+    await owner.query('insert into meta.workspace_app (workspace_id, app_id) values ($1, $2)', [otherWs, otherApp]);
+    await owner.query(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Secret page', false)`, [otherApp]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = 'sec137-other'`);
+    await owner.query(`delete from meta.workspace where name = 'Sec137 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.page where app_id = $1 and page_no between 9370 and 9379`, [appId]);
+    await owner.query(`delete from meta.nav_entry where app_id = $1 and target_page between 9370 and 9379`, [appId]);
+    await owner.query(`delete from meta.build_option where app_id = $1 and name like 'SEC137%'`, [appId]);
+  });
+
+  test('copy page: only from an application of the same workspace; another workspace\'s pages are never offered or copied', async () => {
+    const b = await admin();
+    const step1 = (await b.get(`/builder/apps/${appId}/create-page?tab=copy`)).body;
+    assert.doesNotMatch(step1, /Sec137 other/);
+    const step2 = await b.get(`/builder/apps/${appId}/copy-page?from=${otherApp}`);
+    assert.equal(step2.statusCode, 303);
+    for (const from of [String(otherApp), `${otherApp} or 1=1`, '-1', ''])
+      await b.submit(`/builder/apps/${appId}/copy-page`, { from, page: '1', new_page: '9370', name: 'Stolen' });
+    assert.equal(await owner.one('select 1 as x from meta.page where app_id = $1 and page_no = 9370', [appId]), undefined);
+    // the other workspace's developer can't open or change this application, nor copy its pages into theirs
+    const d = new FileBrowser(app);
+    await d.get('/builder/login');
+    await d.submit('/builder/login', { username: DEV, password: DEV_PW });
+    await d.get('/builder/apps');
+    assert.equal((await d.get(`/builder/apps/${appId}/create-page`)).statusCode, 404);
+    assert.equal((await d.submit(`/builder/apps/${appId}/copy-page`, { from: String(appId), page: '1', new_page: '9371', name: 'x' })).statusCode, 404);
+    assert.equal((await d.submit(`/builder/apps/${appId}/features/feedback`, {})).statusCode, 404);
+    await d.get(`/builder/apps/${otherApp}/create-page?tab=copy`);
+    await d.submit(`/builder/apps/${otherApp}/copy-page`, { from: String(appId), page: '1', new_page: '5', name: 'HR home' });
+    assert.equal(await owner.one('select 1 as x from meta.page where app_id = $1 and page_no = 5', [otherApp]), undefined);
+    // map keys of unknown kinds are ignored; a mapping to a name the target lacks is refused
+    await b.get(`/builder/apps/${appId}/copy-page?from=${appId}&page=1`);
+    const r = await b.submit(`/builder/apps/${appId}/copy-page`, { from: String(appId), page: '1', new_page: '9372', name: 'Copy', 'map:pg_authid:x': 'y', 'map:lov:x\'; drop table x; --': 'z' });
+    assert.equal(r.statusCode, 303);
+    assert.ok(await owner.one('select 1 as x from meta.page where app_id = $1 and page_no = 9372', [appId]));
+    await assert.rejects(owner.query(`select meta.copy_page($1, 3, $1, 9373, null, '{"lov:JOBS": "NO_SUCH_LOV"}')`, [appId]), /has no lov NO_SUCH_LOV/);
+    // the functions are the owner's: the runtime and application roles can't call them
+    for (const role of ['pgkiln_runtime', 'hr_app'])
+      assert.equal((await owner.one(`select has_function_privilege($1, 'meta.copy_page(int, int, int, int, text, jsonb)', 'execute') as x`, [role])).x, false, role);
+    assert.equal((await b.post(`/builder/apps/${appId}/copy-page`, { from: String(appId), page: '1', new_page: '9374', name: 'x' })).statusCode, 403, 'CSRF');
+  });
+
+  test('add feature: CSRF, developers only, unknown features 404, never twice, addresses checked', async () => {
+    const b = await admin();
+    await b.get(`/builder/apps/${appId}/features/email`);
+    assert.equal((await b.post(`/builder/apps/${appId}/features/email`, { report_to: 'x@example.com' })).statusCode, 403, 'CSRF');
+    assert.equal((await b.get(`/builder/apps/${appId}/features/nope`)).statusCode, 404);
+    assert.equal((await b.submit(`/builder/apps/${appId}/features/__proto__`, {})).statusCode, 404);
+    for (const to of ['a@example.com\r\nBcc: evil@example.com', 'a@example.com; evil@example.com', '<script>@x.y'])
+      await b.submit(`/builder/apps/${appId}/features/email`, { report_to: to });
+    assert.equal(await owner.one(`select 1 as x from meta.automation where app_id = $1 and name = 'EMAIL_REPORTING'`, [appId]), undefined);
+    // feedback is on in HR already: refused, nothing changes
+    const twice = await b.submit(`/builder/apps/${appId}/features/feedback`, {});
+    assert.match((await b.get(twice.headers.location as string)).body, /installed in this application already/);
+    const anon = new FileBrowser(app);
+    assert.notEqual((await anon.get(`/builder/apps/${appId}/create-page`)).statusCode, 200);
+    assert.notEqual((await anon.post(`/builder/apps/${appId}/features/access`, {})).statusCode, 303);
+  });
+
+  test('dashboard and the other page types: only tables the application can read; identifiers checked', async () => {
+    const b = await admin();
+    await b.get(`/builder/apps/${appId}/wizard?kind=dashboard`);
+    const r = await b.submit(`/builder/apps/${appId}/wizard`, { kind: 'dashboard', report_page: '9375', tables: ['meta.app', 'pg_catalog.pg_authid', 'meta.account'] });
+    assert.match((await b.get(r.headers.location as string)).body, /Choose at least one table the application can read/);
+    assert.equal(await owner.one('select 1 as x from meta.page where app_id = $1 and page_no = 9375', [appId]), undefined);
+    const gen = (kind: string, table: string | null, o: Record<string, unknown>) =>
+      owner.query(`select meta.generate_page('hr', $1, $2::regclass, 9376, $3::jsonb)`, [kind, table, JSON.stringify(o)]);
+    await assert.rejects(gen('tree', 'meta.account', {}), /can't be generated on meta.account/);
+    await assert.rejects(gen('timeline', 'pg_catalog.pg_authid', {}), /can't be generated/);
+    await assert.rejects(gen('tree', 'hr.emp', { label_column: 'ename) from hr.emp; drop table x; --' }), /is not a column of hr.emp/);
+    await assert.rejects(gen('comments', 'hr.emp', { comment: 'job', user: '"ename"' }), /is not a column/);
+    await assert.rejects(gen('data_load', 'hr.emp', { definition: "X'; drop table x; --" }), /upper case letters/);
+    await assert.rejects(gen('search', null, { configs: ["X') or true --"] }), /no search configuration/);
+    // tasks and workflows: only the known contexts reach the region
+    await gen('tasks', null, { context: '<script>' });
+    assert.equal((await owner.one(`select r.config->>'context' as c from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 9376`, [appId])).c, 'my');
+  });
+
+  test('configuration options: only as the application\'s role, for its administrators, only configurable options', async () => {
+    await owner.query(`insert into meta.build_option (app_id, name, status, configurable) values ($1, 'SEC137_ON', 'exclude', true), ($1, 'SEC137_FIXED', 'include', false)`, [appId]);
+    // has_role reads the session's roles: a session of king (admin) and of allen (none)
+    const session = async (user: string, roles: string[]) =>
+      (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values (encode(gen_random_bytes(16), 'hex'), $1, $2, $3) returning id`, [appId, user, roles])).id as string;
+    const sessions = { king: await session('king', ['admin', 'manager']), allen: await session('allen', []) };
+    const settings = (user: 'king' | 'allen') => ({ 'pgkiln.app_id': String(appId), 'pgkiln.app_user': user, 'pgkiln.session_id': sessions[user] });
+    await asApp(settings('king'), async (q) => {
+      assert.deepEqual((await q(`select name, enabled from meta.configurable_options() where name like 'SEC137%'`)), [{ name: 'SEC137_ON', enabled: false }]);
+      assert.equal((await q(`select meta.set_configurable_options('SEC137_ON') as n`))[0].n, 1);
+      await q('reset role');
+      assert.equal((await q(`select meta.build_option_on($1, 'SEC137_ON') as x`, [appId]))[0].x, true);
+    });
+    await asApp(settings('king'), async (q) => {
+      await assert.rejects(q(`select meta.set_configurable_options('SEC137_ON:SEC137_FIXED')`), /only configurable build options/);
+    });
+    await asApp(settings('allen'), async (q) => {
+      await assert.rejects(q(`select meta.set_configurable_options('SEC137_ON')`), /for the application's administrators/);
+    });
+    await asApp(settings('allen'), async (q) => {
+      await assert.rejects(q(`select * from meta.configurable_options()`), /for the application's administrators/);
+    });
+    // another application's role (or the runtime's own) can't claim HR
+    await owner.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true), set_config('pgkiln.session_id', $2, true)`, [String(appId), sessions.king]);
+      await c.query('set local role pgkiln_runtime');
+      await assert.rejects(c.query(`select meta.set_configurable_options('SEC137_ON')`), /outside the application's own database role/);
+    }).catch((e) => {
+      if (!/outside|current transaction is aborted/.test(String(e))) throw e;
+    });
+    assert.equal((await owner.one(`select status from meta.build_option where app_id = $1 and name = 'SEC137_ON'`, [appId])).status, 'exclude');
+    // an export made before 137 has no "configurable": the trigger fills false
+    await owner.query(`insert into meta.build_option select (jsonb_populate_record(null::meta.build_option, '{"app_id": ${appId}, "name": "SEC137_OLD", "status": "include"}'::jsonb || jsonb_build_object('id', nextval('meta.build_option_id_seq')))).*`);
+    assert.equal((await owner.one(`select configurable from meta.build_option where app_id = $1 and name = 'SEC137_OLD'`, [appId])).configurable, false);
+    // the application user's name alone (no session with the role) is not enough
+    await asApp({ 'pgkiln.app_id': String(appId), 'pgkiln.app_user': 'king' }, async (q) => {
+      await assert.rejects(q(`select meta.set_configurable_options('SEC137_ON')`), /for the application's administrators/);
+    });
+    await owner.query('delete from meta.session where id = any($1)', [Object.values(sessions)]);
+  });
+
+  test('the activity report by mail: only the application\'s automations and administrators', async () => {
+    await asApp({ 'pgkiln.app_id': String(appId), 'pgkiln.app_user': 'allen' }, async (q) => {
+      await assert.rejects(q(`select meta.send_activity_report('x@example.com', 7)`), /for the application's automations and administrators/);
+    });
+    // an automation of another application doesn't count
+    const foreign = (await owner.one(`insert into meta.automation (app_id, name) values ($1, 'SEC137') returning id`, [otherApp])).id;
+    await asApp({ 'pgkiln.app_id': String(appId), 'pgkiln.automation_id': String(foreign) }, async (q) => {
+      await assert.rejects(q(`select meta.send_activity_report('x@example.com', 7)`), /for the application's automations and administrators/);
+    });
+    const own = (await owner.one(`insert into meta.automation (app_id, name, enabled) values ($1, 'SEC137', false) returning id`, [appId])).id;
+    try {
+      await asApp({ 'pgkiln.app_id': String(appId), 'pgkiln.automation_id': String(own) }, async (q) => {
+        // past the check: the mail itself needs the application's mail service, or is sent
+        await q('savepoint s137');
+        await q(`select meta.send_activity_report('x@example.com', 7)`).catch((e) => assert.match(String(e), /meta\.send_mail/));
+        await q('rollback to savepoint s137');
+        assert.equal((await q(`select meta.send_activity_report('', 7) as x`))[0].x, null, 'no addresses: nothing is sent');
+      });
+    } finally {
+      await owner.query('delete from meta.automation where id = $1', [own]);
+    }
+    assert.equal((await owner.one(`select has_function_privilege('pgkiln_runtime', 'meta.page_shared_refs(int, int)', 'execute') as x`)).x, false);
+  });
+});

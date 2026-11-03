@@ -598,6 +598,15 @@ the component out (fail closed); the Advisor reports it. Build options are part 
 export. On HR page 22, the *Forecast* region needs `LEAVE_FORECAST` (excluded), and *Planner tips*
 (`!LEAVE_FORECAST`) takes its place until it is included.
 
+**Configurable build options** (sprint 137; APEX: the Configuration Options feature): tick *Configurable* on a
+build option, and **Create page → Feature → Configuration options** adds page 9020 *Configuration* where the
+application's administrators switch those options on and off while it runs (a checkbox group shown as switches,
+`{"switches": true}`). From SQL, as the application's own role and for a user with the `admin` role only:
+`meta.configurable_options()` (name, description, enabled) and `meta.set_configurable_options('EXPORT:BETA')`
+(the named ones included, the other configurable ones excluded; an option that is not configurable is refused).
+The change applies to every user at once, like a change in the builder. An import of a newer version of the
+application sets the options as the export has them.
+
 ## Application processes
 
 **Shared Components → Application processes** run for the whole application:
@@ -818,6 +827,15 @@ See [chapter 9](09-reference.md#e-mail-from-sql) for every function and its limi
 work for the **current application** only when the caller runs as that application's database role
 (pages, processes, automations, workflows and background chains do); the SQL Workshop is not an
 application.
+
+### The activity report by mail
+
+`meta.send_activity_report(to, days default 7)` (sprint 137; APEX: the Email Reporting feature) queues a mail with
+the current application's activity of the last days (page views, users, sign-ins, failed sign-ins, errors and the
+most viewed pages) and the rows as `activity.csv`. It is for the application's automations and its signed-in
+administrators; others get an error. **Create page → Feature → E-mail reporting** adds the application setting
+`EMAIL_REPORT_TO` and an automation `EMAIL_REPORTING` that sends it every Monday at 07:00 UTC; without addresses
+nothing is sent.
 
 ### E-mail templates
 

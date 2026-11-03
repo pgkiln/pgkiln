@@ -5,6 +5,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Create page like APEX's Create a Page** (AP-3): *Create page* opens a grid of page types with small previews
+  (tabs Component, Feature and Copy). A type on a table asks for the table first; the others go to their options at
+  once; *Create pages with AI* and the App home's quick form stay.
+- **New page types** (`meta.generate_page`, migration 137): Interactive report (alone), Smart filters, Search page
+  (over chosen search configurations, or a new one on a table), Data loading (a data load definition and its
+  upload page), Tree (id, parent from a self-referencing foreign key, label), Timeline, Media list, Content row and
+  Comments (built-in template components), Dashboard (charts chosen from the data), Wizard (a page per step with a
+  wizard progress list; Finish inserts the row), Unified task list and Workflow console.
+- Built-in template component **Content row** (`ut_content_row`); a checkbox group can show its values as switches
+  (`{"switches": true}`).
+- **Add feature** (Create page → Feature, App home → Tasks → Add feature page): Access control, Activity reporting,
+  Configuration options, E-mail reporting, Feedback, About page, Login page, Theme style selection and Push
+  notifications. Each lists what it adds before it creates it, installs once and is greyed out afterwards.
+- **Configurable build options**: `meta.build_option.configurable` (exported; older exports get false); the
+  Configuration page switches them for the application's administrators through `meta.configurable_options()` and
+  `meta.set_configurable_options()` (only as the application's role, only admins, only configurable options).
+- **Activity report by mail**: `meta.send_activity_report(to, days)` for the application's automations and
+  administrators; the E-mail reporting feature sends it weekly to the application setting `EMAIL_REPORT_TO`.
+- **Create page as copy**: a page of this or another application of the workspace under a new number and name
+  (`P<n>_` items renamed, also in the page's code; links to itself follow), with the shared components it refers to
+  (lists of values, authorization schemes, build options, lists, template components, search configurations, data
+  load definitions) mapped to the target's or copied; `meta.copy_page` and `meta.page_shared_refs`.
+
 ## [0.70.0] - 2026-11-03
 
 ### Added

@@ -545,11 +545,13 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     plural: 'Build options',
     icon: 'settings',
     summary: (o) => `${o.name} (${o.status})`,
-    defaults: { status: 'include' },
+    defaults: { status: 'include', configurable: false },
     fields: [
       { name: 'name', label: 'Name', kind: 'upper', help: 'e.g. FEATURE_EXPORT; components name it in their Build option property.' },
       { name: 'status', label: 'Status', kind: 'select', options: ['include', 'exclude'], help: 'exclude: every component with this option is left out of the running application (and those with "Not" are included).' },
       { name: 'description', label: 'Description', kind: 'text', wide: true },
+      // (137) the Configuration Options feature
+      { name: 'configurable', label: 'Configurable', kind: 'bool', help: 'The application\'s administrators may switch it on the Configuration page (Create page → Feature → Configuration options).' },
     ],
   },
   rest_module: {

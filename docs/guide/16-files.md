@@ -406,7 +406,7 @@ The HR sample has `EMP_XML`, for XML files like `/static/samples/employees.xml`.
 ### Data loading in an application
 
 For end users, add a page with a `file` item and a button, and a **process of type
-`data_load`**. The process runs **as the application's database role**, so grants, row level
+`data_load`** ((sprint 137) **Create page → Data loading** makes the definition and such a page for a table). The process runs **as the application's database role**, so grants, row level
 security, triggers and the audit trail apply, just as they do for the form.
 
 | `config` key | Meaning |

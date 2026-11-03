@@ -1160,7 +1160,8 @@ select empno as id, mgr as parent_id, initcap(ename) || ' · ' || initcap(job) a
 ```
 
 Attributes: `expanded` (levels open at first, default 1), `link` (as for maps; `#id#` and any other
-column), `empty`. The tree is drawn on the server with `<details>`: it works without JavaScript,
+column), `empty`. (137) **Create page → Tree** makes one from a table: the key as the id, a foreign key to the
+table itself (`mgr` → `empno`) as the parent and the name column as the label. The tree is drawn on the server with `<details>`: it works without JavaScript,
 and the browser's find-in-page opens closed branches. Clicking a label follows the link; the rest
 of the row opens and closes the branch. Up to 5000 nodes.
 
@@ -1460,6 +1461,7 @@ with 26.1's *Metric Card* and group support). Show a region as `multiple` to get
 | `ut_avatar` | Avatar: a picture or initials | `NAME`, `INITIALS`, `IMAGE` (a relative or https URL), `SIZE` (small, medium, large), `SHAPE` (circle, square) | An avatar group (overlapping) |
 | `ut_badge` | Badge coloured by a state | `LABEL`, `STATE` (success, warning, danger, info, neutral; approved, pending, … are understood) | A row of badges |
 | `ut_comments` | Comments | `USER`, `INITIALS`, `DATE`, `COMMENT`, `ACTIONS` (extra text) | One conversation |
+| `ut_content_row` | (137) Content row: initials or a picture, title (linked when the region has a link) and description, a secondary text and a badge on the right | `TITLE`, `DESCRIPTION`, `MISC`, `INITIALS`, `IMAGE`, `BADGE`, `STATE` | One list |
 | `ut_media_list` | Media list: picture or initials, title (linked when the region has a link), description, badge | `TITLE`, `DESCRIPTION`, `INITIALS`, `IMAGE`, `BADGE`, `STATE` | One list |
 | `ut_metric_card` | Metric card: a key figure with its unit, change and trend | `LABEL`, `VALUE`, `UNIT`, `CHANGE`, `TREND` (up, down, flat), `GOOD` (up or down: which direction shows green), `DESCRIPTION` | A row of cards |
 | `ut_timeline` | Timeline: when, who, title, text, a coloured marker | `TITLE`, `WHEN`, `WHO`, `BODY`, `STATE` | One timeline |
