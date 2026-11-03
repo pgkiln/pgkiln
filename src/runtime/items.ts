@@ -309,9 +309,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       case 'checkbox_group': {
         useLegend = true;
         const selected = new Set(splitValues(value));
-        control = html`<div class="radio-group">${options.map(
+        // (137) {"switches": true}: each value as a switch (the Configuration page's build options)
+        const switches = item.config?.switches === true;
+        control = html`<div class="radio-group${switches ? ' switch-group' : ''}">${options.map(
           (o, i) =>
-            html`<label class="check"><input type="checkbox" id="${i === 0 ? id : `${id}_${i}`}" name="${id}" value="${o.value}"${selected.has(o.value) ? raw(' checked') : ''}${aria}> ${o.display}</label>`,
+            html`<label class="check${switches ? ' switch' : ''}"><input type="checkbox" id="${i === 0 ? id : `${id}_${i}`}" name="${id}" value="${o.value}"${switches ? raw(' role="switch"') : ''}${selected.has(o.value) ? raw(' checked') : ''}${aria}> ${o.display}</label>`,
         )}</div>`;
         break;
       }

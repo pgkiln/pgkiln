@@ -21,7 +21,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `radio` | radio group | the chosen return value |
 | `checkbox` | a single checkbox | `true` / `false` |
 | `switch` | on/off switch | `true` / `false` |
-| `checkbox_group` | several checkboxes | **colon-separated** return values, e.g. `10:30` |
+| `checkbox_group` | several checkboxes | **colon-separated** return values, e.g. `10:30`; (137) `{"switches": true}` shows each as a switch, one per line |
 | `multiselect` | multi-select list | **colon-separated** return values |
 | `display` | read-only text (shows the display value for list items) | whatever was set |
 | `hidden` | not rendered | set by URL (with checksum), fetch or processes |

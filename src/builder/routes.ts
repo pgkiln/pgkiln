@@ -24,6 +24,8 @@ import { securityRoutes } from './security.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
+import { createPageRoutes } from './create-page.ts';
+import { featureRoutes } from './features.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
@@ -565,6 +567,9 @@ export async function builderRoutes(app: FastifyInstance) {
   await securityRoutes(app);
   await builderSsoRoutes(app);
   await wizardRoutes(app);
+  // (137) Create page: the grid of page types, features and copy (create-page.ts, features.ts)
+  await createPageRoutes(app);
+  await featureRoutes(app);
   await appFromFileRoutes(app);
 
   // (sprint 73) POST /apps, creating an application, is in appwizard.ts
@@ -654,7 +659,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <button class="btn">${icon('search')}<span class="sr-only">${tx('common.search')}</span></button></form>
         <div class="seg view-toggle" role="group" aria-label="${tx('ab.view')}">
           <a href="${keep({})}"${icons ? '' : raw(' aria-current="true"')}>${icon('list')} ${tx('ab.view_report')}</a><a href="${keep({ view: 'icons' })}"${icons ? raw(' aria-current="true"') : ''}>${icon('grid')} ${tx('app.view_icons')}</a></div>
-        <a class="btn btn-hot" href="#create-page">${icon('plus')} ${tx('app.create_page')}</a>
+        <a class="btn btn-hot" href="${BASE}/apps/${a.id}/create-page">${icon('plus')} ${tx('app.create_page')}</a>
       </div>
       ${region(tx('app.tab.pages'), html`${grouped
           ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">${tx('app.page_group')}</label>
@@ -682,6 +687,7 @@ export async function builderRoutes(app: FastifyInstance) {
             </div>
             <div class="buttons"><button class="btn btn-hot">${tx('common.next')}</button></div>
           </form>
+          <p><a href="${BASE}/apps/${a.id}/create-page">${tx('app.all_page_types')} ▸</a></p>
           <p><a href="${BASE}/apps/${a.id}/ai-pages">${tx('app.ai_pages')} ▸</a> <span class="muted">${tx('app.ai_pages_note')}</span></p>`)}
         ${region(tx('app.blank'), html`
           <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
@@ -698,7 +704,9 @@ export async function builderRoutes(app: FastifyInstance) {
       <aside class="app-tasks region region-standard" aria-labelledby="app-tasks-h"><header class="region-header"><h2 id="app-tasks-h">${tx('common.tasks')}</h2></header>
         <ul class="sc-links">
           <li><a href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('app.task.run')}</a></li>
-          <li><a href="#create-page">${icon('plus')} ${tx('app.create_page')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/create-page">${icon('plus')} ${tx('app.create_page')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/create-page?tab=feature">${icon('puzzle')} ${tx('app.task.add_feature')}</a></li>
+          <li><a href="${BASE}/apps/${a.id}/create-page?tab=copy">${icon('copy')} ${tx('app.task.copy_page')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/ai-pages">${icon('lightbulb')} ${tx('app.ai_pages')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/shared">${icon('layers')} ${tx('app.tab.shared')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/shared?type=page_group">${icon('folder')} ${tx('app.task.page_groups')}</a></li>

@@ -871,6 +871,22 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           [['form', 'hr.emp'], ['cards', 'hr.emp'], ['calendar', 'hr.leave_request'], ['chart', 'hr.emp'], ['map', 'hr.dept'], ['facets', 'hr.emp'], ['master_detail', 'hr.dept'], ['report_form', 'hr.dept']]
             .map(([kind, table]) => [`wizard_${kind}`, `/builder/apps/${appId}/wizard?kind=${kind}&table=${table}`]),
         ),
+        // (sprint 137) Create page: the grid (Component, Feature, Copy), a type's table step, step 2 of the new types,
+        // a feature's review, and the copy steps (HR page 3 with its shared components)
+        create_page: `/builder/apps/${appId}/create-page`,
+        create_page_feature: `/builder/apps/${appId}/create-page?tab=feature`,
+        create_page_copy: `/builder/apps/${appId}/create-page?tab=copy`,
+        create_page_tree: `/builder/apps/${appId}/create-page?type=tree`,
+        create_page_blank: `/builder/apps/${appId}/create-page?type=blank`,
+        ...Object.fromEntries(
+          [['report', 'hr.emp'], ['smart_filters', 'hr.emp'], ['tree', 'hr.emp'], ['timeline', 'hr.leave_request'], ['media_list', 'hr.dept'], ['content_row', 'hr.emp'],
+            ['comments', 'hr.leave_request'], ['data_load', 'hr.dept'], ['wizard', 'hr.emp'], ['search', ''], ['tasks', ''], ['workflows', ''], ['dashboard', '']]
+            .map(([kind, table]) => [`wizard_${kind}`, `/builder/apps/${appId}/wizard?kind=${kind}${table ? `&table=${table}` : ''}`]),
+        ),
+        feature_config: `/builder/apps/${appId}/features/config`,
+        feature_email: `/builder/apps/${appId}/features/email`,
+        copy_page_pages: `/builder/apps/${appId}/copy-page?from=${appId}`,
+        copy_page_map: `/builder/apps/${appId}/copy-page?from=${appId}&page=3`,
         // (sprint 34) working copies: the list, and a copy compared with a long difference shown
         working_copies: `/builder/apps/${appId}/working-copies`,
         working_copy_compare: await (async () => {

@@ -250,7 +250,7 @@ src/
     tree.ts                tree region
     lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
-    builtin-components.ts  built-in template components (ut_avatar, ut_badge, ut_comments, ut_media_list, ut_metric_card, ut_timeline)
+    builtin-components.ts  built-in template components (ut_avatar, ut_badge, ut_comments, ut_content_row, ut_media_list, ut_metric_card, ut_timeline)
     template-region.ts     template_component region
     tasks.ts               task list region and task actions (approvals); (094) the vacation rule panel and route;
                            (sprint 114) custom outcome buttons, the Fail event and recovery of a failing completion SQL
@@ -314,6 +314,10 @@ src/
                            language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
+    create-page.ts         (137) Create page: the grid of page types with SVG previews (tabs Component / Feature / Copy), the table step,
+                           Create page as copy (step per app and page, shared components mapped or copied → meta.copy_page)
+    features.ts            (137) Add feature: review (what it adds) and install, once, of Access control, Activity reporting,
+                           Configuration options, E-mail reporting, Feedback, About, Login page, Theme style selection, Push
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home at /builder/apps and /builder (tiles, applications report/cards, Recent; /builder redirects
                            to the Workspace home when meta.workspace.builder_home = 'home'), Create, Import, Dashboard, Utilities;

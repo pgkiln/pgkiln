@@ -347,7 +347,7 @@ describe('builder', () => {
 describe('built-in components', () => {
   test('every built-in passes the same checks as a plug-in and survives a round trip', async () => {
     const { BUILTIN_COMPONENTS } = await import('../src/runtime/builtin-components.ts');
-    assert.deepEqual(BUILTIN_COMPONENTS.map((c) => c.static_id).sort(), ['ut_avatar', 'ut_badge', 'ut_comments', 'ut_media_list', 'ut_metric_card', 'ut_timeline']);
+    assert.deepEqual(BUILTIN_COMPONENTS.map((c) => c.static_id).sort(), ['ut_avatar', 'ut_badge', 'ut_comments', 'ut_content_row', 'ut_media_list', 'ut_metric_card', 'ut_timeline']);
     for (const c of BUILTIN_COMPONENTS) {
       assert.equal(componentProblem(c), null, c.static_id);
       assert.equal(attributesProblem(c.attributes ?? []), null, c.static_id);
