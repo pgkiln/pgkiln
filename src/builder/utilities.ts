@@ -95,13 +95,13 @@ export async function utilityRoutes(app: FastifyInstance) {
           <div><dt>Lists of values</dt><dd>${counts.lovs}</dd></div><div><dt>Changes in 7 days</dt><dd>${counts.week}</dd></div>
         </dl>`)}
       ${region('Recently updated pages', recent.length
-        ? html`<div class="table-wrap"><table class="table"><thead><tr><th scope="col">Page</th><th scope="col">Last change</th><th scope="col">By</th><th scope="col">Changes</th></tr></thead><tbody>
+        ? html`<div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">Page</th><th scope="col">Last change</th><th scope="col">By</th><th scope="col">Changes</th></tr></thead><tbody>
             ${recent.map((r) => html`<tr><td data-label="Page"><a href="${designerUrl(a.id, r.page_no)}">${r.page_no}${pageName.has(r.page_no) ? `: ${pageName.get(r.page_no)}` : ''}</a></td><td data-label="Last change">${when(r.changed_at)}</td>
               <td data-label="By">${r.changed_by ?? 'command line'}</td><td data-label="Changes"><a href="${u}/utilities/history?page=${r.page_no}">${r.n}</a></td></tr>`)}</tbody></table></div>`
         : html`<p class="muted u-mt0">No recorded changes yet: the change history starts with the first change after the upgrade to this version.</p>`)}
       ${region('Application checksum', html`<p class="u-mt0">The checksum of the application's definition (its export without the alias): the same definition gives the same checksum on any installation, so two installations, or an application and its working copy, compare at a glance.</p>
         <p class="util-sum"><code>${sum}</code></p>
-        <details><summary>Page checksums (${pageSums.size})</summary><div class="table-wrap"><table class="table"><thead><tr><th scope="col">Page</th><th scope="col">Checksum</th></tr></thead><tbody>
+        <details><summary>Page checksums (${pageSums.size})</summary><div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">Page</th><th scope="col">Checksum</th></tr></thead><tbody>
           ${[...pageSums].map(([p, h]) => html`<tr><td data-label="Page">${p}${pageName.has(p) ? `: ${pageName.get(p)}` : ''}</td><td data-label="Checksum"><code>${shortSum(h)}</code></td></tr>`)}</tbody></table></div></details>`, '', 'checksum')}`;
     return send(reply, s, shell(s, `Utilities · ${a.name}`, [['App Builder', BASE], [a.name, u], ['Utilities']], main));
   });
@@ -150,7 +150,7 @@ export async function utilityRoutes(app: FastifyInstance) {
           <div class="field"><label class="label" for="f_q">Component</label><input id="f_q" name="q" type="search" value="${text}" placeholder="e.g. P3_ID"></div>
           <div class="buttons"><button class="btn btn-sm">${icon('filter')} Show</button></div></form>
         ${rows.length
-          ? html`<div class="table-wrap"><table class="table util-history"><thead><tr><th scope="col">When</th><th scope="col">Developer</th><th scope="col">Component</th><th scope="col">Change</th><th scope="col">Differences</th></tr></thead><tbody>
+          ? html`<div class="table-wrap"><table class="table util-history report-reflow"><thead><tr><th scope="col">When</th><th scope="col">Developer</th><th scope="col">Component</th><th scope="col">Change</th><th scope="col">Differences</th></tr></thead><tbody>
               ${rows.map((r) => html`<tr${r.id === shown ? raw(' aria-current="true"') : ''}><td data-label="When">${when(r.changed_at)}</td><td data-label="Developer">${r.changed_by ?? html`<span class="muted">${r.source === 'import' ? 'import' : 'command line'}</span>`}</td>
                 <td data-label="Component"><a href="${componentUrl(a.id, r.page_no)}">${r.label}</a></td>
                 <td data-label="Change"><span class="tag ${OPS[r.op] ?? ''}">${r.op}</span>${r.source !== 'builder' ? html` <span class="tag">${r.source}</span>` : ''}</td>

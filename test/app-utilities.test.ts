@@ -59,7 +59,7 @@ before(async () => {
 
 after(async () => {
   await owner.query('delete from meta.region where id = any($1)', [regions]);
-  await owner.query(`delete from meta.ui_default where schema_name in ('hr', '${S}')`);
+  await owner.query(`delete from meta.ui_default where (schema_name = 'hr' and table_name = 'emp') or schema_name = '${S}'`);
   await owner.query(`drop schema if exists ${S} cascade`);
   await app.close();
   await closePools();

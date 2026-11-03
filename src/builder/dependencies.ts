@@ -279,7 +279,7 @@ export async function dependencyRoutes(app: FastifyInstance) {
     const grantsN = deps.objects.filter((o) => o.lacking.length).length;
     const pages = (o: DepObject) => [...new Set(o.usedBy.map((u) => u.entry?.pageNo).filter((p): p is number => p !== null && p !== undefined))].sort((x, y) => x - y);
     const rows: Raw = shown.length
-      ? html`<div class="table-wrap"><table class="table dep-table"><thead><tr><th scope="col">Object</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Pages</th><th scope="col">Used by</th></tr></thead>
+      ? html`<div class="table-wrap"><table class="table dep-table report-reflow"><thead><tr><th scope="col">Object</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Pages</th><th scope="col">Used by</th></tr></thead>
         <tbody>${shown.map((o) => {
           const url = objectUrl(o);
           const status = o.missing

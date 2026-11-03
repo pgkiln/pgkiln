@@ -82,7 +82,7 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
       const cols = await columnsOf(t.oid, t.schema, t.table);
       body = html`${pick}
         <form method="post" action="${BASE}/ui-defaults">${csrf(s)}<input type="hidden" name="schema" value="${t.schema}"><input type="hidden" name="table" value="${t.table}">
-          <div class="table-wrap"><table class="table ui-defaults"><thead><tr><th scope="col">Column</th><th scope="col">Label</th><th scope="col">Format mask</th><th scope="col">Alignment</th><th scope="col">Help</th><th scope="col">List of values</th></tr></thead><tbody>
+          <div class="table-wrap"><table class="table ui-defaults report-reflow"><thead><tr><th scope="col">Column</th><th scope="col">Label</th><th scope="col">Format mask</th><th scope="col">Alignment</th><th scope="col">Help</th><th scope="col">List of values</th></tr></thead><tbody>
           ${cols.map((c, i) => html`<tr>
             <td data-label="Column"><code>${c.name}</code><br><span class="muted small">${c.type}</span><input type="hidden" name="c.${i}.name" value="${c.name}"></td>
             <td data-label="Label"><input id="f_l${i}" aria-label="Label of ${c.name}" name="c.${i}.label" value="${c.d?.label ?? ''}" maxlength="200" placeholder="${c.wizard}"></td>
