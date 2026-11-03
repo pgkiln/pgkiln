@@ -1602,6 +1602,15 @@ img.tc-avatar { object-fit: cover; }
 .tc-media { display: flex; gap: 0.8rem; align-items: center; padding: 0.6rem 0; min-width: 0; overflow-wrap: anywhere; }
 .tc-media > .tc-stack { flex: 1; }
 .tc-media-badge { flex: none; }
+/* (137) ut_content_row: avatar, title and description, secondary text and badge on the right */
+.tc-content-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.tc-content-row { display: flex; gap: 0.8rem; align-items: center; padding: 0.6rem 0; min-width: 0; overflow-wrap: anywhere; }
+.tc-content-row + .tc-content-row { border-top: 1px solid var(--border); }
+.tc-content-row > .tc-stack { flex: 1; }
+.tc-content-row-end { display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; flex: none; max-width: 40%; text-align: end; }
+@media (max-width: 480px) { .tc-content-row { flex-wrap: wrap; } .tc-content-row-end { flex-direction: row; align-items: center; max-width: none; margin-inline-start: auto; } }
+/* (137) a checkbox group shown as switches ({"switches": true}): one per line */
+.radio-group.switch-group { flex-direction: column; align-items: flex-start; }
 .tc-metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr)); gap: 0.75rem; }
 .tc-metric { gap: 0.25rem; }
 .tc-metric-label { margin: 0; color: var(--muted); font-size: 0.85rem; font-weight: 600; }

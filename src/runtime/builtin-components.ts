@@ -1,8 +1,8 @@
 import type { TemplateComponent } from './template-components.ts';
 
 // Built-in template components (APEX: the Universal Theme's template
-// components: Avatar, Badge, Comments, Media List, Timeline, and 26.1's
-// Metric Card). Every application can use them in a template_component
+// components: Avatar, Badge, Comments, Content Row (137), Media List,
+// Timeline, and 26.1's Metric Card). Every application can use them in a template_component
 // region or as a report column template without importing anything; a
 // component of the application with the same static id takes its place
 // (Shared Components → Template components → Copy into this application).
@@ -52,6 +52,27 @@ export const BUILTIN_COMPONENTS: readonly TemplateComponent[] = [
     wrapper: '<ul class="tc-comments">#APEX$ROWS#</ul>',
     css_classes: [],
     attributes: [text('USER', 'User'), text('INITIALS', 'Initials'), text('DATE', 'Date'), text('COMMENT', 'Comment'), text('ACTIONS', 'Extra text', 'Optional, e.g. "edited".')],
+  },
+  {
+    // (137) APEX: Content Row: an avatar, a title and description, and on the right a secondary text and a badge
+    static_id: 'ut_content_row',
+    name: 'Content row',
+    description: 'Rows with initials or a picture, a title (linked when the region has a link) and a description, and on the right a secondary text and a badge. Show the region as "multiple".',
+    template:
+      '<li class="tc-content-row">{if ?IMAGE/}<img class="tc-avatar tc-avatar-md" src="#IMAGE#" alt="" loading="lazy">{else/}<span class="tc-avatar tc-avatar-md" aria-hidden="true">#INITIALS#</span>{endif/}' +
+      '<div class="tc-stack"><p class="tc-title">{if ?LINK/}<a href="#LINK#">#TITLE#</a>{else/}#TITLE#{endif/}</p>{if ?DESCRIPTION/}<p class="tc-meta">#DESCRIPTION#</p>{endif/}</div>' +
+      '<div class="tc-content-row-end">{if ?MISC/}<span class="tc-meta">#MISC#</span>{endif/}{if ?BADGE/}<span class="tc-badge tc-badge-' + STATE + '">#BADGE#</span>{endif/}</div></li>',
+    wrapper: '<ul class="tc-content-rows">#APEX$ROWS#</ul>',
+    css_classes: [],
+    attributes: [
+      text('TITLE', 'Title'),
+      text('DESCRIPTION', 'Description'),
+      text('MISC', 'Secondary text', 'Shown on the right, e.g. a date or an amount.'),
+      text('INITIALS', 'Initials', 'Shown without a picture.'),
+      text('IMAGE', 'Picture URL', 'Optional: a relative or https URL.'),
+      text('BADGE', 'Badge'),
+      text('STATE', 'Badge state', 'success, warning, danger, info or neutral.'),
+    ],
   },
   {
     static_id: 'ut_media_list',

@@ -451,6 +451,8 @@ begin
           meta.wizard_expr(p_table, meta.wizard_col(p_table, o ->> 'description', 'description column')) || ' as description',
           case when p_kind = 'content_row' then meta.wizard_expr(p_table, meta.wizard_col(p_table, o ->> 'misc', 'secondary column')) || ' as misc' end,
           meta.wizard_expr(p_table, meta.wizard_col(p_table, o ->> 'badge', 'badge column')) || ' as badge',
+          -- the badge's colour from its value (approved, pending, late…)
+          meta.wizard_expr(p_table, meta.wizard_col(p_table, o ->> 'badge', 'badge column')) || ' as state',
           case when v_pk is not null then format('t.%I', v_pk) end);
         v_d := '1';
       else
@@ -886,9 +888,9 @@ begin
     end loop;
     if t = 'region' then
       -- facets, smart filters and maps point at their report region by id
-      update meta.region r
-         set config = jsonb_set(r.config, '{report}', v_rmap -> (r.config ->> 'report'))
-       where r.page_id = v_page_id and r.config ? 'report' and v_rmap ? (r.config ->> 'report');
+      update meta.region g
+         set config = jsonb_set(g.config, '{report}', v_rmap -> (g.config ->> 'report'))
+       where g.page_id = v_page_id and g.config ? 'report' and v_rmap ? (g.config ->> 'report');
     end if;
   end loop;
   return v_page_id;

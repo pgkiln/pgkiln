@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { owner } from '../db.ts';
+import { owner, type Client } from '../db.ts';
 import { APP_MFA, EMAIL_CODE_MINUTES, EMAIL_CODES_PER_HOUR, type AppMfa } from '../account-mfa.ts';
 import { html, raw } from '../html.ts';
 import { secretKeyConfigured } from '../secrets.ts';
@@ -78,6 +78,21 @@ export async function saveLoginSettings(appId: string, b: Record<string, string 
     [appId, page, b.password_reset === 'true', mfa, roles, b.mfa_email === 'true']);
 }
 
+/** Page 9999 (or the next free number), public, minimal, with a login region, made the login page. (137) Also Add feature → Login page. */
+export async function createLoginPage(c: Client, a: { id: number; name: string }) {
+  const n = (await c.query<{ n: number }>(
+    `select case when not exists (select 1 from meta.page where app_id = $1 and page_no = 9999) then 9999
+                 else (select max(page_no) + 1 from meta.page where app_id = $1) end as n`, [a.id],
+  )).rows[0].n;
+  const id = (await c.query<{ id: number }>(
+    `insert into meta.page (app_id, page_no, name, title, requires_auth, page_template) values ($1, $2, 'Login', $3, false, 'minimal') returning id`,
+    [a.id, n, a.name],
+  )).rows[0].id;
+  await c.query(`insert into meta.region (page_id, seq, title, type, template) values ($1, 10, $2, 'login', 'standard')`, [id, a.name]);
+  await c.query('update meta.app set login_page = $2, updated_at = now() where id = $1', [a.id, n]);
+  return { page: id, no: n };
+}
+
 export async function loginPageRoutes(app: FastifyInstance) {
   // Create a login page: page 9999 (or the next free number), public, minimal, with a login region
   app.post(`${BASE}/apps/:id/login-page`, async (req: Req, reply) => {
@@ -86,19 +101,7 @@ export async function loginPageRoutes(app: FastifyInstance) {
     const a = await owner.one<{ id: number; name: string }>('select id, name from meta.app where id = $1', [req.params.id]);
     if (!a) return reply.code(404).send('Not found');
     try {
-      const { page, no } = await owner.tx(async (c) => {
-        const n = (await c.query<{ n: number }>(
-          `select case when not exists (select 1 from meta.page where app_id = $1 and page_no = 9999) then 9999
-                       else (select max(page_no) + 1 from meta.page where app_id = $1) end as n`, [a.id],
-        )).rows[0].n;
-        const id = (await c.query<{ id: number }>(
-          `insert into meta.page (app_id, page_no, name, title, requires_auth, page_template) values ($1, $2, 'Login', $3, false, 'minimal') returning id`,
-          [a.id, n, a.name],
-        )).rows[0].id;
-        await c.query(`insert into meta.region (page_id, seq, title, type, template) values ($1, 10, $2, 'login', 'standard')`, [id, a.name]);
-        await c.query('update meta.app set login_page = $2, updated_at = now() where id = $1', [a.id, n]);
-        return { page: id, no: n };
-      });
+      const { page, no } = await owner.tx((c) => createLoginPage(c, a));
       flash(s, `Page ${no} "Login" created and made the login page. Add regions around the sign-in form in the Page Designer.`);
       return back(reply, s, `${BASE}/pages/${page}`);
     } catch (e) {

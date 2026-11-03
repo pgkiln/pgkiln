@@ -1600,3 +1600,28 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* (sprint 136) a button inside an alert (e.g. Add vector column without pgvector) wraps on a phone instead of overflowing */
 .alert .btn { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+
+/* (sprint 137, AP-3) Create page: the grid of page types with small previews, the features, the type's step */
+.cp-tabs { margin-bottom: 0.9rem; flex-wrap: wrap; }
+.cp-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.75rem; }
+.cp-grid > li { min-width: 0; }
+.cp-type { display: flex; flex-direction: column; gap: 0.35rem; height: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
+a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
+.cp-type b { font-size: 0.95rem; }
+.cp-type small { color: var(--muted); line-height: 1.35; }
+.cp-type .tag { align-self: flex-start; }
+.cp-done { opacity: 0.6; }
+.cp-preview { display: block; border-radius: var(--radius-sm); background: var(--surface-2); padding: 4px; }
+.cp-preview-lg { max-width: 16rem; }
+.cp-svg { display: block; width: 100%; height: auto; }
+.cp-svg .pv-line { fill: var(--border-strong); }
+.cp-svg .pv-soft { fill: color-mix(in srgb, var(--accent) 28%, var(--surface)); }
+.cp-svg .pv-acc { fill: var(--accent); }
+.cp-svg .pv-bg { fill: var(--surface); }
+.cp-svg .pv-frame { fill: var(--surface); stroke: var(--border-strong); stroke-width: 1; }
+.cp-svg .pv-stroke { fill: none; stroke: var(--border-strong); stroke-width: 1.5; }
+.cp-feature-icon { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: var(--accent-soft, var(--surface-2)); color: var(--accent); }
+.cp-step { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; margin-bottom: 0.75rem; }
+.cp-step > .cp-preview { flex: 0 1 12rem; }
+.cp-step > p { flex: 1 1 14rem; margin: 0; }
+.cp-adds { padding-inline-start: 1.2rem; overflow-wrap: anywhere; }
