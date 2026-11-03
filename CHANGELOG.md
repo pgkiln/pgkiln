@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.70.0] - 2026-11-03
+
 ### Added
 - **Vector providers** (AP-1; APEX: Vector Providers, `APEX_AI.GET_VECTOR_EMBEDDINGS`): Shared Components ›
   Generative AI › **Vector providers** turn text into an embedding: an AI service with an embedding model (OpenAI
