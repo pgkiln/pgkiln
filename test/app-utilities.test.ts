@@ -58,7 +58,8 @@ before(async () => {
 });
 
 after(async () => {
-  await owner.query('delete from meta.region where id = any($1)', [regions]);
+  // (an import --replace below gives every component a new id)
+  await owner.query(`delete from meta.region where id = any($1) or (title like 'U138 %' and page_id in (select id from meta.page where app_id = $2))`, [regions, appId]);
   await owner.query(`delete from meta.ui_default where (schema_name = 'hr' and table_name = 'emp') or schema_name = '${S}'`);
   await owner.query(`drop schema if exists ${S} cascade`);
   await app.close();
