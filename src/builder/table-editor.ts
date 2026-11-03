@@ -143,6 +143,7 @@ function form(s: Session, def: TableDef, opts: { editing: TableDef | null; schem
       <button class="btn btn-hot" name="mode" value="apply">${icon('check')} ${tx('te.apply')}</button>
       <button class="btn" name="mode" value="worksheet">${icon('code')} ${tx('te.open_ws')}</button>
       ${editing ? html`<a class="btn" href="${BASE}/sql/objects/fulltext?${new URLSearchParams({ o: opts.ref })}">${icon('search')} ${tx('fts.add')}…</a>` : ''}
+      ${editing ? html`<a class="btn" href="${BASE}/sql/objects/vector?${new URLSearchParams({ o: opts.ref })}">${icon('search')} ${tx('vec.add')}…</a>` : ''}
       <a class="btn" href="${editing ? `${BASE}/sql/objects?${new URLSearchParams({ schema: def.schema, k: 'table', o: opts.ref })}` : `${BASE}/sql/objects?${new URLSearchParams({ schema: def.schema })}`}">${tx('common.cancel')}</a>
     </div></form>`;
 }

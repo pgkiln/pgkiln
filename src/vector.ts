@@ -212,9 +212,9 @@ export async function drainEmbeddings(rounds = 50) {
 let timer: NodeJS.Timeout | null = null;
 let busy = false;
 
-/** Kick the queue now (after a Backfill), without waiting for it. */
+/** Kick the queue now (after a Backfill), without waiting for it (not with EMBEDDINGS=off). */
 export function kickEmbeddings() {
-  if (busy) return;
+  if (busy || process.env.EMBEDDINGS === 'off') return;
   busy = true;
   drainEmbeddings(20).catch((e) => console.error('embeddings:', (e as Error).message)).finally(() => (busy = false));
 }

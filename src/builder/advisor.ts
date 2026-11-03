@@ -13,6 +13,7 @@ import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { configColumns, searchConfigProblems, textSearchConfig, tsvectorSql } from '../runtime/search.ts';
 import { COMPONENTS } from './components.ts';
+import { DISTANCES, PGVECTOR_MISSING, vectorColumnDims, vectorSchema, type Distance } from '../vector.ts';
 import { appEntries, type Entry } from './search.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
 
@@ -242,7 +243,10 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       }
       let cols = configColumns(row).map((x) => `t.${pg.escapeIdentifier(x)}`).join(', ') || '*';
       // (135) a full-text configuration: its tsvector matched with its text search configuration
-      const fulltext = row.search_type === 'fulltext';
+      const fulltext = row.search_type === 'fulltext' || row.search_type === 'hybrid';
+      // (136) a vector or hybrid configuration also reads its vector (and key) column
+      const vectorType = row.search_type === 'vector' || row.search_type === 'hybrid';
+      if (vectorType) cols = [cols === '*' ? 't.*' : cols, ...[row.vector_column, row.key_column].filter(Boolean).map((x: string) => `t.${pg.escapeIdentifier(x)}`)].join(', ');
       if (fulltext) {
         const cfg = await textSearchConfig(c, row.fts_config, app.language);
         if (row.fts_config && cfg !== row.fts_config)
@@ -280,6 +284,42 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
                 : `The tsvector is built from the searchable columns on every search, so no index can help: add a tsvector column with a GIN index (SQL Workshop › Table Properties › Add full-text search) and name it here.`,
           });
       }
+    }
+    // (136) vector and hybrid configurations: pgvector, the provider, the column's dimensions and its index
+    for (const { kind, row } of all.filter((x) => x.kind === 'search_config' && (x.row.search_type === 'vector' || x.row.search_type === 'hybrid') && !searchConfigProblems(x.row).length)) {
+      const entry = byKey.get(`${kind}-${row.id}`) ?? null;
+      const schema = await vectorSchema(c);
+      if (!schema) {
+        findings.push({ severity: 'error', entry, field: 'Search type', message: PGVECTOR_MISSING });
+        continue;
+      }
+      const provider = (Array.isArray(app.vector_providers) ? app.vector_providers : []).find((p: { name: string }) => p.name === row.vector_provider);
+      if (!provider) findings.push({ severity: 'error', entry, field: 'Vector provider', message: `There is no vector provider ${row.vector_provider} (Shared Components → Vector providers).` });
+      if (row.source_type !== 'table') continue;
+      await c.query('savepoint advisor_vec');
+      const info = await (async () => {
+        const dims = await vectorColumnDims(c, row.source.trim(), row.vector_column);
+        const ix = (await c.query<{ ok: boolean; ops: string | null }>(
+          `select exists (select from pg_catalog.pg_index i join pg_catalog.pg_class ic on ic.oid = i.indexrelid join pg_catalog.pg_am am on am.oid = ic.relam
+                           where i.indrelid = $1::regclass and am.amname in ('hnsw', 'ivfflat')
+                             and (select a.attnum from pg_catalog.pg_attribute a where a.attrelid = $1::regclass and a.attname = $2) = any (i.indkey::int2[])) as ok,
+                  (select string_agg(o.opcname, ',') from pg_catalog.pg_index i join pg_catalog.pg_opclass o on o.oid = any (i.indclass::oid[])
+                    where i.indrelid = $1::regclass and (select a.attnum from pg_catalog.pg_attribute a where a.attrelid = $1::regclass and a.attname = $2) = any (i.indkey::int2[])) as ops`,
+          [row.source.trim(), row.vector_column])).rows[0];
+        return { dims, ix };
+      })().catch(async () => {
+        await c.query('rollback to savepoint advisor_vec');
+        return null;
+      });
+      if (!info) continue;
+      if (info.dims === undefined) findings.push({ severity: 'error', entry, field: 'Vector column', message: `${row.source.trim()} has no column ${row.vector_column}.` });
+      else if (info.dims === null) findings.push({ severity: 'error', entry, field: 'Vector column', message: `${row.source.trim()}.${row.vector_column} is not a vector(n) column.` });
+      else if (provider && info.dims !== provider.dimensions)
+        findings.push({ severity: 'error', entry, field: 'Vector column', message: `${row.source.trim()}.${row.vector_column} is vector(${info.dims}), vector provider ${provider.name} gives ${provider.dimensions} dimensions.` });
+      if (info.dims && !info.ix?.ok)
+        findings.push({ severity: 'warning', entry, field: 'Vector column', message: `${row.source.trim()}.${row.vector_column} has no HNSW index: every search reads the whole table (SQL Workshop › Table Properties › Add vector column adds one).` });
+      else if (info.dims && info.ix?.ops && !info.ix.ops.split(',').includes(DISTANCES[(row.distance ?? 'cosine') as Distance].opclass))
+        findings.push({ severity: 'warning', entry, field: 'Distance', message: `The index on ${row.vector_column} is for ${info.ix.ops}, not ${DISTANCES[(row.distance ?? 'cosine') as Distance].opclass}: the ${row.distance ?? 'cosine'} search can't use it.` });
     }
     // the search regions name existing configurations
     for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'search')) {

@@ -351,7 +351,7 @@ async function vectorRows(ctx: PageContext, c: SearchConfig, from: string, query
  * role (ctx.client, in the caller's read-only transaction): title, subtitle, description and badge, and the score.
  */
 export async function retrieve(ctx: PageContext, name: string, query: string, max: number) {
-  const c = (await ctx.client!.query<SearchConfig>(
+  const c = (await runtime.query<SearchConfig>(
     `select name, label, seq, source_type, source, searchable_columns, title_column, subtitle_column, description_column,
             badge_column, icon, link, max_results, search_type, fts_vector, fts_config, did_you_mean,
             vector_provider, vector_column, key_column, distance, min_similarity
@@ -452,14 +452,16 @@ async function searchResults(ctx: PageContext, r: Region, query: string): Promis
       if (!hits.length) continue;
       body = html`<ul class="search-hits">${hits.map((h) => {
         // (135) full-text results: ts_headline's highlights (stemmed words: "running" marks "run"); else the words
-        const title = h.headlines?.title ?? marked(h.title, words);
-        const subtitle = h.subtitle ? (h.headlines?.subtitle ?? marked(h.subtitle, words)) : null;
-        const description = h.description ? (h.headlines?.description ?? marked(h.description, words)) : null;
+        // (136) results by meaning: no word is marked (they need not contain the words)
+        const by = c.search_type === 'vector' || c.search_type === 'hybrid' ? [] : words;
+        const title = h.headlines?.title ?? marked(h.title, by);
+        const subtitle = h.subtitle ? (h.headlines?.subtitle ?? marked(h.subtitle, by)) : null;
+        const description = h.description ? (h.headlines?.description ?? marked(h.description, by)) : null;
         const inner = html`${h.icon ? html`<span class="search-icon">${icon(h.icon)}</span>` : ''}
           <span class="search-text"><span class="search-title">${title}</span>${
             subtitle ? html`<span class="search-subtitle">${subtitle}</span>` : ''}${
             description ? html`<span class="search-description">${description}</span>` : ''}</span>
-          ${h.badge ? html`<span class="badge-pill">${marked(h.badge, words)}</span>` : ''}`;
+          ${h.badge ? html`<span class="badge-pill">${marked(h.badge, by)}</span>` : ''}`;
         return html`<li>${h.href ? html`<a class="search-hit" ${h.href}>${inner}</a>` : html`<div class="search-hit">${inner}</div>`}</li>`;
       })}</ul>${more ? html`<p class="muted search-more">${ctx.locale.t('region.first_rows', { n: String(c.max_results) })}</p>` : ''}`;
     } catch (e) {

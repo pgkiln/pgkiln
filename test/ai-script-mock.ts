@@ -7,6 +7,7 @@
 // <base>/openai/v1/chat/completions.
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { embeddingsBody } from './ai-mock.ts';
 
 export type Reply =
   | { text: string; stop?: 'end_turn' | 'max_tokens' }
@@ -44,6 +45,11 @@ export async function startScriptMock(): Promise<ScriptMock> {
       }
       const path = new URL(req.url!, 'http://x').pathname;
       mock.seen.push({ path, headers: req.headers, body });
+      // (sprint 136) embeddings take no scripted reply
+      if (path.endsWith('/embeddings')) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        return res.end(JSON.stringify(embeddingsBody(body, 8)));
+      }
       const reply: Reply = mock.script.shift() ?? { text: 'OK.' };
       if ('status' in reply) {
         res.writeHead(reply.status, { 'content-type': 'application/json', 'x-should-retry': 'false' });
