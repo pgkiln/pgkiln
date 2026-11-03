@@ -53,6 +53,8 @@ const NOT_EXPORTED = new Set([
   'app_change', // (125) the developer who changed the application last: builder state of this installation, like locks
   'network_refusal', // (126) outgoing calls the network access lists refused: a log of this installation (7 days)
   'embedding_queue', // (136) rows queued for their embeddings: work of this installation (the vector providers travel in meta.app)
+  'app_snapshot', // (138) the export after the last recorded change: what the change history compares with
+  'component_change', // (138) the change history: who changed which component here, a record of this installation
 ]);
 
 /** Where each exported table appears in the document. */

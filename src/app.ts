@@ -43,6 +43,8 @@ import { builderRoutes } from './builder/routes.ts';
 import { appUpdateHooks } from './builder/app-updates.ts';
 import { historyHooks, utilityRoutes } from './builder/utilities.ts';
 import { dependencyRoutes } from './builder/dependencies.ts';
+import { upgradeRoutes } from './builder/upgrade.ts';
+import { uiDefaultRoutes } from './builder/ui-defaults.ts';
 import { dbUserRoutes } from './builder/db-users.ts';
 import { dataPumpRoutes } from './builder/datapump.ts';
 import { schedulingRoutes } from './builder/scheduling.ts';
@@ -275,6 +277,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   // (sprint 138, AP-5) an application's Utilities
   await app.register(utilityRoutes);
   await app.register(dependencyRoutes);
+  await app.register(upgradeRoutes);
+  await app.register(uiDefaultRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder/home'));
   return app;
 }

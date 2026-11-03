@@ -295,6 +295,8 @@ export async function homeRoutes(app: FastifyInstance) {
           : s.workspace && (await workspaceAdmin(s.username, s.workspace.id))
             ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), `Workspace ${s.workspace.name}`, 'Its name, developers, preferences and extension links (workspace administrators).')
             : ''}
+        ${card(`${BASE}/ui-defaults`, icon('sliders-horizontal'), 'UI defaults', 'Labels, format masks, help and lists of values per table column, used by the page wizards.')}
+        ${card(`${BASE}/icons`, icon('image'), 'Icons', 'Browse the icons of the icon picker.')}
         ${card(`${BASE}/vector-providers`, icon('search'), 'Vector providers', 'Embeddings for search by meaning: the applications\' vector providers, their vector columns, and whether pgvector is installed.')}
         ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), 'Mail services', 'SMTP, Microsoft 365, Amazon SES, Resend, Postmark, SendGrid or Mailgun for the applications\' e-mail (administrators).') : ''}

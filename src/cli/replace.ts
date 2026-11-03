@@ -87,7 +87,10 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   // (126) outgoing calls the network access lists refused (Administration → Network access; a log, 7 days)
   'network_refusal',
   // (136) rows queued for their embeddings (the vector providers travel in meta.app)
-  'embedding_queue'];
+  'embedding_queue',
+  // (138) the change history and the snapshot it compares with (this installation's record)
+  'app_snapshot', 'component_change',
+];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 /** References into replaced tables from kept data, repointed below: "table.column". */
