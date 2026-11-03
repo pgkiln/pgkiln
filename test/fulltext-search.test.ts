@@ -78,7 +78,7 @@ describe('sprint 135 AP-2: full-text search configurations', () => {
     assert.deepEqual(searchConfigProblems({ source_type: 'table', source: 'x', title_column: 'a', search_type: 'fulltext', fts_config: 'english' }), []);
     assert.match(searchConfigProblems({ source_type: 'list', source: 'L', search_type: 'fulltext' }).join(), /table or SQL/);
     assert.match(searchConfigProblems({ source_type: 'table', source: 'x', title_column: 'a', search_type: 'fulltext', fts_config: "english'" }).join(), /text search configuration/);
-    assert.match(searchConfigProblems({ source_type: 'table', source: 'x', title_column: 'a', search_type: 'vector' as never }).join(), /search type/);
+    assert.match(searchConfigProblems({ source_type: 'table', source: 'x', title_column: 'a', search_type: 'semantic' as never }).join(), /search type/);
     assert.match(searchConfigProblems({ source_type: 'table', source: 'x', title_column: 'a', search_type: 'fulltext', fts_vector: 'v; drop table x' }).join(), /one column/);
   });
 

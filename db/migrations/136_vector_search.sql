@@ -85,9 +85,10 @@ end
 $$;
 
 -- The embedding of a text by a function provider, as real[] (cast it: meta.embed(…)::vector).
--- Runs the provider's function as the caller (security invoker): its grants apply.
+-- Runs the provider's function as the caller (security invoker): its grants apply. Stable, so
+-- "order by embedding <=> meta.embed(…)::vector" embeds the text once (an index scan's argument).
 create function meta.embed(p_text text, p_provider text, p_app int default null) returns real[]
-language plpgsql volatile set search_path = meta, pg_catalog as $$
+language plpgsql stable set search_path = meta, pg_catalog as $$
 declare
   v   jsonb := meta.vector_provider(p_provider, p_app);
   fn  text;
