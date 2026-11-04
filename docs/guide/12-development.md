@@ -221,6 +221,8 @@ src/
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
+    page-regions.ts        (sprint 140) breadcrumb and help_text regions: breadcrumbLinks (also the title bar's trail, left out when the
+                           page has a breadcrumb region), the page's help text (meta.page.help) as Markdown with escaped &ITEM. values
     styles.ts              base styles (BASE_STYLES: Iris, Lavender, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
                            style (user choice, default), themeCss() (only hex values and constants reach the CSS); (sprint 117) NAV_APPEARANCES
                            (Pillar Light / Dark), navAppearance() → the <body> classes nav-pillar-*, the header strip (--strip)
@@ -228,7 +230,10 @@ src/
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges; (124) menu entries {action} → data-menu-entry for menu_entry dynamic actions)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
-                           items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts)
+                           (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
+                           pagination total/range/none;
+                           items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts;
+                           LOV_TYPES / LOV_CHECKED / MULTI_VALUE: the list item types (shuttle, select_one, select_many since 140) checked on submit and colon-separated)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
     gantt-move.ts          (sprint 69) Gantt drag and drop: ganttEditable, targetTime, moveGanttTask (the task in the region's
                            query, gantt_move with :TASK_ID/:NEW_START/:NEW_END); the dragging itself is in app.js
@@ -519,7 +524,8 @@ public/
                            (sprint 117) navigation tree states, RTL via logical properties, body.nav-pillar-*, u-color-*-subtle, the busy bar)
   app.js                   client runtime: dialogs (dialog_closed actions), popup LOVs (sprint 115: the next page loads on scroll through an
                            IntersectionObserver, ‹/More without one), dynamic actions (focus, classes, messages; sprint 115: wait_popup /
-                           remove_wait_popup as a modal <dialog class="wait-popup">, pgkiln.waitPopup(), the menu_entry event), grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
+                           remove_wait_popup as a modal <dialog class="wait-popup">, pgkiln.waitPopup(), the menu_entry event), (sprint 140) shuttle()
+                           and selectPick() (Select One / Many: combobox + listbox, chips) over the item's hidden <select>, grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies);
                            (sprint 108) the current line, and read-only <pre data-code-view="sql|plpgsql|json|html"> highlighted;
                            its colours are the --ce-* tokens in builder.css
@@ -545,6 +551,7 @@ test/
   globalization.test.ts    masks on HR page 29, time zones, the de/fr/es texts
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
+  item-region-types.test.ts (sprint 140) shuttle, select one/many, classic report, breadcrumb and help text: gallery, runtime, export, Advisor, HR page 50
   dataload.test.ts         parsing, Load Data, the data_load process
   sampledata.test.ts       Sample Data: CHECK parsing, proposals, option errors, seeds and streams, preview/insert/rollback, parents first, downloads, saved generators
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
@@ -641,6 +648,7 @@ test/
   e2e/worksheet.test.ts    (sprint 91) the SQL Worksheet in a browser: run keys, tabs, navigator, drag and drop, splitters, phone, no JavaScript;
                            (107) transaction mode: badge, reload, Rollback, closing a tab, Autocommit switch, beforeunload
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
+  e2e/item-region-types.test.ts (sprint 140) the shuttle (buttons, keyboard, order) and Select One / Many in a browser; without JavaScript; 390 px
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
   e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone

@@ -14,6 +14,7 @@ A page has a number (unique in the app), a name, a title, and these behaviours:
 | `authz` | scheme name | Who may open it (403 otherwise) |
 | `protection` | `checksum`, `unrestricted` | Whether URL item values need a checksum |
 | `warn_unsaved` | boolean | Ask before the user leaves the page with unsaved changes, see [below](#warn-on-unsaved-changes) |
+| `help` | Markdown | (140; APEX: Page → Help Text) The page's help text, with `&ITEM.` substitutions; a [`help_text` region](#breadcrumb-and-help_text) shows it. At most 20,000 characters |
 
 ### Warn on unsaved changes
 
@@ -170,6 +171,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | Type | Purpose |
 |---|---|
 | [`report`](#report-interactive-report) | Read-only table from a SELECT, with search, filters, sorting, control break, aggregates, highlights, computed columns, group by, pivot and chart views, row selection, saved reports, paging and CSV/Excel/PDF download |
+| [`classic_report`](#classic_report-classic-report) | (140) A report without the Actions menu and the interactive features: a table, value/attribute pairs, a badge list or a media list, with a choice of pagination |
 | [`grid`](#grid-interactive-grid) | Editable table on one database table, with aggregates, frozen, movable and resizable columns, saved grid reports, a row actions menu, master-detail, copy/paste of cells, and single row, group by and chart views |
 | [`form`](#form) | Fields for one row of a table, with automatic fetch and save |
 | [`chart`](#chart) | Bar, column, stacked, line, area, combo, scatter, bubble, donut, pie, gauge, funnel, radar, Gantt, pyramid, polar, range, box plot, stock, treemap, sunburst or timeline chart from a SELECT, with drill-down links |
@@ -189,6 +191,8 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`search`](#search-search-region) | One search field over several sources (search configurations), results grouped per source |
 | [`url`](#url-url-region) | Another site's page (or a page of this server) in a sandboxed frame |
 | `login` | The sign-in form of the application's own login page (no attributes): identity providers, user name and password, *Keep me signed in*, *Forgot password?*; see [chapter 8](08-security.md#the-login-page) |
+| [`breadcrumb`](#breadcrumb-and-help_text) | (140) The page's breadcrumb trail, for the Breadcrumb bar position |
+| [`help_text`](#breadcrumb-and-help_text) | (140) The page's help text |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 
@@ -403,7 +407,7 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `max_rows` | none | Maximum row count: the report, its total and its downloads read at most this many rows (1 to 1,000,000) |
 | `lazy` | `false` | Load the region after the page shows (see [large tables](#large-tables)) |
 | `cache` | none | Keep the rendered region: `{"scope": "user" \| "session" \| "all", "seconds": 300}` |
-| `searchable` | `true` | Show the search box (`false` = a "classic report") |
+| `searchable` | `true` | Show the search box (`false`: no search, no Actions menu; or use a [`classic_report`](#classic_report-classic-report)) |
 | `fulltext` | none | (sprint 135) A `tsvector` column of the source that the search box also uses: a row is found when its text contains the search text, **or** its tsvector matches it (`websearch_to_tsquery`: stemmed words, `"phrases"`, `or`, `-word`). It may be a `hidden` column (you chose it). Without it, the only `tsvector` column the user may see is used, if there is one. Not with a search in one column |
 | `fulltext_config` | language's | (sprint 135) The text search configuration of that search (`english`, `dutch`…, the one the tsvector was made with); by default the application's primary language's, else `simple`. Only names in `pg_ts_config` are used |
 | `interactive` | `true` | Show the Actions menu (only when searchable) |
@@ -431,6 +435,25 @@ They are streamed from a database cursor, so the server holds one batch of 1,000
 downloads; highlights, aggregates and the group by, pivot and chart views are shown on screen only.
 
 ---
+
+### `classic_report` (classic report)
+
+(sprint 140; APEX: Classic Report) A report from a SELECT without the Actions menu, column heading
+menus, saved reports, downloads or row selection: the same renderer as the interactive report
+with those left out, and none of their settings is read from the URL. Users can sort by a column
+heading (`"sortable": false` leaves that out) and page; a search field only with
+`"searchable": true`. Items placed in the region show above it, as filters for its query.
+
+| Attribute | Default | Meaning |
+|---|---|---|
+| `report_template` | `"standard"` | `standard`: a table (a card per row on phones, `"mobile": "scroll"` keeps the table); `value_pairs`: each row as headings and values (APEX: Value Attribute Pairs); `badges`: the first column as the label and the second as a large value (APEX: Badge List); `media_list`: a title (column `title`, else the first) and a text (`description`, `text` or `body`, else the second), the title a link with `link` |
+| `pagination` | `"total"` | `total`: rows X–Y of Z; `range`: rows X–Y without counting them all; `none`: every row on one page (at most `max_rows`, 500) and no pager |
+| `page_size` | 15 | Rows per page (the user has no rows-per-page choice) |
+| `headings`, `hidden`, `formats`, `link`, `empty`, `max_rows`, `lazy`, `cache` | | As for [`report`](#report-interactive-report) |
+
+```json
+{"report_template": "badges", "pagination": "none"}
+```
 
 ### `grid` (interactive grid)
 
@@ -1790,6 +1813,23 @@ Attributes:
 ```json
 {"height": 640, "sandbox": ["allow-scripts", "allow-same-origin"], "fullscreen": true}
 ```
+
+### `breadcrumb` and `help_text`
+
+(sprint 140; APEX: Breadcrumb and Help Text regions)
+
+- **`breadcrumb`**: the page's breadcrumb trail as links: the pages above it by their *Breadcrumb
+  parent* (else the home page), the ones the user may open, then the current page's title
+  (`{"current": false}` leaves that out). Put it in the **Breadcrumb bar** position with template
+  `plain`, which is where the Page Designer's gallery puts one. A page with a breadcrumb region
+  shows the trail only there: its title bar leaves its own out.
+- **`help_text`**: the page's **Help text** (Page Designer → page properties → Help), Markdown with
+  `&ITEM.` substitutions; item values stay text (no Markdown or HTML of their own). HTML in the help
+  text itself is shown as text, links to `javascript:` are not links. Without a help text the region
+  says *No help is available for this page.* (the runtime message `region.no_help`), or
+  `{"empty": "…"}`.
+
+HR page 50 (*Project team*) has both, and two classic reports.
 
 ### `static` and `dynamic` content
 
