@@ -37,6 +37,7 @@ import { renderPluginRegion } from './plugins.ts';
 import { renderUrlRegion } from './url-region.ts';
 import { renderSearch } from './search.ts';
 import { renderLoginRegion } from './signin.ts';
+import { renderBreadcrumbRegion, renderHelpTextRegion } from './page-regions.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -334,6 +335,16 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
   else switch (r.type) {
     case 'report':
       body = html`${await renderAiFilter(ctx, r)}${await renderReport(ctx, r, await renderItems(ctx, items, hidden))}`;
+      break;
+    case 'classic_report':
+      // (140) the report renderer without the interactive features (report.ts: classic)
+      body = await renderReport(ctx, r, await renderItems(ctx, items, hidden));
+      break;
+    case 'breadcrumb':
+      body = await renderBreadcrumbRegion(ctx, r);
+      break;
+    case 'help_text':
+      body = await renderHelpTextRegion(ctx, r);
       break;
     case 'form':
       body = html`<div class="form-grid">${await renderItems(ctx, items, hidden)}</div>`;

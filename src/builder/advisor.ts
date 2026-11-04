@@ -15,6 +15,7 @@ import { configColumns, searchConfigProblems, textSearchConfig, tsvectorSql } fr
 import { COMPONENTS } from './components.ts';
 import { DISTANCES, PGVECTOR_MISSING, vectorColumnDims, vectorSchema, type Distance } from '../vector.ts';
 import { appEntries, type Entry } from './search.ts';
+import { LOV_CHECKED } from '../runtime/items.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
 
 // App Builder → Advisor (APEX: Advisor): checks an application without
@@ -48,7 +49,7 @@ export function sqlFields(kind: string, row: any): { name: string; shape: SqlSha
   switch (kind) {
     case 'region':
       return [
-        ...(['report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() && !row.rest_source ? [{ name: 'source', shape: 'select' as const }] : []),
+        ...(['report', 'classic_report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() && !row.rest_source ? [{ name: 'source', shape: 'select' as const }] : []),
         { name: 'condition', shape: 'boolean' },
       ];
     case 'item':
@@ -428,6 +429,9 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
     if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
       missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
     if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
+    // (140) a list item (select list, radio group, shuttle, select one or many …) shows no choices without a list of values
+    if (kind === 'item' && LOV_CHECKED.has(row.type) && !String(row.lov ?? '').trim())
+      missing(e, 'List of values', `A ${row.type} item needs a list of values: it has no choices, and no value passes the check on submit.`, 'warning');
     // (078) a URL region: a literal origin, valid attributes
     if (kind === 'region' && row.type === 'url') {
       const target = urlTarget(row.source);

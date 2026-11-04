@@ -404,6 +404,11 @@ export async function designerRoutes(app: FastifyInstance) {
             ${select('build_option', 'Build option', p.build_option ?? '', buildOptionChoices(lk, p.build_option),
               'While the option is excluded (or "Not": included) the page does not exist in the running application.')}
           </div></fieldset>
+          <fieldset class="prop-group"><legend>Help</legend><div class="form-grid">
+            <div class="field" data-wide><label class="label" for="f_help">Help text</label>
+              <textarea id="f_help" name="help" rows="5" maxlength="20000">${p.help ?? ''}</textarea>
+              <small class="help">Markdown with &amp;ITEM. substitutions. A region of type Help Text on the page shows it (APEX: Page → Help).</small></div>
+          </div></fieldset>
           <div class="buttons"><button class="btn btn-hot">${tx('pd.save_page')}</button></div>
         </form>`, true)])}
         ${await usedInPanel(p.app_id, 'page', p)}
@@ -505,9 +510,10 @@ export async function designerRoutes(app: FastifyInstance) {
       const before = await owner.one('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
       await owner.query(
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
-                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16 where id = $1`,
+                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16, help = $17 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
-         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', ['minimal', 'left_side_column', 'right_side_column'].includes(b.page_template ?? '') ? b.page_template : 'standard', b.page_group?.trim() || null],
+         ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', ['minimal', 'left_side_column', 'right_side_column'].includes(b.page_template ?? '') ? b.page_template : 'standard', b.page_group?.trim() || null,
+         typeof b.help === 'string' && b.help.trim() ? b.help.replace(/\r\n?/g, '\n').trim().slice(0, 20000) : null],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))

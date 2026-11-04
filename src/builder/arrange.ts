@@ -45,6 +45,7 @@ export const REGION_LABELS: Record<string, [string, string]> = {
   workflows: ['Workflow Console', 'activity'], map: ['Map', 'map'], tree: ['Tree', 'org'], static: ['Static Content', 'region'], dynamic: ['Dynamic Content', 'code'],
   template_component: ['Template Component', 'layers'], list: ['List', 'list'], data_reporter: ['Data Reporter', 'table'], form_designer: ['Form Designer', 'file'],
   ai_assistant: ['AI Assistant', 'bolt'], url: ['URL', 'link'], search: ['Search', 'search'], login: ['Login', 'lock'], plugin: ['Plug-in', 'layers'],
+  classic_report: ['Classic Report', 'table'], breadcrumb: ['Breadcrumb', 'chevron'], help_text: ['Help Text', 'help'],
 };
 export const ITEM_LABELS: Record<string, [string, string]> = {
   text: ['Text Field', 'item'], textarea: ['Text Area', 'item'], number: ['Number Field', 'item'], date: ['Date Picker', 'calendar'],
@@ -53,6 +54,7 @@ export const ITEM_LABELS: Record<string, [string, string]> = {
   email: ['E-mail', 'inbox'], tel: ['Phone Number', 'item'], url: ['URL', 'item'], color: ['Color Picker', 'item'], file: ['File Upload', 'upload'],
   location: ['Location', 'map'], richtext: ['Rich Text Editor', 'edit'], markdown: ['Markdown Editor', 'code'], rating: ['Star Rating', 'check'],
   combobox: ['Combobox (Tags)', 'list'], daterange: ['Date Range', 'calendar'], qrcode: ['QR Code', 'scan'], image: ['Display Image', 'file'], address: ['Geocoded Address', 'map'], hidden: ['Hidden', 'item'], display: ['Display Only', 'file'], password: ['Password', 'key'],
+  shuttle: ['Shuttle', 'arrow-right'], select_one: ['Select One', 'search'], select_many: ['Select Many', 'check'],
 };
 export const BUTTON_LABELS: Record<string, [string, string]> = {
   submit: ['Submit Page', 'button'], redirect: ['Redirect to Page', 'button'], da: ['Dynamic Action', 'bolt'], document: ['Download Document', 'download'],
@@ -212,6 +214,11 @@ export async function createComponent(c: Q, pid: number, kind: LayoutKind, type:
     if (!REGION_TYPES().includes(type)) throw new LayoutError(400, 'Unknown region type.');
     id = (await c.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 999999, $2, $3, $4) returning id`,
       [pid, `New ${REGION_LABELS[type]?.[0].toLowerCase() ?? type}`, type, NEW_REGION_SOURCE[type] ?? null])).rows[0].id;
+    // (140) a breadcrumb goes in the breadcrumb bar, without a frame of its own (unless it is dropped elsewhere)
+    if (type === 'breadcrumb') {
+      await c.query(`update meta.region set template = 'plain', title = 'Breadcrumb' where id = $1`, [id]);
+      if (!o.position && !o.before) o = { ...o, position: 'breadcrumb' };
+    }
   } else {
     const region = await targetRegion(c, pid, o.region ?? '');
     if (kind === 'item') {

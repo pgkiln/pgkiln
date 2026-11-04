@@ -23,7 +23,7 @@ import { bindValues, type PageContext } from './context.ts';
 // the placeholder is a link that renders the page with the region (r<id>_load=1).
 
 /** Region types that can be cached or loaded lazily (no form state of their own). */
-export const DEFERRABLE = new Set<Region['type']>(['report', 'chart', 'cards', 'dynamic', 'tree', 'template_component']);
+export const DEFERRABLE = new Set<Region['type']>(['report', 'classic_report', 'chart', 'cards', 'dynamic', 'tree', 'template_component']);
 
 export interface CacheSetting {
   scope: 'user' | 'session' | 'all';

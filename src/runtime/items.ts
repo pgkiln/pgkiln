@@ -159,7 +159,7 @@ export async function lovContains(ctx: PageContext, lov: string | null, values: 
 }
 
 /** Item types whose posted value must come from their list of values (a combobox takes free text by design). */
-export const LOV_CHECKED = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov']);
+export const LOV_CHECKED = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov', 'shuttle', 'select_one', 'select_many']);
 
 /** Rows a list of values reads when its item sets no config.max_rows (1 to 50,000). */
 export const LOV_MAX_ROWS = 5000;
@@ -168,9 +168,10 @@ export const lovMax = (item: Item, settings?: ComponentSettings) => {
   return Number.isFinite(n) && n >= 1 ? Math.min(n, 50_000) : settings ? componentSetting(settings, 'lov_max_rows') : LOV_MAX_ROWS;
 };
 
-const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov', 'combobox']);
+/** Item types that show a list of values (the Page Designer's "List of values"). */
+export const LOV_TYPES = new Set(['select', 'radio', 'checkbox_group', 'multiselect', 'popup_lov', 'combobox', 'shuttle', 'select_one', 'select_many']);
 const hasLov = (item: Item) => LOV_TYPES.has(item.type) || (item.type === 'display' && !!item.lov);
-export const MULTI_VALUE = new Set(['checkbox_group', 'multiselect']);
+export const MULTI_VALUE = new Set(['checkbox_group', 'multiselect', 'shuttle', 'select_many']);
 /** Multi-value items store their values colon-separated, as in APEX. */
 export const splitValues = (v: string) => (v ? v.split(':') : []);
 
@@ -322,6 +323,34 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         control = html`<select id="${id}" name="${id}" multiple size="${Math.min(Math.max(options.length, 3), 8)}"${aria}>
           ${options.map((o) => html`<option value="${o.value}"${selected.has(o.value) ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;
+        break;
+      }
+      case 'shuttle': {
+        // (140; APEX: Shuttle) a <select multiple> that works without JavaScript; app.js turns it into two lists
+        // (available, chosen) with move and order buttons. The chosen values keep their order: they come first.
+        const chosen = splitValues(value);
+        const set = new Set(chosen);
+        const indexed = options.map((o, i) => ({ ...o, i }));
+        const ordered = [...chosen.flatMap((v) => indexed.filter((o) => o.value === v).slice(0, 1)), ...indexed.filter((o) => !set.has(o.value))];
+        const t = ctx.locale.t;
+        control = html`<div class="shuttle" data-shuttle="${id}" data-filter-label="${t('shuttle.filter')}" data-available-label="${t('shuttle.available')}" data-chosen-label="${t('shuttle.chosen')}" data-move-label="${t('shuttle.move')}" data-move-all-label="${t('shuttle.move_all')}" data-remove-label="${t('shuttle.remove')}" data-remove-all-label="${t('shuttle.remove_all')}" data-up-label="${t('shuttle.up')}" data-down-label="${t('shuttle.down')}" data-top-label="${t('shuttle.top')}" data-bottom-label="${t('shuttle.bottom')}">
+          <select id="${id}" name="${id}" multiple size="${Math.min(Math.max(options.length, 4), 10)}"${aria}>
+          ${ordered.map((o) => html`<option value="${o.value}" data-i="${o.i}"${set.has(o.value) ? raw(' selected') : ''}>${o.display}</option>`)}
+          </select></div>`;
+        break;
+      }
+      case 'select_one':
+      case 'select_many': {
+        // (140; APEX 24.2: Select One, Select Many) a <select> (or <select multiple>) that works without JavaScript;
+        // app.js adds a search field with a list box that filters the options as one types, and chips for the chosen values
+        const many = item.type === 'select_many';
+        const chosen = new Set(many ? splitValues(value) : value ? [value] : []);
+        const t = ctx.locale.t;
+        control = html`<div class="select-pick" data-select-pick="${many ? 'many' : 'one'}" data-search-label="${t('lov.search')}" data-none-label="${t('lov.no_rows')}" data-remove-label="${t('item.tag_remove')}">
+          <select id="${id}" name="${id}"${many ? html` multiple size="${Math.min(Math.max(options.length, 3), 8)}"` : ''}${aria}>
+          ${many || item.config?.null_label === false ? '' : html`<option value="">${item.config?.null_label ?? t('lov.none')}</option>`}
+          ${options.map((o) => html`<option value="${o.value}"${chosen.has(o.value) ? raw(' selected') : ''}>${o.display}</option>`)}
+          </select></div>`;
         break;
       }
       case 'popup_lov': {
