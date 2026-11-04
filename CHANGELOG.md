@@ -5,8 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.72.0] - 2026-11-04
-
 ### Added
 - **Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions** (AP-4; APEX: the
   Shuttle item, 24.2's Select One and Select Many, and the Classic Report, Breadcrumb and Help Text regions;
@@ -22,6 +20,10 @@ All notable changes to this project are documented here. The format follows
   Markdown with `&ITEM.` substitutions). All six in the Page Designer's gallery (11 builder languages), the property
   editor and the region type help; the Advisor warns about a list item without a list of values. HR page 50
   (*Project team*) uses them.
+
+## [0.72.0] - 2026-11-04
+
+### Added
 - **OpenTelemetry** (AP-6; APEX: Workspace Utilities → OpenTelemetry, migration 139): Workspace utilities →
   **OpenTelemetry** sends traces, logs and metrics to an OpenTelemetry Collector over OTLP/HTTP (JSON), or set it with
   the standard `OTEL_*` variables. A trace per application request with a span per SQL statement, outgoing web call
