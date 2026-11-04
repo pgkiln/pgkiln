@@ -1,5 +1,6 @@
 import { owner } from '../db.ts';
 import { decryptSecret } from '../secrets.ts';
+import { aiServerUrl } from '../remote-servers.ts';
 import { ClaudeProvider } from './anthropic.ts';
 import { OpenAiProvider } from './openai.ts';
 import { AiError, type AiProvider, type GenerateRequest, type GenerateResult, type ProviderName } from './types.ts';
@@ -27,6 +28,9 @@ export interface AiService {
   base_url: string | null;
   api_key_enc: string | null;
   enabled: boolean;
+  /** (141) a remote server whose base URL (plus server_path) the service calls instead of base_url */
+  server_id?: number | null;
+  server_path?: string | null;
 }
 
 /** The default model of a new Claude service; OpenAI services name theirs. */
@@ -78,7 +82,12 @@ export function serviceKey(s: AiService): string {
 }
 
 export async function loadService(name: string): Promise<AiService | undefined> {
-  return owner.one<AiService>('select * from meta.ai_service where name = $1', [name.toUpperCase()]);
+  const s = await owner.one<AiService>('select * from meta.ai_service where name = $1', [name.toUpperCase()]);
+  if (!s?.server_id) return s;
+  // (141) on a remote server: its URL now (base_url is then what baseUrlFor gives the SDK)
+  const r = await aiServerUrl(s.server_id, s.server_path);
+  if (!r.url) throw new AiError('config', `AI service ${s.name}: ${r.problem}`);
+  return { ...s, base_url: r.url };
 }
 
 /** The provider of a service, with its key (decrypted only here, never stored elsewhere). */

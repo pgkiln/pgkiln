@@ -603,7 +603,11 @@ export async function builderRoutes(app: FastifyInstance) {
       });
       // supporting objects are never run on import: the developer reviews them and chooses
       const scripts = (await owner.one('select count(*)::int as n from meta.supporting_script where app_id = $1', [r.id])).n;
-      flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}`);
+      // (141) remote servers its REST data sources name that this workspace doesn't have (yet)
+      const servers = (await owner.query<{ server: string }>(
+        `select distinct x.server from meta.rest_source x where x.app_id = $1 and x.server is not null
+            and not exists (select 1 from meta.remote_server r where r.workspace_id = meta.app_workspace($1) and r.static_id = x.server) order by 1`, [r.id])).rows.map((x) => x.server);
+      flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}${servers.length ? ` Its REST data sources use remote server${servers.length > 1 ? 's' : ''} ${servers.join(', ')}, which this workspace doesn't have: add ${servers.length > 1 ? 'them' : 'it'} under Workspace utilities → Remote servers.` : ''}`);
       return back(reply, s, scripts ? `${BASE}/apps/${r.id}/supporting-objects?imported=1` : `${BASE}/apps/${r.id}`);
     } catch (e) {
       flash(s, `Import failed: ${(e as Error).message}`, 'error');

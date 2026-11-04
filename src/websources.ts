@@ -5,6 +5,7 @@ import { runtimeForApp } from './workspace-db.ts';
 import { decryptSecret, encryptSecret } from './secrets.ts';
 import { checkUrl, WebError, webRequest, type OutboundScope, type WebResponse } from './webclient.ts';
 import { scopeForApp } from './network-acl.ts';
+import { resolveSource } from './remote-servers.ts';
 
 // Web credentials and REST data sources (meta.web_credential,
 // meta.rest_source): building the request (parameters, credential), OAuth2
@@ -34,6 +35,8 @@ export interface WebCredential {
   oauth_username?: string | null;
   password_enc?: string | null;
   refresh_token_enc?: string | null;
+  /** (141) a credential of the application's workspace (meta.workspace_credential) */
+  workspace?: boolean;
 }
 
 export type ParamLocation = 'query' | 'path' | 'header' | 'body';
@@ -56,9 +59,12 @@ export interface RestSource {
   id: number;
   app_id: number;
   name: string;
+  /** a full URL; (141) with a server, the path after the server's base URL (resolveSource makes it full) */
   url: string;
   method: string;
   credential: string | null;
+  /** (141) a remote server of the application's workspace (static id) */
+  server?: string | null;
   headers: Record<string, string>;
   params: RestParam[];
   body: string | null;
@@ -101,9 +107,14 @@ const RESERVED_HEADERS = new Set(['authorization', 'proxy-authorization', 'cooki
 // ---------------------------------------------------------------- checks (builder, import)
 
 /** Problems with a REST data source definition (empty: fine). */
-export function sourceProblems(s: { url?: unknown; params?: unknown; columns?: unknown; headers?: unknown; row_selector?: unknown; key_columns?: unknown; operations?: unknown }): string[] {
+export function sourceProblems(s: { url?: unknown; server?: unknown; params?: unknown; columns?: unknown; headers?: unknown; row_selector?: unknown; key_columns?: unknown; operations?: unknown }): string[] {
   const out: string[] = [];
-  if (typeof s.url !== 'string' || !/^https?:\/\/[^/\s]+/i.test(s.url)) out.push('The URL must start with http:// or https://.');
+  if (s.server != null && s.server !== '') {
+    // (141) on a remote server: a path after its base URL (or nothing)
+    if (typeof s.server !== 'string' || !/^[A-Z][A-Z0-9_]{0,59}$/.test(s.server)) out.push('The remote server is its static id, e.g. CRM.');
+    if (typeof s.url !== 'string' || !/^([/?][^\s]*)?$/.test(s.url)) out.push('With a remote server the URL is the path after its base URL, e.g. /v1/orders/{id} (or empty).');
+    else if (s.url.includes('//') || /(^|\/)\.\.?(\/|$|\?)/.test(s.url)) out.push('The path may not contain // or .. segments.');
+  } else if (typeof s.url !== 'string' || !/^https?:\/\/[^/\s]+/i.test(s.url)) out.push('The URL must start with http:// or https://.');
   else if (/[{&]/.test(/^https?:\/\/[^/?#]*/i.exec(s.url)![0])) out.push('The URL\'s host is fixed: parameters can only follow it.');
   else {
     try {
@@ -384,21 +395,29 @@ export const withRest = (rowsQuery: string, sql: string | null | undefined) =>
 export async function loadSource(appId: number, name: string) {
   // the application's own connection (an isolated workspace's), also from a workflow or job (090)
   const s = await (await runtimeForApp(appId)).one<RestSource>(
-    `select id, app_id, name, url, method, credential, headers, params, body, row_selector, columns, cache_seconds, timeout_s, max_rows, key_columns, operations
+    `select id, app_id, name, url, method, credential, server, headers, params, body, row_selector, columns, cache_seconds, timeout_s, max_rows, key_columns, operations
        from meta.rest_source where app_id = $1 and name = $2`,
     [appId, name.toUpperCase()],
   );
   if (!s) throw new WebError(`REST data source ${name} does not exist.`);
-  return s;
+  // (141) on a remote server: the server's URL of this moment, and its credential when the source names none
+  return resolveSource(s);
 }
 
-/** With the (encrypted) secret: the owner connection, never the runtime role. */
+const CREDENTIAL_COLUMNS = 'id, name, type, username, header_name, token_url, scope, valid_for, secret_enc, grant_type, oauth_username, password_enc, refresh_token_enc';
+
+/**
+ * With the (encrypted) secret: the owner connection, never the runtime role. The application's own
+ * credential of that name, else (141) one of its workspace's (never another workspace's).
+ */
 export async function loadCredential(appId: number, name: string) {
-  const c = await owner.one<WebCredential>(
-    `select id, app_id, name, type, username, header_name, token_url, scope, valid_for, secret_enc, grant_type, oauth_username, password_enc, refresh_token_enc
-       from meta.web_credential where app_id = $1 and name = $2`,
+  const c = (await owner.one<WebCredential>(
+    `select ${CREDENTIAL_COLUMNS}, app_id from meta.web_credential where app_id = $1 and name = $2`,
     [appId, name.toUpperCase()],
-  );
+  )) ?? (await owner.one<WebCredential>(
+    `select ${CREDENTIAL_COLUMNS}, $1::int as app_id, true as workspace from meta.workspace_credential where workspace_id = meta.app_workspace($1) and name = $2`,
+    [appId, name.toUpperCase()],
+  ));
   if (!c) throw new WebError(`Web credential ${name} does not exist.`);
   return c;
 }
@@ -428,15 +447,18 @@ interface Token {
 const tokens = new Map<string, Token>();
 const pendingTokens = new Map<string, Promise<Token>>();
 const credKey = (c: WebCredential) =>
-  createHash('sha256').update(JSON.stringify([c.id, c.username, c.token_url, c.scope, c.secret_enc, c.grant_type ?? null, c.oauth_username ?? null, c.password_enc ?? null])).digest('base64url');
+  createHash('sha256').update(JSON.stringify([tokenId(c), c.username, c.token_url, c.scope, c.secret_enc, c.grant_type ?? null, c.oauth_username ?? null, c.password_enc ?? null])).digest('base64url');
 
-/** Forget cached tokens (all, or one credential's). */
-export function clearTokens(credentialId?: number) {
+/** The token cache's id of a credential: (141) a workspace credential's starts with w. */
+const tokenId = (c: Pick<WebCredential, 'id' | 'workspace'>) => (c.workspace ? `w${c.id}` : String(c.id));
+
+/** Forget cached tokens (all, or one credential's: its id, or w<id> for a workspace credential). */
+export function clearTokens(credentialId?: number | string) {
   for (const k of [...tokens.keys()]) if (credentialId === undefined || k.startsWith(`${credentialId}:`)) tokens.delete(k);
 }
 
 const secretOf = (c: WebCredential) => {
-  if (!c.secret_enc) throw new WebError(`Web credential ${c.name} has no secret yet: enter it in the builder (Shared Components → Web credentials).`);
+  if (!c.secret_enc) throw new WebError(`Web credential ${c.name} has no secret yet: enter it in the builder (${c.workspace ? 'Workspace utilities' : 'Shared Components'} → Web credentials).`);
   return decryptSecret(c.secret_enc);
 };
 
@@ -504,7 +526,7 @@ async function requestToken(c: WebCredential, refresh: string | null, timeoutMs:
 /** Keep a refresh token (encrypted); written with the owner connection only. */
 async function storeRefreshToken(c: WebCredential, token: string) {
   const enc = encryptSecret(token);
-  await owner.query('update meta.web_credential set refresh_token_enc = $2, token_refreshed_at = now() where id = $1', [c.id, enc]);
+  await owner.query(`update meta.${c.workspace ? 'workspace_credential' : 'web_credential'} set refresh_token_enc = $2, token_refreshed_at = now() where id = $1`, [c.id, enc]);
   c.refresh_token_enc = enc;
 }
 
@@ -519,7 +541,7 @@ function storedRefresh(c: WebCredential) {
 }
 
 async function oauthToken(c: WebCredential, timeoutMs: number, scope: OutboundScope | null, fresh = false): Promise<string> {
-  const key = `${c.id}:${credKey(c)}`;
+  const key = `${tokenId(c)}:${credKey(c)}`;
   const cached = tokens.get(key);
   if (cached && !fresh && cached.expires > Date.now()) return cached.access;
   let p = pendingTokens.get(key);
@@ -609,7 +631,7 @@ export async function call(o: CallOptions): Promise<WebResponse> {
   };
   const res = await send(false);
   if (res.status === 401 && o.credential?.type === 'oauth2') {
-    clearTokens(o.credential.id);
+    clearTokens(tokenId(o.credential));
     return send(true);
   }
   return res;
@@ -759,7 +781,8 @@ export function buildOperation(s: RestSource, name: OperationName, row: Record<s
  * 200–299 fails. Returns the response's JSON (null when empty) and, for
  * insert and fetch, the row in it (by the operation's row selector).
  */
-export async function callOperation(s: RestSource, name: OperationName, row: Record<string, unknown>, params: Record<string, string> = {}) {
+export async function callOperation(source: RestSource, name: OperationName, row: Record<string, unknown>, params: Record<string, string> = {}) {
+  const s = await resolveSource(source);
   const req = buildOperation(s, name, row, params);
   const credential = s.credential ? await loadCredential(s.app_id, s.credential) : null;
   const res = await call({ ...req, appId: s.app_id, what: `REST data source ${s.name}`, credential, timeoutMs: s.timeout_s * 1000 });
@@ -790,7 +813,9 @@ export function clearResponseCache(sourceId?: number) {
 }
 
 /** The parsed JSON response of a source (from the cache when it is fresh enough). */
-export async function fetchSource(s: RestSource, values: Record<string, string | null | undefined>) {
+export async function fetchSource(source: RestSource, values: Record<string, string | null | undefined>) {
+  // (141) on a remote server: its URL now (a source from loadSource is resolved already)
+  const s = await resolveSource(source);
   const req = buildRequest(s, values);
   // (sprint 118) the workspace's network access list, before the cache: a narrowed list applies at once
   const scope = await scopeForApp(s.app_id, `REST data source ${s.name}`);

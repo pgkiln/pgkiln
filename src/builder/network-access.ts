@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { parseHostList, scopeForWorkspace } from '../network-acl.ts';
+import { serverUrl, type RemoteServer } from '../remote-servers.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { matches, restHosts, scopeProblem, urlProblem } from '../webclient.ts';
 import { clearResponseCache } from '../websources.ts';
@@ -53,6 +54,29 @@ export async function networkAccessRoutes(app: FastifyInstance) {
         `select r.at, r.what, r.host, r.url, r.list, r.message, a.alias from meta.network_refusal r left join meta.app a on a.id = r.app_id
           where r.workspace_id = $1 order by r.id desc limit 100`, [w.id]).then((r) => r.rows),
     ]);
+    // (141) the hosts the workspace's remote servers stand for now, and whether a call to them would pass
+    const scopeNow = await scopeForWorkspace(w.id, 'check');
+    const servers = (await owner.query<RemoteServer>('select * from meta.remote_server where workspace_id = $1 order by static_id', [w.id])).rows.map((x) => {
+      const u = serverUrl(x);
+      let host = '';
+      let problem: string | null = u.problem;
+      if (u.url)
+        try {
+          const url = new URL(u.url);
+          host = url.host;
+          problem = urlProblem(url) ?? scopeProblem(scopeNow, url);
+        } catch {
+          problem = 'not a valid URL';
+        }
+      return { ...x, url: u.url, from: u.from, host, problem };
+    });
+    const serversOf = (entry: string) => servers.filter((x) => x.host && (() => {
+      try {
+        return matches([entry], new URL(`https://${x.host}`));
+      } catch {
+        return false;
+      }
+    })()).map((x) => x.static_id);
     // entries the installation's list never lets through (they narrow nothing: worth a warning)
     const unreachable = w.network_hosts.filter((h) => {
       const host = h.replace(/^\*\./, 'x.');
@@ -90,11 +114,20 @@ export async function networkAccessRoutes(app: FastifyInstance) {
               <textarea id="f_hosts" name="hosts" rows="6" spellcheck="false">${w.network_hosts.join('\n')}</textarea>
               <small class="help">One per line: <code>api.example.com</code>, <code>*.example.com</code> for its subdomains, <code>api.example.com:8443</code> for one port only. No scheme or path. Restricted with no hosts: no outgoing calls at all.</small></div>
             ${unreachable.length ? html`<div class="alert alert-warning" role="status">Not on the installation's list, so never reachable: ${unreachable.join(', ')}.</div>` : ''}
+            ${w.network_hosts.some((h) => serversOf(h).length) ? html`<p class="muted small">Remote servers on these hosts: ${w.network_hosts.filter((h) => serversOf(h).length).map((h) => `${h} (${serversOf(h).join(', ')})`).join('; ')}.</p>` : ''}
             <div class="buttons"><button class="btn btn-hot">Save</button></div></form>`, '', 'workspace-list')}
         ${region('Installation', html`<p class="muted u-mt0">Set in the server's environment by its administrators (<code>PGKILN_REST_ALLOWED_HOSTS</code>).</p>
             ${inst.allowed.includes('*') ? html`<p>Any public host (<code>*</code>).</p>` : entries(inst.allowed)}
             ${m.admin ? html`<h3 class="u-mt1">Private hosts</h3><p class="muted small">Hosts on private or loopback addresses that may be called (<code>PGKILN_REST_PRIVATE_HOSTS</code>).</p>${entries(inst.private)}` : ''}`)}
       </div>
+      ${region('Remote servers', html`<p class="muted u-mt0">The hosts this workspace's <a href="${BASE}/remote-servers">remote servers</a> stand for now: the REST data sources, catalogs and AI services on a server call this host.</p>
+        <div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>Server</th><th>Host</th><th>From</th><th>Would be called</th></tr></thead>
+        <tbody>${servers.length ? servers.map((x) => html`<tr><td data-label="Server">${x.static_id}</td>
+            <td data-label="Host" class="u-break">${x.host ? html`<code>${x.host}</code>` : html`<span class="muted">none</span>`}</td>
+            <td data-label="From">${x.from === 'env' ? x.env_var : x.from === 'stored' ? 'base URL' : ''}</td>
+            <td data-label="Would be called">${x.problem ? html`<span class="tag tag-error">no</span> <span class="muted small">${x.problem}</span>` : html`<span class="tag tag-ok">yes</span>`}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">No remote servers.</td></tr>`}</tbody></table></div>`, '', 'servers')}
       ${region('Check a URL', html`<form method="get" action="${BASE}/network" class="search u-mwnone">
           <input type="hidden" name="ws" value="${w.id}">
           ${input('url', 'URL', tryUrl, { type: 'url', placeholder: 'https://api.example.com/v1/items' })}

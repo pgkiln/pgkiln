@@ -37,7 +37,12 @@ export interface PageSummary {
 export interface StaticInclude {
   name: string;
   v: number;
+  /** (141) a static workspace file (the name without #WORKSPACE_FILES#) */
+  ws?: boolean;
 }
+
+/** (141) The prefix of a static workspace file in a list of files to load. */
+export const WORKSPACE_FILES = '#WORKSPACE_FILES#';
 
 export interface AppProcess {
   id: number;
@@ -368,10 +373,19 @@ export interface Page extends PageSummary {
   help: string | null;
 }
 
-/** The static files a list of names refers to, in that order, with their version. */
+/**
+ * The static files a list of names refers to, in that order, with their version; (141) a name
+ * #WORKSPACE_FILES#x is the file x of the application's workspace (meta.workspace_file_versions:
+ * its own workspace's only). Missing files are left out.
+ */
 const includes = (names: string, appId: string) =>
-  `coalesce((select jsonb_agg(jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint) order by u.o)
-               from unnest(${names}) with ordinality u(n, o) join meta.static_file f on f.app_id = ${appId} and f.name = u.n), '[]')`;
+  `coalesce((select jsonb_agg(x.j order by x.o) from (
+       select u.o, case when u.n like '#WORKSPACE\\_FILES#%'
+                        then (select jsonb_build_object('name', substr(u.n, 18), 'v', (w.v ->> substr(u.n, 18))::bigint, 'ws', true) where w.v ? substr(u.n, 18))
+                        else (select jsonb_build_object('name', f.name, 'v', floor(extract(epoch from f.updated_at))::bigint) from meta.static_file f where f.app_id = ${appId} and f.name = u.n) end as j
+         from unnest(${names}) with ordinality u(n, o)
+         left join lateral (select meta.workspace_file_versions(${appId}) as v where exists (select 1 from unnest(${names}) z where z like '#WORKSPACE\\_FILES#%')) w on true
+     ) x where x.j is not null), '[]')`;
 
 // Components whose build option is excluded are left out here, so the runtime
 // neither renders nor runs them (meta.build_option_on, migration 029).

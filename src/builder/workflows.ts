@@ -73,7 +73,8 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
   const shown = dev ? (row.dev_steps ?? []) : row.steps;
   const refs = {
     sources: new Map((await owner.query('select name, params, columns from meta.rest_source where app_id = $1', [appId])).rows.map((r) => [r.name as string, r])),
-    credentials: new Set((await owner.query('select name from meta.web_credential where app_id = $1', [appId])).rows.map((r) => r.name as string)),
+    // (141) the application's credentials and its workspace's
+    credentials: new Set((await owner.query('select name from meta.web_credential where app_id = $1 union select name from meta.workspace_credential where workspace_id = meta.app_workspace($1)', [appId])).rows.map((r) => r.name as string)),
     startVars: [...String((row as { title?: string }).title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
   };
   const invokeRefs = invokeStepReferences(shown, refs);

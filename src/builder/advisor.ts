@@ -387,6 +387,10 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   // (104) a document button names a document template or a report query
   const documents = new Set(all.filter((x) => x.kind === 'document_template' || x.kind === 'report_query').map((x) => x.row.name.toUpperCase()));
   const missing = (entry: Entry | null, field: string, message: string, severity: Severity = 'error') => findings.push({ severity, entry, field, message });
+  // (141) remote servers and web credentials of the application's workspace (sources and invoke steps may name them)
+  const wsServers = new Map((await query('select static_id, credential from meta.remote_server where workspace_id = meta.app_workspace($1)', [appId])).rows.map((r) => [r.static_id as string, r.credential as string | null]));
+  const wsCredentials = new Set((await query('select name from meta.workspace_credential where workspace_id = meta.app_workspace($1)', [appId])).rows.map((r) => r.name as string));
+  const appCredentials = new Set(all.filter((x) => x.kind === 'web_credential').map((x) => String(x.row.name).toUpperCase()));
 
   for (const e of entries) {
     for (const f of e.fields) {
@@ -457,6 +461,14 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template or report query ${row.document} doesn't exist.` : 'A document button needs a document template or a report query.');
     if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
+    if (kind === 'rest_source') {
+      // (141) an export may name a server or credential this workspace doesn't have (yet): it imports, and says so here
+      if (row.server && !wsServers.has(row.server))
+        missing(e, 'Remote server', `Remote server ${row.server} doesn't exist in this application's workspace: add it under Workspace utilities → Remote servers (calls fail until then).`, 'warning');
+      const credential = row.credential || (row.server ? wsServers.get(row.server) : null);
+      if (credential && !appCredentials.has(credential) && !wsCredentials.has(credential))
+        missing(e, 'Web credential', `Web credential ${credential} is neither the application's nor its workspace's (calls fail until it exists).`, 'warning');
+    }
     if (kind === 'workflow_definition') {
       const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
       const outcomes = outcomeMap(all.filter((x) => x.kind === 'task_definition').map((x) => x.row));
@@ -465,7 +477,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       // invoke_api steps: REST data sources, parameters, web credentials, variables (sprint 32)
       const refs = {
         sources: new Map(all.filter((x) => x.kind === 'rest_source').map((x) => [String(x.row.name).toUpperCase(), x.row])),
-        credentials: new Set(all.filter((x) => x.kind === 'web_credential').map((x) => String(x.row.name).toUpperCase())),
+        credentials: new Set([...appCredentials, ...wsCredentials]),
         startVars: [...String(row.title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
       };
       const invokeRefs = invokeStepReferences(row.steps, refs);

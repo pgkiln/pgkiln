@@ -573,7 +573,8 @@ export function attributeValues(c: TemplateComponent, use: TcUse) {
  * filled in), then LINK, APEX$ROW_NUM, then the row's columns.
  */
 export function rowLookup(ctx: PageContext | null, attrs: Map<string, string>, columns: Map<string, string>, extra: Record<string, string | undefined> = {}): Lookup {
-  const col: Lookup = (n) => columns.get(n) ?? extra[n];
+  // (141) #APP_FILES# / #WORKSPACE_FILES#: where the application's and its workspace's static files are served
+  const col: Lookup = (n) => columns.get(n) ?? extra[n] ?? (ctx && (n === 'APP_FILES' || n === 'WORKSPACE_FILES') ? `${ctx.base}/${n === 'APP_FILES' ? 'static' : 'workspace-files'}/` : undefined);
   const memo = new Map<string, string>();
   return (name) => {
     if (attrs.has(name)) {

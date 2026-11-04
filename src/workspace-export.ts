@@ -2,6 +2,9 @@ import type { Client } from './db.ts';
 import { owner } from './db.ts';
 import { checkDataset, datasetOf, storeDataset } from './datasets.ts';
 import { describeTeam, exportTeam, importTeam } from './team.ts';
+import { serverProblems } from './remote-servers.ts';
+import { STATIC_MAX, staticType } from './runtime/static-files.ts';
+import { credentialProblems, GRANT_TYPES } from './websources.ts';
 import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, replaceCatalog, wholeCatalogProblems } from './restcatalog.ts';
 
 // Workspace utilities → Export / import (APEX: Workspace Utilities → Export,
@@ -21,6 +24,10 @@ import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, repla
 //   datasets         (sprint 110) Data Reporter datasets (pgkiln-dataset/1 definitions)
 //   team             (sprint 113) Team Development: label groups, labels, milestones, templates and issues
 //                    (with comments and history; applications by alias), an object (src/team.ts)
+//   workspace_files  (sprint 141) static workspace files (content in base64)
+//   remote_servers   (sprint 141) remote servers; an existing server keeps its own base URL on import
+//                    (the URL is per installation: development, test, production)
+//   web_credentials  (sprint 141) the workspace's web credentials, never their secrets (entered again after an import)
 //
 // Not exported: the workspace's name (the importer's workspace keeps its own),
 // isolation and its database roles (installation-specific), script runs and
@@ -29,7 +36,8 @@ import { catalogDocument, fromCatalogDocument, insertCatalog, loadCatalog, repla
 // installation has a developer of that name.
 
 export const WORKSPACE_FORMAT = 'pgkiln-workspace/1';
-export const PARTS = ['settings', 'developers', 'app_groups', 'extension_links', 'rest_catalogs', 'sql_scripts', 'blueprints', 'data_generators', 'datasets', 'team'] as const;
+export const PARTS = ['settings', 'developers', 'app_groups', 'extension_links', 'rest_catalogs', 'sql_scripts', 'blueprints', 'data_generators', 'datasets', 'team',
+  'workspace_files', 'remote_servers', 'web_credentials'] as const;
 export type Part = (typeof PARTS)[number];
 export const PART_LABELS: Record<Part, string> = {
   settings: 'Settings: description, message, banner and preferences',
@@ -42,6 +50,9 @@ export const PART_LABELS: Record<Part, string> = {
   data_generators: 'Data generators',
   datasets: 'Data Reporter datasets',
   team: 'Team Development: labels, milestones, templates and issues',
+  workspace_files: 'Static workspace files',
+  remote_servers: 'Remote servers (an existing server keeps its base URL)',
+  web_credentials: 'Web credentials (without their secrets)',
 };
 
 const MAX_ITEMS = 5000;
@@ -82,6 +93,14 @@ export async function exportWorkspace(workspaceId: number, parts: readonly Part[
   if (want('datasets'))
     doc.datasets = (await owner.query('select * from meta.dataset where workspace_id = $1 order by name', [workspaceId])).rows.map(datasetOf);
   if (want('team')) doc.team = await exportTeam(workspaceId);
+  if (want('workspace_files'))
+    doc.workspace_files = (await owner.query(`select name, mime, translate(encode(content, 'base64'), E'\n', '') as content from meta.workspace_file where workspace_id = $1 order by name`, [workspaceId])).rows;
+  if (want('remote_servers'))
+    doc.remote_servers = (await owner.query('select static_id, name, description, base_url, env_var, credential from meta.remote_server where workspace_id = $1 order by static_id', [workspaceId])).rows;
+  if (want('web_credentials'))
+    // secrets never leave the installation
+    doc.web_credentials = (await owner.query(
+      'select name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username from meta.workspace_credential where workspace_id = $1 order by name', [workspaceId])).rows;
   return doc;
 }
 
@@ -270,6 +289,66 @@ export async function importWorkspace(c: Client, workspaceId: number, doc: unkno
     // (sprint 113) labels, milestones, templates and issues of Team Development (src/team.ts)
     const t = await importTeam(c, workspaceId, d.team, opts);
     tally('Team Development', t.added, t.replaced, t.skipped, t.issues ? `; ${t.issues} issue(s) with their comments` : '');
+  }
+
+  if (want('workspace_files')) {
+    // (sprint 141) the same names, types and sizes as an upload
+    const n = count();
+    for (const x of d.workspace_files as Json[]) {
+      const name = isObj(x) && typeof x.name === 'string' ? x.name : '';
+      const type = staticType(name);
+      if (!type) throw new Error(`Static workspace file ${JSON.stringify(name).slice(0, 110)}: not an allowed name or type.`);
+      const content = typeof x.content === 'string' ? Buffer.from(x.content, 'base64') : Buffer.alloc(0);
+      if (content.length > STATIC_MAX) throw new Error(`Static workspace file ${name}: larger than ${STATIC_MAX / 1024 / 1024} MB.`);
+      const existing = (await c.query<{ id: number }>('select id from meta.workspace_file where workspace_id = $1 and name = $2', [workspaceId, name])).rows[0];
+      n[await upsert(existing,
+        () => c.query('insert into meta.workspace_file (workspace_id, name, mime, content, updated_by) values ($1, $2, $3, $4, $5)', [workspaceId, name, type, content, opts.by]),
+        (id) => c.query('update meta.workspace_file set mime = $2, content = $3, updated_by = $4, updated_at = now() where id = $1', [id, type, content, opts.by]))]++;
+    }
+    tally('Static workspace files', n.added, n.replaced, n.skipped);
+  }
+
+  if (want('remote_servers')) {
+    // (sprint 141) the base URL is this installation's: an existing server keeps its own, a new one takes the file's
+    const n = count();
+    for (const x of d.remote_servers as Json[]) {
+      if (!isObj(x)) continue;
+      const v = { static_id: x.static_id, name: x.name, description: text(x.description, 2000), base_url: text(x.base_url, 2000), env_var: text(x.env_var, 80), credential: text(x.credential, 60) };
+      const problems = serverProblems(v);
+      if (problems.length) throw new Error(`Remote server ${typeof x.static_id === 'string' ? x.static_id : '?'}: ${problems.join(' ')}`);
+      const existing = (await c.query<{ id: number }>('select id from meta.remote_server where workspace_id = $1 and static_id = $2', [workspaceId, v.static_id])).rows[0];
+      n[await upsert(existing,
+        () => c.query('insert into meta.remote_server (workspace_id, static_id, name, description, base_url, env_var, credential, updated_by) values ($1, $2, $3, $4, $5, $6, $7, $8)',
+          [workspaceId, v.static_id, v.name, v.description, v.base_url, v.env_var, v.credential, opts.by]),
+        (id) => c.query(`update meta.remote_server set name = $2, description = $3, env_var = $4, credential = $5, base_url = coalesce(base_url, $6),
+                                updated_by = $7, updated_at = now() where id = $1`, [id, v.name, v.description, v.env_var, v.credential, v.base_url, opts.by]))]++;
+    }
+    tally('Remote servers', n.added, n.replaced, n.skipped, n.replaced ? '; existing servers kept their base URL' : '');
+  }
+
+  if (want('web_credentials')) {
+    // (sprint 141) without secrets: an existing credential keeps its own, a new one gets them entered in the builder
+    const n = count();
+    for (const x of d.web_credentials as Json[]) {
+      if (!isObj(x)) continue;
+      const v = {
+        name: String(x.name ?? ''), description: text(x.description, 2000),
+        type: ['basic', 'header', 'bearer', 'oauth2', 'aws_sigv4'].includes(x.type) ? x.type : 'basic',
+        username: text(x.username, 500), header_name: text(x.header_name, 64), token_url: text(x.token_url, 2000), scope: text(x.scope, 500),
+        valid_for: Array.isArray(x.valid_for) ? x.valid_for.filter((u: unknown) => typeof u === 'string') : [],
+        grant_type: GRANT_TYPES.includes(x.grant_type) ? x.grant_type : 'client_credentials', oauth_username: text(x.oauth_username, 500),
+      };
+      const problems = [...(/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name) ? [] : ['the name is upper case letters, digits and _.']), ...credentialProblems(v)];
+      if (problems.length) throw new Error(`Web credential ${v.name || '?'}: ${problems.join(' ')}`);
+      const vals = [v.description, v.type, v.username, v.header_name, v.token_url, v.scope, v.valid_for, v.grant_type, v.oauth_username];
+      const existing = (await c.query<{ id: number }>('select id from meta.workspace_credential where workspace_id = $1 and name = $2', [workspaceId, v.name])).rows[0];
+      n[await upsert(existing,
+        () => c.query(`insert into meta.workspace_credential (workspace_id, name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username, updated_by)
+                       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [workspaceId, v.name, ...vals, opts.by]),
+        (id) => c.query(`update meta.workspace_credential set description = $2, type = $3, username = $4, header_name = $5, token_url = $6, scope = $7, valid_for = $8,
+                                grant_type = $9, oauth_username = $10, updated_by = $11, updated_at = now() where id = $1`, [id, ...vals, opts.by]))]++;
+    }
+    tally('Web credentials', n.added, n.replaced, n.skipped, n.added ? '; enter their secrets under Workspace utilities → Web credentials' : '');
   }
   return r;
 }

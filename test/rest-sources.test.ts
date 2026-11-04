@@ -281,7 +281,11 @@ describe('web credentials', () => {
 
 describe('REST data sources in applications (HR page 23)', () => {
   const urls = new Map<string, string>();
+  let crm: string | null = null;
   before(async () => {
+    // (141) DEPARTMENTS, DEPARTMENT and EMPLOYEES_API are on remote server CRM: moving the server moves them
+    crm = (await owner.one(`select base_url from meta.remote_server where static_id = 'CRM' and workspace_id = meta.app_workspace($1)`, [appId]))?.base_url ?? null;
+    await owner.query(`update meta.remote_server set base_url = $2 where static_id = 'CRM' and workspace_id = meta.app_workspace($1)`, [appId, base]);
     for (const r of (await owner.query(`select name, url from meta.rest_source where app_id = $1`, [appId])).rows) {
       urls.set(r.name, r.url);
       await owner.query('update meta.rest_source set url = replace(url, $3, $4) where app_id = $1 and name = $2', [appId, r.name, 'http://127.0.0.1:3100', base]);
@@ -290,6 +294,7 @@ describe('REST data sources in applications (HR page 23)', () => {
     ws.clearResponseCache();
   });
   after(async () => {
+    if (crm) await owner.query(`update meta.remote_server set base_url = $2 where static_id = 'CRM' and workspace_id = meta.app_workspace($1)`, [appId, crm]);
     for (const [name, url] of urls) await owner.query('update meta.rest_source set url = $3 where app_id = $1 and name = $2', [appId, name, url]);
     await owner.query(`update meta.web_credential set token_url = 'http://127.0.0.1:3100/oauth/token', valid_for = '{http://127.0.0.1:3100/a/hr/rest/}' where app_id = $1 and name = 'HR_API'`, [appId]);
   });

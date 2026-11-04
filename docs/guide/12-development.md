@@ -37,7 +37,8 @@ src/
   restcatalog.ts           (095) REST source catalogs: checks, fromOpenApi (OpenAPI 3 / Swagger 2 → services: parameters with "key",
                            rows and columns from the response schema, write-back from collection and item paths, notes), catalog
                            files, load/insert/replace, sourceFromService
-  workspace-export.ts      (sprint 67) a workspace's components as a file (pgkiln-workspace/1) and importWorkspace (one transaction)
+  workspace-export.ts      (sprint 67) a workspace's components as a file (pgkiln-workspace/1) and importWorkspace (one transaction);
+                           (sprint 141) workspace_files, remote_servers (an existing server keeps its base URL), web_credentials (no secrets)
   team.ts                  (sprint 113) Team Development's data: workspaceDevelopers (members and administrators: assignees, @mentions),
                            issueHtml (markdownHtml + mentions), recordMentions, logIssue (history), teamSetup, teamCounts, pageIssues,
                            exportTeam / importTeam (the workspace export's "team" part)
@@ -134,6 +135,10 @@ src/
   network-acl.ts           (sprint 118, WS-9) workspace network access lists (meta.workspace.network_*): scopeForApp/scopeForWorkspace
                            (no cache), parseHostList, recordRefusal/purgeRefusals (meta.network_refusal, 7 days), mailHostAddress
                            (a workspace mail service's SMTP host: both lists, resolved once, the checked address connected to)
+  remote-servers.ts        (sprint 141, AP-7) remote servers (meta.remote_server): serverProblems, serverUrl (PGKILN_SERVER_* env var
+                           wins over base_url), joinUrl, resolveSource (a REST source on a server: full URL + the server's default
+                           credential; used by loadSource/fetchSource/callOperation), catalog and AI service URLs (owner pool,
+                           the application's own workspace only)
   datapump.ts              (sprint 103, DA-16) Schema Export / Import jobs (meta.dump_job): findTools (pg_dump/pg_restore ≥ the
                            server's major), startExport (pg_dump, argument array, PGPASSWORD), readToc/parseToc (pg_restore --list),
                            startImport (pg_restore -f - run in one transaction between schema renames; data-only in FK order),
@@ -220,6 +225,9 @@ src/
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
+    static-files.ts        (068) static application files (/a/<alias>/static/<name>), the <script>/<link> tags of a page; (141) static
+                           workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
+                           #APP_FILES# / #WORKSPACE_FILES# are substituted in context.ts substitute and template-components.ts
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
     page-regions.ts        (sprint 140) breadcrumb and help_text regions: breadcrumbLinks (also the title bar's trail, left out when the
                            page has a breadcrumb region), the page's help text (meta.page.help) as Markdown with escaped &ITEM. values
@@ -380,6 +388,10 @@ src/
                            list (workspaceAdmin), Check a URL (nothing called), the workspaces (administrators), refused calls
     workspace-mail.ts      (sprint 118, WS-9) a workspace's own mail service (/builder/workspaces/:id/mail, WORKSPACE_<id>): its
                            administrators only, write-only secret, checks through mail.ts runCheck with the workspace's guard
+    workspace-resources.ts (sprint 141, AP-7) Workspace utilities → Static workspace files (/builder/workspace-files), Remote servers
+                           (/builder/remote-servers: URL now, network verdict, used by; renaming moves sources/catalogs) and Web
+                           credentials (/builder/workspace-credentials: write-only secrets): the current workspace, its developers see,
+                           its administrators change
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar;
                            (sprint 86) GET /builder/apps/:app/pages/:no, /builder/pages/:id redirects browsers there (designerUrl in ui.ts)
@@ -629,6 +641,8 @@ test/
   blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
   rest-catalogs.test.ts    OpenAPI/Swagger reading, parameter keys, catalog files, the builder's pages, a data source from a service
   workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
+  workspace-resources.test.ts  (sprint 141) remote servers (checks, env var, HR's CRM moves its sources, credentials, renames, catalogs,
+                           AI services, the Advisor), static workspace files styling two applications, workspace credentials, the export
   tree-charts.test.ts      treemap and sunburst (the hierarchy, cycles, squarify), timeline (lanes, rows, points and periods)
   gantt-move.test.ts       an editable Gantt's markup, the move route, dates, who may drag, the builder's settings
   find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits

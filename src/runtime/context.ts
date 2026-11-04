@@ -120,6 +120,8 @@ export function bindValues(ctx: PageContext): BindValues {
 /** Replace &NAME. substitution strings (APEX syntax); `encode` escapes each value. */
 export function substitute(text: string, ctx: PageContext, encode: (v: string) => string) {
   const values = bindValues(ctx);
+  // (141) #APP_FILES# and #WORKSPACE_FILES#: where the application's and its workspace's static files are served
+  if (text.includes('_FILES#')) text = text.replace(/#(APP|WORKSPACE)_FILES#/g, (_, kind: string) => `${ctx.base}/${kind === 'APP' ? 'static' : 'workspace-files'}/`);
   return text.replace(/&([A-Za-z][A-Za-z0-9_]*(?:\$[A-Za-z0-9_.-]+?)?)\./g, (m, name: string) => {
     const upper = name.toUpperCase();
     if (upper.startsWith('APP_TEXT$')) {

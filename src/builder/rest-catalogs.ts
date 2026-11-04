@@ -144,7 +144,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const rows = (await owner.query(
-      `select c.id, c.name, c.description, c.base_url, c.source, c.api_version, c.updated_at,
+      `select c.id, c.name, c.description, c.base_url, c.server, c.source, c.api_version, c.updated_at,
               (select count(*)::int from meta.rest_catalog_service x where x.catalog_id = c.id) as services
          from meta.rest_catalog c where c.workspace_id = $1 order by lower(c.name)`, [currentWorkspace(s)])).rows;
     const main = html`<div class="title-row"><h1>REST Source Catalogs</h1></div>
@@ -154,7 +154,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
         <thead><tr><th>Catalog</th><th>Base URL</th><th class="num">Services</th><th>From</th><th>Updated (UTC)</th></tr></thead>
         <tbody>${rows.length ? rows.map((c) => html`<tr>
           <td data-label="Catalog"><a href="${root}/${c.id}">${c.name}</a>${c.description ? html`<br><span class="muted small">${String(c.description).slice(0, 160)}</span>` : ''}</td>
-          <td data-label="Base URL"><code class="wrap-anywhere">${c.base_url}</code></td>
+          <td data-label="Base URL">${c.server ? html`<span class="tag">${icon('server')} ${c.server}</span> ` : ''}<code class="wrap-anywhere">${c.base_url ?? ''}</code></td>
           <td class="num" data-label="Services">${c.services}</td>
           <td data-label="From">${c.source === 'openapi' ? html`OpenAPI${c.api_version ? html` <span class="muted">${c.api_version}</span>` : ''}` : 'by hand'}</td>
           <td data-label="Updated">${when(c.updated_at)}</td></tr>`)
@@ -225,7 +225,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     const sel = req.query.service ? c.services.find((x) => String(x.id) === req.query.service) : null;
     const main = html`<div class="title-row"><h1>${c.name}</h1>
         <a class="btn" href="${base}/download">${icon('download')} Download</a></div>
-      <p class="muted u-mt0"><code class="wrap-anywhere">${c.base_url}</code>${c.source === 'openapi' ? html` · from an OpenAPI document${c.api_version ? html` (version ${c.api_version})` : ''}` : ''} · updated ${when(c.updated_at)} UTC</p>
+      <p class="muted u-mt0">${c.server ? html`On remote server <a href="${BASE}/remote-servers">${c.server}</a> · ` : ''}<code class="wrap-anywhere">${c.base_url ?? ''}</code>${c.source === 'openapi' ? html` · from an OpenAPI document${c.api_version ? html` (version ${c.api_version})` : ''}` : ''} · updated ${when(c.updated_at)} UTC</p>
       ${notesHtml(s)}
       ${region('Services', html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>Service</th><th>Method</th><th>Path</th><th class="num">Parameters</th><th class="num">Columns</th><th>Write back</th></tr></thead>
@@ -241,12 +241,13 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       ${req.query.service === 'new'
         ? region('New service', serviceForm(s, `${base}/services`, { method: 'GET', path: '/' }, 'Add'), '', 'service')
         : sel
-          ? region(`Service ${sel.name}`, html`<p class="muted u-mt0">URL: <code class="wrap-anywhere">${serviceUrl(c.base_url, sel.path)}</code></p>
+          ? region(`Service ${sel.name}`, html`<p class="muted u-mt0">URL: <code class="wrap-anywhere">${c.server ? `${c.server} + ${sel.path}` : serviceUrl(c.base_url ?? '', sel.path)}</code></p>
               ${serviceForm(s, `${base}/services/${sel.id}`, sel, 'Save')}
               <form method="post" action="${base}/services/${sel.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the service ${sel.name}?">Delete service</button></form>`, '', 'service')
           : ''}
       ${region('Catalog', html`<form method="post" action="${base}">${csrf(s)}
-        <div class="form-grid">${input('name', 'Name', c.name, { required: true })}${input('base_url', 'Base URL', c.base_url, { required: true, help: 'e.g. a test system\'s URL. Data sources made earlier keep the URL they were made with.' })}
+        <div class="form-grid">${input('name', 'Name', c.name, { required: true })}${input('base_url', 'Base URL', c.base_url ?? '', { help: 'e.g. a test system\'s URL (optional on a remote server). Data sources made earlier keep the URL they were made with.' })}
+          ${input('server', 'Remote server', c.server ?? '', { placeholder: 'e.g. CRM', help: 'The static id of a remote server of this workspace (Workspace utilities → Remote servers): data sources made from the catalog then name the server and the service\'s path, so they move with it.' })}
           ${input('api_version', 'API version', c.api_version ?? '')}
           <div class="field" data-wide><label class="label" for="f_cdescription">Description</label><textarea id="f_cdescription" name="description" rows="2">${c.description ?? ''}</textarea></div></div>
         <div class="buttons"><button class="btn btn-hot">${icon('save')} Save</button></div></form>`)}
@@ -262,14 +263,19 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     if (!c) return reply.code(404).send('Not found');
     const v = {
       name: String(req.body?.name ?? '').trim(), base_url: trimBase(String(req.body?.base_url ?? '')),
+      server: String(req.body?.server ?? '').trim().toUpperCase() || null,
       description: String(req.body?.description ?? '').trim() || null, api_version: String(req.body?.api_version ?? '').trim() || null,
     };
     // the services must still make sense on the new base URL
-    const problems = [...catalogProblems(v), ...c.services.flatMap((x) => serviceProblems(v.base_url, x))];
+    const problems = [...catalogProblems(v), ...c.services.flatMap((x) => serviceProblems(v.base_url || 'https://x', x))];
     if (problems.length) flash(s, problems.slice(0, 6).join(' '), 'error');
     else
       try {
-        await owner.query('update meta.rest_catalog set name = $2, base_url = $3, description = $4, api_version = $5, updated_at = now() where id = $1', [c.id, v.name, v.base_url, v.description, v.api_version]);
+        await owner.query('update meta.rest_catalog set name = $2, base_url = $3, description = $4, api_version = $5, server = $6, updated_at = now() where id = $1',
+          [c.id, v.name, v.base_url || null, v.description, v.api_version, v.server]);
+        if (v.server && !(await owner.one('select 1 as ok from meta.remote_server where workspace_id = $1 and static_id = $2', [c.workspace_id, v.server])))
+          flash(s, `Catalog saved. This workspace has no remote server ${v.server} yet: add it under Workspace utilities → Remote servers.`, 'error');
+        else
         flash(s, 'Catalog saved.');
       } catch (e) {
         flash(s, uniqueError(e), 'error');
@@ -292,6 +298,8 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       if (doc instanceof Error) throw doc;
       doc = await documentOf(doc, s);
       const { catalog, notes } = readCatalogText(doc.text, { baseUrl: req.body?.base_url, from: doc.from, name: c.name });
+      // (141) the catalog stays on its remote server
+      catalog.server = c.server ?? null;
       const problems = wholeCatalogProblems(catalog);
       if (problems.length) throw new Error(problems.slice(0, 8).join(' '));
       await owner.tx((db) => replaceCatalog(db, c.id, catalog));
@@ -338,7 +346,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     const retry = `${root}/${c.id}?service=${sid ?? 'new'}#service`;
     try {
       const v = serviceFromBody(req.body ?? {});
-      const problems = serviceProblems(c.base_url, v);
+      const problems = serviceProblems(c.base_url || 'https://x', v);
       if (problems.length) throw new Error(problems.join(' '));
       const vals = [v.name, v.description, v.path, v.method, JSON.stringify(v.params), JSON.stringify(v.headers), v.body, v.row_selector, JSON.stringify(v.columns), v.key_columns, JSON.stringify(v.operations)];
       let id = sid;
@@ -388,14 +396,14 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       const c = (await loadCatalog(svc.catalog_id))!;
       const v = sourceFromService(c, c.services.find((x) => x.id === svc.id)!, { name: req.body?.name, credential: req.body?.credential });
       if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name)) throw new Error('The name is upper case letters, digits and _, starting with a letter, e.g. COUNTRIES.');
-      if (v.credential && !(await owner.one('select 1 as ok from meta.web_credential where app_id = $1 and name = $2', [appId, v.credential])))
-        throw new Error(`This application has no web credential ${v.credential}.`);
+      if (v.credential && !(await owner.one('select 1 as ok from meta.web_credential where app_id = $1 and name = $2 union all select 1 from meta.workspace_credential where workspace_id = meta.app_workspace($1) and name = $2', [appId, v.credential])))
+        throw new Error(`This application has no web credential ${v.credential} (nor does its workspace).`);
       const problems = sourceProblems(v);
       if (problems.length) throw new Error(problems.join(' '));
       const r = await owner.one<{ id: number }>(
-        `insert into meta.rest_source (app_id, name, description, url, method, credential, params, headers, body, row_selector, columns, key_columns, operations)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning id`,
-        [appId, v.name, v.description, v.url, v.method, v.credential, JSON.stringify(v.params), JSON.stringify(v.headers), v.body, v.row_selector, JSON.stringify(v.columns), v.key_columns, JSON.stringify(v.operations)]);
+        `insert into meta.rest_source (app_id, name, description, url, method, credential, params, headers, body, row_selector, columns, key_columns, operations, server)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning id`,
+        [appId, v.name, v.description, v.url, v.method, v.credential, JSON.stringify(v.params), JSON.stringify(v.headers), v.body, v.row_selector, JSON.stringify(v.columns), v.key_columns, JSON.stringify(v.operations), v.server]);
       flash(s, `REST data source ${v.name} made from ${c.name}. Test it below${v.credential ? '' : '; add a web credential if the service needs one'}.`);
       return back(reply, s, `${BASE}/apps/${appId}/shared?c=rest_source-${r!.id}`);
     } catch (e) {
@@ -423,7 +431,7 @@ export async function catalogPicker(appId: number, s: Session): Promise<Raw | ''
       where c.workspace_id = meta.app_workspace($1) order by lower(c.name), x.position, x.name`, [appId])).rows;
   if (!services.length)
     return html`<p class="muted u-mt0 u-mb1">${icon('globe')} Services described once for the workspace: <a href="${root}">REST Source Catalogs</a>.</p>`;
-  const credentials = (await owner.query('select name from meta.web_credential where app_id = $1 order by name', [appId])).rows;
+  const credentials = (await owner.query('select name from meta.web_credential where app_id = $1 union select name from meta.workspace_credential where workspace_id = meta.app_workspace($1) order by name', [appId])).rows;
   const groups = new Map<string, typeof services>();
   for (const x of services) groups.set(x.catalog, [...(groups.get(x.catalog) ?? []), x]);
   return region('From a REST source catalog', html`<form method="post" action="${BASE}/apps/${appId}/rest-sources/from-catalog">${csrf(s)}

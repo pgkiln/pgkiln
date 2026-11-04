@@ -55,7 +55,7 @@ function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnTyp
 }
 
 /** The form's values, checked; throws with a message. */
-function formValues(b: Record<string, string | undefined>) {
+function formValues(b: Record<string, string | undefined>, hasServer = false) {
   const provider: ProviderName = (['openai', 'gemini', 'openai_compatible'] as const).find((p) => p === b.provider) ?? 'anthropic';
   const model = (b.model ?? '').trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(model)) throw new Error('The model is a name like claude-opus-5-5 (letters, digits and . _ : / @ -).');
@@ -65,7 +65,7 @@ function formValues(b: Record<string, string | undefined>) {
   if (!Number.isInteger(timeout) || timeout < 5 || timeout > 600) throw new Error('Time limit: 5 to 600 seconds.');
   const baseUrl = (b.base_url ?? '').trim() || null;
   if (baseUrl && (!/^https?:\/\/[^\s]+$/i.test(baseUrl) || baseUrl.length > 500)) throw new Error('The base URL starts with http:// or https://.');
-  if (!baseUrl && provider === 'openai_compatible') throw new Error('An OpenAI-compatible service needs a base URL (e.g. http://localhost:11434/v1 for Ollama).');
+  if (!baseUrl && provider === 'openai_compatible' && !hasServer) throw new Error('An OpenAI-compatible service needs a base URL (e.g. http://localhost:11434/v1 for Ollama).');
   const effort = ['low', 'medium', 'high', 'xhigh', 'max'].includes(b.effort ?? '') ? b.effort! : null;
   return [(b.description ?? '').trim() || null, provider, model, provider === 'anthropic' ? effort : null, b.refusal_fallback === 'true', maxTokens, timeout, baseUrl, b.enabled === 'true'];
 }
@@ -157,12 +157,20 @@ export async function aiRoutes(app: FastifyInstance) {
     delete s.state[TEST_RESULT];
     const recent = (await owner.query(`select u.*, a.alias as app from meta.ai_usage u left join meta.app a on a.id = u.app_id where u.service_id = $1 order by u.id desc limit 50`, [x.id])).rows;
     const view = { ...x, api_key_enc: x.api_key_enc ? 'stored' : null }; // the key itself never reaches the page
+    // (141) the remote servers of every workspace (administrators choose one)
+    const servers = (await owner.query<{ id: number; static_id: string; workspace: string }>(
+      'select r.id, r.static_id, w.name as workspace from meta.remote_server r join meta.workspace w on w.id = r.workspace_id order by lower(w.name), r.static_id')).rows;
     const main = html`
       <div class="title-row"><h1 class="ai-name">${x.name}</h1></div>
       <div class="columns wide-left">
         ${region('Settings', html`${serviceForm(view, `${BASE}/ai/${x.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/ai/${x.id}/delete" class="danger-zone">${csrf(s)}
             <button class="btn btn-danger" data-confirm="Delete AI service ${x.name}? Processes that use it fail until another service gets its name.">Delete service</button></form>`)}
+        ${region('Remote server', html`<form method="post" action="${BASE}/ai/${x.id}/server">${csrf(s)}
+            <p class="muted u-mt0">Instead of the base URL: a remote server's URL (Workspace utilities → Remote servers) plus a path, so moving the endpoint changes one value. The API key is sent there: choose a server whose workspace administrators you trust with it.</p>
+            <div class="form-grid">${select('server_id', 'Remote server', x.server_id ? String(x.server_id) : '', [['', 'none: the base URL above'], ...servers.map((r): [string, string] => [String(r.id), `${r.static_id} (${r.workspace})`])])}
+              ${input('server_path', 'Path', x.server_path ?? '', { placeholder: '/v1', help: 'After the server\'s base URL, e.g. /v1; empty: the base URL itself.' })}</div>
+            <div class="buttons"><button class="btn">Save</button></div></form>`)}
         ${region('Test', html`
           <p class="muted u-mt0">Sends a prompt to the service (counted in the usage log as a builder test).</p>
           <form method="post" action="${BASE}/ai/${x.id}/test">${csrf(s)}
@@ -194,11 +202,29 @@ export async function aiRoutes(app: FastifyInstance) {
         `update meta.ai_service set (${COLUMNS}) = ($2, $3, $4, $5, $6, $7, $8, $9, $10), updated_at = now(),
                 api_key_enc = case when $12 then null when $11::text is null then api_key_enc else $11 end
           where id = $1`,
-        [req.params.id, ...formValues(b), key, b.remove_key === 'true'],
+        [req.params.id, ...formValues(b, !!(await owner.one('select 1 as ok from meta.ai_service where id = $1 and server_id is not null', [req.params.id]))), key, b.remove_key === 'true'],
       );
       flash(s, r.rowCount ? 'AI service saved.' : 'Not found.', r.rowCount ? 'ok' : 'error');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, `${BASE}/ai/${req.params.id}`);
+  });
+
+  // (141) the service's remote server and path
+  app.post(`${BASE}/ai/:id(^\\d+$)/server`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await adminOnly(s, reply, 'AI services'))) return;
+    const b = req.body ?? {};
+    try {
+      const serverId = /^\d{1,9}$/.test(String(b.server_id ?? '')) ? Number(b.server_id) : null;
+      const path = String(b.server_path ?? '').trim() || null;
+      if (path && (!/^\/[^\s]*$/.test(path) || path.length > 500)) throw new Error('The path starts with /, without spaces, e.g. /v1.');
+      if (serverId && !(await owner.one('select 1 as ok from meta.remote_server where id = $1', [serverId]))) throw new Error('No such remote server.');
+      const r = await owner.query('update meta.ai_service set server_id = $2, server_path = $3, updated_at = now() where id = $1', [req.params.id, serverId, serverId ? path : null]);
+      flash(s, r.rowCount ? (serverId ? 'The service now calls its remote server: test it.' : 'The service calls its base URL again.') : 'Not found.', r.rowCount ? 'ok' : 'error');
+    } catch (e) {
+      flash(s, (e as Error).message.includes('ai_service_compatible_url') ? 'An OpenAI-compatible service needs a base URL or a remote server.' : (e as Error).message, 'error');
     }
     return back(reply, s, `${BASE}/ai/${req.params.id}`);
   });
