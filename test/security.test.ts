@@ -12779,3 +12779,234 @@ describe('sprint 140 AP-4', () => {
     await assert.rejects(owner.query(`update meta.page set help = repeat('x', 20001) where id = $1`, [pid]), /check/);
   });
 });
+
+describe('sprint 141 AP-7', () => {
+  // Static workspace files, remote servers and workspace web credentials: the workspace's administrators manage
+  // them, its developers only see them, another workspace's never reach a page or an application; uploaded files
+  // keep the static files' types and headers; a server's URL passes every outgoing check (private addresses stay
+  // refused unless allowed); secrets are write-only and the runtime role reads none of these tables.
+  process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+  const ADMIN_A = 'sec141admina';
+  const ADMIN_B = 'sec141adminb';
+  const DEV_A = 'sec141deva';
+  let wsA: number;
+  let wsB: number;
+  let appA: number;
+  let appB: number;
+  let server: import('node:http').Server;
+  let base = '';
+  const auth: (string | undefined)[] = [];
+  const env = { allowed: process.env.PGKILN_REST_ALLOWED_HOSTS, priv: process.env.PGKILN_REST_PRIVATE_HOSTS };
+  const signIn = async (username: string, ws?: number) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username })).statusCode, 303);
+    await b.get('/builder/home');
+    if (ws) assert.equal((await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(ws) })).statusCode, 303);
+    await b.get('/builder/home');
+    return b;
+  };
+
+  before(async () => {
+    const { createServer } = await import('node:http');
+    server = createServer((req, res) => {
+      auth.push(req.headers.authorization);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end('[{"v":1}]');
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    base = `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}`;
+    for (const u of [ADMIN_A, ADMIN_B, DEV_A]) await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [u]);
+    await owner.query(`delete from meta.app where alias in ('sec141a', 'sec141b')`);
+    await owner.query(`delete from meta.workspace where name in ('Sec141 A', 'Sec141 B')`);
+    wsA = (await owner.one(`insert into meta.workspace (name) values ('Sec141 A') returning id`)).id;
+    wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec141 B') returning id`)).id;
+    await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($1, $3, false), ($4, $5, true)', [wsA, ADMIN_A, DEV_A, wsB, ADMIN_B]);
+    for (const [alias, w] of [['sec141a', wsA], ['sec141b', wsB]] as const) {
+      const id = (await owner.one(`insert into meta.app (alias, name, authentication, home_page) values ($1, $1, 'none', 1) returning id`, [alias])).id;
+      await owner.query(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false)`, [id]);
+      await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [id, w]);
+      if (alias === 'sec141a') appA = id;
+      else appB = id;
+    }
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+  });
+  after(async () => {
+    server.close();
+    process.env.PGKILN_REST_ALLOWED_HOSTS = env.allowed;
+    process.env.PGKILN_REST_PRIVATE_HOSTS = env.priv;
+    if (env.allowed === undefined) delete process.env.PGKILN_REST_ALLOWED_HOSTS;
+    if (env.priv === undefined) delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+    await owner.query(`delete from meta.app where alias in ('sec141a', 'sec141b')`);
+    await owner.query('delete from meta.workspace where id = any($1::int[])', [[wsA, wsB]]);
+    await owner.query('delete from meta.developer where username = any($1::text[])', [[ADMIN_A, ADMIN_B, DEV_A]]);
+  });
+
+  test('the workspace\'s administrators manage files, servers and credentials; its developers only see them; CSRF', async () => {
+    const a = await signIn(ADMIN_A, wsA);
+    const dev = await signIn(DEV_A, wsA);
+    for (const url of ['/builder/workspace-files', '/builder/remote-servers', '/builder/workspace-credentials']) {
+      const page = await dev.get(url);
+      assert.equal(page.statusCode, 200, url);
+      assert.match(page.body, /the workspace(&#39;|')s administrators change them/, url);
+      assert.doesNotMatch(page.body, /action="\/builder\/(workspace-files\/upload|remote-servers"|workspace-credentials")/, url);
+    }
+    const posts: [string, Record<string, string>][] = [
+      ['/builder/remote-servers', { static_id: 'SEC141', name: 'x', base_url: base }],
+      ['/builder/workspace-credentials', { name: 'SEC141_KEY', type: 'bearer', secret: 'Sec141-secret-value' }],
+      ['/builder/workspace-files/save', { name: 'a.css', content: 'body{}' }],
+    ];
+    for (const [url, form] of posts) assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, ...form })).statusCode, 403, `developer ${url}`);
+    const up = await dev.upload('/builder/workspace-files/upload', {}, { file: { name: 'a.css', type: 'text/css', data: Buffer.from('x') } });
+    assert.equal(up.statusCode, 403);
+    await a.get('/builder/remote-servers');
+    for (const [url, form] of posts) assert.equal((await a.post(url, { __csrf: 'forged', ...form })).statusCode, 403, `forged ${url}`);
+    assert.equal((await owner.one('select count(*)::int as n from meta.remote_server where workspace_id = $1', [wsA])).n, 0);
+    assert.equal((await owner.one('select count(*)::int as n from meta.workspace_file where workspace_id = $1', [wsA])).n, 0);
+    for (const [url, form] of posts) assert.equal((await a.post(url, { __csrf: a.lastCsrf, ...form })).statusCode, 303, `admin ${url}`);
+    assert.equal((await owner.one('select count(*)::int as n from meta.remote_server where workspace_id = $1', [wsA])).n, 1);
+    assert.equal((await owner.one('select count(*)::int as n from meta.workspace_credential where workspace_id = $1', [wsA])).n, 1);
+    assert.equal((await owner.one('select count(*)::int as n from meta.workspace_file where workspace_id = $1', [wsA])).n, 1);
+    // a developer of the workspace can't delete either
+    const sid = (await owner.one('select id from meta.remote_server where workspace_id = $1', [wsA])).id;
+    assert.equal((await dev.post(`/builder/remote-servers/${sid}/delete`, { __csrf: dev.lastCsrf })).statusCode, 403);
+    assert.equal((await dev.post('/builder/workspace-files/delete', { __csrf: dev.lastCsrf, name: 'a.css' })).statusCode, 403);
+    // an AI service's remote server: installation administrators only
+    const ai = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url) values ('SEC141_AI', 'openai', 'm', 'https://api.example.com') returning id`)).id;
+    try {
+      assert.equal((await a.post(`/builder/ai/${ai}/server`, { __csrf: a.lastCsrf, server_id: String(sid) })).statusCode, 403);
+      assert.equal((await owner.one('select server_id from meta.ai_service where id = $1', [ai])).server_id, null);
+    } finally {
+      await owner.query('delete from meta.ai_service where id = $1', [ai]);
+    }
+  });
+
+  test('another workspace\'s server, credential and file are never shown, changed, used or served', async () => {
+    const b = await signIn(ADMIN_B, wsB);
+    // the pages list B's own only
+    for (const url of ['/builder/workspace-files', '/builder/remote-servers', '/builder/workspace-credentials']) {
+      const body = (await b.get(url)).body;
+      assert.doesNotMatch(body, /SEC141|a\.css|Sec141 A/, url);
+    }
+    // B's administrator can't switch to A, nor reach A's rows by id or name
+    await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(wsA) });
+    assert.doesNotMatch((await b.get('/builder/remote-servers')).body, /SEC141/);
+    const sid = (await owner.one('select id from meta.remote_server where workspace_id = $1', [wsA])).id;
+    const cid = (await owner.one('select id from meta.workspace_credential where workspace_id = $1', [wsA])).id;
+    await b.post(`/builder/remote-servers/${sid}/delete`, { __csrf: b.lastCsrf });
+    await b.post('/builder/remote-servers', { __csrf: b.lastCsrf, id: String(sid), static_id: 'SEC141', name: 'hijacked', base_url: 'https://evil.example.com' });
+    await b.post('/builder/workspace-credentials', { __csrf: b.lastCsrf, id: String(cid), name: 'SEC141_KEY', type: 'bearer', secret: 'replaced' });
+    await b.post(`/builder/workspace-credentials/${cid}/delete`, { __csrf: b.lastCsrf });
+    await b.post('/builder/workspace-files/delete', { __csrf: b.lastCsrf, name: 'a.css' });
+    assert.deepEqual(await owner.one('select name, base_url from meta.remote_server where id = $1', [sid]), { name: 'x', base_url: base });
+    const { decryptSecret } = await import('../src/secrets.ts');
+    assert.equal(decryptSecret((await owner.one('select secret_enc from meta.workspace_credential where id = $1', [cid])).secret_enc), 'Sec141-secret-value');
+    assert.ok(await owner.one(`select 1 from meta.workspace_file where workspace_id = $1 and name = 'a.css'`, [wsA]));
+    assert.equal((await b.get('/builder/workspace-files/file/a.css')).statusCode, 404);
+    // B's application: A's file is not served nor linked, A's server and credential are not found
+    assert.equal((await b.get('/a/sec141b/workspace-files/a.css')).statusCode, 404);
+    assert.equal((await b.get('/a/sec141a/workspace-files/a.css')).statusCode, 200);
+    await owner.query(`update meta.app set static_includes = '{#WORKSPACE_FILES#a.css}' where id = $1`, [appB]);
+    assert.doesNotMatch((await b.get('/a/sec141b/1')).body, /a\.css/);
+    const ws = await import('../src/websources.ts');
+    await assert.rejects(ws.loadCredential(appB, 'SEC141_KEY'), /does not exist/);
+    await owner.query(`insert into meta.rest_source (app_id, name, url, server) values ($1, 'STEAL', '/x', 'SEC141')`, [appB]);
+    await assert.rejects(ws.loadSource(appB, 'STEAL'), /does not exist in this application's workspace/);
+    // and a REST source of A on its server signs with A's credential
+    await owner.query(`insert into meta.rest_source (app_id, name, url, server, credential) values ($1, 'MINE', '/x', 'SEC141', 'SEC141_KEY')`, [appA]);
+    await ws.fetchSource(await ws.loadSource(appA, 'MINE'), {});
+    assert.equal(auth.at(-1), 'Bearer Sec141-secret-value');
+    // the versions function gives an application its own workspace's files only
+    const v = (await runtime.query('select meta.workspace_file_versions($1) as v', [appB])).rows[0].v;
+    assert.deepEqual(v, {});
+  });
+
+  test('uploaded files: the static files\' types, sizes and headers; never HTML; a sandboxed preview', async () => {
+    const a = await signIn(ADMIN_A, wsA);
+    await a.get('/builder/workspace-files');
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    await a.upload('/builder/workspace-files/upload', {}, { file: [
+      { name: 'evil.html', type: 'text/html', data: Buffer.from('<script>alert(1)</script>') },
+      { name: '../up.css', type: 'text/css', data: Buffer.from('x') },
+      { name: 'big.css', type: 'text/css', data: Buffer.alloc(5 * 1024 * 1024 + 10, 0x20) },
+      { name: 'pic.svg', type: 'image/svg+xml', data: svg },
+    ] });
+    // (a path is cut to its last part, as for static application files)
+    const names = (await owner.query('select name from meta.workspace_file where workspace_id = $1 order by name', [wsA])).rows.map((r) => r.name);
+    assert.deepEqual(names, ['a.css', 'pic.svg', 'up.css']);
+    await assert.rejects(owner.query(`insert into meta.workspace_file (workspace_id, name, mime, content) values ($1, 'x.html', 'text/html', '')`, [wsA]), /check/);
+    await assert.rejects(owner.query(`insert into meta.workspace_file (workspace_id, name, mime, content) values ($1, 'x.css', 'text/css', $2)`, [wsA, Buffer.alloc(5 * 1024 * 1024 + 1)]), /check/);
+    await a.get('/builder/workspace-files?new=1');
+    await a.post('/builder/workspace-files/save', { __csrf: a.lastCsrf, name: 'page.html', content: '<script>alert(1)</script>' });
+    assert.ok(!(await owner.one(`select 1 from meta.workspace_file where workspace_id = $1 and name = 'page.html'`, [wsA])));
+    // served to the application: an SVG can't run its script; nothing is sniffed
+    const res = await a.get('/a/sec141a/workspace-files/pic.svg');
+    assert.equal(res.headers['content-type'], 'image/svg+xml');
+    assert.match(String(res.headers['content-security-policy']), /default-src 'none'.*sandbox/);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    // the builder's preview is sandboxed too, for every type
+    for (const n of ['pic.svg', 'a.css']) {
+      const p = await a.get(`/builder/workspace-files/file/${n}`);
+      assert.equal(p.statusCode, 200);
+      assert.match(String(p.headers['content-security-policy']), /sandbox/, n);
+    }
+    // the names in a page's list: no paths or other types
+    const { parseIncludes } = await import('../src/builder/static-files.ts');
+    assert.deepEqual(parseIncludes('#WORKSPACE_FILES#../x.css #WORKSPACE_FILES#x.html #WORKSPACE_FILES#a/b.css "><script> #WORKSPACE_FILES#a.css'), ['#WORKSPACE_FILES#a.css']);
+  });
+
+  test('a server\'s URL passes every outgoing check: private addresses, the allow-list, the workspace\'s list; env names', async () => {
+    const ws = await import('../src/websources.ts');
+    // 127.0.0.1 is allowed above; refused once it is not a private host the installation allows
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+    delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+    try {
+      ws.clearResponseCache();
+      await assert.rejects(ws.fetchSource(await ws.loadSource(appA, 'MINE'), {}), /private|loopback|not allowed|refused/i);
+      await owner.query(`update meta.remote_server set base_url = 'http://169.254.169.254' where workspace_id = $1`, [wsA]);
+      await assert.rejects(ws.fetchSource(await ws.loadSource(appA, 'MINE'), {}), /private|link-local|not allowed|refused/i);
+    } finally {
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      await owner.query(`update meta.remote_server set base_url = $2 where workspace_id = $1`, [wsA, base]);
+    }
+    // the workspace's network access list applies to the server's host
+    await owner.query('update meta.workspace set network_restricted = true, network_hosts = $2 where id = $1', [wsA, ['api.example.com']]);
+    try {
+      ws.clearResponseCache();
+      await assert.rejects(ws.fetchSource(await ws.loadSource(appA, 'MINE'), {}), /network access list/i);
+    } finally {
+      await owner.query(`update meta.workspace set network_restricted = false, network_hosts = '{}' where id = $1`, [wsA]);
+    }
+    // the path can't climb out of the server or name another host
+    for (const url of ['//evil.example.com/x', '/a/../../x', 'https://evil.example.com/x', '@evil.example.com'])
+      assert.ok(ws.sourceProblems({ server: 'SEC141', url, params: [], columns: [] }).length, url);
+    await assert.rejects(owner.query(`insert into meta.rest_source (app_id, name, url, server) values ($1, 'BAD', 'evil.example.com/x', 'SEC141')`, [appA]), /check/);
+    // only PGKILN_SERVER_ variables: no other part of the server's environment becomes a URL
+    const a = await signIn(ADMIN_A, wsA);
+    await a.get('/builder/remote-servers?new=1');
+    await a.post('/builder/remote-servers', { __csrf: a.lastCsrf, static_id: 'ENVY', name: 'x', env_var: 'DATABASE_URL' });
+    assert.ok(!(await owner.one(`select 1 from meta.remote_server where static_id = 'ENVY'`)));
+    await assert.rejects(owner.query(`insert into meta.remote_server (workspace_id, static_id, name, env_var) values ($1, 'ENVY', 'x', 'PGKILN_SECRET_KEY')`, [wsA]), /check/);
+    const { serverUrl } = await import('../src/remote-servers.ts');
+    assert.equal(serverUrl({ static_id: 'X', base_url: null, env_var: 'DATABASE_URL' }).url, null);
+  });
+
+  test('secrets: write-only, never exported, and the runtime role reads none of the new tables', async () => {
+    const a = await signIn(ADMIN_A, wsA);
+    const row = await owner.one('select id, secret_enc from meta.workspace_credential where workspace_id = $1', [wsA]);
+    for (const url of ['/builder/workspace-credentials', `/builder/workspace-credentials?edit=${row.id}`]) {
+      const body = (await a.get(url)).body;
+      assert.doesNotMatch(body, /Sec141-secret-value/);
+      assert.ok(!body.includes(row.secret_enc.slice(3, 30)), url);
+    }
+    const { exportWorkspace } = await import('../src/workspace-export.ts');
+    assert.doesNotMatch(JSON.stringify(await exportWorkspace(wsA)), /Sec141-secret-value|secret_enc|password_enc|refresh_token_enc|"v1:/);
+    for (const t of ['workspace_credential', 'remote_server', 'workspace_file'])
+      await assert.rejects(runtime.query(`select * from meta.${t} limit 1`), /permission denied/, t);
+    const { encryptedColumns } = await import('../src/instance-checks.ts');
+    const cols = (await encryptedColumns()).map((c) => `${c.table}.${c.column}`);
+    for (const c of ['secret_enc', 'password_enc', 'refresh_token_enc']) assert.ok(cols.includes(`workspace_credential.${c}`), c);
+  });
+});
