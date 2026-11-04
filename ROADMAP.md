@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.72.0 (November 2026): OpenTelemetry: traces with a span per SQL statement, web call and AI request, logs and metrics to the team's own monitoring, `/metrics` for Prometheus, browser spans relayed by pgkiln.
-- **APEX parity (26.2):** 167 features compared: 163 available, none partial, none missing (WS-7, the builder in
+- **Current release:** 0.73.0 (November 2026): Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions; every APEX item and region type mapped.
+- **APEX parity (26.2):** 170 features compared: 166 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
 ## Next
