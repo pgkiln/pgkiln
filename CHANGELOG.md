@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.77.0] - 2026-11-04
+
 ### Added
 - **`pgkiln advise`: the Advisor for CI** (AP-10; APEX 26.2: APEXlang static analysis with SQLcl CodeScan; no
   migration). `pgkiln advise <path | alias> [--format text|json|sarif] [--fail-on error|warning|info|never]`: an export
