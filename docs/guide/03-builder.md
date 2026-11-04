@@ -1724,6 +1724,15 @@ doesn't allow:
   `PGKILN_REST_PRIVATE_HOSTS` lists it). The server resolves the host once and connects to the address it checked,
   with the host name kept for TLS, on every send and test.
 
+### OpenTelemetry
+
+Workspace utilities → **OpenTelemetry** (`/builder/telemetry`, administrators; APEX 24.2: Workspace Utilities →
+OpenTelemetry): traces, logs and metrics of the applications to an OpenTelemetry Collector, and `GET /metrics` for
+Prometheus. A workspace's page → *Mail and network access* → **OpenTelemetry** lets its administrators switch its
+applications off or send them to a collector of their own as well (through the allow-list and the workspace's
+[network access](#network-access) list). What is sent, the values left out and the settings are in
+[chapter 1](01-installation.md#monitoring-with-opentelemetry).
+
 ### Network access
 
 Administration menu → **Network access** (`/builder/network`; APEX 26.2: workspace network ACLs), for administrators
