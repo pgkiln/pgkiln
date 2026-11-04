@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.75.0] - 2026-11-04
+
 ### Added
 - **JSON sources and document views** (AP-8; APEX: JSON Sources, JSON Relational Duality Views; migration 142).
   Shared Components → Data Sources → **JSON Sources**: a `jsonb` column of an application's table (or a table of

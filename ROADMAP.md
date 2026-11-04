@@ -6,9 +6,9 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.74.0 (November 2026): static workspace files (`#WORKSPACE_FILES#`), remote servers with a base URL per environment, and workspace-level web credentials.
-- **APEX parity (26.2):** 172 features compared: 168 available, none partial, none missing (WS-7, the builder in
-  more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
+- **Current release:** 0.75.0 (November 2026): JSON sources: forms, reports and grids over jsonb documents through updatable views that keep unknown keys; document views of a table with its children (APEX duality views); JSON path columns in reports.
+- **APEX parity (26.2):** 172 features compared: 169 available, none partial, none missing (WS-7, the builder in
+  more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
 ## Next
 
