@@ -1077,6 +1077,7 @@ export const nl: BuilderMessages = {
   'fts.added': "Volledige-tekstzoeken toegevoegd aan {table}: kolom {column} met index {index}.",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "Vectorkolom toevoegen",
+  'docv.add': "Documentview",
   'vec.title': "Vectorkolom op {table}",
   'vec.intro': "Voegt een embeddingkolom vector(n) toe (n: de dimensies van de vectorprovider), een HNSW-index voor de afstand, en een trigger die een rij opnieuw embedt als de bronkolommen veranderen. Een zoekconfiguratie van het type vector of hybrid, of de Retrieve-tool van een AI-agent, vindt rijen dan op betekenis. De rijen die er nu zijn, komen meteen in de wachtrij voor hun embeddings.",
   'vec.existing': "Vectorkolommen nu",

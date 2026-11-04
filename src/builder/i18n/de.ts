@@ -1077,6 +1077,7 @@ export const de: BuilderMessages = {
   'fts.added': "Volltextsuche zu {table} hinzugefügt: Spalte {column} mit Index {index}.",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "Vektorspalte hinzufügen",
+  'docv.add': "Dokumentansicht",
   'vec.title': "Vektorspalte für {table}",
   'vec.intro': "Fügt eine Embedding-Spalte vector(n) hinzu (n: die Dimensionen des Vektoranbieters), einen HNSW-Index für die Distanz und einen Trigger, der eine Zeile neu einbettet, wenn sich ihre Quellspalten ändern. Eine Suchkonfiguration vom Typ vector oder hybrid oder das Retrieve-Werkzeug eines KI-Agenten findet Zeilen dann nach Bedeutung. Die vorhandenen Zeilen werden sofort für ihre Embeddings eingereiht.",
   'vec.existing': "Vektorspalten jetzt",

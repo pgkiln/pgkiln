@@ -139,6 +139,10 @@ src/
                            wins over base_url), joinUrl, resolveSource (a REST source on a server: full URL + the server's default
                            credential; used by loadSource/fetchSource/callOperation), catalog and AI service URLs (owner pool,
                            the application's own workspace only)
+  json-sources.ts          (sprint 142, AP-8) JSON sources (meta.app.json_sources): jsonSourceProblems, proposeProfile (types and
+                           arrays from sample documents), jsonSourceDdl (security_invoker views with the meta.json_source_write /
+                           json_array_write triggers, the table's grants), documentViewDdl (duality-view analogue, meta.json_document_write),
+                           withJsonColumns / parseJsonColumns (a report's json_columns), catalog helpers (primaryKey, tableGrants, childTables)
   datapump.ts              (sprint 103, DA-16) Schema Export / Import jobs (meta.dump_job): findTools (pg_dump/pg_restore ≥ the
                            server's major), startExport (pg_dump, argument array, PGPASSWORD), readToc/parseToc (pg_restore --list),
                            startImport (pg_restore -f - run in one transaction between schema renames; data-only in FK order),
@@ -419,6 +423,11 @@ src/
     vector-providers.ts    (sprint 136, AP-1) Shared Components → Vector providers (/apps/:id/vector-providers: list, provider form,
                            test, delete) and Workspace utilities → Vector providers (/vector-providers: pgvector status, Create
                            extension for administrators, the workspace's providers and vector columns); pgvectorNote()
+    json-sources.ts        (sprint 142, AP-8) Shared Components → JSON sources (/apps/:id/json-sources: list, source form with
+                           Propose from the data, views: Create views / worksheet (Change Log), page: createSourcePage() = a form
+                           on the view and a detail grid per array, delete)
+    document-view.ts       (sprint 142, AP-8) Table Properties › Document view: GET/POST /sql/objects/document?o= (child tables
+                           by foreign key), Preview / Apply (Change Log) / worksheet
     telemetry.ts           (sprint 139, AP-6) Workspace utilities → OpenTelemetry (/telemetry: the collector, signals, values, user,
                            browser spans, /metrics and its token, status per collector, Send a test span; administrators) and a
                            workspace's own (/workspaces/:id/telemetry: as the instance / off / own collector; its administrators)
@@ -643,6 +652,8 @@ test/
   workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
   workspace-resources.test.ts  (sprint 141) remote servers (checks, env var, HR's CRM moves its sources, credentials, renames, catalogs,
                            AI services, the Advisor), static workspace files styling two applications, workspace credentials, the export
+  json-sources.test.ts     (sprint 142) data profiles, the views' DDL, writing through them (unknown keys stay, arrays by row_key,
+                           a table of documents, document views), HR page 51 (JSON path columns, form and skills grid), the builder, export
   tree-charts.test.ts      treemap and sunburst (the hierarchy, cycles, squarify), timeline (lanes, rows, points and periods)
   gantt-move.test.ts       an editable Gantt's markup, the move route, dates, who may drag, the builder's settings
   find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits

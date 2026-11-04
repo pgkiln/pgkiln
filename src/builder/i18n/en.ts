@@ -1081,6 +1081,7 @@ export const en = {
   'fts.added': "Added full-text search to {table}: column {column} with index {index}.",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "Add vector column",
+  'docv.add': "Document view",
   'vec.title': "Vector column on {table}",
   'vec.intro': "Adds an embedding column vector(n) (n: the vector provider's dimensions), an HNSW index for the distance, and a trigger that re-embeds a row when its source columns change. A search configuration of type vector or hybrid, or an AI agent's Retrieve tool, then finds rows by meaning. The rows there are now are queued for their embeddings at once.",
   'vec.existing': "Vector columns now",

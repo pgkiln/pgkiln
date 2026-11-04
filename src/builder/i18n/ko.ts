@@ -1077,6 +1077,7 @@ export const ko: BuilderMessages = {
   'fts.added': "{table}에 전체 텍스트 검색을 추가했습니다: 열 {column}, 인덱스 {index}.",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "벡터 열 추가",
+  'docv.add': "문서 뷰",
   'vec.title': "{table}의 벡터 열",
   'vec.intro': "임베딩 열 vector(n)(n: 벡터 공급자의 차원 수), 거리용 HNSW 인덱스, 그리고 소스 열이 바뀌면 행을 다시 임베딩하는 트리거를 추가합니다. 그러면 검색 유형 vector 또는 hybrid의 검색 구성이나 AI 에이전트의 Retrieve 도구가 의미로 행을 찾습니다. 지금 있는 행은 바로 임베딩 대기열에 들어갑니다.",
   'vec.existing': "현재 벡터 열",

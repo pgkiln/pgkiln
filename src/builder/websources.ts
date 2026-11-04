@@ -1,3 +1,4 @@
+import { withJsonColumns } from '../json-sources.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html } from '../html.ts';
@@ -124,10 +125,12 @@ export const REST_SOURCE_SPEC: ComponentSpec = {
  * A region's SQL for the builder (columns, checks): with a REST data source,
  * the source's columns without rows, so nothing is fetched.
  */
-export async function designSql(appId: number, r: { source: string | null; rest_source?: string | null }) {
-  if (!r.rest_source) return r.source;
+export async function designSql(appId: number, r: { source: string | null; rest_source?: string | null; config?: Record<string, any> | null }) {
+  // (142) a report's JSON path columns are columns too
+  const json = (sql: string | null) => (sql && r.config?.json_columns ? withJsonColumns(r, sql) : sql);
+  if (!r.rest_source) return json(r.source);
   const s = await owner.one<{ columns: RestColumn[] }>('select columns from meta.rest_source where app_id = $1 and name = $2', [appId, r.rest_source]);
-  return s ? withRest(rowsSql(s.columns, []), r.source) : r.source;
+  return json(s ? withRest(rowsSql(s.columns, []), r.source) : r.source);
 }
 
 // ---------------------------------------------------------------- extras

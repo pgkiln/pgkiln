@@ -13010,3 +13010,117 @@ describe('sprint 141 AP-7', () => {
     for (const c of ['secret_enc', 'password_enc', 'refresh_token_enc']) assert.ok(cols.includes(`workspace_credential.${c}`), c);
   });
 });
+
+describe('sprint 142 AP-8', () => {
+  // JSON sources and document views: the builder's pages only for the application's workspace and with CSRF; only
+  // json columns of tables the workshop connection may use; the views are security_invoker and their triggers write
+  // as the caller (its grants and the table's row level security apply); names are checked and paths are literals,
+  // in the views' DDL and in a report's JSON path columns.
+  const ADMIN_B = 'sec142adminb';
+  let wsA: number;
+  let wsB: number;
+  let appA: number;
+  let hrId: number;
+  const signIn = async (username: string, ws?: number) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username })).statusCode, 303);
+    await b.get('/builder/home');
+    if (ws) assert.equal((await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(ws) })).statusCode, 303);
+    await b.get('/builder/home');
+    return b;
+  };
+
+  before(async () => {
+    hrId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [ADMIN_B]);
+    await owner.query(`delete from meta.app where alias = 'sec142a'`);
+    await owner.query(`delete from meta.workspace where name in ('Sec142 A', 'Sec142 B')`);
+    wsA = (await owner.one(`insert into meta.workspace (name) values ('Sec142 A') returning id`)).id;
+    wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec142 B') returning id`)).id;
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication, home_page, json_sources) values ('sec142a', 'sec142a', 'none', 1, $1) returning id`,
+      [JSON.stringify([{ name: 'EMP_PROFILE', schema: 'hr', table: 'emp', key: ['empno'], column: 'profile', view: 'emp_profile', columns: [], arrays: [] }])])).id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [appA, wsA]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true)', [wsB, ADMIN_B]);
+    await owner.query('drop table if exists hr.sec142_doc cascade');
+    await owner.query(`do $$ begin if exists (select from pg_roles where rolname = 'sec142_writer') then drop owned by sec142_writer; drop role sec142_writer; end if; end $$`);
+  });
+  after(async () => {
+    await owner.query('drop table if exists hr.sec142_doc cascade');
+    await owner.query(`do $$ begin if exists (select from pg_roles where rolname = 'sec142_writer') then drop owned by sec142_writer; drop role sec142_writer; end if; end $$`);
+    await owner.query(`delete from meta.app where alias = 'sec142a'`);
+    await owner.query('delete from meta.workspace where id = any($1::int[])', [[wsA, wsB]]);
+    await owner.query('delete from meta.developer where username = $1', [ADMIN_B]);
+  });
+
+  test('another workspace\'s developer reaches none of an application\'s JSON source pages; posts need the CSRF token', async () => {
+    const b = await signIn(ADMIN_B, wsB);
+    for (const url of [`/builder/apps/${appA}/json-sources`, `/builder/apps/${appA}/json-sources/source?name=EMP_PROFILE`])
+      assert.equal((await b.get(url)).statusCode, 404, url);
+    for (const url of ['views', 'page', 'source', 'source/delete'])
+      assert.equal((await b.submit(`/builder/apps/${appA}/json-sources/${url}`, { name: 'EMP_PROFILE', mode: 'apply', page_no: '9990' })).statusCode, 404, url);
+    assert.equal(((await owner.one('select json_sources from meta.app where id = $1', [appA])).json_sources as unknown[]).length, 1);
+    assert.equal((await owner.one('select count(*)::int as n from meta.page where app_id = $1', [appA])).n, 0);
+    const admin = await signIn('admin');
+    await admin.get(`/builder/apps/${appA}/json-sources`);
+    assert.equal((await admin.post(`/builder/apps/${appA}/json-sources/source/delete`, { name: 'EMP_PROFILE' })).statusCode, 403, 'CSRF');
+    assert.equal((await admin.post(`/builder/apps/${appA}/json-sources/views`, { name: 'EMP_PROFILE', mode: 'apply' })).statusCode, 403, 'CSRF');
+    assert.equal(((await owner.one('select json_sources from meta.app where id = $1', [appA])).json_sources as unknown[]).length, 1);
+  });
+
+  test('only json columns of tables the workshop may use; Document view refuses pgkiln\'s and the system\'s tables', async () => {
+    const admin = await signIn('admin');
+    await admin.get(`/builder/apps/${hrId}/json-sources/source`);
+    for (const source of ['meta.app.json_sources', 'pg_catalog.pg_class.relacl', 'hr.emp.ename'])
+      assert.equal((await admin.submit(`/builder/apps/${hrId}/json-sources/source`, { mode: 'propose', name: 'SEC142', source, view: 'sec142_v' })).statusCode, 422, source);
+    for (const o of ['meta.app', 'pg_catalog.pg_class', 'information_schema.tables'])
+      assert.equal((await admin.get(`/builder/sql/objects/document?o=${o}`)).statusCode, 404, o);
+  });
+
+  test('the views run as the caller: a role with UPDATE on the view but not on the table writes nothing; RLS hides rows from the view and its writes', async () => {
+    const { jsonSourceDdl } = await import('../src/json-sources.ts');
+    await owner.query('create table hr.sec142_doc (id int primary key, owner text not null, doc jsonb)');
+    await owner.query(`insert into hr.sec142_doc values (1, 'sec142_writer', '{"t": "mine"}'), (2, 'other', '{"t": "theirs"}')`);
+    await owner.query('alter table hr.sec142_doc enable row level security');
+    await owner.query(`create policy own on hr.sec142_doc using (owner = current_user)`);
+    for (const d of jsonSourceDdl({ name: 'SEC142', schema: 'hr', table: 'sec142_doc', key: ['id'], column: 'doc', view: 'sec142_v', columns: [{ name: 't', path: ['t'], type: 'text' }], arrays: [] }, { app: 'hr', grants: [], replace: false }))
+      await owner.query(d);
+    await owner.query('create role sec142_writer nologin');
+    await owner.query('grant usage on schema hr to sec142_writer');
+    await owner.query('grant select, update on hr.sec142_v to sec142_writer');
+    await owner.query('grant select on hr.sec142_doc to sec142_writer');
+    const asWriter = <T>(sql: string) => owner.tx(async (c) => {
+      await c.query('set local role sec142_writer');
+      return (await c.query(sql)) as unknown as T;
+    });
+    // reading: only the row the policy shows
+    assert.deepEqual(((await asWriter<{ rows: { id: number }[] }>('select id from hr.sec142_v')).rows).map((r) => r.id), [1]);
+    // writing without UPDATE on the table: refused by the table's grants, not the view's
+    await assert.rejects(asWriter(`update hr.sec142_v set t = 'x' where id = 1`), /permission denied for table sec142_doc/);
+    await owner.query('grant update on hr.sec142_doc to sec142_writer');
+    await asWriter(`update hr.sec142_v set t = 'changed' where id = 1`);
+    // a row the policy hides is not found (the trigger's UPDATE runs under the policy too)
+    const hidden = await asWriter<{ rowCount: number }>(`update hr.sec142_v set t = 'stolen' where id = 2`);
+    assert.equal(hidden.rowCount, 0);
+    assert.deepEqual((await owner.query('select id, doc from hr.sec142_doc order by id')).rows, [{ id: 1, doc: { t: 'changed' } }, { id: 2, doc: { t: 'theirs' } }]);
+    // calling the trigger function with a description of its own changes nothing beyond the caller's rights
+    assert.equal((await owner.one(`select prosecdef from pg_proc where oid = 'meta.json_array_write'::regproc`)).prosecdef, false);
+    assert.equal((await owner.one(`select prosecdef from pg_proc where oid = 'meta.json_document_write'::regproc`)).prosecdef, false);
+  });
+
+  test('names are checked and paths are literals: in the views\' DDL and in JSON path columns', async () => {
+    const { jsonSourceDdl, jsonSourceProblems, withJsonColumns } = await import('../src/json-sources.ts');
+    const evil = `x'); drop table hr.emp; --`;
+    assert.ok(jsonSourceProblems({ name: 'SEC142B', schema: 'hr', table: 'sec142_doc', key: ['id'], column: 'doc', view: 'v"; drop table hr.emp; --', columns: [{ name: 'a"b', path: ['a'], type: 'text' }], arrays: [] }).length >= 2);
+    for (const d of jsonSourceDdl({ name: 'SEC142B', schema: 'hr', table: 'sec142_doc', key: ['id'], column: 'doc', view: 'sec142_v2', columns: [{ name: 'e', path: [evil, '"q"'], type: 'integer' }], arrays: [] }, { app: 'hr', grants: [], replace: false }))
+      await owner.query(d);
+    await owner.query(`update hr.sec142_v2 set e = 5 where id = 1`);
+    assert.deepEqual((await owner.one('select doc from hr.sec142_doc where id = 1')).doc, { t: 'changed', [evil]: { '"q"': 5 } });
+    assert.equal((await owner.one('select e from hr.sec142_v2 where id = 1')).e, 5);
+    const sql = withJsonColumns({ config: { json_columns: [{ name: 'e', column: 'profile', path: evil }, { name: 'c', column: 'profile" , (select 1) as "x', path: 'a' }] } }, 'select empno, profile from hr.emp');
+    await assert.rejects(owner.query(sql), /column .* does not exist/);
+    const ok = withJsonColumns({ config: { json_columns: [{ name: 'e', column: 'profile', path: evil }] } }, 'select empno, profile from hr.emp');
+    assert.ok((await owner.query(ok)).rows.every((r) => r.e === null));
+    assert.ok((await owner.one(`select to_regclass('hr.emp') is not null as ok`)).ok, 'hr.emp is still there');
+  });
+});

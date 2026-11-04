@@ -1,3 +1,4 @@
+import { withJsonColumns } from '../json-sources.ts';
 import { componentSetting } from './component-settings.ts';
 import { icon } from '../icons.ts';
 import pg from 'pg';
@@ -399,7 +400,8 @@ export const q = (col: string) => `"__q".${pg.escapeIdentifier(col)}`;
  * A computation that doesn't parse (or whose name is taken) is left out and
  * reported, so the report keeps working and the user can remove it.
  */
-export async function withComputations(ctx: PageContext, r: Region, src: string, st: ReportState) {
+export async function withComputations(ctx: PageContext, r: Region, src0: string, st: ReportState) {
+  const src = withJsonColumns(r, src0);
   if (!st.computations.length) return { src, errors: [] as { c: Computation; message: string }[] };
   const columns = await columnsOf(ctx, src);
   // a computation may only use the shown columns: a hidden one would be shown through it

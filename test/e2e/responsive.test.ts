@@ -123,6 +123,11 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await page.waitForFunction(() => document.querySelectorAll('#P50_MEMBERS_available option').length > 0);
       await page.locator('#P50_SKILLS_search').click();
       await check(page, 'app-50-pickers', vp);
+      // (sprint 142) page 51: an employee's profile from the report's link (the form and the skills and languages grids)
+      await page.goto(`${base}/a/hr/51`);
+      await Promise.all([page.waitForNavigation(), page.locator('table a', { hasText: /^7839$/ }).first().click()]);
+      await page.locator('input[name="P51_TITLE"]').waitFor();
+      await check(page, 'app-51-profile', vp);
       // the report's Actions menu fits
       await page.goto(`${base}/a/hr/2`);
       await page.click('summary:has-text("Actions")');
@@ -1062,6 +1067,9 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           return { workspace_files: '/builder/workspace-files', workspace_file_new: '/builder/workspace-files?new=1', remote_servers: '/builder/remote-servers',
             remote_server_edit: `/builder/remote-servers?edit=${srv}`, workspace_credentials: '/builder/workspace-credentials', workspace_credential_edit: `/builder/workspace-credentials?edit=${cred}` };
         })()),
+        // (sprint 142, AP-8) Shared Components → JSON sources (the list, HR's EMP_PROFILE with its arrays and DDL, a new one) and Table Properties › Document view
+        json_sources: `/builder/apps/${appId}/json-sources`, json_source: `/builder/apps/${appId}/json-sources/source?name=EMP_PROFILE`,
+        json_source_new: `/builder/apps/${appId}/json-sources/source`, document_view: '/builder/sql/objects/document?o=hr.dept',
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
