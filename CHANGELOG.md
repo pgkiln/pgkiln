@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **OpenTelemetry** (AP-6; APEX: Workspace Utilities → OpenTelemetry, migration 139): Workspace utilities →
+  **OpenTelemetry** sends traces, logs and metrics to an OpenTelemetry Collector over OTLP/HTTP (JSON), or set it with
+  the standard `OTEL_*` variables. A trace per application request with a span per SQL statement, outgoing web call
+  (REST data sources, `invoke_api`, `meta.web_request`; the W3C `traceparent` goes along), AI request (tokens) and AI
+  tool call; mail sending and workflow steps as traces of their own. A sample ratio that still sends every trace with
+  an error. Values (SQL literals, bind values, query strings, tool arguments) only when *Include values* is on; the
+  user hashed, by name or not at all. Logs of errors, refused access and failed sign-ins; metrics of request
+  durations, errors, sign-in failures, AI tokens, mail, the job, mail, workflow and embedding queues and the
+  connection pools. Optional **browser spans** of the page load and Ajax calls, relayed by pgkiln with a signed token
+  (the browser never sees the collector). **`GET /metrics`** in the Prometheus format for administrators and a
+  metrics token (`PGKILN_METRICS`, `PGKILN_METRICS_TOKEN`). Each workspace can switch its applications off or also
+  send them to a collector of its own (through its network access list); headers are stored encrypted and rotated by
+  `pgkiln admin rotate-key`.
+
+### Changed
+- `pgkiln admin rotate-key` and the lockout checks also cover instance settings that hold a secret
+  (`meta.instance_setting` rows named `*_enc`, which only the owner role reads).
+
 ## [0.71.0] - 2026-11-03
 
 ### Added

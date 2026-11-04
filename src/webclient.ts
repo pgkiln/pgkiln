@@ -3,6 +3,7 @@ import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import zlib from 'node:zlib';
+import { SPAN_KIND, traceparent, withSpan } from './telemetry/trace.ts';
 
 // Outgoing HTTP requests to web services (REST data sources, web credential
 // token endpoints, the Invoke API process), with the server-side request
@@ -258,6 +259,30 @@ function once(url: URL, req: WebRequest, deadline: number, maxBytes: number): Pr
 
 /** Call a web service with the server's protections (see the top of this file). */
 export async function webRequest(raw: string, req: WebRequest = {}): Promise<WebResponse> {
+  // (sprint 139, AP-6) a client span of the current trace, and its W3C traceparent sent along
+  const first = new URL(raw);
+  return withSpan(`HTTP ${(req.method ?? 'GET').toUpperCase()}`, {
+    'http.request.method': (req.method ?? 'GET').toUpperCase(),
+    'server.address': first.hostname,
+    'server.port': Number(first.port) || (first.protocol === 'https:' ? 443 : 80),
+    'url.scheme': first.protocol.replace(':', ''),
+    'url.path': first.pathname.slice(0, 500),
+  }, async (span) => {
+    if (span) {
+      span.vals = { 'url.full': raw.slice(0, 2000) };
+      const tp = traceparent();
+      if (tp) req = { ...req, headers: { ...req.headers, traceparent: tp } };
+    }
+    const res = await webRequestUntraced(raw, req);
+    if (span) {
+      span.attrs['http.response.status_code'] = res.status;
+      if (res.status >= 400) span.error = `HTTP ${res.status}`;
+    }
+    return res;
+  }, SPAN_KIND.client);
+}
+
+async function webRequestUntraced(raw: string, req: WebRequest): Promise<WebResponse> {
   const maxBytes = req.allowLarge && req.maxBytes ? req.maxBytes : Math.min(req.maxBytes ?? maxResponseBytes(), maxResponseBytes());
   const deadline = Date.now() + Math.min(Math.max(req.timeoutMs ?? 10_000, 100), 60_000);
   let url = new URL(raw);

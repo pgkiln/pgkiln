@@ -1686,6 +1686,8 @@ export const zhTW: BuilderMessages = {
   'wsp.mail_service': '郵件服務',
   'wsp.network': '網路存取',
   'wsp.queue': '郵件佇列',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': '此工作區應用程式的追蹤與日誌：{link}（與執行個體相同、關閉，或同時傳送到工作區自己的收集器）。',
   'wsp.iso_short_on': '已隔離：其應用程式與 SQL 以專屬的資料庫登入執行。',
   'wsp.iso_short_off': '共用。',
   'wsp.admins_change': '由管理員變更。',

@@ -1686,6 +1686,8 @@ export const pt: BuilderMessages = {
   'wsp.mail_service': 'serviço de e-mail',
   'wsp.network': 'acesso à rede',
   'wsp.queue': 'fila de e-mails',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': 'Traces e logs das aplicações deste espaço de trabalho: {link} (como a instância, desligado, ou também para um coletor próprio do espaço de trabalho).',
   'wsp.iso_short_on': 'Isolado: suas aplicações e seu SQL são executados em logins de banco de dados próprios.',
   'wsp.iso_short_off': 'Compartilhado.',
   'wsp.admins_change': 'Os administradores o alteram.',

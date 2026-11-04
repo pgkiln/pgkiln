@@ -12542,3 +12542,119 @@ describe('sprint 138 AP-5', () => {
     assert.equal((await owner.one('select type from meta.item where id = $1', [other.id])).type, other.type);
   });
 });
+
+describe('sprint 139 AP-6', () => {
+  const DEV = 'sec139_dev';
+  const DEV_PW = 'Sec139-dev-password!';
+  let hrWs: number;
+  const signIn = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username, password })).statusCode, 303);
+    return b;
+  };
+  const otel = () => owner.query<{ name: string; value: string }>(`select name, value from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%' order by name`).then((r) => r.rows);
+  before(async () => {
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    hrWs = (await owner.one(`select meta.app_workspace(id) as ws from meta.app where alias = 'hr'`)).ws;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [hrWs, DEV]);
+  });
+  after(async () => {
+    const { refreshTelemetry } = await import('../src/telemetry/config.ts');
+    await owner.query(`delete from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%'; delete from meta.instance_setting where name in ('otel_headers_enc', 'metrics_token_hash')`);
+    await owner.query(`update meta.workspace set telemetry = 'instance', telemetry_endpoint = null, telemetry_headers_enc = null, telemetry_values = false`);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await refreshTelemetry(true);
+  });
+
+  test('only administrators see or change the instance\'s OpenTelemetry; CSRF checked', async () => {
+    const before = await otel();
+    const d = await signIn(DEV, DEV_PW);
+    assert.equal((await d.get('/builder/telemetry')).statusCode, 403);
+    assert.doesNotMatch((await d.get('/builder/utilities')).body, /href="\/builder\/telemetry"/);
+    for (const url of ['/builder/telemetry', '/builder/telemetry/token', '/builder/telemetry/test'])
+      assert.equal((await d.submit(url, { enabled: 'true', endpoint: 'http://evil.example:4318', action: 'new' })).statusCode, 403, url);
+    const a = await signIn('admin', 'admin');
+    await a.get('/builder/telemetry');
+    assert.equal((await a.post('/builder/telemetry', { enabled: 'true', endpoint: 'http://evil.example:4318' })).statusCode, 403, 'no CSRF token');
+    assert.deepEqual(await otel(), before);
+  });
+
+  test('collector URLs: http(s) only, no credentials; headers are write-only and encrypted', async () => {
+    const { saveInstanceTelemetry, saveWorkspaceTelemetry, refreshTelemetry } = await import('../src/telemetry/config.ts');
+    for (const endpoint of ['javascript:alert(1)', 'file:///etc/passwd', 'http://user:pw@collector:4318', 'http://collector:4318/#x', 'not a url'])
+      assert.match((await saveInstanceTelemetry({ enabled: 'true', endpoint })) ?? '', /Collector URL/, endpoint);
+    assert.equal(await saveInstanceTelemetry({ enabled: 'false', endpoint: 'http://127.0.0.1:9', headers: 'authorization=Bearer sec139-collector-token' }), null);
+    const stored = (await owner.one(`select value from meta.instance_setting where name = 'otel_headers_enc'`)).value;
+    assert.equal(await owner.one(`select 1 as x from meta.setting where name like '%\\_enc' or name like '%\\_hash'`), undefined, 'secrets out of meta.setting (the runtime role reads it)');
+    assert.doesNotMatch(stored, /sec139-collector-token/);
+    const a = await signIn('admin', 'admin');
+    const page = (await a.get('/builder/telemetry')).body;
+    assert.match(page, /authorization/);
+    assert.doesNotMatch(page, /sec139-collector-token/);
+    // the database refuses a bad workspace endpoint even past the builder
+    await assert.rejects(owner.query(`update meta.workspace set telemetry = 'own', telemetry_endpoint = 'javascript:alert(1)' where id = $1`, [hrWs]), /telemetry_endpoint_ok/);
+    await assert.rejects(owner.query(`update meta.workspace set telemetry = 'own', telemetry_endpoint = null where id = $1`, [hrWs]), /workspace_telemetry_own/);
+    assert.match((await saveWorkspaceTelemetry(hrWs, { mode: 'own', endpoint: 'http://u:p@x.example' })) ?? '', /Collector URL/);
+    assert.match((await saveWorkspaceTelemetry(hrWs, { mode: 'nonsense' })) ?? '', /Unknown/);
+    await refreshTelemetry(true);
+  });
+
+  test('a workspace\'s own collector: its administrators only, and through the allow-lists', async () => {
+    const d = await signIn(DEV, DEV_PW);
+    assert.equal((await d.get(`/builder/workspaces/${hrWs}/telemetry`)).statusCode, 403, 'a member, not an administrator');
+    assert.equal((await d.submit(`/builder/workspaces/${hrWs}/telemetry`, { mode: 'off' })).statusCode, 403);
+    assert.equal((await owner.one('select telemetry from meta.workspace where id = $1', [hrWs])).telemetry, 'instance');
+    // an address the installation's allow-list doesn't have is refused when sending (a workspace administrator is not an instance one)
+    const { saveWorkspaceTelemetry } = await import('../src/telemetry/config.ts');
+    const { sendTest } = await import('../src/telemetry/export.ts');
+    const saved = [process.env.PGKILN_REST_ALLOWED_HOSTS, process.env.PGKILN_REST_PRIVATE_HOSTS];
+    process.env.PGKILN_REST_ALLOWED_HOSTS = 'otlp.example.com';
+    delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+    try {
+      assert.equal(await saveWorkspaceTelemetry(hrWs, { mode: 'own', endpoint: 'http://169.254.169.254' }), null);
+      assert.match((await sendTest(hrWs)) ?? 'sent', /not|allow|refused|private|permitted/i);
+    } finally {
+      [process.env.PGKILN_REST_ALLOWED_HOSTS, process.env.PGKILN_REST_PRIVATE_HOSTS] = saved;
+      if (saved[0] === undefined) delete process.env.PGKILN_REST_ALLOWED_HOSTS;
+      if (saved[1] === undefined) delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      await saveWorkspaceTelemetry(hrWs, { mode: 'instance' });
+    }
+  });
+
+  test('/metrics: off by default, then an administrator or the token only', async () => {
+    const { saveInstanceTelemetry } = await import('../src/telemetry/config.ts');
+    await saveInstanceTelemetry({ enabled: 'false', prometheus: 'false' });
+    assert.equal((await app.inject({ url: '/metrics' })).statusCode, 404);
+    await saveInstanceTelemetry({ enabled: 'false', prometheus: 'true' });
+    assert.equal((await app.inject({ url: '/metrics' })).statusCode, 401);
+    const d = await signIn(DEV, DEV_PW);
+    assert.equal((await d.get('/metrics')).statusCode, 401, 'a developer who is not an administrator');
+    for (const auth of ['Bearer ', 'Bearer x', 'Basic YWRtaW46YWRtaW4=', `Bearer ${'a'.repeat(5000)}`])
+      assert.equal((await app.inject({ url: '/metrics', headers: { authorization: auth } })).statusCode, 401, auth.slice(0, 20));
+    const a = await signIn('admin', 'admin');
+    const body = (await a.get('/metrics')).body;
+    assert.doesNotMatch(body, /king|admin|sec139/i, 'no user names in labels');
+    await saveInstanceTelemetry({ enabled: 'false', prometheus: 'false' });
+  });
+
+  test('the browser relay: only a token the server signed, for that application, recent, small', async () => {
+    const { saveInstanceTelemetry } = await import('../src/telemetry/config.ts');
+    await saveInstanceTelemetry({ enabled: 'true', endpoint: 'http://127.0.0.1:9', browser: 'true', traces: 'true' });
+    const post = (payload: string, alias = 'hr', type = 'application/json') => app.inject({ method: 'POST', url: `/a/${alias}/telemetry`, payload, headers: { 'content-type': type } });
+    const forged = `${'a'.repeat(32)}.${'b'.repeat(16)}.${Math.floor(Date.now() / 1000)}.${signText('other-scope', 'x')}`;
+    assert.equal((await post(JSON.stringify({ t: forged, spans: [{ k: 'load', start: Date.now(), dur: 1 }] }))).statusCode, 403);
+    const ts = Math.floor(Date.now() / 1000);
+    const forOther = `${'a'.repeat(32)}.${'b'.repeat(16)}.${ts}.${signText('otel-browser', `${'a'.repeat(32)}.${'b'.repeat(16)}.${ts}.other`)}`;
+    assert.equal((await post(JSON.stringify({ t: forOther, spans: [] }))).statusCode, 403, 'signed for another application');
+    assert.equal((await post(JSON.stringify({ t: forOther, spans: [] }), 'other')).statusCode, 204, 'the same token where it belongs');
+    for (const t of [null, 42, '', '../../x', `${forOther}<script>`, { t: 1 }])
+      assert.equal((await post(JSON.stringify({ t, spans: [] }))).statusCode, 403, String(t));
+    assert.equal((await post('{not json')).statusCode, 400);
+    assert.equal((await post(JSON.stringify({ t: forOther, spans: [], pad: 'x'.repeat(40_000) }), 'other')).statusCode, 413);
+    await saveInstanceTelemetry({ enabled: 'false', browser: 'false' });
+  });
+});

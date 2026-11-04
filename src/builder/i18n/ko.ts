@@ -1686,6 +1686,8 @@ export const ko: BuilderMessages = {
   'wsp.mail_service': '메일 서비스',
   'wsp.network': '네트워크 액세스',
   'wsp.queue': '메일 대기열',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': '이 작업 영역 애플리케이션의 트레이스와 로그: {link} (인스턴스와 동일, 끔, 또는 작업 영역 자체 수집기로도 전송).',
   'wsp.iso_short_on': '격리됨: 애플리케이션과 SQL이 자체 데이터베이스 로그인으로 실행됩니다.',
   'wsp.iso_short_off': '공유.',
   'wsp.admins_change': '관리자가 변경합니다.',

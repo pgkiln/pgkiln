@@ -1686,6 +1686,8 @@ export const de: BuilderMessages = {
   'wsp.mail_service': 'Mail-Dienst',
   'wsp.network': 'Netzwerkzugriff',
   'wsp.queue': 'Mail-Warteschlange',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': 'Traces und Logs der Anwendungen dieses Workspace: {link} (wie die Instanz, aus, oder zusätzlich an einen eigenen Collector des Workspace).',
   'wsp.iso_short_on': 'Isoliert: Seine Anwendungen und sein SQL laufen auf eigenen Datenbank-Logins.',
   'wsp.iso_short_off': 'Gemeinsam.',
   'wsp.admins_change': 'Administratoren ändern das.',

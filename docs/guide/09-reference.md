@@ -649,6 +649,9 @@ pgkiln's icons; its filter box also searches the Lucide icons by name and search
 | `GET/POST /a/:alias/account`, `POST /a/:alias/account/password`, `POST /a/:alias/account/theme`, `POST /a/:alias/account/style` | My account, own password, the light/dark switch, the [style variant](14-globalization.md#style-variants-theme-roller) switch |
 | `POST /a/:alias/tz` | The browser's time zone for the session (automatic time zone; sent by `app.js`, CSRF token required) |
 | any page `?lang=xx` | Switch the language for the session |
+| `POST /a/:alias/telemetry` | (0.72) Browser spans of a page whose trace goes to an OpenTelemetry collector (sent by `app.js`; a signed token of the page, 204) |
+| `GET /metrics` | (0.72) Metrics in the Prometheus text format, when switched on: an administrator's builder session or `Authorization: Bearer <metrics token>` ([chapter 1](01-installation.md#monitoring-with-opentelemetry)) |
+| `GET /healthz` | `ok` when the database is reachable (503 otherwise) |
 | `/builder/...` | Builder |
 | PostgREST (separate service, `API_URL`) | REST API of each app's `api` schema, see [chapter 13](13-rest-api.md) |
 | `/static/...` | CSS, JavaScript, icons |

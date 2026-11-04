@@ -197,6 +197,15 @@ which is read at startup; real environment variables take precedence.
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 | `PGKILN_RELEASE_CHECK` | `off` | `on`: the server asks GitHub once a day for a newer pgkiln release and the [Workspace home](03-builder.md#the-release-check) announces it. Administrators can also set it in the builder (Instance settings → *New versions*), which wins over the variable. Keep it off where the server may not reach the internet |
 | `PGKILN_RELEASE_URL` | GitHub's releases API | For tests and mirrors only: the address of a JSON document like GitHub's `releases/latest` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | *(none)* | (0.72) The OpenTelemetry Collector's OTLP/HTTP address (e.g. `http://otel-collector:4318`): pgkiln sends [traces, logs and metrics](#monitoring-with-opentelemetry) there. Workspace utilities → **OpenTelemetry** wins over it and over the other `OTEL_*` variables below |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `…_LOGS_ENDPOINT`, `…_METRICS_ENDPOINT` | the endpoint + `/v1/traces` … | A full URL per signal (only when the builder sets no collector URL) |
+| `OTEL_EXPORTER_OTLP_HEADERS` | *(none)* | Headers sent to the collector, `name=value,name2=value2` (an API key) |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` | `pgkiln`, *(none)* | The `service.name` and other resource attributes (`deployment.environment=prod`) |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | always on | `traceidratio` with a ratio from 0 to 1 sends that share of traces; a trace with an error is always sent |
+| `OTEL_TRACES_EXPORTER`, `OTEL_LOGS_EXPORTER`, `OTEL_METRICS_EXPORTER` | `otlp` | `none` leaves that signal out |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Milliseconds between metric exports (5 s to 1 h) |
+| `OTEL_SDK_DISABLED` | `false` | `true` turns the instance's export off, whatever the builder says |
+| `PGKILN_METRICS`, `PGKILN_METRICS_TOKEN` | `off`, *(none)* | `on` opens `GET /metrics` (Prometheus) for administrators and for scrapers that send `Authorization: Bearer <PGKILN_METRICS_TOKEN>` |
 
 ## npm scripts
 
@@ -354,6 +363,105 @@ pgkiln keeps no state in memory between requests (sessions live in `meta.session
 run several instances behind a load balancer. Each instance opens up to
 `2 × (DB_POOL_SIZE + DB_NESTED_POOL_SIZE)` database connections (30 with the defaults); keep the sum
 of all instances below PostgreSQL's `max_connections` (100 by default).
+
+## Monitoring with OpenTelemetry
+
+(0.72; APEX: Workspace Utilities → OpenTelemetry) pgkiln sends **traces, logs and metrics** to your own monitoring
+over OTLP, the OpenTelemetry protocol: Grafana (Tempo, Loki, Mimir), Jaeger, Datadog, Honeycomb, New Relic, Elastic,
+OCI APM and the rest, normally through an [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/). It sends
+OTLP over HTTP as JSON (`http/json`), which every Collector accepts on port 4318. No agent and no extra package are
+needed, and nothing runs while no collector is set.
+
+Administrators set it up in Workspace utilities → **OpenTelemetry** (`/builder/telemetry`), or with the standard
+`OTEL_*` variables of the [configuration reference](#configuration-reference) (a value set in the builder wins):
+
+- **Collector URL**: the OTLP/HTTP base address; `/v1/traces`, `/v1/logs` and `/v1/metrics` are added.
+  **Headers** (an API key) are stored encrypted with `PGKILN_SECRET_KEY` (rotated by `pgkiln admin rotate-key`)
+  and never shown again, only their names. **Send a test span** sends one span and shows what the collector answered;
+  *Status* shows what each server process sent, dropped, and the last problem.
+- **What is traced.** Every application request is a trace: a server span `GET /a/:alias/:page` with the application,
+  page, HTTP status, route and the user (see below), and a child span for **each SQL statement** (`db.query.text`,
+  rows, SQLSTATE on errors; transaction control left out), **each outgoing web call** (REST data sources, `invoke_api`,
+  `meta.web_request`, web credential token requests: `HTTP GET` with the host, path and status; a 4xx/5xx answer is
+  an error span), **each AI request** (`gen_ai.*`: provider, model, input and output tokens) and **each AI tool call**
+  of an assistant or agent. A W3C `traceparent` header goes along with every outgoing web call, so the called service
+  joins the same trace, and an incoming `traceparent` (from a proxy or another service) is continued. Background work
+  has traces of its own: each **mail** sending attempt and each **workflow step** (with the `invoke_api` call inside it).
+  *Trace builder requests too* adds `/builder` requests (to the instance's collector only).
+- **Sample ratio**: the share of traces sent (0 to 1). pgkiln keeps a trace's spans until it ends, so a trace with an
+  error (an HTTP 5xx, a failing statement, a REST call answered with 500) is **always** sent.
+- **Values stay out** unless *Include values* is on: SQL statements are sent with their literals replaced by `?`
+  (`where ename = ?`), bind values, the query string, the full URL of outgoing calls and AI tool arguments are left
+  out, and quoted values, `Key (col)=(value)`, e-mail addresses and long numbers are removed from error messages.
+  With *Include values*, statements go as run, with `db.query.parameter.N`.
+- **User**: *Hashed* (the default) sends `enduser.id` as a keyed hash (the same user always gives the same value,
+  the name is not sent), *User name* sends the name, *Not sent* leaves it out.
+- **Logs**: errors (also unhandled server errors), refused access and failed or locked sign-ins, as log records tied
+  to the request's trace, with the application and page.
+- **Metrics**, every 60 seconds (`OTEL_METRIC_EXPORT_INTERVAL`): `pgkiln.http.server.duration` (a histogram in
+  milliseconds per application, method and status class), `pgkiln.errors`, `pgkiln.access_denied`,
+  `pgkiln.signin_failures`, `pgkiln.ai.requests`, `pgkiln.ai.tokens` (per provider, model, input/output),
+  `pgkiln.mail.sent`, and the levels `pgkiln.mail.queue`, `pgkiln.jobs.queue`, `pgkiln.workflows`,
+  `pgkiln.ai.requests.pending`, `pgkiln.embeddings.queue`, `pgkiln.db.pool.connections`, `process.memory.rss`,
+  `process.uptime`; `pgkiln.telemetry.dropped` counts what could not be sent.
+- **Browser spans** (optional): a page whose trace is sent carries a signed `<meta name="pgkiln-trace">`, and `app.js`
+  reports the page's load timings and its Ajax calls to `POST /a/<alias>/telemetry`; pgkiln adds them to the page's
+  trace (*browser page load*, *browser POST*). The browser never sees the collector or its headers, and the token is
+  bound to the trace, the application and 30 minutes.
+- **Prometheus**: *Prometheus endpoint /metrics* (or `PGKILN_METRICS=on`) answers `GET /metrics` in the Prometheus
+  text format, for administrators signed in to the builder and for scrapers with the metrics token (*Make a token*,
+  shown once; or `PGKILN_METRICS_TOKEN`). It works without a collector.
+
+Each **workspace** chooses on its page → *Mail and network access* → **OpenTelemetry**
+(`/builder/workspaces/<id>/telemetry`, its administrators): *As the instance does* (the default), *Nothing* (its
+applications send nothing, not even to the instance's collector), or *Also to our own collector*: an OTLP/HTTP URL
+with its own headers and its own *Include values*, reached like any outgoing call of the workspace, through the
+installation's allow-list (`PGKILN_REST_ALLOWED_HOSTS`) and the workspace's [network access](03-builder.md#network-access)
+list. Its resource carries `pgkiln.workspace.id`. Metrics go to the instance's collector only.
+
+A Collector that sends traces to Jaeger, for a first look (`docker compose`):
+
+```yaml
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0     # the UI on http://localhost:16686
+    environment: { COLLECTOR_OTLP_ENABLED: "true" }
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otel.yaml"]
+    volumes: ["./otel.yaml:/etc/otel.yaml:ro"]
+    ports: ["4318:4318"]
+```
+
+```yaml
+# otel.yaml
+receivers:
+  otlp: { protocols: { http: { endpoint: 0.0.0.0:4318 } } }
+exporters:
+  otlp/jaeger: { endpoint: jaeger:4317, tls: { insecure: true } }
+  debug: {}
+service:
+  pipelines:
+    traces: { receivers: [otlp], exporters: [otlp/jaeger] }
+    logs: { receivers: [otlp], exporters: [debug] }
+    metrics: { receivers: [otlp], exporters: [debug] }
+```
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318` (or the URL in the builder), open a page, and its trace shows
+in Jaeger under the service `pgkiln`. A Prometheus scrape job for `/metrics`:
+
+```yaml
+scrape_configs:
+  - job_name: pgkiln
+    metrics_path: /metrics
+    authorization: { credentials: "<the metrics token>" }
+    static_configs: [{ targets: ["apps.example.com:443"] }]
+    scheme: https
+```
+
+Every server process sends what it saw: with several instances, each is a `service.instance.id` (host and process).
+A collector that is down costs a failed request per batch every few seconds, never a user's request; what doesn't fit
+the queue (8,192 spans per collector) is dropped and counted.
 
 ## Backups and moving applications
 

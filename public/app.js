@@ -4362,3 +4362,53 @@ document.addEventListener('change', (e) => {
     });
   }
 })();
+
+// (sprint 139, AP-6) Browser spans: a page whose trace goes to an OpenTelemetry collector carries a
+// signed <meta name="pgkiln-trace">. Its load timings and its Ajax calls to the same application are
+// reported to pgkiln (POST /a/<alias>/telemetry), which adds them to the page's trace; the browser
+// never sees the collector. Nothing happens on pages without the meta.
+(() => {
+  const meta = document.querySelector('meta[name="pgkiln-trace"]');
+  const m = /^\/a\/[^/]+\//.exec(location.pathname);
+  if (!meta || !m || !window.fetch || !window.performance) return;
+  const token = meta.content;
+  const url = `${m[0]}telemetry`;
+  const origin = performance.timeOrigin || Date.now() - performance.now();
+  let queue = [];
+  const send = () => {
+    if (!queue.length) return;
+    const body = JSON.stringify({ t: token, spans: queue.splice(0, 50) });
+    const blob = new Blob([body], { type: 'application/json' });
+    if (!(navigator.sendBeacon && navigator.sendBeacon(url, blob)))
+      realFetch(url, { method: 'POST', body, headers: { 'content-type': 'application/json' }, keepalive: true, credentials: 'same-origin' }).catch(() => {});
+  };
+  const realFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const t0 = performance.now();
+    let path = '';
+    try {
+      const u = new URL(typeof input === 'string' ? input : input instanceof Request ? input.url : String(input), location.href);
+      if (u.origin === location.origin && u.pathname.startsWith(m[0]) && u.pathname !== url) path = u.pathname + u.search;
+    } catch {
+      // not a URL we report
+    }
+    const p = realFetch(input, init);
+    if (path) {
+      const method = String((init && init.method) || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+      const done = (status) => {
+        queue.push({ k: 'ajax', path, method, status, start: origin + t0, dur: performance.now() - t0 });
+        if (queue.length >= 20) send();
+      };
+      p.then((r) => done(r.status), () => done(0));
+    }
+    return p;
+  };
+  window.addEventListener('load', () => setTimeout(() => {
+    const n = performance.getEntriesByType('navigation')[0];
+    if (n) queue.push({ k: 'load', start: origin + n.startTime, dur: (n.loadEventEnd || performance.now()) - n.startTime,
+      t: { ttfb: n.responseStart - n.startTime, dom_interactive: n.domInteractive - n.startTime, dom_complete: n.domComplete - n.startTime, load: n.loadEventEnd - n.startTime } });
+    send();
+  }, 0));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
+  window.addEventListener('pagehide', send);
+})();

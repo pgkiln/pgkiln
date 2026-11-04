@@ -14,6 +14,7 @@ import { owner } from '../db.ts';
 import { decryptSecret } from '../secrets.ts';
 import { mailHostAddress, scopeForWorkspace } from '../network-acl.ts';
 import { deliver, MailError, verifyConnection, type OutgoingMail, type Provider, type ServiceSettings } from './providers.ts';
+import { count, markError, rootSpan, setAttrs, traceApp } from '../telemetry/trace.ts';
 
 export interface MailService {
   id: number;
@@ -95,6 +96,14 @@ interface Claimed {
 }
 
 async function sendOne(m: Claimed) {
+  // (sprint 139, AP-6) each attempt a trace of its own (or a span of the request that sends at once)
+  return rootSpan('mail send', { 'pgkiln.mail.id': String(m.id), 'pgkiln.mail.attempt': m.attempts }, async () => {
+    traceApp({ appId: m.app_id });
+    await sendOneTraced(m);
+  });
+}
+
+async function sendOneTraced(m: Claimed) {
   // the application's service, else (sprint 118) its workspace's own
   const service = await owner.one<MailService>(`select s.* from meta.mail_service s where s.id = meta.mail_service_for_app($1)`, [m.app_id]);
   const t0 = performance.now();
@@ -112,10 +121,15 @@ async function sendOne(m: Claimed) {
     await owner.query(`update meta.mail_queue set status = 'sent', sent_at = now(), provider_id = $2, service = $3, message = null,
                               last_attempt_at = now(), duration_ms = $4, provider = $5 where id = $1`,
       [m.id, id ? String(id).slice(0, 500) : null, service.name, ms, provider]);
+    setAttrs({ 'pgkiln.mail.provider': provider, 'pgkiln.mail.service': service.name });
+    count('pgkiln.mail.sent', { status: 'sent' });
   } catch (e) {
     const retry = e instanceof MailError ? e.retry : true;
     const message = (e as Error).message.slice(0, 2000);
     const [ms, provider] = timing();
+    setAttrs({ 'pgkiln.mail.provider': provider, 'pgkiln.mail.service': service?.name ?? null, 'pgkiln.mail.retry': retry && m.attempts < ATTEMPTS });
+    markError(message);
+    count('pgkiln.mail.sent', { status: retry && m.attempts < ATTEMPTS ? 'retry' : 'error' });
     if (retry && m.attempts < ATTEMPTS)
       await owner.query(`update meta.mail_queue set status = 'queued', not_before = now() + make_interval(mins => $2), message = $3, service = $4,
                                 last_attempt_at = now(), duration_ms = $5, provider = $6 where id = $1`,

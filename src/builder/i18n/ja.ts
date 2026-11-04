@@ -1686,6 +1686,8 @@ export const ja: BuilderMessages = {
   'wsp.mail_service': 'メール・サービス',
   'wsp.network': 'ネットワーク・アクセス',
   'wsp.queue': 'メール・キュー',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': 'このワークスペースのアプリケーションのトレースとログ：{link}（インスタンスと同じ、オフ、またはワークスペース独自のコレクターにも送信）。',
   'wsp.iso_short_on': '分離: アプリケーションと SQL は独自のデータベース・ログインで実行されます。',
   'wsp.iso_short_off': '共有。',
   'wsp.admins_change': '管理者が変更します。',

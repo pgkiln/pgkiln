@@ -190,6 +190,16 @@ src/
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
                            loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
   icons.ts                 icon helper (sprite in public/icons.svg)
+  telemetry/               (sprint 139, AP-6) OpenTelemetry without the SDK: trace.ts (the current trace in AsyncLocalStorage,
+                           startTrace/endTrace, withSpan/rootSpan/recordSpan, traceApp, traceparent, a span per statement by
+                           patching pg.Client#query, sanitizeSql/redactText, counters and histograms), config.ts (the instance's
+                           settings: meta.setting otel_* over OTEL_* variables; workspaces' telemetry columns; app → workspace,
+                           cached 30 s), export.ts (a queue per collector, OTLP/HTTP JSON for traces, logs and metrics, values
+                           only where included, gauges from the queues, prometheusText(), sendTest()), http.ts (a trace per
+                           request, request metrics, GET /metrics, POST /a/:alias/telemetry), browser.ts (the page's signed
+                           <meta name="pgkiln-trace"> in layout.ts and relay() of what app.js reports). Spans come from
+                           webclient.ts (outgoing calls, traceparent), ai/service.ts logUsage, runtime/ai-agents.ts logToolCall,
+                           mail/mail.ts sendOne, workflow.ts runWorkflow; logs from session.ts logActivity
   history.ts               (sprint 138, AP-5) change history and checksums: meta.app_snapshot (the export after the last recorded
                            change), recordHistory() (export again, workingcopy.ts components() of both, each added/changed/deleted
                            component with its files before and after into meta.component_change; called by app-updates.ts onSend,
@@ -392,6 +402,9 @@ src/
     vector-providers.ts    (sprint 136, AP-1) Shared Components → Vector providers (/apps/:id/vector-providers: list, provider form,
                            test, delete) and Workspace utilities → Vector providers (/vector-providers: pgvector status, Create
                            extension for administrators, the workspace's providers and vector columns); pgvectorNote()
+    telemetry.ts           (sprint 139, AP-6) Workspace utilities → OpenTelemetry (/telemetry: the collector, signals, values, user,
+                           browser spans, /metrics and its token, status per collector, Send a test span; administrators) and a
+                           workspace's own (/workspaces/:id/telemetry: as the instance / off / own collector; its administrators)
     data-security.ts       (sprint 119) a table's Security: GET/POST /sql/objects/security?o= (policies, roles × columns, masks), Preview / Apply
     object-actions.ts      (sprint 94) an object's ⋯ menu (objectMenu) in the worksheet and the Object Browser: Quick DDL (objectDdl), Drop with
                            dependents, Add index / trigger / policy as drafts; GET /sql/objects/action, /sql/objects/panel (Open in a panel)

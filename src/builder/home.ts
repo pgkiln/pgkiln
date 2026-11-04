@@ -300,6 +300,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/vector-providers`, icon('search'), 'Vector providers', 'Embeddings for search by meaning: the applications\' vector providers, their vector columns, and whether pgvector is installed.')}
         ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude and OpenAI for the applications: models, keys, limits and usage (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), 'Mail services', 'SMTP, Microsoft 365, Amazon SES, Resend, Postmark, SendGrid or Mailgun for the applications\' e-mail (administrators).') : ''}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/telemetry`, icon('activity'), 'OpenTelemetry', 'Traces, logs and metrics to your own monitoring through an OpenTelemetry Collector; /metrics for Prometheus (administrators).') : ''}
         ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
       </div></div>
       <aside class="ab-side" aria-label="About and reports">

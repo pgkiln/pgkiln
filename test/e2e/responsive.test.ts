@@ -1027,6 +1027,13 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             network_check: `/builder/network?ws=1&url=${encodeURIComponent('https://a-rather-long-host-name-without-spaces.api.example.com/v1/items')}`,
             workspace_mail: '/builder/workspaces/1/mail', workspace_mail_graph: '/builder/workspaces/1/mail?provider=graph' };
         })()),
+        // (sprint 139, AP-6) OpenTelemetry: a long collector URL, a long problem, a workspace with its own collector
+        ...(await (async () => {
+          await owner.query(`insert into meta.setting (name, value) values ('otel_endpoint', $1), ('otel_enabled', 'false'), ('metrics_endpoint', 'true')
+            on conflict (name) do update set value = excluded.value`, ['https://a-rather-long-collector-host-name-without-spaces.otel.example.com:4318/' + 'p'.repeat(60)]);
+          await owner.query(`update meta.workspace set telemetry = 'own', telemetry_endpoint = $1 where id = 1`, ['https://a-rather-long-collector-host-name-without-spaces.otel.example.com/' + 'q'.repeat(60)]);
+          return { telemetry: '/builder/telemetry', workspace_telemetry: '/builder/workspaces/1/telemetry' };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
@@ -1046,6 +1053,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         }
       } finally {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and locked_by = 'e2e_other_developer'`, [appId]);
+        await owner.query(`delete from meta.setting where name in ('otel_endpoint', 'otel_enabled', 'metrics_endpoint')`);
+        await owner.query(`update meta.workspace set telemetry = 'instance', telemetry_endpoint = null where id = 1`);
         await owner.query(`delete from meta.workflow where app_id = $1 and name = 'SALARY_CHANGE' and title like 'Salary of E2E%'`, [appId]);
         await owner.query(`delete from meta.dump_job where username = 'e2e_dump'`);
         await owner.query(`delete from meta.app where alias = 'hr-e2e'`);

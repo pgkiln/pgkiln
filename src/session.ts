@@ -1,4 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { count, emitLog } from './telemetry/trace.ts';
+import { appOf } from './telemetry/config.ts';
 import { runtime, sharedRuntime } from './db.ts';
 import { runtimeForApp } from './workspace-db.ts';
 import { hashToken, loginMaxFailuresPerIp, loginMaxFailuresPerUser, loginWindowMinutes, newToken } from './security.ts';
@@ -121,6 +123,7 @@ export async function logActivity(entry: {
   elapsedMs?: number;
   detail?: string;
 }) {
+  activityTelemetry(entry);
   try {
     // (090) on the connection of the entry's application (an isolated workspace's own); without one, the shared one
     const db = entry.appId != null ? await runtimeForApp(entry.appId) : sharedRuntime;
@@ -151,4 +154,27 @@ export async function loginThrottled(appId: number | null, username: string, ip:
     [appId, username, ip, loginWindowMinutes()],
   );
   return !!counts && (counts.user_fails >= loginMaxFailuresPerUser() || counts.ip_fails >= loginMaxFailuresPerIp());
+}
+
+// (sprint 139, AP-6) errors, refusals and failed sign-ins as OpenTelemetry logs and metrics
+const OTEL_EVENTS: Record<string, ['ERROR' | 'WARN', string]> = {
+  error: ['ERROR', 'pgkiln.errors'],
+  forbidden: ['WARN', 'pgkiln.access_denied'],
+  login_failed: ['WARN', 'pgkiln.signin_failures'],
+  login_locked: ['WARN', 'pgkiln.signin_failures'],
+};
+
+function activityTelemetry(e: { appId?: number | null; pageNo?: number | null; username?: string | null; event: string; detail?: string }) {
+  const known = OTEL_EVENTS[e.event];
+  if (!known) return;
+  const app = e.appId == null ? 'builder' : appOf(e.appId)?.[0] ?? 'unknown';
+  count(known[1], e.event === 'login_locked' ? { app, reason: 'locked' } : { app });
+  emitLog({
+    severity: known[0],
+    body: e.event,
+    detail: e.detail,
+    attrs: { 'pgkiln.event': e.event, 'pgkiln.app.id': e.appId ?? null, 'pgkiln.app.alias': e.appId == null ? null : app, 'pgkiln.page': e.pageNo == null ? null : String(e.pageNo) },
+    appId: e.appId ?? null,
+    user: e.username ?? null,
+  });
 }

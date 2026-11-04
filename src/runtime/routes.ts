@@ -55,6 +55,7 @@ import { availabilityRefusal } from './availability.ts';
 import { feedbackRoutes } from './feedback.ts';
 import { dataItemRoutes, loadPreferences, savePreferences } from './data-items.ts';
 import { ajaxRoutes } from './ajax.ts';
+import { traceApp } from '../telemetry/trace.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
@@ -266,6 +267,8 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
   if (!page) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('error.page_not_found', { page: req.params.page, app: app.name }), base, locale), null;
   if (locale.lang !== app.language) translatePage(page, locale.tr);
   const user = app.authentication === 'none' ? 'nobody' : (session.username ?? 'nobody');
+  // (sprint 139, AP-6) the request's trace: which application (its workspace decides where it goes), page and user
+  await traceApp({ appId: app.id, alias: app.alias, page: page.page_no, user });
 
   if (app.authentication !== 'none' && (page.requires_auth || fixedPage) && !session.username) {
     if (json) reply.code(401).send({ error: locale.t('error.session_ended') });

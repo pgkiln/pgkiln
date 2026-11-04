@@ -1690,6 +1690,8 @@ export const en = {
   'wsp.mail_service': 'mail service',
   'wsp.network': 'network access',
   'wsp.queue': 'mail queue',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': 'Traces and logs of this workspace\'s applications: {link} (as the instance, off, or also to a collector of the workspace\'s own).',
   'wsp.iso_short_on': 'Isolated: its applications and SQL run on database logins of its own.',
   'wsp.iso_short_off': 'Shared.',
   'wsp.admins_change': 'Administrators change it.',
