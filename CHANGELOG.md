@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-11-04
+
 ### Added
 - **Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions** (AP-4; APEX: the
   Shuttle item, 24.2's Select One and Select Many, and the Classic Report, Breadcrumb and Help Text regions;
