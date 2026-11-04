@@ -2020,6 +2020,24 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 .ir-dialog-head h2 { margin: 0; font-size: 1.05rem; }
 .ir-dialog .ir-body { padding: 1rem; }
 .ir-dialog .filter-row { min-width: 0; }
+.filter-dialog .date-field { display: flex; min-width: 0; }
+.filter-dialog .date-field input { flex: 1; min-width: 0; }
+.filter-dialog .filter-values, .filter-dialog .help { grid-column: 1 / -1; }
+.filter-values { display: grid; gap: 0.3rem; }
+.filter-values-list { list-style: none; margin: 0; padding: 0.25rem 0.4rem; max-height: 14rem; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+.filter-values-list .check { display: flex; gap: 0.4rem; align-items: center; padding: 0.15rem 0; }
+.filter-values-list .muted { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* (143) Actions → Columns: a row per column, dragged by its handle or moved with its arrows */
+.ir-col-order { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.ir-col-order > li { display: flex; align-items: center; gap: 0.4rem; padding: 0.15rem 0.3rem; border: 1px solid transparent; border-radius: var(--radius); background: var(--surface); }
+.ir-col-order > li:hover { border-color: var(--border); }
+.ir-col-order > li.dragging { opacity: 0.55; border-style: dashed; border-color: var(--accent); }
+.ir-col-order .check { flex: 1; min-width: 0; }
+.ir-col-order .drag-handle { color: var(--muted); cursor: grab; display: inline-flex; }
+.no-js .ir-col-order .drag-handle, html:not(.js) .ir-col-order .drag-handle { display: none; }
+.ir-col-move { display: inline-flex; gap: 0.15rem; }
+.ir-col-move .btn { min-width: 2rem; padding: 0.1rem 0.4rem; line-height: 1.2; }
+.ir-col-move .btn:disabled { opacity: 0.35; }
 /* the search field with its column list (APEX: the magnifier's column menu) */
 .search-field { display: flex; flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .search-field:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -4420,6 +4420,147 @@ const reportTexts = (() => {
   window.addEventListener('resize', shut);
 })();
 
+// (143; APEX 26.2: multi-select and date-range filters) Actions → Filter shows the fields its operator needs: one
+// value; "is one of" a list of the column's values with counts and a search (the ticked ones go as r<id>_fl, next to
+// values typed with commas); "is between" two values; "is in" a period, offered on date columns only. On a date
+// column the value fields get the date picker in the application's date format.
+(() => {
+  const t = (k, d) => reportTexts[k] || d;
+  const cache = new Map();
+  function fill(box, column) {
+    const list = box.querySelector('.filter-values');
+    if (!list || list.dataset.column === column) return;
+    list.dataset.column = column;
+    list.replaceChildren();
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = t('report.filter_values', 'Filter the values');
+    search.setAttribute('aria-label', search.placeholder);
+    const ul = document.createElement('ul');
+    ul.className = 'filter-values-list';
+    list.append(search, ul);
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      ul.querySelectorAll('li').forEach((li) => { li.hidden = !!q && !li.textContent.toLowerCase().includes(q); });
+    });
+    const url = new URL(box.dataset.values, location.href);
+    new URL(location.href).searchParams.forEach((v, k) => url.searchParams.append(k, v));
+    url.searchParams.set('col', column);
+    const key = url.toString();
+    const got = cache.get(key) ?? fetch(url, { headers: { accept: 'application/json' }, credentials: 'same-origin' }).then((r) => (r.ok ? r.json() : { values: [] })).catch(() => ({ values: [] }));
+    cache.set(key, got);
+    got.then(({ values }) => {
+      if (list.dataset.column !== column) return;
+      const shown = (values || []).filter((x) => x.value !== null);
+      if (!shown.length) {
+        const li = document.createElement('li');
+        li.className = 'muted';
+        li.textContent = t('report.no_values', 'No values');
+        ul.append(li);
+        return;
+      }
+      for (const { value, count } of shown) {
+        const li = document.createElement('li');
+        const label = document.createElement('label');
+        label.className = 'check';
+        const box2 = document.createElement('input');
+        box2.type = 'checkbox';
+        box2.name = box.dataset.list;
+        box2.value = value;
+        box2.setAttribute('form', box.dataset.form);
+        const n = document.createElement('span');
+        n.className = 'muted';
+        n.textContent = ` ${count}`;
+        label.append(box2, ` ${value}`, n);
+        li.append(label);
+        ul.append(li);
+      }
+    });
+  }
+  function sync(box) {
+    const col = box.querySelector('[data-filter-column]');
+    const op = box.querySelector('[data-filter-op]');
+    if (!col || !op) return;
+    const date = col.selectedOptions[0]?.dataset.kind === 'date';
+    op.querySelectorAll('option[data-op-kind="period"]').forEach((o) => { o.hidden = !date; o.disabled = !date; });
+    if (!date && op.selectedOptions[0]?.dataset.opKind === 'period') op.value = 'eq';
+    const kind = op.selectedOptions[0]?.dataset.opKind || 'one';
+    box.querySelectorAll('.filter-field[data-show]').forEach((el) => { el.hidden = !el.dataset.show.split(' ').includes(kind); });
+    for (const input of box.querySelectorAll('input[data-mask-off]')) {
+      const picker = date && kind !== 'list';
+      if (picker) input.dataset.dateMask = input.dataset.maskOff;
+      else delete input.dataset.dateMask;
+      input.placeholder = picker ? input.dataset.maskOff : input.getAttribute('aria-label') || '';
+      const btn = input.parentElement?.querySelector('[data-date-pick]');
+      if (btn) btn.hidden = !picker;
+    }
+    if (kind === 'list') fill(box, col.value);
+  }
+  document.querySelectorAll('[data-filter-dialog]').forEach(sync);
+  document.addEventListener('change', (e) => {
+    const box = e.target.closest?.('[data-filter-dialog]');
+    if (box && e.target.matches('[data-filter-column], [data-filter-op]')) sync(box);
+  });
+})();
+
+// (143; APEX 26.2: drag-and-drop column ordering) Actions → Columns: drag a column to another place, or move it with
+// its arrow buttons (Up / Down; without JavaScript they submit the form and the server moves it); the dialog's form
+// sends the columns in the list's order when applied. Each move is announced.
+(() => {
+  const t = (k, d) => reportTexts[k] || d;
+  const fmt = (s, p) => s.replace(/\{(\w+)\}/g, (m, k) => (k in p ? p[k] : m));
+  function refresh(list, moved) {
+    const items = [...list.children];
+    items.forEach((li, i) => {
+      const [up, down] = li.querySelectorAll('.ir-col-move button');
+      if (up) up.disabled = i === 0;
+      if (down) down.disabled = i === items.length - 1;
+    });
+    if (!moved) return;
+    const status = list.closest('.ir-columns')?.parentElement?.querySelector('[data-col-status]');
+    const name = moved.querySelector('label')?.textContent.trim() || moved.dataset.colName;
+    if (status) status.textContent = fmt(t('report.moved', '{column}: position {n} of {total}'), { column: name, n: items.indexOf(moved) + 1, total: items.length });
+  }
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest?.('[data-col-order] .ir-col-move button');
+    if (!btn) return;
+    e.preventDefault();
+    const li = btn.closest('li');
+    const list = li.parentElement;
+    const up = btn === li.querySelector('.ir-col-move button');
+    const other = up ? li.previousElementSibling : li.nextElementSibling;
+    if (!other) return;
+    if (up) other.before(li);
+    else other.after(li);
+    refresh(list, li);
+    (btn.disabled ? li.querySelector('.ir-col-move button:not(:disabled)') : btn)?.focus();
+  });
+  let dragged = null;
+  document.addEventListener('dragstart', (e) => {
+    const li = e.target.closest?.('[data-col-order] > li');
+    if (!li) return;
+    dragged = li;
+    li.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', li.dataset.colName || '');
+  });
+  document.addEventListener('dragover', (e) => {
+    const list = e.target.closest?.('[data-col-order]');
+    if (!dragged || !list || dragged.parentElement !== list) return;
+    e.preventDefault();
+    const after = [...list.children].find((li) => li !== dragged && e.clientY < li.getBoundingClientRect().top + li.offsetHeight / 2);
+    if (after) after.before(dragged);
+    else list.append(dragged);
+  });
+  document.addEventListener('drop', (e) => { if (dragged && e.target.closest?.('[data-col-order]')) e.preventDefault(); });
+  document.addEventListener('dragend', () => {
+    if (!dragged) return;
+    dragged.classList.remove('dragging');
+    refresh(dragged.parentElement, dragged);
+    dragged = null;
+  });
+})();
+
 // (sprint 76) the report pager's rows per page: sent on change
 document.addEventListener('change', (e) => {
   if (e.target.matches?.('select[data-go]')) e.target.form?.submit();

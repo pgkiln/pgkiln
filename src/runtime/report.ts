@@ -9,7 +9,8 @@ import { esc, html, raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext } from './context.ts';
-import { appDateReader, heading, splitValues } from './items.ts';
+import { appDateMask, appDateReader, heading, splitValues } from './items.ts';
+import { monthNames } from './format.ts';
 import { linkAttrs } from './links.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
@@ -19,7 +20,7 @@ import { ComputeError, computeNameOk, computeSql, type Computation } from './com
 import { GRID_VIEWS, renderView, VIEWS, type View } from './report-views.ts';
 import { columnTemplates } from './template-components.ts';
 import { textSearchConfig } from './search.ts';
-import { facetFilterSql, facetFilters, hidesColumns, reportFacetDefs, searchSql, userColumnNames } from './facet-state.ts';
+import { DATE_OIDS, facetFilterSql, facetFilters, hidesColumns, reportFacetDefs, searchSql, userColumnNames } from './facet-state.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { checksumValid, signText } from '../security.ts';
 import { parseArea, parseNear, postgis, spatialConditions, type MapArea, type Near } from './spatial.ts';
@@ -142,7 +143,65 @@ export function pageWindow(r: Region, st: { page: number; size: number }) {
   return { page, offset, limit: max ? Math.max(1, Math.min(st.size + 1, max - offset)) : st.size + 1, max };
 }
 
-export const OPERATORS: Record<string, { label: string; sql: (col: string, v: string) => string; noValue?: boolean }> = {
+/** (143) how a filter's value is read: on a date column, a date in the application's format becomes ISO */
+export interface OpOptions { date?: boolean; readDate?: (text: string) => string | null }
+
+/** (143) the most values an "is one of" filter takes, and the longest value */
+export const MAX_LIST_VALUES = 100;
+const MAX_VALUE_LENGTH = 500;
+
+/** a filter value written as a JSON array by the dialog, or null for text */
+function jsonArray(v: string): unknown[] | null {
+  if (!v.trimStart().startsWith('[')) return null;
+  try {
+    const j = JSON.parse(v);
+    return Array.isArray(j) ? j : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * (143; APEX 26.2: multi-select filters) The values of an "is one of" / "is not one of" filter: a JSON array as the
+ * filter dialog writes it (["CLERK","ANALYST"]: a value may hold a comma), else text separated by commas (typed,
+ * or from Ask / an AI answer).
+ */
+export function listValues(v: string): string[] {
+  const out = (jsonArray(v) ?? v.split(',')).flatMap((x) => (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean' ? [String(x).trim()] : []));
+  return [...new Set(out.filter((x) => x !== '' && x.length <= MAX_VALUE_LENGTH))].slice(0, MAX_LIST_VALUES);
+}
+
+/** (143; APEX 26.2: date-range filters) The two bounds of "is between": ["from","to"], either may be empty (open). */
+export function rangeValues(v: string): [string, string] {
+  const [a, b] = (jsonArray(v) ?? v.split(',')).map((x) => (typeof x === 'string' || typeof x === 'number' ? String(x).trim().slice(0, MAX_VALUE_LENGTH) : ''));
+  return [a ?? '', b ?? ''];
+}
+
+/** (143) Relative periods of "is in" on a date column: [start, end) as SQL on current_date, so a saved report rolls on. */
+export const PERIODS: Record<string, [string, string]> = {
+  today: ['current_date', 'current_date + 1'],
+  yesterday: ['current_date - 1', 'current_date'],
+  last_7_days: ['current_date - 6', 'current_date + 1'],
+  last_30_days: ['current_date - 29', 'current_date + 1'],
+  next_7_days: ['current_date', 'current_date + 7'],
+  this_month: [`date_trunc('month', current_date)`, `date_trunc('month', current_date) + interval '1 month'`],
+  last_month: [`date_trunc('month', current_date) - interval '1 month'`, `date_trunc('month', current_date)`],
+  this_year: [`date_trunc('year', current_date)`, `date_trunc('year', current_date) + interval '1 year'`],
+  last_year: [`date_trunc('year', current_date) - interval '1 year'`, `date_trunc('year', current_date)`],
+};
+
+/** a bound typed in the application's date format, as ISO for a date column (as typed when it doesn't read as one) */
+const dateBound = (v: string, o?: OpOptions) => (o?.date && o.readDate ? (o.readDate(v) ?? v) : v);
+
+export const OPERATORS: Record<string, {
+  label: string;
+  sql: (col: string, v: string, o?: OpOptions) => string;
+  noValue?: boolean;
+  /** (143) the value is a list (is one of), two bounds (between) or a period name */
+  kind?: 'list' | 'range' | 'period';
+  /** (143) whether a value makes a filter at all */
+  ok?: (v: string) => boolean;
+}> = {
   eq: { label: '=', sql: (c, v) => `${c} = ${literal(v)}` },
   ne: { label: '≠', sql: (c, v) => `${c} is distinct from ${literal(v)}` },
   contains: { label: 'contains', sql: (c, v) => `${c}::text ilike ${literal(`%${escapeLike(v)}%`)}` },
@@ -153,13 +212,56 @@ export const OPERATORS: Record<string, { label: string; sql: (col: string, v: st
   le: { label: '≤', sql: (c, v) => `${c} <= ${literal(v)}` },
   null: { label: 'is empty', sql: (c) => `${c} is null`, noValue: true },
   not_null: { label: 'is not empty', sql: (c) => `${c} is not null`, noValue: true },
+  // (143) several values at once; on a date column each may be in the application's date format
+  in: { label: 'is one of', kind: 'list', ok: (v) => listValues(v).length > 0,
+    sql: (c, v, o) => {
+      const xs = listValues(v);
+      return xs.length ? `${c} in (${xs.map((x) => literal(dateBound(x, o))).join(', ')})` : 'false';
+    } },
+  not_in: { label: 'is not one of', kind: 'list', ok: (v) => listValues(v).length > 0,
+    sql: (c, v, o) => {
+      const xs = listValues(v);
+      return xs.length ? `(${c} is null or ${c} not in (${xs.map((x) => literal(dateBound(x, o))).join(', ')}))` : 'true';
+    } },
+  // (143) from and to, both included; on a date or timestamp column the whole last day counts
+  between: { label: 'is between', kind: 'range', ok: (v) => rangeValues(v).some(Boolean),
+    sql: (c, v, o) => {
+      const [a, b] = rangeValues(v).map((x) => (x ? dateBound(x, o) : x));
+      const parts = [
+        a ? (o?.date ? `${c} >= ${literal(a)}::date` : `${c} >= ${literal(a)}`) : '',
+        b ? (o?.date ? `${c} < ${literal(b)}::date + 1` : `${c} <= ${literal(b)}`) : '',
+      ].filter(Boolean);
+      return parts.length ? `(${parts.join(' and ')})` : 'true';
+    } },
+  period: { label: 'is in', kind: 'period', ok: (v) => Object.hasOwn(PERIODS, v),
+    sql: (c, v) => (Object.hasOwn(PERIODS, v) ? `(${c} >= ${PERIODS[v][0]} and ${c} < ${PERIODS[v][1]})` : 'false') },
 };
+
+/** (143) whether column|op|value makes a filter (a known operator with a usable value) */
+export const filterOk = (op: string, v: string) => Object.hasOwn(OPERATORS, op) && (OPERATORS[op].ok?.(v) ?? true);
+
+/** (143) A filter's text for its chip, the PDF's header and Ask: "Job is one of CLERK, ANALYST", "Hire date is between … and …". */
+export function describeFilter(t: Translate, label: string, op: string, v: string) {
+  const o = OPERATORS[op];
+  if (!o || o.noValue) return `${label} ${opLabel(t, op)}`;
+  if (o.kind === 'list') return `${label} ${opLabel(t, op)} ${listValues(v).join(', ')}`;
+  if (o.kind === 'range') {
+    const [a, b] = rangeValues(v);
+    return a && b ? `${label} ${opLabel(t, op)} ${a} ${t('report.and')} ${b}` : a ? `${label} ≥ ${a}` : `${label} ≤ ${b}`;
+  }
+  if (o.kind === 'period') return `${label} ${opLabel(t, op)} ${t(`period.${v}`)}`;
+  return `${label} ${opLabel(t, op)} ${v}`;
+}
+
+/** the operators a highlight offers: one value or none (a list, a range or a period is a filter's) */
+export const HIGHLIGHT_OPERATORS = Object.keys(OPERATORS).filter((k) => !OPERATORS[k].kind);
 
 const escapeLike = (v: string) => v.replace(/[\\%_]/g, '\\$&');
 
 /** Operator names in the user's language (symbols stay as they are). */
 export const opLabel = (t: Translate, op: string) =>
-  ({ contains: t('op.contains'), not_contains: t('op.not_contains'), null: t('op.null'), not_null: t('op.not_null') } as Record<string, string>)[op] ?? OPERATORS[op]?.label ?? op;
+  ({ contains: t('op.contains'), not_contains: t('op.not_contains'), null: t('op.null'), not_null: t('op.not_null'),
+    in: t('op.in'), not_in: t('op.not_in'), between: t('op.between'), period: t('op.period') } as Record<string, string>)[op] ?? OPERATORS[op]?.label ?? op;
 
 interface Filter {
   column: string;
@@ -193,6 +295,8 @@ export interface ReportState {
   searchCol: string | null;
   /** (sprint 76) columns the user hid (a column heading's menu → Hide) */
   hideCols: string[];
+  /** (143; APEX 26.2: drag-and-drop columns) the order the user put the columns in (Actions → Columns); the rest follow */
+  order: string[];
   sort: number;
   desc: boolean;
   page: number;
@@ -248,13 +352,14 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
     search: (p.get(key(r, 'q')) ?? '').trim(),
     searchCol: (p.get(key(r, 'qc')) ?? '').trim() || null,
     hideCols: p.getAll(key(r, 'x')).filter(Boolean).slice(0, 100),
+    order: [...new Set(p.getAll(key(r, 'o')).filter(Boolean))].slice(0, 200),
     sort: r.config.sortable === false ? 0 : Math.max(0, Math.min(1000, parseInt(p.get(key(r, 's')) ?? '0', 10) || 0)),
     desc: p.get(key(r, 'd')) === 'desc',
     page: Math.max(1, Math.min(MAX_PAGE, parseInt(p.get(key(r, 'p')) ?? '1', 10) || 1)),
     size: Math.max(1, Math.min(500, size)),
     filters: p.getAll(key(r, 'f')).flatMap((raw) => {
       const [column, op, ...rest] = raw.split('|');
-      return column && OPERATORS[op] ? [{ column, op, value: rest.join('|'), raw }] : [];
+      return column && filterOk(op, rest.join('|')) ? [{ column, op, value: rest.join('|'), raw }] : [];
     }),
     breakCol: p.get(key(r, 'b')) || null,
     aggregates: p.getAll(key(r, 'a')).slice(0, 20).flatMap((raw) => {
@@ -264,7 +369,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
     // column|operator|color|value (the value last: it may contain "|")
     highlights: p.getAll(key(r, 'h')).slice(0, 10).flatMap((raw) => {
       const [column, op, color, ...rest] = raw.split('|');
-      return column && OPERATORS[op] && HIGHLIGHT_COLORS.includes(color) ? [{ column, op, color, value: rest.join('|'), raw }] : [];
+      return column && HIGHLIGHT_OPERATORS.includes(op) && HIGHLIGHT_COLORS.includes(color) ? [{ column, op, color, value: rest.join('|'), raw }] : [];
     }),
     // name|expression (the expression last: it may contain "|")
     computations: p.getAll(key(r, 'c')).slice(0, MAX_COMPUTATIONS).flatMap((raw) => {
@@ -294,7 +399,7 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
   st.seek = parseSeek(ctx, r, st);
   // (140) a classic report has none of an interactive report's settings: sorting, paging and (when searchable) the search only
   if (classic) {
-    Object.assign(st, { searchCol: null, hideCols: [], filters: [], breakCol: null, aggregates: [], highlights: [], computations: [], view: 'report',
+    Object.assign(st, { searchCol: null, hideCols: [], order: [], filters: [], breakCol: null, aggregates: [], highlights: [], computations: [], view: 'report',
       groupBy: { columns: [], functions: [] }, pivot: null, chart: null, area: null, near: null });
     if (r.config.searchable !== true) st.search = '';
     if (r.config.pagination === 'none') st.page = 1;
@@ -317,9 +422,30 @@ export function normaliseReportParams(params: URLSearchParams): string | null {
   for (const k of [...params.keys()]) {
     let m: RegExpExecArray | null;
     if ((m = /^r(\d+)_fc$/.exec(k))) {
-      // filter: column, operator, value
-      const [col, op, val] = take(m[1], ['fc', 'fo', 'fv']);
-      if (col && OPERATORS[op || 'eq']) params.append(`r${m[1]}_f`, `${col}|${op || 'eq'}|${val}`);
+      // filter: column, operator, value; (143) the values ticked in the dialog's list (fl), a second bound (fv2), a period (fpr)
+      const ticked = params.getAll(`r${m[1]}_fl`);
+      const [col, op0, val, val2, per] = take(m[1], ['fc', 'fo', 'fv', 'fv2', 'fpr', 'fl']);
+      const op = op0 || 'eq';
+      const kind = OPERATORS[op]?.kind;
+      const value = kind === 'list' ? JSON.stringify([...new Set([...ticked.filter((x) => x !== ''), ...listValues(val)])].slice(0, MAX_LIST_VALUES))
+        : kind === 'range' ? JSON.stringify([val.trim(), val2.trim()])
+        : kind === 'period' ? per : val;
+      if (col && filterOk(op, value)) params.append(`r${m[1]}_f`, `${col}|${op}|${value}`);
+    } else if ((m = /^r(\d+)_od$/.exec(k))) {
+      // (143) Actions → Columns: the columns in their new order (o, as the dialog lists them), a move (mv: u|d + name,
+      // the arrow buttons without JavaScript) and the default order (od, JSON); the default order needs no parameter
+      const id = m[1];
+      const order = [...new Set(params.getAll(`r${id}_o`).filter(Boolean))].slice(0, 200);
+      const mv = params.get(`r${id}_mv`) ?? '';
+      let fallback: unknown = [];
+      try { fallback = JSON.parse(params.get(`r${id}_od`) ?? '[]'); } catch { /* none */ }
+      const at = order.indexOf(mv.slice(1));
+      const to = mv[0] === 'u' ? at - 1 : at + 1;
+      if (at >= 0 && to >= 0 && to < order.length) [order[at], order[to]] = [order[to], order[at]];
+      for (const n of ['o', 'mv', 'od', 'p']) params.delete(`r${id}_${n}`);
+      changed = true;
+      if (!(Array.isArray(fallback) && fallback.length === order.length && fallback.every((x, i) => x === order[i])))
+        for (const n of order) params.append(`r${id}_o`, n);
     } else if ((m = /^r(\d+)_bc$/.exec(k))) {
       // control break
       const [col] = take(m[1], ['bc']);
@@ -466,7 +592,9 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
     }
     where.push(cond);
   }
-  for (const f of st.filters) if (userCols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value));
+  // (143) a date column's filter values may be in the application's date format
+  const readDate = st.filters.length ? appDateReader(ctx) : undefined;
+  for (const f of st.filters) if (userCols.has(f.column)) where.push(OPERATORS[f.op].sql(q(f.column), f.value, { date: DATE_OIDS.has(userCols.get(f.column)!), readDate }));
   for (const f of facets) {
     const cond = facetFilterSql(f, cols, p);
     if (cond) where.push(cond);
@@ -699,6 +827,18 @@ export const visibleColumns = (r: Region, fields: pg.FieldDef[]) => {
   return fields.map((f, i) => ({ f, i })).filter(({ f }) => !hidden.has(f.name.toLowerCase()) && !f.name.startsWith('__'));
 };
 
+/**
+ * (143) The columns a report shows, in the user's order (Actions → Columns: dragged, or moved with the arrows) and
+ * without the ones they hid; columns the order doesn't name follow in the source's order.
+ */
+export function orderedColumns(r: Region, fields: pg.FieldDef[], st: { hideCols: string[]; order: string[] }) {
+  const hidden = new Set(st.hideCols.map((c) => c.toLowerCase()));
+  const cols = visibleColumns(r, fields).filter(({ f }) => !hidden.has(f.name.toLowerCase()));
+  if (!st.order.length) return cols;
+  const rank = new Map(st.order.map((n, i) => [n, i]));
+  return cols.map((c, j) => ({ c, k: rank.get(c.f.name) ?? st.order.length + j })).sort((a, b) => a.k - b.k).map((x) => x.c);
+}
+
 export const headingOf = (r: Region, name: string, tr: (s: string) => string = (s) => s) => tr(r.config.headings?.[name] ?? heading(name));
 
 /** Rows fetched from the download cursor at a time. */
@@ -730,7 +870,8 @@ export async function openDownload(ctx: PageContext, r: Region, format: 'csv' | 
   await savepoint(c, () => c.query({ text: `declare ${cursor} no scroll cursor for ${query.text}`, values: query.values }));
   const next = () => savepoint(c, () => c.query({ text: `fetch ${DOWNLOAD_BATCH} from ${cursor}`, rowMode: 'array' }));
   const first = await next();
-  const cols = visibleColumns(r, first.fields);
+  // (143) the columns as shown: the user's order, without the ones they hid
+  const cols = orderedColumns(r, first.fields, st);
   const headings = cols.map(({ f }) => headingOf(r, f.name, ctx.locale.tr));
   return async (write: (chunk: string | Uint8Array) => Promise<void>) => {
     let batch = first.rows;
@@ -876,7 +1017,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
   // (sprint 76) without the columns the user hid (a heading's menu → Hide)
   const userHidden = new Set(st.hideCols.map((c) => c.toLowerCase()));
-  const allCols = visibleColumns(r, fields).filter(({ f }) => !userHidden.has(f.name.toLowerCase()));
+  // (143) in the user's order
+  const allCols = orderedColumns(r, fields, st);
   // a control break on a shown column only (its values head the groups)
   const breakIdx = st.breakCol ? (allCols.find(({ f }) => f.name === st.breakCol)?.i ?? -1) : -1;
   const cols = allCols.filter(({ i }) => i !== breakIdx);
@@ -1023,7 +1165,9 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       p.delete(key(r, 'p'));
     });
     const op = OPERATORS[f.op];
-    return html`<span class="chip">${headingOf(r, f.column, ctx.locale.tr)} ${opLabel(t, f.op)}${op.noValue ? '' : html` <b>${f.value}</b>`}
+    const label = headingOf(r, f.column, ctx.locale.tr);
+    // (143) a list's values, a range's bounds and a period in words: "Job is one of CLERK, ANALYST"
+    return html`<span class="chip">${op.kind ? describeFilter(t, label, f.op, f.value) : html`${label} ${opLabel(t, f.op)}${op.noValue ? '' : html` <b>${f.value}</b>`}`}
       <a href="${href}" aria-label="${t('report.remove_filter')}">×</a></span>`;
   });
   const removeValue = (k: string, raw: string) =>
@@ -1070,6 +1214,10 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     if (st.area) chips.push(chip(t('report.map_area'), 'bb'));
     if (st.near) chips.push(chip(t('report.near', { km: ctx.locale.number.format(st.near.km) }), 'near'));
   }
+  // (143) a column order of the user's own: one chip puts the columns back in the report's order
+  if (st.order.length && allCols.some(({ i }, j) => j > 0 && i < allCols[j - 1].i))
+    chips.push(html`<span class="chip">${t('report.order_chip')}
+      <a href="${regionUrl(ctx, r, (p) => p.delete(key(r, 'o')))}" aria-label="${t('report.order_reset')}" title="${t('report.order_reset')}">×</a></span>`);
   for (const c of st.hideCols)
     chips.push(html`<span class="chip">${t('report.hidden_column')}: <b>${headingOf(r, c, ctx.locale.tr)}</b>
       <a href="${regionUrl(ctx, r, (p) => { const rest = p.getAll(key(r, 'x')).filter((x) => x !== c); p.delete(key(r, 'x')); for (const x of rest) p.append(key(r, 'x'), x); })}" aria-label="${t('report.show_column')}">×</a></span>`);
@@ -1081,7 +1229,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   // (sprint 76) Actions is a short menu like APEX's; each entry opens a dialog (app.js), or unfolds in place without JavaScript
   const columnsForm = `rx${r.id}`;
   if (interactive)
-    ctx.detached.push(html`<form id="${columnsForm}" method="get" action="${ctx.base}/${ctx.page.page_no}">${hiddenInputs([key(r, 'x'), key(r, 'p')])}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
+    ctx.detached.push(html`<form id="${columnsForm}" method="get" action="${ctx.base}/${ctx.page.page_no}">${hiddenInputs([key(r, 'x'), key(r, 'o'), key(r, 'p')])}${ctx.dialog ? html`<input type="hidden" name="dialog" value="1">` : ''}</form>`);
   const item = (k: string, ic: string, label: string, body: Raw | '') =>
     html`<li><details class="ir-item" data-ir-dialog="${k}"><summary>${icon(ic)}<span>${label}</span></summary><div class="ir-body" role="group" aria-label="${label}">${body}</div></details></li>`;
   const sub = (ic: string, label: string, items: (Raw | '')[]) =>
@@ -1100,19 +1248,54 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
         });
         return html`<a href="${href}"${active ? raw(' aria-current="true"') : ''}>${headingOf(r, f.name, ctx.locale.tr)}${active ? (st.desc ? ' ▼' : ' ▲') : ''}</a>`;
       })}</div>`;
+  // (143; APEX 26.2: multi-select and date-range filters) Actions → Filter: a column and an operator; "is one of"
+  // takes values separated by commas, or ticked in a list of the column's values with counts (app.js fills it from
+  // the values endpoint); "is between" two values (dates in the application's format, with the date picker on a date
+  // column); "is in" a period (today … last year) on a date column. Without JavaScript every field shows.
+  const filterDialog = () => {
+    const mask = appDateMask(ctx);
+    const months = JSON.stringify(monthNames(ctx.locale.lang));
+    const kindOf = (oid: number) => (DATE_OIDS.has(oid) ? 'date' : NUMERIC_OIDS.has(oid) ? 'number' : 'text');
+    const valueField = (name: string, id: string, label: string) =>
+      html`<span class="input-with-button date-field"><input id="${id}" name="${key(r, name)}" form="${filterForm}" aria-label="${label}" placeholder="${label}" autocomplete="off" data-mask-off="${mask}" data-months="${months}"><button type="button" class="btn" data-date-pick="${id}" aria-label="${t('item.choose_date')}" title="${t('item.choose_date')}" aria-haspopup="dialog" hidden>${icon('calendar')}</button></span>`;
+    return html`<div class="filter-row filter-dialog" data-filter-dialog data-values="${`${ctx.base}/${ctx.page.page_no}/report/${r.id}/values`}" data-list="${key(r, 'fl')}" data-form="${filterForm}">
+        <select name="${key(r, 'fc')}" form="${filterForm}" aria-label="${t('report.column')}" data-filter-column>${cols.map(({ f }) => html`<option value="${f.name}" data-kind="${kindOf(f.dataTypeID)}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
+        <select name="${key(r, 'fo')}" form="${filterForm}" aria-label="${t('report.operator')}" data-filter-op>${Object.keys(OPERATORS).map((k) => html`<option value="${k}" data-op-kind="${OPERATORS[k].kind ?? (OPERATORS[k].noValue ? 'none' : 'one')}"${k === 'contains' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
+        <span class="filter-field" data-show="one list range">${valueField('fv', `r${r.id}_fv`, t('report.value'))}</span>
+        <span class="filter-field" data-show="range">${valueField('fv2', `r${r.id}_fv2`, t('report.value_to'))}</span>
+        <select class="filter-field" name="${key(r, 'fpr')}" form="${filterForm}" aria-label="${t('report.period')}" data-show="period"><option value="">${t('report.period')}</option>${Object.keys(PERIODS).map((k) => html`<option value="${k}">${t(`period.${k}`)}</option>`)}</select>
+        <div class="filter-values filter-field" data-show="list" hidden role="group" aria-label="${t('report.values')}"></div>
+        <small class="help filter-field" data-show="list range period">${t('report.filter_help')}</small>
+        <button class="btn btn-hot" form="${filterForm}">${t('report.apply')}</button>
+      </div>`;
+  };
+  // (143; APEX 26.2: drag-and-drop columns) Actions → Columns: the columns in their order, a checkbox to hide each,
+  // dragged into another order (app.js) or moved with the arrow buttons (which also work without JavaScript); the
+  // form sends the order as r<id>_o, the default order as r<id>_od so a report back in it needs no parameter.
+  const columnsDialog = () => {
+    const shown = orderedColumns(r, fields, { hideCols: [], order: st.order });
+    const natural = visibleColumns(r, fields).map(({ f }) => f.name);
+    return html`<fieldset class="ir-columns"><legend>${t('report.hide_columns')}</legend>
+        <input type="hidden" name="${key(r, 'od')}" value="${JSON.stringify(natural)}" form="${columnsForm}">
+        <ol class="ir-col-order" data-col-order>
+        ${shown.map(({ f }, n) => {
+          const label = headingOf(r, f.name, ctx.locale.tr);
+          return html`<li draggable="true" data-col-name="${f.name}"><span class="drag-handle" aria-hidden="true">${icon('grip-vertical')}</span>
+            <input type="hidden" name="${key(r, 'o')}" value="${f.name}" form="${columnsForm}">
+            <label class="check"><input type="checkbox" name="${key(r, 'x')}" value="${f.name}" form="${columnsForm}"${userHidden.has(f.name.toLowerCase()) ? raw(' checked') : ''}> ${label}</label>
+            <span class="ir-col-move"><button class="btn btn-sm" name="${key(r, 'mv')}" value="u${f.name}" form="${columnsForm}" aria-label="${t('report.move_up', { column: label })}" title="${t('report.move_up', { column: label })}"${n === 0 ? raw(' disabled') : ''}>↑</button><button class="btn btn-sm" name="${key(r, 'mv')}" value="d${f.name}" form="${columnsForm}" aria-label="${t('report.move_down', { column: label })}" title="${t('report.move_down', { column: label })}"${n === shown.length - 1 ? raw(' disabled') : ''}>↓</button></span></li>`;
+        })}
+        </ol></fieldset>
+        <small class="help">${t('report.order_help')}</small>
+        <p class="sr-only" aria-live="polite" data-col-status></p>
+        <button class="btn btn-hot" form="${columnsForm}">${t('report.apply')}</button>`;
+  };
   const actionsMenu = interactive
     ? html`<details class="menu actions-menu">
         <summary class="btn">${t('report.actions')} <span aria-hidden="true">▾</span></summary>
         <div class="menu-panel"><ul class="ir-menu">
-          ${item('columns', 'eye-off', t('report.columns'), html`<fieldset class="ir-columns"><legend>${t('report.hide_columns')}</legend>
-            ${visibleColumns(r, fields).map(({ f }) => html`<label class="check"><input type="checkbox" name="${key(r, 'x')}" value="${f.name}" form="${columnsForm}"${userHidden.has(f.name.toLowerCase()) ? raw(' checked') : ''}> ${headingOf(r, f.name, ctx.locale.tr)}</label>`)}</fieldset>
-            <button class="btn btn-hot" form="${columnsForm}">${t('report.apply')}</button>`)}
-          ${item('filter', 'filter', t('report.filter'), html`<div class="filter-row">
-              <select name="${key(r, 'fc')}" form="${filterForm}" aria-label="${t('report.column')}">${cols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <select name="${key(r, 'fo')}" form="${filterForm}" aria-label="${t('report.operator')}">${Object.keys(OPERATORS).map((k) => html`<option value="${k}"${k === 'contains' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
-              <input name="${key(r, 'fv')}" form="${filterForm}" aria-label="${t('report.value')}" placeholder="${t('report.value')}">
-              <button class="btn btn-hot" form="${filterForm}">${t('report.apply')}</button>
-            </div>`)}
+          ${item('columns', 'eye-off', t('report.columns'), columnsDialog())}
+          ${item('filter', 'filter', t('report.filter'), filterDialog())}
           ${sub('table', t('report.data'), [
             r.config.sortable === false ? '' : item('sort', 'arrow-down', t('report.sort'), sortLinks),
             item('aggregate', 'calculator', t('report.aggregate'), html`<div class="filter-row">
@@ -1134,7 +1317,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
           ${sub('sliders', t('report.format'), [
             item('highlight', 'tag', t('report.highlight'), html`<div class="filter-row">
               <select name="${key(r, 'hc')}" form="${hlForm}" aria-label="${t('report.column')}">${allCols.map(({ f }) => html`<option value="${f.name}">${headingOf(r, f.name, ctx.locale.tr)}</option>`)}</select>
-              <select name="${key(r, 'ho')}" form="${hlForm}" aria-label="${t('report.operator')}">${Object.keys(OPERATORS).map((k) => html`<option value="${k}"${k === 'eq' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
+              <select name="${key(r, 'ho')}" form="${hlForm}" aria-label="${t('report.operator')}">${HIGHLIGHT_OPERATORS.map((k) => html`<option value="${k}"${k === 'eq' ? raw(' selected') : ''}>${opLabel(t, k)}</option>`)}</select>
               <input name="${key(r, 'hv')}" form="${hlForm}" aria-label="${t('report.value')}" placeholder="${t('report.value')}">
               <select name="${key(r, 'hk')}" form="${hlForm}" aria-label="${t('report.color')}">${HIGHLIGHT_COLORS.map((c) => html`<option value="${c}">${t(`color.${c}`)}</option>`)}</select>
               <button class="btn btn-hot" form="${hlForm}">${t('report.apply')}</button></div>`),

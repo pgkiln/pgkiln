@@ -13,7 +13,7 @@ import { applyPlan, checkPlan, chipsOf, ChipRefused, editChip, planIsEmpty, remo
 import { parseQuestion, type Lookup } from './ir-phrases.ts';
 import { applyFacetSettings, clearFacets, facetSettings } from './ask-facets.ts';
 import { describeFacetFilter, reportFacetDefs, type FacetFilter } from './facet-state.ts';
-import { AGGREGATES, fieldsOf, headingOf, HIGHLIGHT_COLORS, isNumeric, opLabel, OPERATORS, q, reportState, visibleColumns, withComputations } from './report.ts';
+import { AGGREGATES, describeFilter, fieldsOf, listValues, rangeValues, headingOf, HIGHLIGHT_COLORS, HIGHLIGHT_OPERATORS, isNumeric, opLabel, OPERATORS, PERIODS, q, reportState, visibleColumns, withComputations } from './report.ts';
 import { resolveRestRegion } from './rest-sources.ts';
 import { loadContext, simplePage, txContext, type Req } from './routes.ts';
 
@@ -152,7 +152,7 @@ export function planSchema(columns: Column[]) {
           properties: {
             column: { type: 'string', enum: names },
             operator: { type: 'string', enum: ops },
-            value: { type: 'string', description: 'The value to compare with (a date as YYYY-MM-DD, a number without thousands separators); empty for null and not_null.' },
+            value: { type: 'string', description: `The value to compare with (a date as YYYY-MM-DD, a number without thousands separators); empty for null and not_null; for in and not_in the values separated by commas; for between "from,to" (either may be empty); for period one of ${Object.keys(PERIODS).join(', ')} (date columns only).` },
           },
           required: ['column', 'operator', 'value'],
           additionalProperties: false,
@@ -163,7 +163,7 @@ export function planSchema(columns: Column[]) {
         description: 'Rows to color (not to filter), at most 5.',
         items: {
           type: 'object',
-          properties: { column: { type: 'string', enum: names }, operator: { type: 'string', enum: ops }, value: { type: 'string' }, color: { type: 'string', enum: HIGHLIGHT_COLORS } },
+          properties: { column: { type: 'string', enum: names }, operator: { type: 'string', enum: HIGHLIGHT_OPERATORS }, value: { type: 'string' }, color: { type: 'string', enum: HIGHLIGHT_COLORS } },
           required: ['column', 'operator', 'value', 'color'],
           additionalProperties: false,
         },
@@ -246,7 +246,7 @@ const pageFacets = (ctx: PageContext, rid: number) => reportFacetDefs(ctx.page.r
 function describePlan(p: Plan, t: T, label: (n: string) => string, facets: FacetFilter[] = []) {
   return [
     ...(p.reset ? [t('report.reset')] : []),
-    ...p.filters.map((f) => `${label(f.column)} ${opLabel(t, f.operator)}${f.value ? ` ${f.value}` : ''}`),
+    ...p.filters.map((f) => describeFilter(t, label(f.column), f.operator, f.value)),
     ...facets.map((f) => describeFacetFilter(f, label(f.column), t)),
     ...(p.search ? [`"${p.search}"`] : []),
     ...(p.sort ? [t('ai_filter.sort', { column: `${p.sort.label}${p.desc ? ' ↓' : ''}` })] : []),
@@ -261,9 +261,14 @@ function describePlan(p: Plan, t: T, label: (n: string) => string, facets: Facet
   ].join('; ');
 }
 
+/** (143) a filter's value as its Edit field shows it: a list's values and a range's bounds separated by commas */
+const editValue = (op: string, v: string) =>
+  OPERATORS[op]?.kind === 'list' ? listValues(v).join(', ') : OPERATORS[op]?.kind === 'range' ? rangeValues(v).join(', ') : v;
+
 /** A chip's text (plain: it is escaped where it is used). */
 function chipText(chip: Chip, t: T, label: (n: string) => string, byPos: (pos: number) => string) {
-  const cond = (column: string, op: string, value: string) => `${label(column)} ${opLabel(t, op)}${OPERATORS[op]?.noValue ? '' : ` ${value}`}`;
+  // (143) a list's values, a range's bounds and a period in words
+  const cond = (column: string, op: string, value: string) => describeFilter(t, label(column), op, value);
   switch (chip.kind) {
     case 'search': return `${t('report.search_chip')}${chip.column ? ` ${label(chip.column)}:` : ''} ${chip.value}`;
     case 'filter': return cond(chip.column, chip.op, chip.value);
@@ -332,7 +337,7 @@ export async function renderAiFilter(ctx: PageContext, r: Region): Promise<Raw |
     if (!columns.length) return '';
     switch (ch.kind) {
       case 'search': return input(i, 'a', t('report.search'), ch.value);
-      case 'filter': return html`${colSelect(i, 'a', t('report.column'), ch.column)}${ops(i, ch.op)}${input(i, 'c', t('report.value'), ch.value)}`;
+      case 'filter': return html`${colSelect(i, 'a', t('report.column'), ch.column)}${ops(i, ch.op)}${input(i, 'c', t('report.value'), editValue(ch.op, ch.value))}`;
       case 'highlight': return html`${colSelect(i, 'a', t('report.column'), ch.column)}${ops(i, ch.op)}${input(i, 'c', t('report.value'), ch.value)}${listSelect(i, 'd', t('report.color'), ch.color, HIGHLIGHT_COLORS.map((x) => [x, t(`color.${x}`)]))}`;
       case 'sort': return html`${colSelect(i, 'a', t('report.column'), columns.find((x) => x.pos === ch.pos)?.name ?? '', (x) => x.pos > 0)}${listSelect(i, 'b', t('report.sort'), ch.desc ? 'desc' : 'asc', [['asc', t('report.sort_asc')], ['desc', t('report.sort_desc')]])}`;
       case 'break': case 'group': return colSelect(i, 'a', t('report.column'), ch.column);
