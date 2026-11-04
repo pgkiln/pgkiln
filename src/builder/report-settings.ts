@@ -1,3 +1,4 @@
+import { JSON_TYPES, jsonColumnsText, parseJsonColumns } from '../json-sources.ts';
 import type { FastifyInstance } from 'fastify';
 import { designSql } from './websources.ts';
 import pg from 'pg';
@@ -53,6 +54,7 @@ export function parseLinkItems(text: string | undefined): Record<string, string>
 export const linkItemsText = (items: Record<string, string> | undefined) => (items ? Object.entries(items).map(([k, v]) => `${k}=${v}`).join(', ') : '');
 
 interface ReportConfig {
+  json_columns?: { name: string; column: string; path: string; type: string }[];
   page_size?: number;
   pagination?: 'range';
   keyset?: string[];
@@ -151,6 +153,11 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
           <input id="${id('cache_seconds')}" name="cache_seconds" type="number" min="1" max="86400" value="${cfg.cache?.seconds ?? ''}" placeholder="300">
           <small class="help">A submit of the page empties its cache.</small></div>
       </div></fieldset>
+      <fieldset class="prop-group"><legend>JSON path columns</legend><div class="form-grid">
+        <div class="field" data-wide><label class="label" for="${id('json_columns')}">Columns read from a json or jsonb column</label>
+          <input id="${id('json_columns')}" name="json_columns" value="${jsonColumnsText(cfg.json_columns)}" placeholder="city=profile:address.city; first_skill=profile:skills.0.name; since=profile:since:date" class="code">
+          <small class="help">name=column:path[:type]; separate them with ";". A path is keys separated by dots, a number picks an element of an array. Types: ${JSON_TYPES.join(', ')} (text when left out); a value that doesn't read as the type shows empty. They are columns like the others: search, filters, sorting, headings and downloads. To edit documents, use a JSON source (Shared Components).</small></div>
+      </div></fieldset>
       <fieldset class="prop-group"><legend>Columns</legend>
         ${all.length
           ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Format mask</th><th>Display</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
@@ -202,6 +209,8 @@ export function mergeReportSettings(config: ReportConfig, b: Record<string, stri
   const seconds = Math.floor(Number(b.cache_seconds || 300));
   set('cache', scope === 'user' || scope === 'session' || scope === 'all' ? { scope, seconds: Math.min(Math.max(seconds || 300, 1), 86_400) } : undefined);
   set('empty', b.empty?.trim() || undefined);
+  const json = parseJsonColumns(b.json_columns);
+  set('json_columns', json.length ? json : undefined);
   set('searchable', b.searchable === 'true' ? undefined : false);
   set('interactive', b.interactive === 'true' ? undefined : false);
   set('sortable', b.sortable === 'true' ? undefined : false);

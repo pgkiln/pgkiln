@@ -1899,6 +1899,17 @@ earns most?* and it calls the SQL tool `top_earners` as the signed-in user's rol
 *Open BLAKE's record*, a link to the employee form (page 3) with a valid checksum, only to users who
 may open that page.
 
+## JSON sources
+
+(sprint 142; APEX: JSON Sources) Shared Components → Data Sources → **JSON Sources**: a `jsonb` column of one of the
+application's tables described by a data profile (columns at paths, arrays of objects or values), kept in
+`meta.app.json_sources` and exported with the application. *Propose from the data* reads up to 200 documents;
+**Create views** makes a `security_invoker` view with a typed column per path and a view per array (one row per
+element), with INSTEAD OF triggers that write only the changed paths, so keys the profile doesn't know stay in the
+documents; **Create page** makes a form on the view with a detail grid per array. The list shows which views are
+not made yet. Everything about the views, their keys and their security is in
+[chapter 19](19-rest-data-sources.md#json-sources-and-document-views).
+
 ## Vector providers
 
 (sprint 136; APEX: Vector Providers) A **vector provider** turns a text into an **embedding**: a list of numbers
@@ -2084,6 +2095,10 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     [vector provider](#vector-providers), an HNSW index for the distance and a trigger that re-embeds a row when its
     source columns change (at once with a function provider, else through the server's queue); the page shows each
     vector column's progress and **Backfill**. Without pgvector it says what is missing.
+    (sprint 142) **Document view…** (Table Properties, or the ⋯ menu): a `security_invoker` view with the table's key
+    and a `jsonb` document per row with lists of the child tables you tick (by foreign key); writing a document
+    updates the row, upserts the children it lists and deletes the ones it leaves out, like an APEX duality view
+    ([chapter 19](19-rest-data-sources.md#document-views-duality-views)). Preview, Apply (Change Log) or Open in the worksheet.
   - (sprint 119) **Security** (the Object Browser's *Security* button on a table, *Security…* in its ⋯ menu): the
     table's row level security policies, a matrix of database roles × columns with *read* and *update*, and masked
     columns per application role in a masking view; Preview SQL, Apply (one transaction, recorded in the Change Log)

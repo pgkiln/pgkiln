@@ -27,6 +27,8 @@ import { ldapRoutes } from './builder/ldap.ts';
 import { aiRoutes } from './builder/ai.ts';
 import { aiAgentRoutes } from './builder/ai-agents.ts';
 import { vectorProviderRoutes } from './builder/vector-providers.ts';
+import { jsonSourceRoutes } from './builder/json-sources.ts';
+import { documentViewRoutes } from './builder/document-view.ts';
 import { mailRoutes } from './builder/mail.ts';
 import { backupRoutes } from './builder/backups.ts';
 import { availabilityRoutes } from './builder/availability.ts';
@@ -252,6 +254,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(aiAgentRoutes);
   // (sprint 136, AP-1) vector providers: Shared Components and Workspace utilities
   await app.register(vectorProviderRoutes);
+  // (sprint 142, AP-8) JSON sources (Shared Components) and document views (Table Properties)
+  await app.register(jsonSourceRoutes);
+  await app.register(documentViewRoutes);
   await app.register(mailRoutes);
   await app.register(backupRoutes);
   await app.register(availabilityRoutes);

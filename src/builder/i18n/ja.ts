@@ -1077,6 +1077,7 @@ export const ja: BuilderMessages = {
   'fts.added': "{table} に全文検索を追加しました：列 {column}、索引 {index}。",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "ベクトル列を追加",
+  'docv.add': "ドキュメント・ビュー",
   'vec.title': "{table} のベクトル列",
   'vec.intro': "埋め込み列 vector(n)（n はベクトル・プロバイダの次元数）、距離用の HNSW 索引、およびソース列が変わったときに行を再埋め込みするトリガーを追加します。その後、検索タイプ vector または hybrid の検索構成や AI エージェントの Retrieve ツールで、意味によって行を検索できます。既存の行はすぐに埋め込みのキューに入れられます。",
   'vec.existing': "現在のベクトル列",

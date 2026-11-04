@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **JSON sources and document views** (AP-8; APEX: JSON Sources, JSON Relational Duality Views; migration 142).
+  Shared Components → Data Sources → **JSON Sources**: a `jsonb` column of an application's table (or a table of
+  documents) described by a data profile, proposed from up to 200 documents (*Propose from the data*: a typed column
+  per path, nested objects flattened, a view per array of objects or of values). **Create views** makes
+  `security_invoker` views with the table's grants (one transaction, recorded in the Change Log): a typed column per
+  path (a value of another type reads as NULL) and, per array, a row per element with a stable `row_key` and its
+  `position`. Their INSTEAD OF triggers (`meta.json_source_write`, `meta.json_array_write`, SECURITY INVOKER) write
+  only the changed paths in one `UPDATE` of the row (`meta.jsonb_patch`), so keys the profile doesn't know stay; an
+  element changed meanwhile is not overwritten. Forms, reports, interactive grids, master-detail, AutoREST and MCP use
+  the views like tables; **Create page** makes a form with a detail grid per array. SQL Workshop › Table Properties →
+  **Document view…**: a row with its child tables (by foreign key) as one `jsonb` document; writing it updates the row,
+  upserts the children it lists and deletes the ones it leaves out (`meta.json_document_write`). Reports get **JSON
+  path columns** (`json_columns`: `title=profile:title; first=profile:skills.0.name`), columns like the others. The
+  JSON sources travel with the application's export (`json_sources`). HR example part 77: `hr.emp.profile`, source
+  EMP_PROFILE and page 51 *Employee profiles* (a report with JSON path columns, the form and skills and languages as
+  detail grids).
+
 ## [0.74.0] - 2026-11-04
 
 ### Added

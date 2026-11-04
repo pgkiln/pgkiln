@@ -1077,6 +1077,7 @@ export const es: BuilderMessages = {
   'fts.added': "Búsqueda de texto completo añadida a {table}: columna {column} con el índice {index}.",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "Añadir columna vectorial",
+  'docv.add': "Vista de documento",
   'vec.title': "Columna vectorial en {table}",
   'vec.intro': "Añade una columna de embedding vector(n) (n: las dimensiones del proveedor de vectores), un índice HNSW para la distancia y un disparador que vuelve a calcular el embedding de una fila cuando cambian sus columnas de origen. Una configuración de búsqueda de tipo vector o hybrid, o la herramienta Retrieve de un agente de IA, encuentra entonces las filas por su significado. Las filas que ya existen se ponen en cola enseguida para sus embeddings.",
   'vec.existing': "Columnas vectoriales actuales",

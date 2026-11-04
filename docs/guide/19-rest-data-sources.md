@@ -15,7 +15,8 @@ Web Credentials and the Invoke API process):
   puts values of the response into items; the **`invoke_api` workflow step** does the same on the
   server, with workflow variables ([chapter 6](06-processing.md#invoke-api-steps)).
 
-Both are **Shared Components**. The server only calls hosts its administrator allows
+Both are **Shared Components**, as are **JSON sources** ([below](#json-sources-and-document-views)): forms,
+reports and grids over the documents in a `jsonb` column of your own tables. The server only calls hosts its administrator allows
 ([below](#server-configuration-and-the-allow-list)): out of the box, no outgoing request is made.
 
 Try it with the HR example: page 23 "Web services" reads the HR example's own REST module
@@ -355,6 +356,110 @@ A workflow calls a web service with an **`invoke_api` step** instead: the same k
 `variables`, `status_variable` and `response_variable` for the items, `&VAR.` for workflow
 variables and an optional `timeout` ([chapter 6](06-processing.md#invoke-api-steps)).
 
+## JSON sources and document views
+
+(Sprint 142; APEX: Shared Components → Data Sources → **JSON Sources**, and JSON Relational **Duality Views**.)
+A `jsonb` column is a single text item to a form, and one cell to a report. A **JSON source** describes the
+documents in such a column with a **data profile**, and pgkiln makes updatable views from it, so forms, reports,
+interactive grids, master-detail pages, REST (AutoREST) and MCP read and write the documents' values like columns
+of a table.
+
+### A JSON source
+
+Shared Components → Data Sources → **JSON Sources** → *Add JSON source*:
+
+- **Table and jsonb column**: a column of an ordinary table (`hr.emp.profile`), or the one document column of a
+  *table of documents* (`id`, `doc`). The table needs a primary key: the views find their row by it. The list
+  shows the json and jsonb columns of the tables your SQL Workshop connection may use (an isolated workspace: its
+  own schemas).
+- **View**: the name of the view, made in the table's schema.
+- **The view also adds and deletes rows of the table**: for a table of documents. Off (the default), the view
+  only changes the documents of existing rows; an insert or delete through it is refused.
+- **Propose from the data** reads up to 200 documents and proposes the profile: a **column** per path to a value
+  (nested objects become `office_city` for `office.city`), typed from the values it found (`integer`, `numeric`,
+  `boolean`, `date`, `timestamptz` for ISO date-times, `text`, `jsonb` for mixed or nested values), and an **array**
+  per list in the documents: a list of objects gets a column per key, a list of values (`["en", "nl"]`) one column
+  for the value itself (an empty path). Names, paths and types stay editable; columns you already named are kept.
+  A column can be **read only**.
+
+**Create views** (the source's page) makes them in one transaction with your SQL Workshop connection and records
+the statements in the [Change Log](03-builder.md#change-log); *Open in the SQL Worksheet* shows them first. After
+changing the profile, *Make the views again* drops and makes them (a view other objects depend on can't be
+dropped: the error says which). The views are ordinary database objects of your application, like the table:
+put the statements in your own migration scripts for the other environments (the source itself travels with the
+application's export as `json_sources`).
+
+For `hr.emp.profile` with `{"title": "Analyst", "since": "1987-04-19", "office": {"city": "Dallas"},
+"skills": [{"name": "SQL", "level": 5}], "badge": {"color": "blue"}}` the HR example's source EMP_PROFILE makes:
+
+| View | Columns | One row per |
+| --- | --- | --- |
+| `hr.emp_profile` | `empno`, `title`, `since` (date), `office_city`, `office_floor` (integer), `remote` (boolean) | employee |
+| `hr.emp_profile_skills` | `empno`, `row_key`, `position`, `skill`, `level` (integer) | element of `skills` |
+| `hr.emp_profile_languages` | `empno`, `row_key`, `position`, `language` | element of `languages` |
+
+- A value that doesn't read as its column's type (`"floor": "ground"`) shows **NULL** in that column instead of
+  failing the whole query (`meta.input_ok`, PostgreSQL's `pg_input_is_valid`).
+- **Writing keeps what the profile doesn't know.** An `UPDATE` of the view writes only the paths whose values
+  changed, into the row's document, in one `UPDATE` of the table (`meta.jsonb_patch`): `badge` above, or any key a
+  newer version of another program added, stays. Setting a column to NULL removes its key; a path to a nested
+  object makes the objects on the way. The key columns are never changed through the view.
+- **Arrays as rows.** An array view has the table's key, `row_key` and `position` (1, 2 …) and the element's
+  columns. `row_key` is the element's contents (an md5) and its occurrence among equal elements: it stays the same
+  when other elements are added, changed or removed, so deleting two rows of a grid in one save removes the right
+  two. An `INSERT` appends an element (the table's key column says to which row), an `UPDATE` patches one
+  (unknown keys of the element stay), a `DELETE` removes it. An element that someone changed meanwhile is no
+  longer found and the statement fails (*Reload and try again*): nothing is overwritten.
+- **Security.** The views are `security_invoker` and get the table's grants (SELECT, INSERT, UPDATE, DELETE of each
+  role that has them on the table). Their INSTEAD OF triggers (`meta.json_source_write`, `meta.json_array_write`)
+  are SECURITY INVOKER too: they write the table as the role that writes the view, so its grants and the table's
+  row level security apply, exactly as for a direct `UPDATE`.
+
+### Pages on a JSON source
+
+The views work everywhere a table does: Create Page, a form's or report's source, the interactive grid, AutoREST
+and MCP. **Create page** on the source's page makes a form on the view with a **detail grid per array** (the
+grid's master is the form's key item, `position` read only, `row_key` hidden) and their save processes; open it
+with the key in the URL, for example from a report's link. HR page 51 *Employee profiles* (Administration) is
+such a page with a report on top:
+
+```sql
+-- the report's source: hr.emp with its jsonb column
+select empno, ename, job, profile from hr.emp order by profile is null, ename
+```
+
+### JSON path columns in reports
+
+A report region's **JSON path columns** (Page Designer → the report's settings) add columns read from a json or
+jsonb column of its query, without writing the SQL: `name=column:path[:type]`, separated by `;`:
+
+```
+title=profile:title; first_skill=profile:skills.0.name; since=profile:since:date
+```
+
+A path is keys separated by dots; a number picks an element of an array (`skills.0.name`). They are columns like
+the others: search, filters, sorting, control breaks, aggregates, headings, format masks and downloads. In the
+region's JSON: `"json_columns": [{"name": "title", "column": "profile", "path": "title", "type": "text"}]`.
+
+### Document views (duality views)
+
+SQL Workshop › Table Properties → **Document view…** (or a table's ⋯ menu) makes a view with the table's key and a
+`jsonb` document per row: the row's columns and, per **child table** you tick (tables whose foreign keys reference
+it), a list of its rows without the foreign key columns:
+
+```json
+{"deptno": 10, "dname": "ACCOUNTING", "loc": "NEW YORK",
+ "emp": [{"empno": 7782, "ename": "CLARK", "job": "MANAGER", "sal": 2450}, …]}
+```
+
+Writing the document back (`update hr.dept_doc set doc = $1 where deptno = 10`, or a PUT through AutoREST on the
+view) updates the row's columns the document names, **upserts** the children it lists (by their key; one without
+a key is inserted) and **deletes** the children it leaves out. A document without the list leaves the children
+alone. An `INSERT` of a document inserts the row and its children, a `DELETE` removes the children and the row.
+Full-text and vector columns are left out of the documents. Like APEX's duality views this gives REST clients and
+MCP tools one document per business object; the trigger (`meta.json_document_write`) is SECURITY INVOKER, so the
+tables' grants and row level security apply to every row it touches.
+
 ## Export, import and application files
 
 The export ([chapter 3](03-builder.md#export-format)) has two new sections: `web_credentials`
@@ -363,6 +468,8 @@ synchronisation settings, without the synchronisation's next and last run; an im
 the schedule off). In the directory format they are
 `shared/web-credentials/` and `shared/rest-sources/` ([chapter 18](18-cli.md)). Regions, lists of
 values, processes and workflow steps refer to sources and credentials by name, so nothing needs remapping.
+JSON sources are part of the application (`json_sources`, in `app.yaml` of the directory format); their
+views are not: they belong to your schema's migration scripts, like the table.
 
 ## Security notes
 

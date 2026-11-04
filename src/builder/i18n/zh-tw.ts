@@ -1077,6 +1077,7 @@ export const zhTW: BuilderMessages = {
   'fts.added': "已為 {table} 新增全文檢索：欄位 {column}，索引 {index}。",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "新增向量欄位",
+  'docv.add': "文件檢視",
   'vec.title': "{table} 的向量欄位",
   'vec.intro': "新增一個嵌入欄位 vector(n)（n：向量提供者的維度數）、一個用於該距離的 HNSW 索引，以及在來源欄位變更時重新嵌入該列的觸發程序。之後，搜尋類型為 vector 或 hybrid 的搜尋組態，或 AI 代理的 Retrieve 工具，就能依含意找到資料列。現有的資料列會立即進入嵌入佇列。",
   'vec.existing': "目前的向量欄位",

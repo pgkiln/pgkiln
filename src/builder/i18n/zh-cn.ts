@@ -1077,6 +1077,7 @@ export const zhCN: BuilderMessages = {
   'fts.added': "已为 {table} 添加全文搜索：列 {column}，索引 {index}。",
   // (sprint 136, AP-1) Table Properties › Add vector column
   'vec.add': "添加向量列",
+  'docv.add': "文档视图",
   'vec.title': "{table} 的向量列",
   'vec.intro': "添加一个嵌入列 vector(n)（n：向量提供者的维数）、一个用于该距离的 HNSW 索引，以及在源列变化时重新嵌入该行的触发器。之后，搜索类型为 vector 或 hybrid 的搜索配置，或 AI 代理的 Retrieve 工具，就能按含义找到行。现有的行会立即进入嵌入队列。",
   'vec.existing': "当前的向量列",
