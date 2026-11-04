@@ -159,7 +159,7 @@ export interface Region {
   title: string | null;
   /** (0.31, 073) optional, unique on the page */
   static_id?: string | null;
-  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search' | 'form_designer';
+  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search' | 'form_designer' | 'classic_report' | 'breadcrumb' | 'help_text';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -182,6 +182,7 @@ export type ItemType =
   | 'checkbox' | 'switch' | 'hidden' | 'display' | 'password'
   | 'checkbox_group' | 'multiselect' | 'popup_lov' | 'email' | 'tel' | 'url' | 'color' | 'file' | 'location'
   | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode' | 'plugin'
+  | 'shuttle' | 'select_one' | 'select_many'
   // (086) display image, geocoded address
   | 'image' | 'address';
 
@@ -363,6 +364,8 @@ export interface Page extends PageSummary {
   warn_unsaved: boolean;
   /** (087) 'minimal': no header and navigation */
   page_template: 'standard' | 'minimal' | 'left_side_column' | 'right_side_column';
+  /** (140) the page's help text (Markdown), shown by a help_text region */
+  help: string | null;
 }
 
 /** The static files a list of names refers to, in that order, with their version. */
@@ -406,7 +409,7 @@ export async function loadApp(alias: string) {
 export async function loadPage(appId: number, pageNo: number) {
   return runtime.one<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
-            p.protection, p.authz, p.warn_unsaved, p.page_template,
+            p.protection, p.authz, p.warn_unsaved, p.page_template, p.help,
             ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
             ${agg('meta.item', 'page_id', 'p', 'p.app_id')} as items,
             ${agg('meta.button', 'page_id', 'p', 'p.app_id')} as buttons,

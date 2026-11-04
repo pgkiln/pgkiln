@@ -115,6 +115,14 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       await Promise.all([page.waitForNavigation(), page.locator('table a', { hasText: /^\d+$/ }).first().click()]);
       await page.locator('svg.qr-code').waitFor();
       await check(page, 'app-20-review', vp);
+      // (sprint 140) page 50: a department chosen in the Select One fills the shuttle; the Select Many's list open
+      await page.goto(`${base}/a/hr/50`);
+      await page.locator('#P50_DEPTNO_search').click();
+      await page.locator('#P50_DEPTNO_search').fill('sales');
+      await page.locator('#P50_DEPTNO_search').press('Enter');
+      await page.waitForFunction(() => document.querySelectorAll('#P50_MEMBERS_available option').length > 0);
+      await page.locator('#P50_SKILLS_search').click();
+      await check(page, 'app-50-pickers', vp);
       // the report's Actions menu fits
       await page.goto(`${base}/a/hr/2`);
       await page.click('summary:has-text("Actions")');
@@ -1033,6 +1041,12 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             on conflict (name) do update set value = excluded.value`, ['https://a-rather-long-collector-host-name-without-spaces.otel.example.com:4318/' + 'p'.repeat(60)]);
           await owner.query(`update meta.workspace set telemetry = 'own', telemetry_endpoint = $1 where id = 1`, ['https://a-rather-long-collector-host-name-without-spaces.otel.example.com/' + 'q'.repeat(60)]);
           return { telemetry: '/builder/telemetry', workspace_telemetry: '/builder/workspaces/1/telemetry' };
+        })()),
+        // (sprint 140, AP-4) HR page 50 in the Page Designer: a shuttle, a classic report, the page's help text
+        ...(await (async () => {
+          const rs = (await owner.query(`select i.id, i.page_id from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and p.page_no = 50 and i.type = 'shuttle'`, [appId])).rows;
+          const cr = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 50 and r.type = 'classic_report' order by r.seq limit 1`, [appId]);
+          return { hr_page_50: `/builder/apps/${appId}/pages/50`, shuttle_item: `/builder/pages/${rs[0].page_id}?c=item-${rs[0].id}`, classic_report_region: `/builder/pages/${cr.page_id}?c=region-${cr.id}` };
         })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);

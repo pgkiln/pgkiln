@@ -20,6 +20,7 @@ import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
 import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
 import { frameOrigins } from './url-region.ts';
+import { breadcrumbLinks, hasBreadcrumbRegion } from './page-regions.ts';
 import { devbarHtml } from './devbar.ts';
 import { feedbackNode } from './feedback.ts';
 import { sessionLimits } from '../session.ts';
@@ -119,22 +120,6 @@ async function navTree(ctx: PageContext, topNav = false) {
     return out;
   };
   return render(null);
-}
-
-async function breadcrumb(ctx: PageContext) {
-  const trail: { page_no: number; name: string }[] = [];
-  let p = ctx.app.pages.find((x) => x.page_no === ctx.page.parent_page);
-  for (let guard = 0; p && guard < 6; guard++) {
-    trail.unshift(p);
-    p = ctx.app.pages.find((x) => x.page_no === p!.parent_page);
-  }
-  if (!trail.length && ctx.page.page_no !== ctx.app.home_page) {
-    const home = ctx.app.pages.find((x) => x.page_no === ctx.app.home_page);
-    if (home) trail.push(home);
-  }
-  const links = [];
-  for (const t of trail) if (await pageAllowed(ctx, t.page_no)) links.push(html`<li><a href="${ctx.base}/${t.page_no}">${t.name}</a></li>`);
-  return links;
 }
 
 // ---------------------------------------------------------------- theme
@@ -392,7 +377,8 @@ export async function renderPage(ctx: PageContext) {
   // (078) the origins of the page's URL regions (also those a refresh or lazy load shows later)
   for (const o of frameOrigins(ctx.page.regions.filter((r) => ctx.vis!.regions.has(r.id)))) ctx.frameSrc?.add(o);
   const title = substitute(ctx.page.title ?? ctx.page.name, ctx, (v) => v);
-  const crumbs = ctx.dialog ? [] : await breadcrumb(ctx);
+  // (140) a page with a breadcrumb region shows the trail there instead
+  const crumbs = ctx.dialog || hasBreadcrumbRegion(ctx) ? [] : await breadcrumbLinks(ctx);
   const das = dynamicActionsJson(ctx);
 
   const main = html`

@@ -8,7 +8,7 @@ const GUIDE = 'https://pgkiln.vargar.eu/docs';
 
 export const REGION_CONFIG_HELP: [string[], string][] = [
   [['report'], '{"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts)'],
-  [['report', 'grid', 'cards'], '{"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column)'],
+  [['report', 'classic_report', 'grid', 'cards'], '{"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column)'],
   [['chart'], '{"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000,"format_mask":"FML999G990"}'],
   [['cards'], '{"style":"metric","link":{...},"max_rows":500}'],
   [['dynamic'], '{"max_rows":1000}'],
@@ -19,7 +19,7 @@ export const REGION_CONFIG_HELP: [string[], string][] = [
   [['display_selector'], '{"style":"tabs"|"select","show_all":true,"remember":true}'],
   [['list'], '{"list":"NAME","template":"links"|"badges"|"cards"|"tabs"} (lists under Shared Components → Lists)'],
   [['*'], '{"display_selector":true} puts it in the page\'s display selector'],
-  [['report', 'chart', 'cards', 'dynamic', 'tree', 'template_component'], '{"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)'],
+  [['report', 'classic_report', 'chart', 'cards', 'dynamic', 'tree', 'template_component'], '{"lazy":true} loads it after the page shows, {"cache":{"scope":"user"|"session"|"all","seconds":300}} keeps its HTML (a submit of the page empties it)'],
   [['data_reporter'], '{"sources":[{"id":"orders","label":"Orders","description":"…","schema":"sales","table":"order_v","columns":[{"name":"total","label":"Total","format":"FML999G990D00"}]}],"sharing":true,"share_authz":"SCHEME","page_size":25} (the Data Reporter settings below edit it)'],
   [['form_designer'], '{"sources":[{"id":"orders","label":"Orders","description":"…","schema":"sales","table":"orders","key":"id","columns":[{"name":"customer","label":"Customer"},{"name":"status","lov":"LOV:ORDER_STATUS"}],"insert":true,"update":true,"delete":false}],"design_authz":"SCHEME","page_size":25} (the Form Designer region\'s Settings; users that pass design_authz design forms)'],
   [['ai_assistant'], '{"service":"NAME","system":"…","welcome":"…","context":[{"name":"policy","sql":"select … :AI_PROMPT …"}],"tools":[{"name":"my_leave","description":"…","sql":"select … where status = :STATUS","parameters":{"STATUS":{"type":"string","enum":["PENDING"]}}},{"name":"dept","type":"rest","source":"DEPARTMENT","description":"…"}],"max_rounds":5,"max_turns":20}; or {"agent":"SALES_AGENT","welcome":"…"} for an AI agent of Shared Components (the AI assistant settings below edit it)'],
@@ -28,6 +28,9 @@ export const REGION_CONFIG_HELP: [string[], string][] = [
   [['form'], '{"lost_update":false} saves without checking that the row is unchanged since it was shown'],
   [['login'], '(no attributes) the sign-in form of the application\'s login page (Application settings → Login page): providers, user name and password, "Keep me signed in", "Forgot password?"'],
   [['url'], '{"height":480,"sandbox":["allow-scripts","allow-forms","allow-popups","allow-same-origin"] (the default; false: no sandbox),"fullscreen":true}'],
+  [['classic_report'], '{"report_template":"standard"|"value_pairs"|"badges"|"media_list","pagination":"total" (rows X–Y of N, the default)|"range" (rows X–Y)|"none" (one page of at most max_rows, 500),"page_size":15,"max_rows":500,"sortable":true,"searchable":false,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows"} (a report without the Actions menu; badges: label and value columns; media_list: title and description columns)'],
+  [['breadcrumb'], '{"current":false} leaves the current page out of the trail (the pages above it come from each page\'s Breadcrumb parent, else Home); put it in the Breadcrumb bar position with template plain'],
+  [['help_text'], '{"empty":"…"} shown when the page has no help text (Page → Help text: Markdown with &ITEM. substitutions)'],
   [['search'], '{"configs":["CUSTOMERS","ORDERS"] (Shared Components → Search configurations; empty: all),"item":"P1_SEARCH" (search with this item\'s value instead of a field of its own),"placeholder":"…","min_length":2,"empty":"No results"}'],
 ];
 
@@ -57,6 +60,9 @@ const ANCHORS: Record<string, string> = {
   tasks: 'approvals-and-the-task-list',
   workflows: 'workflows',
   login: 'the-login-page',
+  classic_report: 'classic_report-classic-report',
+  breadcrumb: 'breadcrumb-and-help_text',
+  help_text: 'breadcrumb-and-help_text',
 };
 
 /** The help of every type (a region whose type isn't known yet). */

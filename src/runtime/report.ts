@@ -239,7 +239,10 @@ export function selectionOf(page: { items: { name: string }[] }, r: Region) {
 
 export function reportState(ctx: PageContext, r: Region): ReportState {
   const p = ctx.params;
-  const size = parseInt(p.get(key(r, 'n')) ?? '', 10) || Number(r.config.page_size) || componentSetting(ctx.app.component_settings, 'report_rows');
+  // (140) a classic report: no rows-per-page choice; "pagination": "none" shows its rows on one page
+  const classic = r.type === 'classic_report';
+  const size = classic && r.config.pagination === 'none' ? Math.min(maxRows(r, 500) ?? 500, 500)
+    : (!classic && parseInt(p.get(key(r, 'n')) ?? '', 10)) || Number(r.config.page_size) || componentSetting(ctx.app.component_settings, 'report_rows');
   const st: ReportState = {
     search: (p.get(key(r, 'q')) ?? '').trim(),
     searchCol: (p.get(key(r, 'qc')) ?? '').trim() || null,
@@ -288,6 +291,13 @@ export function reportState(ctx: PageContext, r: Region): ReportState {
     seek: null as Seek | null,
   };
   st.seek = parseSeek(ctx, r, st);
+  // (140) a classic report has none of an interactive report's settings: sorting, paging and (when searchable) the search only
+  if (classic) {
+    Object.assign(st, { searchCol: null, hideCols: [], filters: [], breakCol: null, aggregates: [], highlights: [], computations: [], view: 'report',
+      groupBy: { columns: [], functions: [] }, pivot: null, chart: null, area: null, near: null });
+    if (r.config.searchable !== true) st.search = '';
+    if (r.config.pagination === 'none') st.page = 1;
+  }
   return st;
 }
 
@@ -814,8 +824,10 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const t = ctx.locale.t;
   const c = ctx.client!;
   const st = reportState(ctx, r);
-  const searchable = r.config.searchable !== false;
-  const interactive = r.config.interactive !== false && searchable;
+  // (140; APEX: Classic Report) no Actions menu, column menus or saved reports; a search field only with {"searchable": true}
+  const classic = r.type === 'classic_report';
+  const searchable = classic ? r.config.searchable === true : r.config.searchable !== false;
+  const interactive = !classic && r.config.interactive !== false && searchable;
   // (sprint 78; APEX: a faceted search's results have no search bar) one search field: the facets'
   const searchBox = !ctx.page.regions.some((x) => x.type === 'facets' && x.config.search === true && Number(x.config.report) === r.id && ctx.vis?.regions.has(x.id) !== false);
 
@@ -1193,6 +1205,17 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     ? html`<p class="sel-count muted" data-sel-count="${r.id}" aria-live="polite">${selected.size ? t('report.selected_count', { n: selected.size }) : ''}</p>
       ${elsewhere.map((v) => html`<input type="hidden" name="${selection!.item}" value="${v}" data-sel-other>`)}`
     : '';
+  if (classic) {
+    const pager = r.config.pagination === 'none'
+      ? (info.more ? html`<p class="region-limit">${t('region.first_rows', { n: st.size })}</p>` : '')
+      : info.more || info.page > 1 || searchable ? pagerNav(ctx, r, info) : '';
+    const shaped = classicTemplate(ctx, r, cols, info.rows, fmtOf, linkIdx >= 0 ? (row) => linkAttrs(ctx, link!.page, rowItems(row)) : null);
+    if (shaped) return html`${toolbar}${shaped}${pager}`;
+    return html`${toolbar}<div class="table-wrap"><table class="report report-classic${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
+      <thead><tr>${header}</tr></thead>
+      <tbody>${body.length ? body : html`<tr><td colspan="${cols.length + lead || 1}" class="empty">${empty}</td></tr>`}</tbody>
+    </table></div>${pager}`;
+  }
   return html`${toolbar}${switcher}${errors}${selectionNote}
     <div class="table-wrap"><table class="report${r.config.mobile === 'scroll' ? '' : ' report-reflow'}"${selIdx >= 0 ? raw(` data-sel-region="${r.id}"`) : ''}>
       <thead><tr>${header}</tr></thead>
@@ -1200,4 +1223,33 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       ${info.rows.length ? foot : ''}
     </table></div>
     ${info.more || info.page > 1 || searchable ? pagerNav(ctx, r, info) : ''}`;
+}
+
+/** (140) A classic report's templates besides the table ({"report_template": …}). */
+export const CLASSIC_TEMPLATES = ['standard', 'value_pairs', 'badges', 'media_list'] as const;
+
+/**
+ * (140; APEX: the classic report templates Value Attribute Pairs, Badge List and Media List) The rows in another shape
+ * than a table; null for the table ("standard"). value_pairs: each row as headings and values; badges: the first column
+ * as the label and the second as the value; media_list: a title (column title, else the first) and a text (column
+ * description, text or body, else the second), the title a link when the report has one.
+ */
+function classicTemplate(ctx: PageContext, r: Region, cols: { f: pg.FieldDef; i: number }[], rows: unknown[][], fmtOf: (name: string) => Formatter,
+  linkOf: ((row: unknown[]) => Raw) | null): Raw | null {
+  const tpl = r.config.report_template;
+  if (!tpl || tpl === 'standard' || !(CLASSIC_TEMPLATES as readonly string[]).includes(tpl)) return null;
+  const text = (row: unknown[], c: { f: pg.FieldDef; i: number } | undefined) => (c ? cell(row[c.i], c.f.dataTypeID, fmtOf(c.f.name)) : '');
+  if (!rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
+  if (tpl === 'value_pairs')
+    return html`<div class="cr-pairs">${rows.map((row) => html`<dl>${cols.map((c) => html`<dt>${headingOf(r, c.f.name, ctx.locale.tr)}</dt><dd>${text(row, c)}</dd>`)}</dl>`)}</div>`;
+  if (tpl === 'badges')
+    return html`<ul class="cr-badges">${rows.map((row) => {
+      const inner = html`<span class="cr-badge-value">${text(row, cols[1] ?? cols[0])}</span><span class="cr-badge-label">${cols[1] ? text(row, cols[0]) : ''}</span>`;
+      return html`<li>${linkOf ? html`<a ${linkOf(row)}>${inner}</a>` : inner}</li>`;
+    })}</ul>`;
+  const named = (...names: string[]) => cols.find((c) => names.includes(c.f.name.toLowerCase()));
+  const titleCol = named('title') ?? cols[0];
+  const textCol = named('description', 'text', 'body') ?? cols.find((c) => c !== titleCol);
+  return html`<ul class="cr-media">${rows.map((row) => html`<li><div class="cr-media-title">${linkOf ? html`<a ${linkOf(row)}>${text(row, titleCol)}</a>` : text(row, titleCol)}</div>${
+    textCol ? html`<p class="cr-media-text">${text(row, textCol)}</p>` : ''}</li>`)}</ul>`;
 }

@@ -23,6 +23,9 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `switch` | on/off switch | `true` / `false` |
 | `checkbox_group` | several checkboxes | **colon-separated** return values, e.g. `10:30`; (137) `{"switches": true}` shows each as a switch, one per line |
 | `multiselect` | multi-select list | **colon-separated** return values |
+| `shuttle` | (140) two lists, *Available* and *Selected*, with buttons to move values across and put the chosen ones in order ([Shuttle](#shuttle-select-one-and-select-many)); a multi-select list without JavaScript | **colon-separated** return values, in the chosen order |
+| `select_one` | (140) a search field over the list of values: typing filters a list under it ([Select One](#shuttle-select-one-and-select-many)); a select list without JavaScript | the chosen return value |
+| `select_many` | (140) as `select_one`, for several values shown as chips with a remove button; a multi-select list without JavaScript | **colon-separated** return values |
 | `display` | read-only text (shows the display value for list items) | whatever was set |
 | `hidden` | not rendered | set by URL (with checksum), fetch or processes |
 | `file` | file upload ([chapter 16](16-files.md)); on phones the camera with `{"capture": "environment"}`, photos made smaller with `{"max_px": 1600}` ([chapter 17](17-mobile.md)) | the id of the uploaded temporary file (a uuid) |
@@ -191,7 +194,8 @@ pages and applications without sign-in keep nothing.
 ## Lists of values
 
 A list of values (LOV) provides the options of select lists, radio groups, checkbox groups,
-multi-selects, popup LOVs, grid columns and display items. Three forms:
+multi-selects, shuttles, Select One and Select Many items, popup LOVs, grid columns and display
+items. Three forms:
 
 1. **A SELECT returning (display, return)**. Bind variables are allowed:
    ```sql
@@ -205,8 +209,9 @@ multi-selects, popup LOVs, grid columns and display items. Three forms:
    list can also read a web service: give it a **REST data source** and query the rows from
    `rest` ([chapter 19](19-rest-data-sources.md#lists-of-values)).
 
-On submit, the value of a select list, radio group, checkbox group, multi-select or popup LOV (each
-value of a multi-value item), and of a grid column with a list of values, must be one its list
+On submit, the value of a select list, radio group, checkbox group, multi-select, shuttle, Select
+One, Select Many or popup LOV (each value of a multi-value item), and of a grid column with a list
+of values, must be one its list
 returns at that moment, for that user: a list that leaves out departments a user may not pick also
 keeps a crafted request from choosing them. Otherwise the item gets *"choose a value from the
 list"*. For a list that may legitimately miss the current value, set `"any_value": true` in the
@@ -240,6 +245,41 @@ new search starts over at the first page. A browser without `IntersectionObserve
 
 The HR example's page 26 (*Pick an employee*) has one with name, job and department columns;
 page 47 (*Component details*) one over 6,000 rows, 100 a page.
+
+## Shuttle, Select One and Select Many
+
+(sprint 140; APEX: Shuttle, and 24.2's Select One and Select Many) Three list items for choosing from
+a list of values, each a plain select list without JavaScript (the page saves the same values):
+
+- **Shuttle** (`shuttle`): two lists side by side, *Available* and *Selected* (stacked on phones),
+  with a filter field over the available values. Move values across with the buttons between the
+  lists (*Move all* », *Move* ›, *Remove* ‹, *Remove all* «), by double-clicking one, or with the
+  keyboard: **Enter** moves the marked values across, **Delete** removes them from *Selected*, and in
+  *Selected* **Alt+↑ / Alt+↓** move them up or down (with **Shift**: to the top or bottom; the buttons
+  ⤒ ↑ ↓ ⤓ do the same). The value is the chosen return values **in their order**, colon-separated
+  (`7566:7902`), so `string_to_array(:P50_MEMBERS, ':') with ordinality` keeps the order. Without
+  JavaScript the shuttle is a multi-select list (the chosen values first, in their order); a value
+  posted from it comes in the list's order.
+- **Select One** (`select_one`): a search field. Clicking it or typing opens a list box under it
+  that shows the list's display values containing what was typed (case-insensitive); **↑ / ↓**
+  move through it, **Enter** chooses, **Escape** closes. Emptying the field chooses no value.
+  `{"null_label": "- None -"}` names the empty entry, `false` leaves it out (a required item).
+- **Select Many** (`select_many`): the same, for several values: the chosen ones are chips above the
+  field, each with a remove button (named *Remove …* for screen readers); **Backspace** in the
+  empty field removes the last one, Enter on a chosen value in the list removes it again. The
+  value is colon-separated, like a multi-select.
+
+Like the other list items they are checked against their list of values on submit, take
+`cascade_parents` (a cascading shuttle is reloaded with its new values), show their display values
+(comma-separated, in order) when read-only, and dynamic actions see the colon-separated value
+(*Set value* with `A:B` chooses those values). The list box searches the rows the page read
+(`max_rows`, 5,000 by default): for lists of tens of thousands of rows use a [Popup LOV](#popup-lov),
+which searches on the server. Texts such as *Move all*, *Selected* and *Remove {value}* are runtime
+messages (`shuttle.*`, `lov.search`, `item.tag_remove`) an application can replace with a text
+message of the same name.
+
+HR page 50 (*Project team*, Administration) has a Select One of departments, a shuttle of that
+department's employees (cascading) and a Select Many of skills.
 
 ## Cascading lists of values
 

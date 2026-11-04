@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions** (AP-4; APEX: the
+  Shuttle item, 24.2's Select One and Select Many, and the Classic Report, Breadcrumb and Help Text regions;
+  migration 140). Item type `shuttle`: two lists (available, selected) with a filter, *Move*, *Move all*, *Remove*,
+  *Remove all* and ordering buttons, double-click and keyboard (Enter, Delete, Alt+↑/↓); the chosen values are stored
+  colon-separated **in their order**. `select_one` and `select_many`: a search field over the list of values with a
+  list box (arrow keys, Enter, Escape), chips with a remove button for Select Many. All three are plain select lists
+  without JavaScript, are checked against their list of values on submit, cascade, and show their display values
+  when read-only. Region type `classic_report`: the report renderer without the Actions menu, column menus, saved
+  reports, downloads or the interactive settings in the URL, with `report_template` (`standard`, `value_pairs`,
+  `badges`, `media_list`) and `pagination` (`total`, `range`, `none`). `breadcrumb`: the page's trail for the
+  Breadcrumb bar (the title bar then leaves its own out). `help_text`: the page's new **Help text** (page properties;
+  Markdown with `&ITEM.` substitutions). All six in the Page Designer's gallery (11 builder languages), the property
+  editor and the region type help; the Advisor warns about a list item without a list of values. HR page 50
+  (*Project team*) uses them.
+
 ## [0.72.0] - 2026-11-04
 
 ### Added

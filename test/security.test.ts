@@ -12658,3 +12658,124 @@ describe('sprint 139 AP-6', () => {
     await saveInstanceTelemetry({ enabled: 'false', browser: 'false' });
   });
 });
+
+describe('sprint 140 AP-4', () => {
+  const A = 'sec140';
+  const XSS = `<img src=x onerror=alert(1)>"'&`;
+  let id: number;
+  let pid: number;
+  const rid: Record<string, number> = {};
+  const signIn = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    return b;
+  };
+  const region = async (title: string, type: string, source: string | null, config: object = {}, position: string | null = null) =>
+    (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config, position) values ($1, (select coalesce(max(seq), 0) + 10 from meta.region where page_id = $1), $2, $3, $4, $5, $6) returning id`,
+      [pid, title, type, source, JSON.stringify(config), position])).id as number;
+  before(async () => {
+    await owner.query('delete from meta.app where alias = $1', [A]);
+    id = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Sec140', 'none') returning id`, [A])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, $2, 'Home', false)`, [id, `Home ${XSS}`]);
+    pid = (await owner.one(`insert into meta.page (app_id, page_no, name, title, requires_auth, parent_page, help) values ($1, 2, 'Two', $2, false, 1, $3) returning id`,
+      [id, 'Two &P2_ONE.', `<script>alert(1)</script> [x](javascript:alert(1)) **&P2_ONE.**`])).id;
+    rid.form = await region('Form', 'static', '');
+    // a list that leaves values out (n = 4 is not offered), and display values with markup
+    const lov = `select case n when 1 then '${XSS.replace(/'/g, "''")}' else 'Value ' || n end as d, n::text as r from generate_series(1, 3) n`;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, label, type, lov) values
+      ($1, $2, 10, 'P2_SHUTTLE', 'Shuttle', 'shuttle', $3), ($1, $2, 20, 'P2_ONE', 'One', 'select_one', $3), ($1, $2, 30, 'P2_MANY', 'Many', 'select_many', $3),
+      ($1, $2, 40, 'P2_RO', 'Read-only', 'shuttle', $3)`, [pid, rid.form, lov]);
+    await owner.query(`update meta.item set readonly_condition = 'true', default_value = '1:2' where page_id = $1 and name = 'P2_RO'`, [pid]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'SAVE', 'Save', 'submit')`, [pid, rid.form]);
+    // an application's text message replaces a runtime text: it is escaped where it lands (attributes)
+    await owner.query(`insert into meta.text_message (app_id, name, language, text) values ($1, 'shuttle.move', 'en', $2), ($1, 'region.no_help', 'en', $2)`, [id, `Move" onclick="alert(1)`]);
+    rid.crumb = await region(`Trail ${XSS}`, 'breadcrumb', null, {}, 'breadcrumb');
+    rid.help = await region('Help', 'help_text', null);
+    rid.table = await region('Classic', 'classic_report', `select '${XSS.replace(/'/g, "''")}' as "${'<b>h</b>'}", 2 as n`);
+    for (const t of ['value_pairs', 'badges', 'media_list'])
+      rid[t] = await region(t, 'classic_report', `select '${XSS.replace(/'/g, "''")}' as title, '${XSS.replace(/'/g, "''")}' as description`, { report_template: t, headings: { title: XSS } });
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where alias = $1', [A]);
+  });
+
+  test('a value its list of values doesn\'t offer is refused for a shuttle, a select one and a select many', async () => {
+    for (const [name, values] of [['P2_SHUTTLE', ['1', '4']], ['P2_ONE', '4'], ['P2_MANY', ['2', '4']], ['P2_ONE', "1' or '1'='1"], ['P2_MANY', '1:4']] as [string, string | string[]][]) {
+      const b = new Browser();
+      await b.get(`/a/${A}/2`);
+      const res = await b.post(`/a/${A}/2`, { __csrf: b.lastCsrf, __request: 'SAVE', [name]: values });
+      assert.equal(res.statusCode, 422, `${name} ${values}`);
+      assert.match(res.body, new RegExp(`id="${name}_error"`), `${name} ${values}`);
+    }
+    // the values it offers pass; a read-only item ignores what is posted
+    const b = new Browser();
+    await b.get(`/a/${A}/2`);
+    const ok = await b.post(`/a/${A}/2`, { __csrf: b.lastCsrf, __request: 'SAVE', P2_SHUTTLE: ['3', '1'], P2_ONE: '2', P2_MANY: ['1', '3'], P2_RO: '4' });
+    assert.equal(ok.statusCode, 303, ok.body);
+    // without the CSRF token nothing is taken
+    assert.equal((await b.post(`/a/${A}/2`, { __request: 'SAVE', P2_ONE: '1' })).statusCode, 403);
+    // the cascading list of values endpoint: only an item with cascade_parents, with the token
+    assert.equal((await b.post(`/a/${A}/2/lov/P2_SHUTTLE`, { __csrf: b.lastCsrf })).statusCode, 403);
+  });
+
+  test('display values, texts and data are escaped in the new items and regions', async () => {
+    const b = new Browser();
+    const page = (await b.get(`/a/${A}/2`)).body;
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.doesNotMatch(page, /onerror=alert\(1\)>/);
+    assert.doesNotMatch(page, /" onclick="alert/);
+    assert.match(page, /<option value="1" data-i="0">&lt;img src=x onerror=alert\(1\)&gt;&quot;&#39;&amp;<\/option>/);
+    assert.match(page, /data-move-label="Move&quot; onclick=&quot;alert\(1\)"/);
+    // read-only: the display values of the chosen values, escaped
+    assert.match(page, /<div class="display-value" id="P2_RO">&lt;img src=x onerror=alert\(1\)&gt;&quot;&#39;&amp;, Value 2<\/div>/);
+    // the breadcrumb: page names and the region title
+    assert.match(page, /aria-label="Trail &lt;img src=x onerror=alert\(1\)&gt;&quot;&#39;&amp;"/);
+    assert.match(page, /<a href="\/a\/sec140\/1">Home &lt;img src=x onerror=alert\(1\)&gt;&quot;&#39;&amp;<\/a>/);
+    // the classic report: headings and cells, in each template
+    assert.match(page, />&lt;B&gt;h&lt;\/b&gt;<span class="sort-ind"/);
+    for (const t of ['value_pairs', 'badges', 'media_list']) {
+      const section = new RegExp(`<section[^>]* id="R${rid[t]}"[\\s\\S]*?</section>`).exec(page)![0];
+      assert.doesNotMatch(section, /<img/, t);
+      assert.match(section, /&lt;img src=x/, t);
+    }
+  });
+
+  test('the help text: Markdown without HTML or script links; item values stay text', async () => {
+    const b = new Browser();
+    await b.get(`/a/${A}/2`);
+    // a value the list offers whose display value has markup; the substitution uses the value itself
+    await b.post(`/a/${A}/2`, { __csrf: b.lastCsrf, __request: 'SAVE', P2_ONE: '1' });
+    await owner.query(`update meta.item set lov = $2 where page_id = $1 and name = 'P2_ONE'`, [pid, `select '<i>x</i>' as d, '[a](javascript:alert(2))<script>' as r`]);
+    try {
+      const b2 = new Browser();
+      await b2.get(`/a/${A}/2`);
+      assert.equal((await b2.post(`/a/${A}/2`, { __csrf: b2.lastCsrf, __request: 'SAVE', P2_ONE: '[a](javascript:alert(2))<script>' })).statusCode, 303);
+      const page = (await b2.get(`/a/${A}/2`)).body;
+      const help = new RegExp(`<section[^>]* id="R${rid.help}"[\\s\\S]*?</section>`).exec(page)![0];
+      assert.doesNotMatch(help, /<script>|href=|<a /);
+      assert.match(help, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+      assert.match(help, /<strong>\[a\]\(javascript:alert\(2\)\)&lt;script&gt;<\/strong>/);
+      // the page title (the breadcrumb's current page) with the same value, escaped
+      assert.match(page, /<span aria-current="page">Two \[a\]\(javascript:alert\(2\)\)&lt;script&gt;<\/span>/);
+    } finally {
+      await owner.query(`update meta.item set lov = (select lov from meta.item where page_id = $1 and name = 'P2_SHUTTLE') where page_id = $1 and name = 'P2_ONE'`, [pid]);
+    }
+    // no help text: the "no help" text (an application's own text message), escaped
+    await owner.query(`update meta.page set help = null where id = $1`, [pid]);
+    assert.match((await new Browser().get(`/a/${A}/2`)).body, /<p class="muted help-text-none">Move&quot; onclick=&quot;alert\(1\)<\/p>/);
+  });
+
+  test('the page help text: developers only, with the token, at most 20,000 characters', async () => {
+    const form = { page_no: '2', name: 'Two', title: 'Two', mode: 'normal', protection: 'checksum', help: 'x'.repeat(30_000) };
+    assert.notEqual((await new Browser().post(`/builder/pages/${pid}`, form)).statusCode, 303);
+    const d = await signIn();
+    await d.get(`/builder/apps/${id}/pages/2`);
+    assert.equal((await d.post(`/builder/pages/${pid}`, form)).statusCode, 403, 'without the CSRF token');
+    assert.equal((await owner.one('select help from meta.page where id = $1', [pid])).help, null);
+    const res = await d.submit(`/builder/pages/${pid}`, form);
+    assert.ok([302, 303].includes(res.statusCode), res.body);
+    assert.equal((await owner.one('select length(help) as n from meta.page where id = $1', [pid])).n, 20_000);
+    await assert.rejects(owner.query(`update meta.page set help = repeat('x', 20001) where id = $1`, [pid]), /check/);
+  });
+});

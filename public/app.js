@@ -264,6 +264,8 @@ const pgkilnUnsaved = (() => {
     if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
     if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
+    // (140) a multi-value list (multiselect, shuttle, select many): its values colon-separated, in order
+    if (el.tagName === 'SELECT' && el.multiple) return [...el.selectedOptions].map((o) => o.value).join(':');
     return el.value;
   }
 
@@ -281,7 +283,10 @@ const pgkilnUnsaved = (() => {
       els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
     } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
     else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
-    else el.value = value ?? '';
+    else if (el.tagName === 'SELECT' && el.multiple) {
+      const values = String(value ?? '').split(':').filter(Boolean);
+      for (const o of el.options) o.selected = values.includes(o.value);
+    } else el.value = value ?? '';
     if (depth < 5) {
       depth++;
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -2160,6 +2165,377 @@ function popupLov(sel) {
     dlg.querySelector('.popup-lov-search').focus();
     load(0);
   });
+}
+
+// (140; APEX: Shuttle) Two lists, available and chosen, with buttons to move one or all values across and to
+// order the chosen ones. The item's own <select multiple> (it works without JavaScript) stays in the form, hidden:
+// its selected options are the value, in the order of the chosen list (they come first in it).
+function enhanceShuttles(root) {
+  const boxes = root.matches?.('[data-shuttle]') ? [root] : [...(root.querySelectorAll?.('[data-shuttle]') ?? [])];
+  boxes.forEach(shuttle);
+}
+document.addEventListener('pgkiln:replaced', (e) => e.detail && enhanceShuttles(e.detail));
+enhanceShuttles(document);
+function shuttle(box) {
+  const sel = box.querySelector('select[multiple]');
+  if (!sel || box.dataset.enhanced) return;
+  box.dataset.enhanced = '1';
+  const d = box.dataset;
+  const id = sel.id;
+  const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+  const name = (label?.textContent || sel.name).replace(/\*\s*$/, '').trim();
+  const el = (tag, cls) => {
+    const x = document.createElement(tag);
+    if (cls) x.className = cls;
+    return x;
+  };
+  const list = (suffix, text) => {
+    const l = el('select', 'shuttle-list');
+    l.multiple = true;
+    l.id = `${id}_${suffix}`;
+    l.size = Math.max(sel.size || 6, 6);
+    l.setAttribute('aria-label', `${name}: ${text}`);
+    for (const a of ['aria-describedby', 'aria-invalid']) if (sel.hasAttribute(a)) l.setAttribute(a, sel.getAttribute(a));
+    return l;
+  };
+  const avail = list('available', d.availableLabel || 'Available');
+  const chosen = list('chosen', d.chosenLabel || 'Selected');
+  const filter = el('input', 'shuttle-filter');
+  filter.type = 'search';
+  filter.id = `${id}_filter`;
+  filter.autocomplete = 'off';
+  filter.placeholder = d.filterLabel || 'Filter';
+  filter.setAttribute('aria-label', `${name}: ${d.filterLabel || 'Filter'}`);
+  filter.setAttribute('aria-controls', avail.id);
+  const button = (cmd, text, glyph) => {
+    const b = el('button', 'btn btn-sm shuttle-btn');
+    b.type = 'button';
+    b.dataset.cmd = cmd;
+    b.title = text;
+    b.setAttribute('aria-label', text);
+    const g = el('span');
+    g.setAttribute('aria-hidden', 'true');
+    g.textContent = glyph;
+    b.append(g);
+    return b;
+  };
+  const moves = el('div', 'shuttle-moves');
+  moves.setAttribute('role', 'group');
+  moves.append(button('all', d.moveAllLabel || 'Move all', '»'), button('move', d.moveLabel || 'Move', '›'), button('remove', d.removeLabel || 'Remove', '‹'), button('none', d.removeAllLabel || 'Remove all', '«'));
+  const order = el('div', 'shuttle-order');
+  order.setAttribute('role', 'group');
+  order.append(button('top', d.topLabel || 'Move to top', '⤒'), button('up', d.upLabel || 'Move up', '↑'), button('down', d.downLabel || 'Move down', '↓'), button('bottom', d.bottomLabel || 'Move to bottom', '⤓'));
+  const left = el('div', 'shuttle-col');
+  left.append(filter, avail);
+  const right = el('div', 'shuttle-col');
+  right.append(chosen);
+  const ui = el('div', 'shuttle-ui');
+  ui.append(left, moves, right, order);
+  sel.hidden = true;
+  box.append(ui);
+  if (label) label.htmlFor = avail.id;
+
+  const src = new Map(); // a shown option → the item's option
+  const lovIndex = (o) => Number(o.dataset.i ?? 0);
+  // the item's options: the chosen ones first (in their order), then the others in the list of values' order
+  const arrange = (picked) => {
+    const rest = [...sel.options].filter((o) => !picked.includes(o)).sort((a, b) => lovIndex(a) - lovIndex(b));
+    for (const o of sel.options) o.selected = picked.includes(o);
+    sel.append(...picked, ...rest);
+  };
+  const picked = () => [...sel.options].filter((o) => o.selected);
+  const draw = (keep = new Set()) => {
+    const q = filter.value.trim().toLowerCase();
+    const fill = (l, opts) => {
+      l.replaceChildren(
+        ...opts.map((o) => {
+          const x = new Option(o.text, o.value);
+          x.selected = keep.has(o);
+          src.set(x, o);
+          return x;
+        }),
+      );
+    };
+    src.clear();
+    fill(avail, [...sel.options].filter((o) => !o.selected && (!q || o.text.toLowerCase().includes(q))));
+    fill(chosen, picked());
+  };
+  let own = false;
+  const changed = (keep) => {
+    draw(keep);
+    own = true;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    own = false;
+  };
+  const marked = (l) => [...l.selectedOptions].map((x) => src.get(x)).filter(Boolean);
+  const run = (cmd) => {
+    let now = picked();
+    let keep = new Set();
+    if (cmd === 'move' || cmd === 'all') {
+      const add = cmd === 'all' ? [...avail.options].map((x) => src.get(x)) : marked(avail);
+      if (!add.length) return;
+      now = [...now, ...add];
+      keep = new Set(add);
+    } else if (cmd === 'remove' || cmd === 'none') {
+      const drop = cmd === 'none' ? now : marked(chosen);
+      if (!drop.length) return;
+      now = now.filter((o) => !drop.includes(o));
+      keep = new Set(drop);
+    } else {
+      const m = marked(chosen);
+      if (!m.length) return;
+      keep = new Set(m);
+      const others = now.filter((o) => !keep.has(o));
+      if (cmd === 'top') now = [...m, ...others];
+      else if (cmd === 'bottom') now = [...others, ...m];
+      else {
+        const step = cmd === 'up' ? -1 : 1;
+        const idx = (cmd === 'up' ? m : [...m].reverse()).map((o) => now.indexOf(o));
+        for (const i of idx) {
+          const j = i + step;
+          if (j < 0 || j >= now.length || keep.has(now[j])) continue;
+          [now[i], now[j]] = [now[j], now[i]];
+        }
+      }
+    }
+    arrange(now);
+    changed(keep);
+  };
+  ui.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-cmd]');
+    if (b) run(b.dataset.cmd);
+  });
+  avail.addEventListener('dblclick', () => run('move'));
+  chosen.addEventListener('dblclick', () => run('remove'));
+  // the keyboard: Enter moves the marked values across; in the chosen list Alt+arrows order them
+  avail.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      run('move');
+    }
+  });
+  chosen.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === 'Delete') {
+      e.preventDefault();
+      run('remove');
+    } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+      e.preventDefault();
+      run(e.key === 'ArrowUp' ? (e.shiftKey ? 'top' : 'up') : e.shiftKey ? 'bottom' : 'down');
+    }
+  });
+  // the lists' own change events are not the item's
+  for (const l of [avail, chosen]) l.addEventListener('change', (e) => e.stopPropagation());
+  filter.addEventListener('input', () => draw(new Set(marked(avail))));
+  filter.addEventListener('change', (e) => e.stopPropagation());
+  filter.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.preventDefault();
+  });
+  // a dynamic action (Set value, Clear) changed the item
+  sel.addEventListener('change', () => {
+    if (!own) draw();
+  });
+  arrange(picked());
+  draw();
+}
+
+// (140; APEX 24.2: Select One, Select Many) A search field over the item's list of values: typing filters a list
+// box below it (arrow keys, Enter, Escape); Select Many shows the chosen values as chips with a remove button.
+// The item's <select> (single or multiple; it works without JavaScript) stays in the form, hidden, as the value.
+function enhanceSelectPicks(root) {
+  const boxes = root.matches?.('[data-select-pick]') ? [root] : [...(root.querySelectorAll?.('[data-select-pick]') ?? [])];
+  boxes.forEach(selectPick);
+}
+let selectPickSeq = 0;
+document.addEventListener('pgkiln:replaced', (e) => e.detail && enhanceSelectPicks(e.detail));
+enhanceSelectPicks(document);
+function selectPick(box) {
+  const sel = box.querySelector('select');
+  if (!sel || box.dataset.enhanced) return;
+  box.dataset.enhanced = '1';
+  const d = box.dataset;
+  const many = sel.multiple;
+  const id = sel.id;
+  const label = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.id = `${id}_search`;
+  input.className = 'select-pick-input';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.placeholder = d.searchLabel || 'Search…';
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  for (const a of ['aria-describedby', 'aria-invalid', 'aria-required']) if (sel.hasAttribute(a)) input.setAttribute(a, sel.getAttribute(a));
+  const listId = `${id}_listbox_${++selectPickSeq}`;
+  input.setAttribute('aria-controls', listId);
+  const list = document.createElement('ul');
+  list.id = listId;
+  list.className = 'select-pick-list';
+  list.setAttribute('role', 'listbox');
+  if (label) list.setAttribute('aria-label', label.textContent.replace(/\*\s*$/, '').trim());
+  if (many) list.setAttribute('aria-multiselectable', 'true');
+  list.hidden = true;
+  const chips = document.createElement('ul');
+  chips.className = 'tag-list select-pick-chips';
+  const ui = document.createElement('div');
+  ui.className = 'select-pick-ui';
+  if (many) ui.append(chips);
+  ui.append(input, list);
+  sel.hidden = true;
+  box.append(ui);
+  if (label) label.htmlFor = input.id;
+  const status = document.createElement('span');
+  status.className = 'sr-only';
+  status.setAttribute('aria-live', 'polite');
+  ui.append(status);
+
+  let active = -1;
+  let shown = [];
+  const options = () => [...sel.options];
+  const textOf = (o) => o.text;
+  const syncInput = () => {
+    if (!many) input.value = sel.value ? (sel.selectedOptions[0]?.text ?? '') : '';
+  };
+  const drawChips = () => {
+    if (!many) return;
+    chips.replaceChildren(
+      ...[...sel.selectedOptions].map((o) => {
+        const li = document.createElement('li');
+        li.className = 'tag';
+        li.append(o.text);
+        const x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'tag-remove';
+        x.textContent = '×';
+        x.setAttribute('aria-label', (d.removeLabel || 'Remove {value}').replace('{value}', o.text));
+        x.addEventListener('click', () => {
+          o.selected = false;
+          changed();
+          input.focus();
+        });
+        li.append(x);
+        return li;
+      }),
+    );
+  };
+  let own = false;
+  const changed = () => {
+    drawChips();
+    syncInput();
+    if (!list.hidden) draw();
+    own = true;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    own = false;
+  };
+  const setActive = (i) => {
+    active = i;
+    [...list.children].forEach((li, n) => li.classList.toggle('is-active', n === i));
+    const li = list.children[i];
+    if (li && li.id) {
+      input.setAttribute('aria-activedescendant', li.id);
+      li.scrollIntoView?.({ block: 'nearest' });
+    } else input.removeAttribute('aria-activedescendant');
+  };
+  const draw = () => {
+    const q = (many || input.dataset.typed ? input.value : '').trim().toLowerCase();
+    shown = options().filter((o) => (many ? o.value !== '' : true) && (!q || textOf(o).toLowerCase().includes(q)));
+    list.replaceChildren(
+      ...shown.map((o, n) => {
+        const li = document.createElement('li');
+        li.id = `${listId}_${n}`;
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-selected', String(o.selected && (many || o.value !== '')));
+        li.textContent = textOf(o);
+        li.addEventListener('mousedown', (e) => e.preventDefault()); // keep the focus in the field
+        li.addEventListener('click', () => pick(n));
+        return li;
+      }),
+    );
+    if (!shown.length) {
+      const li = document.createElement('li');
+      li.className = 'select-pick-none';
+      li.textContent = d.noneLabel || 'Nothing found.';
+      list.append(li);
+    }
+    status.textContent = shown.length ? '' : d.noneLabel || 'Nothing found.';
+    setActive(shown.length ? Math.min(Math.max(active, 0), shown.length - 1) : -1);
+  };
+  const open = () => {
+    if (!list.hidden) return;
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    active = many ? 0 : Math.max(0, options().findIndex((o) => o.selected));
+    draw();
+  };
+  const close = () => {
+    list.hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    delete input.dataset.typed;
+    if (many) input.value = '';
+    else syncInput();
+  };
+  const pick = (n) => {
+    const o = shown[n];
+    if (!o) return;
+    if (many) {
+      o.selected = !o.selected;
+      input.value = '';
+      active = n;
+      changed();
+    } else {
+      sel.value = o.value;
+      close();
+      changed();
+    }
+  };
+  input.addEventListener('focus', () => {
+    if (!many) input.select?.();
+  });
+  input.addEventListener('click', open);
+  input.addEventListener('input', () => {
+    input.dataset.typed = '1';
+    if (list.hidden) open();
+    active = 0;
+    draw();
+  });
+  input.addEventListener('change', (e) => e.stopPropagation()); // the item's value is the select's
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (list.hidden) return open();
+      if (shown.length) setActive((active + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length);
+    } else if (e.key === 'Enter') {
+      if (list.hidden) return;
+      e.preventDefault();
+      if (active >= 0) pick(active);
+    } else if (e.key === 'Escape') {
+      if (list.hidden) return;
+      e.preventDefault();
+      close();
+    } else if (e.key === 'Backspace' && many && !input.value && sel.selectedOptions.length) {
+      sel.selectedOptions[sel.selectedOptions.length - 1].selected = false;
+      changed();
+    } else if (e.key === 'Tab') close();
+  });
+  input.addEventListener('blur', () => {
+    if (list.hidden) return;
+    // Select One: a field emptied by the user chooses no value
+    if (!many && input.dataset.typed && !input.value.trim() && [...sel.options].some((o) => o.value === '')) {
+      sel.value = '';
+      close();
+      changed();
+    } else close();
+  });
+  // a dynamic action (Set value, Clear) changed the item
+  sel.addEventListener('change', () => {
+    if (own) return;
+    drawChips();
+    if (document.activeElement !== input) syncInput();
+  });
+  drawChips();
+  syncInput();
 }
 
 // Builder: role suggestions. Clicking a role adds it to the roles field of
