@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.72.0] - 2026-11-04
+
 ### Added
 - **OpenTelemetry** (AP-6; APEX: Workspace Utilities → OpenTelemetry, migration 139): Workspace utilities →
   **OpenTelemetry** sends traces, logs and metrics to an OpenTelemetry Collector over OTLP/HTTP (JSON), or set it with
