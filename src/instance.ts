@@ -54,6 +54,12 @@ function valid(s: InstanceSetting, v: string | undefined): number | null {
   return Number.isInteger(n) && n >= s.min && n <= s.max ? n : null;
 }
 
+/** (sprint 144) A setting's value in effect from rows of meta.setting read elsewhere (the Advisor's own connection). */
+export function settingFrom(key: InstanceKey, rows: { name: string; value: string }[]): number {
+  const s = INSTANCE_SETTINGS.find((x) => x.key === key)!;
+  return valid(s, rows.find((r) => r.name === key)?.value) ?? fromEnv(s);
+}
+
 /** Read meta.setting again when the cache is older than 30 s (callers that can wait). */
 export async function refreshInstanceSettings(force = false) {
   if (!force && Date.now() - loadedAt < REFRESH_MS) return;

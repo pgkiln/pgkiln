@@ -1609,11 +1609,19 @@ Database code (views, functions, RLS policies) isn't part of the application, so
   component out, and the items computations set or copy); grids without a key or a save process;
   workflow `invoke_api` steps that name a REST data source, parameter or web credential that
   doesn't exist, leave a required parameter empty or use a `&VAR.` no step sets.
+- **Security** (sprint 144; APEX 26.2: CodeScan's checks): a page that needs no sign-in with a process that writes
+  data (a form or grid save, or SQL with INSERT, UPDATE, DELETE, MERGE or TRUNCATE) is a warning; a signed-in page
+  that writes data with no authorization scheme on the page or the process, in an application that has schemes, is a
+  note; a page with **unrestricted** protection whose items a link can set without a checksum is a note, a warning
+  when it writes data (hidden items never take posted values, so the URL is the way to set them); the installation's
+  session idle time above 120 minutes or session length above 24 hours is a warning; and, as before, administrators
+  who sign in with only a password.
 - **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
   schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
   [extensions](15-extensions.md)).
 
-Findings are errors, warnings or notes, each linking to the component.
+Findings are errors, warnings or notes, each linking to the component. The same checks run from the command line
+for CI, with text, JSON or SARIF output: [`pgkiln advise`](18-cli.md#pgkiln-advise-in-ci).
 
 ## Utilities
 

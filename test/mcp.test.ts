@@ -70,16 +70,16 @@ describe('pgkiln mcp: protocol', () => {
     assert.equal((await rpc('tools/call', { name: 'nope', arguments: {} })).error.code, -32602);
   });
 
-  test('tools/list: every tool has a schema, and only export and import may write', async () => {
+  test('tools/list: every tool has a schema, and only export, import, working copies and locks may write', async () => {
     const { tools } = (await rpc('tools/list')).result;
     const names = tools.map((t: any) => t.name);
-    for (const n of ['list_apps', 'app_overview', 'get_page', 'read_app_files', 'export_app', 'diff_app', 'import_app', 'describe_schema', 'generate_ddl', 'compare_schemas', 'run_query', 'search_docs', 'recent_errors'])
+    for (const n of ['list_apps', 'app_overview', 'get_page', 'read_app_files', 'export_app', 'diff_app', 'import_app', 'describe_schema', 'generate_ddl', 'compare_schemas', 'run_query', 'search_docs', 'recent_errors', 'advise_app', 'working_copy', 'lock_app'])
       assert.ok(names.includes(n), n);
     for (const t of tools) {
       assert.equal(t.inputSchema.type, 'object', t.name);
       assert.ok(t.description.length > 20, t.name);
     }
-    assert.deepEqual(tools.filter((t: any) => !t.annotations.readOnlyHint).map((t: any) => t.name).sort(), ['export_app', 'import_app']);
+    assert.deepEqual(tools.filter((t: any) => !t.annotations.readOnlyHint).map((t: any) => t.name).sort(), ['export_app', 'import_app', 'lock_app', 'working_copy']);
     assert.equal(tools.find((t: any) => t.name === 'import_app').annotations.destructiveHint, true);
   });
 

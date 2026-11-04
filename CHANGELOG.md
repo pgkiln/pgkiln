@@ -5,6 +5,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **`pgkiln advise`: the Advisor for CI** (AP-10; APEX 26.2: APEXlang static analysis with SQLcl CodeScan; no
+  migration). `pgkiln advise <path | alias> [--format text|json|sarif] [--fail-on error|warning|info|never]`: an export
+  (directory, `.zip` or JSON) is imported under a temporary alias in a transaction that is always rolled back and
+  checked there (SQL planned as the application's role, references, security); an alias checks the application in the
+  database. **SARIF 2.1.0** gives each finding a stable rule id and the file of its page or component in the export,
+  so GitHub code scanning annotates pull requests (a workflow is in chapter 18). Exit code 1 from `--fail-on`.
+- **Security checks in the Advisor**: a page without sign-in that writes data (warning); a signed-in page that writes
+  data with no authorization scheme on the page or the process, in an application with schemes (note); unrestricted
+  page protection with items (note; warning when the page writes data); session idle time over 120 minutes or length
+  over 24 hours (warning).
+- **Working copies and locks from the command line and MCP**: `pgkiln working-copy list|create|compare|merge|refresh|delete`
+  (conflicts resolved with `--prefer copy|main` or `--take <component>`; a merge refused while another developer holds
+  a lock), `pgkiln lock` / `unlock` (another developer's lock only with `--force`, logged), changes logged under
+  `--as` / `PGKILN_DEVELOPER`; the MCP tools `advise_app`, `working_copy` and `lock_app`.
+
+### Fixed
+- The Advisor runs its queries one at a time on a single connection (an import's `--check`), so pg no longer warns
+  about concurrent queries on one client.
+
 ## [0.76.0] - 2026-11-04
 
 ### Added

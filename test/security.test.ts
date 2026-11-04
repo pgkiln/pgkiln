@@ -13211,3 +13211,69 @@ describe('sprint 143 AP-9', () => {
     assert.deepEqual([...order.matchAll(/<th scope="col"[^>]*data-col="([^"]+)"/g)].map((m) => m[1]), ['name', 'id', 'd']);
   });
 });
+
+describe('sprint 144 AP-10', () => {
+  // `pgkiln advise` and the MCP tools advise_app, working_copy and lock_app: an export is only planned, never run
+  // (process code, supporting objects and plug-in SQL that would change data change nothing), and its import is
+  // always rolled back, also when it fails; working copy names and lock notes are checked or limited.
+  const A = 'sec144';
+  let doc: any;
+  const callTool = async (name: string, args: Record<string, unknown>) => {
+    const { handle } = await import('../src/cli/mcp.ts');
+    const r: any = await handle({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+    return { text: r.result.content[0].text as string, error: !!r.result.isError };
+  };
+  before(async () => {
+    await owner.query(`delete from meta.app where alias like 'sec144%'`);
+    await owner.query(`create table if not exists public.sec144_t (n int); delete from public.sec144_t; insert into public.sec144_t values (1)`);
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Sec144', 'none') returning id`, [A])).id;
+    const pid = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
+    await owner.query(`insert into meta.process (page_id, seq, name, type, code) values ($1, 10, 'Wipe', 'sql', 'delete from public.sec144_t; do $$ begin delete from public.sec144_t; end $$')`, [pid]);
+    await owner.query(`insert into meta.supporting_script (app_id, seq, name, script) values ($1, 10, 'drop', 'drop table public.sec144_t')`, [id]);
+    doc = (await owner.one('select meta.export_app($1) as doc', [A])).doc;
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias like 'sec144%'`);
+    await owner.query(`drop table if exists public.sec144_t`);
+  });
+
+  test('an export is planned in a transaction that is rolled back: its code never runs, nothing stays', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'sec144-'));
+    try {
+      const file = join(dir, 'app.json');
+      writeFileSync(file, JSON.stringify(doc));
+      const apps = (await owner.one(`select count(*)::int as n from meta.app`)).n;
+      const r = await callTool('advise_app', { path: file });
+      assert.equal(r.error, false, r.text);
+      assert.match(r.text, /Page 1 needs no sign-in, and its process Wipe writes data/);
+      assert.equal((await owner.one(`select count(*)::int as n from public.sec144_t`)).n, 1, 'the process was planned, not run');
+      assert.ok(await owner.one(`select to_regclass('public.sec144_t') is not null as ok`), 'supporting objects never run');
+      assert.equal((await owner.one(`select count(*)::int as n from meta.app`)).n, apps);
+      assert.equal((await owner.one(`select count(*)::int as n from meta.app where alias like 'advise-%'`)).n, 0);
+      // a broken export: an error, and still nothing stays
+      const bad = join(dir, 'bad.json');
+      writeFileSync(bad, JSON.stringify({ ...doc, pages: [{ page_no: 'x' }] }));
+      assert.equal((await callTool('advise_app', { path: bad })).error, true);
+      assert.equal((await owner.one(`select count(*)::int as n from meta.app`)).n, apps);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('working copy names are checked, lock notes are cut; unknown applications and actions are errors', async () => {
+    await owner.query(`insert into meta.app (alias, name, authentication) values ('sec144b', 'Sec144b', 'none')`);
+    for (const name of ["x'; drop table meta.app; --", '../../etc', '', 'a'.repeat(41)])
+      assert.equal((await callTool('working_copy', { action: 'create', alias: 'sec144b', name })).error, true, name);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.working_copy w join meta.app a on a.id = w.main_app_id where a.alias = 'sec144b'`)).n, 0);
+    assert.equal((await callTool('working_copy', { action: 'create', alias: "sec144b' or '1'='1", name: 'x' })).error, true);
+    assert.equal((await callTool('working_copy', { action: 'drop', alias: 'sec144b' })).error, true);
+    assert.equal((await callTool('lock_app', { alias: 'sec144b', page: 'x' })).error, true);
+    assert.equal((await callTool('lock_app', { alias: 'sec144b', note: 'n'.repeat(2000), developer: 'admin' })).error, false);
+    assert.equal((await owner.one(`select length(note) as n from meta.builder_lock l join meta.app a on a.id = l.app_id where a.alias = 'sec144b'`)).n, 500);
+    assert.equal((await callTool('lock_app', { alias: 'sec144b', unlock: true })).error, true, "MCP can't unlock admin's lock without force");
+  });
+});

@@ -75,6 +75,9 @@ directory the agent started the server in (the project).
 | `recent_errors` | the latest errors and refused requests from the activity log | no |
 | `export_app` | writes an application to a directory (default `apps/<alias>`, format `text`) | files on disk |
 | `diff_app` | what an import of a directory would change (A/D/M with unified diffs); also reports files it can't read | no |
+| `advise_app` | (0.77) the Advisor on an application or an export (imported and rolled back): SQL planned as the application's role, references, security checks, each finding with its file | no |
+| `working_copy` | (0.77) `list`, `create`, `compare`, `merge`, `refresh` or `delete` working copies; conflicts need `prefer` (copy or main) or `take` (component ids); a merge is refused while another developer has a lock on it | the database |
+| `lock_app` | (0.77) locks an application or a page (`unlock: true` removes it; another developer's lock only with `force: true`, logged) | the database |
 | `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place. It checks the application first (the Advisor, in the import's transaction): errors refuse the import and are listed; `force: true` imports anyway, `dry_run: true` only checks | the database |
 
 The files are the [directory format](18-cli.md#the-directory-format) of the command line, in the

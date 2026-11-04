@@ -7,7 +7,7 @@ import { clientIp, logActivity } from '../session.ts';
 import {
   compare, copiesOf, copyOf, createCopy, deleteCopy, fingerprint, mergeCopy, WorkingCopyError, type Change,
 } from '../workingcopy.ts';
-import { lockText, type Lock } from './locks.ts';
+import { lockedFor } from '../cli/working-copy.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 import { appAllowed } from './workspaces.ts';
 
@@ -23,16 +23,6 @@ const appRow = async (id: string) => (/^\d{1,9}$/.test(id) ? owner.one('select i
 
 const SIDE: Record<string, string> = { added: 'added', deleted: 'deleted', changed: 'changed' };
 const STATUS: Record<Change['status'], string> = { copy: 'Changed in the copy', main: 'Changed in the main application', conflict: 'Conflict: changed on both sides' };
-
-/** Another developer's lock on the target application or one of the pages a merge changes. */
-const lockedFor = (username: string) => async (appId: number, pages: Set<number>) => {
-  const l = await owner.one<Lock>(
-    `select app_id, page_no, locked_by, locked_at::text, note from meta.builder_lock
-      where app_id = $1 and locked_by <> $2 and (page_no = 0 or page_no = any($3::int[])) order by page_no limit 1`,
-    [appId, username, [...pages]],
-  );
-  return l ? `${lockText(l)} The change is refused until it is unlocked.` : null;
-};
 
 function diffPanel(ch: Change) {
   const paths = [...new Set([...(ch.main?.keys() ?? []), ...(ch.copy?.keys() ?? [])])].sort();

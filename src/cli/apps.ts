@@ -95,7 +95,7 @@ export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off
       const { advise } = await import('../builder/advisor.ts');
       findings = (await advise(id, db)).findings.map((f) => ({
         severity: f.severity,
-        where: f.entry ? `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.kindLabel.toLowerCase()} ${f.entry.label}` : 'database',
+        where: f.entry ? (f.entry.kind === 'page' ? f.entry.label : `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.kindLabel.toLowerCase()} ${f.entry.label}`) : 'database',
         field: f.field,
         message: f.message,
       }));

@@ -44,6 +44,9 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgkiln/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
 | `pgkiln import <path> [--alias <alias>] [--replace [--only <file>]…] [--check [--force] \| --dry-run]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place (after a [backup](03-builder.md#backups)); with `--only pages/12` (repeatable) only that page or component file ([below](#importing-one-page-or-component)). `--check` checks the application before it commits, `--dry-run` only checks ([below](#checking-before-an-import)) |
 | `pgkiln diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
+| `pgkiln advise <path\|alias> [--format text\|json\|sarif] [--fail-on error\|warning\|info\|never] [-o <file>] [--base <dir>]` | (0.77) The [Advisor](03-builder.md#advisor) for CI: an export is imported into a transaction that is always rolled back and checked there; an alias checks the application in the database. SARIF points each finding at its file, so pull requests get annotations. Exit code 1 from `--fail-on` (default `error`) ([below](#pgkiln-advise-in-ci)) |
+| `pgkiln working-copy list\|create\|compare\|merge\|refresh\|delete <alias> [<name>] [--prefer copy\|main] [--take <component>]… [--as <developer>]` | (0.77) [Working copies](03-builder.md#working-copies) from the command line ([below](#working-copies-and-locks)) |
+| `pgkiln lock <alias> [--page <n>] [--note <text>]` / `pgkiln unlock <alias> [--page <n>] [--force]` | (0.77) The builder's application and page locks; another developer's lock is broken only with `--force` (logged) |
 | `pgkiln ddl <schema> [--no-comments] [--no-grants] [--out <file>]` | The DDL of a schema's objects, in an order that runs (as SQL Workshop → DDL, [chapter 3](03-builder.md#sql-workshop)) |
 | `pgkiln compare <source> <target> [--script]` | Compares two schemas: `+` only in the source, `-` only in the target, `~` different; exit code 1 when they differ. `--script` writes the script that makes the target like the source (drops commented out); nothing is run |
 | `pgkiln mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
@@ -272,6 +275,77 @@ Import page has the check ticked.
 `export --format dir` into an existing directory removes the files of deleted components and
 leaves dot files (`.git`, `.gitattributes`) alone; it refuses a non-empty directory without a
 `pgkiln.json`, so a typo can't empty the wrong folder.
+
+### pgkiln advise in CI
+
+(sprint 144; APEX 26.2: APEXlang static analysis with SQLcl CodeScan) `pgkiln advise` runs the
+[Advisor](03-builder.md#advisor) outside the builder: every SQL fragment planned as the application's role, the
+references, and the security checks (pages that write data without sign-in or an authorization scheme, unrestricted
+page protection, long sessions, administrators without a second factor). Given a path (directory, `.zip` or JSON
+export), it imports the application under a temporary alias in a transaction that is always rolled back: nothing
+changes, and process code, supporting objects and plug-in SQL are never run. Given an alias, it checks the application
+in the database (also rolled back).
+
+It needs a database: pgkiln's migrations for the `meta` schema, and the application's own tables, so the SQL plans
+against what the new version needs. In CI that is a PostgreSQL service, `pgkiln migrate` and your own migrations:
+
+```yaml
+# .github/workflows/pgkiln.yml
+jobs:
+  advise:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, security-events: write }
+    services:
+      postgres:
+        image: postgres:17
+        env: { POSTGRES_USER: pgkiln, POSTGRES_PASSWORD: pgkiln, POSTGRES_DB: pgkiln }
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 2s --health-retries 30
+    env:
+      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npx pgkiln migrate
+      - run: psql "$DATABASE_URL" -f db/schema.sql          # your application's tables
+      - run: npx pgkiln advise apps/sales --format sarif -o advise.sarif --fail-on warning
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with: { sarif_file: advise.sarif }
+```
+
+| Format | What it gives |
+|---|---|
+| `text` (default) | one finding per line with its file under it, and a summary line |
+| `json` | `{ alias, checked, counts: { error, warning, info }, findings: [{ severity, where, field, message, page, kind, file }] }` |
+| `sarif` | SARIF 2.1.0: a result per finding with its level (error, warning, note), a stable rule id (`pgkiln/region/source`) and the file of its page or component in the export (`apps/sales/pages/0002-orders/regions/0010-order-list.yaml`), so GitHub code scanning annotates the pull request |
+
+The paths are relative to the current directory. With an alias there is no directory: `--base apps/sales` names
+the folder its export is kept in. `--fail-on` sets the exit code: 1 when a finding is at that level or worse
+(`error` by default; `never` always 0); 2 for a usage error, 3 when the database can't be reached.
+
+### Working copies and locks
+
+(sprint 144; APEX 26.2: the Application and Working Copy APIs) The builder's [working copies](03-builder.md#working-copies)
+and locks, for scripts and CI:
+
+```sh
+pgkiln working-copy create sales "feature x" --as alice   # Working copy feature x of sales: application sales-feature-x (812)
+pgkiln export sales-feature-x --format text -o apps/sales-feature-x   # change the copy's files …
+pgkiln import apps/sales-feature-x --replace --check
+pgkiln working-copy compare sales-feature-x                # copy / main / CONFLICT per component, exit 1 with conflicts
+pgkiln working-copy merge sales-feature-x --take pages/0002/page --as alice
+pgkiln working-copy delete sales-feature-x
+pgkiln lock sales --page 2 --note "release 1.4" --as alice
+pgkiln unlock sales --page 2 --as alice
+```
+
+A merge needs a choice for every conflict (a component changed in both): `--prefer copy` or `--prefer main` for all
+of them, or `--take <component>` (as `compare` lists them) for each that keeps the copy's version. It is refused while
+another developer has locked the target application or a page it changes, as in the builder. Changes go to the
+activity log under `--as`, else `PGKILN_DEVELOPER`, else the operating system user. The MCP server has the same as
+the tools `advise_app`, `working_copy` and `lock_app` ([chapter 20](20-ai-agents.md#tools)).
 
 ### diff
 

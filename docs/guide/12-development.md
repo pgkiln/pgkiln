@@ -49,7 +49,10 @@ src/
   cli/                     the command line: main.ts (commands, help, exit codes), apps.ts (connect, export,
                            read, import), files.ts (directories, zip), diff.ts, replace.ts (import --replace in place),
                            mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20), only.ts (sprint 116:
-                           `import --replace --only pages/12`, the named files merged over the application's current export)
+                           `import --replace --only pages/12`, the named files merged over the application's current export),
+                           advise.ts (sprint 144: `pgkiln advise`, the Advisor on an export rolled back, text / JSON / SARIF
+                           with each finding at its file), working-copy.ts (sprint 144: working copies and locks for the
+                           command line and the MCP tools working_copy and lock_app)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the owner and shared runtime pools, `runtime` (the current scope's: runtimeScope), appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
