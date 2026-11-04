@@ -84,6 +84,28 @@ async function checkPassword(password: string, username: string) {
   }
 }
 
+/** (sprint 144) pgkiln lock / unlock */
+async function lockCommand(v: Values, alias: string, what: 'lock' | 'unlock') {
+  const by = (v.as as string) ?? process.env.PGKILN_DEVELOPER ?? userInfo().username;
+  const page = v.page === undefined ? null : Number(v.page);
+  if (page !== null && !(Number.isInteger(page) && page > 0)) throw new UsageError('--page: a page number');
+  process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+  const wc = await import('./working-copy.ts');
+  const { closePools } = await import('../db.ts');
+  try {
+    out(what === 'lock' ? await wc.lockApp(alias, page, by, (v.note as string) ?? null) : await wc.unlockApp(alias, page, by, !!v.force));
+    return EXIT.ok;
+  } catch (e) {
+    if (e instanceof wc.WorkingCopyError) {
+      err(`pgkiln ${what}: ${e.message}\n`);
+      return EXIT.differences;
+    }
+    throw e;
+  } finally {
+    await closePools();
+  }
+}
+
 // ------------------------------------------------------------------ commands
 
 const COMMANDS: Record<string, Command> = {
@@ -306,6 +328,133 @@ const COMMANDS: Record<string, Command> = {
         if (!v['name-only']) err(changes.length ? `${changes.length} file(s) differ.\n` : 'No differences.\n');
       }
       return changes.length ? EXIT.differences : EXIT.ok;
+    },
+  },
+
+  advise: {
+    usage: 'pgkiln advise <path | alias> [--format text|json|sarif] [--fail-on error|warning|info|never] [-o <file>]',
+    summary: 'check an export or an application with the Advisor (for CI: text, JSON or SARIF)',
+    details:
+      'Runs the builder\'s Advisor: every SQL fragment is planned as the application\'s database role (unknown\n' +
+      'tables, columns, functions, types and missing grants), references to pages, items, lists of values and\n' +
+      'schemes are followed, and security defaults are checked (pages that write data without sign-in or an\n' +
+      'authorization scheme, unrestricted page protection, long sessions, administrators without a second factor).\n\n' +
+      'A path (an export directory, a .zip or a JSON export) is imported into a transaction that is rolled back:\n' +
+      'nothing changes. It needs a database with pgkiln\'s migrations and the application\'s own tables (in CI, a\n' +
+      'PostgreSQL service, pgkiln migrate and your migrations). An alias checks the application in the database.\n\n' +
+      'SARIF points every finding at the file of its page or component in the export, so GitHub code scanning\n' +
+      'annotates the pull request. Exit code 1 when a finding is at or above --fail-on (default: error).',
+    options: { format: { type: 'string', short: 'f' }, 'fail-on': { type: 'string' }, output: { type: 'string', short: 'o' }, base: { type: 'string' } },
+    optionHelp: [
+      ['-f, --format <format>', 'text (default), json or sarif'],
+      ['--fail-on <level>', 'exit code 1 from this level: error (default), warning, info or never'],
+      ['-o, --output <file>', 'write the report to a file (the summary still goes to standard error)'],
+      ['--base <dir>', 'with an alias: the folder its export lives in, for the paths in the report (e.g. apps/hr)'],
+    ],
+    positionals: [1, 1],
+    async run(v, [target]) {
+      const format = (v.format as string) ?? 'text';
+      const failOn = (v['fail-on'] as string) ?? 'error';
+      if (!['text', 'json', 'sarif'].includes(format)) throw new UsageError(`--format: text, json or sarif, not ${format}`);
+      if (!['error', 'warning', 'info', 'never'].includes(failOn)) throw new UsageError(`--fail-on: error, warning, info or never, not ${failOn}`);
+      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+      const { adviseTarget, fails, formatJson, formatSarif, formatText } = await import('./advise.ts');
+      const { closePools } = await import('../db.ts');
+      try {
+        const r = await withDb((db) => adviseTarget(db, target));
+        const base = (v.base as string) ?? null;
+        const report = format === 'sarif' ? formatSarif(r, version(), base) : format === 'json' ? formatJson(r, base) : formatText(r, base);
+        if (v.output) {
+          writeFileSync(v.output as string, report);
+          const count = (s: string) => r.findings.filter((f) => f.severity === s).length;
+          err(`${r.alias}: ${count('error')} error(s), ${count('warning')} warning(s), ${count('info')} note(s); report in ${v.output}.\n`);
+        } else out(report);
+        return fails(r.findings, failOn as 'error') ? EXIT.differences : EXIT.ok;
+      } finally {
+        await closePools();
+      }
+    },
+  },
+
+  'working-copy': {
+    usage: 'pgkiln working-copy <list|create|compare|merge|refresh|delete> <alias> [<name>] [--prefer copy|main] [--take <component>]… [--as <developer>]',
+    summary: 'make, compare, merge and delete working copies of an application',
+    details:
+      'list <alias>             the working copies of an application\n' +
+      'create <alias> <name>    a working copy of the application (a new application, alias printed)\n' +
+      'compare <copy>           the components that differ from the main application (exit 1 with conflicts)\n' +
+      'merge <copy>             the copy\'s changes into the main application\n' +
+      'refresh <copy>           the main application\'s changes into the copy\n' +
+      'delete <copy>            delete the working copy\n\n' +
+      'Conflicts (a component changed on both sides) need a choice: --prefer copy or --prefer main for all, or\n' +
+      '--take <component> (as compare lists them) for each one that keeps the copy\'s version. A merge is refused\n' +
+      'while another developer has locked the target application or a page it changes. Changes are logged under\n' +
+      '--as, else PGKILN_DEVELOPER, else the operating system user.',
+    options: { prefer: { type: 'string' }, take: { type: 'string', multiple: true }, as: { type: 'string' } },
+    optionHelp: [
+      ['--prefer copy|main', 'merge, refresh: resolve every conflict this way'],
+      ['--take <component>', 'merge, refresh: this conflict keeps the copy\'s version (repeat)'],
+      ['--as <developer>', 'who does it (activity log, locks)'],
+    ],
+    positionals: [2, 3],
+    async run(v, [action, alias, name]) {
+      const by = (v.as as string) ?? process.env.PGKILN_DEVELOPER ?? userInfo().username;
+      const prefer = v.prefer as string | undefined;
+      if (prefer !== undefined && prefer !== 'copy' && prefer !== 'main') throw new UsageError('--prefer: copy or main');
+      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+      const wc = await import('./working-copy.ts');
+      const { closePools } = await import('../db.ts');
+      try {
+        switch (action) {
+          case 'list': out(await wc.listCopies(alias)); return EXIT.ok;
+          case 'create':
+            if (!name) throw new UsageError('create needs a name: pgkiln working-copy create <alias> <name>');
+            out((await wc.createWorkingCopy(alias, name, by)).text);
+            return EXIT.ok;
+          case 'compare': {
+            const c = await wc.compareCopy(alias);
+            out(c.text);
+            return c.conflicts ? EXIT.differences : EXIT.ok;
+          }
+          case 'merge':
+          case 'refresh':
+            out(await wc.mergeWorkingCopy(alias, { direction: action, prefer: (prefer as 'copy' | 'main') ?? null, take: (v.take as unknown as string[] | undefined) ?? [], by }));
+            return EXIT.ok;
+          case 'delete': out(await wc.deleteWorkingCopy(alias, by)); return EXIT.ok;
+          default: throw new UsageError(`unknown action ${action}: list, create, compare, merge, refresh or delete`);
+        }
+      } catch (e) {
+        if (e instanceof wc.WorkingCopyError) {
+          err(`pgkiln working-copy: ${e.message}\n`);
+          return EXIT.differences;
+        }
+        throw e;
+      } finally {
+        await closePools();
+      }
+    },
+  },
+
+  lock: {
+    usage: 'pgkiln lock <alias> [--page <n>] [--note <text>] [--as <developer>]',
+    summary: 'lock an application or one of its pages, as the builder\'s Lock does',
+    details: 'Other developers can\'t change it in the builder, import over it or merge into it until it is unlocked.',
+    options: { page: { type: 'string', short: 'p' }, note: { type: 'string' }, as: { type: 'string' } },
+    optionHelp: [['-p, --page <n>', 'lock this page only'], ['--note <text>', 'why (shown to the others)'], ['--as <developer>', 'whose lock (default PGKILN_DEVELOPER or the operating system user)']],
+    positionals: [1, 1],
+    async run(v, [alias]) {
+      return lockCommand(v, alias, 'lock');
+    },
+  },
+
+  unlock: {
+    usage: 'pgkiln unlock <alias> [--page <n>] [--force] [--as <developer>]',
+    summary: 'unlock an application or a page (another developer\'s lock only with --force, logged)',
+    options: { page: { type: 'string', short: 'p' }, force: { type: 'boolean' }, as: { type: 'string' } },
+    optionHelp: [['-p, --page <n>', 'unlock this page'], ['--force', 'break another developer\'s lock (logged)'], ['--as <developer>', 'who unlocks']],
+    positionals: [1, 1],
+    async run(v, [alias]) {
+      return lockCommand(v, alias, 'unlock');
     },
   },
 

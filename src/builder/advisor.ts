@@ -3,6 +3,7 @@ import pg from 'pg';
 import { applyBinds, splitStatements } from '../binds.ts';
 import { owner, runtime, type Db } from '../db.ts';
 import { devDbForApp } from '../workspace-db.ts';
+import { settingFrom } from '../instance.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { templateProblem } from '../runtime/document.ts';
@@ -154,6 +155,49 @@ export async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): 
   return unchecked.length ? { severity: 'info', message: `Not checked (only SELECT, INSERT, UPDATE, DELETE, MERGE and DO can be checked without running them): ${unchecked.join(', ')}` } : null;
 }
 
+/** process types that write data (sprint 144: the security checks below; a sql process when its code has DML) */
+const WRITES = ['form_dml', 'grid_dml', 'sql'];
+/** (sprint 144) session limits above which the Advisor warns (APEX CodeScan's session limits) */
+export const SESSION_LIMITS = { idleMinutes: 120, maxHours: 24 };
+
+/**
+ * (sprint 144, AP-10; APEX 26.2: APEXlang static analysis / SQLcl CodeScan) Security defaults of an application:
+ *  - a page anyone can open (no sign-in) with a process that writes data;
+ *  - a signed-in page that writes data with neither the page nor the process behind an authorization scheme, in an
+ *    application that has schemes (info: every signed-in user may use it);
+ *  - a page with unrestricted protection whose items take values from the URL without a checksum (APEX: value
+ *    protection; hidden items never take posted values in pgkiln, so URL values are the way in);
+ *  - the installation's session limits above SESSION_LIMITS.
+ */
+async function securityFindings(appId: number, query: (sql: string, params?: unknown[]) => Promise<pg.QueryResult>, byKey: Map<string, Entry>): Promise<Finding[]> {
+  const out: Finding[] = [];
+  const schemes = (await query('select count(*)::int as n from meta.authz_scheme where app_id = $1', [appId])).rows[0].n as number;
+  const pages = (await query(
+    `select p.id, p.page_no, p.requires_auth, p.authz, p.protection,
+            (select array_agg(pr.name order by pr.seq) from meta.process pr where pr.page_id = p.id and pr.type = any($2) and pr.authz is null and coalesce(pr.build_option, '') <> 'COMMENTED_OUT'
+               and (pr.type <> 'sql' or pr.code ~* '\\m(insert|update|delete|merge|truncate)\\M')) as writes,
+            (select count(*)::int from meta.item i where i.page_id = p.id and i.type <> 'display') as items
+       from meta.page p where p.app_id = $1 and coalesce(p.build_option, '') <> 'COMMENTED_OUT' order by p.page_no`, [appId, WRITES])).rows;
+  for (const p of pages) {
+    const entry = byKey.get(`page-${p.id}`) ?? null;
+    const writes: string[] = p.writes ?? [];
+    if (writes.length && !p.requires_auth)
+      out.push({ severity: 'warning', entry, field: 'Security → Authentication', message: `Page ${p.page_no} needs no sign-in, and its process ${writes.join(', ')} writes data: anyone can run it. Require authentication, or put the process behind an authorization scheme.` });
+    else if (writes.length && !p.authz && schemes)
+      out.push({ severity: 'info', entry, field: 'Security → Authorization scheme', message: `Page ${p.page_no} writes data (${writes.join(', ')}) with no authorization scheme on the page or the process: every signed-in user may use it.` });
+    if (p.protection === 'unrestricted' && p.items)
+      out.push({ severity: writes.length ? 'warning' : 'info', entry, field: 'Security → Page protection', message: `Page ${p.page_no} is unrestricted: a link can set its items without a checksum${writes.length ? ', and the page writes data' : ''}. Use checksum protection unless the URL is meant to be typed.` });
+  }
+  const settings = (await query(`select name, value from meta.setting where name in ('session_idle_minutes', 'session_max_hours')`).catch(() => ({ rows: [] }))).rows;
+  const idle = settingFrom('session_idle_minutes', settings);
+  const max = settingFrom('session_max_hours', settings);
+  if (idle > SESSION_LIMITS.idleMinutes)
+    out.push({ severity: 'warning', entry: null, field: 'Instance settings → Session idle time', message: `Sessions end after ${idle} minutes without requests; more than ${SESSION_LIMITS.idleMinutes} leaves unattended sessions open.` });
+  if (max > SESSION_LIMITS.maxHours)
+    out.push({ severity: 'warning', entry: null, field: 'Instance settings → Maximum session length', message: `Sessions last up to ${max} hours; more than ${SESSION_LIMITS.maxHours} keeps a stolen session usable for long.` });
+  return out;
+}
+
 const ITEM_REF = /(?<![A-Za-z0-9_$&:])(?::|&)(P\d+_[A-Z0-9_]+)\b/gi;
 const BUILT_IN = new Set(['MUST_NOT_BE_PUBLIC_USER']);
 
@@ -177,7 +221,11 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       ? await query(`select t.*, p.page_no from ${table} t join meta.page p on p.id = t.page_id where p.app_id = $1`, [appId])
       : await query(`select * from ${table} where app_id = $1`, [appId])
     ).rows.map((row) => ({ kind, row }));
-  const all = (await Promise.all(Object.entries(COMPONENTS).map(([kind, spec]) => rowsOf(kind, spec.table, spec.scope)))).flat();
+  // one client (an import's transaction) runs one query at a time; the pool may run them side by side
+  const lists: { kind: string; row: any }[][] = [];
+  if (tx) for (const [kind, spec] of Object.entries(COMPONENTS)) lists.push(await rowsOf(kind, spec.table, spec.scope));
+  else lists.push(...(await Promise.all(Object.entries(COMPONENTS).map(([kind, spec]) => rowsOf(kind, spec.table, spec.scope)))));
+  const all = lists.flat();
 
   // metadata checks, as the owner (before the role switch below: the application's role can't read meta)
   // (087) the application's login page: a page that needs no sign-in, with a login region
@@ -201,6 +249,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   for (const p of (await query(`select p.page_no, p.page_group from meta.page p where p.app_id = $1 and p.page_group is not null
                                    and not exists (select 1 from meta.page_group g where g.app_id = p.app_id and g.name = p.page_group) order by 1`, [appId])).rows)
     findings.push({ severity: 'warning', entry: null, field: `Page ${p.page_no} → Page group`, message: `Page group ${p.page_group} doesn't exist (Shared Components → Page groups).` });
+  findings.push(...(await securityFindings(appId, query, byKey)));
   // ---- SQL, as the application's role, rolled back (a savepoint in the caller's transaction)
   // (090) an isolated workspace's application: planned on the workspace's developer login, in a
   // transaction of its own (planning can run the application's functions; RESET ROLE there only

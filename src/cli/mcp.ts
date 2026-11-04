@@ -427,6 +427,99 @@ export const TOOLS: Tool[] = [
       );
     },
   },
+  // (sprint 144, AP-10) the Advisor and working copies, as `pgkiln advise` / `pgkiln working-copy` / `pgkiln lock`
+  {
+    name: 'advise_app',
+    title: 'Check an application with the Advisor',
+    description:
+      'Runs the Advisor on an export directory, zip or JSON file (imported into a transaction that is rolled back: nothing changes) ' +
+      'or on the application in the database: every SQL fragment planned as the application\'s role, references to pages, items, ' +
+      'lists of values and schemes, and security defaults (pages that write data without sign-in or an authorization scheme, ' +
+      'unrestricted page protection, long sessions, administrators without a second factor). Each finding names its file in the export.',
+    inputSchema: {
+      type: 'object',
+      properties: { ...aliasProp, path: { type: 'string', description: 'an export directory, .zip or .json instead of the application in the database' } },
+    },
+    annotations: { readOnlyHint: true },
+    async run(a) {
+      const path = str(a, 'path');
+      const alias = str(a, 'alias');
+      if (!path && !alias) throw new ToolError('give an alias or a path');
+      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+      const { adviseTarget, formatText } = await import('./advise.ts');
+      return cap(formatText(await withDb((db) => adviseTarget(db, path ? resolve(path) : alias!))));
+    },
+  },
+  {
+    name: 'working_copy',
+    title: 'Working copies of an application',
+    description:
+      'Work on a copy of an application and merge it back, as App Builder → Working copies does. action: list (the copies of alias), ' +
+      'create (a copy named name; its alias is returned: export, change and import that one), compare (the components that differ from the ' +
+      'main application: copy, main or CONFLICT, with ids), merge (the copy\'s changes into the main application), refresh (the main ' +
+      'application\'s changes into the copy) or delete. Conflicts need prefer (copy or main) or take (the conflict ids that keep the copy\'s ' +
+      'version). A merge is refused while another developer has locked the target application or a page it changes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['list', 'create', 'compare', 'merge', 'refresh', 'delete'] },
+        alias: { type: 'string', description: 'the main application (list, create) or the working copy (compare, merge, refresh, delete)' },
+        name: { type: 'string', description: 'create: the copy\'s name (letters, digits, spaces, - and _)' },
+        prefer: { type: 'string', enum: ['copy', 'main'], description: 'merge, refresh: how to resolve every conflict' },
+        take: { type: 'array', items: { type: 'string' }, description: 'merge, refresh: conflict ids (from compare) that keep the copy\'s version' },
+        developer: { type: 'string', description: 'who does it, for the activity log and locks (default: MCP)' },
+      },
+      required: ['action', 'alias'],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    async run(a) {
+      const action = str(a, 'action', true)!;
+      const alias = str(a, 'alias', true)!;
+      const by = str(a, 'developer') ?? 'MCP';
+      const prefer = str(a, 'prefer');
+      if (prefer && prefer !== 'copy' && prefer !== 'main') throw new ToolError('prefer: copy or main');
+      const take = Array.isArray(a.take) ? (a.take as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+      const wc = await import('./working-copy.ts');
+      switch (action) {
+        case 'list': return wc.listCopies(alias);
+        case 'create': return (await wc.createWorkingCopy(alias, str(a, 'name', true)!, by)).text;
+        case 'compare': return cap((await wc.compareCopy(alias)).text);
+        case 'merge':
+        case 'refresh': return wc.mergeWorkingCopy(alias, { direction: action, prefer: (prefer as 'copy' | 'main' | undefined) ?? null, take, by });
+        case 'delete': return wc.deleteWorkingCopy(alias, by);
+        default: throw new ToolError('action: list, create, compare, merge, refresh or delete');
+      }
+    },
+  },
+  {
+    name: 'lock_app',
+    title: 'Lock or unlock an application or page',
+    description:
+      'Locks an application (or one page) so other developers can\'t change it, import over it or merge into it, as the builder\'s Lock does; ' +
+      'unlock=true removes the lock (another developer\'s lock only with force=true, which is logged).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...aliasProp,
+        page: { type: 'integer', description: 'lock this page only' },
+        unlock: { type: 'boolean' },
+        force: { type: 'boolean', description: 'with unlock: break another developer\'s lock' },
+        note: { type: 'string', description: 'why (shown to other developers)' },
+        developer: { type: 'string', description: 'whose lock (default: MCP)' },
+      },
+      required: ['alias'],
+    },
+    annotations: { readOnlyHint: false },
+    async run(a) {
+      const alias = str(a, 'alias', true)!;
+      const page = a.page === undefined || a.page === null ? null : int(a, 'page', 1, 1_000_000);
+      const by = str(a, 'developer') ?? 'MCP';
+      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+      const wc = await import('./working-copy.ts');
+      return a.unlock === true ? wc.unlockApp(alias, page, by, a.force === true) : wc.lockApp(alias, page, by, str(a, 'note') ?? null);
+    },
+  },
   {
     name: 'describe_schema',
     title: 'Describe database objects',

@@ -70,7 +70,8 @@ describe('deployments: an import checked before it commits', () => {
     assert.match(r.out, /column "nope" does not exist[\s\S]*Dry run: nothing was imported/);
     r = cli('import', file('good.json', withSource('select empno, ename from hr.emp')), '--replace', '--alias', ALIAS, '--dry-run');
     assert.equal(r.code, 0, r.out);
-    assert.match(r.out, /Check: no problems found/);
+    // (sprint 144) the Advisor's security notes may remain: no errors and no warnings
+    assert.match(r.out, /Check: (no problems found|0 error\(s\), 0 warning\(s\))/);
     assert.notEqual(await reportSource(), 'select empno, ename from hr.emp');
     r = cli('import', file('bad.json', withSource('select * from hr.no_such_table')), '--replace', '--alias', ALIAS, '--check', '--force');
     assert.equal(r.code, 0, r.out);
