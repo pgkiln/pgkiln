@@ -12555,6 +12555,7 @@ describe('sprint 139 AP-6', () => {
   };
   const otel = () => owner.query<{ name: string; value: string }>(`select name, value from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%' order by name`).then((r) => r.rows);
   before(async () => {
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
     hrWs = (await owner.one(`select meta.app_workspace(id) as ws from meta.app where alias = 'hr'`)).ws;
     await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, DEV_PW]);
     await owner.query('delete from meta.workspace_member where username = $1', [DEV]);

@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 
+process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
 process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
 process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 

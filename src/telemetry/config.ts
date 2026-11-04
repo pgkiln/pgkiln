@@ -235,6 +235,15 @@ export const appIdOf = (alias: string | undefined) => (alias ? aliases.get(alias
 
 // ---------------------------------------------------------------- saving (the builder)
 
+const NO_KEY = 'Headers are stored encrypted: set PGKILN_SECRET_KEY in the server\'s environment first (or leave the headers empty).';
+function tryEncrypt(plain: string): string | null {
+  try {
+    return encryptSecret(plain);
+  } catch {
+    return null;
+  }
+}
+
 export interface InstanceForm {
   enabled?: string;
   endpoint?: string;
@@ -280,7 +289,11 @@ export async function saveInstanceTelemetry(f: InstanceForm): Promise<string | n
     ['otel_browser', yes(f.browser)],
     ['metrics_endpoint', yes(f.prometheus)],
   ];
-  if (headers) writes.push(['otel_headers_enc', encryptSecret(headers)]);
+  if (headers) {
+    const enc = tryEncrypt(headers);
+    if (!enc) return NO_KEY;
+    writes.push(['otel_headers_enc', enc]);
+  }
   else if (f.remove_headers === 'true') writes.push(['otel_headers_enc', null]);
   await owner.tx(async (c) => {
     for (const [k, v] of writes) {
@@ -316,11 +329,13 @@ export async function saveWorkspaceTelemetry(wsId: number, f: WorkspaceForm): Pr
   if (mode === 'own' && !endpoint) return 'Give the URL of the workspace\'s own collector.';
   const headers = (f.headers ?? '').trim();
   if (headers && !Object.keys(parsePairs(headers)).length) return 'Headers: name=value, one per line or comma separated.';
+  const enc = headers ? tryEncrypt(headers) : null;
+  if (headers && !enc) return NO_KEY;
   await owner.query(
     `update meta.workspace set telemetry = $2, telemetry_endpoint = $3, telemetry_values = $4,
             telemetry_headers_enc = case when $5::text is not null then $5 when $6 then null else telemetry_headers_enc end
       where id = $1`,
-    [wsId, mode, endpoint || null, f.values === 'true', headers ? encryptSecret(headers) : null, f.remove_headers === 'true'],
+    [wsId, mode, endpoint || null, f.values === 'true', enc, f.remove_headers === 'true'],
   );
   await refreshTelemetry(true);
   return null;
