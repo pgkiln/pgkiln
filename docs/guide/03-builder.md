@@ -226,7 +226,7 @@ department. Every installation has the **Default** workspace, which holds the ap
   current workspace; a working copy stays in its main application's workspace. Imports made with the command line
   (`pgkiln import`) go into Default. Exports don't carry the workspace.
 - **Workspace utilities**: tiles for users and sign-in, application groups, the App Gallery, developers, the SQL
-  Workshop and the dashboard (and, for administrators, instance settings, workspaces, AI and mail services and the
+  Workshop, the dashboard, [static workspace files, remote servers and web credentials](#static-workspace-files-remote-servers-and-web-credentials) (and, for administrators, instance settings, workspaces, AI and mail services and the
   installation), with **Cross Application Reports** in the side column (APEX: Cross Application Reports), each over
   every application of the current workspace: *Application attributes* (type, sign-in, availability, build status,
   debug level, language, database role), *Build options*, *Developer comments*, *Authentication* (sign-in methods,
@@ -332,6 +332,9 @@ applications' files. Choose what goes in:
 | SQL scripts, blueprints, data generators | The SQL Workshop's saved work |
 | Data Reporter datasets | Every [dataset](#data-reporter-datasets-and-reporting-applications) (sprint 110) |
 | Team Development | [Label groups, labels, milestones, templates and issues](#team-development) with their comments and history; an issue's application by alias (sprint 113) |
+| Static workspace files | Every [file](#static-workspace-files-remote-servers-and-web-credentials), its content in base64 (sprint 141) |
+| Remote servers | Static id, name, base URL, environment variable, default credential; on import an **existing server keeps its own base URL** (it is per installation), a new one takes the file's (sprint 141) |
+| Web credentials | The workspace's web credentials **without their secrets**: a new one gets its secret entered after the import, an existing one keeps its own (sprint 141) |
 
 Never in the file: the workspace's name, its [isolation](#isolated-workspaces) and database roles, its
 [mail service](#a-workspaces-own-mail-service) and [network access list](#network-access) (installation-specific, like
@@ -350,6 +353,37 @@ Administration menu → **Workspace utilization** (`/builder/workspaces/<id>/uti
 Utilization), for administrators and the workspace's administrators: the number of applications, pages, developers,
 page views of the last 30 days and SQL scripts; per application its pages, regions, items, page views, users and the
 size of its static files; and the schemas the workspace's database roles use with their tables and storage.
+
+### Static workspace files, remote servers and web credentials
+
+What every application of a workspace shares (sprint 141; APEX: *Static Workspace Files*, *Remote Servers* and
+workspace-level *Web Credentials*). Three tiles of Workspace utilities, for the **current workspace**: its developers
+see them, its administrators (and the installation's) add, change and delete. Nothing here reaches another workspace:
+another workspace's file is never served to an application, its servers and credentials are never found.
+
+- **Static workspace files** (`/builder/workspace-files`): CSS, JavaScript, JSON, images and fonts, with the same
+  names, types (no HTML), 5 MB limit and headers as [static application files](#static-application-files). Each
+  application serves them from its own address, `/a/<alias>/workspace-files/<name>`, so the Content-Security-Policy
+  stays `script-src 'self'`. An application loads one on every page with `#WORKSPACE_FILES#brand.css` in *Every page
+  loads* (Shared Components → Static application files; a page: Page → Appearance → JavaScript and CSS files), next to
+  its own files; HTML, templates, list entries and links write `#WORKSPACE_FILES#logo.png` and
+  `#APP_FILES#guide.pdf`, which become those addresses. The *Loaded by* column says which applications (and pages)
+  load a file. The builder's preview of a file is sandboxed.
+- **Remote servers** (`/builder/remote-servers`): a **static id** (`CRM`), a name, this installation's **base URL**
+  (`https://crm.example.com/api`, no trailing slash) and/or an **environment variable** `PGKILN_SERVER_<NAME>` that
+  holds it (it wins when the server's environment sets it: one value per environment; only names starting
+  `PGKILN_SERVER_`, so no other variable becomes a URL), and an optional **default web credential**. A
+  [REST data source](19-rest-data-sources.md#remote-servers), a [REST source catalog](19-rest-data-sources.md#rest-source-catalogs)
+  and an [AI service](#ai-services) name a server and a path instead of a full URL: changing the server moves all of
+  them at once. The list shows the URL now (and where it comes from), whether the [network access](#network-access)
+  lists let it through, and what uses each server. Renaming a static id moves this workspace's sources and catalogs
+  along. The URL still passes every check a full URL does.
+- **Web credentials** (`/builder/workspace-credentials`): the [web credentials](19-rest-data-sources.md#web-credentials)
+  of the workspace (basic, header, bearer, OAuth2, object storage), which its applications use **by name** wherever a
+  credential is named: REST data sources, the Invoke API process and workflow step, `meta.web_request`, remote servers,
+  object storage. An application's own credential with the same name wins (the page lists which applications override
+  one). Secrets are encrypted with `PGKILN_SECRET_KEY`, write-only, never exported and never readable by the runtime
+  role; `pgkiln admin rotate-key` and the lockout checks include them.
 
 ### Isolated workspaces
 
@@ -1464,7 +1498,7 @@ APEX's *Static Application Files*: JavaScript, CSS, JSON, images and fonts that 
 application. **Shared Components → Static application files** uploads them (several at once; a
 file with the same name is replaced), writes and edits text files in the browser, renames and
 deletes them. They are served from the application's own address,
-`/a/<alias>/static/<name>`, to anyone (like APEX's `#APP_FILES#`), so don't put secrets in them,
+`/a/<alias>/static/<name>`, to anyone (`#APP_FILES#` in HTML and templates, as in APEX; sprint 141), so don't put secrets in them,
 and they are part of the export (section `static_files`, base64; in a directory export the files
 themselves under `static/`).
 
@@ -1476,7 +1510,8 @@ themselves under `static/`).
   application includes, in order; a page adds its own under **Page → Appearance → JavaScript and
   CSS files** (APEX's *JavaScript File URLs* and *CSS File URLs*). Scripts load with
   `<script src defer>` after pgkiln's own, stylesheets with `<link>`; a name that is not uploaded
-  yet is left out until it is. Renaming a file updates both lists.
+  yet is left out until it is. Renaming a file updates both lists. `#WORKSPACE_FILES#name` in either list loads a
+  [static workspace file](#static-workspace-files-remote-servers-and-web-credentials) (sprint 141).
 - **Caching**: pages link to `…/static/<name>?v=<version>`, which browsers keep for a year; a
   change gives a new version. A link without `?v=` is checked again every time (with an ETag).
 - **The Content-Security-Policy stays strict** (`script-src 'self'`): code runs only from these
@@ -1753,6 +1788,11 @@ fails with *The host … is not on the network access list of workspace …*, is
 (level 2, warning, for `meta.web_request` in a page process; level 1 for regions and processes) and appears under
 **Refused calls** (kept 7 days). **Check a URL** says whether a URL may be called, without calling it.
 
+**Remote servers** (sprint 141): the page lists the host each of the workspace's
+[remote servers](#static-workspace-files-remote-servers-and-web-credentials) stands for now, where its URL comes from
+(base URL or environment variable) and whether a call to it would pass; under the workspace's own list it names the
+servers on each entry.
+
 Not covered by a workspace's list: the installation's own services, which only administrators configure (installation
 mail services, AI services, the geocoder, sign-in providers) and push notification services (their own list,
 `PGKILN_PUSH_HOSTS`).
@@ -1778,7 +1818,10 @@ large language model services of this installation. A service has:
 - the **maximum output tokens** per request (1–128,000) and a **time limit** (5–600 seconds; pages
   wait for the answer);
 - an optional **base URL** for a gateway or proxy that speaks the provider's API (calls to the AI
-  service don't go through `PGKILN_REST_ALLOWED_HOSTS`: only administrators set this URL);
+  service don't go through `PGKILN_REST_ALLOWED_HOSTS`: only administrators set this URL), or
+  (sprint 141) a **remote server** of any workspace plus a path (the service's page, *Remote server*):
+  the service then calls the server's URL of the moment, so moving the endpoint changes one value. The
+  API key is sent to that URL: choose a server whose workspace administrators you trust with it;
 - the **API key**: stored encrypted with `PGKILN_SECRET_KEY`, write-only (never shown again, never
   exported or logged, not readable by applications, never sent to the browser). Without one the
   server's `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` or `OPENAI_COMPATIBLE_API_KEY`

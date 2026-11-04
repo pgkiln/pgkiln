@@ -84,6 +84,12 @@ Shared Components → **Web credentials** → ＋ Add.
 | OAuth2 password, Refresh token | `oauth2`: the password of the OAuth2 user (`password` grant), or a refresh token obtained elsewhere (`refresh_token` grant). Write-only like the secret, each with its own **Remove** button |
 | Valid for URLs | URL prefixes the credential may be sent to, e.g. `https://api.example.com/v2/`. Recommended: a source or process that points elsewhere fails instead of sending the secret |
 
+**Workspace web credentials** (sprint 141): Workspace utilities → **Web credentials** holds credentials with the same
+properties for every application of the workspace ([chapter 3](03-builder.md#static-workspace-files-remote-servers-and-web-credentials)).
+Wherever a credential is named (a source, the `invoke_api` process and step, `meta.web_request`, a remote server's
+default credential, object storage), the application's own credential of that name is used, else the workspace's.
+Another workspace's credentials are never found.
+
 For `oauth2`, pgkiln asks the token endpoint for an access token, keeps it until 30 seconds before
 it expires, renews it with the refresh token when the endpoint gave one, and asks for a new one when
 the service answers 401. Access tokens are kept in the server's memory only.
@@ -118,9 +124,10 @@ Shared Components → **REST data sources** → ＋ Add.
 | Property | Meaning |
 |---|---|
 | Name | Uppercase, e.g. `COUNTRIES` |
-| URL | `https://api.example.com/v1/cities/{city}/weather`: `{name}` is a path parameter. The host is fixed: parameters can only come after it |
+| Remote server | Optional (sprint 141): a [remote server](#remote-servers) of the workspace, e.g. `CRM`; the URL is then the path after its base URL |
+| URL | `https://api.example.com/v1/cities/{city}/weather`: `{name}` is a path parameter. The host is fixed: parameters can only come after it. With a remote server: `/v1/cities/{city}/weather` |
 | Method | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
-| Web credential | The name of a web credential, or empty |
+| Web credential | The name of a web credential (the application's, else the workspace's), or empty: on a remote server, the server's default credential |
 | Parameters | JSON: `[{"name": "city", "in": "path", "default": "&P1_CITY.", "required": true}, {"name": "units", "in": "query", "default": "metric"}]`. `in` is `path`, `query`, `header` or `body`. Defaults may use `&ITEM.` substitutions. `key`: the service's own name for a query, header or body parameter when it isn't lower case with `_`, e.g. `{"name": "page_size", "in": "query", "key": "pageSize"}`; `Authorization`, `Cookie`, `Host` and the transport headers can't be header parameters |
 | Headers | JSON: extra request headers, e.g. `{"Accept-Language": "en"}`. Not for secrets (use a web credential); `Authorization`, `Cookie`, `Host` and the transport headers can't be set |
 | Body | For `POST`, `PUT`, `PATCH`: a JSON template, `{name}` becomes the parameter's value as a JSON string. Empty: the `body` parameters as a JSON object |
@@ -142,6 +149,30 @@ call; define them so reports keep their columns when the service changes.
 
 Path parameters are URL-encoded (`.` and `..` are refused), query parameters appended, header
 parameters sent as headers (one line only), so a value from an item can never change the host.
+
+### Remote servers
+
+A **remote server** (sprint 141; APEX: Remote Servers) is a named base URL of the workspace, kept under Workspace
+utilities → **Remote servers** ([chapter 3](03-builder.md#static-workspace-files-remote-servers-and-web-credentials)):
+a static id (`CRM`), this installation's base URL (`http://127.0.0.1:3100`) and/or an environment variable
+`PGKILN_SERVER_CRM` that wins when set, and an optional default web credential. A source on a server keeps only its
+path (`/a/hr/rest/v1/departments`); every call uses the server's URL **of that moment**, so changing the server (or
+setting `PGKILN_SERVER_CRM=https://crm.example.com` on the production server) moves every source on it at once,
+including write-back, synchronisation, the builder's *Test* and `invoke_api`.
+
+- The resolved URL passes every check a full URL does: the allow-list, the workspace's
+  [network access list](03-builder.md#network-access) (whose page lists each server's host) and the address checks
+  when the connection is made. A server pointed at a private address is refused unless the installation allows it.
+- The path is a path: it starts with `/` or `?` (or is empty), with no `//` or `..` segments, so it can't name another
+  host.
+- A server that doesn't exist in the application's workspace fails the call with *Remote server X does not exist in
+  this application's workspace*. An application export names the server; it imports where the server is missing, and
+  the import message and the [Advisor](03-builder.md#advisor) (a warning) name it.
+- A [REST source catalog](#rest-source-catalogs) can be on a server too, and so can an
+  [AI service](03-builder.md#ai-services).
+
+HR example (part 76): server **CRM** stands for the HR API on `http://127.0.0.1:3100`; DEPARTMENTS, DEPARTMENT and
+EMPLOYEES_API name it.
 
 ### Regions on a REST data source
 
@@ -262,6 +293,9 @@ A catalog comes from:
 - a **catalog file** downloaded from another workspace or installation (*Download* on the catalog's page);
 - **by hand**: a name and base URL, then *Add a service*.
 
+A catalog may name a **remote server** of the workspace (the catalog's page, *Remote server*; sprint 141): its services
+are then paths after the server's URL, and the base URL is optional.
+
 Reading an OpenAPI document, pgkiln takes for each `GET`, `POST`, `PUT`, `PATCH` and `DELETE` operation:
 
 | From the document | Becomes |
@@ -279,7 +313,8 @@ YAML documents: convert them to JSON first (most services offer `openapi.json` t
 
 **Making a data source from a catalog**: an application's Shared Components → REST data sources → ＋ Add shows *From a
 REST source catalog* when the application's workspace has catalogs: pick a service, optionally another name and one
-of the application's web credentials. The data source is a **copy** (URL = base URL + path): changing or deleting the
+of the web credentials (the application's or the workspace's). The data source is a **copy** (URL = base URL + path; on a
+catalog with a **remote server**, sprint 141: the server and the path, so the source moves with the server): changing or deleting the
 catalog later doesn't change it, and *Replace from a document* on a catalog's page replaces only the catalog's
 services. Credentials never belong to a catalog: each application signs in with its own web credential.
 
@@ -335,6 +370,9 @@ values, processes and workflow steps refer to sources and credentials by name, s
   internal addresses need `PGKILN_REST_PRIVATE_HOSTS` as well.
 - A workspace's [network access list](03-builder.md#network-access) narrows the allow-list for its
   applications (it can't widen it).
+- A [remote server](#remote-servers)'s URL is checked like any other URL; its environment variable can only be a
+  `PGKILN_SERVER_…` name, so no other part of the server's environment becomes a URL. Only the workspace's
+  administrators change its servers and credentials.
 - Secrets are encrypted with a key outside the database, write-only in the builder, excluded from
   exports and from the runtime role, and never logged. Use **Valid for URLs** so a credential is
   only ever sent to its own service.

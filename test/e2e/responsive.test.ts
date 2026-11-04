@@ -1048,6 +1048,20 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           const cr = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 50 and r.type = 'classic_report' order by r.seq limit 1`, [appId]);
           return { hr_page_50: `/builder/apps/${appId}/pages/50`, shuttle_item: `/builder/pages/${rs[0].page_id}?c=item-${rs[0].id}`, classic_report_region: `/builder/pages/${cr.page_id}?c=region-${cr.id}` };
         })()),
+        // (sprint 141, AP-7) static workspace files, remote servers (a long URL, a refused host), workspace web credentials (a long "valid for")
+        ...(await (async () => {
+          await owner.query(`insert into meta.workspace_file (workspace_id, name, mime, content) values (1, 'a-rather-long-workspace-file-name-without-spaces.css', 'text/css', 'body{}')
+            on conflict (workspace_id, name) do nothing`);
+          await owner.query(`insert into meta.remote_server (workspace_id, static_id, name, description, base_url, env_var) values
+            (1, 'E2E_SERVER_WITH_A_RATHER_LONG_STATIC_ID', 'E2E server', 'A server with a long URL', 'https://a-rather-long-host-name-without-spaces.api.example.com/version-one/with/a/long/base/path', 'PGKILN_SERVER_E2E_WITH_A_LONG_NAME')
+            on conflict (workspace_id, static_id) do nothing`);
+          const cred = (await owner.one(`insert into meta.workspace_credential (workspace_id, name, description, type, header_name, valid_for) values
+            (1, 'E2E_WORKSPACE_KEY_WITH_A_LONG_NAME', 'An API key of the workspace', 'header', 'X-Api-Key', '{https://a-rather-long-host-name-without-spaces.api.example.com/version-one/}')
+            on conflict (workspace_id, name) do update set description = excluded.description returning id`)).id;
+          const srv = (await owner.one(`select id from meta.remote_server where workspace_id = 1 and static_id = 'E2E_SERVER_WITH_A_RATHER_LONG_STATIC_ID'`)).id;
+          return { workspace_files: '/builder/workspace-files', workspace_file_new: '/builder/workspace-files?new=1', remote_servers: '/builder/remote-servers',
+            remote_server_edit: `/builder/remote-servers?edit=${srv}`, workspace_credentials: '/builder/workspace-credentials', workspace_credential_edit: `/builder/workspace-credentials?edit=${cred}` };
+        })()),
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);

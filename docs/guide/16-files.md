@@ -21,6 +21,8 @@ This chapter covers three things that deal with files:
 | Interactive report → Download → CSV / Excel / PDF | Actions → **Download CSV / Excel / PDF** |
 | Shared Components → Report Layouts | Shared Components → **Report layouts** |
 | Print (browser) | Actions → **Print**, and a print stylesheet on every page |
+| Static Application Files (`#APP_FILES#`) | Shared Components → **Static application files** ([chapter 3](03-builder.md#static-application-files)) |
+| Static Workspace Files (`#WORKSPACE_FILES#`) | Workspace utilities → **Static workspace files** ([below](#static-workspace-files)) |
 
 ## File upload items
 
@@ -205,6 +207,33 @@ address or the credential. Downloads are limited to `MAX_UPLOAD_MB`.
 
 Large files in bytea columns are fine up to tens of megabytes. For bigger files or large numbers
 of them, store them in object storage and keep the key in the table.
+
+## Static workspace files
+
+Files a developer ships with the applications, rather than files users upload: CSS, JavaScript, JSON, images, fonts
+and PDFs. An application has its own (Shared Components → **Static application files**,
+[chapter 3](03-builder.md#static-application-files)); since sprint 141 a **workspace** has them too (Workspace
+utilities → **Static workspace files**; APEX: Static Workspace Files), shared by every application of the workspace,
+for example one stylesheet with the company's colours.
+
+| Write | Means |
+|---|---|
+| `#WORKSPACE_FILES#brand.css` in *Every page loads* (or a page's *JavaScript and CSS files*) | Every page (that page) loads the workspace's `brand.css` with `<link>` (a `.js` file with `<script src defer>`), after pgkiln's own, in list order with the application's own files |
+| `#WORKSPACE_FILES#logo.png` in HTML, a template, a list entry, a link | `/a/<alias>/workspace-files/logo.png` |
+| `#APP_FILES#guide.pdf` | `/a/<alias>/static/guide.pdf`, the application's own file |
+
+Each application serves the workspace's files from its own address, `/a/<alias>/workspace-files/<name>`, to anyone
+(don't put secrets in them): only its own workspace's files, never another workspace's. Pages link to
+`…?v=<version>`, which browsers keep for a year; a change gives a new version.
+
+The rules are those of static application files: names of letters, digits, `_`, `-` and `.` with an extension from a
+fixed list; **no HTML** (the database refuses it too); up to 5 MB a file; `X-Content-Type-Options: nosniff`; an SVG or
+PDF opened on its own is sandboxed, so a script in it never runs. The workspace's administrators upload, write, rename
+and delete them; its developers see the list (with the applications and pages that load each file) and open a file in
+a sandboxed preview. They travel with the [workspace export](03-builder.md#export-and-import), not with an
+application's.
+
+HR example (part 76): `brand.css` is a workspace file; HR loads it as `#WORKSPACE_FILES#brand.css`.
 
 ## Data loading
 

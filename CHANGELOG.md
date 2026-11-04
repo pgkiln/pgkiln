@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Static workspace files, remote servers and workspace web credentials** (AP-7; APEX: Static Workspace Files, Remote
+  Servers, workspace-level Web Credentials; migration 141). Three Workspace utilities pages for the current workspace
+  (its developers see them, its administrators change them). **Static workspace files** (`/builder/workspace-files`):
+  CSS, JavaScript, JSON, images and fonts with the static application files' names, types (no HTML), 5 MB limit and
+  headers, served to each application of the workspace at `/a/<alias>/workspace-files/<name>` and loaded with
+  `#WORKSPACE_FILES#name` in *Every page loads* or a page's file list; `#WORKSPACE_FILES#` and `#APP_FILES#` in HTML,
+  templates, list entries and links become those addresses. **Remote servers** (`/builder/remote-servers`): a static
+  id, this installation's base URL and/or an environment variable `PGKILN_SERVER_<NAME>` that wins when set, and a
+  default web credential; REST data sources (`server` + a path), REST source catalogs and AI services (a server and a
+  path) name a server instead of a full URL, so changing the server moves every source on it; the resolved URL passes
+  the allow-list, the workspace's network access list and the address checks; the network access page shows each
+  server's host; renaming a server moves the workspace's sources and catalogs; the Advisor and the import message name
+  a server the workspace lacks. **Workspace web credentials** (`/builder/workspace-credentials`): used by name by every
+  application of the workspace (an application's own credential of the same name wins), secrets encrypted with
+  `PGKILN_SECRET_KEY`, write-only, never exported, unreadable by the runtime role, rotated by `pgkiln admin
+  rotate-key`. The workspace export carries the three (servers keep their local base URL on import; credentials
+  without secrets). HR example part 76: remote server CRM for the HR API sources, and `brand.css` as a workspace file.
 - **Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions** (AP-4; APEX: the
   Shuttle item, 24.2's Select One and Select Many, and the Classic Report, Breadcrumb and Help Text regions;
   migration 140). Item type `shuttle`: two lists (available, selected) with a filter, *Move*, *Move all*, *Remove*,
