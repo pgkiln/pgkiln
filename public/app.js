@@ -2345,9 +2345,9 @@ function enhanceSelectPicks(root) {
   const boxes = root.matches?.('[data-select-pick]') ? [root] : [...(root.querySelectorAll?.('[data-select-pick]') ?? [])];
   boxes.forEach(selectPick);
 }
+let selectPickSeq = 0;
 document.addEventListener('pgkiln:replaced', (e) => e.detail && enhanceSelectPicks(e.detail));
 enhanceSelectPicks(document);
-let selectPickSeq = 0;
 function selectPick(box) {
   const sel = box.querySelector('select');
   if (!sel || box.dataset.enhanced) return;

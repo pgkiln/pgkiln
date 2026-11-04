@@ -39,7 +39,7 @@ export async function renderBreadcrumbRegion(ctx: PageContext, r: Region): Promi
 }
 
 /** Markdown's punctuation, escaped in item values put into a help text (they stay text). */
-const mdEscape = (v: string) => v.replace(/[\\`*_{}[\]()#+\-.!|<>~]/g, '\\$&');
+const mdEscape = (v: string) => v.replace(/[\\`*_{}[\]()#+\-.!~>|]/g, '\\$&');
 
 /** A help text region: the page's help text (Markdown with &ITEM. substitutions), else {"empty": "…"} or "No help…". */
 export async function renderHelpTextRegion(ctx: PageContext, r: Region): Promise<Raw> {
