@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.76.0] - 2026-11-04
+
 ### Added
 - **The interactive report's 26.2 dialogs** (AP-9; APEX 26.2: multi-select filters, date-range filtering and
   drag-and-drop column ordering; no migration). *Actions → Filter* has the operators **is one of** and **is not one
