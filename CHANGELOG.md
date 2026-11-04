@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.74.0] - 2026-11-04
+
 ### Added
 - **Static workspace files, remote servers and workspace web credentials** (AP-7; APEX: Static Workspace Files, Remote
   Servers, workspace-level Web Credentials; migration 141). Three Workspace utilities pages for the current workspace

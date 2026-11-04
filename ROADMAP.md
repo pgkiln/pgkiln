@@ -6,8 +6,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.73.0 (November 2026): Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions; every APEX item and region type mapped.
-- **APEX parity (26.2):** 170 features compared: 166 available, none partial, none missing (WS-7, the builder in
+- **Current release:** 0.74.0 (November 2026): static workspace files (`#WORKSPACE_FILES#`), remote servers with a base URL per environment, and workspace-level web credentials.
+- **APEX parity (26.2):** 172 features compared: 168 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 4 deliberately not planned (PostgreSQL or the platform covers them).
 
 ## Next
