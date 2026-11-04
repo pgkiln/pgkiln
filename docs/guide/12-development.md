@@ -641,6 +641,8 @@ test/
   blueprint-from-app.test.ts  a blueprint of HR: checks clean, pages and menu, notes, a working copy with sample rows, workspaces
   rest-catalogs.test.ts    OpenAPI/Swagger reading, parameter keys, catalog files, the builder's pages, a data source from a service
   workspace-transfer.test.ts  a workspace's export, import into another workspace (added, kept, replaced, all or nothing), groups, access
+  workspace-resources.test.ts  (sprint 141) remote servers (checks, env var, HR's CRM moves its sources, credentials, renames, catalogs,
+                           AI services, the Advisor), static workspace files styling two applications, workspace credentials, the export
   tree-charts.test.ts      treemap and sunburst (the hierarchy, cycles, squarify), timeline (lanes, rows, points and periods)
   gantt-move.test.ts       an editable Gantt's markup, the move route, dates, who may drag, the builder's settings
   find-workspace.test.ts   developers' addresses, builder mail, the workspaces mail, the same answer, limits

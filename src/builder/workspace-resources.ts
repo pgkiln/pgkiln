@@ -106,7 +106,7 @@ async function filesPage(c: Ctx, query: Record<string, string | undefined>) {
     ${readOnlyNote(c)}
     ${editor}
     ${region('Files', html`${files.length
-      ? html`<div class="table-wrap"><table class="report report-reflow"><caption class="sr-only">Static workspace files</caption>
+      ? html`<div class="table-wrap"><table class="report report-reflow">
           <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col" class="num">Size</th><th scope="col">Loaded by</th><th scope="col">Changed (UTC)</th>${c.admin ? html`<th scope="col">Actions</th>` : ''}</tr></thead>
           <tbody>${files.map((f) => html`<tr>
             <td data-label="Name" class="u-break"><a href="${FILES}/file/${encodeURIComponent(f.name)}" target="_blank" rel="noopener">${f.name}</a></td>

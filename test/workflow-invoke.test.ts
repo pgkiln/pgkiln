@@ -334,9 +334,9 @@ describe('invoke_api steps: running', () => {
 
 describe('HR example, part 34: DEPARTMENT_CHECK', () => {
   test('the workflow calls the DEPARTMENT source, notifies its initiator, and the Advisor finds nothing', async () => {
-    const src = await owner.one(`select url from meta.rest_source where app_id = $1 and name = 'DEPARTMENT'`, [appId]);
-    // CI has no web service on port 3100: point the source at the mock for the test
-    await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'DEPARTMENT'`, [appId, `${mockBase}/dept/{deptno}`]);
+    const src = await owner.one(`select url, server from meta.rest_source where app_id = $1 and name = 'DEPARTMENT'`, [appId]);
+    // CI has no web service on port 3100: point the source at the mock for the test (without its remote server, part 76)
+    await owner.query(`update meta.rest_source set url = $2, server = null where app_id = $1 and name = 'DEPARTMENT'`, [appId, `${mockBase}/dept/{deptno}`]);
     try {
       await owner.query(`delete from hr.notification where username = 'blake' and message like '%HR API%'`);
       const found = await start('DEPARTMENT_CHECK', { deptno: '10' }, '10');
@@ -348,7 +348,7 @@ describe('HR example, part 34: DEPARTMENT_CHECK', () => {
       const notes = (await owner.query(`select message from hr.notification where username = 'blake' and message like '%HR API%' order by id`)).rows.map((r) => r.message);
       assert.deepEqual(notes, ['Department ACCOUNTING is in New York (checked by a workflow through the HR API).', 'The HR API does not know department 99 (HTTP 404).']);
     } finally {
-      await owner.query(`update meta.rest_source set url = $2 where app_id = $1 and name = 'DEPARTMENT'`, [appId, src.url]);
+      await owner.query(`update meta.rest_source set url = $2, server = $3 where app_id = $1 and name = 'DEPARTMENT'`, [appId, src.url, src.server]);
       await owner.query(`delete from hr.notification where username = 'blake' and message like '%HR API%'`);
       await owner.query(`delete from meta.workflow where app_id = $1 and name = 'DEPARTMENT_CHECK'`, [appId]);
     }
