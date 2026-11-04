@@ -59,7 +59,7 @@ insert into meta.item (page_id, region_id, seq, name, label, type, lov, config, 
 select p.id, r.id, i.seq, i.name, i.label, i.type, i.lov, i.config::jsonb, i.help
   from meta.page p join meta.app a on a.id = p.app_id
   join meta.region r on r.page_id = p.id and r.title = 'Team', (values
-  (10, 'P50_DEPTNO', 'Department', 'select_one', 'LOV:DEPARTMENTS', '{"wide": true}', null),
+  (10, 'P50_DEPTNO', 'Department', 'select_one', 'select dname, deptno from hr.dept order by 1', '{"wide": true}', null),
   (20, 'P50_MEMBERS', 'Team members', 'shuttle',
    'select ename || '' ('' || coalesce(job, ''-'') || '')'' as d, empno as r from hr.emp where deptno = :P50_DEPTNO order by ename',
    '{"cascade_parents": "P50_DEPTNO", "wide": true}', 'In the order they lead the project.'),
