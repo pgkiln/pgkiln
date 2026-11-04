@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { readMultipart } from '../runtime/files.ts';
 import { includable, STATIC_MAX, STATIC_TYPES, staticType } from '../runtime/static-files.ts';
 import type { Session } from '../session.ts';
+import { WORKSPACE_FILES } from '../metadata.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Body, type Req } from './ui.ts';
 
@@ -17,9 +18,15 @@ import { appHeader, back, BASE, csrf, developer, flash, input, region, send, she
 /** Files a list may name (every page, or one page). */
 const MAX_INCLUDES = 20;
 
-/** "a.js, b.css" → the valid, includable, distinct names, in order. */
+/**
+ * "a.js, b.css" → the valid, includable, distinct names, in order. (141) "#WORKSPACE_FILES#theme.css"
+ * is a static workspace file; "#APP_FILES#a.js" is the same as "a.js".
+ */
 export function parseIncludes(text: string | undefined) {
-  const names = (text ?? '').split(/[\s,]+/).map((n) => n.trim()).filter((n) => n && staticType(n) && includable(n));
+  const names = (text ?? '').split(/[\s,]+/).map((n) => n.trim().replace(/^#APP_FILES#/, '')).filter((n) => {
+    const file = n.startsWith(WORKSPACE_FILES) ? n.slice(WORKSPACE_FILES.length) : n;
+    return file && staticType(file) && includable(file);
+  });
   return [...new Set(names)].slice(0, MAX_INCLUDES);
 }
 
@@ -84,7 +91,7 @@ async function page(s: Session, a: any, query: Record<string, string | undefined
         <small class="help">A file with the same name is replaced.</small>
       </form>`)}
     ${region('Every page loads', html`<form method="post" action="${base}/includes">${csrf(s)}
-        <div class="form-grid">${input('includes', 'Scripts and stylesheets, in order', (a.static_includes ?? []).join(', '), { placeholder: 'e.g. library.js, app.js, app-styles.css', help: `Up to ${MAX_INCLUDES} .js and .css files, loaded in this order after pgkiln's own (scripts deferred). A page adds its own files under Page → Appearance.` })}</div>
+        <div class="form-grid">${input('includes', 'Scripts and stylesheets, in order', (a.static_includes ?? []).join(', '), { placeholder: 'e.g. library.js, app.js, app-styles.css', help: `Up to ${MAX_INCLUDES} .js and .css files, loaded in this order after pgkiln's own (scripts deferred). #WORKSPACE_FILES#name is a static workspace file (Workspace utilities). A page adds its own files under Page → Appearance.` })}</div>
         <div class="buttons"><button class="btn btn-hot">Save</button></div>
       </form>`)}`;
 }
@@ -191,7 +198,10 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const names = parseIncludes(req.body?.includes);
     await owner.query('update meta.app set static_includes = $2, updated_at = now() where id = $1', [a.id, names]);
-    const missing = (await owner.query<{ n: string }>('select n from unnest($2::text[]) n where not exists (select 1 from meta.static_file f where f.app_id = $1 and f.name = n)', [a.id, names])).rows.map((r) => r.n);
+    const missing = (await owner.query<{ n: string }>(
+      `select n from unnest($2::text[]) n
+        where not exists (select 1 from meta.static_file f where f.app_id = $1 and f.name = n)
+          and not exists (select 1 from meta.workspace_file w where w.workspace_id = meta.app_workspace($1) and $3 || w.name = n)`, [a.id, names, WORKSPACE_FILES])).rows.map((r) => r.n);
     flash(s, missing.length ? `Saved. Not uploaded yet (left out until they are): ${missing.join(', ')}.` : 'Saved.');
     return back(reply, s, `${BASE}/apps/${a.id}/static-files`);
   });

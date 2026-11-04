@@ -74,7 +74,7 @@ async function loadSyncSource(id: number) {
   return owner.one<SyncSource>(
     `select s.id, s.app_id, s.name, s.url, s.method, s.credential, s.headers, s.params, s.body, s.row_selector, s.columns, s.cache_seconds,
             s.timeout_s, s.max_rows, s.key_columns, s.operations, s.sync_table, s.sync_mode, s.sync_delete, s.sync_schedule, s.sync_time_zone,
-            s.sync_enabled, a.db_role
+            s.sync_enabled, s.server, a.db_role
        from meta.rest_source s join meta.app a on a.id = s.app_id where s.id = $1`,
     [id],
   );

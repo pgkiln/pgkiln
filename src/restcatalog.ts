@@ -32,7 +32,10 @@ export interface CatalogService {
 export interface Catalog {
   name: string;
   description: string | null;
+  /** (141) may be empty when the catalog is on a remote server */
   base_url: string;
+  /** (141) a remote server of the workspace (static id): data sources made from the catalog use it */
+  server?: string | null;
   source: 'manual' | 'openapi';
   api_version: string | null;
   services: CatalogService[];
@@ -54,10 +57,14 @@ export const trimBase = (url: string) => url.trim().replace(/\/+$/, '');
 export const serviceUrl = (baseUrl: string, path: string) => `${trimBase(baseUrl)}${path}`;
 
 /** Problems with a catalog's own fields (empty: fine). */
-export function catalogProblems(c: { name?: unknown; base_url?: unknown; description?: unknown; api_version?: unknown }): string[] {
+export function catalogProblems(c: { name?: unknown; base_url?: unknown; server?: unknown; description?: unknown; api_version?: unknown }): string[] {
   const out: string[] = [];
   if (typeof c.name !== 'string' || !CATALOG_NAME.test(c.name)) out.push('The name is 1 to 60 characters, without spaces at the start or end.');
-  if (typeof c.base_url !== 'string' || !/^https?:\/\/[^\s<>"{}]+$/i.test(c.base_url) || c.base_url.length > 2000) out.push('The base URL starts with http:// or https://, without spaces or {parameters}, e.g. https://api.example.com/v1.');
+  if (c.server != null && c.server !== '' && (typeof c.server !== 'string' || !SERVICE_NAME.test(c.server))) out.push('The remote server is its static id, e.g. CRM.');
+  // (141) on a remote server the base URL is optional (the document's, kept for reference)
+  if (c.server && (c.base_url == null || c.base_url === '')) {
+    // nothing to check
+  } else if (typeof c.base_url !== 'string' || !/^https?:\/\/[^\s<>"{}]+$/i.test(c.base_url) || c.base_url.length > 2000) out.push('The base URL starts with http:// or https://, without spaces or {parameters}, e.g. https://api.example.com/v1.');
   else if (c.base_url.endsWith('/')) out.push('The base URL ends without a slash: the services\' paths start with one.');
   else {
     try {
@@ -97,7 +104,7 @@ export function wholeCatalogProblems(c: Catalog): string[] {
     if (seen.has(s.name)) out.push(`Service ${s.name} is there twice.`);
     seen.add(s.name);
     // (enough to fix the first ones: a big broken document would list thousands)
-    if (out.length < 50) out.push(...serviceProblems(typeof c.base_url === 'string' ? c.base_url : 'https://x', s));
+    if (out.length < 50) out.push(...serviceProblems(typeof c.base_url === 'string' && c.base_url ? c.base_url : 'https://x', s));
   }
   return out;
 }
@@ -470,6 +477,7 @@ export function catalogDocument(c: Catalog) {
     name: c.name,
     description: c.description,
     base_url: c.base_url,
+    ...(c.server ? { server: c.server } : {}),
     source: c.source,
     api_version: c.api_version,
     services: c.services.map((s) => ({
@@ -487,6 +495,7 @@ export function fromCatalogDocument(doc: Json): Catalog {
     name: String(doc.name ?? ''),
     description: str(doc.description),
     base_url: String(doc.base_url ?? ''),
+    ...(typeof doc.server === 'string' && doc.server ? { server: doc.server } : {}),
     source: doc.source === 'openapi' ? 'openapi' : 'manual',
     api_version: str(doc.api_version),
     services: (Array.isArray(doc.services) ? doc.services : []).map((s: Json) => ({
@@ -554,9 +563,9 @@ export async function loadCatalog(id: number | string, db: Q = owner): Promise<S
 /** Insert a checked catalog into a workspace (inside the caller's transaction); its id. */
 export async function insertCatalog(db: Q, workspaceId: number, c: Catalog, by: string | null): Promise<number> {
   const { id } = (await db.query(
-    `insert into meta.rest_catalog (workspace_id, name, description, base_url, source, api_version, created_by)
-     values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-    [workspaceId, c.name, c.description, c.base_url, c.source, c.api_version, by],
+    `insert into meta.rest_catalog (workspace_id, name, description, base_url, source, api_version, created_by, server)
+     values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+    [workspaceId, c.name, c.description, c.base_url || null, c.source, c.api_version, by, c.server || null],
   )).rows[0];
   await insertServices(db, id, c.services);
   return id;
@@ -565,8 +574,8 @@ export async function insertCatalog(db: Q, workspaceId: number, c: Catalog, by: 
 /** Replace a catalog's fields and services (inside the caller's transaction). */
 export async function replaceCatalog(db: Q, id: number, c: Catalog) {
   await db.query(
-    `update meta.rest_catalog set name = $2, description = $3, base_url = $4, source = $5, api_version = $6, updated_at = now() where id = $1`,
-    [id, c.name, c.description, c.base_url, c.source, c.api_version],
+    `update meta.rest_catalog set name = $2, description = $3, base_url = $4, source = $5, api_version = $6, server = $7, updated_at = now() where id = $1`,
+    [id, c.name, c.description, c.base_url || null, c.source, c.api_version, c.server || null],
   );
   await db.query('delete from meta.rest_catalog_service where catalog_id = $1', [id]);
   await insertServices(db, id, c.services);
@@ -587,11 +596,13 @@ async function insertServices(db: Q, catalogId: number, services: CatalogService
  * The values of a REST data source made from a catalog service (meta.rest_source
  * columns): the full URL and a copy of the request and response settings.
  */
-export function sourceFromService(c: { base_url: string; name: string }, s: CatalogService, opts: { name?: string; credential?: string | null } = {}) {
+export function sourceFromService(c: { base_url: string | null; name: string; server?: string | null }, s: CatalogService, opts: { name?: string; credential?: string | null } = {}) {
   return {
     name: (opts.name?.trim() || s.name).toUpperCase(),
     description: s.description ?? `From the REST source catalog ${c.name}.`,
-    url: serviceUrl(c.base_url, s.path),
+    // (141) a catalog on a remote server: the source names the server and the service's path
+    url: c.server ? s.path : serviceUrl(c.base_url ?? '', s.path),
+    server: c.server || null,
     method: s.method,
     credential: opts.credential?.trim() ? opts.credential.trim().toUpperCase() : null,
     params: s.params,

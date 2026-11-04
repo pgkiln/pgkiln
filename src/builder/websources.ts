@@ -9,6 +9,7 @@ import { runSync, syncLog, syncProblems } from '../restsync.ts';
 import { buildRequest, call, clearResponseCache, clearTokens, credentialProblems, guessColumns, loadCredential, parseJson, rowsSql, select, sourceProblems, toRows, withRest, type RestColumn, type RestSource } from '../websources.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { resolveSource } from '../remote-servers.ts';
 
 // Shared Components → Web credentials and REST data sources: their property
 // specs, the secrets' status (never a secret), "Test" for a source (its
@@ -75,7 +76,7 @@ export const REST_SOURCE_SPEC: ComponentSpec = {
     if (v.sync_time_zone === null) v.sync_time_zone = 'UTC';
     if (v.sync_mode === null) v.sync_mode = 'merge';
     const problems = [
-      ...sourceProblems({ url: v.url, params: json(v.params), columns: json(v.columns), headers: json(v.headers), row_selector: v.row_selector, key_columns: v.key_columns, operations: json(v.operations) }),
+      ...sourceProblems({ url: v.url, server: v.server, params: json(v.params), columns: json(v.columns), headers: json(v.headers), row_selector: v.row_selector, key_columns: v.key_columns, operations: json(v.operations) }),
       ...syncProblems(v),
     ];
     return problems.length ? problems.join(' ') : null;
@@ -88,10 +89,12 @@ export const REST_SOURCE_SPEC: ComponentSpec = {
   fields: [
     { name: 'name', label: 'Name', kind: 'upper', group: 'Identification', help: 'Regions and lists of values use it by this name, e.g. COUNTRIES.' },
     { name: 'description', label: 'Description', kind: 'text', wide: true, group: 'Identification' },
+    { name: 'server', label: 'Remote server', kind: 'upper', group: 'Request',
+      help: 'Optional: the static id of a remote server of the workspace (Workspace utilities → Remote servers), e.g. CRM. The URL is then the path after the server\'s base URL, and changing the server moves every source on it.' },
     { name: 'url', label: 'URL', kind: 'text', wide: true, group: 'Request',
-      help: 'e.g. https://api.example.com/v1/cities/{city}/weather — {name} is a path parameter. The host must be on the server\'s allow-list (PGKILN_REST_ALLOWED_HOSTS).' },
+      help: 'e.g. https://api.example.com/v1/cities/{city}/weather — {name} is a path parameter. With a remote server: the path, e.g. /v1/cities/{city}/weather. The host must be on the server\'s allow-list (PGKILN_REST_ALLOWED_HOSTS).' },
     { name: 'method', label: 'Method', kind: 'select', options: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], group: 'Request' },
-    { name: 'credential', label: 'Web credential', kind: 'upper', group: 'Request', help: 'The name of a web credential, or empty.' },
+    { name: 'credential', label: 'Web credential', kind: 'upper', group: 'Request', help: 'The name of a web credential (the application\'s, else one of the workspace\'s), or empty: on a remote server, the server\'s default credential.' },
     { name: 'params', label: 'Parameters (JSON)', kind: 'json', wide: true, group: 'Request',
       help: '[{"name": "city", "in": "path", "default": "&P1_CITY.", "required": true}, {"name": "units", "in": "query", "default": "metric"}] · in: path, query, header, body. Defaults may use &ITEM. substitutions; regions override them with {"rest_params": {…}}.' },
     { name: 'headers', label: 'Headers (JSON)', kind: 'json', group: 'Request', help: '{"Accept-Language": "en"} — not for secrets: use a web credential.' },
@@ -267,11 +270,14 @@ export async function webSourceRoutes(app: FastifyInstance) {
   app.post(`${BASE}/apps/:id(^\\d+$)/rest-sources/:sid(^\\d+$)/test`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const src = await owner.one<RestSource>('select * from meta.rest_source where id = $1 and app_id = $2', [req.params.sid, req.params.id]);
-    if (!src) return reply.code(404).send('Not found');
-    const result: TestResult = { id: src.id, ok: false, message: '' };
+    const stored = await owner.one<RestSource>('select * from meta.rest_source where id = $1 and app_id = $2', [req.params.sid, req.params.id]);
+    if (!stored) return reply.code(404).send('Not found');
+    const result: TestResult = { id: stored.id, ok: false, message: '' };
     const started = Date.now();
+    let src = stored;
     try {
+      // (141) on a remote server: its URL now
+      src = await resolveSource(stored);
       const values: Record<string, string> = {};
       for (const p of src.params) values[p.name] = String(req.body?.[`p_${p.name}`] ?? '');
       const r = buildRequest(src, values);
