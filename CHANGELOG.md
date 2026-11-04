@@ -5,6 +5,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The interactive report's 26.2 dialogs** (AP-9; APEX 26.2: multi-select filters, date-range filtering and
+  drag-and-drop column ordering; no migration). *Actions → Filter* has the operators **is one of** and **is not one
+  of** (values ticked in a list of the column's values with counts and a search, or typed with commas; stored as a
+  JSON array, at most 100), **is between** (two values, both included, either may stay empty; on a date column the
+  date picker in the application's date format, and the last day as a whole) and **is in** a period on a date column
+  (today, yesterday, the last 7 or 30 days, the next 7 days, this or last month, this or last year, computed when the
+  report runs). The dialog shows the fields the operator needs; every field stays without JavaScript. Filters are
+  chips in words (*Job is one of CLERK, ANALYST*), also in the PDF and in *Ask in your own words*, whose AI answers
+  and editable chips take the new operators; highlights keep the one-value operators. *Actions → Columns* lists the
+  columns in their order: drag one to another place or move it with its arrow buttons (announced; without JavaScript
+  they submit the dialog); the order (`r<id>_o`) is a chip that puts it back and is kept in saved reports.
+
+### Changed
+- A report's CSV, Excel and PDF downloads follow the columns as shown: in the user's order and without the columns
+  the user hid (*Actions → Columns* or a heading's menu).
+
 ## [0.75.0] - 2026-11-04
 
 ### Added

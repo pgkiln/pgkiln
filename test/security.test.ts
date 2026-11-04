@@ -13124,3 +13124,90 @@ describe('sprint 142 AP-8', () => {
     assert.ok((await owner.one(`select to_regclass('hr.emp') is not null as ok`)).ok, 'hr.emp is still there');
   });
 });
+
+describe('sprint 143 AP-9', () => {
+  // The interactive report's new filter operators and column order: every value of "is one of", "is between" and
+  // "is in" reaches the SQL as a literal or a fixed period expression (never as text of the query); hidden columns
+  // stay out of filters, the column order and the downloads; values and column names are escaped where they show.
+  const A = 'sec143';
+  const SCHEMA = 'sec143';
+  const ROLE = 'pgkiln_sec143';
+  const XSS = `<img src=x onerror=alert(1)>"'&`;
+  let id: number;
+  let rid: number;
+  const get = (q: string) => new FileBrowser(app).get(`/a/${A}/1?${q}`);
+  const f = (k: string) => `r${rid}_${k}`;
+  const filter = (col: string, op: string, value: string) => `${f('f')}=${encodeURIComponent(`${col}|${op}|${value}`)}`;
+  const rows = (body: string) => [...body.matchAll(/<td class="num" data-label="Id">(\d+)<\/td>/g)].length;
+  before(async () => {
+    await owner.query('delete from meta.app where alias = $1', [A]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`).catch(() => undefined);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    await owner.query(`create schema ${SCHEMA};
+      create table ${SCHEMA}.t (id int primary key, name text, secret text, d date);
+      insert into ${SCHEMA}.t values (1, 'a', 'top', '2020-01-01'), (2, $$${XSS}$$, 'top', '2020-01-02'), (3, 'c', 'low', '2020-01-03');
+      grant usage on schema ${SCHEMA} to ${ROLE}; grant select on ${SCHEMA}.t to ${ROLE};`);
+    id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec143', 'none', $2) returning id`, [A, ROLE])).id;
+    const pid = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
+    rid = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'T', 'report', $2, '{"hidden": ["secret"]}') returning id`,
+      [pid, `select id, name, secret, d from ${SCHEMA}.t`])).id;
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where alias = $1', [A]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  test('list values, bounds and periods are literals: quotes and SQL in them find nothing and break nothing', async () => {
+    const dropper = `a'); delete from ${SCHEMA}.t; --`;
+    for (const q of [
+      filter('name', 'in', JSON.stringify(["a') or true --", "x' or '1'='1"])),
+      filter('name', 'in', "a') or (true"),
+      filter('name', 'not_in', JSON.stringify([dropper])),
+      filter('d', 'between', JSON.stringify(["2020-01-01'::date or true or '", ''])),
+      filter('id', 'between', '["1) or (1=1", "2"]'),
+    ]) {
+      const res = await get(q);
+      assert.equal(res.statusCode, 200, q);
+      assert.ok(rows(res.body) <= 3, q);
+      assert.doesNotMatch(res.body, /syntax error/i, q);
+    }
+    assert.equal(rows((await get(filter('name', 'in', JSON.stringify(["a') or true --"])))).body), 0);
+    assert.equal(rows((await get(filter('name', 'not_in', JSON.stringify([dropper])))).body), 3);
+    assert.equal((await owner.one(`select count(*)::int as n from ${SCHEMA}.t`)).n, 3, 'the rows are still there');
+    // a period is one of the fixed names; anything else is no filter
+    for (const v of ['today) or (true', "last_7_days'", 'constructor', 'toString'])
+      assert.equal(rows((await get(filter('d', 'period', v))).body), 3, v);
+  });
+
+  test('a hidden column is never filtered on, ordered, downloaded or offered', async () => {
+    // "secret = top" would leave two rows: the filter on a hidden column is left out
+    assert.equal(rows((await get(filter('secret', 'in', '["top"]'))).body), 3);
+    assert.equal(rows((await get(filter('secret', 'between', '["top","top"]'))).body), 3);
+    const ordered = await get(`${f('o')}=secret&${f('o')}=name`);
+    assert.doesNotMatch(ordered.body, /data-col="secret"|data-col-name="secret"|>top</);
+    const csv = await get(`${f('o')}=secret&${f('csv')}=1`);
+    assert.doesNotMatch(csv.body, /secret|top/i);
+    // a move names a shown column, or changes nothing
+    const res = await get(`${f('o')}=name&${f('o')}=id&${f('od')}=${encodeURIComponent('["id","name"]')}&${f('mv')}=usecret`);
+    assert.equal(res.statusCode, 302);
+    assert.deepEqual(new URL(String(res.headers.location), 'http://x').searchParams.getAll(f('o')), ['name', 'id']);
+  });
+
+  test('values in chips and names in the column order are escaped', async () => {
+    const body = (await get(filter('name', 'in', JSON.stringify([XSS])))).body;
+    assert.equal(rows(body), 1);
+    assert.doesNotMatch(body, /<img src=x onerror/);
+    assert.match(body, /<span class="chip">Name is one of &lt;img src=x onerror=alert\(1\)&gt;/);
+    const between = (await get(filter('d', 'between', JSON.stringify([XSS, ''])))).body;
+    assert.doesNotMatch(between, /<img src=x onerror/);
+    const order = (await get(`${f('o')}=${encodeURIComponent(XSS)}&${f('o')}=name`)).body;
+    assert.doesNotMatch(order, /<img src=x onerror/);
+    // an unknown name changes nothing: the columns stay in the report's order after the named one
+    assert.deepEqual([...order.matchAll(/<th scope="col"[^>]*data-col="([^"]+)"/g)].map((m) => m[1]), ['name', 'id', 'd']);
+  });
+});

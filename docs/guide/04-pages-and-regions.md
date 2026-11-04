@@ -234,12 +234,32 @@ Features for end users:
   search and filters; at most 200), with a box to narrow them; choosing a value filters the report on it. The sort
   arrow of the sorted column sorts at once. Without JavaScript a heading sorts (again for descending).
 - **Hidden columns**: hidden from the heading menu or *Actions → Columns*, shown as chips to bring them back.
+- **Column order** (sprint 143; APEX 26.2: drag-and-drop columns): *Actions → Columns* lists the columns in their
+  order with a checkbox to hide each; drag one to another place, or move it with its ↑ / ↓ buttons (each move is
+  announced to screen readers; without JavaScript the buttons submit the dialog). *Own column order* is a chip that
+  puts the report's order back. The order is kept in saved reports (`r12_o=sal&r12_o=ename`, the columns it names
+  first, the rest after them in the report's order), and the CSV, Excel and PDF downloads follow it and leave out
+  the columns the user hid.
 - **Pagination**: *1–15 of 107*, first, previous, next and last page, and the **rows per page** list.
 - **Actions menu** (sprint 76: a short menu like APEX's; each entry opens a dialog, or unfolds in place without
   JavaScript): *Columns*, *Filter*, *Data* (sort, aggregate, compute, control break), *Format* (highlight, rows per
   page), *Chart*, *Group by*, *Pivot*, *Report* (saved reports, reset) and *Download* (CSV, Excel, PDF, print):
   - **column filters** (`=`, `≠`, contains, does not contain, `>`, `≥`, `<`, `≤`, is empty, is
-    not empty) and **sort**;
+    not empty, and since sprint 143 the 26.2 operators below) and **sort**:
+    - **is one of** / **is not one of** (APEX 26.2: multi-select filters): tick values in the column's list (with
+      their counts and a search box, as in the heading menu), or type them separated by commas. *Is not one of*
+      keeps the rows without a value. In the URL the values are a JSON array: `r12_f=job|in|["CLERK","ANALYST"]`
+      (`job|in|CLERK, ANALYST` works too), at most 100 values;
+    - **is between** (date-range filters): two values, both included, either may stay empty (*Salary ≥ 1000*). On a
+      date or timestamp column the fields get the date picker and take dates in the application's date format, and
+      the last day counts as a whole (`hiredate|between|["1981-01-01","1981-12-31"]`);
+    - **is in** a period, on a date column: today, yesterday, the last 7 days, the last 30 days, the next 7 days,
+      this month, last month, this year or last year (`hiredate|period|last_30_days`). A period is computed
+      from today when the report runs, so a saved report stays current.
+
+    The dialog shows only the fields the chosen operator needs (without JavaScript it shows all of them); a filter
+    is a chip in words (*Job is one of CLERK, ANALYST*), also in the PDF's filter list. *Ask in your own words* and
+    an AI service may use the same operators; a highlight takes the one-value operators;
   - **control break**: group the rows by a column, with a heading row per group;
   - **aggregates**: sum, average, count, minimum or maximum of a column, over all filtered rows
     (not just the page). A *Total* row closes the table, and with a control break every group
@@ -267,7 +287,8 @@ Features for end users:
 
 The report's state lives in the URL (`?r12_q=…&r12_s=3&r12_d=desc&r12_b=job&r12_a=sum|sal&r12_h=sal|gt|green|3000`),
 so it can be bookmarked and shared. Everything the user enters is applied safely: search, filter
-and highlight values become literals, columns must exist in the result, operators, aggregate
+and highlight values become literals (each value of a list and each bound of a range on its own; a period is one
+of a fixed list of expressions), columns must exist in the result, operators, aggregate
 functions, chart types and colors come from fixed lists, sort positions are integers, and computed
 column expressions are parsed (below), never pasted into SQL.
 

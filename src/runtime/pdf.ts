@@ -6,7 +6,7 @@ import type { Region } from '../metadata.ts';
 import { runtime, savepoint } from '../db.ts';
 import { substitute, type PageContext } from './context.ts';
 import { describeFacetFilter, facetFilters, reportFacetDefs } from './facet-state.ts';
-import { buildSql, cell, columnFormats, headingOf, isNumeric, maxRows, OPERATORS, PDF_MAX_ROWS, reportState, visibleColumns } from './report.ts';
+import { buildSql, cell, columnFormats, describeFilter, headingOf, isNumeric, maxRows, orderedColumns, PDF_MAX_ROWS, reportState } from './report.ts';
 
 // Report printing: Actions → Download PDF. The same query, filters, sort
 // and visibility as the report on screen (and as the CSV download), drawn
@@ -134,10 +134,10 @@ export function layoutText(text: string, extra: Record<string, string>, ctx?: Pa
   return ctx ? substitute(replaced, ctx, (v) => v) : replaced;
 }
 
-/** The columns a report prints, in order: its "pdf.columns", or those on screen. */
-function printColumns(r: Region, fields: pg.FieldDef[]) {
+/** The columns a report prints, in order: its "pdf.columns", or those on screen (143: in the user's order, without the ones they hid). */
+function printColumns(r: Region, fields: pg.FieldDef[], st: { hideCols: string[]; order: string[] }) {
   const wanted = (r.config.pdf as RegionPdf | undefined)?.columns;
-  if (!Array.isArray(wanted) || !wanted.length) return visibleColumns(r, fields);
+  if (!Array.isArray(wanted) || !wanted.length) return orderedColumns(r, fields, st);
   const byName = new Map(fields.map((f, i) => [f.name.toLowerCase(), { f, i }]));
   return wanted.flatMap((n) => {
     const c = typeof n === 'string' ? byName.get(n.toLowerCase()) : undefined;
@@ -158,7 +158,7 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   await savepoint(c, () => c.query({ text: `declare ${cursor} no scroll cursor for ${query.text}`, values: query.values }));
   const fetch = () => savepoint(c, () => c.query({ text: `fetch ${PDF_BATCH} from ${cursor}`, rowMode: 'array' }));
   const first = await fetch();
-  const cols = printColumns(r, first.fields);
+  const cols = printColumns(r, first.fields, st);
   const limit = Math.min(PDF_MAX_ROWS, maxRows(r, null) ?? PDF_MAX_ROWS);
   let truncated = false;
   const fmtOf = columnFormats(ctx, r);
@@ -190,7 +190,7 @@ export async function reportPdf(ctx: PageContext, r: Region): Promise<Buffer> {
   const title = text(layout.title ?? '&REPORT_TITLE.');
   const filters = layout.show_filters
     ? [
-        ...st.filters.map((f) => `${headingOf(r, f.column, ctx.locale.tr)} ${OPERATORS[f.op]?.label ?? f.op} ${OPERATORS[f.op]?.noValue ? '' : f.value}`.trim()),
+        ...st.filters.map((f) => describeFilter(t, headingOf(r, f.column, ctx.locale.tr), f.op, f.value)),
         ...(() => {
           const defs = reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions);
           return facetFilters(ctx.params, r.id, defs, undefined, appDateReader(ctx)).map((f) => describeFacetFilter(f, defs.get(f.column)?.label ?? headingOf(r, f.column, ctx.locale.tr), t, defs.get(f.column)));

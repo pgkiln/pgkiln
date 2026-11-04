@@ -1,7 +1,7 @@
 import { REPORT_CHART_KINDS } from './charts.ts';
 import { ComputeError, computeNameOk, computeSql } from './compute.ts';
 import { facetFilters, facetKeys, facetParamNames, type FacetDef } from './facet-state.ts';
-import { AGGREGATES, HIGHLIGHT_COLORS, MAX_COMPUTATIONS, OPERATORS } from './report.ts';
+import { AGGREGATES, filterOk, HIGHLIGHT_COLORS, HIGHLIGHT_OPERATORS, MAX_COMPUTATIONS, OPERATORS } from './report.ts';
 
 // (sprint 112) What "Ask in your own words" may do to an interactive report
 // (APEX 26.1/26.2: AI interactive reports). An answer, from the AI service's
@@ -122,9 +122,9 @@ export function checkPlan(json: unknown, columns: Column[], fieldCount = columns
     .filter((f) => col(f.column) && typeof f.operator === 'string' && Object.hasOwn(OPERATORS, f.operator) && typeof f.value === 'string')
     .slice(0, MAX_FILTERS)
     .map((f) => ({ column: f.column as string, operator: f.operator as string, value: OPERATORS[f.operator as string].noValue ? '' : text(f.value) }))
-    .filter((f) => OPERATORS[f.operator].noValue || f.value !== '');
+    .filter((f) => OPERATORS[f.operator].noValue || (f.value !== '' && filterOk(f.operator, f.value)));
   const highlights = list<{ column: unknown; operator: unknown; value: unknown; color: unknown }>(a.highlights)
-    .filter((h) => col(h.column) && typeof h.operator === 'string' && Object.hasOwn(OPERATORS, h.operator) && typeof h.value === 'string')
+    .filter((h) => col(h.column) && typeof h.operator === 'string' && HIGHLIGHT_OPERATORS.includes(h.operator) && typeof h.value === 'string')
     .slice(0, MAX_HIGHLIGHTS)
     .map((h) => ({
       column: h.column as string, operator: h.operator as string, value: OPERATORS[h.operator as string].noValue ? '' : text(h.value),
