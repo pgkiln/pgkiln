@@ -3,10 +3,11 @@
 --      OpenTelemetry)
 --
 -- The instance's collector and its choices are instance settings in
--- meta.setting (otel_*: enabled, endpoint, headers encrypted with the
--- instance key, service name, sample ratio, user attribute, values,
--- signals, builder requests, browser spans; metrics_endpoint and
--- metrics_token_hash for GET /metrics), else the standard OTEL_*
+-- meta.setting (otel_*: enabled, endpoint, service name, sample ratio,
+-- user attribute, values, signals, builder requests, browser spans;
+-- metrics_endpoint for GET /metrics) and, as only the owner reads it,
+-- meta.instance_setting (otel_headers_enc: headers encrypted with the
+-- instance key; metrics_token_hash), else the standard OTEL_*
 -- environment variables (src/telemetry/config.ts). No table needed.
 --
 -- meta.workspace.telemetry: what the workspace's applications send:

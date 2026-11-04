@@ -40,8 +40,8 @@ export interface SecretColumn {
   where?: string;
 }
 
-/** (sprint 139) instance settings that hold a secret: meta.setting rows named *_enc (otel_headers_enc) */
-const SETTING_SECRETS: SecretColumn = { schema: 'meta', table: 'setting', column: 'value', where: `name like '%\\_enc'` };
+/** (sprint 139) instance settings that hold a secret: meta.instance_setting rows named *_enc (otel_headers_enc) */
+const SETTING_SECRETS: SecretColumn = { schema: 'meta', table: 'instance_setting', column: 'value', where: `name like '%\\_enc'` };
 
 export async function encryptedColumns(): Promise<SecretColumn[]> {
   return [...(await owner.query<SecretColumn>(

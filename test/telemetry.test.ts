@@ -75,7 +75,7 @@ beforeEach(async () => {
 });
 
 after(async () => {
-  await owner.query(`delete from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%'`);
+  await owner.query(`delete from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%'; delete from meta.instance_setting where name in ('otel_headers_enc', 'metrics_token_hash')`);
   await owner.query(`update meta.workspace set telemetry = 'instance', telemetry_endpoint = null, telemetry_headers_enc = null, telemetry_values = false`);
   await stopTelemetry();
   await app.close();

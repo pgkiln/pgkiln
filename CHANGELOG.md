@@ -21,8 +21,8 @@ All notable changes to this project are documented here. The format follows
   `pgkiln admin rotate-key`.
 
 ### Changed
-- `pgkiln admin rotate-key` and the lockout checks also cover instance settings that hold a secret (`meta.setting`
-  rows named `*_enc`).
+- `pgkiln admin rotate-key` and the lockout checks also cover instance settings that hold a secret
+  (`meta.instance_setting` rows named `*_enc`, which only the owner role reads).
 
 ## [0.71.0] - 2026-11-03
 

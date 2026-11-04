@@ -55,6 +55,9 @@ export interface WorkspaceTelemetry {
 export const KEYS = ['otel_enabled', 'otel_endpoint', 'otel_headers_enc', 'otel_service_name', 'otel_sample', 'otel_user', 'otel_values',
   'otel_traces', 'otel_logs', 'otel_metrics', 'otel_builder', 'otel_browser', 'metrics_endpoint', 'metrics_token_hash'] as const;
 type Key = (typeof KEYS)[number];
+/** Kept in meta.instance_setting (only the owner reads it; the runtime role reads meta.setting). */
+const PRIVATE = new Set<string>(['otel_headers_enc', 'metrics_token_hash']);
+const tableFor = (k: string) => (PRIVATE.has(k) ? 'meta.instance_setting' : 'meta.setting');
 
 const REFRESH_MS = 30_000;
 let stored = new Map<string, string>();
@@ -185,7 +188,9 @@ export async function refreshTelemetry(force = false) {
     await Promise.resolve();
     try {
       const [s, w, a] = await Promise.all([
-        owner.query<{ name: string; value: string }>('select name, value from meta.setting where name = any($1)', [KEYS]),
+        owner.query<{ name: string; value: string }>(
+          `select name, value from meta.setting where name = any($1) and not (name = any($2))
+           union all select name, value from meta.instance_setting where name = any($2)`, [KEYS, [...PRIVATE]]),
         owner.query<{ id: number; telemetry: WorkspaceMode; telemetry_endpoint: string | null; telemetry_headers_enc: string | null; telemetry_values: boolean }>(
           `select id, telemetry, telemetry_endpoint, telemetry_headers_enc, telemetry_values from meta.workspace where telemetry <> 'instance'`),
         owner.query<{ id: number; alias: string; ws: number | null }>('select a.id, a.alias, meta.app_workspace(a.id) as ws from meta.app a'),
@@ -279,8 +284,8 @@ export async function saveInstanceTelemetry(f: InstanceForm): Promise<string | n
   else if (f.remove_headers === 'true') writes.push(['otel_headers_enc', null]);
   await owner.tx(async (c) => {
     for (const [k, v] of writes) {
-      if (v === null) await c.query('delete from meta.setting where name = $1', [k]);
-      else await c.query('insert into meta.setting (name, value) values ($1, $2) on conflict (name) do update set value = excluded.value', [k, v]);
+      if (v === null) await c.query(`delete from ${tableFor(k)} where name = $1`, [k]);
+      else await c.query(`insert into ${tableFor(k)} (name, value) values ($1, $2) on conflict (name) do update set value = excluded.value`, [k, v]);
     }
   });
   await refreshTelemetry(true);
@@ -289,8 +294,8 @@ export async function saveInstanceTelemetry(f: InstanceForm): Promise<string | n
 
 /** A new token for /metrics (shown once; only its hash is kept), or null to remove it. */
 export async function setMetricsToken(token: string | null) {
-  if (token) await owner.query(`insert into meta.setting (name, value) values ('metrics_token_hash', $1) on conflict (name) do update set value = excluded.value`, [hashToken(token)]);
-  else await owner.query(`delete from meta.setting where name = 'metrics_token_hash'`);
+  if (token) await owner.query(`insert into meta.instance_setting (name, value) values ('metrics_token_hash', $1) on conflict (name) do update set value = excluded.value`, [hashToken(token)]);
+  else await owner.query(`delete from meta.instance_setting where name = 'metrics_token_hash'`);
   await refreshTelemetry(true);
 }
 

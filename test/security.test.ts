@@ -12562,7 +12562,7 @@ describe('sprint 139 AP-6', () => {
   });
   after(async () => {
     const { refreshTelemetry } = await import('../src/telemetry/config.ts');
-    await owner.query(`delete from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%'`);
+    await owner.query(`delete from meta.setting where name like 'otel\\_%' or name like 'metrics\\_%'; delete from meta.instance_setting where name in ('otel_headers_enc', 'metrics_token_hash')`);
     await owner.query(`update meta.workspace set telemetry = 'instance', telemetry_endpoint = null, telemetry_headers_enc = null, telemetry_values = false`);
     await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
     await owner.query('delete from meta.developer where username = $1', [DEV]);
@@ -12587,7 +12587,8 @@ describe('sprint 139 AP-6', () => {
     for (const endpoint of ['javascript:alert(1)', 'file:///etc/passwd', 'http://user:pw@collector:4318', 'http://collector:4318/#x', 'not a url'])
       assert.match((await saveInstanceTelemetry({ enabled: 'true', endpoint })) ?? '', /Collector URL/, endpoint);
     assert.equal(await saveInstanceTelemetry({ enabled: 'false', endpoint: 'http://127.0.0.1:9', headers: 'authorization=Bearer sec139-collector-token' }), null);
-    const stored = (await owner.one(`select value from meta.setting where name = 'otel_headers_enc'`)).value;
+    const stored = (await owner.one(`select value from meta.instance_setting where name = 'otel_headers_enc'`)).value;
+    assert.equal(await owner.one(`select 1 as x from meta.setting where name like '%\\_enc' or name like '%\\_hash'`), undefined, 'secrets out of meta.setting (the runtime role reads it)');
     assert.doesNotMatch(stored, /sec139-collector-token/);
     const a = await signIn('admin', 'admin');
     const page = (await a.get('/builder/telemetry')).body;
