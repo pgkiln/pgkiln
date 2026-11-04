@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.75.0 (November 2026): JSON sources: forms, reports and grids over jsonb documents through updatable views that keep unknown keys; document views of a table with its children (APEX duality views); JSON path columns in reports.
+- **Current release:** 0.76.0 (November 2026): the interactive report's 26.2 dialogs: is one of / is not one of filters from the column's values, is between with the date picker, relative periods on date columns, and the column order by drag and drop, followed by the downloads.
 - **APEX parity (26.2):** 173 features compared: 170 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
