@@ -5,8 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.73.0] - 2026-11-04
-
 ### Added
 - **Static workspace files, remote servers and workspace web credentials** (AP-7; APEX: Static Workspace Files, Remote
   Servers, workspace-level Web Credentials; migration 141). Three Workspace utilities pages for the current workspace
@@ -25,6 +23,10 @@ All notable changes to this project are documented here. The format follows
   `PGKILN_SECRET_KEY`, write-only, never exported, unreadable by the runtime role, rotated by `pgkiln admin
   rotate-key`. The workspace export carries the three (servers keep their local base URL on import; credentials
   without secrets). HR example part 76: remote server CRM for the HR API sources, and `brand.css` as a workspace file.
+
+## [0.73.0] - 2026-11-04
+
+### Added
 - **Shuttle, Select One and Select Many items; Classic Report, Breadcrumb and Help Text regions** (AP-4; APEX: the
   Shuttle item, 24.2's Select One and Select Many, and the Classic Report, Breadcrumb and Help Text regions;
   migration 140). Item type `shuttle`: two lists (available, selected) with a filter, *Move*, *Move all*, *Remove*,
