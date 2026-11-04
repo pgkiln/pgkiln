@@ -8,6 +8,7 @@ import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, type PageContext } from './context.ts';
 import { txContext } from './routes.ts';
 import { retrieve } from './search.ts';
+import { recordSpan } from '../telemetry/trace.ts';
 
 // AI agents and AI tools (migration 121; APEX 26.1 / 26.2: Shared Components
 // → AI Agents). Both are lists in meta.app (ai_agents, ai_tools), exported
@@ -397,6 +398,14 @@ export async function logToolCall(
   ctx: PageContext, regionId: number, agent: string | null, tool: string, type: string, input: Record<string, unknown>, out: AgentOutcome, ms: number,
 ) {
   const status = out.refused ? 'refused' : out.isError ? 'error' : 'ok';
+  // (sprint 139, AP-6) the tool call as a span of the page's trace (its arguments only where values are included)
+  recordSpan(`AI tool ${tool}`.slice(0, 120), {
+    ms,
+    kind: 1,
+    attrs: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': tool, 'gen_ai.tool.type': type, 'pgkiln.ai.agent': agent, 'pgkiln.ai.tool.status': status },
+    vals: { 'gen_ai.tool.call.arguments': JSON.stringify(input ?? {}).slice(0, 2000) },
+    error: status === 'ok' ? null : status,
+  });
   let args = JSON.stringify(input ?? {});
   if (args.length > MAX_ARG_CHARS) args = JSON.stringify({ cut_off: args.slice(0, MAX_ARG_CHARS) });
   dbg(ctx, 4, 'ai', () => `AI tool ${tool} (${type}${agent ? `, agent ${agent}` : ''}) ${args} → ${status} in ${Math.round(ms)} ms${out.isError ? `: ${out.content.slice(0, 300)}` : ''}`);

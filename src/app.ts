@@ -97,6 +97,10 @@ import { mailQueueRoutes } from './builder/mail-queue.ts';
 import { networkAccessRoutes } from './builder/network-access.ts';
 import { workspaceMailRoutes } from './builder/workspace-mail.ts';
 import { runtimeScope } from './db.ts';
+// (sprint 139, AP-6) OpenTelemetry: a trace per request, /metrics, the browser relay
+import { startTelemetry } from './telemetry/export.ts';
+import { telemetryHooks, telemetryRoutes } from './telemetry/http.ts';
+import { telemetryBuilderRoutes } from './builder/telemetry.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   // a database older than the code: apply the migrations (MIGRATE_ON_START=true)
@@ -117,6 +121,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     trustProxy: trustProxySetting(process.env.TRUST_PROXY),
   });
   securityHeaders(app);
+  // (sprint 139) before the workspace scope below, so the request's trace encloses everything
+  if (!pending.length) await startTelemetry();
+  telemetryHooks(app);
   if (pending.length) {
     // checked again (at most every 5 s) until someone migrates; then requests go through
     let checkedAt = Date.now();
@@ -279,6 +286,9 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(dependencyRoutes);
   await app.register(upgradeRoutes);
   await app.register(uiDefaultRoutes);
+  // (sprint 139, AP-6) OpenTelemetry: Workspace utilities → OpenTelemetry, a workspace's own, /metrics, the browser relay
+  await app.register(telemetryRoutes);
+  await app.register(telemetryBuilderRoutes);
   app.get('/', async (_req, reply) => reply.redirect('/builder/home'));
   return app;
 }

@@ -5,6 +5,7 @@ import { appIsolated, runtimeForApp } from './workspace-db.ts';
 import { html, raw, type Raw } from './html.ts';
 import type { WebResponse } from './webclient.ts';
 import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, type InvokeConfig, type RestSource } from './websources.ts';
+import { rootSpan, setAttrs, traceApp } from './telemetry/trace.ts';
 
 // Workflows (APEX 23.2: Workflow). A definition is a list of named steps;
 // an instance runs them one after the other. Each step runs in its own
@@ -453,13 +454,17 @@ export async function runWorkflow(id: string | number): Promise<number> {
     let more: boolean | PendingCall;
     at.branch = null;
     try {
-      more = await stepTx((c, side) => step(c, side, String(id), at));
-      if (typeof more === 'object') {
-        // an invoke_api step: the call runs between two transactions
-        const done = await makeCall(more);
-        at.branch = done.branch;
-        more = await stepTx((c, side) => step(c, side, String(id), at, done));
-      }
+      // (sprint 139, AP-6) each step a trace of its own (the invoke_api call inside it)
+      more = await rootSpan('workflow step', { 'pgkiln.workflow.id': String(id) }, async () => {
+        let r = await stepTx((c, side) => step(c, side, String(id), at));
+        if (typeof r === 'object') {
+          // an invoke_api step: the call runs between two transactions
+          const done = await makeCall(r);
+          at.branch = done.branch;
+          r = await stepTx((c, side) => step(c, side, String(id), at, done));
+        }
+        return r;
+      });
     } catch (e) {
       await fault(String(id), at.branch, (e as Error).message.slice(0, 2000));
       // the other branches may go on
@@ -555,6 +560,8 @@ async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: s
     )
   ).rows[0];
   if (!w) return false;
+  traceApp({ appId: w.app_id });
+  setAttrs({ 'pgkiln.workflow.name': w.name, 'pgkiln.workflow.step': w.current_step ?? null });
   // back from a call: the path that waits for it, if it still does (not terminated, retried or expired)
   const k: Cursor | undefined = done
     ? done.branch === null

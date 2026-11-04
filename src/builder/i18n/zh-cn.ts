@@ -1686,6 +1686,8 @@ export const zhCN: BuilderMessages = {
   'wsp.mail_service': '邮件服务',
   'wsp.network': '网络访问',
   'wsp.queue': '邮件队列',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': '此工作区应用程序的跟踪和日志：{link}（与实例相同、关闭，或同时发送到工作区自己的收集器）。',
   'wsp.iso_short_on': '已隔离：其应用程序和 SQL 在专属的数据库登录上运行。',
   'wsp.iso_short_off': '共享。',
   'wsp.admins_change': '由管理员更改。',

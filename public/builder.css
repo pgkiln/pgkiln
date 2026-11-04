@@ -1645,3 +1645,6 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .util-icons code { font-size: 0.75rem; overflow-wrap: anywhere; }
 .ui-defaults :is(input, select, textarea) { width: 100%; min-width: 7rem; }
 .util-upgrade + .util-upgrade { margin-top: 1rem; }
+
+/* (sprint 139, AP-6) OpenTelemetry */
+.otel-problem { color: var(--danger); overflow-wrap: anywhere; }

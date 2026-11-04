@@ -36,15 +36,22 @@ export interface SecretColumn {
   schema: string;
   table: string;
   column: string;
+  /** (sprint 139) only the rows that match (meta.setting: the settings named *_enc) */
+  where?: string;
 }
 
+/** (sprint 139) instance settings that hold a secret: meta.setting rows named *_enc (otel_headers_enc) */
+const SETTING_SECRETS: SecretColumn = { schema: 'meta', table: 'setting', column: 'value', where: `name like '%\\_enc'` };
+
 export async function encryptedColumns(): Promise<SecretColumn[]> {
-  return (await owner.query<SecretColumn>(
+  return [...(await owner.query<SecretColumn>(
     `select table_schema as schema, table_name as table, column_name as column from information_schema.columns
       where table_schema = 'meta' and data_type = 'text'
         and (column_name like '%\\_enc' or (table_name = 'push_key' and column_name = 'private_key'))
-      order by 2, 3`)).rows;
+      order by 2, 3`)).rows, SETTING_SECRETS];
 }
+
+const rowsOf = (c: SecretColumn) => `${quoteIdent(c.column)} is not null${c.where ? ` and (${c.where})` : ''}`;
 
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const tableOf = (c: SecretColumn) => `${quoteIdent(c.schema)}.${quoteIdent(c.table)}`;
@@ -54,7 +61,7 @@ export async function secretStatus(withKey?: string) {
   const out: (SecretColumn & { stored: number; unreadable: number })[] = [];
   const usable = (withKey ?? process.env.PGKILN_SECRET_KEY ?? '').length >= 32;
   for (const c of await encryptedColumns()) {
-    const rows = (await owner.query<{ v: string }>(`select ${quoteIdent(c.column)} as v from ${tableOf(c)} where ${quoteIdent(c.column)} is not null`)).rows;
+    const rows = (await owner.query<{ v: string }>(`select ${quoteIdent(c.column)} as v from ${tableOf(c)} where ${rowsOf(c)}`)).rows;
     let unreadable = 0;
     for (const r of rows) {
       try {
@@ -228,7 +235,7 @@ export async function rotateKey(oldKey: string, newKey: string, { dryRun = false
     const failed: string[] = [];
     for (const col of cols) {
       const rows = (await c.query<{ ctid: string; v: string }>(
-        `select ctid::text as ctid, ${quoteIdent(col.column)} as v from ${tableOf(col)} where ${quoteIdent(col.column)} is not null for update`)).rows;
+        `select ctid::text as ctid, ${quoteIdent(col.column)} as v from ${tableOf(col)} where ${rowsOf(col)} for update`)).rows;
       let rotated = 0;
       let already = 0;
       for (const r of rows) {

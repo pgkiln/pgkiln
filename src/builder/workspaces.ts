@@ -385,7 +385,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
             <div class="buttons"><button class="btn">${tx('wsp.save_devs')}</button></div></form>`)}
       </div>
       ${serviceRegion(s, w)}
-      ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>`, '', 'mail-network')}
+      ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>
+        <p>${tx.rich('wsp.telemetry_text', { link: html`<a href="${BASE}/workspaces/${w.id}/telemetry">${tx('wsp.telemetry')}</a>` })}</p>`, '', 'mail-network')}
       <div class="columns">${preferencesRegion(s, w, without, unlinked)}${linksRegion(s, w, links)}</div>
       ${full ? isolationRegion(s, w, roles.rows) : region(tx('wsp.isolation'), html`<p class="u-mt0">${w.isolated ? tx('wsp.iso_short_on') : tx('wsp.iso_short_off')} ${tx('wsp.admins_change')}</p>`)}
       ${!full ? '' : region(tx('wsp.applications'), html`<div class="table-wrap"><table class="report report-reflow">

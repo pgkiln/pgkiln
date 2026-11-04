@@ -1686,6 +1686,8 @@ export const nl: BuilderMessages = {
   'wsp.mail_service': 'maildienst',
   'wsp.network': 'netwerktoegang',
   'wsp.queue': 'mailwachtrij',
+  'wsp.telemetry': 'OpenTelemetry',
+  'wsp.telemetry_text': 'Traces en logs van de applicaties van deze werkruimte: {link} (zoals de instantie, uit, of ook naar een eigen collector van de werkruimte).',
   'wsp.iso_short_on': 'Geïsoleerd: de applicaties en SQL draaien op eigen databaselogins.',
   'wsp.iso_short_off': 'Gedeeld.',
   'wsp.admins_change': 'Beheerders wijzigen dit.',

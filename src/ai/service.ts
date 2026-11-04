@@ -3,6 +3,7 @@ import { decryptSecret } from '../secrets.ts';
 import { ClaudeProvider } from './anthropic.ts';
 import { OpenAiProvider } from './openai.ts';
 import { AiError, type AiProvider, type GenerateRequest, type GenerateResult, type ProviderName } from './types.ts';
+import { count, recordSpan } from '../telemetry/trace.ts';
 
 // AI services (migration 060; Gemini and OpenAI-compatible endpoints: 121): an administrator configures them in the
 // builder (Workspace utilities → AI services) and allows each application
@@ -115,6 +116,19 @@ export interface Usage {
 }
 
 export async function logUsage(info: Pick<CallInfo, 'appId' | 'pageNo' | 'user' | 'source'>, u: Usage) {
+  // (sprint 139, AP-6) the call as a span of the current trace (timed by the caller), tokens as metrics
+  if (u.status !== 'limited')
+    recordSpan(`AI ${u.service.provider} ${u.model}`.slice(0, 120), {
+      ms: u.ms,
+      attrs: {
+        'gen_ai.system': u.service.provider, 'gen_ai.request.model': u.model, 'gen_ai.operation.name': info.source === 'embedding' ? 'embeddings' : 'chat',
+        'gen_ai.usage.input_tokens': u.inputTokens, 'gen_ai.usage.output_tokens': u.outputTokens, 'pgkiln.ai.service': u.service.name, 'pgkiln.ai.source': info.source,
+      },
+      error: u.status === 'ok' ? null : `${u.status}${u.message ? `: ${u.message}` : ''}`,
+    });
+  count('pgkiln.ai.requests', { provider: u.service.provider, status: u.status });
+  count('pgkiln.ai.tokens', { provider: u.service.provider, model: u.model.slice(0, 100), type: 'input' }, u.inputTokens);
+  count('pgkiln.ai.tokens', { provider: u.service.provider, model: u.model.slice(0, 100), type: 'output' }, u.outputTokens);
   try {
     await owner.query(
       `insert into meta.ai_usage (app_id, page_no, username, service_id, service, provider, model, source, input_tokens, output_tokens, duration_ms, status, message)

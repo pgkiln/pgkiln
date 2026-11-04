@@ -1,5 +1,6 @@
 import { html, type Raw } from './html.ts';
 import { staticUrl } from './static-version.ts';
+import { browserTraceMeta } from './telemetry/browser.ts';
 
 /** Attributes of <html>: language, text direction and a fixed theme (light/dark; absent = follow the OS). */
 export interface RootAttrs {
@@ -20,7 +21,7 @@ export function documentShell(title: string, body: Raw, bodyClass = '', data: Re
 <title>${title}</title>
 <link rel="stylesheet" href="${staticUrl('app.css')}">
 <script src="${staticUrl('app.js')}" defer></script>
-${head}
+${browserTraceMeta()}${head}
 </head>
 <body class="${bodyClass}"${attrs}>
 ${body}
