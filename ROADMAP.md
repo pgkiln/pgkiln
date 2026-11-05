@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.80.0 (November 2026): streamed AI answers, migrating running workflows inside parallel branches, and remote databases (another PostgreSQL database's tables through postgres_fdw).
+- **Current release:** 0.81.0 (November 2026): vector providers with a model in the database (PostgresML), and Administration (utilities, dashboard, mail queue, network access, instance settings, LDAP directories, database users) in the eleven builder languages.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
