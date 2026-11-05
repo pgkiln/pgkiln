@@ -1616,6 +1616,11 @@ Database code (views, functions, RLS policies) isn't part of the application, so
   when it writes data (hidden items never take posted values, so the URL is the way to set them); the installation's
   session idle time above 120 minutes or session length above 24 hours is a warning; and, as before, administrators
   who sign in with only a password.
+- **JSON sources** (sprint 146): each [JSON source](19-rest-data-sources.md#json-sources-and-document-views)'s views against its data
+  profile, as the catalog has them. A view that doesn't exist is an error (pages on it fail); a view the source didn't
+  make (no `json_source_write` trigger), a column the profile has and the view lacks (or the other way round), a
+  column of another type, or a path, read-only flag or key the view writes back differently is a warning: *Create
+  views* (or *Make the views again*) makes them from the profile.
 - **PL/pgSQL functions:** when the `plpgsql_check` extension is installed, the functions in the
   schemas the application's role can use are checked with `plpgsql_check_function_tb` (see
   [extensions](15-extensions.md)).

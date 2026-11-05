@@ -242,6 +242,18 @@ export function proposeProfile(docs: unknown[], o: { key: string[]; view: string
 export interface Grant { grantee: string; privileges: string[] }
 
 const triggerArg = (o: object) => lit(JSON.stringify(o));
+const argColumns = (cols: JsonColumn[]) => cols.map((c) => ({ name: c.name, path: c.path, ...(c.readonly ? { readonly: true } : {}) }));
+/** (sprint 146) the argument of a source's view trigger, meta.json_source_write: what the view writes back */
+export const viewTriggerArg = (x: JsonSource) =>
+  ({ name: x.name, schema: x.schema, table: x.table, key: x.key, column: x.column, rows: !!x.rows, columns: argColumns(x.columns) });
+/** (sprint 146) the argument of an array view's trigger, meta.json_array_write */
+export const arrayTriggerArg = (x: JsonSource, a: JsonArray) =>
+  ({ name: x.name, schema: x.schema, table: x.table, key: x.key, column: x.column, array: a.path, row_key: ROW_KEY, position: POSITION, columns: argColumns(a.columns) });
+/** (sprint 146) a profile type as format_type() names it in the catalog */
+export const CATALOG_TYPE: Record<JsonType, string> = {
+  text: 'text', integer: 'integer', bigint: 'bigint', numeric: 'numeric', boolean: 'boolean', date: 'date',
+  timestamp: 'timestamp without time zone', timestamptz: 'timestamp with time zone', jsonb: 'jsonb',
+};
 const grantsSql = (view: string, grants: Grant[]) =>
   grants.filter((g) => g.privileges.length).map((g) => `grant ${g.privileges.join(', ')} on ${view} to ${g.grantee === 'PUBLIC' ? 'public' : pg.escapeIdentifier(g.grantee)}`);
 
@@ -260,20 +272,14 @@ export function jsonSourceDdl(x: JsonSource, o: { app: string; grants: Grant[]; 
   const cols = x.columns.map((c) => `${columnSql(doc, c)} as ${ident(c.name)}`);
   out.push(`create view ${view} with (security_invoker = true) as\nselect ${[keySel, ...cols].join(',\n       ')}\n  from ${table} t`);
   out.push(`comment on view ${view} is ${lit(`JSON source ${x.name} of application ${o.app}: ${x.schema}.${x.table}.${x.column} (made by pgkiln; Shared Components → JSON sources makes it again)`)}`);
-  out.push(`create trigger json_source_write\n  instead of insert or update or delete on ${view}\n  for each row execute function meta.json_source_write(${triggerArg({
-    name: x.name, schema: x.schema, table: x.table, key: x.key, column: x.column, rows: !!x.rows,
-    columns: x.columns.map((c) => ({ name: c.name, path: c.path, ...(c.readonly ? { readonly: true } : {}) })),
-  })})`);
+  out.push(`create trigger json_source_write\n  instead of insert or update or delete on ${view}\n  for each row execute function meta.json_source_write(${triggerArg(viewTriggerArg(x))})`);
   out.push(...grantsSql(view, o.grants));
   for (const { a, view: av } of arrays) {
     const arr = `${doc} #> ${pathSql(a.path)}`;
     const ecols = a.columns.map((c) => `${columnSql('e.v', c)} as ${ident(c.name)}`);
     out.push(`create view ${av} with (security_invoker = true) as\nselect ${[keySel, `k.key as ${ROW_KEY}`, `k.idx + 1 as ${POSITION}`, ...ecols].join(',\n       ')}\n  from ${table} t\n  cross join lateral meta.jsonb_element_keys(${arr}) k\n  cross join lateral (select (${arr}) -> k.idx as v) e`);
     out.push(`comment on view ${av} is ${lit(`JSON source ${x.name} of application ${o.app}: the array ${a.path.join('.')} of ${x.schema}.${x.table}.${x.column}, one row per element (made by pgkiln)`)}`);
-    out.push(`create trigger json_source_write\n  instead of insert or update or delete on ${av}\n  for each row execute function meta.json_array_write(${triggerArg({
-      name: x.name, schema: x.schema, table: x.table, key: x.key, column: x.column, array: a.path, row_key: ROW_KEY, position: POSITION,
-      columns: a.columns.map((c) => ({ name: c.name, path: c.path, ...(c.readonly ? { readonly: true } : {}) })),
-    })})`);
+    out.push(`create trigger json_source_write\n  instead of insert or update or delete on ${av}\n  for each row execute function meta.json_array_write(${triggerArg(arrayTriggerArg(x, a))})`);
     out.push(...grantsSql(av, o.grants));
   }
   return out;
