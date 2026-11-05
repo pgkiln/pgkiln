@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.78.0 (November 2026): the AI texts in the builder, the guide, the website and the HR example name all four providers: Claude, OpenAI, Gemini and OpenAI-compatible services.
+- **Current release:** 0.79.0 (November 2026): the Advisor checks JSON source views against their data profile, and `pgkiln advise --offline` checks an export's files without a database.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
