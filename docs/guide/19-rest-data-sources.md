@@ -385,7 +385,8 @@ Shared Components → Data Sources → **JSON Sources** → *Add JSON source*:
 **Create views** (the source's page) makes them in one transaction with your SQL Workshop connection and records
 the statements in the [Change Log](03-builder.md#change-log); *Open in the SQL Worksheet* shows them first. After
 changing the profile, *Make the views again* drops and makes them (a view other objects depend on can't be
-dropped: the error says which). The views are ordinary database objects of your application, like the table:
+dropped: the error says which). The [Advisor](03-builder.md#advisor) names a source whose views no longer match
+its profile, e.g. after a column was added to the profile but the views weren't made again. The views are ordinary database objects of your application, like the table:
 put the statements in your own migration scripts for the other environments (the source itself travels with the
 application's export as `json_sources`).
 

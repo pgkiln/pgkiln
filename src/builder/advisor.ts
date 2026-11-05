@@ -14,6 +14,7 @@ import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { configColumns, searchConfigProblems, textSearchConfig, tsvectorSql } from '../runtime/search.ts';
 import { COMPONENTS } from './components.ts';
+import { arrayTriggerArg, CATALOG_TYPE, POSITION, ROW_KEY, viewTriggerArg, type JsonSource } from '../json-sources.ts';
 import { DISTANCES, PGVECTOR_MISSING, vectorColumnDims, vectorSchema, type Distance } from '../vector.ts';
 import { appEntries, type Entry } from './search.ts';
 import { LOV_CHECKED } from '../runtime/items.ts';
@@ -198,6 +199,57 @@ async function securityFindings(appId: number, query: (sql: string, params?: unk
   return out;
 }
 
+/**
+ * (sprint 146, AP-8) JSON sources whose views no longer match their data profile. Create views makes each view from
+ * the profile; editing the profile afterwards (or changing the view by hand) leaves the database behind. Per view:
+ * missing (error: pages on it fail), not made by this source (no json_source_write trigger: warning), and the
+ * profile against the catalog: its columns and their types, and the trigger's argument, which says what the view
+ * writes back (a column added, removed, moved to another path or made read only). Read as the owner.
+ */
+export async function jsonSourceFindings(sources: unknown, query: (sql: string, params?: unknown[]) => Promise<pg.QueryResult>): Promise<Finding[]> {
+  const out: Finding[] = [];
+  const list = (Array.isArray(sources) ? sources : []) as JsonSource[];
+  for (const x of list) {
+    if (!x || typeof x.schema !== 'string' || typeof x.view !== 'string' || !Array.isArray(x.columns)) continue;
+    const field = `JSON source ${x.name}`;
+    const views = [
+      { view: x.view, arg: viewTriggerArg(x), cols: x.columns, extra: [] as string[] },
+      ...(x.arrays ?? []).map((a) => ({ view: a.view, arg: arrayTriggerArg(x, a), cols: a.columns, extra: [ROW_KEY, POSITION] })),
+    ];
+    const rows = (await query(
+      `select c.relname as view,
+              (select array_agg(array[a.attname::text, format_type(a.atttypid, a.atttypmod)] order by a.attnum)
+                 from pg_attribute a where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped) as cols,
+              (select convert_from(substring(t.tgargs from 1 for greatest(length(t.tgargs) - 1, 0)), 'UTF8')
+                 from pg_trigger t where t.tgrelid = c.oid and t.tgname = 'json_source_write') as arg
+         from pg_class c join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = $1 and c.relname = any ($2) and c.relkind = 'v'`, [x.schema, views.map((v) => v.view)])).rows;
+    const found = new Map(rows.map((r) => [r.view as string, r]));
+    for (const v of views) {
+      const name = `${x.schema}.${v.view}`;
+      const again = 'Shared Components → JSON sources → Create views makes it again.';
+      const r = found.get(v.view);
+      if (!r) { out.push({ severity: 'error', entry: null, field, message: `View ${name} doesn't exist: pages and reports on it fail. ${again}` }); continue; }
+      if (r.arg == null) { out.push({ severity: 'warning', entry: null, field, message: `View ${name} wasn't made by this JSON source (it has no json_source_write trigger): it doesn't write back to ${x.table}.${x.column}.` }); continue; }
+      const actual = new Map((r.cols ?? []).map(([n, t]: string[]) => [n, t]));
+      const problems: string[] = [];
+      for (const n of [...x.key, ...v.extra]) if (!actual.has(n)) problems.push(`no column ${n}`);
+      for (const c of v.cols) {
+        const t = actual.get(c.name);
+        if (t === undefined) problems.push(`no column ${c.name}`);
+        else if (CATALOG_TYPE[c.type] && t !== CATALOG_TYPE[c.type]) problems.push(`${c.name} is ${t}, the profile says ${c.type}`);
+      }
+      const known = new Set([...x.key, ...v.extra, ...v.cols.map((c) => c.name)]);
+      for (const n of actual.keys()) if (!known.has(n as string)) problems.push(`column ${n} isn't in the profile`);
+      let arg: unknown = null;
+      try { arg = JSON.parse(r.arg); } catch { /* compared as text below */ }
+      if (!problems.length && JSON.stringify(arg) !== JSON.stringify(v.arg)) problems.push('it writes back other paths than the profile names (a path, a read-only column or the key changed)');
+      if (problems.length) out.push({ severity: 'warning', entry: null, field, message: `View ${name} is out of date with the profile: ${problems.join('; ')}. ${again}` });
+    }
+  }
+  return out;
+}
+
 const ITEM_REF = /(?<![A-Za-z0-9_$&:])(?::|&)(P\d+_[A-Z0-9_]+)\b/gi;
 const BUILT_IN = new Set(['MUST_NOT_BE_PUBLIC_USER']);
 
@@ -250,6 +302,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
                                    and not exists (select 1 from meta.page_group g where g.app_id = p.app_id and g.name = p.page_group) order by 1`, [appId])).rows)
     findings.push({ severity: 'warning', entry: null, field: `Page ${p.page_no} → Page group`, message: `Page group ${p.page_group} doesn't exist (Shared Components → Page groups).` });
   findings.push(...(await securityFindings(appId, query, byKey)));
+  findings.push(...(await jsonSourceFindings(app.json_sources, query)));
   // ---- SQL, as the application's role, rolled back (a savepoint in the caller's transaction)
   // (090) an isolated workspace's application: planned on the workspace's developer login, in a
   // transaction of its own (planning can run the application's functions; RESET ROLE there only
