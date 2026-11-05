@@ -341,6 +341,80 @@ describe('AI assistant with OpenAI: tools that read, write and call a REST data 
   });
 });
 
+// (sprint 148, WS-4) streamed answers: server-sent events while the model writes, then the page to load
+async function streamed(b: InstanceType<typeof Browser>, message: string, region = chatRegion, page = '/a/hr/38') {
+  const res = await app.inject({
+    method: 'POST', url: `${page}/assistant/${region}/send`,
+    payload: new URLSearchParams({ __csrf: b.lastCsrf, message, params: '' }).toString(),
+    headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'text/event-stream' },
+  });
+  const events = res.body.split('\n\n').filter(Boolean).map((block) => ({
+    event: /^event: (.*)$/m.exec(block)?.[1], data: JSON.parse(/^data: (.*)$/m.exec(block)?.[1] ?? 'null'),
+  }));
+  return { res, events, text: events.filter((e) => e.event === 'text').map((e) => e.data).join(''), done: events.find((e) => e.event === 'done')?.data };
+}
+
+describe('streamed answers (sprint 148)', () => {
+  test('Claude: the text in pieces as it is written, a tool before it runs, then done with the page; the answer is saved', async () => {
+    mock.script = [{ tools: [{ name: 'my_leave', input: {} }] }, { text: 'You have **two** requests pending.\n- one\n- two' }];
+    const b = await scott();
+    const r = await streamed(b, 'What leave do I have?');
+    assert.equal(r.res.statusCode, 200);
+    assert.match(String(r.res.headers['content-type']), /^text\/event-stream/);
+    assert.equal(r.res.headers['cache-control'], 'no-store');
+    assert.ok(r.events.filter((e) => e.event === 'text').length > 3, 'several pieces');
+    assert.equal(r.text, 'You have **two** requests pending.\n- one\n- two');
+    const order = r.events.map((e) => e.event);
+    assert.ok(order.indexOf('tool') >= 0 && order.indexOf('tool') < order.indexOf('text'), 'the tool is named before the answer');
+    assert.deepEqual(r.events.find((e) => e.event === 'tool')!.data, 'my_leave');
+    assert.equal(order.at(-1), 'done');
+    assert.equal(r.done.url, `/a/hr/38#R${chatRegion}`);
+    const page = (await b.get('/a/hr/38')).body;
+    assert.match(page, /You have <strong>two<\/strong> requests pending\./, 'the page shows the saved answer formatted');
+    assert.match(page, /data-used="Looked up: \{tools\}"/);
+  });
+
+  test('an error: no text, done with the page, which shows the error and keeps the message', async () => {
+    mock.script = [{ status: 500 }, { status: 500 }];
+    const b = await scott();
+    const r = await streamed(b, 'Will this fail?');
+    assert.equal(r.text, '');
+    assert.equal(r.events.at(-1)!.event, 'done');
+    const page = (await b.get('/a/hr/38')).body;
+    assert.match(page, />Will this fail\?<\/textarea>/);
+  });
+
+  test('without the header the form posts and redirects as before', async () => {
+    mock.script = [{ text: 'Plain.' }];
+    const b = await scott();
+    assert.equal((await send(b, 'Hello')).statusCode, 303);
+  });
+
+  test('OpenAI: a streamed request with usage, tools named, the text streamed; a 400 to streaming falls back to a plain request', async () => {
+    mock.script = [{ tools: [{ name: 'notes', input: {} }] }, { text: 'Two notes.' }];
+    const b = new Browser(app);
+    await b.get(`/a/${alias}/1`);
+    const before = openAiCalls().length;
+    const r = await streamed(b, 'How many notes?', appRegion, `/a/${alias}/1`);
+    assert.equal(r.text, 'Two notes.');
+    assert.deepEqual(r.events.filter((e) => e.event === 'tool').map((e) => e.data), ['notes']);
+    const calls = openAiCalls().slice(before);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].body.stream, true);
+    assert.deepEqual(calls[0].body.stream_options, { include_usage: true });
+    const usage = await owner.one(`select input_tokens, output_tokens from meta.ai_usage where app_id = $1 order by id desc limit 1`, [appId]);
+    assert.deepEqual([usage.input_tokens, usage.output_tokens], [50, 10], 'the usage of the last chunk is logged');
+    mock.script = [{ status: 400 }, { text: 'Not streamed.' }];
+    const n = openAiCalls().length;
+    const again = await streamed(b, 'Again', appRegion, `/a/${alias}/1`);
+    assert.equal(again.events.at(-1)!.event, 'done');
+    const [refused, plain] = openAiCalls().slice(n);
+    assert.equal(refused.body.stream, true);
+    assert.equal(plain.body.stream, undefined, 'the plain request once');
+    assert.match((await b.get(`/a/${alias}/1`)).body, /Not streamed\./);
+  });
+});
+
 describe('natural-language filters on a report (NL2IR)', () => {
   test('schema and checks: only the report\'s columns and operators', () => {
     const cols = [{ name: 'job', label: 'Job', kind: 'text' as const, pos: 3 }, { name: 'sal', label: 'Salary', kind: 'number' as const, pos: 7 }];

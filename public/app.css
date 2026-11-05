@@ -1877,6 +1877,8 @@ td.to-col-center, th.to-col-center { text-align: center; }
 .assistant-text p, .assistant-text ul, .assistant-text ol { margin: 0 0 0.4rem; }
 .assistant-text > :last-child { margin-bottom: 0; }
 .assistant-text ul, .assistant-text ol { padding-left: 1.25rem; }
+/* (sprint 148) an answer while it streams: plain text, its line breaks kept, until the page shows it formatted */
+.assistant-text .assistant-streaming { white-space: pre-wrap; overflow-wrap: anywhere; }
 .assistant-tools { display: block; margin-top: 0.25rem; }
 .assistant-input textarea { width: 100%; box-sizing: border-box; }
 .assistant-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.4rem 0; }

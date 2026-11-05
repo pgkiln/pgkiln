@@ -69,11 +69,14 @@ for (const js of [true, false])
         await fits(page, 'empty chat');
         mock.script = [{ tools: [{ name: 'departments', input: {} }] }, { text: 'There are **4** departments:\n- ACCOUNTING\n- RESEARCH\n- SALES\n- OPERATIONS_WITH_A_VERY_LONG_NAME_WITHOUT_ANY_BREAKS_AT_ALL' }];
         await page.fill('.assistant-input textarea', 'Which departments are there?');
+        // (sprint 148) with JavaScript the answer streams (server-sent events), then the page loads
+        const sent = js ? page.waitForResponse((r) => /\/assistant\/\d+\/send$/.test(r.url())) : null;
         if (js) await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
         else await Promise.all([page.waitForNavigation(), page.click('.assistant-actions button.btn-hot')]);
         await page.locator('.assistant-msg-assistant li', { hasText: 'SALES' }).waitFor();
         assert.equal(await page.locator('.assistant-msg-user').count(), 1);
         assert.match(await page.locator('.assistant-tools').innerText(), /departments/);
+        if (sent) assert.match((await sent).headers()['content-type'] ?? '', /^text\/event-stream/);
         await fits(page, 'chat with an answer');
         await Promise.all([page.waitForNavigation(), page.click('.assistant-actions button:not(.btn-hot)')]);
         assert.equal(await page.locator('.assistant-msg-user').count(), 0);

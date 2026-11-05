@@ -382,7 +382,7 @@ export async function renderAssistant(ctx: PageContext, r: Region): Promise<Raw>
   }
   const welcome = c.welcome ? substitute(ctx.locale.tr(c.welcome), ctx, (v) => v) : '';
   const usable = mayUse(ctx, r);
-  return html`<div class="assistant" data-assistant="${r.id}">
+  return html`<div class="assistant" data-assistant="${r.id}" data-you="${t('assistant.you')}" data-who="${t('assistant.assistant')}" data-used="${t('assistant.used', { tools: '{tools}' })}">
     <ol class="assistant-log" aria-label="${t('assistant.conversation')}" aria-live="polite">
       ${welcome ? html`<li class="assistant-msg assistant-msg-assistant"><span class="assistant-who">${t('assistant.assistant')}</span><div class="assistant-text">${formatAnswer(welcome)}</div></li>` : ''}
       ${turns.map((x) => html`<li class="assistant-msg assistant-msg-${x.role === 'user' ? 'user' : 'assistant'}">
@@ -427,7 +427,10 @@ async function contextData(ctx: PageContext, c: AssistantConfig, question: strin
   return parts;
 }
 
-async function ask(ctx: PageContext, r: Region, message: string) {
+/** (sprint 148, WS-4) where a streamed answer goes while the model writes it */
+interface Live { text(delta: string): void; tool(name: string): void }
+
+async function ask(ctx: PageContext, r: Region, message: string, live?: Live) {
   const t = ctx.locale.t;
   const c = configOf(r);
   const agent = c.agent ? await agentFor(ctx.app.id, c.agent) : null;
@@ -482,6 +485,7 @@ async function ask(ctx: PageContext, r: Region, message: string) {
     maxRounds: agent ? (agent.agent.max_steps ?? DEFAULT_STEPS) : (c.max_rounds ?? DEFAULT_ROUNDS),
     runTool: runLogged,
     ...(agent ? { effort: agent.agent.effort ?? null, maxTokens: agent.agent.max_tokens ?? null } : {}),
+    ...(live ? { onText: live.text, onTool: live.tool } : {}),
   }, { appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, source: 'assistant', debug: (l, x) => dbg(ctx, l, 'ai', x) });
   dbg(ctx, 9, 'ai', () => `answer: ${res.text}`);
   const turns: Turn[] = [...(conv?.turns ?? []), { role: 'user', text: message },
@@ -499,8 +503,11 @@ async function ask(ctx: PageContext, r: Region, message: string) {
   if (extras.actions.length) ctx.session.state[`__AIACT${r.id}`] = JSON.stringify(extras.actions);
 }
 
+/** (sprint 148) the browser asked for the answer as it is written (app.js sends this with JavaScript) */
+const wantsStream = (req: Req) => String(req.headers.accept ?? '').includes('text/event-stream');
+
 export async function assistantRoutes(app: FastifyInstance) {
-  const action = async (req: Req, reply: FastifyReply, run: (ctx: PageContext, r: Region) => Promise<void>) => {
+  const action = async (req: Req, reply: FastifyReply, run: (ctx: PageContext, r: Region, live?: Live) => Promise<void>, stream = false) => {
     const ctx = await loadContext(req, reply);
     if (!ctx) return;
     const body = req.body ?? {};
@@ -512,30 +519,60 @@ export async function assistantRoutes(app: FastifyInstance) {
     const r = ctx.page.regions.find((x) => x.id === Number(req.params.id) && x.type === 'ai_assistant');
     if (!r) return refuse(`ai assistant: region ${req.params.id} on page ${ctx.page.page_no}`);
     if (!mayUse(ctx, r)) return refuse(`ai assistant: region ${r.id}: not signed in`);
+    const q = typeof body.params === 'string' ? new URLSearchParams(body.params.slice(0, 4000)).toString() : '';
+    const url = `${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}#R${r.id}`;
+    // (sprint 148, WS-4) a streamed answer: server-sent events with the text as the model writes it (JSON strings,
+    // shown as text by app.js), each tool before it runs, then "done" with the page to load: it shows the saved
+    // answer, its links and actions, or the error, exactly as the redirect below does without JavaScript.
+    let live: Live | undefined;
+    let out: FastifyReply['raw'] | null = null;
+    if (stream) {
+      reply.hijack();
+      out = reply.raw;
+      out.writeHead(200, {
+        'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no',
+        'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin',
+      });
+      const raw = out;
+      const send = (event: string, data: unknown) => {
+        if (!raw.writableEnded && !raw.destroyed) raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      };
+      live = { text: (d) => send('text', d), tool: (n) => send('tool', n) };
+    }
+    let forbidden = false;
     try {
-      await run(ctx, r);
+      await run(ctx, r, live);
     } catch (e) {
-      if (e instanceof Forbidden) return refuse(`ai assistant: region ${r.id} on page ${ctx.page.page_no}`);
-      const c = configOf(r);
-      const msg = e instanceof InputError ? e.message
-        : e instanceof AiError ? (c.error_message && e.kind !== 'limit' ? ctx.locale.tr(c.error_message) : e.message)
-        : await publicError(ctx, e, 'AI assistant');
-      if (e instanceof AiError) dbg(ctx, 1, 'ai', `AI assistant: ${e.kind}: ${e.message}`);
-      ctx.session.state.__FLASH_ERROR = msg;
-      if (typeof body.message === 'string') ctx.session.state[`__AIDRAFT${r.id}`] = body.message.slice(0, MAX_MESSAGE_CHARS);
+      if (e instanceof Forbidden) {
+        if (!out) return refuse(`ai assistant: region ${r.id} on page ${ctx.page.page_no}`);
+        logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail: `ai assistant: region ${r.id} on page ${ctx.page.page_no}` });
+        ctx.session.state.__FLASH_ERROR = ctx.locale.t('error.access_denied');
+        forbidden = true;
+      } else {
+        const c = configOf(r);
+        const msg = e instanceof InputError ? e.message
+          : e instanceof AiError ? (c.error_message && e.kind !== 'limit' ? ctx.locale.tr(c.error_message) : e.message)
+          : await publicError(ctx, e, 'AI assistant');
+        if (e instanceof AiError) dbg(ctx, 1, 'ai', `AI assistant: ${e.kind}: ${e.message}`);
+        ctx.session.state.__FLASH_ERROR = msg;
+        if (typeof body.message === 'string') ctx.session.state[`__AIDRAFT${r.id}`] = body.message.slice(0, MAX_MESSAGE_CHARS);
+      }
     }
     await saveState(ctx.session);
-    const q = typeof body.params === 'string' ? new URLSearchParams(body.params.slice(0, 4000)).toString() : '';
-    return reply.redirect(`${ctx.base}/${ctx.page.page_no}${q ? `?${q}` : ''}#R${r.id}`, 303);
+    if (out) {
+      if (!out.writableEnded && !out.destroyed) out.end(`event: done\ndata: ${JSON.stringify({ url, ...(forbidden ? { forbidden: true } : {}) })}\n\n`);
+      return;
+    }
+    return reply.redirect(url, 303);
   };
 
   app.post('/a/:alias/:page/assistant/:id/send', async (req: Req, reply) =>
-    action(req, reply, async (ctx, r) => {
+    action(req, reply, async (ctx, r, live) => {
       const message = typeof req.body?.message === 'string' ? req.body.message.replace(/\r\n?/g, '\n').trim() : '';
       if (!message) throw new InputError(ctx.locale.t('assistant.empty'));
       if (message.length > MAX_MESSAGE_CHARS) throw new InputError(ctx.locale.t('assistant.too_long', { max: String(MAX_MESSAGE_CHARS) }));
-      await ask(ctx, r, message);
-    }),
+      await ask(ctx, r, message, live);
+    }, wantsStream(req)),
   );
 
   app.post('/a/:alias/:page/assistant/:id/clear', async (req: Req, reply) =>

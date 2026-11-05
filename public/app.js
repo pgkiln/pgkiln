@@ -4041,6 +4041,89 @@ function areaFilter(map, f) {
       btn.addEventListener('click', (x) => x.preventDefault());
     }
   });
+  // (sprint 148, WS-4) the answer as the model writes it: the message is posted with fetch asking for server-sent
+  // events; "text" pieces are added as text (never as HTML), "tool" names the tool being used, and "done" loads the
+  // page, which shows the saved answer formatted, its links and actions, or the error. Without fetch streams (or when
+  // the server answers with a page, e.g. a refusal) the form is sent the ordinary way.
+  const streams = typeof ReadableStream !== 'undefined' && typeof TextDecoder !== 'undefined' && typeof fetch === 'function';
+  const go = (url) => {
+    const u = new URL(url, location.href);
+    if (u.pathname === location.pathname && u.search === location.search) {
+      history.replaceState(history.state, '', u);
+      location.reload();
+    } else location.assign(u);
+  };
+  async function streamAnswer(f) {
+    const box = document.querySelector(`textarea[form="${CSS.escape(f.id)}"]`);
+    const wrap = box?.closest('.assistant');
+    const log = wrap?.querySelector('.assistant-log');
+    const entry = (role, label) => {
+      const li = document.createElement('li');
+      li.className = `assistant-msg assistant-msg-${role}`;
+      const who = document.createElement('span');
+      who.className = 'assistant-who';
+      who.textContent = label || '';
+      const text = document.createElement('div');
+      text.className = 'assistant-text';
+      li.append(who, text);
+      log.append(li);
+      return { li, text };
+    };
+    const mine = entry('user', wrap.dataset.you);
+    const said = document.createElement('p');
+    said.textContent = box.value;
+    mine.text.append(said);
+    const answer = entry('assistant', wrap.dataset.who);
+    answer.text.setAttribute('aria-busy', 'true');
+    const para = document.createElement('p');
+    para.className = 'assistant-streaming';
+    answer.text.append(para);
+    const status = document.createElement('small');
+    status.className = 'assistant-tools muted';
+    answer.li.append(status);
+    answer.li.scrollIntoView({ block: 'nearest' });
+    let res;
+    try {
+      res = await fetch(f.action, { method: 'POST', body: new URLSearchParams(new FormData(f)), headers: { accept: 'text/event-stream' }, credentials: 'same-origin' });
+    } catch {
+      return HTMLFormElement.prototype.submit.call(f);
+    }
+    if (!res.ok || !(res.headers.get('content-type') || '').startsWith('text/event-stream') || !res.body) return HTMLFormElement.prototype.submit.call(f);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let cut;
+        while ((cut = buf.indexOf('\n\n')) >= 0) {
+          const block = buf.slice(0, cut);
+          buf = buf.slice(cut + 2);
+          const event = /^event: (.*)$/m.exec(block)?.[1];
+          const line = /^data: (.*)$/m.exec(block)?.[1];
+          if (!event || line === undefined) continue;
+          const data = JSON.parse(line);
+          if (event === 'text' && typeof data === 'string') {
+            para.textContent += data;
+            answer.li.scrollIntoView({ block: 'nearest' });
+          } else if (event === 'tool' && typeof data === 'string') status.textContent = (wrap.dataset.used || '{tools}').replace('{tools}', data);
+          else if (event === 'done' && data && typeof data.url === 'string') return go(data.url);
+        }
+      }
+    } catch {
+      // the connection broke: the server still saves the answer; the page shows it
+    }
+    location.reload();
+  }
+  document.addEventListener('submit', (e) => {
+    const f = e.target;
+    if (e.defaultPrevented || !streams || !f.matches || !f.matches('form.assistant-form') || !f.id) return;
+    if (!document.querySelector(`textarea[form="${CSS.escape(f.id)}"]`)?.closest('.assistant')?.querySelector('.assistant-log')) return;
+    e.preventDefault();
+    streamAnswer(f);
+  });
   // Ctrl+Enter (or ⌘+Enter) sends the message
   document.addEventListener('keydown', (e) => {
     const box = e.target;

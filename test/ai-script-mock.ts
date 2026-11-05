@@ -31,6 +31,9 @@ export interface ScriptMock {
 
 let ids = 0;
 
+/** (sprint 148) a text in the pieces a streaming model sends: a word and its space at a time */
+export const pieces = (text: string) => text.match(/\S+\s*|\s+/g) ?? [''];
+
 export async function startScriptMock(): Promise<ScriptMock> {
   const mock: ScriptMock = { base: '', seen: [], script: [], close: async () => {} };
   const server = http.createServer((req, res) => {
@@ -65,7 +68,8 @@ export async function startScriptMock(): Promise<ScriptMock> {
           stop = reply.stop ?? 'end_turn';
           events.push(
             ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
-            ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: reply.text } }],
+            // (sprint 148) the text in pieces, as a model streams it
+            ...pieces(reply.text).map((text): [string, unknown] => ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } }]),
             ['content_block_stop', { type: 'content_block_stop', index: 0 }],
           );
         } else if ('tools' in reply) {
@@ -98,6 +102,21 @@ export async function startScriptMock(): Promise<ScriptMock> {
           finish = 'tool_calls';
           message.tool_calls = reply.tools.map((t) => ({ id: `call_${++ids}`, type: 'function', function: { name: t.name, arguments: JSON.stringify(t.input) } }));
         } else message.refusal = 'I can\'t help with that.';
+        if (body?.stream === true) {
+          // (sprint 148) a streamed completion: chunks, then the usage when asked for, then [DONE]
+          const id = `chatcmpl-${++ids}`;
+          const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>
+            ({ id, object: 'chat.completion.chunk', created: 0, model, choices: [{ index: 0, delta, finish_reason: finish }] });
+          const chunks: unknown[] = [chunk({ role: 'assistant', content: '' })];
+          if (typeof message.content === 'string') for (const p of pieces(message.content)) chunks.push(chunk({ content: p }));
+          if (message.refusal) chunks.push(chunk({ refusal: message.refusal }));
+          (message.tool_calls as any[] | undefined)?.forEach((c, index) => chunks.push(chunk({ tool_calls: [{ index, id: c.id, type: 'function', function: { name: c.function.name, arguments: c.function.arguments } }] })));
+          chunks.push(chunk({}, finish));
+          if (body.stream_options?.include_usage) chunks.push({ id, object: 'chat.completion.chunk', created: 0, model, choices: [], usage: { prompt_tokens: 50, completion_tokens: 10, total_tokens: 60 } });
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+          for (const c of chunks) res.write(`data: ${JSON.stringify(c)}\n\n`);
+          return res.end('data: [DONE]\n\n');
+        }
         res.writeHead(200, { 'content-type': 'application/json' });
         return res.end(JSON.stringify({
           id: `chatcmpl-${++ids}`, object: 'chat.completion', created: 0, model,
