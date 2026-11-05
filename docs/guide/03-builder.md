@@ -385,6 +385,38 @@ another workspace's file is never served to an application, its servers and cred
   one). Secrets are encrypted with `PGKILN_SECRET_KEY`, write-only, never exported and never readable by the runtime
   role; `pgkiln admin rotate-key` and the lockout checks include them.
 
+### Remote databases
+
+(sprint 150; APEX: *REST Enabled SQL*, regions on another database) Workspace utilities → **Remote databases**
+(`/builder/remote-databases`, administrators): another PostgreSQL database whose tables the applications query as if
+they were their own. pgkiln uses PostgreSQL's [`postgres_fdw`](15-extensions.md): a superuser runs `create extension
+postgres_fdw` once (the page offers it when pgkiln's owner connection is a superuser) and, when the owner role is not
+one, `grant usage on foreign data wrapper postgres_fdw to` it.
+
+A remote database has a **name** (a static id, `CRM`), the **host**, **port** and **database** as the *database
+server* reaches them (it makes the connection, not pgkiln), the remote **user** and **password**, the **remote schema**
+(`public`), a new **local schema** (`crm`), the **tables** to import (comma separated; empty: every table and view of
+the remote schema) and the **application database roles** to grant them to, read only or also INSERT, UPDATE and
+DELETE. *Add and import* makes, in one transaction:
+
+- a foreign server `pgkiln_rdb_crm` with the host, port and database, and a user mapping with the user and password.
+  The password is kept by PostgreSQL alone (`pg_user_mapping`, which only superusers and the server's owner can read):
+  pgkiln never stores it, never shows it, and needs it again only to rename the remote database or move it to
+  another local schema;
+- the local schema (marked as this remote database's by its comment: an existing schema of anything else is refused),
+  with the remote tables as foreign tables (`import foreign schema … limit to (…)`);
+- the grants: USAGE on the schema and SELECT (and INSERT, UPDATE, DELETE) on its tables to the chosen roles, and to
+  nobody else.
+
+Regions, reports, forms, grids, lists of values and processes then use `crm.customers` like any table, as the
+application's role in its transaction; what the remote user may read or change on the other side is what they may.
+**Test the connection** does the same in a transaction that is rolled back (a wrong password or host says so, and
+nothing stays). **Import again** drops the foreign tables and imports them again (new tables or columns on the remote
+side; a view of yours on one of them stops it and says which). **Delete** drops the local schema with its foreign
+tables and the server. Remote databases are installation data: they are not exported with an application (the
+foreign tables are database objects, like the application's own tables). For other databases, a foreign data wrapper
+of their own (`oracle_fdw`, `mysql_fdw`, `tds_fdw`) works the same way, set up by hand.
+
 ### Isolated workspaces
 
 On a workspace's page an administrator chooses **Isolate this workspace** (Workspace utilities → Workspaces → the

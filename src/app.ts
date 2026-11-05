@@ -99,6 +99,7 @@ import { mailQueueRoutes } from './builder/mail-queue.ts';
 import { networkAccessRoutes } from './builder/network-access.ts';
 import { workspaceMailRoutes } from './builder/workspace-mail.ts';
 import { workspaceResourceRoutes } from './builder/workspace-resources.ts';
+import { remoteDatabaseRoutes } from './builder/remote-databases.ts';
 import { runtimeScope } from './db.ts';
 // (sprint 139, AP-6) OpenTelemetry: a trace per request, /metrics, the browser relay
 import { startTelemetry } from './telemetry/export.ts';
@@ -288,6 +289,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(networkAccessRoutes);
   await app.register(workspaceMailRoutes);
   await app.register(workspaceResourceRoutes);
+  await app.register(remoteDatabaseRoutes);
   // (sprint 138, AP-5) an application's Utilities
   await app.register(utilityRoutes);
   await app.register(dependencyRoutes);

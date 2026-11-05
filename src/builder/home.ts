@@ -288,6 +288,7 @@ export async function homeRoutes(app: FastifyInstance) {
         ${card(`${BASE}/backups`, icon('archive'), 'Manage backups', 'The backups of every application of this workspace; back them all up at once.')}
         ${card(`${BASE}/workspace-files`, icon('file'), 'Static workspace files', 'CSS, JavaScript, images and fonts every application of this workspace can load (#WORKSPACE_FILES#).')}
         ${card(`${BASE}/remote-servers`, icon('server'), 'Remote servers', 'Named base URLs for REST data sources, catalogs and AI services: change one value to move them all.')}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/remote-databases`, icon('database'), 'Remote databases', 'Another PostgreSQL database\'s tables as foreign tables (postgres_fdw) the applications query like their own (administrators).') : ''}
         ${card(`${BASE}/workspace-credentials`, icon('key'), 'Web credentials', 'Keys and OAuth2 clients the applications of this workspace use by name (secrets encrypted, write-only).')}
         ${card(`${BASE}/rest-catalogs`, icon('globe'), 'REST Source Catalogs', 'Web services described once for the workspace (e.g. from an OpenAPI document); applications make REST data sources from them.')}
         ${s.workspace?.admin ? card(`${BASE}/workspace-export`, icon('download'), 'Export and import', 'This workspace\'s components as one file: settings, developers, groups, links, catalogs, scripts, blueprints (workspace administrators).') : ''}

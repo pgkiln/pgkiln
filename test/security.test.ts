@@ -13370,3 +13370,51 @@ describe('sprint 149 workflow migration with branches: the builder\'s alone', ()
     ]) await assert.rejects(runtime.query(sql), /permission denied/);
   });
 });
+
+describe('sprint 150 remote databases: administrators only', () => {
+  const DEV = 'sec150_dev';
+  const PW = 'Sec150-dev-password!';
+  before(async () => {
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await owner.query(`delete from meta.remote_database where name = 'SEC150'`);
+    await owner.query(`drop server if exists pgkiln_rdb_sec150 cascade`);
+  });
+
+  test('a developer who is not an administrator, and a request without the CSRF token, change nothing', async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: DEV, password: PW });
+    await b.get('/builder/home');
+    assert.equal((await b.get('/builder/remote-databases')).statusCode, 403);
+    const form = { mode: 'save', name: 'SEC150', host: '127.0.0.1', port: '5432', dbname: 'x', user_name: 'x', password: 'x', remote_schema: 'public', local_schema: 'sec150' };
+    for (const url of ['/builder/remote-databases', '/builder/remote-databases/1/refresh', '/builder/remote-databases/1/delete', '/builder/remote-databases/extension'])
+      assert.equal((await b.submit(url, form)).statusCode, 403, url);
+    const adminB = new FileBrowser(app);
+    await adminB.get('/builder/login');
+    await adminB.post('/builder/login', { __csrf: adminB.lastCsrf, username: 'admin', password: 'admin' });
+    await adminB.get('/builder/remote-databases');
+    assert.equal((await adminB.post('/builder/remote-databases', form)).statusCode, 403, 'no CSRF token');
+    assert.equal((await owner.query(`select 1 from meta.remote_database where name = 'SEC150'`)).rowCount, 0);
+    assert.equal((await owner.query(`select 1 from pg_foreign_server where srvname = 'pgkiln_rdb_sec150'`)).rowCount, 0);
+  });
+
+  test('settings reach SQL only checked, quoted or as literals', async () => {
+    const { remoteDbProblems, applyRemote } = await import('../src/remote-db.ts');
+    const x = { name: 'SEC150', description: null, host: "h' options (x 'y", port: 5432, dbname: 'd', user_name: 'u', remote_schema: 'public', local_schema: 'sec150', tables: [], grant_roles: [], writable: false };
+    assert.ok(remoteDbProblems(x, []).some((p) => /host/.test(p)));
+    assert.ok(remoteDbProblems({ ...x, host: 'h', local_schema: 'Robert"; drop schema hr; --' }, []).some((p) => /local schema/.test(p)));
+    // a hostile remote name is an identifier and a literal, never SQL: the server is made with the text as its value
+    await owner.query('create extension if not exists postgres_fdw');
+    await owner.tx(async (c) => {
+      await applyRemote(c, { ...x, host: 'localhost', dbname: "d', host 'evil", tables: ['t") from server x into public; --'] }, 'pw').catch(() => undefined);
+      throw new Error('roll back');
+    }).catch(() => undefined);
+    assert.equal((await owner.query(`select 1 from pg_foreign_server where srvname = 'pgkiln_rdb_sec150'`)).rowCount, 0, 'rolled back');
+    assert.equal((await owner.query(`select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relkind = 'f'`)).rowCount, 0,
+      'the table name never became SQL: nothing was imported into public');
+  });
+});
