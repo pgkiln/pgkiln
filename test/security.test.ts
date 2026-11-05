@@ -13298,3 +13298,66 @@ describe('sprint 147 offline advise: an untrusted export is read as data', () =>
     assert.equal(rowsOfDoc({ app: {}, pages: 'x' }).pages.length, 0);
   });
 });
+
+describe('sprint 148 streamed AI answers: the same checks as the form, text that stays text', () => {
+  let mock: Awaited<ReturnType<typeof import('./ai-script-mock.ts').startScriptMock>>;
+  let hr: number;
+  let region: number;
+  let otherRegion: number;
+  const SERVICE = 'HR_ASSISTANT';
+  before(async () => {
+    process.env.PGKILN_SECRET_KEY ??= 'test-only-secret-key-0123456789abcdef';
+    const { startScriptMock } = await import('./ai-script-mock.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    mock = await startScriptMock();
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
+    const s = (await owner.one(`insert into meta.ai_service (name, provider, model, base_url, api_key_enc) values ($1, 'anthropic', 'claude-opus-5-5', $2, $3) returning id`,
+      [SERVICE, `${mock.base}/claude`, encryptSecret('sk-sec148')])).id;
+    await owner.query(`insert into meta.app_ai_service (app_id, service_id) values ($1, $2)`, [hr, s]);
+    region = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38 and r.type = 'ai_assistant'`, [hr])).id;
+    otherRegion = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 38 and r.type <> 'ai_assistant' limit 1`, [hr])).id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.ai_conversation where region_id = $1`, [region]);
+    await owner.query(`delete from meta.ai_service where name = $1`, [SERVICE]);
+    await mock.close();
+  });
+  const post = (b: FileBrowser, form: Record<string, string>, id = region) => app.inject({
+    method: 'POST', url: `/a/hr/38/assistant/${id}/send`, payload: new URLSearchParams(form).toString(),
+    headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'text/event-stream' },
+  });
+
+  test('no CSRF token, no sign-in, a region that is not an assistant: refused before any stream or AI call', async () => {
+    const b = new FileBrowser(app);
+    await b.login('scott');
+    await b.get('/a/hr/38');
+    const calls = mock.seen.length;
+    const noCsrf = await post(b, { message: 'hi', params: '' });
+    assert.equal(noCsrf.statusCode, 403);
+    assert.doesNotMatch(String(noCsrf.headers['content-type']), /event-stream/);
+    const wrong = await post(b, { __csrf: b.lastCsrf, message: 'hi', params: '' }, otherRegion);
+    assert.equal(wrong.statusCode, 403);
+    const anon = new FileBrowser(app);
+    await anon.get('/a/hr/login');
+    const signedOut = await post(anon, { __csrf: anon.lastCsrf, message: 'hi', params: '' });
+    assert.notEqual(signedOut.statusCode, 200);
+    assert.doesNotMatch(String(signedOut.headers['content-type'] ?? ''), /event-stream/);
+    assert.equal(mock.seen.length, calls, 'the model was never asked');
+  });
+
+  test('HTML in an answer: JSON strings in an event stream (nosniff), escaped on the page', async () => {
+    mock.script = [{ text: '<img src=x onerror=alert(1)> and </script><script>alert(2)</script>' }];
+    const b = new FileBrowser(app);
+    await b.login('scott');
+    await b.get('/a/hr/38');
+    const res = await post(b, { __csrf: b.lastCsrf, message: 'hi', params: '' });
+    assert.match(String(res.headers['content-type']), /^text\/event-stream/);
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    for (const line of res.body.split('\n').filter((l) => l.startsWith('data: '))) assert.doesNotThrow(() => JSON.parse(line.slice(6)), 'every data line is JSON');
+    const page = (await b.get('/a/hr/38')).body;
+    assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(page, /<img src=x onerror/);
+    assert.doesNotMatch(page, /<script>alert\(2\)/);
+  });
+});

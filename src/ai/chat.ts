@@ -52,6 +52,12 @@ export interface ChatRequest {
   effort?: 'low' | 'medium' | 'high' | null;
   /** (121) an agent's output limit per call (never above the service's maximum) */
   maxTokens?: number | null;
+  /**
+   * (sprint 148, WS-4) streamed answers: the text as the model writes it, in pieces (also the text of a round that
+   * then calls tools), and each tool before it runs. Without them a call waits for the whole answer, as before.
+   */
+  onText?: (delta: string) => void;
+  onTool?: (name: string) => void;
 }
 
 export interface ChatResult {
@@ -122,7 +128,7 @@ async function claudeChat(s: AiService, limits: Parameters<typeof metered>[1], r
     const msg = await metered(s, limits, info, async () => {
       let m: Anthropic.Beta.BetaMessage;
       try {
-        m = await client.beta.messages.stream({
+        const stream = client.beta.messages.stream({
           model: s.model,
           max_tokens: outputLimit(s, req),
           system: req.system,
@@ -130,7 +136,9 @@ async function claudeChat(s: AiService, limits: Parameters<typeof metered>[1], r
           ...(tools.length ? { tools } : {}),
           ...((req.effort ?? s.effort) ? { output_config: { effort: (req.effort ?? s.effort)! } } : {}),
           ...(s.refusal_fallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
-        }).finalMessage();
+        });
+        if (req.onText) stream.on('text', (delta) => req.onText!(delta));
+        m = await stream.finalMessage();
       } catch (e) {
         throw claudeError(e);
       }
@@ -150,6 +158,7 @@ async function claudeChat(s: AiService, limits: Parameters<typeof metered>[1], r
     if (round >= req.maxRounds) throw new AiError('output', TOO_MANY_ROUNDS);
     const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const call of calls) {
+      req.onTool?.(call.name);
       const out = await req.runTool(call.name, (call.input ?? {}) as Record<string, unknown>);
       used.push({ name: call.name, ok: !out.isError });
       results.push({ type: 'tool_result', tool_use_id: call.id, content: clip(out.content), ...(out.isError ? { is_error: true } : {}) });
@@ -169,15 +178,32 @@ async function openAiChat(s: AiService, limits: Parameters<typeof metered>[1], r
     const res = await metered(s, limits, info, async () => {
       let r: OpenAI.Chat.ChatCompletion;
       try {
-        r = await client.chat.completions.create({
+        const params = {
           model: s.model,
           // the system prompt is sent with each request, not kept in the history
-          messages: [{ role: 'system', content: req.system }, ...messages],
+          messages: [{ role: 'system' as const, content: req.system }, ...messages],
           max_completion_tokens: outputLimit(s, req),
           ...(tools.length ? { tools } : {}),
           // (121) an agent's reasoning effort; models without reasoning refuse it, so none is sent without one
           ...(req.effort ? { reasoning_effort: req.effort } : {}),
-        });
+        };
+        if (req.onText) {
+          // (sprint 148) streamed: the content as it comes; the usage in the last chunk
+          // an OpenAI-compatible endpoint that refuses streaming (400) gets the plain request once
+          let streamed: OpenAI.Chat.ChatCompletion | null = null;
+          let sent = false;
+          try {
+            const stream = client.chat.completions.stream({ ...params, stream_options: { include_usage: true } });
+            stream.on('content', (delta) => {
+              sent = true;
+              req.onText!(delta);
+            });
+            streamed = await stream.finalChatCompletion();
+          } catch (e) {
+            if (sent || (e as { status?: number }).status !== 400) throw e;
+          }
+          r = streamed ?? (await client.chat.completions.create(params));
+        } else r = await client.chat.completions.create(params);
       } catch (e) {
         throw openAiError(e);
       }
@@ -198,6 +224,7 @@ async function openAiChat(s: AiService, limits: Parameters<typeof metered>[1], r
     for (const call of calls) {
       let input: Record<string, unknown>;
       let out: ToolOutcome;
+      req.onTool?.(call.function.name);
       try {
         input = JSON.parse(call.function.arguments || '{}');
         out = input && typeof input === 'object' && !Array.isArray(input) ? await req.runTool(call.function.name, input) : { content: 'The arguments are not a JSON object.', isError: true };

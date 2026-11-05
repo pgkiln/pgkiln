@@ -15,6 +15,11 @@ All notable changes to this project are documented here. The format follows
   process settings and JSON source profiles — with the same findings and files as the full check for what it covers;
   SQL is not planned. The MCP tool `advise_app` takes `offline: true` with a `path`. The Advisor's checks that need no
   database now run on rows from either source (`entriesOf`, `rowsOfDoc`, `adviseDoc`).
+- **Streamed AI answers** (WS-4 leftover; no migration): with JavaScript, the AI assistant region writes the answer
+  into the conversation as the model produces it and names the tool it is using; then the page loads with the
+  formatted answer, links and actions. Server-sent events on the same Send URL (`Accept: text/event-stream`), the same
+  checks as the form; without JavaScript nothing changes. Claude streams as before; OpenAI, Gemini and
+  OpenAI-compatible services are asked to stream with usage, and an endpoint that refuses it gets the plain request.
 
 ## [0.78.0] - 2026-11-05
 

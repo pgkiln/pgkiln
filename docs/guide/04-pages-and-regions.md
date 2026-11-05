@@ -1424,8 +1424,14 @@ decides who may use the region; tools may also be PL/pgSQL functions, JavaScript
 pages), or the developer gives the region a system prompt and, optionally,
 **context queries** and **tools**; the model then answers questions about the application's data,
 calling the tools when it needs to, like an agent. It works without JavaScript (the message is
-posted and the page comes back with the answer); with JavaScript the Send button shows that the
-assistant is thinking and Ctrl+Enter sends.
+posted and the page comes back with the answer); with JavaScript the answer **streams** (sprint 148): the
+message appears in the conversation, the answer is written into it as the model produces it (as plain text), the
+tool being used is named under it, and when the answer is complete the page loads with it formatted, with its links
+and the agent's browser actions. Ctrl+Enter sends. Streaming uses server-sent events (`Accept: text/event-stream` on
+the same Send URL: `text` pieces as JSON strings, `tool` names, then `done` with the page to load); a proxy in front of
+pgkiln must not buffer the response (pgkiln sends `X-Accel-Buffering: no` for nginx). OpenAI, Gemini and
+OpenAI-compatible services are asked to stream with their usage; an endpoint that refuses streaming (HTTP 400) gets
+the ordinary request once.
 
 - **Conversations** are kept per session and region (`meta.ai_conversation`): a follow-up question
   sends the earlier messages along. *New conversation* starts over; signing out (or the session's
