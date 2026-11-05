@@ -316,9 +316,11 @@ export interface DynamicAction {
     /** (085) */
     | 'after_refresh' | 'selection_change' | 'focus' | 'blur' | 'key_release' | 'before_submit' | 'custom'
     /** (124) a menu button's entry {"action": NAME} was chosen (trigger: entry or menu button names) */
-    | 'menu_entry';
+    | 'menu_entry'
+    /** (149) */
+    | 'double_click' | 'key_down' | 'key_press' | 'mouse_enter' | 'mouse_leave' | 'select' | 'resize' | 'scroll' | 'page_unload' | 'before_refresh' | 'facets_change';
   trigger_element: string | null;
-  condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | null;
+  condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | 'greater' | 'greater_equal' | 'less' | 'less_equal' | 'not_in_list' | null;
   condition_value: string | null;
   action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
     | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate'
@@ -331,7 +333,9 @@ export interface DynamicAction {
     /** (085) */
     | 'confirm' | 'close_dialog' | 'cancel_dialog' | 'clear' | 'open_region' | 'close_region' | 'download' | 'print' | 'current_position' | 'share'
     /** (124) a modal "please wait" overlay (message: its text) until remove_wait_popup or the next page */
-    | 'wait_popup' | 'remove_wait_popup';
+    | 'wait_popup' | 'remove_wait_popup'
+    /** (149) */
+    | 'cancel_event' | 'set_style' | 'collapse_tree' | 'expand_tree' | 'show_ai_assistant' | 'trigger_geocoding' | 'open_report_dialog';
   affected_items: string | null;
   affected_region_id: number | null;
   code: string | null;

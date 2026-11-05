@@ -341,9 +341,17 @@ const pgkilnUnsaved = (() => {
       case 'in_list': return da.cond.value.split(',').map((s) => s.trim()).includes(v);
       case 'is_null': return v === '';
       case 'is_not_null': return v !== '';
+      // (156) numbers compared as numbers, other values (ISO dates) as text
+      case 'greater': return v !== '' && compare(v, da.cond.value) > 0;
+      case 'greater_equal': return v !== '' && compare(v, da.cond.value) >= 0;
+      case 'less': return v !== '' && compare(v, da.cond.value) < 0;
+      case 'less_equal': return v !== '' && compare(v, da.cond.value) <= 0;
+      case 'not_in_list': return !da.cond.value.split(',').map((s) => s.trim()).includes(v);
       default: return true;
     }
   }
+  const NUM = /^\s*-?\d+(\.\d+)?\s*$/;
+  const compare = (a, b) => (NUM.test(a) && NUM.test(b) ? Number(a) - Number(b) : a < b ? -1 : a > b ? 1 : 0);
 
   // ------------------------------------------------------------ messages and errors (dynamic actions)
   // class names a dynamic action may add or remove (the database checks the same pattern)
@@ -499,6 +507,8 @@ const pgkilnUnsaved = (() => {
 
   /** (085) what runDa returns to stop the actions after it (a declined confirm) */
   const STOP = Symbol('stop');
+  /** (156) does a Cancel Event in these actions hold its condition (decided at once, so the event's effect can be stopped)? */
+  const cancels = (list) => list.some((da) => da.action === 'cancel_event' && conditionHolds(da));
   const text = (k) => (meta.texts && meta.texts[k]) || k;
 
   /** The actions of one event and trigger, one after the other in sequence order; false when one stopped them. */
@@ -580,6 +590,37 @@ const pgkilnUnsaved = (() => {
     }
     if (initial || !holds) return;
     switch (da.action) {
+      // (156) stops the actions after it; the triggering event's own effect is stopped by its handler (cancels())
+      case 'cancel_event':
+        return STOP;
+      case 'set_style':
+        for (const el of targets(da)) for (const [k, v] of Object.entries(da.styles || {})) el.style.setProperty(k, v);
+        return;
+      case 'collapse_tree':
+      case 'expand_tree':
+        for (const el of targets(da)) el.querySelectorAll('.tree-view details').forEach((d) => (d.open = da.action === 'expand_tree'));
+        return;
+      case 'show_ai_assistant':
+        for (const el of targets(da)) {
+          const dlg = el.closest('dialog[data-inline-region]') || (el.matches('dialog[data-inline-region]') ? el : null);
+          if (dlg && !dlg.open) dlg.showModal();
+          el.hidden = false;
+          const details = el.querySelector(':scope > details');
+          if (details) details.open = true;
+          const input = el.querySelector('textarea, input[type=text]') || (el.id && document.querySelector(`form[id^="${el.id}"] textarea`));
+          if (input) input.focus();
+          else el.scrollIntoView({ block: 'nearest' });
+        }
+        return;
+      case 'trigger_geocoding':
+        for (const n of da.items) document.querySelector(`[data-geocode="${CSS.escape(n)}"]`)?.click();
+        return;
+      case 'open_report_dialog':
+        for (const el of targets(da)) {
+          const item = da.dialog && el.querySelector(`.ir-item[data-ir-dialog="${CSS.escape(da.dialog)}"]`);
+          if (item) item.open = true;
+        }
+        return;
       case 'alert':
         window.alert(da.message || '');
         return;
@@ -698,6 +739,12 @@ const pgkilnUnsaved = (() => {
         return;
       }
     }
+    // (156) before_refresh: the region's actions run before its refresh is asked for
+    if (da.action === 'refresh_region' && da.region) {
+      const r = document.getElementById(`R${da.region}`);
+      const before = regionRun('before_refresh', r);
+      if (before.length && !(await runChain(before))) return;
+    }
     const data = { ...(extra || {}) };
     for (const n of da.submit) data[n] = itemValue(n);
     const busy = targets(da);
@@ -727,6 +774,12 @@ const pgkilnUnsaved = (() => {
   }
 
   const das = meta.das || [];
+  // region events (trigger: region ids or static ids, case-insensitive)
+  const regionRun = (event, region) => {
+    if (!region || !/^R\d+$/.test(region.id || '')) return [];
+    const keys = [region.id.slice(1), (region.dataset.staticId || '').toLowerCase()].filter(Boolean);
+    return das.filter((da) => da.event === event && da.trigger.some((t) => keys.includes(String(t).toLowerCase())));
+  };
   // (121) an AI agent's javascript tools: after the answer, the registered function of the action
   // (pgkiln.actions.register) and the dynamic actions of the custom event of that name, with the arguments
   scriptsLoaded.then(async () => {
@@ -760,6 +813,8 @@ const pgkilnUnsaved = (() => {
     const btn = e.target.closest('[data-button]');
     if (!btn || e.target.closest('[data-menu-entry]')) return;
     const run = das.filter((da) => da.event === 'click' && da.trigger.includes(btn.dataset.button));
+    // (156) a Cancel Event whose condition holds: the button doesn't submit or follow its link
+    if (cancels(run)) e.preventDefault();
     // "Generate text with AI" on a submit button: the AJAX call replaces the submit
     // (without JavaScript the button submits and the page process runs instead)
     const ai = run.some((da) => da.action === 'ai_generate');
@@ -803,12 +858,68 @@ const pgkilnUnsaved = (() => {
   document.addEventListener('focusin', itemEvent('focus'));
   document.addEventListener('focusout', itemEvent('blur'));
   document.addEventListener('keyup', itemEvent('key_release'));
-  // region events (trigger: region ids or static ids, case-insensitive)
-  const regionRun = (event, region) => {
-    if (!region || !/^R\d+$/.test(region.id || '')) return [];
-    const keys = [region.id.slice(1), (region.dataset.staticId || '').toLowerCase()].filter(Boolean);
-    return das.filter((da) => da.event === event && da.trigger.some((t) => keys.includes(String(t).toLowerCase())));
+  // (156) key_down, key_press (a key that types a character), select (text selected in an item)
+  document.addEventListener('keydown', (e) => {
+    const name = e.target && e.target.name;
+    if (!name) return;
+    const down = das.filter((da) => da.event === 'key_down' && da.trigger.includes(name));
+    const press = e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey ? das.filter((da) => da.event === 'key_press' && da.trigger.includes(name)) : [];
+    // a Cancel Event on key_down / key_press keeps the key out of the field
+    if (cancels([...down, ...press])) e.preventDefault();
+    if (down.length) runChain(down);
+    if (press.length) runChain(press);
+  });
+  document.addEventListener('select', itemEvent('select'), true);
+  // double_click, mouse_enter, mouse_leave: an item (its name), a button (its name) or a region (id or static id)
+  const elementRun = (event, target) => {
+    if (!target || !target.closest) return [];
+    const item = target.closest('[name]');
+    const btn = target.closest('[data-button]');
+    const region = target.closest('section[id^="R"], div[id^="R"], dialog[id^="R"]');
+    const names = [item && item.name, btn && btn.dataset.button].filter(Boolean);
+    return [...new Set([...das.filter((da) => da.event === event && da.trigger.some((t) => names.includes(t))), ...regionRun(event, region)])];
   };
+  document.addEventListener('dblclick', (e) => {
+    const run = elementRun('double_click', e.target);
+    if (run.length) runChain(run);
+  });
+  // enter / leave: once per element, not again while moving inside it
+  const hovered = new Set();
+  document.addEventListener('mouseover', (e) => {
+    for (const da of elementRun('mouse_enter', e.target)) if (!hovered.has(da)) { hovered.add(da); runChain([da]); }
+  });
+  document.addEventListener('mouseout', (e) => {
+    const leaving = elementRun('mouse_enter', e.target).concat(elementRun('mouse_leave', e.target));
+    const still = new Set([...elementRun('mouse_enter', e.relatedTarget), ...elementRun('mouse_leave', e.relatedTarget)]);
+    for (const da of leaving) {
+      if (still.has(da)) continue;
+      hovered.delete(da);
+      if (da.event === 'mouse_leave') runChain([da]);
+    }
+  });
+  // resize, scroll: the window (at most one run per animation frame)
+  for (const [event, dom] of [['resize', 'resize'], ['scroll', 'scroll']]) {
+    const run = das.filter((da) => da.event === event);
+    if (!run.length) continue;
+    let queued = false;
+    window.addEventListener(dom, () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; runChain(run); });
+    }, { passive: true });
+  }
+  // page_unload: the page is left (only quick, local actions finish)
+  window.addEventListener('pagehide', () => runChain(das.filter((da) => da.event === 'page_unload')));
+  // facets_change: a faceted search region's facets were applied (the page came back from its form)
+  {
+    const params = new URLSearchParams(location.search);
+    const changed = params.get('facets_changed');
+    if (changed) {
+      params.delete('facets_changed');
+      history.replaceState(history.state, '', `${location.pathname}${params.size ? `?${params}` : ''}${location.hash}`);
+      runChain(regionRun('facets_change', document.getElementById(`R${changed.replace(/\D/g, '')}`)));
+    }
+  }
   // after_refresh: a region replaced by a refresh, a lazy load or a master row
   document.addEventListener('pgkiln:replaced', (e) => {
     const run = regionRun('after_refresh', e.detail);
@@ -1841,7 +1952,20 @@ document.addEventListener('change', (e) => {
     const custom = e.target.closest('fieldset')?.querySelector('[data-facet-range]');
     custom?.querySelectorAll('input').forEach((i) => (i.value = ''));
   }
-  e.target.form?.requestSubmit();
+  // (156) the page that comes back runs the region's facets_change dynamic actions
+  const f = e.target.form;
+  const region = e.target.closest('[id^="R"]');
+  if (f && region && /^R\d+$/.test(region.id)) {
+    let mark = f.querySelector('input[name="facets_changed"]');
+    if (!mark) {
+      mark = document.createElement('input');
+      mark.type = 'hidden';
+      mark.name = 'facets_changed';
+      f.appendChild(mark);
+    }
+    mark.value = region.id.slice(1);
+  }
+  f?.requestSubmit();
 });
 document.addEventListener('input', (e) => {
   const box = e.target.closest?.('[data-facet-range]');

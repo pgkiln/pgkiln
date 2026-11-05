@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **More dynamic action events, conditions and actions** (CD-3, part 1; migration 149). Events double click, key down,
+  key press, mouse enter / leave, select, resize, scroll, page unload, before refresh and facets change; client-side
+  conditions greater / greater or equal / less / less or equal and not in list; actions Cancel Event (also stops a
+  button's submit, a typed key or a refresh), Set Style (listed CSS properties, checked values), Collapse / Expand
+  Tree, Show AI Assistant, Trigger Geocoding and Open report dialog.
 - **Validation types like APEX's** (CD-1; migration 148): rows returned / no rows, function body returning a Boolean
   or the error text, item not null / not null or zero / not zero / no spaces / alphanumeric / numeric / a valid date
   (in the application's date format) / a valid timestamp, item = / != value, item in / not in a colon list, contains

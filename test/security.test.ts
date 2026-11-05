@@ -13503,3 +13503,21 @@ describe('sprint 155 validation types', () => {
     assert.match(res.body, /V\[meta-unreadable\]/, 'meta is not readable as the app role: the validation fails closed');
   });
 });
+
+describe('sprint 156 dynamic action Set Style and report dialogs', () => {
+  test('only listed CSS properties with plain values reach the page; the builder refuses the rest', async () => {
+    const { safeStyles, styleProblem } = await import('../src/runtime/da-styles.ts');
+    const evil = { color: 'red', 'background-image': 'url(https://evil/x)', 'font-size': 'expression(alert(1))', width: 'calc(1px);x:y', 'border-color': 'var(--x)', opacity: '0.5' };
+    assert.deepEqual(safeStyles({ styles: evil }), { color: 'red', opacity: '0.5' });
+    assert.match(styleProblem(evil) ?? '', /background-image isn't one of/);
+    assert.match(styleProblem({ color: 'url(x)' }) ?? '', /without url/);
+    assert.equal(styleProblem({ color: '#b42318', 'font-weight': 'bold' }), null);
+    assert.deepEqual(safeStyles({ styles: [1, 2] }), {});
+  });
+
+  test('Open report dialog takes only a known dialog name', async () => {
+    const page = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 1`)).id;
+    await assert.rejects(owner.query(`insert into meta.dynamic_action (page_id, name, event, action, code) values ($1, 'x', 'click', 'open_report_dialog', $2)`, [page, '"]<script>']),
+      /dynamic_action_report_dialog_check/);
+  });
+});

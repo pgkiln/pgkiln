@@ -1,3 +1,4 @@
+import { compareValues, safeStyles } from './da-styles.ts';
 import { randomUUID } from 'node:crypto';
 import { urlChecksum } from '../security.ts';
 import { pwaBody, pwaHead } from './pwa.ts';
@@ -50,6 +51,9 @@ function dynamicActionsJson(ctx: PageContext) {
       fn: d.action === 'execute_javascript' && /^[A-Za-z_$][\w$.-]{0,99}$/.test(d.code?.trim() ?? '') ? d.code!.trim() : null,
       // plugin: the plug-in's name and attribute values (only a plug-in of the application)
       ...(d.action === 'plugin' ? pluginAction(ctx, d.code, d.config) : {}),
+      // (156) set_style: checked properties and values; open_report_dialog: the dialog's key (checked by the database)
+      ...(d.action === 'set_style' ? { styles: safeStyles(d.config) } : {}),
+      ...(d.action === 'open_report_dialog' ? { dialog: /^[a-z]{3,10}$/.test(d.code?.trim() ?? '') ? d.code!.trim() : null } : {}),
     }));
 
 function pluginAction(ctx: PageContext, name: string | null, config: Record<string, any> | null | undefined) {
@@ -65,6 +69,12 @@ function conditionHolds(type: string | null, expected: string | null, value: str
     case 'in_list': return (expected ?? '').split(',').map((x) => x.trim()).includes(value);
     case 'is_null': return value === '';
     case 'is_not_null': return value !== '';
+    // (156) greater / less: numbers as numbers, else text (ISO dates sort as text); not_in_list
+    case 'greater': return value !== '' && compareValues(value, expected ?? '') > 0;
+    case 'greater_equal': return value !== '' && compareValues(value, expected ?? '') >= 0;
+    case 'less': return value !== '' && compareValues(value, expected ?? '') < 0;
+    case 'less_equal': return value !== '' && compareValues(value, expected ?? '') <= 0;
+    case 'not_in_list': return !(expected ?? '').split(',').map((x) => x.trim()).includes(value);
     default: return true;
   }
 }
