@@ -1,10 +1,11 @@
 import { secondStepWithin } from '../account-mfa.ts';
 import { applyBinds } from '../binds.ts';
-import type { AuthzScheme } from '../metadata.ts';
+import type { AuthzScheme, Condition } from '../metadata.ts';
 import { savepoint } from '../db.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext, type Visibility } from './context.ts';
 import { saveButton, saveRequest } from './grid.ts';
 import { selectionOf } from './report.ts';
+import { conditionHolds, conditionOf, serverConditionOf } from './logic.ts';
 
 export class Forbidden extends Error {}
 /** (sprint 131) The page needs a second step more recent than the session's: ask for one, then come back. */
@@ -90,12 +91,13 @@ export async function pageAllowed(ctx: PageContext, pageNo: number) {
 export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
   const vis: Visibility = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
   for (const r of ctx.page.regions)
-    if ((await isAuthorized(ctx, r.authz)) && (await sqlTrue(ctx, r.condition, `condition of region "${r.title ?? r.id}"`)))
+    if ((await isAuthorized(ctx, r.authz)) && (await conditionHolds(ctx, conditionOf(r), `condition of region "${r.title ?? r.id}"`)))
       vis.regions.add(r.id);
 
   for (const i of ctx.page.items) {
     if (i.region_id !== null && !vis.regions.has(i.region_id)) continue;
     if (!(await isAuthorized(ctx, i.authz))) continue;
+    if (i.condition_type && !(await conditionHolds(ctx, i as Condition, `condition of item ${i.name}`))) continue;
     vis.items.add(i.name);
     if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode' || i.type === 'image') continue;
     // fail closed: a broken read-only condition makes the item read-only
@@ -112,7 +114,7 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
   for (const b of ctx.page.buttons) {
     if (b.region_id !== null && !vis.regions.has(b.region_id)) continue;
     if (!(await isAuthorized(ctx, b.authz))) continue;
-    if (!(await sqlTrue(ctx, b.condition, `condition of button ${b.name}`))) continue;
+    if (!(await conditionHolds(ctx, conditionOf(b), `condition of button ${b.name}`))) continue;
     vis.buttons.set(b.name, b);
   }
 
@@ -132,7 +134,9 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (r.type === 'grid' && vis.regions.has(r.id) && ctx.page.processes.some((p) => p.type === 'grid_dml' && p.region_id === r.id))
       vis.buttons.set(saveRequest(r), saveButton(r));
 
-  for (const d of ctx.page.dynamic_actions) if (await isAuthorized(ctx, d.authz)) vis.dynamicActions.add(d.id);
+  for (const d of ctx.page.dynamic_actions)
+    if ((await isAuthorized(ctx, d.authz)) && (await conditionHolds(ctx, serverConditionOf(d), `server-side condition of dynamic action "${d.name}"`)))
+      vis.dynamicActions.add(d.id);
   ctx.vis = vis;
   return vis;
 }

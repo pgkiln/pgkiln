@@ -13,6 +13,7 @@ your own from a static application file.
 | `event` | When it runs, see [Events](#events) |
 | `trigger_element` | What it listens to: item names (`change`, `focus`, `blur`, `key_release`), a button name (`click`), region ids or static ids (`after_refresh`, `selection_change`), dialog page numbers (`dialog_closed`; empty: any dialog) or event names (`custom`), comma separated. Empty for `load` and `before_submit` |
 | `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value (for `dialog_closed`: on the dialog's page number): `equals`, `not_equals`, `in_list` (comma-separated values), `is_null`, `is_not_null` |
+| `server_condition_type`, `server_condition_expr`, `server_condition_value` | A [server-side condition](06-processing.md#server-side-conditions) (sprint 154): when it doesn't hold for this request, the dynamic action isn't on the page at all, e.g. `user_signed_in` or `page_is_dialog` |
 | `action` | What to do, see below |
 | `affected_items`, `affected_region_id` | What it acts on |
 | `code` | SQL for server-side actions; the function's name for `execute_javascript` |

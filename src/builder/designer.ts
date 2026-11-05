@@ -1,3 +1,4 @@
+import { conditionWords, serverCondition } from './conditions.ts';
 import { pageIssuesNote } from './team.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
@@ -107,7 +108,14 @@ export async function designerRoutes(app: FastifyInstance) {
     const post = `${BASE}/pages/${p.id}`;
     const isSel = (key: string) => sel === key || (key === 'page' && !sel && !newKind);
     const cur = (key: string) => (isSel(key) ? raw(' aria-current="true"') : '');
-    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="${tx('pd.badge.authz', { name: r.authz })}">${icon('shield')}<span class="sr-only">${tx('pd.badge.authz', { name: r.authz })}</span></span>` : ''}${r.condition || r.readonly_condition || r.condition_type ? html`<span class="pd-tag" title="${tx('pd.badge.condition')}">${icon('filter')}<span class="sr-only">${tx('pd.badge.condition')}</span></span>` : ''}${r.build_option ? html`<span class="pd-tag" title="${tx('pd.badge.build_option', { name: r.build_option })}">${icon('settings')}<span class="sr-only">${tx('pd.badge.build_option', { name: r.build_option })}</span></span>` : ''}`;
+    const badges = (r: any) => html`${r.authz ? html`<span class="pd-tag" title="${tx('pd.badge.authz', { name: r.authz })}">${icon('shield')}<span class="sr-only">${tx('pd.badge.authz', { name: r.authz })}</span></span>` : ''}${condBadge(r)}${r.build_option ? html`<span class="pd-tag" title="${tx('pd.badge.build_option', { name: r.build_option })}">${icon('settings')}<span class="sr-only">${tx('pd.badge.build_option', { name: r.build_option })}</span></span>` : ''}`;
+    // (154) the server-side condition in words ("When the request is SAVE, CREATE"); other conditions: "Has a condition"
+    const condBadge = (r: any) => {
+      const sc = serverCondition(r);
+      if (!sc && !r.readonly_condition && !r.condition_type) return '';
+      const words = sc ? conditionWords(tx, sc) : tx('pd.badge.condition');
+      return html`<span class="pd-tag" title="${words}" data-condition="${sc?.condition_type ?? ''}">${icon('filter')}<span class="sr-only">${words}</span></span>`;
+    };
     const regionTitle = (r: any) => r.title ?? `(${r.type})`;
 
     // ------------------------------------------------------------ left: component tree

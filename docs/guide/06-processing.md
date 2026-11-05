@@ -92,6 +92,7 @@ Plus: every **required** editable item must have a value.
 | `item_name` | The message is shown next to this item (otherwise at the top of the page) |
 | `message` | The error message |
 | `when_button` | Only validate for this request. A `DELETE` request runs only the validations with `when_button` `DELETE` (e.g. "approved requests can't be deleted"), not the item checks |
+| `condition_type`, `condition_expr`, `condition_value` | Only validate when the [server-side condition](#server-side-conditions) holds, e.g. `request_in` `SAVE,CREATE` (sprint 154) |
 
 Example: commission only for salesmen.
 
@@ -122,7 +123,7 @@ two combine well; see error handling below.
 |---|---|
 | `point` | `submit` (after validations) or `load` (when the page is shown, after form fetch) |
 | `when_button` | Only for this request (empty = every submit with a button) |
-| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds (server-side condition, as for computations and branches) |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#server-side-conditions) holds (server-side condition, as for computations and branches) |
 | `parent_process` | The name of a `chain` process on the page: this process then runs only inside that chain |
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
 | `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain`, `workflow`, `send_push` or `plugin` process (JSON) |
@@ -489,7 +490,7 @@ looked up by SQL, a derived value.
 | `point` | `before_header`: when the page is shown (after the form fetch, before the `load` processes). `after_submit`: after the posted values are stored, before the validations |
 | `type` | How `expression` is read, see below |
 | `expression` | The value, item, query, expression or function body |
-| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#server-side-conditions) holds |
 | `authz` | Only for users who pass this authorization scheme |
 | `seq` | Order; later computations see the values of earlier ones |
 
@@ -545,7 +546,7 @@ dialog closes instead, and the calling page reloads.
 | `target_url` | A path inside the application (after `/a/<alias>/`), e.g. `12?view=month` or `account`; `&ITEM.` values are URL-encoded. Other sites are refused (no scheme, `//`, `\` or `..`) |
 | `target_function` | `function`: a PL/pgSQL function body that returns such a path (APEX: *Function returning a URL*), run as the application's role with binds; checked like `target_url` (`meta.branch_path_ok`). An empty result: the branch doesn't apply; a refused one shows a message and is logged |
 | `target_app` | `app`: the alias of another application of this installation (APEX: *Branch to page in another application*). It must exist with that page (else the branch doesn't apply and a message is shown); the items are signed for that application, page and user. That application's own sign-in and authorization apply when the browser gets there |
-| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#conditions-of-computations-processes-and-branches) holds |
+| `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#server-side-conditions) holds |
 | `authz`, `seq`, `build_option` | As for other components |
 
 A `before_header` branch to the page itself is skipped (it would loop).
@@ -560,18 +561,47 @@ begin
 end
 ```
 
-### Conditions of computations, processes and branches
+### Server-side conditions
+
+Every component has the same server-side condition (sprint 154; APEX: *Server-side Condition*):
+regions, items, buttons, dynamic actions, validations, processes, computations, branches and
+application computations. In the Page Designer it is the **Server-side condition** group:
+*Condition type*, *Expression / item* and *Value*.
 
 | `condition_type` | Holds when |
 |---|---|
-| (empty) | always |
-| `sql` | `condition_expr`, a boolean SQL expression, is true |
-| `exists` / `not_exists` | the query in `condition_expr` returns a row / no row |
-| `item_null` / `item_not_null` | the item named in `condition_expr` is empty / has a value |
-| `item_equals` / `item_not_equals` | that item's value is / is not `condition_value` |
-| `request_in` | the request (the button pressed) is one of `condition_value`, comma separated |
+| (empty) | always (a region's or button's `condition` without a type: the SQL below) |
+| `sql` | the expression, a boolean SQL expression, is true |
+| `exists` / `not_exists` | the query in the expression returns a row / no row |
+| `function_body` | the PL/pgSQL body in the expression returns true (`return :P3_QTY::int > 0;`) |
+| `request_in` / `request_not_in` | the request (the button pressed) is / is not one of the value's names, comma separated (`SAVE,CREATE`) |
+| `item_null` / `item_not_null` | the item named in the expression is empty / has a value |
+| `item_zero` / `item_not_zero` | that item is / is not zero (an empty item is not zero) |
+| `item_null_or_zero` / `item_not_null_or_zero` | that item is empty or zero / neither |
+| `item_equals` / `item_not_equals` | that item's value is / is not the value |
+| `item_equals_item` / `item_not_equals_item` | that item's value is / is not the value of the item named in the value |
+| `item_in_list` / `item_not_in_list` | that item's value is / is not one of the value's entries, separated by colons (`CLERK:ANALYST`) |
+| `page_in` / `page_not_in` | the current page is / is not one of the value's page numbers (`1,3`) |
+| `page_is_dialog` / `page_is_not_dialog` | the page is / is not a modal dialog |
+| `user_signed_in` / `user_public` | the user is signed in / is the public user |
+| `language_in` / `language_not_in` | the application's language for this request is / is not one of the value's codes (`de,pt-br`; `pt` also matches `pt-br`) |
+| `always` / `never` | always / never (for a component you want to keep but switch off: a build option does it for a release) |
 
-A condition whose SQL fails counts as false and shows the error.
+Only `sql`, `exists`, `not_exists` and `function_body` run SQL, as the application's database
+role, in the request's transaction; the others are decided by the server without a query. The
+database refuses a condition whose expression or value doesn't fit its type (`meta.condition_ok`).
+
+A condition whose SQL fails counts as false and shows the error. Regions and buttons keep their
+`condition` column as the expression: without a type it is SQL, as before, so older exports keep
+working. Dynamic actions name theirs `server_condition_type`, `server_condition_expr` and
+`server_condition_value` (their `condition_type` is the client-side condition): when it doesn't
+hold, the dynamic action isn't on the page.
+
+The Page Designer's tree shows the condition in words on the component's filter badge (*When
+P3_JOB is one of CLERK, ANALYST*), in the builder's language. The
+[Advisor](03-builder.md#advisor) names SQL conditions a type can say exactly (`:P3_ID is not null`,
+`:REQUEST in ('SAVE', 'CREATE')`, `:P3_JOB = 'CLERK'`) as information; `<>` and `not in` stay SQL,
+because in SQL an empty item makes them false.
 
 **HR example, page 22 (Leave planner).** Computations fill the employee (yours, when none is
 chosen: `sql_query` with condition `item_null`), the name (`function_body`) and the pending

@@ -22,6 +22,7 @@ import { DATA_LOAD_DEF_SPEC } from './dataload.ts';
 import { processProblems } from '../runtime/processes.ts';
 import { BUTTON_OPTIONS, ITEM_OPTIONS, REGION_OPTIONS } from '../runtime/template-options.ts';
 import { checkGroupMembers } from '../subscriptions.ts';
+import { CONDITION_TYPES } from '../metadata.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -78,12 +79,18 @@ const AUTHZ_HELP = 'Authorization scheme; prefix with ! to negate. MUST_NOT_BE_P
 const BUILD_HELP = 'Build option (Shared Components): the component exists only while the option is included; "Not" only while it is excluded.';
 const buildOption = (group?: string): Field => ({ name: 'build_option', label: 'Build option', kind: 'build_option', help: BUILD_HELP, ...(group ? { group } : {}) });
 
-const CONDITION_TYPES = ['', 'sql', 'exists', 'not_exists', 'item_null', 'item_not_null', 'item_equals', 'item_not_equals', 'request_in'];
-const CONDITION_HELP = 'sql: a boolean expression · exists / not_exists: a query · item_*: the item\'s name below · request_in: the button(s) pressed, in Value.';
-const conditionFields = (group: string): Field[] => [
-  { name: 'condition_type', label: 'Condition', kind: 'select', options: CONDITION_TYPES, group, help: CONDITION_HELP },
-  { name: 'condition_expr', label: 'Expression / item', kind: 'code', group, help: 'e.g. :P3_STATUS = \'OPEN\' (sql) · select 1 from sales.orders where id = :P3_ID (exists) · P3_ID (item_*)' },
-  { name: 'condition_value', label: 'Value', kind: 'text', group, help: 'item_equals / item_not_equals: the value · request_in: e.g. SAVE,CREATE' },
+// (147) one catalogue of server-side condition types for every component (meta.condition_ok)
+const CONDITION_HELP = 'sql: a boolean expression · exists / not_exists: a query that returns a row / no row · function_body: PL/pgSQL returning boolean · '
+  + 'item_*: the item\'s name in Expression · request_in / request_not_in: the button(s) pressed · page_in / page_not_in: page numbers · '
+  + 'page_is_dialog: the page is a modal dialog · user_signed_in / user_public · language_in / language_not_in: language codes · always / never. '
+  + 'Only the SQL types run a query (as the application\'s role); the others are decided by the server.';
+const VALUE_HELP = 'item_equals / item_not_equals: the value · item_equals_item: the other item\'s name · item_in_list: values separated by colons (CLERK:ANALYST) · '
+  + 'request_in: e.g. SAVE,CREATE · page_in: e.g. 1,3 · language_in: e.g. de,pt-br';
+/** The type, expression and value of a server-side condition; `expr` is the expression column, `type` the type column. */
+const conditionFields = (group: string, expr = 'condition_expr', type = 'condition_type', value = 'condition_value', common = false): Field[] => [
+  { name: type, label: 'Condition type', kind: 'select', options: ['', ...CONDITION_TYPES], group, help: CONDITION_HELP, ...(common ? { common } : {}) },
+  { name: expr, label: 'Condition expression / item', kind: 'code', group, help: 'e.g. :P3_STATUS = \'OPEN\' (sql) · select 1 from sales.orders where id = :P3_ID (exists) · return :P3_QTY > 0; (function_body) · P3_ID (item_*)', ...(common ? { common } : {}) },
+  { name: value, label: 'Condition value', kind: 'text', group, help: VALUE_HELP, ...(common ? { common } : {}) },
 ];
 
 /** JSON "menu" field: empty means no menu (null), not {}. */
@@ -131,7 +138,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'Where the region shows (APEX: Layout → Position). banner: above everything else in the page; breadcrumb: in the bar under the title; left / right: in the side column of a page with template Left or Right side column (on other pages in the body); footer: after the body. Empty is body.' },
       { name: 'template_options', label: 'Template options', kind: 'options', choices: REGION_OPTIONS, group: 'Appearance',
         help: 'CSS classes from a fixed list, added to the region (APEX: Template Options). "Hide the header" applies to the standard template.' },
-      { name: 'condition', common: true, label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'Boolean expression; the region renders only when true.' },
+      ...conditionFields('Server-side condition', 'condition', 'condition_type', 'condition_value', true),
       { name: 'authz', common: true, label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
       { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
@@ -160,6 +167,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'CSS classes from a fixed list, added to the item (APEX: Template Options).' },
       { name: 'required', common: true, label: 'Value required', kind: 'bool', group: 'Validation' },
       { name: 'help', label: 'Help text', kind: 'text', group: 'Validation' },
+      ...conditionFields('Server-side condition'),
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
@@ -194,7 +202,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'slot', common: true, label: 'Button position', kind: 'select', options: ['', 'region', 'create', 'edit', 'change', 'copy', 'help', 'up', 'previous', 'close', 'delete', 'next'], group: 'Layout',
         help: 'A region button\'s place (APEX: Button Position): create, edit, change, copy, help and up in the region\'s header; previous, close and delete at the left of its bottom bar, next at the right. Empty or region: with its other buttons (the header of reports and charts, the bottom of forms and static content).' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },
-      { name: 'condition', label: 'Server-side condition (SQL)', kind: 'code', group: 'Security', help: 'e.g. :P3_ID is not null — also re-checked when the button is pressed.' },
+      ...conditionFields('Server-side condition', 'condition'),
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
     ],
@@ -229,6 +237,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'message', label: 'Message (alert, confirm, show_success, show_error, wait_popup)', kind: 'text', group: 'Action' },
       { name: 'config', label: 'Plug-in attributes (JSON)', kind: 'json', group: 'Action', help: 'plugin: {"attributes": {"NAME": "value or &ITEM."}} (Shared Components → Plug-ins lists each plug-in\'s attributes).' },
       { name: 'css_classes', label: 'CSS classes (add_class, remove_class)', kind: 'text', group: 'Action', help: 'Up to five class names, e.g. is-highlight is-muted (lower case letters, digits, - and _).' },
+      ...conditionFields('Server-side condition', 'server_condition_expr', 'server_condition_type', 'server_condition_value'),
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Security' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
@@ -249,6 +258,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'expression', label: 'Expression', kind: 'code', wide: true, help: 'sql: boolean expression that must be true · regex: POSIX pattern' },
       { name: 'message', label: 'Error message', kind: 'text' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
+      ...conditionFields('Server-side condition'),
       { name: 'seq', label: 'Sequence', kind: 'int' },
       buildOption(),
     ],

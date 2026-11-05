@@ -14,17 +14,42 @@ import { logActivity } from '../session.ts';
 // own savepoint.
 
 const list = (s: string | null | undefined) => (s ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+const isZero = (v: string) => v.trim() !== '' && Number(v) === 0;
 
-/** Does a computation's or branch's condition hold? Broken SQL counts as false (and shows a message). */
+/** The condition types that run SQL (as the application's role); all others are decided without a query. */
+export const SQL_CONDITIONS = new Set(['sql', 'exists', 'not_exists', 'function_body']);
+
+/** (147) A region's or button's condition: `condition` is the expression, SQL when no type is set. */
+export const conditionOf = (x: { condition?: string | null; condition_type?: string | null; condition_value?: string | null }): Condition => ({
+  condition_type: (x.condition_type || (x.condition?.trim() ? 'sql' : null)) as Condition['condition_type'],
+  condition_expr: x.condition ?? null,
+  condition_value: x.condition_value ?? null,
+});
+
+/** (147) A dynamic action's server-side condition (its condition_type is the client-side one). */
+export const serverConditionOf = (d: { server_condition_type?: string | null; server_condition_expr?: string | null; server_condition_value?: string | null }): Condition => ({
+  condition_type: (d.server_condition_type || null) as Condition['condition_type'],
+  condition_expr: d.server_condition_expr ?? null,
+  condition_value: d.server_condition_value ?? null,
+});
+
+/**
+ * Does a server-side condition hold (migrations 029, 147)? The same catalogue for every component. Broken SQL
+ * counts as false (and shows a message); an unknown type is false.
+ */
 export async function conditionHolds(ctx: PageContext, cond: Condition, where: string): Promise<boolean> {
-  const value = (name: string | null) => {
-    const v = name ? bindValues(ctx)[name.toUpperCase()] : null;
+  const value = (name: string | null | undefined) => {
+    const v = name ? bindValues(ctx)[name.trim().toUpperCase()] : null;
     return v === undefined || v === null ? '' : v;
   };
+  const item = value(cond.condition_expr);
   switch (cond.condition_type) {
     case null:
     case undefined:
+    case 'always':
       return true;
+    case 'never':
+      return false;
     case 'sql':
       return sqlTrue(ctx, cond.condition_expr, where);
     case 'exists':
@@ -39,16 +64,62 @@ export async function conditionHolds(ctx: PageContext, cond: Condition, where: s
         return false; // fail closed either way
       }
     }
+    case 'function_body':
+      try {
+        const v = await savepoint(ctx.client!, () => functionBody(ctx, cond.condition_expr ?? ''));
+        return v === 'true' || v === 't';
+      } catch (e) {
+        ctx.errors.page.push(await publicError(ctx, e, where));
+        return false;
+      }
     case 'item_null':
-      return value(cond.condition_expr) === '';
+      return item === '';
     case 'item_not_null':
-      return value(cond.condition_expr) !== '';
+      return item !== '';
+    case 'item_zero':
+      return isZero(item);
+    case 'item_not_zero':
+      return !isZero(item);
+    case 'item_null_or_zero':
+      return item === '' || isZero(item);
+    case 'item_not_null_or_zero':
+      return item !== '' && !isZero(item);
     case 'item_equals':
-      return value(cond.condition_expr) === (cond.condition_value ?? '');
+      return item === (cond.condition_value ?? '');
     case 'item_not_equals':
-      return value(cond.condition_expr) !== (cond.condition_value ?? '');
+      return item !== (cond.condition_value ?? '');
+    case 'item_equals_item':
+      return item === value(cond.condition_value);
+    case 'item_not_equals_item':
+      return item !== value(cond.condition_value);
+    case 'item_in_list':
+    case 'item_not_in_list': {
+      const found = (cond.condition_value ?? '').split(':').includes(item);
+      return cond.condition_type === 'item_in_list' ? found : !found;
+    }
     case 'request_in':
       return list(cond.condition_value).includes(ctx.request);
+    case 'request_not_in':
+      return !list(cond.condition_value).includes(ctx.request);
+    case 'page_in':
+    case 'page_not_in': {
+      const found = list(cond.condition_value).includes(String(ctx.page.page_no));
+      return cond.condition_type === 'page_in' ? found : !found;
+    }
+    case 'page_is_dialog':
+      return ctx.page.mode === 'modal';
+    case 'page_is_not_dialog':
+      return ctx.page.mode !== 'modal';
+    case 'user_signed_in':
+      return ctx.user !== 'nobody';
+    case 'user_public':
+      return ctx.user === 'nobody';
+    case 'language_in':
+    case 'language_not_in': {
+      const lang = ctx.locale.lang.toUpperCase();
+      const found = list(cond.condition_value).some((l) => l === lang || lang.startsWith(`${l}-`));
+      return cond.condition_type === 'language_in' ? found : !found;
+    }
     default:
       return false; // unknown type: fail closed
   }

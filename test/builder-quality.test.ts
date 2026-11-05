@@ -63,7 +63,7 @@ describe('Advisor', () => {
   test('SQL errors, missing grants and invalid PL/pgSQL are found', () => {
     assert.match(about(result.findings, 'Bad column')[0]?.message ?? '', /column "nope" does not exist/);
     assert.match(about(result.findings, 'No grant')[0]?.message ?? '', /permission denied/);
-    assert.ok(about(result.findings, 'Bad condition').some((f) => f.field === 'Server-side condition (SQL)' && /syntax error/.test(f.message)));
+    assert.ok(about(result.findings, 'Bad condition').some((f) => f.field === 'Condition expression / item' && /syntax error/.test(f.message)));
     assert.match(about(result.findings, 'Bad block')[0]?.message ?? '', /syntax error at or near "perfrom"/);
     assert.match(about(result.findings, 'Bad regex')[0]?.message ?? '', /Invalid regular expression/);
     const writes = about(result.findings, 'Writes');

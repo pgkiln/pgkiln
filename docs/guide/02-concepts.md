@@ -232,11 +232,11 @@ current user:
 
 | Component | Rendered when |
 |---|---|
-| Region | its authorization scheme passes **and** its server-side condition is true |
-| Item | its region is rendered **and** its authorization scheme passes |
+| Region | its authorization scheme passes **and** its server-side condition holds ([condition types](06-processing.md#server-side-conditions)) |
+| Item | its region is rendered, its authorization scheme passes **and** its server-side condition holds |
 | Item (editable) | rendered, not hidden/display, **and** its read-only condition is false |
 | Button | its region is rendered, its authorization scheme passes **and** its condition is true |
-| Dynamic action | its authorization scheme passes |
+| Dynamic action | its authorization scheme passes **and** its server-side condition holds |
 | Navigation entry, link | the target page's authorization passes |
 
 A component that is not rendered **cannot be used**: its button can't be pressed and its item

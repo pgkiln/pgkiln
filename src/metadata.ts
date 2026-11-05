@@ -172,6 +172,9 @@ export interface Region {
   columns: number;
   template: 'standard' | 'plain' | 'collapsible' | 'hero' | 'title_bar' | 'buttons_container' | 'inline_dialog' | 'inline_drawer' | 'wizard';
   condition: string | null;
+  /** (147) the condition's type (null: `condition` is SQL) and value */
+  condition_type?: ConditionType | null;
+  condition_value?: string | null;
   authz: string | null;
   config: Record<string, any>;
   /** a REST data source the region reads (its source, if any, is SQL over the CTE "rest") */
@@ -206,6 +209,10 @@ export interface Item {
   required: boolean;
   help: string | null;
   readonly_condition: string | null;
+  /** (147) a server-side condition: when false the item is not rendered and not accepted */
+  condition_type?: ConditionType | null;
+  condition_expr?: string | null;
+  condition_value?: string | null;
   authz: string | null;
   config: Record<string, any>;
 }
@@ -222,6 +229,9 @@ export interface Button {
   document?: string | null;
   target_items: Record<string, string>;
   condition: string | null;
+  /** (147) the condition's type (null: `condition` is SQL) and value */
+  condition_type?: ConditionType | null;
+  condition_value?: string | null;
   authz: string | null;
   hot: boolean;
   confirm: string | null;
@@ -248,9 +258,20 @@ export interface MenuEntry {
   icon?: string;
 }
 
-/** A condition of a computation or branch (see migration 029). */
+/** (147) The server-side condition types every component shares (meta.condition_ok). */
+export const CONDITION_TYPES = [
+  'sql', 'exists', 'not_exists', 'function_body',
+  'request_in', 'request_not_in',
+  'item_null', 'item_not_null', 'item_zero', 'item_not_zero', 'item_null_or_zero', 'item_not_null_or_zero',
+  'item_equals', 'item_not_equals', 'item_equals_item', 'item_not_equals_item', 'item_in_list', 'item_not_in_list',
+  'page_in', 'page_not_in', 'page_is_dialog', 'page_is_not_dialog',
+  'user_signed_in', 'user_public', 'language_in', 'language_not_in', 'always', 'never',
+] as const;
+export type ConditionType = (typeof CONDITION_TYPES)[number];
+
+/** A server-side condition (migrations 029, 147). */
 export interface Condition {
-  condition_type: 'sql' | 'exists' | 'not_exists' | 'item_null' | 'item_not_null' | 'item_equals' | 'item_not_equals' | 'request_in' | null;
+  condition_type: ConditionType | null;
   condition_expr: string | null;
   condition_value: string | null;
 }
@@ -321,6 +342,10 @@ export interface DynamicAction {
   /** (069) a plug-in action's attribute values: {"attributes": {…}} */
   config?: Record<string, any> | null;
   authz: string | null;
+  /** (147) a server-side condition: when false the dynamic action isn't on the page */
+  server_condition_type?: ConditionType | null;
+  server_condition_expr?: string | null;
+  server_condition_value?: string | null;
 }
 
 export interface Validation {
@@ -331,6 +356,10 @@ export interface Validation {
   expression: string | null;
   message: string;
   when_button: string | null;
+  /** (147) a server-side condition: when false the validation is skipped */
+  condition_type?: ConditionType | null;
+  condition_expr?: string | null;
+  condition_value?: string | null;
 }
 
 export interface Process {

@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Server-side condition types for every component** (CD-2; migration 147). Regions, items, buttons, dynamic
+  actions, validations, processes, computations, branches and application computations share one catalogue, like
+  APEX's: SQL expression, rows returned / no rows, PL/pgSQL function body, request in / not in, item null / not null /
+  zero / not zero / null or zero / = / != value / = / != another item / in / not in a colon list, current page in /
+  not in, page is / isn't a modal dialog, user signed in / public, language in / not in, always / never. The simple
+  types are decided without a query; the database refuses malformed ones (`meta.condition_ok`). Items, validations
+  and dynamic actions get a server-side condition for the first time (an item or dynamic action whose condition
+  fails isn't on the page and takes no value). Regions and buttons keep `condition` as the expression, SQL without
+  a type, so older exports import unchanged. The Page Designer's tree shows each condition in words in the builder's
+  eleven languages, and the Advisor names SQL conditions a declarative type says exactly.
+
 ## [0.81.0] - 2026-11-05
 
 ### Added
