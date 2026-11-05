@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Vector providers with a model in the database** (AP-1 leftover, APEX's ONNX models; migration 146): type
+  `database_model` with engine `pgml` (PostgresML's `pgml.embed(model, text)`, Hugging Face models incl. ONNX) runs
+  the embedding inside PostgreSQL as the query's role, with no AI service: vector columns kept at once by their
+  trigger, searches embedding the text in the query, Retrieve tools, `meta.embed`. The builder's form says when
+  PostgresML is missing; the model name is checked and passed as a value.
+- **More of the builder in its eleven languages** (WS-7 leftover; no migration): Workspace utilities, the workspace
+  Dashboard, Mail queue, Network access, Instance settings and LDAP directories (285 texts each in Deutsch,
+  Español, Français, Italiano, Nederlands, Português, 中文 (简体), 中文 (繁體), 日本語 and 한국어). English is unchanged.
+
+## [0.80.0] - 2026-11-05
+
+### Added
 - **Streamed AI answers** (WS-4 leftover; no migration): with JavaScript, the AI assistant region writes the answer
   into the conversation as the model produces it and names the tool it is using; then the page loads with the
   formatted answer, links and actions. Server-sent events on the same Send URL (`Accept: text/event-stream`), the same
@@ -21,15 +33,6 @@ All notable changes to this project are documented here. The format follows
   own, granted (read only or also writing) to chosen application roles, so regions, reports, forms, grids and lists of
   values query them like the application's own tables. The password lives only in PostgreSQL's user mapping; *Test the
   connection* is rolled back; *Import again* picks up remote changes; *Delete* drops the schema and the server.
-- **Vector providers with a model in the database** (AP-1 leftover, APEX's ONNX models; migration 146): type
-  `database_model` with engine `pgml` (PostgresML's `pgml.embed(model, text)`, Hugging Face models incl. ONNX) runs
-  the embedding inside PostgreSQL as the query's role, with no AI service: vector columns kept at once by their
-  trigger, searches embedding the text in the query, Retrieve tools, `meta.embed`. The builder's form says when
-  PostgresML is missing; the model name is checked and passed as a value.
-- **More of the builder in its eleven languages** (WS-7 leftover; no migration): Workspace utilities, the workspace
-  Dashboard, Mail queue, Network access, Instance settings and LDAP directories (285 texts each in Deutsch,
-  Español, Français, Italiano, Nederlands, Português, 中文 (简体), 中文 (繁體), 日本語 and 한국어). English is unchanged.
-
 ## [0.79.0] - 2026-11-05
 
 ### Added
