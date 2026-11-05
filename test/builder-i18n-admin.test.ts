@@ -1,5 +1,5 @@
 // Sprint 152 (WS-7 leftover): the rest of Administration in the builder languages: Workspace utilities, the
-// workspace dashboard, Mail queue, Network access, Instance settings and LDAP directories. Signed in after a
+// workspace dashboard, Mail queue, Network access, Instance settings and LDAP directories; (sprint 153) Database users. Signed in after a
 // language link, each screen comes in that language (its title, regions and labels); English stays as it was.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -39,6 +39,9 @@ const SCREENS: [string, string[]][] = [
   ['/builder/network', ['na.title', 'na.outgoing', 'na.refusals', 'na.check']],
   ['/builder/instance', ['ins.title', 'ins.sessions', 'ins.checks', 'ins.configuration']],
   ['/builder/users/directories', ['ldap.title', 'ldap.directories', 'ldap.user_base', 'ldap.groups']],
+  // (sprint 153)
+  ['/builder/db-users', ['dbu.title', 'dbu.create_user', 'dbu.f.bypassrls', 'dbu.col.attributes']],
+  ['/builder/db-users/new', ['dbu.create_user', 'dbu.member_of', 'dbu.col.future', 'dbu.review']],
 ];
 
 describe('Administration screens in the builder languages', () => {

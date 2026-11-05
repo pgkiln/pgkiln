@@ -14,6 +14,8 @@ All notable changes to this project are documented here. The format follows
 - **More of the builder in its eleven languages** (WS-7 leftover; no migration): Workspace utilities, the workspace
   Dashboard, Mail queue, Network access, Instance settings and LDAP directories (285 texts each in Deutsch,
   Español, Français, Italiano, Nederlands, Português, 中文 (简体), 中文 (繁體), 日本語 and 한국어). English is unchanged.
+- **Database users in the eleven builder languages** (WS-7 leftover; no migration): the list, filters, the role form, the
+  SQL review and the drop page (140 texts). English is unchanged.
 
 ## [0.80.0] - 2026-11-05
 
