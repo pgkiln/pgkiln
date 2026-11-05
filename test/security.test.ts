@@ -13277,3 +13277,24 @@ describe('sprint 144 AP-10', () => {
     assert.equal((await callTool('lock_app', { alias: 'sec144b', unlock: true })).error, true, "MCP can't unlock admin's lock without force");
   });
 });
+
+describe('sprint 147 offline advise: an untrusted export is read as data', () => {
+  test('odd shapes and __proto__ keys neither throw nor pollute; no app is a clean error', async () => {
+    const { adviseDoc, rowsOfDoc } = await import('../src/builder/advisor.ts');
+    const hostile = JSON.parse(`{
+      "format": "pgkiln/2",
+      "app": {"alias": "x", "login_page": "1 or 1=1", "json_sources": [null, 5, {"__proto__": {"polluted": true}, "name": "J"}], "__proto__": {"polluted": true}},
+      "pages": [null, "page", {"page_no": 1, "name": "P", "__proto__": {"polluted": true}, "regions": "not a list", "items": [null, 7, {"name": "P1_A", "type": "text", "__proto__": {"polluted": true}}],
+                 "processes": [{"name": "W", "type": "sql", "code": "delete from meta.app"}]}],
+      "lovs": {"not": "a list"}, "authz_schemes": [1, "x", null], "build_options": null
+    }`);
+    const r = await adviseDoc(hostile);
+    assert.ok(Array.isArray(r.findings));
+    assert.equal(({} as any).polluted, undefined, 'Object.prototype untouched');
+    assert.ok(r.findings.some((f) => /Page 1 or 1=1 doesn't exist/.test(f.message)), 'the login page is compared as a value, never run');
+    assert.ok(r.findings.some((f) => /needs no sign-in, and its process W writes data/.test(f.message)));
+    assert.throws(() => rowsOfDoc({ pages: [] }), /not an application export/);
+    assert.throws(() => rowsOfDoc(null), /not an application export/);
+    assert.equal(rowsOfDoc({ app: {}, pages: 'x' }).pages.length, 0);
+  });
+});

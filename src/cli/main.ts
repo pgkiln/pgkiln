@@ -332,7 +332,7 @@ const COMMANDS: Record<string, Command> = {
   },
 
   advise: {
-    usage: 'pgkiln advise <path | alias> [--format text|json|sarif] [--fail-on error|warning|info|never] [-o <file>]',
+    usage: 'pgkiln advise <path | alias> [--offline] [--format text|json|sarif] [--fail-on error|warning|info|never] [-o <file>]',
     summary: 'check an export or an application with the Advisor (for CI: text, JSON or SARIF)',
     details:
       'Runs the builder\'s Advisor: every SQL fragment is planned as the application\'s database role (unknown\n' +
@@ -342,10 +342,13 @@ const COMMANDS: Record<string, Command> = {
       'A path (an export directory, a .zip or a JSON export) is imported into a transaction that is rolled back:\n' +
       'nothing changes. It needs a database with pgkiln\'s migrations and the application\'s own tables (in CI, a\n' +
       'PostgreSQL service, pgkiln migrate and your migrations). An alias checks the application in the database.\n\n' +
+      'With --offline a path is checked from its files alone, without a database: references, the login page, page\n' +
+      'groups, security defaults, workflow steps and JSON source profiles; SQL is not planned.\n\n' +
       'SARIF points every finding at the file of its page or component in the export, so GitHub code scanning\n' +
       'annotates the pull request. Exit code 1 when a finding is at or above --fail-on (default: error).',
-    options: { format: { type: 'string', short: 'f' }, 'fail-on': { type: 'string' }, output: { type: 'string', short: 'o' }, base: { type: 'string' } },
+    options: { format: { type: 'string', short: 'f' }, 'fail-on': { type: 'string' }, output: { type: 'string', short: 'o' }, base: { type: 'string' }, offline: { type: 'boolean' } },
     optionHelp: [
+      ['--offline', 'check an export\'s files without a database (no SQL planning)'],
       ['-f, --format <format>', 'text (default), json or sarif'],
       ['--fail-on <level>', 'exit code 1 from this level: error (default), warning, info or never'],
       ['-o, --output <file>', 'write the report to a file (the summary still goes to standard error)'],
@@ -358,10 +361,10 @@ const COMMANDS: Record<string, Command> = {
       if (!['text', 'json', 'sarif'].includes(format)) throw new UsageError(`--format: text, json or sarif, not ${format}`);
       if (!['error', 'warning', 'info', 'never'].includes(failOn)) throw new UsageError(`--fail-on: error, warning, info or never, not ${failOn}`);
       process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
-      const { adviseTarget, fails, formatJson, formatSarif, formatText } = await import('./advise.ts');
+      const { adviseOffline, adviseTarget, fails, formatJson, formatSarif, formatText } = await import('./advise.ts');
       const { closePools } = await import('../db.ts');
       try {
-        const r = await withDb((db) => adviseTarget(db, target));
+        const r = v.offline ? await adviseOffline(target) : await withDb((db) => adviseTarget(db, target));
         const base = (v.base as string) ?? null;
         const report = format === 'sarif' ? formatSarif(r, version(), base) : format === 'json' ? formatJson(r, base) : formatText(r, base);
         if (v.output) {

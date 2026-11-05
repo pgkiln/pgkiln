@@ -438,15 +438,23 @@ export const TOOLS: Tool[] = [
       'unrestricted page protection, long sessions, administrators without a second factor). Each finding names its file in the export.',
     inputSchema: {
       type: 'object',
-      properties: { ...aliasProp, path: { type: 'string', description: 'an export directory, .zip or .json instead of the application in the database' } },
+      properties: {
+        ...aliasProp,
+        path: { type: 'string', description: 'an export directory, .zip or .json instead of the application in the database' },
+        offline: { type: 'boolean', description: 'with path: check the files alone, without the database (references and security; no SQL planning)' },
+      },
     },
     annotations: { readOnlyHint: true },
     async run(a) {
       const path = str(a, 'path');
       const alias = str(a, 'alias');
       if (!path && !alias) throw new ToolError('give an alias or a path');
+      const { adviseOffline, adviseTarget, formatText } = await import('./advise.ts');
+      if (a.offline === true) {
+        if (!path) throw new ToolError('offline needs a path (an export)');
+        return cap(formatText(await adviseOffline(resolve(path))));
+      }
       process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
-      const { adviseTarget, formatText } = await import('./advise.ts');
       return cap(formatText(await withDb((db) => adviseTarget(db, path ? resolve(path) : alias!))));
     },
   },

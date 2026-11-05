@@ -5,7 +5,7 @@
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { root } from '../src/env.ts';
@@ -131,6 +131,74 @@ describe('pgkiln advise', () => {
     // an alias with --base: the paths of the export kept in the repository
     const base = JSON.parse(cli('advise', A, '--format', 'json', '--base', `apps/${A}`).out);
     assert.equal(base.findings.find((f: any) => f.severity === 'error').file, `apps/${A}/pages/0002-orders/regions/0010-order-list.yaml`);
+  });
+});
+
+// (sprint 147, AP-10 leftover) --offline: an export's files alone, no database
+const NO_DB = { DATABASE_URL: 'postgres://none:none@127.0.0.1:1/none', RUNTIME_DATABASE_URL: 'postgres://none:none@127.0.0.1:1/none' };
+function offline(...args: string[]) {
+  const r = spawnSync(process.execPath, [join(root, 'bin/pgkiln.js'), 'advise', '--offline', ...args], { cwd: tmp, encoding: 'utf8', env: { ...process.env, ...NO_DB } });
+  return { code: r.status, out: r.stdout, err: r.stderr };
+}
+
+describe('pgkiln advise --offline', () => {
+  test('an export without a database: the same references and security findings, no SQL, at the same files', async () => {
+    const dir = join(tmp, 'apps', `${A}off`);
+    assert.equal(cli('export', A, '--format', 'text', '-o', dir).code, 0);
+    const online = JSON.parse(cli('advise', join('apps', `${A}off`), '--format', 'json', '--fail-on', 'never').out);
+    const r = offline(join('apps', `${A}off`), '--format', 'json');
+    assert.equal(r.code, 0, r.err);
+    const json = JSON.parse(r.out);
+    assert.equal(json.offline, true);
+    assert.equal(json.counts.error, 0, 'SQL is not planned offline');
+    const key = (f: any) => `${f.severity} ${f.where} ${f.field} ${f.message} ${f.file}`;
+    const sqlFree = online.findings.filter((f: any) => !/no_such_column|Instance settings/.test(`${f.message} ${f.field}`)).map(key).sort();
+    assert.deepEqual(json.findings.map(key).sort(), sqlFree);
+    assert.ok(json.findings.some((f: any) => /needs no sign-in/.test(f.message) && f.file === `apps/${A}off/pages/0001-sign-up/page.yaml`));
+    assert.equal(offline(join('apps', `${A}off`), '--fail-on', 'warning').code, 1);
+    assert.match(offline(join('apps', `${A}off`)).out, /checked offline \(references and security; SQL not planned without a database\)/);
+  });
+
+  test('broken references in a JSON export: login page, page group, branch, workflow, grid, JSON source', () => {
+    const doc = {
+      format: 'pgkiln/2',
+      app: { alias: 'off147', name: 'Offline', login_page: 9, json_sources: [{ name: 'BAD' }] },
+      pages: [{
+        page_no: 1, name: 'One', requires_auth: true, protection: 'checksum', page_group: 'NOPE',
+        regions: [{ id: 501, seq: 10, title: 'Lines', type: 'grid' }],
+        items: [{ seq: 10, name: 'P1_PICK', type: 'select' }],
+        processes: [{ seq: 10, name: 'Start', type: 'workflow', config: { definition: 'NO_SUCH_FLOW' } }],
+        branches: [{ seq: 10, target_type: 'page', target_page: 88 }],
+      }],
+      lovs: [], authz_schemes: [],
+    };
+    writeFileSync(join(tmp, 'off147.json'), JSON.stringify(doc));
+    const r = offline('off147.json', '--format', 'json', '--fail-on', 'never');
+    assert.equal(r.code, 0, r.err);
+    const text = JSON.parse(r.out).findings.map((f: any) => `${f.severity}: ${f.field}: ${f.message}`).join('\n');
+    assert.match(text, /error: Application settings → Login page: Page 9 doesn't exist/);
+    assert.match(text, /warning: Page 1 → Page group: Page group NOPE doesn't exist/);
+    assert.match(text, /error: Page: Page 88 doesn't exist/);
+    assert.match(text, /error: Configuration: Workflow definition NO_SUCH_FLOW doesn't exist/);
+    assert.match(text, /error: Source: A grid needs a table/);
+    assert.match(text, /warning: List of values: A select item needs a list of values/);
+    assert.match(text, /error: JSON source BAD:/);
+    assert.equal(offline('off147.json').code, 1, 'errors fail the run');
+  });
+
+  test('--offline needs an export; a file that is not an application export is refused', () => {
+    assert.match(offline(A).err, /not found \(--offline checks an export/);
+    writeFileSync(join(tmp, 'notapp.json'), '{"format": "pgkiln/2", "pages": []}');
+    const r = offline('notapp.json');
+    assert.notEqual(r.code, 0);
+    assert.match(r.err, /not an application export/);
+  });
+
+  test('MCP: advise_app with offline and a path', async () => {
+    const text = await mcp('advise_app', { path: join(tmp, 'off147.json'), offline: true });
+    assert.match(text, /Page 9 doesn't exist/);
+    assert.match(text, /checked offline/);
+    await assert.rejects(mcp('advise_app', { alias: A, offline: true }), /offline needs a path/);
   });
 });
 

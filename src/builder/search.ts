@@ -43,6 +43,20 @@ const asText = (v: unknown) => (v === null || v === undefined ? '' : Array.isArr
 /** Every component of an application with its searchable fields. */
 export async function appEntries(appId: number, query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> = (sql, params) => owner.query(sql, params)): Promise<Entry[]> {
   const pages = (await query('select * from meta.page where app_id = $1 order by page_no', [appId])).rows;
+  const rows = new Map<string, any[]>();
+  for (const [kind, spec] of Object.entries(COMPONENTS))
+    rows.set(kind, spec.scope === 'page'
+      ? (await query(`select t.* from ${spec.table} t join meta.page p on p.id = t.page_id where p.app_id = $1 order by p.page_no, t.seq, t.id`, [appId])).rows
+      : (await query(`select * from ${spec.table} where app_id = $1 order by id`, [appId])).rows);
+  return entriesOf(appId, pages, rows);
+}
+
+/**
+ * (sprint 147) The entries of pages and component rows however they were read: from the database (appEntries) or
+ * from an export's files (`pgkiln advise --offline`). A page row has `id` and `page_no`; a page component's row has
+ * `page_id`; rows are per kind of COMPONENTS, in order.
+ */
+export function entriesOf(appId: number, pages: any[], rows: Map<string, any[]>): Entry[] {
   const pageById = new Map(pages.map((p) => [p.id, p]));
   const out: Entry[] = pages.map((p) => ({
     kind: 'page', id: p.id, label: `Page ${p.page_no}: ${p.name}`, kindLabel: 'Page', icon: 'file', pageNo: p.page_no,
@@ -50,10 +64,7 @@ export async function appEntries(appId: number, query: (sql: string, params?: un
     fields: PAGE_FIELDS.map((f) => ({ ...f, value: asText(p[f.name]) })),
   }));
   for (const [kind, spec] of Object.entries(COMPONENTS)) {
-    const rows = spec.scope === 'page'
-      ? (await query(`select t.* from ${spec.table} t join meta.page p on p.id = t.page_id where p.app_id = $1 order by p.page_no, t.seq, t.id`, [appId])).rows
-      : (await query(`select * from ${spec.table} where app_id = $1 order by id`, [appId])).rows;
-    for (const row of rows) {
+    for (const row of rows.get(kind) ?? []) {
       const page = spec.scope === 'page' ? pageById.get(row.page_id) : null;
       out.push({
         kind, id: row.id, label: spec.summary(row), kindLabel: spec.label, icon: spec.icon, pageNo: page?.page_no ?? null,
