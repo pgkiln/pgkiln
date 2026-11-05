@@ -2416,4 +2416,10 @@ export const zhTW: BuilderMessages = {
   'cond.language_not_in': '當語言不是 {value} 時',
   'cond.always': '永遠',
   'cond.never': '永不',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': '工作流程圖',
+  'gallery.item.image_upload': '影像上傳',
+  'gallery.item.autocomplete': '具自動完成的文字欄位',
+  'gallery.item.percent_graph': '百分比圖',
+  'gallery.item.display_map': '顯示地圖',
 };

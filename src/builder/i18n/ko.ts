@@ -2416,4 +2416,10 @@ export const ko: BuilderMessages = {
   'cond.language_not_in': '언어가 {value}이(가) 아닌 경우',
   'cond.always': '항상',
   'cond.never': '안 함',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': '워크플로 다이어그램',
+  'gallery.item.image_upload': '이미지 업로드',
+  'gallery.item.autocomplete': '자동 완성 텍스트 필드',
+  'gallery.item.percent_graph': '백분율 그래프',
+  'gallery.item.display_map': '지도 표시',
 };

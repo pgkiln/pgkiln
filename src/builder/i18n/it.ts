@@ -2416,4 +2416,10 @@ export const it: BuilderMessages = {
   'cond.language_not_in': 'Quando la lingua non è {value}',
   'cond.always': 'Sempre',
   'cond.never': 'Mai',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': 'Diagramma del flusso di lavoro',
+  'gallery.item.image_upload': 'Caricamento immagine',
+  'gallery.item.autocomplete': 'Campo di testo con completamento automatico',
+  'gallery.item.percent_graph': 'Grafico percentuale',
+  'gallery.item.display_map': 'Mostra mappa',
 };

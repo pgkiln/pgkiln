@@ -2420,4 +2420,10 @@ export const en = {
   'cond.language_not_in': 'When the language is not {value}',
   'cond.always': 'Always',
   'cond.never': 'Never',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': 'Workflow Diagram',
+  'gallery.item.image_upload': 'Image Upload',
+  'gallery.item.autocomplete': 'Text Field with Autocomplete',
+  'gallery.item.percent_graph': 'Percent Graph',
+  'gallery.item.display_map': 'Display Map',
 } as const;
