@@ -29,12 +29,14 @@ export type CodeLang = 'sql' | 'plpgsql' | 'json' | 'html' | 'text';
 const STATEMENTS = new Set(['supporting_script.script', 'process.code', 'app_process.code', 'automation_action.code', 'task_definition.action_code', 'dynamic_action.code']);
 /** The Advisor check per field (none: no check). */
 const CHECKS: Record<string, SqlShape> = {
-  'region.source': 'select', 'region.condition': 'boolean', 'item.lov': 'select', 'item.readonly_condition': 'boolean',
-  'button.condition': 'boolean', 'validation.expression': 'boolean', 'process.code': 'statements', 'authz_scheme.value': 'boolean',
+  'region.source': 'select', 'item.lov': 'select', 'item.readonly_condition': 'boolean',
+  'validation.expression': 'boolean', 'process.code': 'statements', 'authz_scheme.value': 'boolean',
   'lov.query': 'select', 'app_process.code': 'statements', 'automation.query': 'select', 'automation_action.code': 'statements', 'automation_action.condition': 'boolean',
   'document_template.query': 'select', 'report_query.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
   'button.badge_query': 'select', 'list.query': 'select', 'list_entry.condition': 'boolean',
 };
+/** (147) The expression fields of server-side conditions (their type select names how to read them). */
+const CONDITION_EXPRS = ['computation', 'app_computation', 'branch', 'process', 'item', 'validation'].map((k) => `${k}.condition_expr`).concat('dynamic_action.server_condition_expr');
 /** Fields whose check follows the component's type select, like SWITCH ("none": no check). */
 const CHECK_SWITCH: Record<string, string> = {
   'dynamic_action.code': 'action:set_value=select,*=statements',
@@ -42,9 +44,10 @@ const CHECK_SWITCH: Record<string, string> = {
   'region.source': 'type:static=none,form=none,facets=none,smart_filters=none,display_selector=none,tasks=none,workflows=none,list=none,data_reporter=none,form_designer=none,ai_assistant=none,*=select',
   'computation.expression': 'type:sql_query=select,*=none',
   'app_computation.expression': 'type:sql_query=select,*=none',
-  'computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
-  'app_computation.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
-  'branch.condition_expr': 'condition_type:sql=boolean,exists=select,not_exists=select,*=none',
+  // (147) every component's server-side condition: SQL types are checked, the others are names and values
+  ...Object.fromEntries(CONDITION_EXPRS.map((k) => [k, `${k.endsWith('server_condition_expr') ? 'server_condition_type' : 'condition_type'}:sql=boolean,exists=select,not_exists=select,*=none`])),
+  'region.condition': 'condition_type:=boolean,sql=boolean,exists=select,not_exists=select,*=none',
+  'button.condition': 'condition_type:=boolean,sql=boolean,exists=select,not_exists=select,*=none',
 };
 /** Fields whose language follows the component's type select: "type:value=lang,…" (other values: SQL). */
 const SWITCH: Record<string, string> = {
@@ -55,9 +58,9 @@ const SWITCH: Record<string, string> = {
   'computation.expression': 'type:static=text,item=text,function_body=plpgsql',
   'app_computation.expression': 'type:static=text,item=text,function_body=plpgsql',
   'shortcut.value': 'type:text=text,html=html,function_body=plpgsql',
-  'computation.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
-  'app_computation.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
-  'branch.condition_expr': 'condition_type:item_null=text,item_not_null=text,item_equals=text,item_not_equals=text',
+  ...Object.fromEntries(CONDITION_EXPRS.map((k) => [k, `${k.endsWith('server_condition_expr') ? 'server_condition_type' : 'condition_type'}:sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,=sql,*=text`])),
+  'region.condition': 'condition_type:=sql,sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,*=text',
+  'button.condition': 'condition_type:=sql,sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,*=text',
 };
 /** Language when no SWITCH value matches. */
 const fallback = (key: string): CodeLang => (STATEMENTS.has(key) ? 'plpgsql' : 'sql');
@@ -66,7 +69,7 @@ const fallback = (key: string): CodeLang => (STATEMENTS.has(key) ? 'plpgsql' : '
 function pick(sw: string, row: any): string | undefined {
   const [col, list] = sw.split(':');
   const pairs = list.split(',').map((p) => p.split('='));
-  return (pairs.find(([val]) => val === row?.[col]) ?? pairs.find(([val]) => val === '*'))?.[1];
+  return (pairs.find(([val]) => val === (row?.[col] ?? '')) ?? pairs.find(([val]) => val === '*'))?.[1];
 }
 
 /** Language of a component field in the property editor, or null for a plain field. */

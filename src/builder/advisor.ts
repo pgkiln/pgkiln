@@ -1,3 +1,4 @@
+import { declarativeCondition } from './conditions.ts';
 import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { applyBinds, splitStatements } from '../binds.ts';
@@ -52,15 +53,16 @@ export function sqlFields(kind: string, row: any): { name: string; shape: SqlSha
     case 'region':
       return [
         ...(['report', 'classic_report', 'grid', 'chart', 'cards', 'calendar', 'map', 'tree', 'dynamic'].includes(row.type) && row.source?.trim() && !row.rest_source ? [{ name: 'source', shape: 'select' as const }] : []),
-        { name: 'condition', shape: 'boolean' },
+        ...conditionSql(row, 'condition'),
       ];
     case 'item':
       return [
         ...(row.lov?.trim() && !/^(STATIC|LOV):/i.test(row.lov.trim()) ? [{ name: 'lov', shape: 'select' as const }] : []),
         { name: 'readonly_condition', shape: 'boolean' },
+        ...conditionSql(row),
       ];
     case 'button':
-      return [{ name: 'condition', shape: 'boolean' }, { name: 'badge_query', shape: 'select' }];
+      return [...conditionSql(row, 'condition'), { name: 'badge_query', shape: 'select' }];
     case 'computation':
     case 'app_computation':
       return [
@@ -70,9 +72,15 @@ export function sqlFields(kind: string, row: any): { name: string; shape: SqlSha
     case 'branch':
       return conditionSql(row);
     case 'dynamic_action':
-      return row.action === 'set_value' ? [{ name: 'code', shape: 'select' }] : row.action === 'execute_sql' ? [{ name: 'code', shape: 'statements' }] : [];
+      return [
+        ...(row.action === 'set_value' ? [{ name: 'code', shape: 'select' as const }] : row.action === 'execute_sql' ? [{ name: 'code', shape: 'statements' as const }] : []),
+        ...conditionSql({ condition_type: row.server_condition_type }, 'server_condition_expr'),
+      ];
     case 'validation':
-      return row.type === 'sql' ? [{ name: 'expression', shape: 'boolean' }] : row.type === 'regex' ? [{ name: 'expression', shape: 'regex' }] : [];
+      return [
+        ...(row.type === 'sql' ? [{ name: 'expression', shape: 'boolean' as const }] : row.type === 'regex' ? [{ name: 'expression', shape: 'regex' as const }] : []),
+        ...conditionSql(row),
+      ];
     case 'process':
       return [
         ...(row.type === 'sql' ? [{ name: 'code', shape: 'statements' as const }] : row.type === 'download' ? [{ name: 'code', shape: 'select' as const }] : []),
@@ -104,9 +112,14 @@ export function sqlFields(kind: string, row: any): { name: string; shape: SqlSha
   }
 }
 
-/** The SQL of a computation's or branch's condition (migration 029). */
-const conditionSql = (row: any): { name: string; shape: SqlShape }[] =>
-  row.condition_type === 'sql' ? [{ name: 'condition_expr', shape: 'boolean' }] : row.condition_type === 'exists' || row.condition_type === 'not_exists' ? [{ name: 'condition_expr', shape: 'select' }] : [];
+/**
+ * The SQL of a server-side condition (migrations 029, 147). `field` holds the expression; for regions and
+ * buttons (`condition`) no type means SQL.
+ */
+const conditionSql = (row: any, field = 'condition_expr'): { name: string; shape: SqlShape }[] => {
+  const type = row.condition_type || (field === 'condition' && row.condition?.trim() ? 'sql' : null);
+  return type === 'sql' ? [{ name: field, shape: 'boolean' }] : type === 'exists' || type === 'not_exists' ? [{ name: field, shape: 'select' }] : [];
+};
 
 export const EXPLAINABLE = /^\s*(\(|select|with|values|table|insert|update|delete|merge)\b/i;
 
@@ -272,6 +285,18 @@ function structureFindings(x: AppRows): Finding[] {
     else if (page.requires_auth) out.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} requires authentication: the built-in sign-in page is shown instead.` });
     else if (!all.some((r) => r.kind === 'region' && r.row.type === 'login' && r.row.page_id === page.id))
       out.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
+  }
+  // (154, CD-2) a SQL condition one declarative type can say: no query, and it reads in words in the tree
+  for (const r of all) {
+    const field = r.kind === 'region' || r.kind === 'button' ? 'condition'
+      : ['item', 'validation', 'process', 'computation', 'app_computation', 'branch'].includes(r.kind) ? 'condition_expr' : null;
+    if (!field || (r.row.build_option ?? '') === 'COMMENTED_OUT') continue;
+    const sql = (r.row.condition_type ?? (field === 'condition' ? 'sql' : null)) === 'sql' ? r.row[field] : null;
+    const d = sql ? declarativeCondition(sql) : null;
+    if (!d) continue;
+    const what = [d.condition_expr && `expression ${d.condition_expr}`, d.condition_value && `value ${d.condition_value}`].filter(Boolean).join(', ');
+    out.push({ severity: 'info', entry: x.byKey.get(`${r.kind}-${r.row.id}`) ?? null, field: 'Server-side condition',
+      message: `The SQL condition ${String(sql).trim()} can be the condition type ${d.condition_type}${what ? ` (${what})` : ''}: decided without a query, and shown in words.` });
   }
   const groups = new Set(all.filter((r) => r.kind === 'page_group').map((r) => r.row.name));
   for (const p of [...pages].sort((a, b) => a.page_no - b.page_no))

@@ -118,8 +118,9 @@ region**), e.g. on the click of a button with action *Defined by dynamic action*
 them along. The carousel is a style of the [display selector](#display_selector-region-display-selector)
 region (`{"style": "carousel"}`). The HR example's page 44 (*Region templates*) shows them all.
 
-Every region also has `seq` (order), `condition` (a SQL boolean expression; the region renders
-only when true) and `authz` (an authorization scheme).
+Every region also has `seq` (order), a [server-side condition](06-processing.md#server-side-conditions)
+(`condition_type`, `condition` as its expression, `condition_value`; without a type `condition` is a SQL
+boolean expression; the region renders only when it holds) and `authz` (an authorization scheme).
 
 ### Template options
 

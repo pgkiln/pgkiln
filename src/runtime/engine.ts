@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
 import { runtime, savepoint, type Client } from '../db.ts';
-import type { Item, Process, Region } from '../metadata.ts';
+import type { Condition, Item, Process, Region } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
 import { dropObjects, dropObjectsSince, formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, storeOf, storeTempFile, tempIds } from './files.ts';
@@ -214,6 +214,7 @@ export async function validate(ctx: PageContext) {
   for (const v of ctx.page.validations) {
     if (v.when_button ? v.when_button !== ctx.request : deleting) continue;
     if (v.item_name && (!vis.items.has(v.item_name) || errors.items[v.item_name])) continue;
+    if (v.condition_type && !(await conditionHolds(ctx, v as Condition, `condition of validation ${v.name}`))) continue;
     const value = v.item_name ? (state[v.item_name] ?? null) : null;
     try {
       let ok = true;

@@ -108,11 +108,11 @@ function sniff(b: Buffer) {
 // Code columns that move to a sibling file when they are long or multi-line.
 const CODE: Record<string, Record<string, string>> = {
   region: { source: 'sql', condition: 'sql' },
-  item: { default_value: 'sql', readonly_condition: 'sql' },
+  item: { default_value: 'sql', readonly_condition: 'sql', condition_expr: 'sql' },
   button: { condition: 'sql', badge_query: 'sql' },
-  dynamic_action: { code: 'sql' },
-  validation: { expression: 'sql' },
-  process: { code: 'sql' },
+  dynamic_action: { code: 'sql', server_condition_expr: 'sql' },
+  validation: { expression: 'sql', condition_expr: 'sql' },
+  process: { code: 'sql', condition_expr: 'sql' },
   computation: { expression: 'sql', condition_expr: 'sql' },
   branch: { condition_expr: 'sql' },
   app_process: { code: 'sql' },

@@ -13434,3 +13434,40 @@ describe('sprint 151 database model providers: the model is a value', () => {
     }
   });
 });
+
+describe('sprint 154 server-side conditions', () => {
+  const alias = 'sec-s154';
+  const ROLE = 'pgkiln_s154_sec';
+  let page: number;
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec 154', 'none', $2) returning id`, [alias, ROLE])).id;
+    page = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
+    const r = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 1, 'Main', 'static', 'main') returning id`, [page])).id;
+    await owner.query(`insert into meta.region (page_id, seq, title, type, source, condition_type, condition) values ($1, 2, 'Meta', 'static', 'R[meta-readable]', 'function_body', 'return exists (select 1 from meta.app);')`, [page]);
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, type, condition_type) values ($1, $2, 1, 'P1_X', 'text', 'user_signed_in')`, [page, r]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label) values ($1, $2, 1, 'GO', 'Go')`, [page, r]);
+    await owner.query(`insert into meta.validation (page_id, seq, name, type, expression, message) values ($1, 1, 'x', 'sql', ':P1_X is null', 'V[accepted]'), ($1, 2, 'y', 'sql', 'false', 'V[ran]')`, [page]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  test('a function body condition runs as the application\'s role: it cannot read meta, and fails closed', async () => {
+    const body = (await new Browser().get(`/a/${alias}/1`)).body;
+    assert.doesNotMatch(body, /R\[meta-readable\]/);
+  });
+
+  test('an item whose condition fails is not rendered and takes no posted value', async () => {
+    const b = new Browser();
+    const body = (await b.get(`/a/${alias}/1`)).body;
+    assert.doesNotMatch(body, /name="P1_X"/);
+    const res = await b.post(`/a/${alias}/1`, { __csrf: b.lastCsrf, P1_X: 'forged', __request: 'GO' });
+    assert.match(res.body, /V\[ran\]/, 'the validations ran');
+    assert.doesNotMatch(res.body, /V\[accepted\]/);
+  });
+});

@@ -79,6 +79,7 @@ browser's date and time field.
 | `help` | Help text under the field |
 | `lov` | List of values for select/radio/checkbox group/multi-select/popup/display items |
 | `readonly_condition` | SQL expression; when true the item is shown read-only and ignored on submit |
+| `condition_type`, `condition_expr`, `condition_value` | A [server-side condition](06-processing.md#server-side-conditions) (sprint 154): when it doesn't hold, the item isn't rendered and takes no submitted value |
 | `authz` | Authorization scheme; unauthorized users don't see the item and can't set it |
 | `config` | Attributes, see below |
 
