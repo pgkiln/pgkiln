@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.78.0] - 2026-11-05
+
 ### Changed
 - **AI provider texts name all four providers** (AP-11; migration 143, HR part 78). The builder's *AI services* card,
   the AI assistant region's help, the guide (chapters 4, 6 and 11), the parity page, the website and the HR example's
