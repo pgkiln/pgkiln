@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { embedTexts, loadVectorProviders, vectorLiteral, vectorProviderProblems, DEFAULT_BATCH, DEFAULT_PER_MINUTE, type VectorProvider } from './ai/embeddings.ts';
+import { embedsInDatabase, embedTexts, loadVectorProviders, vectorLiteral, vectorProviderProblems, DEFAULT_BATCH, DEFAULT_PER_MINUTE, type VectorProvider } from './ai/embeddings.ts';
 import { isAiError } from './ai/types.ts';
 import { owner } from './db.ts';
 import { devDbForApp } from './workspace-db.ts';
@@ -127,8 +127,8 @@ async function runBatch(g: Group, p: VectorProvider): Promise<number> {
     const text = `meta.embedding_text(to_jsonb(t), $2::text[])`;
     try {
       let written = 0;
-      if (p.type === 'function') {
-        // a function provider: embedded in the database, as the developer connection (the trigger's own function)
+      if (embedsInDatabase(p)) {
+        // a function or database model provider: embedded in the database, as the developer connection (the trigger's own function)
         await db.query(
           `update ${table} t set ${id(g.vector_column)} = translate(meta.embed(${text}, $3, $4)::text, '{}', '[]')::text::${await vectorTypeOf(db)}
             where t.${id(g.key_column)}::text = any($1::text[])`, [rows.map((r) => r.key_value), g.source_columns, p.name, g.app_id]);

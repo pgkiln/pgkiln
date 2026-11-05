@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { embedTexts, vectorProviderProblems, DEFAULT_BATCH, DEFAULT_PER_MINUTE, HNSW_MAX_DIMENSIONS, type VectorProvider } from '../ai/embeddings.ts';
+import { embedTexts, MODEL_ENGINES, vectorProviderProblems, DEFAULT_BATCH, DEFAULT_PER_MINUTE, HNSW_MAX_DIMENSIONS, type VectorProvider } from '../ai/embeddings.ts';
 import { providerLabel } from '../ai/service.ts';
 import { isAiError } from '../ai/types.ts';
 import { owner } from '../db.ts';
@@ -54,6 +54,8 @@ async function servicesOf(appId: number) {
 
 async function providerForm(a: any, s: Session, x: Partial<VectorProvider>, original: string, problems: string[]): Promise<Raw> {
   const services = await servicesOf(a.id);
+  // (151) a model in the database: is PostgresML there?
+  const pgml = !!(await (await devDbForApp(a.id)).query(`select to_regprocedure('pgml.embed(text, text, jsonb)') is not null as ok`)).rows[0]?.ok;
   const svc: [string, string][] = [['', '-'], ...services.map((v): [string, string] => [v.name, `${v.name} (${providerLabel(v.provider)})`])];
   if (x.service && !services.some((v) => v.name === x.service)) svc.push([x.service, `${x.service} (not available to this application)`]);
   const configs = original
@@ -63,9 +65,9 @@ async function providerForm(a: any, s: Session, x: Partial<VectorProvider>, orig
   return html`${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
     <form method="post" action="${BASE}/apps/${a.id}/vector-providers/provider">${csrf(s)}<input type="hidden" name="original" value="${original}">
       <fieldset class="prop-group"><legend>Vector provider</legend><div class="form-grid">
-        ${input('name', 'Name (static ID)', x.name ?? '', { required: true, placeholder: 'e.g. DOC_EMBEDDINGS', help: 'Upper case letters, digits and _. Search configurations name it; in SQL: meta.embed(text, \'DOC_EMBEDDINGS\') (function providers).' })}
+        ${input('name', 'Name (static ID)', x.name ?? '', { required: true, placeholder: 'e.g. DOC_EMBEDDINGS', help: 'Upper case letters, digits and _. Search configurations name it; in SQL: meta.embed(text, \'DOC_EMBEDDINGS\') (function and database model providers).' })}
         ${input('description', 'Description', x.description ?? '')}
-        ${select('type', 'Type', x.type ?? 'ai_service', [['ai_service', 'AI service with an embedding model'], ['function', 'SQL or PL/pgSQL function']], 'Where the embeddings come from.')}
+        ${select('type', 'Type', x.type ?? 'ai_service', [['ai_service', 'AI service with an embedding model'], ['database_model', 'Model in the database (PostgresML)'], ['function', 'SQL or PL/pgSQL function']], 'Where the embeddings come from.')}
         ${input('dimensions', 'Dimensions', x.dimensions ?? '', { type: 'number', required: true, placeholder: 'e.g. 1536', help: `The length of each vector: text-embedding-3-small 1536 (or fewer: OpenAI shortens them), text-embedding-3-large 3072, nomic-embed-text 768, gemini-embedding-001 3072. A vector column is vector(n) with this n; an HNSW index takes up to ${HNSW_MAX_DIMENSIONS}.` })}
       </div></fieldset>
       <fieldset class="prop-group"><legend>AI service</legend><div class="form-grid">
@@ -74,6 +76,11 @@ async function providerForm(a: any, s: Session, x: Partial<VectorProvider>, orig
         ${input('model', 'Embedding model', x.model ?? '', { placeholder: 'e.g. text-embedding-3-small', help: 'Exactly as the provider names it: text-embedding-3-small, gemini-embedding-001, nomic-embed-text, mxbai-embed-large …' })}
         ${input('batch_size', 'Texts per request', x.batch_size ?? '', { type: 'number', placeholder: String(DEFAULT_BATCH), help: 'When the server embeds queued rows (vector columns).' })}
         ${input('per_minute', 'Requests per minute', x.per_minute ?? '', { type: 'number', placeholder: String(DEFAULT_PER_MINUTE), help: 'At most this many background requests per minute (per server), under the provider\'s rate limit.' })}
+      </div></fieldset>
+      <fieldset class="prop-group"><legend>Model in the database</legend><div class="form-grid">
+        ${pgml ? '' : html`<p class="muted" data-wide>PostgresML (<code>pgml</code>) is not installed in this database: install it on the database server, then <code>create extension pgml;</code>. It runs Hugging Face models (ONNX among them) inside PostgreSQL.</p>`}
+        ${select('engine', 'Engine', x.engine ?? 'pgml', MODEL_ENGINES.map((e): [string, string] => [e, e === 'pgml' ? 'PostgresML: pgml.embed(model, text)' : e]), 'The extension that runs the model. Nothing leaves the database; grant usage on its schema (pgml) to the application\'s role.')}
+        ${input('db_model', 'Model', x.type === 'database_model' ? (x.model ?? '') : '', { placeholder: 'e.g. intfloat/e5-small-v2', help: 'A model the engine loads (the first call downloads it): intfloat/e5-small-v2 (384), Alibaba-NLP/gte-base-en-v1.5 (768), mixedbread-ai/mxbai-embed-large-v1 (1024) …' })}
       </div></fieldset>
       <fieldset class="prop-group"><legend>Function</legend><div class="form-grid">
         ${input('function', 'Function', x.function ?? '', { placeholder: 'e.g. sales.embed', help: 'schema.name of a function (text) returning vector, real[] or float8[]. meta.embed calls it as the role that runs the query (its grants apply): grant execute on it to the application\'s role.' })}
@@ -114,6 +121,10 @@ function providerFrom(b: Body, errors: string[]): VectorProvider {
     if (pm !== undefined) x.per_minute = pm;
   }
   if (type === 'function') x.function = one(b.function).trim();
+  if (type === 'database_model') {
+    x.engine = one(b.engine).trim() as VectorProvider['engine'];
+    x.model = one(b.db_model).trim();
+  }
   return x;
 }
 
@@ -153,7 +164,7 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
       ${pgvectorNote(st, await isAdmin(s.username), s)}
       ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Name</th><th>Type</th><th>Model or function</th><th class="num">Dimensions</th></tr></thead>
         <tbody>${list.length ? list.map((p) => html`<tr><td data-label="Name"><a href="${BASE}/apps/${a.id}/vector-providers/provider?name=${encodeURIComponent(p.name)}">${p.name}</a>${p.description ? html` <span class="muted">${p.description}</span>` : ''}</td>
-          <td data-label="Type">${p.type === 'ai_service' ? html`AI service ${p.service}` : 'function'}</td><td data-label="Model or function"><code>${p.type === 'ai_service' ? p.model : p.function}</code></td>
+          <td data-label="Type">${p.type === 'ai_service' ? html`AI service ${p.service}` : p.type === 'database_model' ? `in the database (${p.engine})` : 'function'}</td><td data-label="Model or function"><code>${p.type === 'function' ? p.function : p.model}</code></td>
           <td class="num" data-label="Dimensions">${p.dimensions}</td></tr>`)
           : html`<tr><td colspan="4" class="empty">No vector providers yet.</td></tr>`}</tbody></table></div>
         <p><a class="btn" href="${BASE}/apps/${a.id}/vector-providers/provider">${icon('plus')} Add vector provider</a></p>`)}`;
@@ -256,7 +267,7 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
       ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Application</th><th>Name</th><th>Type</th><th>Model or function</th><th class="num">Dimensions</th></tr></thead>
         <tbody>${rows.length ? rows.map(({ app: x, p }) => html`<tr><td data-label="Application">${x.name}</td>
           <td data-label="Name"><a href="${BASE}/apps/${x.id}/vector-providers/provider?name=${encodeURIComponent(p.name)}">${p.name}</a></td>
-          <td data-label="Type">${p.type === 'ai_service' ? html`AI service ${p.service}` : 'function'}</td><td data-label="Model or function"><code>${p.type === 'ai_service' ? p.model : p.function}</code></td>
+          <td data-label="Type">${p.type === 'ai_service' ? html`AI service ${p.service}` : p.type === 'database_model' ? `in the database (${p.engine})` : 'function'}</td><td data-label="Model or function"><code>${p.type === 'function' ? p.function : p.model}</code></td>
           <td class="num" data-label="Dimensions">${p.dimensions}</td></tr>`)
           : html`<tr><td colspan="5" class="empty">No vector providers yet.</td></tr>`}</tbody></table></div>`)}
       ${region('Vector columns', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Provider</th><th>Source columns</th><th>Kept by</th></tr></thead>

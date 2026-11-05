@@ -13418,3 +13418,19 @@ describe('sprint 150 remote databases: administrators only', () => {
       'the table name never became SQL: nothing was imported into public');
   });
 });
+
+describe('sprint 151 database model providers: the model is a value', () => {
+  test('a model name stored around the builder is refused before anything runs, PostgresML installed or not', async () => {
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const evil = { name: 'SEC151', type: 'database_model', engine: 'pgml', model: "x', 'y'); drop table hr.emp; --", dimensions: 4 };
+    await owner.query(`update meta.app set vector_providers = vector_providers || $2::jsonb where id = $1`, [hr, JSON.stringify([evil])]);
+    try {
+      await assert.rejects(owner.query(`select meta.embed('t', 'SEC151', $1)`, [hr]), /is a model name/);
+      assert.ok((await owner.query(`select 1 from pg_class where oid = 'hr.emp'::regclass`)).rowCount);
+      const { vectorProviderProblems } = await import('../src/ai/embeddings.ts');
+      assert.ok(vectorProviderProblems(evil).length, 'the builder refuses it too');
+    } finally {
+      await owner.query(`update meta.app set vector_providers = coalesce((select jsonb_agg(e) from jsonb_array_elements(vector_providers) e where e->>'name' <> 'SEC151'), '[]') where id = $1`, [hr]);
+    }
+  });
+});

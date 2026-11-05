@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import pg from 'pg';
-import { HNSW_MAX_DIMENSIONS, vectorProviderProblems, type VectorProvider } from '../ai/embeddings.ts';
+import { embedsInDatabase, HNSW_MAX_DIMENSIONS, vectorProviderProblems, type VectorProvider } from '../ai/embeddings.ts';
 import { joinStatements, recordChanges } from '../changelog.ts';
 import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
@@ -102,7 +102,7 @@ async function page(req: Req, reply: FastifyReply) {
   const base = t.name.replace(/[^a-z0-9_]+/gi, '_').toLowerCase().slice(0, 40);
   const index = isPost ? String(b.index ?? '').trim() : `${base}_${column || 'embedding'}_idx`;
   const distance: Distance = isDistance(b.distance) ? b.distance : 'cosine';
-  const mode: 'set' | 'queue' = pick?.p.type === 'function' && (isPost ? b.keep === 'set' : true) ? 'set' : 'queue';
+  const mode: 'set' | 'queue' = pick && embedsInDatabase(pick.p) && (isPost ? b.keep === 'set' : true) ? 'set' : 'queue';
   const picked = new Set<string>();
   if (isPost) texty.forEach((c, i) => b[`c.${i}.use`] === 'on' && b[`c.${i}.name`] === c.name && picked.add(c.name));
   else texty.forEach((c) => picked.add(c.name));
@@ -189,7 +189,7 @@ async function page(req: Req, reply: FastifyReply) {
         : html`<form method="post" action="${BASE}/sql/objects/vector" class="fts-form">${csrf(s)}
       <input type="hidden" name="o" value="${table}">
       <div class="form-grid">
-        <div class="field"><label class="label" for="vec-provider">${tx('vec.provider')}</label><select id="vec-provider" name="provider">${choices.map((c) => html`<option value="${c.key}"${sel(c.key, pick?.key ?? '')}>${c.alias} · ${c.p.name} (${c.p.type === 'ai_service' ? c.p.model : c.p.function}, ${c.p.dimensions})</option>`)}</select>
+        <div class="field"><label class="label" for="vec-provider">${tx('vec.provider')}</label><select id="vec-provider" name="provider">${choices.map((c) => html`<option value="${c.key}"${sel(c.key, pick?.key ?? '')}>${c.alias} · ${c.p.name} (${c.p.type === 'function' ? c.p.function : c.p.model}, ${c.p.dimensions})</option>`)}</select>
           <small class="help">${tx('vec.provider_help')}</small></div>
         <div class="field"><label class="label" for="vec-keep">${tx('vec.keep')}</label><select id="vec-keep" name="keep"><option value="set"${sel(mode, 'set')}>${tx('vec.mode_set')}</option><option value="queue"${sel(mode, 'queue')}>${tx('vec.mode_queue')}</option></select>
           <small class="help">${tx('vec.keep_help')}</small></div>
