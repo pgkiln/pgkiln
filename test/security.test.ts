@@ -13556,3 +13556,15 @@ describe('sprint 158 item types', () => {
     }
   });
 });
+
+describe('sprint 160 Workflow Diagram region', () => {
+  test('the instance id is a number from the item, read through meta.workflows (the user\'s own or administered only)', async () => {
+    const { renderWorkflowDiagram } = await import('../src/runtime/workflow-diagram.ts');
+    let queried = false;
+    const ctx = { session: { state: { P9_WF: '1; drop table meta.workflow' } }, client: { query: async () => { queried = true; return { rows: [] }; } },
+      locale: { t: (k: string) => k }, app: { id: 0 } } as any;
+    const out = String(await renderWorkflowDiagram(ctx, { id: 1, config: { instance_item: 'P9_WF' } } as any));
+    assert.match(out, /class="empty"/);
+    assert.equal(queried, false, 'not a number: no query at all');
+  });
+});

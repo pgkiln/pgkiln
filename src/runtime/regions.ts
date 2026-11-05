@@ -1,3 +1,4 @@
+import { renderWorkflowDiagram } from './workflow-diagram.ts';
 import type { QueryResult } from 'pg';
 import { ganttEditable } from './gantt-move.ts';
 import { applyBinds } from '../binds.ts';
@@ -378,6 +379,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'workflows':
       body = await renderWorkflows(ctx, r);
+      break;
+    case 'workflow_diagram':
+      body = await renderWorkflowDiagram(ctx, r);
       break;
     case 'map':
       body = await renderMap(ctx, r);

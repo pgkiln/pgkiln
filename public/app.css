@@ -1497,6 +1497,8 @@ path.map-near { stroke: #1f2733; stroke-dasharray: 6 4; fill: #1f2733; fill-opac
 .wf-invoke_api rect { stroke: #1f7a8c; stroke-width: 2; stroke-dasharray: 2 2; }
 .wf-active rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3; }
 .wf-active .wf-name { fill: var(--text); }
+.wf-done rect { fill: var(--success-soft, #e7f5ed); stroke: var(--success, #17794a); }
+.wf-failed rect { fill: var(--danger-soft, #fde7e4); stroke: var(--danger, #b42318); stroke-width: 3; }
 .wf-warnings { background: var(--warning-soft); color: var(--text); border-color: var(--border); }
 .wf-version-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0; }
 .wf-version-diagram summary { cursor: pointer; }

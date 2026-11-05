@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Workflow Diagram region** (CD-7; migration 152): one workflow instance (its id in an item) drawn in a page with the
+  steps it went through, where it is now and a failed step, each step's history as a tooltip; only instances the user
+  started or administers. Server-rendered SVG.
 - **Map layers Lines, Polygons and Extruded Polygons** (CD-6; no migration): a layer draws its rows' shapes with fill
   and line colours, width and opacity, fixed or per row; extruded polygons are shaded by a height column (drawn flat).
   The Page Designer's map settings offer the kinds and the style per layer.

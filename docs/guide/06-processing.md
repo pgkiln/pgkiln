@@ -1170,6 +1170,22 @@ background runs with the tenant of the session that queued it. Filter your own t
 (`where tenant_id = meta.tenant_id()`, or a row level security policy). Use row level security in
 the tenant's tables as well: the tenant is a value the application sets, not a database boundary.
 
+### Workflow diagram region
+
+Sprint 160 (APEX 24.2+: Workflow Diagram region). A region of type `workflow_diagram` draws one
+workflow instance in a running application: its version's steps, the ones it went through (green),
+where it is now (blue, several with parallel branches) and a failed step (red, with the error above
+the diagram). Each reached step's tooltip lists when it was reached and what happened. The instance
+id comes from an item:
+
+```json
+{"instance_item": "P9_WORKFLOW_ID"}
+```
+
+It is read through `meta.workflows` as the application's role, so a user sees only workflows they
+started or administer (the Workflow Console's rule); others see the empty text. The diagram is SVG
+drawn on the server: it needs no JavaScript.
+
 ### Send e-mail steps
 
 A `send_mail` step (APEX 26.1: the *Send E-Mail* activity) queues an e-mail through the application's mail service,

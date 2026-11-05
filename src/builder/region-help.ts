@@ -7,6 +7,7 @@
 const GUIDE = 'https://pgkiln.vargar.eu/docs';
 
 export const REGION_CONFIG_HELP: [string[], string][] = [
+  [['workflow_diagram'], '{"instance_item": "P9_WORKFLOW_ID"}: the item holding the workflow instance to draw (only instances the user started or administers; sprint 160)'],
   [['report'], '{"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts)'],
   [['report', 'classic_report', 'grid', 'cards'], '{"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column)'],
   [['chart'], '{"kind":"bar"|"column"|"line"|"area"|"donut","max_rows":1000,"format_mask":"FML999G990"}'],
@@ -59,6 +60,7 @@ const ANCHORS: Record<string, string> = {
   plugin: 'plug-ins-with-their-own-code',
   tasks: 'approvals-and-the-task-list',
   workflows: 'workflows',
+  workflow_diagram: 'workflow-diagram-region',
   login: 'the-login-page',
   classic_report: 'classic_report-classic-report',
   breadcrumb: 'breadcrumb-and-help_text',
@@ -73,7 +75,7 @@ export function regionConfigHelp(type: string | null | undefined): { text: strin
   if (!type) return { text: ALL_REGION_CONFIG_HELP, url: null };
   const own = REGION_CONFIG_HELP.filter(([types]) => types.includes(type)).map(([, text]) => text);
   const any = REGION_CONFIG_HELP.filter(([types]) => types.includes('*')).map(([, text]) => `any region: ${text}`);
-  const chapter = type === 'tasks' || type === 'workflows' ? 'processing' : type === 'login' ? 'security' : 'pages-and-regions';
+  const chapter = type === 'tasks' || type === 'workflows' || type === 'workflow_diagram' ? 'processing' : type === 'login' ? 'security' : 'pages-and-regions';
   return {
     text: [...own, ...any].join(' · ') || 'No attributes of its own.',
     url: ANCHORS[type] ? `${GUIDE}/${chapter}#${ANCHORS[type]}` : null,

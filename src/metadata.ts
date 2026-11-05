@@ -164,7 +164,7 @@ export interface Region {
   title: string | null;
   /** (0.31, 073) optional, unique on the page */
   static_id?: string | null;
-  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search' | 'form_designer' | 'classic_report' | 'breadcrumb' | 'help_text';
+  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search' | 'form_designer' | 'classic_report' | 'breadcrumb' | 'help_text' | 'workflow_diagram';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
