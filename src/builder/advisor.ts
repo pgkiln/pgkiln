@@ -14,9 +14,9 @@ import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { configColumns, searchConfigProblems, textSearchConfig, tsvectorSql } from '../runtime/search.ts';
 import { COMPONENTS } from './components.ts';
-import { arrayTriggerArg, CATALOG_TYPE, POSITION, ROW_KEY, viewTriggerArg, type JsonSource } from '../json-sources.ts';
+import { arrayTriggerArg, CATALOG_TYPE, jsonSourceProblems, POSITION, ROW_KEY, viewTriggerArg, type JsonSource } from '../json-sources.ts';
 import { DISTANCES, PGVECTOR_MISSING, vectorColumnDims, vectorSchema, type Distance } from '../vector.ts';
-import { appEntries, type Entry } from './search.ts';
+import { entriesOf, type Entry } from './search.ts';
 import { LOV_CHECKED } from '../runtime/items.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
 
@@ -158,6 +158,9 @@ export async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): 
 
 /** process types that write data (sprint 144: the security checks below; a sql process when its code has DML) */
 const WRITES = ['form_dml', 'grid_dml', 'sql'];
+type Row = { kind: string; row: any };
+/** (sprint 147) an application as rows: from the database (advise) or from an export's files (adviseDoc) */
+export interface AppRows { app: any; pages: any[]; all: Row[]; entries: Entry[]; byKey: Map<string, Entry> }
 /** (sprint 144) session limits above which the Advisor warns (APEX CodeScan's session limits) */
 export const SESSION_LIMITS = { idleMinutes: 120, maxHours: 24 };
 
@@ -170,25 +173,31 @@ export const SESSION_LIMITS = { idleMinutes: 120, maxHours: 24 };
  *    protection; hidden items never take posted values in pgkiln, so URL values are the way in);
  *  - the installation's session limits above SESSION_LIMITS.
  */
-async function securityFindings(appId: number, query: (sql: string, params?: unknown[]) => Promise<pg.QueryResult>, byKey: Map<string, Entry>): Promise<Finding[]> {
+/** (sprint 147) the processes of a page that write data: saves, and SQL with a writing statement, not behind a scheme */
+const writesOf = (all: Row[], page: any) => all
+  .filter((x) => x.kind === 'process' && x.row.page_id === page.id && WRITES.includes(x.row.type) && !x.row.authz
+    && (x.row.build_option ?? '') !== 'COMMENTED_OUT' && (x.row.type !== 'sql' || /\b(insert|update|delete|merge|truncate)\b/i.test(String(x.row.code ?? ''))))
+  .sort((a, b) => (a.row.seq ?? 0) - (b.row.seq ?? 0)).map((x) => String(x.row.name));
+
+function pageSecurityFindings(x: AppRows): Finding[] {
   const out: Finding[] = [];
-  const schemes = (await query('select count(*)::int as n from meta.authz_scheme where app_id = $1', [appId])).rows[0].n as number;
-  const pages = (await query(
-    `select p.id, p.page_no, p.requires_auth, p.authz, p.protection,
-            (select array_agg(pr.name order by pr.seq) from meta.process pr where pr.page_id = p.id and pr.type = any($2) and pr.authz is null and coalesce(pr.build_option, '') <> 'COMMENTED_OUT'
-               and (pr.type <> 'sql' or pr.code ~* '\\m(insert|update|delete|merge|truncate)\\M')) as writes,
-            (select count(*)::int from meta.item i where i.page_id = p.id and i.type <> 'display') as items
-       from meta.page p where p.app_id = $1 and coalesce(p.build_option, '') <> 'COMMENTED_OUT' order by p.page_no`, [appId, WRITES])).rows;
-  for (const p of pages) {
-    const entry = byKey.get(`page-${p.id}`) ?? null;
-    const writes: string[] = p.writes ?? [];
+  const schemes = x.all.filter((r) => r.kind === 'authz_scheme').length;
+  for (const p of [...x.pages].filter((p) => (p.build_option ?? '') !== 'COMMENTED_OUT').sort((a, b) => a.page_no - b.page_no)) {
+    const entry = x.byKey.get(`page-${p.id}`) ?? null;
+    const writes = writesOf(x.all, p);
+    const items = x.all.filter((r) => r.kind === 'item' && r.row.page_id === p.id && r.row.type !== 'display').length;
     if (writes.length && !p.requires_auth)
       out.push({ severity: 'warning', entry, field: 'Security → Authentication', message: `Page ${p.page_no} needs no sign-in, and its process ${writes.join(', ')} writes data: anyone can run it. Require authentication, or put the process behind an authorization scheme.` });
     else if (writes.length && !p.authz && schemes)
       out.push({ severity: 'info', entry, field: 'Security → Authorization scheme', message: `Page ${p.page_no} writes data (${writes.join(', ')}) with no authorization scheme on the page or the process: every signed-in user may use it.` });
-    if (p.protection === 'unrestricted' && p.items)
+    if (p.protection === 'unrestricted' && items)
       out.push({ severity: writes.length ? 'warning' : 'info', entry, field: 'Security → Page protection', message: `Page ${p.page_no} is unrestricted: a link can set its items without a checksum${writes.length ? ', and the page writes data' : ''}. Use checksum protection unless the URL is meant to be typed.` });
   }
+  return out;
+}
+
+async function securityFindings(x: AppRows, query: (sql: string, params?: unknown[]) => Promise<pg.QueryResult>): Promise<Finding[]> {
+  const out = pageSecurityFindings(x);
   const settings = (await query(`select name, value from meta.setting where name in ('session_idle_minutes', 'session_max_hours')`).catch(() => ({ rows: [] }))).rows;
   const idle = settingFrom('session_idle_minutes', settings);
   const max = settingFrom('session_max_hours', settings);
@@ -250,6 +259,164 @@ export async function jsonSourceFindings(sources: unknown, query: (sql: string, 
   return out;
 }
 
+/**
+ * (sprint 147) Checks on the application's own rows, with no database: the login page (087) and page groups (089).
+ */
+function structureFindings(x: AppRows): Finding[] {
+  const out: Finding[] = [];
+  const { app, pages, all } = x;
+  if (app.login_page) {
+    const page = pages.find((p) => Number(p.page_no) === Number(app.login_page));
+    const field = 'Application settings → Login page';
+    if (!page) out.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} doesn't exist: the built-in sign-in page is shown instead.` });
+    else if (page.requires_auth) out.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} requires authentication: the built-in sign-in page is shown instead.` });
+    else if (!all.some((r) => r.kind === 'region' && r.row.type === 'login' && r.row.page_id === page.id))
+      out.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
+  }
+  const groups = new Set(all.filter((r) => r.kind === 'page_group').map((r) => r.row.name));
+  for (const p of [...pages].sort((a, b) => a.page_no - b.page_no))
+    if (p.page_group != null && !groups.has(p.page_group))
+      out.push({ severity: 'warning', entry: null, field: `Page ${p.page_no} → Page group`, message: `Page group ${p.page_group} doesn't exist (Shared Components → Page groups).` });
+  return out;
+}
+
+/**
+ * (sprint 147) References between the application's components: pages, items, lists of values, schemes, build options,
+ * layouts, regions, processes, workflow steps. `ext.workspace` (the remote servers and web credentials of the
+ * application's workspace) and `ext.otherAppPage` (a branch to another application) need a database: without them
+ * (an export checked offline) those checks are skipped.
+ */
+async function referenceFindings(x: AppRows, ext: {
+  workspace: { servers: Map<string, string | null>; credentials: Set<string> } | null;
+  otherAppPage: ((alias: string, pageNo: number) => Promise<boolean>) | null;
+}): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  const { entries, all, byKey } = x;
+  const pageNos = new Set(entries.filter((e) => e.kind === 'page').map((e) => e.pageNo));
+  const items = new Set(all.filter((x) => x.kind === 'item' || x.kind === 'app_item').map((x) => x.row.name.toUpperCase()));
+  const lovs = new Set(all.filter((x) => x.kind === 'lov').map((x) => x.row.name.toUpperCase()));
+  const schemes = new Set(all.filter((x) => x.kind === 'authz_scheme').map((x) => x.row.name));
+  const buildOptions = new Set(all.filter((x) => x.kind === 'build_option').map((x) => x.row.name));
+  const layouts = new Set(all.filter((x) => x.kind === 'report_layout').map((x) => x.row.name.toUpperCase()));
+  const regionIds = new Set(all.filter((x) => x.kind === 'region').map((x) => x.row.id));
+  // (104) a document button names a document template or a report query
+  const documents = new Set(all.filter((x) => x.kind === 'document_template' || x.kind === 'report_query').map((x) => x.row.name.toUpperCase()));
+  const missing = (entry: Entry | null, field: string, message: string, severity: Severity = 'error') => findings.push({ severity, entry, field, message });
+  // (141) remote servers and web credentials of the application's workspace (sources and invoke steps may name them)
+  const wsServers = ext.workspace?.servers ?? new Map<string, string | null>();
+  const wsCredentials = ext.workspace?.credentials ?? new Set<string>();
+  const appCredentials = new Set(all.filter((x) => x.kind === 'web_credential').map((x) => String(x.row.name).toUpperCase()));
+
+  for (const e of entries) {
+    for (const f of e.fields) {
+      if (!f.value) continue;
+      if (f.kind === 'page' && f.value && !pageNos.has(Number(f.value))) missing(e, f.label, `Page ${f.value} doesn't exist.`);
+      if (f.kind === 'build_option' && !buildOptions.has(f.value.replace(/^!/, '')))
+        missing(e, f.label, `Build option ${f.value.replace(/^!/, '')} doesn't exist, so the component is always left out.`);
+      if (f.kind === 'authz') {
+        const name = f.value.replace(/^!/, '');
+        if (!schemes.has(name) && !BUILT_IN.has(name)) missing(e, f.label, `Authorization scheme ${name} doesn't exist (nobody passes it).`);
+      }
+      for (const m of f.value.matchAll(/LOV:([A-Za-z0-9_]+)/g)) if (!lovs.has(m[1].toUpperCase())) missing(e, f.label, `List of values ${m[1].toUpperCase()} doesn't exist.`);
+      if (f.kind === 'code' || f.kind === 'text' || f.kind === 'textarea' || f.kind === 'json')
+        for (const m of f.value.matchAll(ITEM_REF))
+          if (!items.has(m[1].toUpperCase())) missing(e, f.label, `Item ${m[1].toUpperCase()} doesn't exist (its value is always empty).`, 'warning');
+      if (f.kind === 'json') {
+        let cfg: any;
+        try {
+          cfg = JSON.parse(f.value);
+        } catch {
+          continue;
+        }
+        if (cfg?.link?.page !== undefined && !pageNos.has(Number(cfg.link.page))) missing(e, f.label, `The link goes to page ${cfg.link.page}, which doesn't exist.`);
+        if (cfg?.link?.items) for (const k of Object.keys(cfg.link.items)) if (!items.has(k.toUpperCase())) missing(e, f.label, `The link sets item ${k}, which doesn't exist.`, 'warning');
+        if (cfg?.pdf?.layout && !layouts.has(String(cfg.pdf.layout).toUpperCase())) missing(e, f.label, `Report layout ${cfg.pdf.layout} doesn't exist (the built-in layout is used).`, 'warning');
+        if (typeof cfg?.public_reports === 'string' && !schemes.has(cfg.public_reports)) missing(e, f.label, `Authorization scheme ${cfg.public_reports} doesn't exist.`);
+        if (e.kind === 'region' && cfg?.report !== undefined && !regionIds.has(Number(cfg.report))) missing(e, f.label, `Region ${cfg.report} doesn't exist.`);
+      }
+    }
+  }
+  // forms and grids
+  for (const { kind, row } of all) {
+    const e = byKey.get(`${kind}-${row.id}`) ?? null;
+    // a grid on a REST data source takes its key from the source's key columns when it has no primary key column
+    const restKeys = row.rest_source
+      ? all.find((x) => x.kind === 'rest_source' && String(x.row.name).toUpperCase() === String(row.rest_source).toUpperCase())?.row.key_columns
+      : null;
+    if (kind === 'region' && row.type === 'grid' && (!(row.table_name || row.rest_source) || !(row.pk_column || restKeys?.length)))
+      missing(e, 'Source', 'A grid needs a table (or a REST data source with key columns) and a primary key column.');
+    if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
+      missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
+    if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
+    // (140) a list item (select list, radio group, shuttle, select one or many …) shows no choices without a list of values
+    if (kind === 'item' && LOV_CHECKED.has(row.type) && !String(row.lov ?? '').trim())
+      missing(e, 'List of values', `A ${row.type} item needs a list of values: it has no choices, and no value passes the check on submit.`, 'warning');
+    // (078) a URL region: a literal origin, valid attributes
+    if (kind === 'region' && row.type === 'url') {
+      const target = urlTarget(row.source);
+      if ('error' in target) missing(e, 'Source', target.error);
+      const problem = urlConfigProblem(row.config);
+      if (problem) missing(e, 'Attributes', problem);
+    }
+    if (kind === 'computation' && !items.has(String(row.item_name).toUpperCase())) missing(e, 'Item', `Item ${row.item_name} doesn't exist (the computation sets nothing).`);
+    if (kind === 'computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
+    if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
+    if (kind === 'process') {
+      for (const problem of processProblems(row.type, row.config)) missing(e, 'Configuration', problem);
+      if (row.parent_process && !all.some((x) => x.kind === 'process' && x.row.page_id === row.page_id && x.row.type === 'chain' && x.row.name === row.parent_process))
+        missing(e, 'Chain (parent process)', `There is no chain process "${row.parent_process}" on this page, so this process never runs.`);
+      if (row.type === 'workflow' && (row.config?.action ?? 'start') === 'start' && row.config?.definition
+          && !all.some((x) => x.kind === 'workflow_definition' && x.row.name === String(row.config.definition).toUpperCase()))
+        missing(e, 'Configuration', `Workflow definition ${row.config.definition} doesn't exist.`);
+    }
+    if (kind === 'branch' && row.target_type === 'page' && row.target_page && !pageNos.has(Number(row.target_page))) missing(e, 'Page', `Page ${row.target_page} doesn't exist.`);
+    if (kind === 'branch' && row.target_type === 'app' && ext.otherAppPage && !(await ext.otherAppPage(row.target_app, row.target_page)))
+      missing(e, 'Application (app)', `Application ${row.target_app} has no page ${row.target_page}.`);
+    if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
+      missing(e, 'Document template', row.document ? `Document template or report query ${row.document} doesn't exist.` : 'A document button needs a document template or a report query.');
+    if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
+    if (kind === 'rest_source') {
+      // (141) an export may name a server or credential this workspace doesn't have (yet): it imports, and says so here
+      if (ext.workspace && row.server && !wsServers.has(row.server))
+        missing(e, 'Remote server', `Remote server ${row.server} doesn't exist in this application's workspace: add it under Workspace utilities → Remote servers (calls fail until then).`, 'warning');
+      const credential = row.credential || (row.server ? wsServers.get(row.server) : null);
+      if (ext.workspace && credential && !appCredentials.has(credential) && !wsCredentials.has(credential))
+        missing(e, 'Web credential', `Web credential ${credential} is neither the application's nor its workspace's (calls fail until it exists).`, 'warning');
+    }
+    if (kind === 'workflow_definition') {
+      const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
+      const outcomes = outcomeMap(all.filter((x) => x.kind === 'task_definition').map((x) => x.row));
+      for (const problem of stepProblems(row.steps, tasks, { outcomes, drafts: false })) missing(e, 'Steps (JSON)', problem);
+      for (const warning of stepWarnings(row.steps)) missing(e, 'Steps (JSON)', warning, 'warning');
+      // invoke_api steps: REST data sources, parameters, web credentials, variables (sprint 32)
+      const refs = {
+        sources: new Map(all.filter((x) => x.kind === 'rest_source').map((x) => [String(x.row.name).toUpperCase(), x.row])),
+        credentials: new Set([...appCredentials, ...wsCredentials]),
+        startVars: [...String(row.title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
+      };
+      const invokeRefs = invokeStepReferences(row.steps, refs);
+      for (const problem of invokeRefs.errors) missing(e, 'Steps (JSON)', problem);
+      for (const warning of invokeRefs.warnings) missing(e, 'Steps (JSON)', warning, 'warning');
+      if (row.dev_version) {
+        const field = `Steps of version ${row.dev_version} (development)`;
+        for (const problem of stepProblems(row.dev_steps, tasks, { outcomes })) missing(e, field, problem, 'warning');
+        for (const warning of stepWarnings(row.dev_steps)) missing(e, field, warning, 'warning');
+        const devRefs = invokeStepReferences(row.dev_steps, refs);
+        for (const problem of [...devRefs.errors, ...devRefs.warnings]) missing(e, field, problem, 'warning');
+      }
+    }
+    if (kind === 'report_query' && row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
+    if (kind === 'app_computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
+    if (kind === 'document_template') {
+      const problem = templateProblem(row.template ?? '');
+      if (problem) missing(e, 'Template (HTML)', problem);
+      if (row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
+    }
+  }
+
+  return findings;
+}
+
 const ITEM_REF = /(?<![A-Za-z0-9_$&:])(?::|&)(P\d+_[A-Z0-9_]+)\b/gi;
 const BUILT_IN = new Set(['MUST_NOT_BE_PUBLIC_USER']);
 
@@ -262,8 +429,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   const query = (sql: string, params: unknown[] = []) => (tx ? tx.query(sql, params) : owner.query(sql, params));
   const one = async (sql: string, params: unknown[] = []) => (await query(sql, params)).rows[0];
   const app = await one('select * from meta.app where id = $1', [appId]);
-  const entries = await appEntries(appId, query);
-  const byKey = new Map(entries.map((e) => [`${e.kind}-${e.id}`, e]));
+  const pages = (await query('select * from meta.page where app_id = $1 order by page_no', [appId])).rows;
   const findings: Finding[] = [];
   let checked = 0;
 
@@ -278,17 +444,16 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   if (tx) for (const [kind, spec] of Object.entries(COMPONENTS)) lists.push(await rowsOf(kind, spec.table, spec.scope));
   else lists.push(...(await Promise.all(Object.entries(COMPONENTS).map(([kind, spec]) => rowsOf(kind, spec.table, spec.scope)))));
   const all = lists.flat();
+  const byKind = new Map<string, any[]>();
+  for (const x of all) byKind.set(x.kind, [...(byKind.get(x.kind) ?? []), x.row]);
+  for (const [kind, spec] of Object.entries(COMPONENTS))
+    byKind.get(kind)?.sort((a, b) => spec.scope === 'page' ? (a.page_no - b.page_no || (a.seq ?? 0) - (b.seq ?? 0) || a.id - b.id) : a.id - b.id);
+  const entries = entriesOf(appId, pages, byKind);
+  const byKey = new Map(entries.map((e) => [`${e.kind}-${e.id}`, e]));
+  const rows: AppRows = { app, pages, all, entries, byKey };
 
   // metadata checks, as the owner (before the role switch below: the application's role can't read meta)
-  // (087) the application's login page: a page that needs no sign-in, with a login region
-  if (app.login_page) {
-    const page = await one('select id, requires_auth from meta.page where app_id = $1 and page_no = $2', [appId, app.login_page]);
-    const field = 'Application settings → Login page';
-    if (!page) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} doesn't exist: the built-in sign-in page is shown instead.` });
-    else if (page.requires_auth) findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} requires authentication: the built-in sign-in page is shown instead.` });
-    else if (!all.some((x) => x.kind === 'region' && x.row.type === 'login' && Number(x.row.page_no) === Number(app.login_page)))
-      findings.push({ severity: 'error', entry: null, field, message: `Page ${app.login_page} has no Login region: nobody can sign in.` });
-  }
+  findings.push(...structureFindings(rows));
   // (sprint 130, SEC-3) administrators of the application who sign in with only a password
   if (app.authentication === 'app_users' && (app.local_login || (app.ldap_directories ?? []).length)) {
     const covered = app.mfa === 'required' || (app.mfa === 'roles' && (app.mfa_roles ?? []).includes('admin'));
@@ -297,11 +462,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       findings.push({ severity: 'warning', entry: null, field: 'Application settings → Two-factor sign-in',
         message: `${admins === 1 ? 'A user' : `${admins} users`} with the admin role sign${admins === 1 ? 's' : ''} in with only a password: require two-factor sign-in (Required, or Required for roles: admin).` });
   }
-  // (089) a page's group exists
-  for (const p of (await query(`select p.page_no, p.page_group from meta.page p where p.app_id = $1 and p.page_group is not null
-                                   and not exists (select 1 from meta.page_group g where g.app_id = p.app_id and g.name = p.page_group) order by 1`, [appId])).rows)
-    findings.push({ severity: 'warning', entry: null, field: `Page ${p.page_no} → Page group`, message: `Page group ${p.page_group} doesn't exist (Shared Components → Page groups).` });
-  findings.push(...(await securityFindings(appId, query, byKey)));
+  findings.push(...(await securityFindings(rows, query)));
   findings.push(...(await jsonSourceFindings(app.json_sources, query)));
   // ---- SQL, as the application's role, rolled back (a savepoint in the caller's transaction)
   // (090) an isolated workspace's application: planned on the workspace's developer login, in a
@@ -479,128 +640,12 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   }
 
   // ---- references
-  const pageNos = new Set(entries.filter((e) => e.kind === 'page').map((e) => e.pageNo));
-  const items = new Set(all.filter((x) => x.kind === 'item' || x.kind === 'app_item').map((x) => x.row.name.toUpperCase()));
-  const lovs = new Set(all.filter((x) => x.kind === 'lov').map((x) => x.row.name.toUpperCase()));
-  const schemes = new Set(all.filter((x) => x.kind === 'authz_scheme').map((x) => x.row.name));
-  const buildOptions = new Set(all.filter((x) => x.kind === 'build_option').map((x) => x.row.name));
-  const layouts = new Set(all.filter((x) => x.kind === 'report_layout').map((x) => x.row.name.toUpperCase()));
-  const regionIds = new Set(all.filter((x) => x.kind === 'region').map((x) => x.row.id));
-  // (104) a document button names a document template or a report query
-  const documents = new Set(all.filter((x) => x.kind === 'document_template' || x.kind === 'report_query').map((x) => x.row.name.toUpperCase()));
-  const missing = (entry: Entry | null, field: string, message: string, severity: Severity = 'error') => findings.push({ severity, entry, field, message });
-  // (141) remote servers and web credentials of the application's workspace (sources and invoke steps may name them)
   const wsServers = new Map((await query('select static_id, credential from meta.remote_server where workspace_id = meta.app_workspace($1)', [appId])).rows.map((r) => [r.static_id as string, r.credential as string | null]));
   const wsCredentials = new Set((await query('select name from meta.workspace_credential where workspace_id = meta.app_workspace($1)', [appId])).rows.map((r) => r.name as string));
-  const appCredentials = new Set(all.filter((x) => x.kind === 'web_credential').map((x) => String(x.row.name).toUpperCase()));
-
-  for (const e of entries) {
-    for (const f of e.fields) {
-      if (!f.value) continue;
-      if (f.kind === 'page' && f.value && !pageNos.has(Number(f.value))) missing(e, f.label, `Page ${f.value} doesn't exist.`);
-      if (f.kind === 'build_option' && !buildOptions.has(f.value.replace(/^!/, '')))
-        missing(e, f.label, `Build option ${f.value.replace(/^!/, '')} doesn't exist, so the component is always left out.`);
-      if (f.kind === 'authz') {
-        const name = f.value.replace(/^!/, '');
-        if (!schemes.has(name) && !BUILT_IN.has(name)) missing(e, f.label, `Authorization scheme ${name} doesn't exist (nobody passes it).`);
-      }
-      for (const m of f.value.matchAll(/LOV:([A-Za-z0-9_]+)/g)) if (!lovs.has(m[1].toUpperCase())) missing(e, f.label, `List of values ${m[1].toUpperCase()} doesn't exist.`);
-      if (f.kind === 'code' || f.kind === 'text' || f.kind === 'textarea' || f.kind === 'json')
-        for (const m of f.value.matchAll(ITEM_REF))
-          if (!items.has(m[1].toUpperCase())) missing(e, f.label, `Item ${m[1].toUpperCase()} doesn't exist (its value is always empty).`, 'warning');
-      if (f.kind === 'json') {
-        let cfg: any;
-        try {
-          cfg = JSON.parse(f.value);
-        } catch {
-          continue;
-        }
-        if (cfg?.link?.page !== undefined && !pageNos.has(Number(cfg.link.page))) missing(e, f.label, `The link goes to page ${cfg.link.page}, which doesn't exist.`);
-        if (cfg?.link?.items) for (const k of Object.keys(cfg.link.items)) if (!items.has(k.toUpperCase())) missing(e, f.label, `The link sets item ${k}, which doesn't exist.`, 'warning');
-        if (cfg?.pdf?.layout && !layouts.has(String(cfg.pdf.layout).toUpperCase())) missing(e, f.label, `Report layout ${cfg.pdf.layout} doesn't exist (the built-in layout is used).`, 'warning');
-        if (typeof cfg?.public_reports === 'string' && !schemes.has(cfg.public_reports)) missing(e, f.label, `Authorization scheme ${cfg.public_reports} doesn't exist.`);
-        if (e.kind === 'region' && cfg?.report !== undefined && !regionIds.has(Number(cfg.report))) missing(e, f.label, `Region ${cfg.report} doesn't exist.`);
-      }
-    }
-  }
-  // forms and grids
-  for (const { kind, row } of all) {
-    const e = byKey.get(`${kind}-${row.id}`) ?? null;
-    // a grid on a REST data source takes its key from the source's key columns when it has no primary key column
-    const restKeys = row.rest_source
-      ? all.find((x) => x.kind === 'rest_source' && String(x.row.name).toUpperCase() === String(row.rest_source).toUpperCase())?.row.key_columns
-      : null;
-    if (kind === 'region' && row.type === 'grid' && (!(row.table_name || row.rest_source) || !(row.pk_column || restKeys?.length)))
-      missing(e, 'Source', 'A grid needs a table (or a REST data source with key columns) and a primary key column.');
-    if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
-      missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
-    if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
-    // (140) a list item (select list, radio group, shuttle, select one or many …) shows no choices without a list of values
-    if (kind === 'item' && LOV_CHECKED.has(row.type) && !String(row.lov ?? '').trim())
-      missing(e, 'List of values', `A ${row.type} item needs a list of values: it has no choices, and no value passes the check on submit.`, 'warning');
-    // (078) a URL region: a literal origin, valid attributes
-    if (kind === 'region' && row.type === 'url') {
-      const target = urlTarget(row.source);
-      if ('error' in target) missing(e, 'Source', target.error);
-      const problem = urlConfigProblem(row.config);
-      if (problem) missing(e, 'Attributes', problem);
-    }
-    if (kind === 'computation' && !items.has(String(row.item_name).toUpperCase())) missing(e, 'Item', `Item ${row.item_name} doesn't exist (the computation sets nothing).`);
-    if (kind === 'computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
-    if (kind === 'process' && (row.type === 'form_dml' || row.type === 'grid_dml') && !row.region_id) missing(e, 'Region', `A ${row.type} process needs its region.`);
-    if (kind === 'process') {
-      for (const problem of processProblems(row.type, row.config)) missing(e, 'Configuration', problem);
-      if (row.parent_process && !all.some((x) => x.kind === 'process' && x.row.page_id === row.page_id && x.row.type === 'chain' && x.row.name === row.parent_process))
-        missing(e, 'Chain (parent process)', `There is no chain process "${row.parent_process}" on this page, so this process never runs.`);
-      if (row.type === 'workflow' && (row.config?.action ?? 'start') === 'start' && row.config?.definition
-          && !all.some((x) => x.kind === 'workflow_definition' && x.row.name === String(row.config.definition).toUpperCase()))
-        missing(e, 'Configuration', `Workflow definition ${row.config.definition} doesn't exist.`);
-    }
-    if (kind === 'branch' && row.target_type === 'page' && row.target_page && !pageNos.has(Number(row.target_page))) missing(e, 'Page', `Page ${row.target_page} doesn't exist.`);
-    if (kind === 'branch' && row.target_type === 'app'
-        && !(await one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [row.target_app, row.target_page])))
-      missing(e, 'Application (app)', `Application ${row.target_app} has no page ${row.target_page}.`);
-    if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
-      missing(e, 'Document template', row.document ? `Document template or report query ${row.document} doesn't exist.` : 'A document button needs a document template or a report query.');
-    if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);
-    if (kind === 'rest_source') {
-      // (141) an export may name a server or credential this workspace doesn't have (yet): it imports, and says so here
-      if (row.server && !wsServers.has(row.server))
-        missing(e, 'Remote server', `Remote server ${row.server} doesn't exist in this application's workspace: add it under Workspace utilities → Remote servers (calls fail until then).`, 'warning');
-      const credential = row.credential || (row.server ? wsServers.get(row.server) : null);
-      if (credential && !appCredentials.has(credential) && !wsCredentials.has(credential))
-        missing(e, 'Web credential', `Web credential ${credential} is neither the application's nor its workspace's (calls fail until it exists).`, 'warning');
-    }
-    if (kind === 'workflow_definition') {
-      const tasks = new Set(all.filter((x) => x.kind === 'task_definition').map((x) => x.row.name.toUpperCase()));
-      const outcomes = outcomeMap(all.filter((x) => x.kind === 'task_definition').map((x) => x.row));
-      for (const problem of stepProblems(row.steps, tasks, { outcomes, drafts: false })) missing(e, 'Steps (JSON)', problem);
-      for (const warning of stepWarnings(row.steps)) missing(e, 'Steps (JSON)', warning, 'warning');
-      // invoke_api steps: REST data sources, parameters, web credentials, variables (sprint 32)
-      const refs = {
-        sources: new Map(all.filter((x) => x.kind === 'rest_source').map((x) => [String(x.row.name).toUpperCase(), x.row])),
-        credentials: new Set([...appCredentials, ...wsCredentials]),
-        startVars: [...String(row.title ?? '').matchAll(/&([A-Za-z][A-Za-z0-9_]*)\./g)].map((m) => m[1]),
-      };
-      const invokeRefs = invokeStepReferences(row.steps, refs);
-      for (const problem of invokeRefs.errors) missing(e, 'Steps (JSON)', problem);
-      for (const warning of invokeRefs.warnings) missing(e, 'Steps (JSON)', warning, 'warning');
-      if (row.dev_version) {
-        const field = `Steps of version ${row.dev_version} (development)`;
-        for (const problem of stepProblems(row.dev_steps, tasks, { outcomes })) missing(e, field, problem, 'warning');
-        for (const warning of stepWarnings(row.dev_steps)) missing(e, field, warning, 'warning');
-        const devRefs = invokeStepReferences(row.dev_steps, refs);
-        for (const problem of [...devRefs.errors, ...devRefs.warnings]) missing(e, field, problem, 'warning');
-      }
-    }
-    if (kind === 'report_query' && row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
-    if (kind === 'app_computation' && row.type === 'item' && !items.has(String(row.expression).toUpperCase())) missing(e, 'Expression', `Item ${row.expression} doesn't exist (its value is always empty).`, 'warning');
-    if (kind === 'document_template') {
-      const problem = templateProblem(row.template ?? '');
-      if (problem) missing(e, 'Template (HTML)', problem);
-      if (row.layout && !layouts.has(String(row.layout).toUpperCase())) missing(e, 'Report layout', `Report layout ${row.layout} doesn't exist (the default layout is used).`, 'warning');
-    }
-  }
+  findings.push(...(await referenceFindings(rows, {
+    workspace: { servers: wsServers, credentials: wsCredentials },
+    otherAppPage: async (alias, pageNo) => !!(await one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [alias, pageNo])),
+  })));
 
   // ---- (117) REST modules refuse (403) to run as a superuser, a role that bypasses RLS or a member of pgkiln's
   // owner: say so here before the endpoints fail. Without a db_role the runtime connection's own user is the role.
@@ -638,6 +683,64 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
 }
 
 const SEVERITY_LABEL: Record<Severity, string> = { error: 'Error', warning: 'Warning', info: 'Note' };
+
+// ------------------------------------------------------------------ (sprint 147) offline: an export without a database
+
+/** The export's list of a kind of component (app.json's keys: lovs, nav, list_entries, data_load_definitions …). */
+const docKey = (kind: string) =>
+  kind === 'nav_entry' ? 'nav' : kind === 'data_load_def' ? 'data_load_definitions'
+    : kind.endsWith('y') ? `${kind.slice(0, -1)}ies` : /(s|ch)$/.test(kind) ? `${kind}es` : `${kind}s`;
+
+/**
+ * An export (meta.export_app's JSON, or filesToDoc of its files) as the rows the checks read. Rows keep the ids the
+ * export carries (regions: processes and buttons name them by region_id); the others, and pages, get ids of their
+ * own (negative, so they never meet an exported id).
+ */
+export function rowsOfDoc(doc: any): AppRows {
+  if (!doc || typeof doc !== 'object' || !doc.app || typeof doc.app !== 'object') throw new Error('not an application export (no "app")');
+  let next = 0;
+  const idOf = (row: any) => (typeof row?.id === 'number' ? row.id : --next);
+  // the checks read names as text (a database row always has one)
+  const named = (row: any) => ({ ...row, name: typeof row.name === 'string' ? row.name : String(row.name ?? '') });
+  const pages = (Array.isArray(doc.pages) ? doc.pages : []).filter((p: any) => p && typeof p === 'object').map((p: any) => ({ ...named(p), id: --next }));
+  const all: Row[] = [];
+  for (const [kind, spec] of Object.entries(COMPONENTS)) {
+    if (spec.scope === 'page') {
+      for (const p of pages) {
+        const list = (doc.pages.find((d: any) => d && d.page_no === p.page_no)?.[docKey(kind)] ?? []) as any[];
+        for (const row of Array.isArray(list) ? list : []) if (row && typeof row === 'object') all.push({ kind, row: { ...named(row), id: idOf(row), page_id: p.id, page_no: p.page_no } });
+      }
+    } else {
+      const list = doc[docKey(kind)];
+      for (const row of Array.isArray(list) ? list : []) if (row && typeof row === 'object') all.push({ kind, row: { ...named(row), id: idOf(row) } });
+    }
+  }
+  const byKind = new Map<string, any[]>();
+  for (const x of all) byKind.set(x.kind, [...(byKind.get(x.kind) ?? []), x.row]);
+  const entries = entriesOf(0, pages, byKind);
+  return { app: doc.app, pages, all, entries, byKey: new Map(entries.map((e) => [`${e.kind}-${e.id}`, e])) };
+}
+
+/**
+ * The checks that need no database, on an export: references between its components, the login page and page
+ * groups, the pages' security defaults, workflow steps, process settings and JSON source profiles. Not done
+ * offline: planning SQL (it needs the application's tables and role), the catalog (vector and full-text columns, JSON
+ * source views, plpgsql_check), the workspace's remote servers and credentials, branches to other applications, and
+ * the installation's session limits and users.
+ */
+export async function adviseDoc(doc: any): Promise<{ findings: Finding[]; checked: number }> {
+  const x = rowsOfDoc(doc);
+  const findings: Finding[] = [...structureFindings(x), ...pageSecurityFindings(x)];
+  for (const src of Array.isArray(x.app.json_sources) ? x.app.json_sources : []) {
+    if (!src || typeof src !== 'object') continue;
+    const problems = jsonSourceProblems(src);
+    if (problems.length) findings.push({ severity: 'error', entry: null, field: `JSON source ${src?.name ?? ''}`, message: problems.join(' ') });
+  }
+  findings.push(...(await referenceFindings(x, { workspace: null, otherAppPage: null })));
+  const order = { error: 0, warning: 1, info: 2 };
+  findings.sort((a, b) => order[a.severity] - order[b.severity] || (a.entry?.pageNo ?? 0) - (b.entry?.pageNo ?? 0));
+  return { findings, checked: 0 };
+}
 
 export async function advisorRoutes(app: FastifyInstance) {
   app.get(`${BASE}/apps/:id/advisor`, async (req: Req, reply) => {

@@ -44,7 +44,7 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln export <alias> [--format json\|dir\|text] [--out <path>]` | `json` (default): the `pgkiln/2` document with sorted keys, to `--out` or standard output. `dir`: a directory (default `./<alias>`), see below. `text`: the same directory in YAML with the code inline ([text files](#text-files-apexlang)) |
 | `pgkiln import <path> [--alias <alias>] [--replace [--only <file>]…] [--check [--force] \| --dry-run]` | Imports a JSON export, an application directory or a `.zip` of one. `--alias` gives the copy another alias. `--replace` updates the application with that alias in place (after a [backup](03-builder.md#backups)); with `--only pages/12` (repeatable) only that page or component file ([below](#importing-one-page-or-component)). `--check` checks the application before it commits, `--dry-run` only checks ([below](#checking-before-an-import)) |
 | `pgkiln diff <alias> <path> [--name-only \| --quiet]` | What differs between the application in the database and a directory (or JSON file, or zip) |
-| `pgkiln advise <path\|alias> [--format text\|json\|sarif] [--fail-on error\|warning\|info\|never] [-o <file>] [--base <dir>]` | (0.77) The [Advisor](03-builder.md#advisor) for CI: an export is imported into a transaction that is always rolled back and checked there; an alias checks the application in the database. SARIF points each finding at its file, so pull requests get annotations. Exit code 1 from `--fail-on` (default `error`) ([below](#pgkiln-advise-in-ci)) |
+| `pgkiln advise <path\|alias> [--offline] [--format text\|json\|sarif] [--fail-on error\|warning\|info\|never] [-o <file>] [--base <dir>]` | (0.77) The [Advisor](03-builder.md#advisor) for CI: an export is imported into a transaction that is always rolled back and checked there; an alias checks the application in the database. `--offline` checks an export's files without a database. SARIF points each finding at its file, so pull requests get annotations. Exit code 1 from `--fail-on` (default `error`) ([below](#pgkiln-advise-in-ci)) |
 | `pgkiln working-copy list\|create\|compare\|merge\|refresh\|delete <alias> [<name>] [--prefer copy\|main] [--take <component>]… [--as <developer>]` | (0.77) [Working copies](03-builder.md#working-copies) from the command line ([below](#working-copies-and-locks)) |
 | `pgkiln lock <alias> [--page <n>] [--note <text>]` / `pgkiln unlock <alias> [--page <n>] [--force]` | (0.77) The builder's application and page locks; another developer's lock is broken only with `--force` (logged) |
 | `pgkiln ddl <schema> [--no-comments] [--no-grants] [--out <file>]` | The DDL of a schema's objects, in an order that runs (as SQL Workshop → DDL, [chapter 3](03-builder.md#sql-workshop)) |
@@ -315,10 +315,27 @@ jobs:
         with: { sarif_file: advise.sarif }
 ```
 
+**Without a database** (sprint 147): `pgkiln advise <path> --offline` reads the export's files and runs the checks that
+need no database: references between components (pages, items, lists of values, authorization schemes, build options,
+report layouts, regions, workflow definitions and steps, processes in chains), the login page and page groups, the
+pages' security defaults (writing without sign-in or a scheme, unrestricted protection), process settings and JSON
+source profiles. It never connects (`DATABASE_URL` may be unset), so it fits a quick step before the full check, or a
+repository without a database in CI:
+
+```yaml
+      - run: npx pgkiln advise apps/sales --offline --format sarif -o advise.sarif
+```
+
+Offline, SQL is not planned (it needs the application's tables and role), nothing is read from the catalog (vector and
+full-text columns, JSON source views, `plpgsql_check`), and the workspace's remote servers and credentials, branches to
+other applications, the installation's session limits and the administrators' second factor are not checked. The
+summary line says *checked offline*, and JSON output has `"offline": true`. The findings are the same as the full
+check's for everything it does check.
+
 | Format | What it gives |
 |---|---|
 | `text` (default) | one finding per line with its file under it, and a summary line |
-| `json` | `{ alias, checked, counts: { error, warning, info }, findings: [{ severity, where, field, message, page, kind, file }] }` |
+| `json` | `{ alias, checked, offline, counts: { error, warning, info }, findings: [{ severity, where, field, message, page, kind, file }] }` |
 | `sarif` | SARIF 2.1.0: a result per finding with its level (error, warning, note), a stable rule id (`pgkiln/region/source`) and the file of its page or component in the export (`apps/sales/pages/0002-orders/regions/0010-order-list.yaml`), so GitHub code scanning annotates the pull request |
 
 The paths are relative to the current directory. With an alias there is no directory: `--base apps/sales` names

@@ -10,6 +10,11 @@ All notable changes to this project are documented here. The format follows
   doesn't exist is an error; a view the source didn't make, a column added to or removed from the profile without
   making the views again, a column of another type, or a path, read-only flag or key the view's trigger writes back
   differently is a warning that points to *Create views*. Also in `pgkiln advise`.
+- **`pgkiln advise --offline`** (AP-10 leftover; no migration): an export's files are checked without a database —
+  references between components, the login page and page groups, the pages' security defaults, workflow steps,
+  process settings and JSON source profiles — with the same findings and files as the full check for what it covers;
+  SQL is not planned. The MCP tool `advise_app` takes `offline: true` with a `path`. The Advisor's checks that need no
+  database now run on rows from either source (`entriesOf`, `rowsOfDoc`, `adviseDoc`).
 
 ## [0.78.0] - 2026-11-05
 

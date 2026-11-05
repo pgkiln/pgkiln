@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { docToFiles, slug, type FileMap } from '../appfiles.ts';
 import { exportDoc, importDoc, readSource, UsageError, type Db } from './apps.ts';
+import type { Finding } from '../builder/advisor.ts';
 
 export type Severity = 'error' | 'warning' | 'info';
 export const SEVERITIES: Severity[] = ['error', 'warning', 'info'];
@@ -33,6 +34,8 @@ export interface AdviseResult {
   dir: string | null;
   checked: number;
   findings: AdviseFinding[];
+  /** (sprint 147) checked from the files alone, without a database */
+  offline?: boolean;
 }
 
 const pad = (n: number) => String(n).padStart(4, '0');
@@ -52,6 +55,39 @@ export function fileOf(files: string[], f: { pageNo: number | null; kind: string
   return shared ?? yaml.find((p) => /^app\.(ya?ml|json)$/.test(p)) ?? null;
 }
 
+/** An Advisor finding as the report's: where, the component's kind and page. */
+function toAdvise(f: Finding): AdviseFinding {
+  const kind = f.entry?.kind ?? null;
+  const pageNo = f.entry?.pageNo ?? (/^Page (\d+)\b/.exec(f.field) ? Number(/^Page (\d+)\b/.exec(f.field)![1]) : null);
+  return {
+    severity: f.severity,
+    where: f.entry ? (kind === 'page' ? f.entry.label : `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.kindLabel.toLowerCase()} ${f.entry.label}`) : pageNo !== null ? `page ${pageNo}` : 'application',
+    field: f.field,
+    message: f.message,
+    kind,
+    label: f.entry?.label ?? '',
+    pageNo,
+    file: null,
+  };
+}
+
+/**
+ * (sprint 147) Check an export's files alone, with no database: references, the login page and page groups, the
+ * pages' security defaults, workflow steps, process settings and JSON source profiles (adviseDoc). SQL is not
+ * planned and nothing is read from a catalog; the report says so.
+ */
+export async function adviseOffline(target: string): Promise<AdviseResult> {
+  if (!existsSync(target)) throw new UsageError(`${target} not found (--offline checks an export: a directory, a .zip or a JSON file)`);
+  const { adviseDoc } = await import('../builder/advisor.ts');
+  const source = await readSource(target);
+  const files = source.files ?? docToFiles(source.doc);
+  const r = await adviseDoc(source.doc);
+  const findings = r.findings.map(toAdvise);
+  const paths = [...files.keys()];
+  for (const f of findings) f.file = fileOf(paths, f);
+  return { alias: String(source.doc?.app?.alias ?? 'app'), dir: source.files ? target : null, checked: 0, findings, offline: true };
+}
+
 /**
  * Check an export (path) or an application in the database (alias). Nothing is ever committed: an export is
  * imported under a temporary alias in a transaction that is rolled back.
@@ -67,20 +103,7 @@ export async function adviseTarget(db: Db, target: string): Promise<AdviseResult
   const collect = async (appId: number) => {
     const r = await advise(appId, db);
     checked = r.checked;
-    for (const f of r.findings) {
-      const kind = f.entry?.kind ?? null;
-      const pageNo = f.entry?.pageNo ?? (/^Page (\d+)\b/.exec(f.field) ? Number(/^Page (\d+)\b/.exec(f.field)![1]) : null);
-      findings.push({
-        severity: f.severity,
-        where: f.entry ? (kind === 'page' ? f.entry.label : `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.kindLabel.toLowerCase()} ${f.entry.label}`) : pageNo !== null ? `page ${pageNo}` : 'application',
-        field: f.field,
-        message: f.message,
-        kind,
-        label: f.entry?.label ?? '',
-        pageNo,
-        file: null,
-      });
-    }
+    for (const f of r.findings) findings.push(toAdvise(f));
   };
   if (existsSync(target)) {
     const source = await readSource(target);
@@ -133,13 +156,14 @@ export function formatText(r: AdviseResult, base: string | null = null) {
   return r.findings.map((f) => {
     const path = pathOf(r, f, base);
     return `${f.severity.toUpperCase().padEnd(7)} ${f.where}${f.field ? ` (${f.field})` : ''}: ${f.message}${path ? `\n        ${path}` : ''}\n`;
-  }).join('') + `${r.alias}: ${r.checked} SQL fragment(s) checked; ${count('error')} error(s), ${count('warning')} warning(s), ${count('info')} note(s).\n`;
+  }).join('') + `${r.alias}: ${r.offline ? 'checked offline (references and security; SQL not planned without a database)' : `${r.checked} SQL fragment(s) checked`}; ${count('error')} error(s), ${count('warning')} warning(s), ${count('info')} note(s).\n`;
 }
 
 export function formatJson(r: AdviseResult, base: string | null = null) {
   return JSON.stringify({
     alias: r.alias,
     checked: r.checked,
+    offline: !!r.offline,
     counts: Object.fromEntries(SEVERITIES.map((s) => [s, r.findings.filter((f) => f.severity === s).length])),
     findings: r.findings.map((f) => ({ severity: f.severity, where: f.where, field: f.field, message: f.message, page: f.pageNo, kind: f.kind, file: pathOf(r, f, base) })),
   }, null, 2) + '\n';
