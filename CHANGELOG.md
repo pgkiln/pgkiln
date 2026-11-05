@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.80.0] - 2026-11-05
+
 ### Added
 - **Streamed AI answers** (WS-4 leftover; no migration): with JavaScript, the AI assistant region writes the answer
   into the conversation as the model produces it and names the tool it is using; then the page loads with the
