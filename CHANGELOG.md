@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.79.0] - 2026-11-05
+
 ### Added
 - **The Advisor checks JSON sources' views against their data profile** (AP-8 leftover; no migration). A view that
   doesn't exist is an error; a view the source didn't make, a column added to or removed from the profile without
