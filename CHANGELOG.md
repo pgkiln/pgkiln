@@ -11,6 +11,11 @@ All notable changes to this project are documented here. The format follows
   formatted answer, links and actions. Server-sent events on the same Send URL (`Accept: text/event-stream`), the same
   checks as the form; without JavaScript nothing changes. Claude streams as before; OpenAI, Gemini and
   OpenAI-compatible services are asked to stream with usage, and an endpoint that refuses it gets the plain request.
+- **Migrating running workflows inside parallel branches** (WS-6 leftover; migration 144). An instance whose branches
+  are still running moves to a newer version as a whole: its main path at the join and each open branch at its own
+  step are mapped and checked with the same rules (a join stays a join, a branch not onto its own join), and the
+  branches' join and split are renamed so the join counts them. `meta.migrate_workflows` returns a row per path (new
+  column `branch`); the builder's page lists the branches' steps and previews each path.
 
 ## [0.79.0] - 2026-11-05
 
@@ -24,6 +29,7 @@ All notable changes to this project are documented here. The format follows
   process settings and JSON source profiles — with the same findings and files as the full check for what it covers;
   SQL is not planned. The MCP tool `advise_app` takes `offline: true` with a `path`. The Advisor's checks that need no
   database now run on rows from either source (`entriesOf`, `rowsOfDoc`, `adviseDoc`).
+
 ## [0.78.0] - 2026-11-05
 
 ### Changed

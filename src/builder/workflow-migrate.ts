@@ -35,7 +35,8 @@ interface Running {
   version: string;
   state: string;
   current_step: string | null;
-  branches: boolean;
+  /** (144) the steps its open parallel branches are at */
+  branch_steps: string[];
 }
 
 const ID = /^\d{1,9}$/;
@@ -101,7 +102,8 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
     const running = (
       await owner.query<Running>(
         `select w.id::text, w.title, coalesce(w.version, '1') as version, w.state, w.current_step,
-                exists (select 1 from meta.workflow_branch b where b.workflow_id = w.id and b.state in ('active', 'waiting', 'faulted')) as branches
+                array(select b.current_step from meta.workflow_branch b where b.workflow_id = w.id and b.state in ('active', 'waiting', 'faulted')
+                       and b.current_step is not null order by b.id) as branch_steps
            from meta.workflow w where w.definition_id = $1 and w.state in ('active', 'waiting', 'faulted') order by w.id`,
         [d.id],
       )
@@ -117,16 +119,17 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
     const targetSteps = (target?.steps ?? []).filter((x) => x && typeof x.name === 'string' && x.type !== 'draft');
     const asked = mappingOf(q);
     // each step a chosen instance is at: the mapping asked for, or the step of the same name
-    const current = [...new Set(chosen.map((w) => w.current_step).filter((x): x is string => !!x && STEP.test(x)))].sort();
+    // (144) and each step its open parallel branches are at
+    const current = [...new Set(chosen.flatMap((w) => [w.current_step, ...w.branch_steps]).filter((x): x is string => !!x && STEP.test(x)))].sort();
     const mapping = Object.fromEntries(current.map((st) => [st, st in asked ? asked[st] : targetSteps.some((x) => x.name === st) ? st : '']));
 
-    let preview: { workflow_id: string; from_version: string | null; from_step: string | null; to_step: string | null; problem: string | null }[] | null = null;
+    let preview: { workflow_id: string; branch: string | null; from_version: string | null; from_step: string | null; to_step: string | null; problem: string | null }[] | null = null;
     let previewError: string | null = null;
     if (q.preview && to) {
       if (!chosen.length) previewError = 'Choose the instances to migrate.';
       else {
         try {
-          preview = (await owner.query('select workflow_id::text, from_version, from_step, to_step, problem from meta.migrate_workflows($1, $2, $3::bigint[], $4, false, $5)',
+          preview = (await owner.query('select workflow_id::text, branch, from_version, from_step, to_step, problem from meta.migrate_workflows($1, $2, $3::bigint[], $4, false, $5)',
             [d.id, to, chosen.map((w) => w.id), mapping, s.username])).rows;
         } catch (e) {
           previewError = (e as Error).message;
@@ -134,6 +137,7 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
       }
     }
     const ready = !!preview && preview.every((r) => !r.problem);
+    const instances = preview ? new Set(preview.map((r) => r.workflow_id)).size : 0;
     const self = `${url(d)}/migrate`;
     const hidden = html`<input type="hidden" name="to" value="${to ?? ''}">${chosen.map((w) => html`<input type="hidden" name="wf" value="${w.id}">`)}${Object.entries(mapping).map(([k, v]) => html`<input type="hidden" name="${`m.${k}`}" value="${v}">`)}`;
     const body = !running.length
@@ -144,7 +148,8 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
         : html`${region('Migrate running instances', html`<form method="get" action="${self}">
             <input type="hidden" name="preview" value="1">
             <p class="muted u-mt0">Move running instances to a newer version: each goes on at the step of the new version its current step is mapped to,
-              keeping its variables and the task it waits for. Every instance must have a mapping, or nothing moves. Instances inside parallel branches move once their branches have joined.</p>
+              keeping its variables and the task it waits for. An instance inside parallel branches moves as a whole: its main path at its join and each open
+              branch at its own step, each mapped (a join stays a join). Every position must have a mapping, or nothing moves.</p>
             <div class="form-grid">
               <div class="field"><label class="label" for="wf-to">To version</label>
                 <select id="wf-to" name="to">${targets.map((v) => html`<option value="${v}"${v === to ? raw(' selected') : ''}>${v}${v === d.version ? ' (active)' : ' (inactive)'}</option>`)}</select>
@@ -155,7 +160,7 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
                 ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Migrate</th><th class="num">Id</th><th>Title</th><th>Version</th><th>State</th><th>At</th></tr></thead><tbody>
                     ${older.map((w) => html`<tr><td data-label="Migrate"><input type="checkbox" name="wf" value="${w.id}" id="${`wf-${w.id}`}"${picked.includes(w.id) ? raw(' checked') : ''} aria-label="${`Migrate instance ${w.id}`}"></td>
                       <td class="num" data-label="Id"><label for="${`wf-${w.id}`}">${w.id}</label></td><td data-label="Title">${w.title}</td><td data-label="Version">${w.version}</td>
-                      <td data-label="State">${w.state}</td><td data-label="At">${w.branches ? 'parallel branches' : (w.current_step ?? '—')}</td></tr>`)}
+                      <td data-label="State">${w.state}</td><td data-label="At">${w.current_step ?? '—'}${w.branch_steps.length ? html`<br><small class="muted">branches at ${w.branch_steps.join(', ')}</small>` : ''}</td></tr>`)}
                   </tbody></table></div>`
                 : html`<p class="muted">No running instance is older than version ${to}.</p>`}
             </fieldset>
@@ -169,14 +174,14 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
           </form>`)}
           ${previewError ? html`<div class="alert alert-error u-mt1" role="alert">${previewError}</div>` : ''}
           ${preview
-            ? region('Preview', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Id</th><th>From</th><th>To</th><th>Result</th></tr></thead><tbody>
-                  ${preview.map((r) => html`<tr><td class="num" data-label="Id">${r.workflow_id}</td><td data-label="From">${r.from_version ? `${r.from_version}: ${r.from_step ?? '—'}` : '—'}</td>
+            ? region('Preview', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Id</th><th>Path</th><th>From</th><th>To</th><th>Result</th></tr></thead><tbody>
+                  ${preview.map((r) => html`<tr><td class="num" data-label="Id">${r.workflow_id}</td><td data-label="Path">${r.branch ? `branch ${r.branch}` : 'main'}</td><td data-label="From">${r.from_version ? `${r.from_version}: ${r.from_step ?? '—'}` : '—'}</td>
                     <td data-label="To">${r.to_step ? `${to}: ${r.to_step}` : '—'}</td><td data-label="Result">${r.problem ? html`<span class="wf-problem">${r.problem}</span>` : html`<span class="tag tag-info">ready</span>`}</td></tr>`)}
                 </tbody></table></div>
                 ${ready
                   ? html`<form method="post" action="${self}" class="u-mt1">${csrf(s)}${hidden}
-                      <button class="btn btn-hot" data-confirm="${`Migrate ${preview.length} instance(s) to version ${to}?`}">Migrate ${preview.length} instance(s)</button></form>`
-                  : html`<p class="wf-problem">Map a step for every instance (or leave the others out) and preview again: nothing is migrated while one can't move.</p>`}`)
+                      <button class="btn btn-hot" data-confirm="${`Migrate ${instances} instance(s) to version ${to}?`}">Migrate ${instances} instance(s)</button></form>`
+                  : html`<p class="wf-problem">Map a step for every instance and branch (or leave the instances out) and preview again: nothing is migrated while one can't move.</p>`}`)
             : ''}
           ${target ? region(`Version ${to}`, html`<div class="wf-wrap">${workflowDiagram(target.steps, { id: 'target' })}</div>`) : ''}`;
     const main = html`${appHeader(a, 'shared', s)}<div class="ide-body">${body}</div>`;
@@ -198,8 +203,9 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
       if (!to) throw new Error('Choose the version to migrate to.');
       const rows = await owner.tx(async (c) =>
         (await c.query('select workflow_id::text, from_step, to_step from meta.migrate_workflows($1, $2, $3::bigint[], $4, true, $5)', [d.id, to, ids, mapping, s.username])).rows);
-      logActivity({ appId: d.app_id, username: s.username, event: 'workflow', ip: clientIp(req), detail: `${d.name}: ${rows.length} instance(s) migrated to version ${to}` });
-      flash(s, `${rows.length} instance(s) of ${d.name} migrated to version ${to}.`);
+      const moved = new Set(rows.map((r) => r.workflow_id)).size;
+      logActivity({ appId: d.app_id, username: s.username, event: 'workflow', ip: clientIp(req), detail: `${d.name}: ${moved} instance(s) migrated to version ${to}` });
+      flash(s, `${moved} instance(s) of ${d.name} migrated to version ${to}.`);
       return back(reply, s, `${BASE}/apps/${d.app_id}/shared?c=workflow_definition-${d.id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');

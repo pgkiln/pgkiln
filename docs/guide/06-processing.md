@@ -1212,10 +1212,21 @@ they wait for and their wait, logged in each instance's history (*migrated*, `ve
 - a step without a mapping, or mapped to a step the version doesn't have (or a draft);
 - an instance waiting for a task must go to a task step that creates a task of the same definition;
   one at a `wait` step to a `wait` step (its wait goes on), one at a join to a join;
-- an instance inside parallel branches, or calling a web service at that moment: try again later.
+- an instance calling a web service at that moment: try again later.
+
+**Inside parallel branches** (sprint 149, migration 144) an instance is at several steps at once: its main path
+waits at the join, and each open branch (active, waiting or faulted) is at a step of its own. The page lists those
+steps with the instance (*branches at A, B*) and asks a mapping for each; the preview has a row per path (*main*,
+*branch A*), and the instance moves only as a whole. Each branch follows the rules above, and the join it ends at
+must map to a join step of the new version (a branch can't be mapped onto its own join). The branches' rows then name
+the new join and the parallel step that splits there (the mapped one, else the one parallel step of the new version
+that joins at that join), so the join counts them as before, done branches included; each moved branch has its own
+*migrated* event (`version 1 → 2: branch A: A → A2 (by admin)`). A branch the new version adds to a parallel step does
+not start for an instance already past its split.
 
 The database function is `meta.migrate_workflows(definition_id, version, ids, mapping, apply, by)` (the owner's,
-for the builder and scripts; not for applications).
+for the builder and scripts; not for applications): one row per path, with the column `branch` (null for the main
+path).
 
 <a id="diagram-export"></a>**The diagram as a file.** Under the diagram, **Download SVG** downloads the whole model
 of the version shown (`/builder/apps/<app>/shared/workflow_definition/<id>/diagram.svg?v=<version>`), a standalone
