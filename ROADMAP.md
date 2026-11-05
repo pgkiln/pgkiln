@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.77.0 (November 2026): `pgkiln advise` runs the Advisor in CI on an export (rolled back) with text, JSON or SARIF output for pull request annotations; security checks in the Advisor; working copies and locks from the command line and MCP.
+- **Current release:** 0.78.0 (November 2026): the AI texts in the builder, the guide, the website and the HR example name all four providers: Claude, OpenAI, Gemini and OpenAI-compatible services.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
