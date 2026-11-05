@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **AI provider texts name all four providers** (AP-11; migration 143, HR part 78). The builder's *AI services* card,
+  the AI assistant region's help, the guide (chapters 4, 6 and 11), the parity page, the website and the HR example's
+  pages 37 and 38 said "Claude or OpenAI"; since 0.52.0 an AI service can also be Gemini or any OpenAI-compatible
+  endpoint (Ollama, vLLM, Azure OpenAI, a gateway), and they now say so. The comment on `meta.ai_service` too; a test
+  keeps "Claude or OpenAI" from coming back outside the release history.
+
 ## [0.77.0] - 2026-11-04
 
 ### Added

@@ -21,7 +21,7 @@ const features = [
   { icon: '📱', title: 'Phone, tablet and desktop', text: 'Responsive pages, installable as a Progressive Web App, with offline pages and forms sent when the network is back.' },
   { icon: '🔌', title: 'REST and e-mail', text: 'REST modules and OAuth clients for your API, PostgREST alongside, regions on other web services, and e-mail through SMTP with OAuth2, Microsoft 365, Amazon SES, Resend and more.' },
   { icon: '🧩', title: 'Extend it', text: 'Template components and plug-ins with their own JavaScript, CSS and PL/pgSQL, packed in one file.' },
-  { icon: '🤖', title: 'AI where it helps', text: 'AI assistants in your apps with Claude or OpenAI, and an MCP server so coding agents can read and change your apps.' },
+  { icon: '🤖', title: 'AI where it helps', text: 'AI assistants in your apps with Claude, OpenAI, Gemini or any OpenAI-compatible service, and an MCP server so coding agents can read and change your apps.' },
 ];
 
 const steps = [

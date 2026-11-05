@@ -16,7 +16,8 @@
 --     becomes the report's filters and sort.
 --
 -- Like part 41, the example creates no AI service: an administrator adds
--- one named HR_ASSISTANT (Claude or OpenAI) under App Builder → Workspace
+-- one named HR_ASSISTANT (Claude, OpenAI, Gemini or an OpenAI-compatible
+-- service) under App Builder → Workspace
 -- utilities → AI services and allows the HR application to use it. Until
 -- then the page says so. Questions, policy passages and the tools' results
 -- are sent to the provider of that service.
@@ -43,7 +44,7 @@ insert into meta.region (page_id, seq, title, type, columns, template, source, c
 select p.id, r.seq, r.title, r.type, r.cols, 'standard', r.source, r.cond, r.config::jsonb
   from meta.page p join meta.app a on a.id = p.app_id, (values
   (10, 'No AI service yet', 'static', 12,
-   '<p class="alert alert-info">No AI service is configured for this application yet. An administrator adds an AI service named <b>HR_ASSISTANT</b> (Claude or OpenAI, with an API key) under <i>App Builder → Workspace utilities → AI services</i> and allows the HR application to use it.</p>',
+   '<p class="alert alert-info">No AI service is configured for this application yet. An administrator adds an AI service named <b>HR_ASSISTANT</b> (Claude, OpenAI, Gemini or an OpenAI-compatible service, with an API key) under <i>App Builder → Workspace utilities → AI services</i> and allows the HR application to use it.</p>',
    'not meta.ai_available(''HR_ASSISTANT'')', '{}'),
   (20, 'Ask HR', 'ai_assistant', 6, null, 'meta.ai_available(''HR_ASSISTANT'')',
    $j${

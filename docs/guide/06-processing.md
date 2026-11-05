@@ -398,12 +398,13 @@ From SQL the same is `meta.send_push(...)` ([chapter 9](09-reference.md#push-not
 An `ai_generate` process (APEX: *Generate Text with AI*) sends a prompt to a large language model
 and puts the answer into page items. The model is reached through an **AI service** that an
 administrator configures under Workspace utilities → **AI services** ([chapter 3](03-builder.md#ai-services)):
-Claude (Anthropic) or OpenAI, the model, the API key and optional daily limits per application. An
-application can only use the services an administrator allowed for it.
+Claude (Anthropic), OpenAI, Gemini (Google) or an OpenAI-compatible service (Ollama, vLLM, Azure
+OpenAI, a gateway), the model, the API key and optional daily limits per application. An application
+can only use the services an administrator allowed for it.
 
 > **The prompt goes to the provider.** Everything in the prompt, including the item values it
-> contains, is sent to the AI service's provider (Anthropic or OpenAI, or the gateway in its base URL)
-> and is handled under that provider's terms. Don't put data in a prompt that may not leave your
+> contains, is sent to the AI service's provider (Anthropic, OpenAI or Google, or the OpenAI-compatible
+> endpoint or gateway in its base URL) and is handled under that provider's terms. Don't put data in a prompt that may not leave your
 > organisation, and tell your users when what they type is sent to an AI service.
 
 The process is configured in its JSON (`config`), in one of three forms:
