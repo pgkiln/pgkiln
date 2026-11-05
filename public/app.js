@@ -3293,6 +3293,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// (159) Leaflet path options from a shape layer's checked style
+function shapeStyle(st, kind) {
+  if (!st) return {};
+  const o = {};
+  if (st.stroke_color) o.color = st.stroke_color;
+  if (typeof st.stroke_width === 'number') o.weight = st.stroke_width;
+  if (st.fill_color) { o.fillColor = st.fill_color; o.fill = kind !== 'lines'; }
+  if (typeof st.opacity === 'number') { if (kind === 'lines') o.opacity = st.opacity; else o.fillOpacity = st.opacity; }
+  return o;
+}
+
 // One layer's Leaflet parts: markers (clustered or not) or a heat map, with its lines and areas.
 function layerParts(l, popup, data, several) {
   const parts = [];
@@ -3301,8 +3312,14 @@ function layerParts(l, popup, data, several) {
   else for (const p of l.points) parts.push(placeMarker(p, l, popup, several));
   if (l.shapes.length)
     parts.push(window.L.geoJSON({ type: 'FeatureCollection', features: l.shapes }, {
-      style: () => (several ? { className: `map-c${l.color}` } : {}),
-      onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)),
+      // (159) a lines / polygons / extruded layer's colours, width and opacity (checked on the server: #rrggbb, numbers)
+      style: (f) => ({ ...(several ? { className: `map-c${l.color}` } : {}), ...shapeStyle(f.properties && f.properties.style, l.kind) }),
+      onEachFeature: (f, layer) => {
+        layer.bindPopup(() => popup(f.properties));
+        // a shape's title as its tooltip (and its height on an extruded layer)
+        const tip = [f.properties && f.properties.title, f.properties && typeof f.properties.height === 'number' ? String(f.properties.height) : ''].filter(Boolean).join(': ');
+        if (tip && layer.bindTooltip) layer.bindTooltip(tip, { sticky: true });
+      },
     }));
   return parts;
 }

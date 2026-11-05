@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Map layers Lines, Polygons and Extruded Polygons** (CD-6; no migration): a layer draws its rows' shapes with fill
+  and line colours, width and opacity, fixed or per row; extruded polygons are shaded by a height column (drawn flat).
+  The Page Designer's map settings offer the kinds and the style per layer.
 - **Item types Image Upload, Text Field with autocomplete, Percent Graph and Display Map** (CD-5; migration 151).
   Image Upload is a file item for pictures (image/* only, cropping, a maximum size before upload); autocomplete a text
   field with suggestions from the list of values; Percent Graph a 0–100 bar; Display Map a small map of "lat,lng" with a

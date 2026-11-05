@@ -60,10 +60,35 @@ interface Point {
   href: string | null;
   weight: number;
 }
+/** (159, CD-6) a shape layer's look: fixed in the layer's settings, or per row from columns of the same names */
+export interface ShapeStyle {
+  fill_color?: string;
+  stroke_color?: string;
+  stroke_width?: number;
+  opacity?: number;
+}
+const COLOR = /^#[0-9a-fA-F]{6}$/;
+/** The checked parts of a style (anything else is left out). */
+export function shapeStyle(x: unknown): ShapeStyle {
+  const s = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+  const out: ShapeStyle = {};
+  if (typeof s.fill_color === 'string' && COLOR.test(s.fill_color)) out.fill_color = s.fill_color;
+  if (typeof s.stroke_color === 'string' && COLOR.test(s.stroke_color)) out.stroke_color = s.stroke_color;
+  const w = Number(s.stroke_width);
+  if (s.stroke_width !== undefined && s.stroke_width !== null && Number.isFinite(w) && w >= 0 && w <= 20) out.stroke_width = w;
+  const o = Number(s.opacity);
+  if (s.opacity !== undefined && s.opacity !== null && Number.isFinite(o) && o >= 0 && o <= 1) out.opacity = o;
+  return out;
+}
+const SHAPE_KINDS = new Set(['lines', 'polygons', 'extruded']);
+const kindOf = (v: unknown): LayerDef['kind'] => (v === 'heat' || SHAPE_KINDS.has(v as string) ? (v as LayerDef['kind']) : 'markers');
+
 export interface LayerDef {
   name: string;
   source: string;
-  kind: 'markers' | 'heat';
+  /** (159) lines, polygons: GeoJSON / PostGIS shapes with a style; extruded: polygons shaded by a height column */
+  kind: 'markers' | 'heat' | 'lines' | 'polygons' | 'extruded';
+  style: ShapeStyle;
   cluster: boolean;
   link: Link | undefined;
   hidden: boolean;
@@ -78,7 +103,8 @@ export function layerDefs(r: Region): LayerDef[] {
   const first: LayerDef = {
     name: typeof r.config.name === 'string' && r.config.name.trim() ? r.config.name.trim() : (r.title ?? 'Map'),
     source: r.source ?? '',
-    kind: r.config.layer === 'heat' ? 'heat' : 'markers',
+    kind: kindOf(r.config.layer),
+    style: shapeStyle(r.config.style),
     cluster: r.config.cluster === true,
     link: r.config.link,
     hidden: false,
@@ -91,7 +117,8 @@ export function layerDefs(r: Region): LayerDef[] {
     .map((l: any, i: number): LayerDef => ({
       name: typeof l.name === 'string' && l.name.trim() ? l.name.trim() : `Layer ${i + 2}`,
       source: l.source,
-      kind: l.layer === 'heat' ? 'heat' : 'markers',
+      kind: kindOf(l.layer),
+      style: shapeStyle(l.style),
       cluster: l.cluster === true,
       link: l.link && typeof l.link === 'object' && Number.isInteger(l.link.page) ? l.link : undefined,
       hidden: l.hidden === true,
@@ -151,11 +178,30 @@ async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null, opt
       if (geometry?.type === 'Point' && Array.isArray(geometry.coordinates) && (Number.isNaN(lat) || Number.isNaN(lng)))
         // a point is a place (a marker, a heat spot, part of a cluster)
         [lng, lat] = geometry.coordinates.map(Number);
-      else if (geometry && typeof geometry === 'object') shapes.push({ type: 'Feature', geometry, properties: { title, body, href } });
+      else if (geometry && typeof geometry === 'object') {
+        // (159) a shape layer's style: the layer's, then the row's own columns
+        const style = SHAPE_KINDS.has(def.kind)
+          ? { ...def.style, ...shapeStyle({ fill_color: col(row, 'fill_color'), stroke_color: col(row, 'stroke_color'), stroke_width: col(row, 'stroke_width'), opacity: col(row, 'opacity') }) }
+          : undefined;
+        const h = num(col(row, 'height'));
+        shapes.push({ type: 'Feature', geometry, properties: { title, body, href, ...(style ? { style } : {}), ...(def.kind === 'extruded' && Number.isFinite(h) ? { height: h } : {}) } });
+      }
     }
+    // a shape layer draws only shapes
+    if (SHAPE_KINDS.has(def.kind)) continue;
     const w = num(col(row, 'weight'));
     const weight = Number.isFinite(w) && w > 0 ? w : Number.isNaN(w) ? 1 : 0;
     if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) points.push({ lat, lng, title, body, href, weight });
+  }
+  // (159) extruded: each polygon shaded by its height (from light to strong; no 3D view)
+  if (def.kind === 'extruded') {
+    const hs = shapes.map((f: any) => f.properties.height).filter((h): h is number => typeof h === 'number');
+    const [lo, hi] = hs.length ? [Math.min(...hs), Math.max(...hs)] : [0, 0];
+    for (const f of shapes as any[]) {
+      const h = f.properties.height;
+      const share = typeof h === 'number' && hi > lo ? (h - lo) / (hi - lo) : 0.5;
+      f.properties.style = { ...f.properties.style, opacity: Math.round((0.2 + 0.7 * share) * 100) / 100 };
+    }
   }
   return { points, shapes, truncated };
 }

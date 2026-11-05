@@ -1,3 +1,4 @@
+import { shapeStyle } from '../runtime/maps.ts';
 import type { FastifyInstance } from 'fastify';
 import { aiFilterSettingsForm, assistantSettingsForm } from './assistant.ts';
 import { designSql } from './websources.ts';
@@ -398,6 +399,25 @@ export function mergeWorkflowsSettings(config: Config, b: Body): Config {
   return out;
 }
 
+// (159, CD-6) a map layer's kind and the style of a lines / polygons / extruded layer
+const LAYER_KINDS = new Set(['heat', 'lines', 'polygons', 'extruded']);
+function mergeStyle(b: Body, p: string): Config | undefined {
+  const s = shapeStyle({ fill_color: b[`${p}_fill_color`]?.trim() || undefined, stroke_color: b[`${p}_stroke_color`]?.trim() || undefined,
+    stroke_width: b[`${p}_stroke_width`]?.trim() ? Number(b[`${p}_stroke_width`]) : undefined, opacity: b[`${p}_opacity`]?.trim() ? Number(b[`${p}_opacity`]) : undefined });
+  return Object.keys(s).length ? (s as Config) : undefined;
+}
+function styleFields(id: (n: string) => string, p: string, st: Config | undefined) {
+  const s = (st ?? {}) as Config;
+  return html`<div class="field"><label class="label" for="${id(`${p}_fill_color`)}">Fill colour (lines / polygons)</label>
+      <input id="${id(`${p}_fill_color`)}" name="${p}_fill_color" value="${s.fill_color ?? ''}" placeholder="#2e5c8a" pattern="#[0-9a-fA-F]{6}"></div>
+    <div class="field"><label class="label" for="${id(`${p}_stroke_color`)}">Line colour</label>
+      <input id="${id(`${p}_stroke_color`)}" name="${p}_stroke_color" value="${s.stroke_color ?? ''}" placeholder="#1b2230" pattern="#[0-9a-fA-F]{6}"></div>
+    <div class="field"><label class="label" for="${id(`${p}_stroke_width`)}">Line width</label>
+      <input id="${id(`${p}_stroke_width`)}" name="${p}_stroke_width" type="number" min="0" max="20" step="0.5" value="${s.stroke_width ?? ''}"></div>
+    <div class="field"><label class="label" for="${id(`${p}_opacity`)}">Opacity (0–1)</label>
+      <input id="${id(`${p}_opacity`)}" name="${p}_opacity" type="number" min="0" max="1" step="0.05" value="${s.opacity ?? ''}"></div>`;
+}
+
 export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
   const out = { ...config };
   const set = setter(out);
@@ -406,8 +426,9 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
   set('zoom', b.zoom && Number.isInteger(zoom) && zoom >= 1 && zoom <= 19 ? zoom : undefined);
   set('empty', b.empty?.trim() || undefined);
   set('link', mergeLink(b, a.pages));
-  set('layer', b.layer === 'heat' ? 'heat' : undefined);
-  set('cluster', b.cluster === 'true' && b.layer !== 'heat' && b.load !== 'tiles' ? true : undefined);
+  set('layer', LAYER_KINDS.has(b.layer ?? '') ? b.layer : undefined);
+  set('cluster', b.cluster === 'true' && !b.layer && b.load !== 'tiles' ? true : undefined);
+  set('style', mergeStyle(b, 'style'));
   set('name', b.name?.trim().slice(0, 60) || undefined);
   set('visible_area', b.load === 'area' ? true : undefined);
   set('tiles', b.load === 'tiles' ? true : undefined);
@@ -422,8 +443,10 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
       if (!source) continue;
       const layer: Config = { name: b[`layer${i}_name`]?.trim().slice(0, 60) || `Layer ${layers.length + 2}`, source };
       const load = b[`layer${i}_load`];
-      if (b[`layer${i}_layer`] === 'heat') layer.layer = 'heat';
+      if (LAYER_KINDS.has(b[`layer${i}_layer`] ?? '')) layer.layer = b[`layer${i}_layer`];
       else if (b[`layer${i}_cluster`] === 'true' && load !== 'tiles') layer.cluster = true;
+      const style = mergeStyle(b, `layer${i}`);
+      if (style) layer.style = style;
       if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
       if (load === 'area') layer.visible_area = true;
       else if (load === 'tiles') layer.tiles = true;
@@ -572,7 +595,8 @@ async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_n
         <div class="field"><label class="label" for="${id(`${p}_name`)}">Name (legend)</label>
           <input id="${id(`${p}_name`)}" name="${p}_name" value="${l.name ?? ''}" maxlength="60"></div>
         <div class="field"><label class="label" for="${id(`${p}_layer`)}">Show places as</label>
-          <select id="${id(`${p}_layer`)}" name="${p}_layer">${opt('', 'Markers', l.layer)}${opt('heat', 'Heat map', l.layer)}</select></div>
+          <select id="${id(`${p}_layer`)}" name="${p}_layer">${opt('', 'Markers', l.layer)}${opt('heat', 'Heat map', l.layer)}${opt('lines', 'Lines', l.layer)}${opt('polygons', 'Polygons', l.layer)}${opt('extruded', 'Extruded polygons (shaded by height)', l.layer)}</select></div>
+        ${styleFields(id, p, l.style)}
         ${loadField(id, `${p}_load`, l)}
         ${check(`${p}_cluster`, 'Group close markers', l.cluster === true)}
         ${check(`${p}_hidden`, 'Off at first', l.hidden === true)}
@@ -822,7 +846,8 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
         <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas (with PostGIS installed, a <code>geometry</code> or <code>geography</code> column in WGS 84 works too). A heat map weighs each place by a <code>weight</code> column.</p>
         <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
           <div class="field"><label class="label" for="${id('layer')}">Show places as</label>
-            <select id="${id('layer')}" name="layer">${opt('', 'Markers', cfg.layer)}${opt('heat', 'Heat map', cfg.layer)}</select></div>
+            <select id="${id('layer')}" name="layer">${opt('', 'Markers', cfg.layer)}${opt('heat', 'Heat map', cfg.layer)}${opt('lines', 'Lines', cfg.layer)}${opt('polygons', 'Polygons', cfg.layer)}${opt('extruded', 'Extruded polygons (shaded by height)', cfg.layer)}</select></div>
+          ${styleFields(id, 'style', cfg.style)}
           <div class="field"><label class="label" for="${id('name')}">Layer name (legend)</label>
             <input id="${id('name')}" name="name" value="${cfg.name ?? ''}" maxlength="60" placeholder="the region title"></div>
           <div class="field"><label class="label" for="${id('height')}">Height</label>

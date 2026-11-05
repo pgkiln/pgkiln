@@ -1103,6 +1103,19 @@ visits, incidents or sales. A legend (fewer → more) sits in the corner. GeoJSO
 select lat, lng, sal as weight from hr.emp join hr.dept using (deptno)   -- {"layer": "heat"}
 ```
 
+**Lines, polygons and extruded polygons** (sprint 159; APEX: map layer types). `"layer": "lines"`,
+`"polygons"` or `"extruded"` draws only the rows' shapes (a `geojson` column, or a PostGIS geometry),
+with a style: `{"style": {"fill_color": "#2e5c8a", "stroke_color": "#1b2230", "stroke_width": 2,
+"opacity": 0.6}}`. A row overrides it with columns of the same names (`fill_color`, `stroke_color`,
+`stroke_width`, `opacity`); colours are `#rrggbb` and numbers within range, anything else is left
+out. A shape's `title` is its tooltip, `title` and `body` its popup. **Extruded** polygons are shaded
+by a `height` column, from light (lowest) to strong (highest), with the height in the tooltip:
+pgkiln draws them flat, without APEX's 3D view.
+
+```sql
+select dname as title, st_asgeojson(area) as geojson, headcount as height from hr.sales_area   -- {"layer": "extruded"}
+```
+
 **Marker clustering.** With `"cluster": true` markers that are close together at the current zoom
 level are drawn as one round marker with their number; clicking it zooms in to them. Zooming
 regroups them, and at the two highest zoom levels every place is shown by itself. Use it for
@@ -1122,7 +1135,7 @@ seven more, each with its own query (the same columns as above) and its own sett
 ```
 
 Each layer has `name` (shown in the legend, translatable like other texts), `source`, and optionally
-`layer` (`markers` or `heat`), `cluster`, `link`, `hidden` (off until the user switches it on),
+`layer` (`markers`, `heat`, `lines`, `polygons` or `extruded`), `style`, `cluster`, `link`, `hidden` (off until the user switches it on),
 `visible_area` and `tiles`.
 On a map with more than one layer each layer's places, lines and areas get their own colour, and a
 **Layers** legend in the corner switches them on and off. Without JavaScript the list below the map
