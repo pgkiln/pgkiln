@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-11-05
+
 ### Added
 - **Workflow Diagram region** (CD-7; migration 152): one workflow instance (its id in an item) drawn in a page with the
   steps it went through, where it is now and a failed step, each step's history as a tooltip; only instances the user
