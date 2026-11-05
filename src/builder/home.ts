@@ -257,61 +257,63 @@ export async function homeRoutes(app: FastifyInstance) {
         [currentWorkspace(s)],
       ),
     ]);
+    const tx = tr(s);
     const stat = (n: number | string, label: string) => html`<div class="stat"><b>${n}</b><span>${label}</span></div>`;
-    const main = html`<h1 class="u-mb1">Workspace dashboard</h1>
+    const main = html`<h1 class="u-mb1">${tx('wd.title')}</h1>
       <div class="stat-grid">
-        ${stat(totals.apps, 'applications')}${stat(totals.pages, 'pages')}${stat(totals.accounts, 'active accounts')}
-        ${stat(totals.views, 'page views (24h)')}${stat(totals.users, 'distinct users (24h)')}
-        ${stat(totals.failures, 'failed / locked sign-ins (24h)')}${stat(totals.problems, 'errors / access denied (24h)')}
+        ${stat(totals.apps, tx('wd.apps'))}${stat(totals.pages, tx('wd.pages'))}${stat(totals.accounts, tx('wd.accounts'))}
+        ${stat(totals.views, tx('wd.views'))}${stat(totals.users, tx('wd.users'))}
+        ${stat(totals.failures, tx('wd.failures'))}${stat(totals.problems, tx('wd.problems'))}
       </div>
-      ${region('Applications (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th scope="col">Application</th><th scope="col" class="num">Views (24h)</th><th scope="col" class="num">Views (7 days)</th><th scope="col" class="num">Users</th><th scope="col" class="num">Avg ms</th><th scope="col" class="num">Errors / denied</th><th scope="col"></th></tr></thead>
-        <tbody>${perApp.rows.map((a) => html`<tr><td><a href="${BASE}/apps/${a.id}">${a.name}</a></td><td class="num">${a.views_day}</td><td class="num">${a.views_week}</td><td class="num">${a.users}</td><td class="num">${a.avg_ms}</td><td class="num">${a.problems}</td><td><a href="${BASE}/apps/${a.id}/activity">Activity</a></td></tr>`)}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, 'Dashboard', [['App Builder', BASE], ['Dashboard']], main));
+      ${region(tx('wd.per_app'), html`<div class="table-wrap"><table class="report"><thead><tr><th scope="col">${tx('wd.col.app')}</th><th scope="col" class="num">${tx('wd.col.views_day')}</th><th scope="col" class="num">${tx('wd.col.views_week')}</th><th scope="col" class="num">${tx('wd.col.users')}</th><th scope="col" class="num">${tx('wd.col.avg')}</th><th scope="col" class="num">${tx('wd.col.problems')}</th><th scope="col"></th></tr></thead>
+        <tbody>${perApp.rows.map((a) => html`<tr><td><a href="${BASE}/apps/${a.id}">${a.name}</a></td><td class="num">${a.views_day}</td><td class="num">${a.views_week}</td><td class="num">${a.users}</td><td class="num">${a.avg_ms}</td><td class="num">${a.problems}</td><td><a href="${BASE}/apps/${a.id}/activity">${tx('wd.activity')}</a></td></tr>`)}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, tx('wd.crumb'), [[tx('rail.app_builder'), BASE], [tx('wd.crumb')]], main));
   });
 
   // ---------------------------------------------------------------- workspace utilities
   app.get(`${BASE}/utilities`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const card = (href: string, ic: Raw | '', title: string, text: string) =>
+    const tx = tr(s);
+    const card = (href: string, ic: Raw | '', title: string, text: string | Raw) =>
       html`<a class="ab-tile" href="${href}"><span class="ab-tile-icon">${ic}</span><strong>${title}</strong><span>${text}</span></a>`;
-    const main = html`<div class="ab-home"><div class="ab-main"><h1 class="u-mb1">Workspace utilities</h1>
+    const main = html`<div class="ab-home"><div class="ab-main"><h1 class="u-mb1">${tx('wu.title')}</h1>
       <div class="ab-tiles ab-tiles-wrap">
-        ${card(`${BASE}/users`, icon('user'), 'Users', 'Accounts of the people who use the applications, and their access.')}
-        ${card(`${BASE}/app-groups`, icon('folder'), 'Application groups', 'Organise the applications of this workspace into groups.')}
-        ${card(`${BASE}/gallery`, icon('package'), 'App Gallery', 'Sample and starter applications to install, and this workspace\'s boilerplates.')}
-        ${card(`${BASE}/users/providers`, icon('key'), 'Identity providers', 'OpenID Connect and SAML sign-in.')}
-        ${card(`${BASE}/users/directories`, icon('org'), 'LDAP directories', 'Sign in with directory accounts.')}
-        ${card(`${BASE}/users#account-settings`, icon('shield'), 'Password policy', 'Length, complexity and lifetime of passwords.')}
-        ${card(`${BASE}/developers`, icon('users'), 'Developers', 'Who may use this builder.')}
-        ${s.workspace?.sql_workshop === false ? '' : card(`${BASE}/sql`, icon('database'), 'SQL Workshop', 'Run SQL, browse objects and load data.')}
-        ${card(`${BASE}/backups`, icon('archive'), 'Manage backups', 'The backups of every application of this workspace; back them all up at once.')}
-        ${card(`${BASE}/workspace-files`, icon('file'), 'Static workspace files', 'CSS, JavaScript, images and fonts every application of this workspace can load (#WORKSPACE_FILES#).')}
-        ${card(`${BASE}/remote-servers`, icon('server'), 'Remote servers', 'Named base URLs for REST data sources, catalogs and AI services: change one value to move them all.')}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/remote-databases`, icon('database'), 'Remote databases', 'Another PostgreSQL database\'s tables as foreign tables (postgres_fdw) the applications query like their own (administrators).') : ''}
-        ${card(`${BASE}/workspace-credentials`, icon('key'), 'Web credentials', 'Keys and OAuth2 clients the applications of this workspace use by name (secrets encrypted, write-only).')}
-        ${card(`${BASE}/rest-catalogs`, icon('globe'), 'REST Source Catalogs', 'Web services described once for the workspace (e.g. from an OpenAPI document); applications make REST data sources from them.')}
-        ${s.workspace?.admin ? card(`${BASE}/workspace-export`, icon('download'), 'Export and import', 'This workspace\'s components as one file: settings, developers, groups, links, catalogs, scripts, blueprints (workspace administrators).') : ''}
-        ${card(`${BASE}/dashboard`, icon('activity'), 'Dashboard', 'Usage and problems across the workspace.')}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/instance`, icon('settings'), 'Instance settings', 'Session length, sign-in throttling and the server\'s configuration (administrators).') : ''}
+        ${card(`${BASE}/users`, icon('user'), tx('wu.users'), tx('wu.users_text'))}
+        ${card(`${BASE}/app-groups`, icon('folder'), tx('wu.app_groups'), tx('wu.app_groups_text'))}
+        ${card(`${BASE}/gallery`, icon('package'), tx('wu.gallery'), tx('wu.gallery_text'))}
+        ${card(`${BASE}/users/providers`, icon('key'), tx('wu.providers'), tx('wu.providers_text'))}
+        ${card(`${BASE}/users/directories`, icon('org'), tx('wu.ldap'), tx('wu.ldap_text'))}
+        ${card(`${BASE}/users#account-settings`, icon('shield'), tx('wu.password_policy'), tx('wu.password_policy_text'))}
+        ${card(`${BASE}/developers`, icon('users'), tx('wu.developers'), tx('wu.developers_text'))}
+        ${s.workspace?.sql_workshop === false ? '' : card(`${BASE}/sql`, icon('database'), tx('wu.sql'), tx('wu.sql_text'))}
+        ${card(`${BASE}/backups`, icon('archive'), tx('wu.backups'), tx('wu.backups_text'))}
+        ${card(`${BASE}/workspace-files`, icon('file'), tx('wu.files'), tx('wu.files_text', { tag: '#WORKSPACE_FILES#' }))}
+        ${card(`${BASE}/remote-servers`, icon('server'), tx('wu.servers'), tx('wu.servers_text'))}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/remote-databases`, icon('database'), tx('wu.remote_dbs'), tx('wu.remote_dbs_text')) : ''}
+        ${card(`${BASE}/workspace-credentials`, icon('key'), tx('wu.credentials'), tx('wu.credentials_text'))}
+        ${card(`${BASE}/rest-catalogs`, icon('globe'), tx('wu.catalogs'), tx('wu.catalogs_text'))}
+        ${s.workspace?.admin ? card(`${BASE}/workspace-export`, icon('download'), tx('wu.export'), tx('wu.export_text')) : ''}
+        ${card(`${BASE}/dashboard`, icon('activity'), tx('wu.dashboard'), tx('wu.dashboard_text'))}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/instance`, icon('settings'), tx('wu.instance'), tx('wu.instance_text')) : ''}
         ${(await isAdmin(s.username))
-          ? card(`${BASE}/workspaces`, icon('layers'), 'Workspaces', 'Groups of applications and their developers (administrators).')
+          ? card(`${BASE}/workspaces`, icon('layers'), tx('wu.workspaces'), tx('wu.workspaces_text'))
           : s.workspace && (await workspaceAdmin(s.username, s.workspace.id))
-            ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), `Workspace ${s.workspace.name}`, 'Its name, developers, preferences and extension links (workspace administrators).')
+            ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), tx('wu.workspace', { name: s.workspace.name }), tx('wu.workspace_text'))
             : ''}
-        ${card(`${BASE}/ui-defaults`, icon('sliders-horizontal'), 'UI defaults', 'Labels, format masks, help and lists of values per table column, used by the page wizards.')}
-        ${card(`${BASE}/icons`, icon('image'), 'Icons', 'Browse the icons of the icon picker.')}
-        ${card(`${BASE}/vector-providers`, icon('search'), 'Vector providers', 'Embeddings for search by meaning: the applications\' vector providers, their vector columns, and whether pgvector is installed.')}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), 'AI services', 'Claude, OpenAI, Gemini and OpenAI-compatible services for the applications: models, keys, limits and usage (administrators).') : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), 'Mail services', 'SMTP, Microsoft 365, Amazon SES, Resend, Postmark, SendGrid or Mailgun for the applications\' e-mail (administrators).') : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/telemetry`, icon('activity'), 'OpenTelemetry', 'Traces, logs and metrics to your own monitoring through an OpenTelemetry Collector; /metrics for Prometheus (administrators).') : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), 'Installation', 'Version, install and upgrade runs, applied migrations (administrators).') : ''}
+        ${card(`${BASE}/ui-defaults`, icon('sliders-horizontal'), tx('wu.ui_defaults'), tx('wu.ui_defaults_text'))}
+        ${card(`${BASE}/icons`, icon('image'), tx('wu.icons'), tx('wu.icons_text'))}
+        ${card(`${BASE}/vector-providers`, icon('search'), tx('wu.vectors'), tx('wu.vectors_text'))}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), tx('wu.ai'), tx('wu.ai_text')) : ''}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), tx('wu.mail'), tx('wu.mail_text')) : ''}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/telemetry`, icon('activity'), tx('wu.otel'), tx('wu.otel_text')) : ''}
+        ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), tx('wu.installation'), tx('wu.installation_text')) : ''}
       </div></div>
-      <aside class="ab-side" aria-label="About and reports">
-        <section><h2>About</h2><p>Workspace utilities hold what the applications of this workspace share: users and sign-in, groups, the gallery, and reports across the applications.</p>
-          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">Learn more …</a></section>
-        <section><h2>Cross Application Reports</h2><ul class="ab-links ab-tasks">${crossAppLinks()}</ul></section>
+      <aside class="ab-side" aria-label="${tx('wu.side')}">
+        <section><h2>${tx('wu.about')}</h2><p>${tx('wu.about_text')}</p>
+          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${tx('wu.learn_more')}</a></section>
+        <section><h2>${tx('wu.cross_app')}</h2><ul class="ab-links ab-tasks">${crossAppLinks()}</ul></section>
       </aside></div>`;
-    return send(reply, s, shell(s, 'Workspace utilities', [['App Builder', BASE], ['Workspace utilities']], main));
+    return send(reply, s, shell(s, tx('wu.title'), [[tx('rail.app_builder'), BASE], [tx('wu.title')]], main));
   });
 }

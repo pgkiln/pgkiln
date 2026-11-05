@@ -4,6 +4,7 @@ import { html, raw } from '../html.ts';
 import { testDirectory, type Directory } from '../ldap.ts';
 import { administrator, back, BASE, csrf, flash, input, region, send, shell, type Req } from './ui.ts';
 import { builderSignInRegion } from './builder-sso.ts';
+import { tr, type BuilderTranslate } from './i18n.ts';
 
 // Users → LDAP directories: the directories an application's password form
 // can check (enabled per app under Settings → Sign-in methods). The bind
@@ -12,36 +13,36 @@ import { builderSignInRegion } from './builder-sso.ts';
 const check = (name: string, label: string, on: boolean, help?: string) =>
   html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
 
-function directoryForm(d: Partial<Directory> & { has_password?: boolean }, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) {
+function directoryForm(tx: BuilderTranslate, d: Partial<Directory> & { has_password?: boolean }, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) {
   return html`<form method="post" action="${action}">${csrfField}
-    <fieldset class="prop-group"><legend>Server</legend><div class="form-grid">
-      ${isNew ? input('name', 'Name', '', { required: true, help: 'lowercase, e.g. corp or ad' }) : ''}
-      ${input('display_name', 'Display name', d.display_name, { required: true })}
-      ${input('url', 'URL', d.url, { required: true, placeholder: 'ldaps://ldap.example.com or ldap://…:389', help: 'ldaps:// (TLS) or ldap://, with StartTLS below. Plain ldap:// sends passwords unencrypted.' })}
-      ${input('bind_dn', 'Service account DN', d.bind_dn, { placeholder: 'cn=pgkiln,ou=services,dc=example,dc=org', help: 'Searches users (and groups). Empty: an anonymous search.' })}
-      ${input('bind_password', 'Service account password', '', { type: 'password', auto: 'new-password', help: d.has_password ? 'A password is stored. Leave empty to keep it.' : '' })}
+    <fieldset class="prop-group"><legend>${tx('ldap.server')}</legend><div class="form-grid">
+      ${isNew ? input('name', tx('ldap.name'), '', { required: true, help: tx('ldap.name_help') }) : ''}
+      ${input('display_name', tx('ldap.display_name'), d.display_name, { required: true })}
+      ${input('url', tx('ldap.url'), d.url, { required: true, placeholder: 'ldaps://ldap.example.com or ldap://…:389', help: tx('ldap.url_help') })}
+      ${input('bind_dn', tx('ldap.bind_dn'), d.bind_dn, { placeholder: 'cn=pgkiln,ou=services,dc=example,dc=org', help: tx('ldap.bind_dn_help') })}
+      ${input('bind_password', tx('ldap.bind_password'), '', { type: 'password', auto: 'new-password', help: d.has_password ? tx('ldap.password_stored') : '' })}
     </div>
-    ${check('start_tls', 'StartTLS (for ldap:// URLs)', !!d.start_tls)}
-    ${check('tls_verify', 'Verify the server certificate', d.tls_verify !== false, 'Turn off only for test servers with self-signed certificates.')}
-    ${!isNew && d.has_password ? check('remove_password', 'Remove the stored password (anonymous search)', false) : ''}
+    ${check('start_tls', tx('ldap.start_tls'), !!d.start_tls)}
+    ${check('tls_verify', tx('ldap.tls_verify'), d.tls_verify !== false, tx('ldap.tls_verify_help'))}
+    ${!isNew && d.has_password ? check('remove_password', tx('ldap.remove_password'), false) : ''}
     </fieldset>
-    <fieldset class="prop-group"><legend>Users</legend><div class="form-grid">
-      ${input('user_base', 'User search base', d.user_base, { required: true, placeholder: 'ou=people,dc=example,dc=org' })}
-      ${input('user_filter', 'User filter', d.user_filter ?? '(uid={username})', { help: '{username} is replaced by the escaped username. Active Directory: (sAMAccountName={username})' })}
-      ${input('username_attribute', 'Username attribute', d.username_attribute ?? 'uid', { help: 'The pgkiln username; AD: sAMAccountName' })}
-      ${input('display_name_attribute', 'Display name attribute', d.display_name_attribute ?? 'cn')}
-      ${input('email_attribute', 'E-mail attribute', d.email_attribute ?? 'mail')}
+    <fieldset class="prop-group"><legend>${tx('ldap.users')}</legend><div class="form-grid">
+      ${input('user_base', tx('ldap.user_base'), d.user_base, { required: true, placeholder: 'ou=people,dc=example,dc=org' })}
+      ${input('user_filter', tx('ldap.user_filter'), d.user_filter ?? '(uid={username})', { help: tx('ldap.user_filter_help', { ad: '(sAMAccountName={username})' }) })}
+      ${input('username_attribute', tx('ldap.username_attr'), d.username_attribute ?? 'uid', { help: tx('ldap.username_attr_help') })}
+      ${input('display_name_attribute', tx('ldap.display_attr'), d.display_name_attribute ?? 'cn')}
+      ${input('email_attribute', tx('ldap.email_attr'), d.email_attribute ?? 'mail')}
     </div>
-    ${check('auto_create', 'Create accounts automatically on first sign-in', !!d.auto_create, 'Otherwise only people with an existing account (same username) can sign in.')}
+    ${check('auto_create', tx('ldap.auto_create'), !!d.auto_create, tx('ldap.auto_create_help'))}
     </fieldset>
-    <fieldset class="prop-group"><legend>Groups (mapped to roles under each app's Access control)</legend><div class="form-grid">
-      ${input('group_attribute', 'Group attribute of the user', d.group_attribute ?? 'memberOf', { help: 'Group DNs; the first value of each is the group name. Empty: not used.' })}
-      ${input('group_base', 'Group search base', d.group_base, { placeholder: 'ou=groups,dc=example,dc=org', help: 'Optional: search groups as well.' })}
-      ${input('group_filter', 'Group filter', d.group_filter ?? '(|(member={dn})(uniqueMember={dn}))', { help: '{dn}: the user\'s DN, {username}: the username (both escaped).' })}
-      ${input('group_name_attribute', 'Group name attribute', d.group_name_attribute ?? 'cn')}
+    <fieldset class="prop-group"><legend>${tx('ldap.groups')}</legend><div class="form-grid">
+      ${input('group_attribute', tx('ldap.group_attr'), d.group_attribute ?? 'memberOf', { help: tx('ldap.group_attr_help') })}
+      ${input('group_base', tx('ldap.group_base'), d.group_base, { placeholder: 'ou=groups,dc=example,dc=org', help: tx('ldap.group_base_help') })}
+      ${input('group_filter', tx('ldap.group_filter'), d.group_filter ?? '(|(member={dn})(uniqueMember={dn}))', { help: tx('ldap.group_filter_help') })}
+      ${input('group_name_attribute', tx('ldap.group_name_attr'), d.group_name_attribute ?? 'cn')}
     </div></fieldset>
-    ${check('enabled', 'Enabled', d.enabled !== false)}
-    <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add directory' : 'Save'}</button></div>
+    ${check('enabled', tx('ldap.enabled'), d.enabled !== false)}
+    <div class="buttons"><button class="btn btn-hot">${isNew ? tx('ldap.add') : tx('ldap.save')}</button></div>
   </form>`;
 }
 
@@ -62,22 +63,23 @@ export async function ldapRoutes(app: FastifyInstance) {
         (select count(*) from meta.ldap_identity i where i.directory_id = d.id)::int as linked,
         (select string_agg(a.alias, ', ' order by a.alias) from meta.app a where d.name = any(a.ldap_directories)) as apps
       from meta.ldap_directory d order by display_name`)).rows;
+    const tx = tr(s);
     const main = html`
-      <div class="title-row"><h1>LDAP directories</h1></div>
-      <p class="muted u-mt0">OpenLDAP, Active Directory and other LDAP servers. An application's sign-in form checks local passwords first, then the directories enabled under <b>Settings → Sign-in methods</b>. Directory groups map to roles under each application's <b>Access control</b>.</p>
+      <div class="title-row"><h1>${tx('ldap.title')}</h1></div>
+      <p class="muted u-mt0">${tx.rich('ldap.intro', { where: html`<b>${tx('ldap.where')}</b>`, access: html`<b>${tx('ldap.access')}</b>` })}</p>
       <div class="columns wide-left">
-        ${region('Directories', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>Directory</th><th>URL</th><th>Used by</th><th>Linked accounts</th><th>Status</th></tr></thead>
+        ${region(tx('ldap.directories'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('ldap.col.directory')}</th><th>${tx('ldap.url')}</th><th>${tx('ldap.col.used_by')}</th><th>${tx('ldap.col.linked')}</th><th>${tx('ldap.col.status')}</th></tr></thead>
           <tbody>${rows.length ? rows.map((r) => html`<tr>
-            <td data-label="Directory"><a href="${BASE}/users/directories/${r.id}">${r.display_name}</a> <span class="muted">${r.name}</span></td>
-            <td data-label="URL">${r.url}</td>
-            <td data-label="Used by">${r.apps ?? html`<span class="muted">no apps</span>`}</td>
-            <td data-label="Linked accounts">${r.linked}</td>
-            <td data-label="Status">${r.enabled ? 'enabled' : html`<b>disabled</b>`}${r.auto_create ? ' · auto-create' : ''}</td>
-          </tr>`) : html`<tr><td colspan="5" class="empty">No LDAP directories yet.</td></tr>`}</tbody></table></div>`)}
-        ${region('Add directory', directoryForm({}, `${BASE}/users/directories`, csrf(s), true))}
+            <td data-label="${tx('ldap.col.directory')}"><a href="${BASE}/users/directories/${r.id}">${r.display_name}</a> <span class="muted">${r.name}</span></td>
+            <td data-label="${tx('ldap.url')}">${r.url}</td>
+            <td data-label="${tx('ldap.col.used_by')}">${r.apps ?? html`<span class="muted">${tx('ldap.no_apps')}</span>`}</td>
+            <td data-label="${tx('ldap.col.linked')}">${r.linked}</td>
+            <td data-label="${tx('ldap.col.status')}">${r.enabled ? tx('ldap.status_enabled') : html`<b>${tx('ldap.status_disabled')}</b>`}${r.auto_create ? ` · ${tx('ldap.status_auto')}` : ''}</td>
+          </tr>`) : html`<tr><td colspan="5" class="empty">${tx('ldap.none')}</td></tr>`}</tbody></table></div>`)}
+        ${region(tx('ldap.add'), directoryForm(tx, {}, `${BASE}/users/directories`, csrf(s), true))}
       </div>`;
-    return send(reply, s, shell(s, 'LDAP directories', [['Users', `${BASE}/users`], ['LDAP directories']], main, 'users'));
+    return send(reply, s, shell(s, tx('ldap.title'), [[tx('wu.users'), `${BASE}/users`], [tx('ldap.title')]], main, 'users'));
   });
 
   app.post(`${BASE}/users/directories`, async (req: Req, reply) => {
@@ -90,7 +92,7 @@ export async function ldapRoutes(app: FastifyInstance) {
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) returning id`,
         [b.name?.trim().toLowerCase(), ...values(b), b.bind_password || null],
       );
-      flash(s, 'Directory added. Test the connection, then enable it for an application.');
+      flash(s, tr(s)('ldap.added'));
       return back(reply, s, `${BASE}/users/directories/${r.id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -104,20 +106,21 @@ export async function ldapRoutes(app: FastifyInstance) {
     const d = /^\d+$/.test(req.params.id) ? await owner.one('select *, bind_password is not null as has_password from meta.ldap_directory where id = $1', [req.params.id]) : undefined;
     if (!d) return reply.code(404).send('Not found');
     delete d.bind_password; // never sent to the browser
+    const tx = tr(s);
     const main = html`
       <div class="title-row"><h1>${d.display_name}</h1></div>
       <div class="columns wide-left">
-        ${region('Settings', html`${directoryForm(d, `${BASE}/users/directories/${d.id}`, csrf(s), false)}
+        ${region(tx('ldap.settings'), html`${directoryForm(tx, d, `${BASE}/users/directories/${d.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/users/directories/${d.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="Delete ${d.display_name}? Links to accounts are removed; accounts stay.">Delete directory</button></form>`)}
-        ${region('Test connection', html`
-          <p class="muted u-mt0">Connects, binds as the service account (or anonymously) and checks the search base; with a username, looks the user up with the filter. No password is checked.</p>
+            <button class="btn btn-danger" data-confirm="${tx('ldap.delete_confirm', { name: d.display_name })}">${tx('ldap.delete')}</button></form>`)}
+        ${region(tx('ldap.test'), html`
+          <p class="muted u-mt0">${tx('ldap.test_intro')}</p>
           <form method="post" action="${BASE}/users/directories/${d.id}/test" class="search u-mwnone">${csrf(s)}
-            <input name="username" placeholder="Username (optional)" aria-label="Username to look up" maxlength="100">
-            <button class="btn">Test</button></form>`)}
+            <input name="username" placeholder="${tx('ldap.test_username')}" aria-label="${tx('ldap.test_username_label')}" maxlength="100">
+            <button class="btn">${tx('ldap.test_btn')}</button></form>`)}
         ${await builderSignInRegion(s, 'directory', d)}
       </div>`;
-    return send(reply, s, shell(s, d.display_name, [['Users', `${BASE}/users`], ['LDAP directories', `${BASE}/users/directories`], [d.display_name]], main, 'users'));
+    return send(reply, s, shell(s, d.display_name, [[tx('wu.users'), `${BASE}/users`], [tx('ldap.title'), `${BASE}/users/directories`], [d.display_name]], main, 'users'));
   });
 
   app.post(`${BASE}/users/directories/:id`, async (req: Req, reply) => {
@@ -131,7 +134,7 @@ export async function ldapRoutes(app: FastifyInstance) {
           where id = $1`,
         [req.params.id, ...values(b), b.bind_password || null, b.remove_password === 'true'],
       );
-      flash(s, 'Directory saved.');
+      flash(s, tr(s)('ldap.saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -146,7 +149,7 @@ export async function ldapRoutes(app: FastifyInstance) {
     try {
       flash(s, await testDirectory(d, (req.body?.username ?? '').trim().slice(0, 100) || undefined));
     } catch (e) {
-      flash(s, `The test failed: ${(e as Error).message}`, 'error');
+      flash(s, tr(s)('ldap.test_failed', { error: (e as Error).message }), 'error');
     }
     return back(reply, s, `${BASE}/users/directories/${d.id}`);
   });
@@ -157,7 +160,7 @@ export async function ldapRoutes(app: FastifyInstance) {
     const d = await owner.one('delete from meta.ldap_directory where id = $1 returning name', [req.params.id]);
     // and from the applications that used it
     if (d) await owner.query('update meta.app set ldap_directories = array_remove(ldap_directories, $1) where $1 = any(ldap_directories)', [d.name]);
-    flash(s, 'Directory deleted.');
+    flash(s, tr(s)('ldap.deleted'));
     return back(reply, s, `${BASE}/users/directories`);
   });
 }

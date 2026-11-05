@@ -10,6 +10,7 @@ import { clearResponseCache } from '../websources.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 import { workspaceAdmin } from './workspaces.ts';
+import { tr } from './i18n.ts';
 
 // (sprint 118, WS-9; APEX 26.2 workspace network ACLs) Administration →
 // Network access: the installation's allow-list (PGKILN_REST_ALLOWED_HOSTS,
@@ -31,12 +32,13 @@ async function manageable(s: Session, wanted: unknown): Promise<{ admin: boolean
 }
 
 async function refuse(s: Session, reply: FastifyReply) {
-  const main = html`<h1 class="u-mb1">Network access</h1><div class="alert alert-error" role="alert">Only administrators and workspace administrators manage network access.</div>`;
-  await send(reply.code(403), s, shell(s, 'Network access', [['Administration'], ['Network access']], main, 'users'));
+  const tx = tr(s);
+  const main = html`<h1 class="u-mb1">${tx('na.title')}</h1><div class="alert alert-error" role="alert">${tx('na.refused')}</div>`;
+  await send(reply.code(403), s, shell(s, tx('na.title'), [[tx('rail.admin')], [tx('na.title')]], main, 'users'));
 }
 
 const when = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') : '');
-const entries = (list: string[]) => (list.length ? html`<ul class="host-list">${list.map((h) => html`<li><code>${h}</code></li>`)}</ul>` : html`<p class="muted">None.</p>`);
+const entries = (list: string[], none: string) => (list.length ? html`<ul class="host-list">${list.map((h) => html`<li><code>${h}</code></li>`)}</ul>` : html`<p class="muted">${none}</p>`);
 
 export async function networkAccessRoutes(app: FastifyInstance) {
   app.get(`${BASE}/network`, async (req: Req, reply) => {
@@ -44,6 +46,7 @@ export async function networkAccessRoutes(app: FastifyInstance) {
     if (!s) return;
     const m = await manageable(s, req.query.ws);
     if (!m) return refuse(s, reply);
+    const tx = tr(s);
     const w = await owner.one<{ id: number; name: string; network_restricted: boolean; network_hosts: string[] }>(
       'select id, name, network_restricted, network_hosts from meta.workspace where id = $1', [m.workspace]);
     if (!w) return reply.code(404).send('Not found');
@@ -93,60 +96,60 @@ export async function networkAccessRoutes(app: FastifyInstance) {
       try {
         url = new URL(tryUrl);
       } catch {
-        verdict = { ok: false, text: 'The URL is not valid.' };
+        verdict = { ok: false, text: tx('na.url_invalid') };
       }
       if (url) {
         const scope = await scopeForWorkspace(w.id, 'check');
         const problem = urlProblem(url) ?? scopeProblem(scope, url);
-        verdict = problem ? { ok: false, text: problem } : { ok: true, text: `${url.host} may be called by this workspace's applications (the address it resolves to is checked when the call is made).` };
+        verdict = problem ? { ok: false, text: problem } : { ok: true, text: tx('na.url_ok', { host: url.host }) };
       }
     }
     const main = html`
-      <div class="title-row"><h1>Network access</h1></div>
-      <p class="muted u-mt0">Which web services the applications may call: <code>meta.web_request</code>, REST data sources, the Invoke API process and workflow step, web credential token endpoints, object storage and REST source catalogs. The installation's list applies to every workspace; a workspace's own list can only narrow it, never widen it. Private and loopback addresses stay refused unless the installation allows them, whatever a workspace lists.</p>
+      <div class="title-row"><h1>${tx('na.title')}</h1></div>
+      <p class="muted u-mt0">${tx.rich('na.intro', { web_request: html`<code>meta.web_request</code>` })}</p>
       <div class="columns wide-left">
-        ${region(`Workspace ${w.name}`, html`<form method="post" action="${BASE}/network">${csrf(s)}<input type="hidden" name="ws" value="${w.id}">
-            <fieldset class="field"><legend class="label">Outgoing calls of this workspace's applications</legend><div class="radio-group">
-              <label class="check"><input type="radio" name="restricted" value="false"${w.network_restricted ? '' : raw(' checked')}> Any host the installation allows</label>
-              <label class="check"><input type="radio" name="restricted" value="true"${w.network_restricted ? raw(' checked') : ''}> Only the hosts below (and the installation must allow them too)</label>
+        ${region(tx('na.workspace', { name: w.name }), html`<form method="post" action="${BASE}/network">${csrf(s)}<input type="hidden" name="ws" value="${w.id}">
+            <fieldset class="field"><legend class="label">${tx('na.outgoing')}</legend><div class="radio-group">
+              <label class="check"><input type="radio" name="restricted" value="false"${w.network_restricted ? '' : raw(' checked')}> ${tx('na.any_host')}</label>
+              <label class="check"><input type="radio" name="restricted" value="true"${w.network_restricted ? raw(' checked') : ''}> ${tx('na.only_hosts')}</label>
             </div></fieldset>
-            <div class="field"><label class="label" for="f_hosts">Hosts</label>
+            <div class="field"><label class="label" for="f_hosts">${tx('na.hosts')}</label>
               <textarea id="f_hosts" name="hosts" rows="6" spellcheck="false">${w.network_hosts.join('\n')}</textarea>
-              <small class="help">One per line: <code>api.example.com</code>, <code>*.example.com</code> for its subdomains, <code>api.example.com:8443</code> for one port only. No scheme or path. Restricted with no hosts: no outgoing calls at all.</small></div>
-            ${unreachable.length ? html`<div class="alert alert-warning" role="status">Not on the installation's list, so never reachable: ${unreachable.join(', ')}.</div>` : ''}
-            ${w.network_hosts.some((h) => serversOf(h).length) ? html`<p class="muted small">Remote servers on these hosts: ${w.network_hosts.filter((h) => serversOf(h).length).map((h) => `${h} (${serversOf(h).join(', ')})`).join('; ')}.</p>` : ''}
-            <div class="buttons"><button class="btn btn-hot">Save</button></div></form>`, '', 'workspace-list')}
-        ${region('Installation', html`<p class="muted u-mt0">Set in the server's environment by its administrators (<code>PGKILN_REST_ALLOWED_HOSTS</code>).</p>
-            ${inst.allowed.includes('*') ? html`<p>Any public host (<code>*</code>).</p>` : entries(inst.allowed)}
-            ${m.admin ? html`<h3 class="u-mt1">Private hosts</h3><p class="muted small">Hosts on private or loopback addresses that may be called (<code>PGKILN_REST_PRIVATE_HOSTS</code>).</p>${entries(inst.private)}` : ''}`)}
+              <small class="help">${tx.rich('na.hosts_help', { a: html`<code>api.example.com</code>`, b: html`<code>*.example.com</code>`, c: html`<code>api.example.com:8443</code>` })}</small></div>
+            ${unreachable.length ? html`<div class="alert alert-warning" role="status">${tx('na.unreachable', { hosts: unreachable.join(', ') })}</div>` : ''}
+            ${w.network_hosts.some((h) => serversOf(h).length) ? html`<p class="muted small">${tx('na.servers_on_hosts', { list: w.network_hosts.filter((h) => serversOf(h).length).map((h) => `${h} (${serversOf(h).join(', ')})`).join('; ') })}</p>` : ''}
+            <div class="buttons"><button class="btn btn-hot">${tx('na.save')}</button></div></form>`, '', 'workspace-list')}
+        ${region(tx('na.installation'), html`<p class="muted u-mt0">${tx.rich('na.installation_note', { env: html`<code>PGKILN_REST_ALLOWED_HOSTS</code>` })}</p>
+            ${inst.allowed.includes('*') ? html`<p>${tx.rich('na.any_public', { star: html`<code>*</code>` })}</p>` : entries(inst.allowed, tx('na.none'))}
+            ${m.admin ? html`<h3 class="u-mt1">${tx('na.private')}</h3><p class="muted small">${tx.rich('na.private_note', { env: html`<code>PGKILN_REST_PRIVATE_HOSTS</code>` })}</p>${entries(inst.private, tx('na.none'))}` : ''}`)}
       </div>
-      ${region('Remote servers', html`<p class="muted u-mt0">The hosts this workspace's <a href="${BASE}/remote-servers">remote servers</a> stand for now: the REST data sources, catalogs and AI services on a server call this host.</p>
+      ${region(tx('na.servers'), html`<p class="muted u-mt0">${tx.rich('na.servers_intro', { link: html`<a href="${BASE}/remote-servers">${tx('na.servers_link')}</a>` })}</p>
         <div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Server</th><th>Host</th><th>From</th><th>Would be called</th></tr></thead>
-        <tbody>${servers.length ? servers.map((x) => html`<tr><td data-label="Server">${x.static_id}</td>
-            <td data-label="Host" class="u-break">${x.host ? html`<code>${x.host}</code>` : html`<span class="muted">none</span>`}</td>
-            <td data-label="From">${x.from === 'env' ? x.env_var : x.from === 'stored' ? 'base URL' : ''}</td>
-            <td data-label="Would be called">${x.problem ? html`<span class="tag tag-error">no</span> <span class="muted small">${x.problem}</span>` : html`<span class="tag tag-ok">yes</span>`}</td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No remote servers.</td></tr>`}</tbody></table></div>`, '', 'servers')}
-      ${region('Check a URL', html`<form method="get" action="${BASE}/network" class="search u-mwnone">
+        <thead><tr><th>${tx('na.col.server')}</th><th>${tx('na.col.host')}</th><th>${tx('na.col.from')}</th><th>${tx('na.col.called')}</th></tr></thead>
+        <tbody>${servers.length ? servers.map((x) => html`<tr><td data-label="${tx('na.col.server')}">${x.static_id}</td>
+            <td data-label="${tx('na.col.host')}" class="u-break">${x.host ? html`<code>${x.host}</code>` : html`<span class="muted">${tx('na.host_none')}</span>`}</td>
+            <td data-label="${tx('na.col.from')}">${x.from === 'env' ? x.env_var : x.from === 'stored' ? tx('na.base_url') : ''}</td>
+            <td data-label="${tx('na.col.called')}">${x.problem ? html`<span class="tag tag-error">${tx('na.no')}</span> <span class="muted small">${x.problem}</span>` : html`<span class="tag tag-ok">${tx('na.yes')}</span>`}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('na.no_servers')}</td></tr>`}</tbody></table></div>`, '', 'servers')}
+      ${region(tx('na.check'), html`<form method="get" action="${BASE}/network" class="search u-mwnone">
           <input type="hidden" name="ws" value="${w.id}">
-          ${input('url', 'URL', tryUrl, { type: 'url', placeholder: 'https://api.example.com/v1/items' })}
-          <div class="buttons"><button class="btn">${icon('search')} Check</button></div></form>
+          ${input('url', tx('na.url'), tryUrl, { type: 'url', placeholder: 'https://api.example.com/v1/items' })}
+          <div class="buttons"><button class="btn">${icon('search')} ${tx('na.check_btn')}</button></div></form>
         <div role="status">${verdict ? html`<div class="alert ${verdict.ok ? 'alert-success' : 'alert-error'}">${verdict.text}</div>` : ''}</div>
-        <p class="muted small">Nothing is called: this applies the lists to the URL as they are now.</p>`)}
-      ${m.admin ? region('Workspaces', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>Workspace</th><th>Outgoing calls</th></tr></thead>
-          <tbody>${all.map((x) => html`<tr><td data-label="Workspace"><a href="${BASE}/network?ws=${x.id}">${x.name}</a></td>
-            <td data-label="Outgoing calls">${x.network_restricted ? html`<span class="tag">${icon('lock')} ${x.n} host${x.n === 1 ? '' : 's'}</span>` : html`<span class="muted">the installation's list</span>`}</td></tr>`)}</tbody></table></div>`) : ''}
-      ${region('Refused calls', html`<p class="muted u-mt0">The last 100 calls of this workspace that a list refused (kept 7 days). The application's debug log has them too.</p>
+        <p class="muted small">${tx('na.check_note')}</p>`)}
+      ${m.admin ? region(tx('na.workspaces'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('na.col.workspace')}</th><th>${tx('na.col.outgoing')}</th></tr></thead>
+          <tbody>${all.map((x) => html`<tr><td data-label="${tx('na.col.workspace')}"><a href="${BASE}/network?ws=${x.id}">${x.name}</a></td>
+            <td data-label="${tx('na.col.outgoing')}">${x.network_restricted ? html`<span class="tag">${icon('lock')} ${tx(x.n === 1 ? 'na.n_hosts_one' : 'na.n_hosts', { n: x.n })}</span>` : html`<span class="muted">${tx('na.inst_list')}</span>`}</td></tr>`)}</tbody></table></div>`) : ''}
+      ${region(tx('na.refusals'), html`<p class="muted u-mt0">${tx('na.refusals_intro')}</p>
         <div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>When (UTC)</th><th>Application</th><th>Call</th><th>Host</th><th>Refused by</th></tr></thead>
-        <tbody>${refusals.length ? refusals.map((r) => html`<tr><td data-label="When">${when(r.at)}</td><td data-label="Application">${r.alias ?? html`<span class="muted">–</span>`}</td>
-            <td data-label="Call" class="u-break">${r.what}<br><span class="muted small">${r.url ?? ''}</span></td>
-            <td data-label="Host" class="u-break"><code>${r.host}</code></td>
-            <td data-label="Refused by">${r.list === 'workspace' ? 'the workspace\'s list' : 'the installation\'s list'}</td></tr>`)
-          : html`<tr><td colspan="5" class="empty">No refused calls.</td></tr>`}</tbody></table></div>`, '', 'refusals')}`;
-    return send(reply, s, shell(s, 'Network access', [['Administration'], ['Network access']], main, 'users'));
+        <thead><tr><th>${tx('na.col.when')}</th><th>${tx('na.col.app')}</th><th>${tx('na.col.call')}</th><th>${tx('na.col.host')}</th><th>${tx('na.col.refused_by')}</th></tr></thead>
+        <tbody>${refusals.length ? refusals.map((r) => html`<tr><td data-label="${tx('na.col.when_short')}">${when(r.at)}</td><td data-label="${tx('na.col.app')}">${r.alias ?? html`<span class="muted">–</span>`}</td>
+            <td data-label="${tx('na.col.call')}" class="u-break">${r.what}<br><span class="muted small">${r.url ?? ''}</span></td>
+            <td data-label="${tx('na.col.host')}" class="u-break"><code>${r.host}</code></td>
+            <td data-label="${tx('na.col.refused_by')}">${r.list === 'workspace' ? tx('na.ws_list') : tx('na.inst_list')}</td></tr>`)
+          : html`<tr><td colspan="5" class="empty">${tx('na.no_refusals')}</td></tr>`}</tbody></table></div>`, '', 'refusals')}`;
+    return send(reply, s, shell(s, tx('na.title'), [[tx('rail.admin')], [tx('na.title')]], main, 'users'));
   });
 
   app.post(`${BASE}/network`, async (req: Req, reply) => {
@@ -164,7 +167,7 @@ export async function networkAccessRoutes(app: FastifyInstance) {
       clearResponseCache();
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req),
         detail: `network access of workspace ${m.workspace}: ${restricted ? `only ${hosts.join(', ') || 'no hosts'}` : 'the installation\'s list'}`.slice(0, 1000) });
-      flash(s, restricted ? `Saved: this workspace's applications call ${hosts.length ? 'only these hosts' : 'no hosts at all'}.` : 'Saved: the installation\'s list applies.');
+      flash(s, tr(s)(restricted ? (hosts.length ? 'na.saved_only' : 'na.saved_none') : 'na.saved_inst'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }

@@ -521,7 +521,9 @@ home page and tabs, (sprint 123) the **SQL Worksheet** (with its messages in the
 and **Table Properties**, and (sprint 124) **Shared Components** (the overview, every component type's list and
 editor frame, access control, breadcrumbs, component settings) and an application's **Settings**, and (sprint 125)
 the administration screens: **Users** (accounts and identity providers), **Developers** and **Workspaces** (with
-utilization). Other builder pages are still in English (they move over screen by screen); so are the
+utilization), and (sprint 152) **Workspace utilities**, the workspace **Dashboard**, **Mail queue**, **Network
+access**, **Instance settings** (its frame: each setting's own label and help, and the lockout checks' details, stay
+English) and **LDAP directories**. Other builder pages are still in English (they move over screen by screen); so are the
 Page Designer's property names and their help (and, the same way, the field names and help of a shared component's
 form), the links to this guide, and any SQL the builder generates.
 
