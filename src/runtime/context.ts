@@ -74,6 +74,10 @@ export interface PageContext {
   wholePage?: boolean;
   /** a download process's file, sent instead of the page (processes.ts) */
   download?: Download;
+  /** (157) a close_dialog process ran: the items handed to the page below (closes the modal page after the submit) */
+  closeDialog?: Record<string, string>;
+  /** (157) a reset_pagination process ran: reports and grids start on their first page after the submit */
+  resetPagination?: boolean;
   /** running a background chain (process-jobs.ts): no request, no browser */
   background?: boolean;
   /** debug messages of this request, when the app's debug level is on (src/debug.ts) */

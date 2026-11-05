@@ -2416,4 +2416,10 @@ export const nl: BuilderMessages = {
   'cond.language_not_in': 'Als de taal niet {value} is',
   'cond.always': 'Altijd',
   'cond.never': 'Nooit',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': 'Workflowdiagram',
+  'gallery.item.image_upload': 'Afbeelding uploaden',
+  'gallery.item.autocomplete': 'Tekstveld met automatisch aanvullen',
+  'gallery.item.percent_graph': 'Percentagegrafiek',
+  'gallery.item.display_map': 'Kaart weergeven',
 };

@@ -13521,3 +13521,50 @@ describe('sprint 156 dynamic action Set Style and report dialogs', () => {
       /dynamic_action_report_dialog_check/);
   });
 });
+
+describe('sprint 157 process types', () => {
+  test('a declarative process\'s settings are checked when it runs, not only in the builder', async () => {
+    const { declarativeProblems, runDeclarative } = await import('../src/runtime/process-types.ts');
+    // session internals (CSRF token, flash) are not items: Clear Session State can't name them
+    assert.ok(declarativeProblems('clear_session_state', { items: ['__CSRF'] }).length);
+    assert.ok(declarativeProblems('human_task_create', { definition: "X'); drop table meta.task; --" }).length);
+    const ctx = { session: { state: { __CSRF: 'keep' } }, app: { app_items: [] }, locale: { t: (k: string) => k } } as any;
+    await assert.rejects(runDeclarative(ctx, { name: 'p', type: 'clear_session_state', config: { items: ['__CSRF'] } } as any, new Set()), /item names/);
+    assert.equal(ctx.session.state.__CSRF, 'keep');
+    // all: true clears page and application items, never the session's own entries
+    const ctx2 = { session: { state: { __CSRF: 'keep', P1_A: 'x', G_X: 'y', OTHER: 'z' } }, app: { app_items: ['G_X'] }, locale: { t: (k: string) => k } } as any;
+    await runDeclarative(ctx2, { name: 'p', type: 'clear_session_state', config: { all: true }, success_message: null } as any, new Set());
+    assert.deepEqual(ctx2.session.state, { __CSRF: 'keep', P1_A: null, G_X: null, OTHER: 'z' });
+  });
+});
+
+describe('sprint 158 item types', () => {
+  test('a Display Map takes only "lat,lng"; anything else shows nothing, never markup or a URL of its own', async () => {
+    const { presetItem } = await import('../src/metadata.ts');
+    // the preset can't be talked out of image/*: the item's own accept wins only as configured by the developer
+    assert.equal(presetItem({ name: 'P1_I', type: 'image_upload', config: {} } as any).config.accept, 'image/*');
+    const hr = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 1`)).id;
+    const made = await owner.one(`insert into meta.item (page_id, seq, name, type, default_value) values ($1, 999, 'P1_SEC158', 'display_map', $2) returning id`,
+      [hr, '52.1,4.3"><script>alert(1)</script>']);
+    try {
+      const b = await as('king');
+      const page = (await b.get('/a/hr/1')).body;
+      assert.doesNotMatch(page, /<script>alert\(1\)/);
+      assert.match(page, /id="P1_SEC158"> </);
+    } finally {
+      await owner.query('delete from meta.item where id = $1', [made.id]);
+    }
+  });
+});
+
+describe('sprint 160 Workflow Diagram region', () => {
+  test('the instance id is a number from the item, read through meta.workflows (the user\'s own or administered only)', async () => {
+    const { renderWorkflowDiagram } = await import('../src/runtime/workflow-diagram.ts');
+    let queried = false;
+    const ctx = { session: { state: { P9_WF: '1; drop table meta.workflow' } }, client: { query: async () => { queried = true; return { rows: [] }; } },
+      locale: { t: (k: string) => k }, app: { id: 0 } } as any;
+    const out = String(await renderWorkflowDiagram(ctx, { id: 1, config: { instance_item: 'P9_WF' } } as any));
+    assert.match(out, /class="empty"/);
+    assert.equal(queried, false, 'not a number: no query at all');
+  });
+});

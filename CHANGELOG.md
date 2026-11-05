@@ -5,7 +5,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.82.0] - 2026-11-05
+
 ### Added
+- **Workflow Diagram region** (CD-7; migration 152): one workflow instance (its id in an item) drawn in a page with the
+  steps it went through, where it is now and a failed step, each step's history as a tooltip; only instances the user
+  started or administers. Server-rendered SVG.
+- **Map layers Lines, Polygons and Extruded Polygons** (CD-6; no migration): a layer draws its rows' shapes with fill
+  and line colours, width and opacity, fixed or per row; extruded polygons are shaded by a height column (drawn flat).
+  The Page Designer's map settings offer the kinds and the style per layer.
+- **Item types Image Upload, Text Field with autocomplete, Percent Graph and Display Map** (CD-5; migration 151).
+  Image Upload is a file item for pictures (image/* only, cropping, a maximum size before upload); autocomplete a text
+  field with suggestions from the list of values; Percent Graph a 0–100 bar; Display Map a small map of "lat,lng" with a
+  pin from the map regions' tile server.
+- **Process types APEX applications rely on** (CD-4; migration 150): Close Dialog (with items handed to the page
+  below), Clear Session State, Reset Pagination, User Preferences, Server Side Geocoding, Print Report (a document
+  template or report query), Human Task – Create and – Manage (approve, reject, complete, claim, release, delegate,
+  cancel) and Form – Initialization. Settings in the attributes, checked when saved and when the process runs.
 - **More dynamic action events, conditions and actions** (CD-3, part 1; migration 149). Events double click, key down,
   key press, mouse enter / leave, select, resize, scroll, page unload, before refresh and facets change; client-side
   conditions greater / greater or equal / less / less or equal and not in list; actions Cancel Event (also stops a

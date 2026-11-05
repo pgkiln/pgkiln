@@ -164,7 +164,7 @@ export interface Region {
   title: string | null;
   /** (0.31, 073) optional, unique on the page */
   static_id?: string | null;
-  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search' | 'form_designer' | 'classic_report' | 'breadcrumb' | 'help_text';
+  type: 'login' | 'report' | 'form' | 'chart' | 'cards' | 'static' | 'grid' | 'calendar' | 'dynamic' | 'facets' | 'tasks' | 'workflows' | 'map' | 'tree' | 'template_component' | 'smart_filters' | 'display_selector' | 'list' | 'data_reporter' | 'ai_assistant' | 'plugin' | 'url' | 'search' | 'form_designer' | 'classic_report' | 'breadcrumb' | 'help_text' | 'workflow_diagram';
   source: string | null;
   table_name: string | null;
   pk_column: string | null;
@@ -192,7 +192,9 @@ export type ItemType =
   | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode' | 'plugin'
   | 'shuttle' | 'select_one' | 'select_many'
   // (086) display image, geocoded address
-  | 'image' | 'address';
+  | 'image' | 'address'
+  // (151) image upload and autocomplete (presets of file and combobox, see presetItem), percent graph, display map
+  | 'image_upload' | 'autocomplete' | 'percent_graph' | 'display_map';
 
 export interface Item {
   id: number;
@@ -376,7 +378,10 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push' | 'send_email';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push' | 'send_email'
+    /** (150) */
+    | 'close_dialog' | 'clear_session_state' | 'reset_pagination' | 'user_preferences' | 'server_geocoding' | 'print_report'
+    | 'human_task_create' | 'human_task_manage' | 'form_init';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;
@@ -460,7 +465,25 @@ export async function loadApp(alias: string) {
   );
 }
 
+/**
+ * (151, CD-5) APEX's item types that are presets of pgkiln's: an Image Upload is a file item for pictures (image/*,
+ * cropping, a maximum size before upload), a Text Field with autocomplete a one-value combobox. The runtime sees the
+ * preset (every file and list check applies); the builder and exports keep the type as chosen.
+ */
+export function presetItem(i: Item): Item {
+  if (i.type === 'image_upload')
+    return { ...i, type: 'file', config: { accept: 'image/*', crop: 'free', max_px: 1600, ...(i.config ?? {}), preset: 'image_upload' } };
+  if (i.type === 'autocomplete') return { ...i, type: 'combobox', config: { ...(i.config ?? {}), multiple: false, preset: 'autocomplete' } };
+  return i;
+}
+
 export async function loadPage(appId: number, pageNo: number) {
+  const page = await loadPageRows(appId, pageNo);
+  if (page) page.items = page.items.map(presetItem);
+  return page;
+}
+
+function loadPageRows(appId: number, pageNo: number) {
   return runtime.one<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
             p.protection, p.authz, p.warn_unsaved, p.page_template, p.help,

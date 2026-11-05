@@ -630,9 +630,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     }
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     await saveState(ctx.session);
-    if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx));
+    if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx, ctx.closeDialog));
     // (sprint 54) a grid's Save comes back to the grid's search, page, sort and view
-    const back = branchTo || button.target_page ? '' : gridReturn(ctx, button.name);
+    const back = branchTo || button.target_page || ctx.resetPagination ? '' : gridReturn(ctx, button.name);
     return reply.redirect(branchTo ?? (button.target_page ? `${ctx.base}/${button.target_page}` : back ? `${self}${self.includes('?') ? '&' : '?'}${back}` : self), 303);
   });
 

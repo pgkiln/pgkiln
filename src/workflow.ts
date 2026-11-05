@@ -917,12 +917,16 @@ export async function startWorkflowRunner() {
  * marks the steps an instance is at (several with parallel branches); `id`
  * keeps the arrow marker unique when a page shows several diagrams.
  */
-export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: string; standalone?: { title: string } } = {}): Raw {
+export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: string; standalone?: { title: string };
+  /** (160) the steps the instance went through, a step that failed, a tooltip per step (who and when) */
+  done?: string[]; failed?: string[]; notes?: Map<string, string> } = {}): Raw {
   if (!Array.isArray(steps) || !steps.length || steps.some((s) => !s || typeof s !== 'object' || typeof s.name !== 'string')) return html``;
   // (123) the export is an XML file: no control characters (the template escapes the rest)
   const txt = (v: unknown) => String(v ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, '');
   const marker = `wf-arrow${opts.id ? `-${opts.id}` : ''}`;
   const active = new Set(opts.active ?? []);
+  const done = new Set(opts.done ?? []);
+  const failed = new Set(opts.failed ?? []);
   // levels: the longest path from the first step (cycles are cut)
   const level = new Map<string, number>([[steps[0].name, 0]]);
   const edges: { from: string; to: string; label: string; branch?: boolean }[] = [];
@@ -977,7 +981,9 @@ export function workflowDiagram(steps: Step[], opts: { active?: string[]; id?: s
     })}
     ${steps.map((s) => {
       const p = pos.get(s.name)!;
-      return html`<g class="wf-node wf-${TYPES.includes(s.type) ? s.type : 'unknown'}${active.has(s.name) ? ' wf-active' : ''}"><rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="${s.type === 'parallel' || s.type === 'join' ? 20 : 8}"/>
+      const note = opts.notes?.get(s.name);
+      const mark = failed.has(s.name) ? ' wf-failed' : active.has(s.name) ? ' wf-active' : done.has(s.name) ? ' wf-done' : '';
+      return html`<g class="wf-node wf-${TYPES.includes(s.type) ? s.type : 'unknown'}${mark}">${note ? html`<title>${txt(note)}</title>` : ''}<rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="${s.type === 'parallel' || s.type === 'join' ? 20 : 8}"/>
         <text x="${p.x + W / 2}" y="${p.y + 18}" class="wf-name">${txt(s.name)}</text>
         <text x="${p.x + W / 2}" y="${p.y + 34}" class="wf-type">${txt(typeText(s))}</text></g>`;
     })}
@@ -996,6 +1002,8 @@ const SVG_STYLE = `
 .wf-send_mail rect { stroke: #17794a; stroke-width: 2; }
 .wf-draft rect { fill: #fafafa; stroke: #8a8f98; stroke-width: 1.5; stroke-dasharray: 6 4; }
 .wf-active rect { fill: #e6efff; stroke: #2f6fde; stroke-width: 3; }
+.wf-done rect { fill: #e7f5ed; stroke: #17794a; }
+.wf-failed rect { fill: #fde7e4; stroke: #b42318; stroke-width: 3; }
 text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .wf-name { fill: #1d2129; font-size: 12px; font-weight: 600; text-anchor: middle; }
 .wf-type { fill: #5d6470; font-size: 10px; text-anchor: middle; }

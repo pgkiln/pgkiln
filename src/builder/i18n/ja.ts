@@ -2416,4 +2416,10 @@ export const ja: BuilderMessages = {
   'cond.language_not_in': '言語が {value} でない場合',
   'cond.always': '常に',
   'cond.never': 'なし',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': 'ワークフロー図',
+  'gallery.item.image_upload': '画像アップロード',
+  'gallery.item.autocomplete': 'オートコンプリート付きテキスト・フィールド',
+  'gallery.item.percent_graph': 'パーセント・グラフ',
+  'gallery.item.display_map': 'マップの表示',
 };

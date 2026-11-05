@@ -1122,6 +1122,10 @@ const pgkilnUnsaved = (() => {
     const dlg = document.getElementById('t-dialog');
     if (dlg) dlg.close();
     if (!e.data.reload) return;
+    // (157) items a close_dialog process returned: items of the same name on this page take their values
+    if (e.data.items && typeof e.data.items === 'object')
+      for (const [name, value] of Object.entries(e.data.items))
+        if (/^[A-Z][A-Z0-9_]{0,99}$/.test(name) && typeof value === 'string' && wrapperOf(name)) setItemValue(name, value);
     const page = /^\d{1,9}$/.test(String(e.data.page || '')) ? String(e.data.page) : '';
     const handlers = das.filter((da) => da.event === 'dialog_closed' && (!da.trigger.length || da.trigger.includes(page)));
     if (!handlers.length) return location.reload();
@@ -1359,7 +1363,10 @@ const pgkilnUnsaved = (() => {
 
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
-    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '' }, location.origin);
+    // (157) a close_dialog process's items go along to the page below
+    let items = null;
+    try { items = body.dataset.dialogItems ? JSON.parse(body.dataset.dialogItems) : null; } catch { items = null; }
+    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '', items }, location.origin);
     if (body.dataset.dialogClose) tell(true);
     document.addEventListener('click', (e) => {
       if (!e.target.closest('[data-dialog-cancel]')) return;
@@ -3286,6 +3293,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// (159) Leaflet path options from a shape layer's checked style
+function shapeStyle(st, kind) {
+  if (!st) return {};
+  const o = {};
+  if (st.stroke_color) o.color = st.stroke_color;
+  if (typeof st.stroke_width === 'number') o.weight = st.stroke_width;
+  if (st.fill_color) { o.fillColor = st.fill_color; o.fill = kind !== 'lines'; }
+  if (typeof st.opacity === 'number') { if (kind === 'lines') o.opacity = st.opacity; else o.fillOpacity = st.opacity; }
+  return o;
+}
+
 // One layer's Leaflet parts: markers (clustered or not) or a heat map, with its lines and areas.
 function layerParts(l, popup, data, several) {
   const parts = [];
@@ -3294,8 +3312,14 @@ function layerParts(l, popup, data, several) {
   else for (const p of l.points) parts.push(placeMarker(p, l, popup, several));
   if (l.shapes.length)
     parts.push(window.L.geoJSON({ type: 'FeatureCollection', features: l.shapes }, {
-      style: () => (several ? { className: `map-c${l.color}` } : {}),
-      onEachFeature: (f, layer) => layer.bindPopup(() => popup(f.properties)),
+      // (159) a lines / polygons / extruded layer's colours, width and opacity (checked on the server: #rrggbb, numbers)
+      style: (f) => ({ ...(several ? { className: `map-c${l.color}` } : {}), ...shapeStyle(f.properties && f.properties.style, l.kind) }),
+      onEachFeature: (f, layer) => {
+        layer.bindPopup(() => popup(f.properties));
+        // a shape's title as its tooltip (and its height on an extruded layer)
+        const tip = [f.properties && f.properties.title, f.properties && typeof f.properties.height === 'number' ? String(f.properties.height) : ''].filter(Boolean).join(': ');
+        if (tip && layer.bindTooltip) layer.bindTooltip(tip, { sticky: true });
+      },
     }));
   return parts;
 }

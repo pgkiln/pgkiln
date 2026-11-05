@@ -99,7 +99,7 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (!(await isAuthorized(ctx, i.authz))) continue;
     if (i.condition_type && !(await conditionHolds(ctx, i as Condition, `condition of item ${i.name}`))) continue;
     vis.items.add(i.name);
-    if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode' || i.type === 'image') continue;
+    if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode' || i.type === 'image' || i.type === 'percent_graph' || i.type === 'display_map') continue;
     // fail closed: a broken read-only condition makes the item read-only
     if (i.readonly_condition && (await sqlTrue(ctx, i.readonly_condition, `read-only condition of ${i.name}`, true))) continue;
     vis.editable.add(i.name);

@@ -428,12 +428,13 @@ export async function renderPage(ctx: PageContext) {
 }
 
 /** Response to a successful submit inside a dialog: tells the opener to close it. */
-export function dialogClosePage(ctx: PageContext) {
+/** (157) `items`: the values a close_dialog process hands to the page below (items of the same name there are set). */
+export function dialogClosePage(ctx: PageContext, items?: Record<string, string>) {
   return documentShell(
     ctx.app.name,
     html`<main class="t-dialog-main"><p>${ctx.locale.t('dialog.done')} <a href="${ctx.base}/${ctx.app.home_page}">${ctx.locale.t('dialog.continue')}</a></p></main>`,
     't-dialog-page',
-    { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no) },
+    { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no), ...(items && Object.keys(items).length ? { 'data-dialog-items': JSON.stringify(items) } : {}) },
     '',
     { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style },
   );

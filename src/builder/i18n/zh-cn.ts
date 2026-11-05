@@ -2416,4 +2416,10 @@ export const zhCN: BuilderMessages = {
   'cond.language_not_in': '当语言不是 {value} 时',
   'cond.always': '始终',
   'cond.never': '从不',
+  // ------------------------------------------------------------ gallery: sprint 158 and 160 types
+  'gallery.region.workflow_diagram': '工作流图',
+  'gallery.item.image_upload': '图像上传',
+  'gallery.item.autocomplete': '带自动完成的文本字段',
+  'gallery.item.percent_graph': '百分比图',
+  'gallery.item.display_map': '显示地图',
 };

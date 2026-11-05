@@ -1,3 +1,4 @@
+import { tileAttribution, tileUrl } from '../maptiles.ts';
 import { applyBinds } from '../binds.ts';
 import { icon } from '../icons.ts';
 import { pluginAttributes, pluginData, pluginOf } from './plugins.ts';
@@ -235,6 +236,30 @@ function maskedValue(ctx: PageContext, item: Item, value: string) {
 const LOCATION = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
 
 /** Render one item (field wrapper included). Hidden items are never rendered. */
+/**
+ * (151) A Display Map item: one map tile around "lat,lng" (the value, or config.coordinates_item's) with a pin, from the
+ * map regions' tile server; its position is a class of the page's stylesheet (the CSP allows no inline styles).
+ */
+function displayMap(ctx: PageContext, item: Item, value: string): Raw {
+  const source = typeof item.config?.coordinates_item === 'string' ? (ctx.session.state[item.config.coordinates_item.toUpperCase()] ?? '') : value;
+  const at = LOCATION.exec(source);
+  const lat = at ? Number(at[1]) : NaN;
+  const lng = at ? Number(at[2]) : NaN;
+  if (!at || Math.abs(lat) > 85 || Math.abs(lng) > 180) return html`<div class="display-value" id="${item.name}"> </div>`;
+  const z = Number.isInteger(item.config?.zoom) && item.config.zoom >= 1 && item.config.zoom <= 19 ? item.config.zoom : 15;
+  const n = 2 ** z;
+  const fx = ((lng + 180) / 360) * n;
+  const r = (lat * Math.PI) / 180;
+  const fy = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n;
+  const [x, y] = [Math.floor(fx), Math.floor(fy)];
+  const src = tileUrl().replace('{s}', 'a').replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+  const pin = ctx.css.cls(`left:${((fx - x) * 100).toFixed(2)}%;top:${((fy - y) * 100).toFixed(2)}%`);
+  return html`<figure class="display-map" id="${item.name}">
+    <div class="display-map-tile"><img src="${src}" alt="${ctx.locale.t('item.map_of', { position: source.trim() })}" width="256" height="256" loading="lazy"><span class="display-map-pin ${pin}" aria-hidden="true"></span></div>
+    <figcaption><small>${tileAttribution()}</small> · <a href="https://www.openstreetmap.org/?mlat=${String(lat)}&amp;mlon=${String(lng)}#map=${String(z)}/${String(lat)}/${String(lng)}" target="_blank" rel="noopener noreferrer">${ctx.locale.t('item.show_map')}</a></figcaption>
+  </figure>`;
+}
+
 export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = false): Promise<Raw | ''> {
   if (item.type === 'hidden' || !ctx.vis!.items.has(item.name)) return '';
   const value = ctx.session.state[item.name] ?? item.default_value ?? '';
@@ -270,6 +295,14 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     control = qrControl(ctx, item, value);
   } else if (item.type === 'image') {
     control = imageControl(ctx, item, value);
+  } else if (item.type === 'percent_graph') {
+    // (151) a 0–100 value as a bar; the number is its accessible text
+    const n = /^\s*-?\d+(\.\d+)?\s*$/.test(value) ? Math.max(0, Math.min(100, Number(value))) : null;
+    control = n === null
+      ? html`<div class="display-value" id="${id}"> </div>`
+      : html`<div class="percent-graph" id="${id}"><progress max="100" value="${String(n)}" aria-label="${label}">${String(n)}%</progress><span class="percent-graph-value">${String(Math.round(n))}%</span></div>`;
+  } else if (item.type === 'display_map') {
+    control = displayMap(ctx, item, value);
   } else if (!editable && (item.type === 'richtext' || item.type === 'markdown')) {
     // rebuilt from the allow-list every time: the value may come from the table, not from this form
     control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value)) || ' ')}</div>`;

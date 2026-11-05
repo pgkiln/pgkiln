@@ -418,6 +418,23 @@ queued in the page's transaction and sent after the submit commits; a user witho
 nothing (no error). The application needs push notifications on (Settings → Progressive Web App).
 From SQL the same is `meta.send_push(...)` ([chapter 9](09-reference.md#push-notifications-from-sql)).
 
+### Declarative process types
+
+Sprint 157 (APEX: page process types). Each type calls what pgkiln already has; its settings go in
+the process's attributes (`config`), checked when it is saved and again when it runs.
+
+| `type` | APEX | Settings | What it does |
+|---|---|---|---|
+| `close_dialog` | Close Dialog | `{"items": ["P5_ID"]}` | Closes the modal page after the submit (a modal page closes after a submit anyway; this one also hands the items' values to the page below, where items of the same name take them before its [Dialog Closed](07-dynamic-actions.md#dialog-closed) actions run) |
+| `clear_session_state` | Clear Session State | `{"items": ["P3_NAME"], "pages": [3, 4], "all": false}` | Empties the items, every `P<n>_` item of the pages, or all page and application items |
+| `reset_pagination` | Reset Pagination | – | Reports and grids start on their first page after the submit |
+| `user_preferences` | User Preferences | `{"action": "set", "preference": "DEFAULT_DEPT", "item": "P1_DEPT"}`, or `"reset"` | Stores (or removes) a [user preference](#user-preferences); nothing for the public user |
+| `server_geocoding` | Server Side Geocoding | `{"address_item": "P3_ADDRESS", "coordinates_item": "P3_LOCATION", "country": "nl"}` | The installation's geocoder (`GEOCODER_URL`); the first place's `lat,lng` goes into the coordinates item |
+| `print_report` | Print Report | `{"document": "EMPLOYEE_SHEET"}` | A [document template](16-files.md#document-templates) or report query, sent as the answer to the submit |
+| `human_task_create` | Human Task – Create | `{"definition": "LEAVE_APPROVAL", "detail_pk": "&P7_ID.", "parameters": {"DAYS": "&P7_DAYS."}, "id_item": "P7_TASK_ID"}` | Creates a task ([approvals](#approvals-and-the-task-list)) and puts its id in the item |
+| `human_task_manage` | Human Task – Manage | `{"action": "approve", "task": "&P8_TASK_ID.", "comment": "&P8_COMMENT."}` | `approve`, `reject`, `complete` (with `"outcome"`), `claim`, `release`, `delegate` (with `"to"`) or `cancel`; the task functions decide who may |
+| `form_init` | Form – Initialization | – | Nothing: a form region fetches its row by itself. Kept so imported pages show it |
+
 ### Generate text with AI
 
 An `ai_generate` process (APEX: *Generate Text with AI*) sends a prompt to a large language model
@@ -1152,6 +1169,22 @@ sees only those without one, so existing applications are unchanged. An executio
 background runs with the tenant of the session that queued it. Filter your own tables the same way
 (`where tenant_id = meta.tenant_id()`, or a row level security policy). Use row level security in
 the tenant's tables as well: the tenant is a value the application sets, not a database boundary.
+
+### Workflow diagram region
+
+Sprint 160 (APEX 24.2+: Workflow Diagram region). A region of type `workflow_diagram` draws one
+workflow instance in a running application: its version's steps, the ones it went through (green),
+where it is now (blue, several with parallel branches) and a failed step (red, with the error above
+the diagram). Each reached step's tooltip lists when it was reached and what happened. The instance
+id comes from an item:
+
+```json
+{"instance_item": "P9_WORKFLOW_ID"}
+```
+
+It is read through `meta.workflows` as the application's role, so a user sees only workflows they
+started or administer (the Workflow Console's rule); others see the empty text. The diagram is SVG
+drawn on the server: it needs no JavaScript.
 
 ### Send e-mail steps
 
