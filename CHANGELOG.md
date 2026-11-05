@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.81.0] - 2026-11-05
+
 ### Added
 - **Vector providers with a model in the database** (AP-1 leftover, APEX's ONNX models; migration 146): type
   `database_model` with engine `pgml` (PostgresML's `pgml.embed(model, text)`, Hugging Face models incl. ONNX) runs
