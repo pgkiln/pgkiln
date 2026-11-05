@@ -13,8 +13,9 @@
 -- page submit); without it they submit the page and the processes run.
 --
 -- The example creates no AI service: an administrator adds one named
--- HR_ASSISTANT (Claude or OpenAI, with an API key, or the server's
--- ANTHROPIC_API_KEY / OPENAI_API_KEY) under App Builder → Workspace
+-- HR_ASSISTANT (Claude, OpenAI, Gemini or an OpenAI-compatible service,
+-- with an API key, or the server's ANTHROPIC_API_KEY / OPENAI_API_KEY /
+-- GEMINI_API_KEY / OPENAI_COMPATIBLE_API_KEY) under App Builder → Workspace
 -- utilities → AI services and allows the HR application to use it. Until
 -- then the page says so (meta.ai_available) and hides the AI buttons.
 -- The message is sent to the provider of that service.
@@ -27,10 +28,10 @@ insert into meta.region (page_id, seq, title, type, columns, template, source, c
 select p.id, r.seq, r.title, 'static', 12, r.template, r.source, r.cond
   from meta.page p join meta.app a on a.id = p.app_id, (values
   (10, 'No AI service yet', 'standard',
-   '<p class="alert alert-info">No AI service is configured for this application yet. An administrator adds an AI service named <b>HR_ASSISTANT</b> (Claude or OpenAI, with an API key) under <i>App Builder → Workspace utilities → AI services</i> and allows the HR application to use it.</p>',
+   '<p class="alert alert-info">No AI service is configured for this application yet. An administrator adds an AI service named <b>HR_ASSISTANT</b> (Claude, OpenAI, Gemini or an OpenAI-compatible service, with an API key) under <i>App Builder → Workspace utilities → AI services</i> and allows the HR application to use it.</p>',
    'not meta.ai_available(''HR_ASSISTANT'')'),
   (20, 'Leave message', 'standard',
-   '<p>Paste a message in which an employee asks for leave. <b>Summarise</b> writes a short summary for the manager; <b>Fill in the request</b> reads the dates and the reason from it. The message is sent to the AI service HR_ASSISTANT (its provider: Claude or OpenAI); check the answer before you use it.</p>',
+   '<p>Paste a message in which an employee asks for leave. <b>Summarise</b> writes a short summary for the manager; <b>Fill in the request</b> reads the dates and the reason from it. The message is sent to the AI service HR_ASSISTANT (its provider: Claude, OpenAI, Gemini or an OpenAI-compatible service); check the answer before you use it.</p>',
    null),
   (30, 'Leave request', 'standard',
    '<p>Check the dates and the reason, then file the request in your name.</p>',

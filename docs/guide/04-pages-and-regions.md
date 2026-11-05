@@ -184,7 +184,7 @@ database only checks the shape (at most 12 names of lower case letters, digits a
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`list`](#list-lists) | A list (Shared Components → Lists) as nested links, a badge list, cards or tabs |
 | [`data_reporter`](#data_reporter-data-reporter) | Business users build, save and share their own reports from tables and views the developer offers |
-| [`ai_assistant`](#ai_assistant-ai-assistant) | A chat with an AI service (Claude or OpenAI), with context from queries and tools the model may call (an AI agent) |
+| [`ai_assistant`](#ai_assistant-ai-assistant) | A chat with an AI service (Claude, OpenAI, Gemini or an OpenAI-compatible service), with context from queries and tools the model may call (an AI agent) |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |

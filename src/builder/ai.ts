@@ -12,10 +12,10 @@ import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // Workspace utilities → AI services (administrators): the AI services of
-// this installation (Claude or OpenAI, model, effort, output and time limits,
-// base URL, write-only API key), which applications may use each one with
-// their daily limits, a test, and the usage log. Applications → Activity →
-// AI usage (developers): what an application may use and what it used.
+// this installation (Claude, OpenAI, Gemini or an OpenAI-compatible endpoint,
+// model, effort, output and time limits, base URL, write-only API key), which
+// applications may use each one with their daily limits, a test, and the
+// usage log. Applications → Activity → AI usage (developers): what an application may use and what it used.
 // API keys are encrypted (src/secrets.ts) and never sent back to the browser.
 
 const PROVIDERS: [string, string][] = [['anthropic', 'Claude (Anthropic)'], ['openai', 'OpenAI'], ['gemini', 'Gemini (Google, OpenAI-compatible endpoint)'], ['openai_compatible', 'OpenAI-compatible (Ollama, vLLM, Azure OpenAI, a gateway)']];

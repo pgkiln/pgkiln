@@ -41,7 +41,7 @@ export async function assistantSettingsForm(pageId: number, appId: number, r: { 
   const agents = await agentOptions(appId);
   const agent = typeof cfg.agent === 'string' ? cfg.agent.toUpperCase() : '';
   return html`<h3 class="u-mt15">AI assistant settings</h3>
-    <p class="muted u-mt0">A chat with an AI service. What users type, the context rows and the tools' results go to the service's provider (Claude or OpenAI). Context queries and SQL tools run as the application's database role; SQL tools are rolled back unless they may change data.</p>
+    <p class="muted u-mt0">A chat with an AI service. What users type, the context rows and the tools' results go to the service's provider (Claude, OpenAI, Gemini, or the OpenAI-compatible endpoint in its base URL). Context queries and SQL tools run as the application's database role; SQL tools are rolled back unless they may change data.</p>
     ${allowed.length ? '' : NO_SERVICE}
     ${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/assistant" class="component-form">${csrf(s)}
