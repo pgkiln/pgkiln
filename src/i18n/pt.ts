@@ -679,6 +679,7 @@ export const pt: Record<MessageKey, string> = {
   'process.no_geocoder': 'Esta instalação não tem um geocodificador configurado.',
   'process.address_not_found': 'Nenhum lugar encontrado para "{address}".',
   'process.task_created': 'Tarefa {id} criada.',
+  'item.map_of': 'Mapa de {position}',
   'process.no_task': 'Nenhuma tarefa para tratar.',
   'workflow.terminated': "Fluxo de trabalho {id} terminado.",
   'workflow.retried': "O fluxo de trabalho {id} está novamente em execução.",

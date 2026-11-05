@@ -679,6 +679,7 @@ export const zh: Record<MessageKey, string> = {
   'process.no_geocoder': '此安装未设置地理编码器。',
   'process.address_not_found': '找不到"{address}"的位置。',
   'process.task_created': '已创建任务 {id}。',
+  'item.map_of': '{position} 的地图',
   'process.no_task': '没有可处理的任务。',
   'workflow.terminated': "工作流 {id} 已终止。",
   'workflow.retried': "工作流 {id} 正在重新运行。",

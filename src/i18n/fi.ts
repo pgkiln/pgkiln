@@ -679,6 +679,7 @@ export const fi: Record<MessageKey, string> = {
   'process.no_geocoder': 'Tälle asennukselle ei ole määritetty geokoodaajaa.',
   'process.address_not_found': 'Paikkaa ei löytynyt haulle "{address}".',
   'process.task_created': 'Tehtävä {id} luotiin.',
+  'item.map_of': 'Kartta: {position}',
   'process.no_task': 'Ei käsiteltävää tehtävää.',
   'workflow.terminated': "Työnkulku {id} lopetettu.",
   'workflow.retried': "Työnkulku {id} on taas käynnissä.",

@@ -192,7 +192,9 @@ export type ItemType =
   | 'richtext' | 'markdown' | 'rating' | 'combobox' | 'daterange' | 'qrcode' | 'plugin'
   | 'shuttle' | 'select_one' | 'select_many'
   // (086) display image, geocoded address
-  | 'image' | 'address';
+  | 'image' | 'address'
+  // (151) image upload and autocomplete (presets of file and combobox, see presetItem), percent graph, display map
+  | 'image_upload' | 'autocomplete' | 'percent_graph' | 'display_map';
 
 export interface Item {
   id: number;
@@ -463,7 +465,25 @@ export async function loadApp(alias: string) {
   );
 }
 
+/**
+ * (151, CD-5) APEX's item types that are presets of pgkiln's: an Image Upload is a file item for pictures (image/*,
+ * cropping, a maximum size before upload), a Text Field with autocomplete a one-value combobox. The runtime sees the
+ * preset (every file and list check applies); the builder and exports keep the type as chosen.
+ */
+export function presetItem(i: Item): Item {
+  if (i.type === 'image_upload')
+    return { ...i, type: 'file', config: { accept: 'image/*', crop: 'free', max_px: 1600, ...(i.config ?? {}), preset: 'image_upload' } };
+  if (i.type === 'autocomplete') return { ...i, type: 'combobox', config: { ...(i.config ?? {}), multiple: false, preset: 'autocomplete' } };
+  return i;
+}
+
 export async function loadPage(appId: number, pageNo: number) {
+  const page = await loadPageRows(appId, pageNo);
+  if (page) page.items = page.items.map(presetItem);
+  return page;
+}
+
+function loadPageRows(appId: number, pageNo: number) {
   return runtime.one<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
             p.protection, p.authz, p.warn_unsaved, p.page_template, p.help,

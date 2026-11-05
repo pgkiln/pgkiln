@@ -679,6 +679,7 @@ export const ru: Record<MessageKey, string> = {
   'process.no_geocoder': 'Для этой установки не настроен геокодер.',
   'process.address_not_found': 'Место для «{address}» не найдено.',
   'process.task_created': 'Задача {id} создана.',
+  'item.map_of': 'Карта: {position}',
   'process.no_task': 'Нет задачи для обработки.',
   'workflow.terminated': "Рабочий процесс {id} прерван.",
   'workflow.retried': "Рабочий процесс {id} снова выполняется.",

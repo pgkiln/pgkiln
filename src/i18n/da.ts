@@ -679,6 +679,7 @@ export const da: Record<MessageKey, string> = {
   'process.no_geocoder': 'Denne installation har ingen geokoder.',
   'process.address_not_found': 'Intet sted fundet for "{address}".',
   'process.task_created': 'Opgave {id} er oprettet.',
+  'item.map_of': 'Kort over {position}',
   'process.no_task': 'Ingen opgave at behandle.',
   'workflow.terminated': "Arbejdsgang {id} er afsluttet.",
   'workflow.retried': "Arbejdsgang {id} kører igen.",

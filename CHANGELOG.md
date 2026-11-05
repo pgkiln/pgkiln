@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Item types Image Upload, Text Field with autocomplete, Percent Graph and Display Map** (CD-5; migration 151).
+  Image Upload is a file item for pictures (image/* only, cropping, a maximum size before upload); autocomplete a text
+  field with suggestions from the list of values; Percent Graph a 0–100 bar; Display Map a small map of "lat,lng" with a
+  pin from the map regions' tile server.
 - **Process types APEX applications rely on** (CD-4; migration 150): Close Dialog (with items handed to the page
   below), Clear Session State, Reset Pagination, User Preferences, Server Side Geocoding, Print Report (a document
   template or report query), Human Task – Create and – Manage (approve, reject, complete, claim, release, delegate,

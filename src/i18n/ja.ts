@@ -679,6 +679,7 @@ export const ja: Record<MessageKey, string> = {
   'process.no_geocoder': 'このインストールにはジオコーダーが設定されていません。',
   'process.address_not_found': '「{address}」の場所が見つかりません。',
   'process.task_created': 'タスク {id} を作成しました。',
+  'item.map_of': '{position} の地図',
   'process.no_task': '処理するタスクがありません。',
   'workflow.terminated': "ワークフロー {id} を終了しました。",
   'workflow.retried': "ワークフロー {id} を再実行しています。",

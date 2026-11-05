@@ -679,6 +679,7 @@ export const pl: Record<MessageKey, string> = {
   'process.no_geocoder': 'Ta instalacja nie ma skonfigurowanego geokodera.',
   'process.address_not_found': 'Nie znaleziono miejsca dla „{address}”.',
   'process.task_created': 'Utworzono zadanie {id}.',
+  'item.map_of': 'Mapa: {position}',
   'process.no_task': 'Brak zadania do obsłużenia.',
   'workflow.terminated': "Przepływ pracy {id} przerwany.",
   'workflow.retried': "Przepływ pracy {id} działa ponownie.",

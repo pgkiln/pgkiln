@@ -679,6 +679,7 @@ export const he: Record<MessageKey, string> = {
   'process.no_geocoder': 'לא הוגדר מקודד גאוגרפי בהתקנה זו.',
   'process.address_not_found': 'לא נמצא מקום עבור "{address}".',
   'process.task_created': 'המשימה {id} נוצרה.',
+  'item.map_of': 'מפה של {position}',
   'process.no_task': 'אין משימה לטיפול.',
   'workflow.terminated': "תהליך העבודה {id} הופסק.",
   'workflow.retried': "תהליך העבודה {id} פועל שוב.",

@@ -679,6 +679,7 @@ export const uk: Record<MessageKey, string> = {
   'process.no_geocoder': 'Для цього встановлення не налаштовано геокодер.',
   'process.address_not_found': 'Місце для «{address}» не знайдено.',
   'process.task_created': 'Завдання {id} створено.',
+  'item.map_of': 'Карта: {position}',
   'process.no_task': 'Немає завдання для обробки.',
   'workflow.terminated': "Робочий процес {id} перервано.",
   'workflow.retried': "Робочий процес {id} знову виконується.",

@@ -689,6 +689,7 @@ export const fr: Record<MessageKey, string> = {
   'process.no_geocoder': 'Aucun géocodeur n\'est configuré pour cette installation.',
   'process.address_not_found': 'Aucun lieu trouvé pour « {address} ».',
   'process.task_created': 'Tâche {id} créée.',
+  'item.map_of': 'Carte de {position}',
   'process.no_task': 'Aucune tâche à traiter.',
   'workflow.terminated': 'Workflow {id} arrêté.',
   'workflow.retried': 'Workflow {id} relancé.',

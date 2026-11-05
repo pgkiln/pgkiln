@@ -679,6 +679,7 @@ export const nb: Record<MessageKey, string> = {
   'process.no_geocoder': 'Denne installasjonen har ingen geokoder.',
   'process.address_not_found': 'Fant ikke noe sted for «{address}».',
   'process.task_created': 'Oppgave {id} er opprettet.',
+  'item.map_of': 'Kart over {position}',
   'process.no_task': 'Ingen oppgave å behandle.',
   'workflow.terminated': "Arbeidsflyt {id} er avsluttet.",
   'workflow.retried': "Arbeidsflyt {id} kjører igjen.",

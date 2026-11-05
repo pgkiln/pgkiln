@@ -164,7 +164,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     validate: (v) => formatSettingsProblem(v.config),
     fields: [
       { name: 'name', common: true, label: 'Name', kind: 'upper', help: 'Referenced in SQL as :NAME, e.g. P3_NAME', group: 'Identification' },
-      { name: 'type', common: true, label: 'Type', kind: 'select', options: ['text', 'textarea', 'number', 'date', 'datetime', 'select', 'popup_lov', 'radio', 'checkbox', 'switch', 'checkbox_group', 'multiselect', 'email', 'tel', 'url', 'color', 'file', 'location', 'richtext', 'markdown', 'rating', 'combobox', 'daterange', 'qrcode', 'image', 'address', 'hidden', 'display', 'password', 'plugin', 'shuttle', 'select_one', 'select_many'], group: 'Identification' },
+      { name: 'type', common: true, label: 'Type', kind: 'select', options: ['text', 'textarea', 'number', 'date', 'datetime', 'select', 'popup_lov', 'radio', 'checkbox', 'switch', 'checkbox_group', 'multiselect', 'email', 'tel', 'url', 'color', 'file', 'location', 'richtext', 'markdown', 'rating', 'combobox', 'daterange', 'qrcode', 'image', 'address', 'hidden', 'display', 'password', 'plugin', 'shuttle', 'select_one', 'select_many', 'image_upload', 'autocomplete', 'percent_graph', 'display_map'], group: 'Identification',
+        help: '(sprint 158) image_upload: a file item for pictures (image/*, cropping {"crop": "free" | "1:1" | "4:3" …}, {"max_px": 1600} before upload; file column settings as a file item) · autocomplete: a text field with suggestions from the list of values, any text allowed · percent_graph: a 0–100 value as a bar · display_map: a small map of "lat,lng" (the value, or {"coordinates_item": "P3_LOCATION"}; {"zoom": 15}).' },
       { name: 'label', common: true, label: 'Label', kind: 'text', group: 'Identification' },
       { name: 'region_id', common: true, label: 'Region', kind: 'region', group: 'Layout' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },

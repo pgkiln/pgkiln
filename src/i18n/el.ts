@@ -679,6 +679,7 @@ export const el: Record<MessageKey, string> = {
   'process.no_geocoder': 'Δεν έχει ρυθμιστεί γεωκωδικοποιητής για αυτή την εγκατάσταση.',
   'process.address_not_found': 'Δεν βρέθηκε τοποθεσία για «{address}».',
   'process.task_created': 'Η εργασία {id} δημιουργήθηκε.',
+  'item.map_of': 'Χάρτης του {position}',
   'process.no_task': 'Δεν υπάρχει εργασία για ενέργεια.',
   'workflow.terminated': "Η ροή εργασίας {id} τερματίστηκε.",
   'workflow.retried': "Η ροή εργασίας {id} εκτελείται ξανά.",

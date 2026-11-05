@@ -13537,3 +13537,22 @@ describe('sprint 157 process types', () => {
     assert.deepEqual(ctx2.session.state, { __CSRF: 'keep', P1_A: null, G_X: null, OTHER: 'z' });
   });
 });
+
+describe('sprint 158 item types', () => {
+  test('a Display Map takes only "lat,lng"; anything else shows nothing, never markup or a URL of its own', async () => {
+    const { presetItem } = await import('../src/metadata.ts');
+    // the preset can't be talked out of image/*: the item's own accept wins only as configured by the developer
+    assert.equal(presetItem({ name: 'P1_I', type: 'image_upload', config: {} } as any).config.accept, 'image/*');
+    const hr = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 1`)).id;
+    const made = await owner.one(`insert into meta.item (page_id, seq, name, type, default_value) values ($1, 999, 'P1_SEC158', 'display_map', $2) returning id`,
+      [hr, '52.1,4.3"><script>alert(1)</script>']);
+    try {
+      const b = await as('king');
+      const page = (await b.get('/a/hr/1')).body;
+      assert.doesNotMatch(page, /<script>alert\(1\)/);
+      assert.match(page, /id="P1_SEC158"> </);
+    } finally {
+      await owner.query('delete from meta.item where id = $1', [made.id]);
+    }
+  });
+});

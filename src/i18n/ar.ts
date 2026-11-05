@@ -679,6 +679,7 @@ export const ar: Record<MessageKey, string> = {
   'process.no_geocoder': 'لم يُعدّ أي محدِّد مواقع جغرافية لهذا التثبيت.',
   'process.address_not_found': 'لم يُعثر على مكان لـ "{address}".',
   'process.task_created': 'تم إنشاء المهمة {id}.',
+  'item.map_of': 'خريطة {position}',
   'process.no_task': 'لا توجد مهمة للتعامل معها.',
   'workflow.terminated': "أُنهي مسار العمل {id}.",
   'workflow.retried': "يعمل مسار العمل {id} من جديد.",

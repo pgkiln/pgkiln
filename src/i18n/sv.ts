@@ -679,6 +679,7 @@ export const sv: Record<MessageKey, string> = {
   'process.no_geocoder': 'Den här installationen har ingen geokodare.',
   'process.address_not_found': 'Ingen plats hittades för "{address}".',
   'process.task_created': 'Uppgift {id} har skapats.',
+  'item.map_of': 'Karta över {position}',
   'process.no_task': 'Ingen uppgift att hantera.',
   'workflow.terminated': "Arbetsflöde {id} har avslutats.",
   'workflow.retried': "Arbetsflöde {id} körs igen.",

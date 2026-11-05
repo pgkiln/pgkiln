@@ -679,6 +679,7 @@ export const ko: Record<MessageKey, string> = {
   'process.no_geocoder': '이 설치에는 지오코더가 설정되어 있지 않습니다.',
   'process.address_not_found': '"{address}"에 대한 장소를 찾을 수 없습니다.',
   'process.task_created': '작업 {id}이(가) 생성되었습니다.',
+  'item.map_of': '{position} 지도',
   'process.no_task': '처리할 작업이 없습니다.',
   'workflow.terminated': "워크플로 {id}을(를) 종료했습니다.",
   'workflow.retried': "워크플로 {id}이(가) 다시 실행 중입니다.",

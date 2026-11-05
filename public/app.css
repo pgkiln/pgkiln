@@ -2251,3 +2251,13 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 .mfa-factors { list-style: none; padding: 0; margin: 0 0 .75rem; }
 .mfa-factors li { padding: .4rem 0; border-bottom: 1px solid var(--border); }
 @media (max-width: 480px) { .mfa-codes { columns: 1; } }
+
+/* (sprint 158) Percent Graph and Display Map items */
+.percent-graph { display: flex; align-items: center; gap: .5rem; }
+.percent-graph progress { flex: 1; max-width: 16rem; height: .75rem; accent-color: var(--t-accent, #2563eb); }
+.percent-graph-value { font-variant-numeric: tabular-nums; min-width: 3.5ch; text-align: right; }
+.display-map { margin: 0; display: inline-block; max-width: 100%; }
+.display-map-tile { position: relative; width: 256px; max-width: 100%; aspect-ratio: 1; overflow: hidden; border-radius: 6px; border: 1px solid var(--t-border, #d0d5dd); }
+.display-map-tile img { display: block; width: 100%; height: 100%; }
+.display-map-pin { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #d92d20; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+.display-map figcaption { font-size: .8rem; margin-top: .25rem; }

@@ -38,6 +38,10 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `qrcode` | display only: the value as a QR code (SVG drawn on the server) | whatever was set |
 | `image` | display only: a picture from a URL in the value, or a BLOB from a query ([Display image](#display-image-and-geocoded-address)) | a URL, or nothing |
 | `address` | a text field with *Check address*: the installation's geocoder offers matching addresses ([Geocoded address](#display-image-and-geocoded-address)) | the address as text |
+| `image_upload` | (158; APEX: Image Upload) a [file item](16-files.md) for pictures: `image/*` only, a preview, cropping before upload (`{"crop": "free"}` by default; `"1:1"`, `"4:3"`, `"3:4"`, `"16:9"`, `"3:2"`, `"2:3"`) and a maximum size applied in the browser (`{"max_px": 1600}`); column settings as a file item's | as a `file` item |
+| `autocomplete` | (158; APEX: Text Field with autocomplete) a text field with suggestions from the list of values; any text may be typed (a one-value `combobox`) | text |
+| `percent_graph` | (158; APEX: Percent Graph) display only: a 0–100 value as a bar (a `<progress>` element, read out as the number); values above 100 show a full bar, other text nothing | whatever was set |
+| `display_map` | (158; APEX: Display Map) display only: a small map of `lat,lng` with a pin, from the [map regions' tile server](04-pages-and-regions.md) (`MAP_TILE_URL`), and a *Show map* link. The position is the value, or another item's: `{"coordinates_item": "P3_LOCATION", "zoom": 15}` | `lat,lng`, or nothing |
 | `plugin` | an [item plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): a text field its JavaScript enhances; `config`: `{"plugin": "char_counter", "attributes": {"MAX": "140"}}` | text |
 
 Use multi-value items in SQL with `string_to_array`:

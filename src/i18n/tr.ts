@@ -679,6 +679,7 @@ export const tr: Record<MessageKey, string> = {
   'process.no_geocoder': 'Bu kurulum için bir coğrafi kodlayıcı ayarlanmamış.',
   'process.address_not_found': '"{address}" için yer bulunamadı.',
   'process.task_created': '{id} görevi oluşturuldu.',
+  'item.map_of': '{position} haritası',
   'process.no_task': 'İşlenecek görev yok.',
   'workflow.terminated': "{id} iş akışı sonlandırıldı.",
   'workflow.retried': "{id} iş akışı yeniden çalışıyor.",

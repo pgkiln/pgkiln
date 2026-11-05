@@ -679,6 +679,7 @@ export const cs: Record<MessageKey, string> = {
   'process.no_geocoder': 'Tato instalace nemá nastavený geokodér.',
   'process.address_not_found': 'Pro „{address}“ nebylo nalezeno žádné místo.',
   'process.task_created': 'Úkol {id} byl vytvořen.',
+  'item.map_of': 'Mapa: {position}',
   'process.no_task': 'Žádný úkol ke zpracování.',
   'workflow.terminated': "Pracovní postup {id} byl ukončen.",
   'workflow.retried': "Pracovní postup {id} běží znovu.",
