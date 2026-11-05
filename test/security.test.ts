@@ -13361,3 +13361,12 @@ describe('sprint 148 streamed AI answers: the same checks as the form, text that
     assert.doesNotMatch(page, /<script>alert\(2\)/);
   });
 });
+
+describe('sprint 149 workflow migration with branches: the builder\'s alone', () => {
+  test('the runtime role can run neither meta.migrate_workflows nor its position check', async () => {
+    for (const sql of [
+      `select * from meta.migrate_workflows(1, '2', array[1]::bigint[], '{}', true, 'x')`,
+      `select meta.workflow_position_problem('active', '[]', 'A', '[]', 'B', null, null, '2')`,
+    ]) await assert.rejects(runtime.query(sql), /permission denied/);
+  });
+});
