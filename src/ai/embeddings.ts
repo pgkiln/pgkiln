@@ -18,8 +18,13 @@ import { AiError } from './types.ts';
 // The dimensions are part of the definition: every embedding is checked against them, and the builder checks
 // them against the vector column (vector(n)) a search configuration or a vector column helper uses.
 
-export type VectorProviderType = 'ai_service' | 'function';
-export const VECTOR_PROVIDER_TYPES: VectorProviderType[] = ['ai_service', 'function'];
+export type VectorProviderType = 'ai_service' | 'function' | 'database_model';
+export const VECTOR_PROVIDER_TYPES: VectorProviderType[] = ['ai_service', 'function', 'database_model'];
+/** (sprint 151, migration 146) the extensions that run a model in the database: pgml = PostgresML's pgml.embed(model, text) */
+export const MODEL_ENGINES = ['pgml'] as const;
+export type ModelEngine = (typeof MODEL_ENGINES)[number];
+/** A provider that embeds in the database (meta.embed, as the caller): a function, or a model in the database. */
+export const embedsInDatabase = (p: { type?: unknown }) => p.type === 'function' || p.type === 'database_model';
 
 export interface VectorProvider {
   name: string;
@@ -32,6 +37,8 @@ export interface VectorProvider {
   dimensions: number;
   /** function: schema.name */
   function?: string;
+  /** (151) database_model: the extension that runs the model (model: its name, e.g. intfloat/e5-small-v2) */
+  engine?: ModelEngine;
   /** ai_service: texts per request (background embedding; default 64) */
   batch_size?: number;
   /** ai_service: requests per minute (background embedding; default 60) */
@@ -59,7 +66,7 @@ export function vectorProviderProblems(p: unknown): string[] {
   const what = `Vector provider ${typeof p.name === 'string' ? p.name : '?'}`;
   const out: string[] = [];
   if (typeof p.name !== 'string' || !PROVIDER_NAME.test(p.name)) out.push(`${what}: the name (static ID) is upper case letters, digits and _ (e.g. DOC_EMBEDDINGS).`);
-  if (!VECTOR_PROVIDER_TYPES.includes(p.type)) out.push(`${what}: the type is ai_service or function.`);
+  if (!VECTOR_PROVIDER_TYPES.includes(p.type)) out.push(`${what}: the type is ai_service, function or database_model.`);
   if (p.description !== undefined && p.description !== null && (typeof p.description !== 'string' || p.description.length > 500)) out.push(`${what}: the description is text (at most 500 characters).`);
   if (!intIn(p.dimensions, 1, MAX_DIMENSIONS)) out.push(`${what}: the dimensions are a whole number from 1 to ${MAX_DIMENSIONS}.`);
   if (p.type === 'ai_service') {
@@ -67,6 +74,12 @@ export function vectorProviderProblems(p: unknown): string[] {
     if (typeof p.model !== 'string' || !MODEL.test(p.model)) out.push(`${what}: the embedding model is its name, e.g. text-embedding-3-small or nomic-embed-text.`);
     if (p.function !== undefined) out.push(`${what}: an AI service provider has no function.`);
   }
+  if (p.type === 'database_model') {
+    if (!MODEL_ENGINES.includes(p.engine)) out.push(`${what}: the engine is ${MODEL_ENGINES.join(' or ')} (the extension that runs the model in the database).`);
+    if (typeof p.model !== 'string' || !MODEL.test(p.model)) out.push(`${what}: the model is its name, e.g. intfloat/e5-small-v2.`);
+    if (p.service !== undefined || p.function !== undefined) out.push(`${what}: a database model provider has no AI service or function.`);
+  }
+  if (p.type !== 'database_model' && p.engine !== undefined) out.push(`${what}: only a database model provider has an engine.`);
   if (p.type === 'function') {
     if (typeof p.function !== 'string' || !FUNCTION_NAME.test(p.function)) out.push(`${what}: the function is schema.name, e.g. sales.embed.`);
     if (p.service !== undefined || p.model !== undefined) out.push(`${what}: a function provider has no AI service or model.`);
@@ -126,11 +139,11 @@ export interface EmbedInfo extends Pick<CallInfo, 'appId' | 'pageNo' | 'user' | 
 export async function embedTexts(p: VectorProvider, texts: string[], info: EmbedInfo, client?: Queryable): Promise<number[][]> {
   if (!texts.length) return [];
   const input = texts.map((t) => String(t ?? '').slice(0, MAX_TEXT_CHARS));
-  if (p.type === 'function') {
-    if (!client) throw new AiError('config', `Vector provider ${p.name}: a function provider needs a database connection.`);
+  if (embedsInDatabase(p)) {
+    if (!client) throw new AiError('config', `Vector provider ${p.name}: a ${p.type === 'function' ? 'function' : 'database model'} provider needs a database connection.`);
     const rows = (await client.query('select meta.embed(t, $2, $3) as v from unnest($1::text[]) with ordinality u(t, n) order by n', [input, p.name, info.appId])).rows;
     return rows.map((r: { v: number[] | null }) => {
-      if (!Array.isArray(r.v)) throw new AiError('output', `Vector provider ${p.name}: the function returned no embedding.`);
+      if (!Array.isArray(r.v)) throw new AiError('output', `Vector provider ${p.name}: the ${p.type === 'function' ? 'function' : 'model'} returned no embedding.`);
       return r.v.map(Number);
     });
   }
@@ -183,7 +196,7 @@ const RECENT_MS = 10 * 60_000;
 
 /** The embedding of one search text (AI service providers: kept a few minutes in this process's memory). */
 export async function embedQuery(p: VectorProvider, text: string, info: EmbedInfo, client?: Queryable): Promise<number[]> {
-  if (p.type === 'function') return (await embedTexts(p, [text], info, client))[0];
+  if (embedsInDatabase(p)) return (await embedTexts(p, [text], info, client))[0];
   const key = JSON.stringify([info.appId, p.name, p.service, p.model, p.dimensions, text]);
   const hit = recent.get(key);
   if (hit && Date.now() - hit.at < RECENT_MS) return hit.v;

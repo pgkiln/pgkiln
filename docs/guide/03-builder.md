@@ -1972,14 +1972,22 @@ agents use one. Providers are part of the application: Shared Components → Gen
     `mxbai-embed-large` (1024) … The key, base URL and daily limits are the service's: **the key stays with the
     AI service** (encrypted, write-only, never exported); the export carries only the service's name. Texts per
     request and requests per minute limit the background embedding of queued rows;
+  - *Model in the database* (sprint 151; APEX: an ONNX model loaded in the database): the model runs inside
+    PostgreSQL through an extension, with no AI service and nothing leaving the database. The **engine** is
+    `pgml` (PostgresML: `pgml.embed(model, text)`, which loads Hugging Face models, ONNX among them, on its first
+    call) and the **model** its name: `intfloat/e5-small-v2` (384 dimensions), `Alibaba-NLP/gte-base-en-v1.5`
+    (768), `mixedbread-ai/mxbai-embed-large-v1` (1024) … The form says when PostgresML is not installed. Like a
+    function, it runs as the role of the query: grant usage on schema `pgml` to the application's role. Vector
+    columns of such a provider are kept **at once** by their trigger, and searches embed the search text in the
+    query;
   - *SQL or PL/pgSQL function*: `schema.name` of a function `(text)` returning `vector`, `real[]` or
-    `float8[]`, e.g. a model inside the database (`pgml.embed`, `ai.openai_embed` of pgai) or your own;
+    `float8[]`, e.g. `ai.openai_embed` of pgai, an ONNX runtime in PL/Python, or your own;
 - the **dimensions**: every embedding is checked against them, and a vector column is `vector(n)` with this *n*
   (an HNSW index takes up to 2,000).
 
 **Test** embeds a sample text and shows how many dimensions came back. A provider's page lists the search
 configurations and vector columns that use it. In SQL, `meta.embed(text, 'DOC_EMBEDDINGS')` returns a function
-provider's embedding as `real[]` (cast it: `meta.embed(…)::vector`), running the function **as the role of the
+or database model provider's embedding as `real[]` (cast it: `meta.embed(…)::vector`), running the function **as the role of the
 query** (its grants apply: grant execute on it to the application's role). An AI service is called by the pgkiln
 server, never from SQL: `meta.embed` says so for such a provider; use it through a search configuration, a
 Retrieve tool or a vector column's queue.

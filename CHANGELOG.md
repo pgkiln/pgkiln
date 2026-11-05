@@ -21,6 +21,11 @@ All notable changes to this project are documented here. The format follows
   own, granted (read only or also writing) to chosen application roles, so regions, reports, forms, grids and lists of
   values query them like the application's own tables. The password lives only in PostgreSQL's user mapping; *Test the
   connection* is rolled back; *Import again* picks up remote changes; *Delete* drops the schema and the server.
+- **Vector providers with a model in the database** (AP-1 leftover, APEX's ONNX models; migration 146): type
+  `database_model` with engine `pgml` (PostgresML's `pgml.embed(model, text)`, Hugging Face models incl. ONNX) runs
+  the embedding inside PostgreSQL as the query's role, with no AI service: vector columns kept at once by their
+  trigger, searches embedding the text in the query, Retrieve tools, `meta.embed`. The builder's form says when
+  PostgresML is missing; the model name is checked and passed as a value.
 
 ## [0.79.0] - 2026-11-05
 
