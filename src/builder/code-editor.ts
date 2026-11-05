@@ -30,7 +30,7 @@ const STATEMENTS = new Set(['supporting_script.script', 'process.code', 'app_pro
 /** The Advisor check per field (none: no check). */
 const CHECKS: Record<string, SqlShape> = {
   'region.source': 'select', 'item.lov': 'select', 'item.readonly_condition': 'boolean',
-  'validation.expression': 'boolean', 'process.code': 'statements', 'authz_scheme.value': 'boolean',
+  'process.code': 'statements', 'authz_scheme.value': 'boolean',
   'lov.query': 'select', 'app_process.code': 'statements', 'automation.query': 'select', 'automation_action.code': 'statements', 'automation_action.condition': 'boolean',
   'document_template.query': 'select', 'report_query.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
   'button.badge_query': 'select', 'list.query': 'select', 'list_entry.condition': 'boolean',
@@ -46,13 +46,14 @@ const CHECK_SWITCH: Record<string, string> = {
   'app_computation.expression': 'type:sql_query=select,*=none',
   // (147) every component's server-side condition: SQL types are checked, the others are names and values
   ...Object.fromEntries(CONDITION_EXPRS.map((k) => [k, `${k.endsWith('server_condition_expr') ? 'server_condition_type' : 'condition_type'}:sql=boolean,exists=select,not_exists=select,*=none`])),
+  'validation.expression': 'type:sql=boolean,exists=select,not_exists=select,*=none',
   'region.condition': 'condition_type:=boolean,sql=boolean,exists=select,not_exists=select,*=none',
   'button.condition': 'condition_type:=boolean,sql=boolean,exists=select,not_exists=select,*=none',
 };
 /** Fields whose language follows the component's type select: "type:value=lang,…" (other values: SQL). */
 const SWITCH: Record<string, string> = {
   'region.source': 'type:static=html,form=text',
-  'validation.expression': 'type:regex=text,not_null=text',
+  'validation.expression': 'type:sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,function_error=plpgsql,*=text',
   'authz_scheme.value': 'type:role=text',
   'dynamic_action.code': 'action:set_value=sql',
   'computation.expression': 'type:static=text,item=text,function_body=plpgsql',

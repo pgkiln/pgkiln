@@ -12,7 +12,7 @@ your own from a static application file.
 |---|---|
 | `event` | When it runs, see [Events](#events) |
 | `trigger_element` | What it listens to: item names (`change`, `focus`, `blur`, `key_release`), a button name (`click`), region ids or static ids (`after_refresh`, `selection_change`), dialog page numbers (`dialog_closed`; empty: any dialog) or event names (`custom`), comma separated. Empty for `load` and `before_submit` |
-| `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value (for `dialog_closed`: on the dialog's page number): `equals`, `not_equals`, `in_list` (comma-separated values), `is_null`, `is_not_null` |
+| `condition_type`, `condition_value` | Optional client-side condition on the (first) trigger item's value (for `dialog_closed`: on the dialog's page number): `equals`, `not_equals`, `greater`, `greater_equal`, `less`, `less_equal` (numbers as numbers, other values such as ISO dates as text; an empty value fails them), `in_list`, `not_in_list` (comma-separated values), `is_null`, `is_not_null`. APEX's *JavaScript expression* isn't offered: the Content-Security-Policy runs no code from strings; use `execute_javascript` with a registered function |
 | `server_condition_type`, `server_condition_expr`, `server_condition_value` | A [server-side condition](06-processing.md#server-side-conditions) (sprint 154): when it doesn't hold for this request, the dynamic action isn't on the page at all, e.g. `user_signed_in` or `page_is_dialog` |
 | `action` | What to do, see below |
 | `affected_items`, `affected_region_id` | What it acts on |
@@ -39,6 +39,14 @@ your own from a static application file.
 | `before_submit` | The page is about to be submitted; a declined `confirm` keeps the page | – |
 | `custom` | JavaScript raised the event: `pgkiln.trigger('ORDER_SAVED', value)` (APEX: custom events, `apex.event.trigger`) | Event names (case-insensitive) |
 | `menu_entry` | An entry `{"label": …, "action": "NAME"}` of a [menu button](06-processing.md#menu-buttons-and-badges) was chosen (APEX: Menu entry chosen); the condition sees the entry's name ([below](#menu-entry-chosen)) | Entry names, or menu button names (any of their entries) |
+| `double_click` | An item, button or region was double-clicked (sprint 156) | Item names, button names, region ids or static ids |
+| `key_down` / `key_press` | A key goes down in an item / a key that types a character (APEX: Key Down, Key Press); a `cancel_event` keeps the key out of the field | Item names |
+| `mouse_enter` / `mouse_leave` | The pointer enters / leaves an item, button or region (once per element, not while moving inside it) | Item names, button names, region ids or static ids |
+| `select` | Text is selected in an item | Item names |
+| `resize` / `scroll` | The window is resized / scrolled (at most once per frame) | – |
+| `page_unload` | The page is left (APEX: Page Unload); only quick actions in the browser finish | – |
+| `before_refresh` | A region is about to be refreshed by a `refresh_region` action (APEX: Before Refresh); a `cancel_event` or declined `confirm` keeps it as it is | Region ids or static ids |
+| `facets_change` | A faceted search or smart filters region's facets were applied (APEX: Facets Change); runs on the page that comes back with the new filters | The facets region's id or static id |
 
 **The actions of one event and trigger run one after the other, in sequence order** (APEX: the true
 actions of a dynamic action), each waiting for the one before (a server action for its answer). A
@@ -83,6 +91,12 @@ actions of a dynamic action), each waiting for the one before (a server action f
 | `share` | browser | The device's share sheet with the page's title, `message` and address; where there is none, the address is copied |
 | `wait_popup` | browser | Shows a modal "please wait" popup with `message` (default *Please wait…*) until `remove_wait_popup` or the next page (APEX: Show Wait Popup); [below](#wait-popup) |
 | `remove_wait_popup` | browser | Removes the wait popup (APEX: Remove Wait Popup) |
+| `cancel_event` | browser | Stops the actions after it, and the event's own effect: a button doesn't submit or follow its link, a typed key (`key_down`, `key_press`) stays out of the field, a refresh doesn't happen (APEX: Cancel Event). Sprint 156 |
+| `set_style` | browser | Sets CSS properties on the affected items or region: `{"styles": {"color": "#b42318", "font-weight": "bold"}}` in the attributes (APEX: Set Style). Properties from a fixed list (colours, font, text, border, opacity, visibility, padding, margin, width); values without `url()` or `var()`, checked when saved and again before they reach the page |
+| `collapse_tree` / `expand_tree` | browser | Closes / opens every node of the affected tree region (APEX: Collapse Tree, Expand Tree) |
+| `show_ai_assistant` | browser | Opens the affected AI assistant region (or the inline dialog it sits in) and puts the cursor in its question (APEX: Show AI Assistant) |
+| `trigger_geocoding` | browser | The affected geocoded address item looks its text up, as its *Check address* button does (APEX: Trigger Geocoding) |
+| `open_report_dialog` | browser | Opens a dialog of the affected interactive report: `code` is `filter`, `columns`, `sort`, `highlight`, `compute`, `aggregate`, `chart`, `group`, `pivot`, `break`, `rows` or `saved` (APEX: Invoke Interactive Report Dialog) |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
 database role like everything else, and check the page's and the dynamic action's authorization.

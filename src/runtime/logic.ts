@@ -132,7 +132,7 @@ export async function conditionHolds(ctx: PageContext, cond: Condition, where: s
  * savepoint, as the application's role (binds are substituted first, as
  * escaped literals). It never outlives the transaction's savepoint.
  */
-async function functionBody(ctx: PageContext, body: string): Promise<string | null> {
+export async function functionBody(ctx: PageContext, body: string): Promise<string | null> {
   const c = ctx.client!;
   const code = applyBinds(body, bindValues(ctx)).trim();
   const block = /^(declare|begin)\b/i.test(code) ? code : `begin\n${code}\nend`;

@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **More dynamic action events, conditions and actions** (CD-3, part 1; migration 149). Events double click, key down,
+  key press, mouse enter / leave, select, resize, scroll, page unload, before refresh and facets change; client-side
+  conditions greater / greater or equal / less / less or equal and not in list; actions Cancel Event (also stops a
+  button's submit, a typed key or a refresh), Set Style (listed CSS properties, checked values), Collapse / Expand
+  Tree, Show AI Assistant, Trigger Geocoding and Open report dialog.
+- **Validation types like APEX's** (CD-1; migration 148): rows returned / no rows, function body returning a Boolean
+  or the error text, item not null / not null or zero / not zero / no spaces / alphanumeric / numeric / a valid date
+  (in the application's date format) / a valid timestamp, item = / != value, item in / not in a colon list, contains
+  only / at least one / none of the characters, besides SQL expression and regular expression. Validations also get an
+  authorization scheme, *Always execute* (they run for DELETE too) and a display location (inline and in the
+  notification, inline, or the notification only). The database refuses a type without its item or expression; the
+  Advisor names SQL validations a type says exactly.
 - **Server-side condition types for every component** (CD-2; migration 147). Regions, items, buttons, dynamic
   actions, validations, processes, computations, branches and application computations share one catalogue, like
   APEX's: SQL expression, rows returned / no rows, PL/pgSQL function body, request in / not in, item null / not null /

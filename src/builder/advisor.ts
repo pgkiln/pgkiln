@@ -78,7 +78,8 @@ export function sqlFields(kind: string, row: any): { name: string; shape: SqlSha
       ];
     case 'validation':
       return [
-        ...(row.type === 'sql' ? [{ name: 'expression', shape: 'boolean' as const }] : row.type === 'regex' ? [{ name: 'expression', shape: 'regex' as const }] : []),
+        ...(row.type === 'sql' ? [{ name: 'expression', shape: 'boolean' as const }] : row.type === 'regex' ? [{ name: 'expression', shape: 'regex' as const }]
+          : row.type === 'exists' || row.type === 'not_exists' ? [{ name: 'expression', shape: 'select' as const }] : []),
         ...conditionSql(row),
       ];
     case 'process':
@@ -297,6 +298,16 @@ function structureFindings(x: AppRows): Finding[] {
     const what = [d.condition_expr && `expression ${d.condition_expr}`, d.condition_value && `value ${d.condition_value}`].filter(Boolean).join(', ');
     out.push({ severity: 'info', entry: x.byKey.get(`${r.kind}-${r.row.id}`) ?? null, field: 'Server-side condition',
       message: `The SQL condition ${String(sql).trim()} can be the condition type ${d.condition_type}${what ? ` (${what})` : ''}: decided without a query, and shown in words.` });
+  }
+  // (155, CD-1) a SQL validation one declarative type says exactly
+  const VALIDATION_OF: Record<string, string> = { item_not_null: 'not_null', item_equals: 'equals', item_in_list: 'in_list' };
+  for (const r of all) {
+    if (r.kind !== 'validation' || r.row.type !== 'sql' || (r.row.build_option ?? '') === 'COMMENTED_OUT') continue;
+    const d = declarativeCondition(r.row.expression);
+    const type = d && VALIDATION_OF[d.condition_type ?? ''];
+    if (!d || !type) continue;
+    out.push({ severity: 'info', entry: x.byKey.get(`validation-${r.row.id}`) ?? null, field: 'Type',
+      message: `The SQL validation ${String(r.row.expression).trim()} can be the type ${type} with associated item ${d.condition_expr}${d.condition_value ? ` and value ${d.condition_value}` : ''}: no query.` });
   }
   const groups = new Set(all.filter((r) => r.kind === 'page_group').map((r) => r.row.name));
   for (const p of [...pages].sort((a, b) => a.page_no - b.page_no))
