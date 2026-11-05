@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Process types APEX applications rely on** (CD-4; migration 150): Close Dialog (with items handed to the page
+  below), Clear Session State, Reset Pagination, User Preferences, Server Side Geocoding, Print Report (a document
+  template or report query), Human Task – Create and – Manage (approve, reject, complete, claim, release, delegate,
+  cancel) and Form – Initialization. Settings in the attributes, checked when saved and when the process runs.
 - **More dynamic action events, conditions and actions** (CD-3, part 1; migration 149). Events double click, key down,
   key press, mouse enter / leave, select, resize, scroll, page unload, before refresh and facets change; client-side
   conditions greater / greater or equal / less / less or equal and not in list; actions Cancel Event (also stops a

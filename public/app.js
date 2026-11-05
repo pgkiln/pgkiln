@@ -1122,6 +1122,10 @@ const pgkilnUnsaved = (() => {
     const dlg = document.getElementById('t-dialog');
     if (dlg) dlg.close();
     if (!e.data.reload) return;
+    // (157) items a close_dialog process returned: items of the same name on this page take their values
+    if (e.data.items && typeof e.data.items === 'object')
+      for (const [name, value] of Object.entries(e.data.items))
+        if (/^[A-Z][A-Z0-9_]{0,99}$/.test(name) && typeof value === 'string' && wrapperOf(name)) setItemValue(name, value);
     const page = /^\d{1,9}$/.test(String(e.data.page || '')) ? String(e.data.page) : '';
     const handlers = das.filter((da) => da.event === 'dialog_closed' && (!da.trigger.length || da.trigger.includes(page)));
     if (!handlers.length) return location.reload();
@@ -1359,7 +1363,10 @@ const pgkilnUnsaved = (() => {
 
   // Inside a dialog: close on success or cancel.
   if (window.parent !== window) {
-    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '' }, location.origin);
+    // (157) a close_dialog process's items go along to the page below
+    let items = null;
+    try { items = body.dataset.dialogItems ? JSON.parse(body.dataset.dialogItems) : null; } catch { items = null; }
+    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '', items }, location.origin);
     if (body.dataset.dialogClose) tell(true);
     document.addEventListener('click', (e) => {
       if (!e.target.closest('[data-dialog-cancel]')) return;

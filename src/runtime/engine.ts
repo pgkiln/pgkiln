@@ -17,6 +17,7 @@ import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { parseDateMask } from './format.ts';
 import { conditionHolds, functionBody } from './logic.ts';
 import { runPluginProcess } from './plugins.ts';
+import { runDeclarative } from './process-types.ts';
 import { BACKGROUND_TYPES, downloadFile, sendEmailProcess, sendPushProcess, workflowProcess, type ChainConfig } from './processes.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type Errors, type PageContext } from './context.ts';
 
@@ -623,6 +624,11 @@ async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, dept
       case 'send_email': return await sendEmailProcess(ctx, p);
       case 'ai_generate': return (await runAiProcess(ctx, p, names)).message;
       case 'plugin': return await runPluginProcess(ctx, p.config, p.name);
+      // (157, CD-4) close_dialog, clear_session_state, reset_pagination, user_preferences, server_geocoding,
+      // print_report, human_task_create, human_task_manage, form_init
+      case 'close_dialog': case 'clear_session_state': case 'reset_pagination': case 'user_preferences': case 'server_geocoding':
+      case 'print_report': case 'human_task_create': case 'human_task_manage': case 'form_init':
+        return await runDeclarative(ctx, p, names);
       case 'download':
         // sent instead of the page (routes.ts); the first download of a request wins
         ctx.download ??= await downloadFile(ctx, p);

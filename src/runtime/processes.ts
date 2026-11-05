@@ -1,3 +1,4 @@
+import { declarativeProblems, DECLARATIVE_PROCESS_TYPES } from './process-types.ts';
 import { zipSync, type Zippable } from 'fflate';
 import { applyBinds } from '../binds.ts';
 import { esc } from '../html.ts';
@@ -248,6 +249,7 @@ export function processProblems(type: string, conf: unknown): string[] {
   if (type === 'workflow') return workflowProblems(conf);
   if (type === 'send_push') return sendPushProblems(conf);
   if (type === 'send_email') return sendEmailProblems(conf);
+  if (DECLARATIVE_PROCESS_TYPES.has(type)) return declarativeProblems(type, conf);
   return [];
 }
 

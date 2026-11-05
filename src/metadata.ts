@@ -376,7 +376,10 @@ export interface Validation {
 export interface Process {
   id: number;
   name: string;
-  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push' | 'send_email';
+  type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push' | 'send_email'
+    /** (150) */
+    | 'close_dialog' | 'clear_session_state' | 'reset_pagination' | 'user_preferences' | 'server_geocoding' | 'print_report'
+    | 'human_task_create' | 'human_task_manage' | 'form_init';
   region_id: number | null;
   code: string | null;
   config: Record<string, unknown> | null;

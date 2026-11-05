@@ -13521,3 +13521,19 @@ describe('sprint 156 dynamic action Set Style and report dialogs', () => {
       /dynamic_action_report_dialog_check/);
   });
 });
+
+describe('sprint 157 process types', () => {
+  test('a declarative process\'s settings are checked when it runs, not only in the builder', async () => {
+    const { declarativeProblems, runDeclarative } = await import('../src/runtime/process-types.ts');
+    // session internals (CSRF token, flash) are not items: Clear Session State can't name them
+    assert.ok(declarativeProblems('clear_session_state', { items: ['__CSRF'] }).length);
+    assert.ok(declarativeProblems('human_task_create', { definition: "X'); drop table meta.task; --" }).length);
+    const ctx = { session: { state: { __CSRF: 'keep' } }, app: { app_items: [] }, locale: { t: (k: string) => k } } as any;
+    await assert.rejects(runDeclarative(ctx, { name: 'p', type: 'clear_session_state', config: { items: ['__CSRF'] } } as any, new Set()), /item names/);
+    assert.equal(ctx.session.state.__CSRF, 'keep');
+    // all: true clears page and application items, never the session's own entries
+    const ctx2 = { session: { state: { __CSRF: 'keep', P1_A: 'x', G_X: 'y', OTHER: 'z' } }, app: { app_items: ['G_X'] }, locale: { t: (k: string) => k } } as any;
+    await runDeclarative(ctx2, { name: 'p', type: 'clear_session_state', config: { all: true }, success_message: null } as any, new Set());
+    assert.deepEqual(ctx2.session.state, { __CSRF: 'keep', P1_A: null, G_X: null, OTHER: 'z' });
+  });
+});

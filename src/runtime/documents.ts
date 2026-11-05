@@ -23,7 +23,8 @@ interface ReportQuery {
   authz: string | null;
 }
 
-export async function renderDocument(ctx: PageContext, name: string) {
+/** (157) `offered`: a print_report process of the page asks for it (the page offers it). */
+export async function renderDocument(ctx: PageContext, name: string, offered = false) {
   const c = ctx.client!;
   // metadata through the runtime connection: the page's transaction already runs as the app's role
   const tpl = await runtime.one<DocumentTemplate>('select * from meta.document_template where app_id = $1 and name = upper($2)', [ctx.app.id, name.slice(0, 100)]);
@@ -33,7 +34,7 @@ export async function renderDocument(ctx: PageContext, name: string) {
   if (!found || !(await isAuthorized(ctx, found.authz))) throw new Forbidden(ctx.locale.t('error.document_unavailable'));
   // without signing in (a public page of an app that has sign-in) only the documents the page itself offers
   // with a visible document button: ?doc= on any public page would otherwise hand out every template
-  if (ctx.app.authentication !== 'none' && !ctx.session.username) {
+  if (ctx.app.authentication !== 'none' && !ctx.session.username && !offered) {
     const offered = [...(ctx.vis?.buttons.values() ?? [])].some((b) => b.action === 'document' && (b.document ?? '').toUpperCase() === found.name);
     if (!offered) throw new Forbidden(ctx.locale.t('error.document_unavailable'));
   }
