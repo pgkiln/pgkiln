@@ -352,10 +352,17 @@ export interface Validation {
   id: number;
   name: string;
   item_name: string | null;
-  type: 'not_null' | 'sql' | 'regex';
+  /** (148) APEX's validation types (migration 148) */
+  type: 'sql' | 'exists' | 'not_exists' | 'function_body' | 'function_error'
+    | 'not_null' | 'not_null_or_zero' | 'not_zero' | 'no_spaces' | 'alphanumeric' | 'numeric' | 'valid_date' | 'valid_timestamp'
+    | 'equals' | 'not_equals' | 'in_list' | 'not_in_list' | 'chars_only' | 'chars_any' | 'chars_none' | 'regex';
   expression: string | null;
   message: string;
   when_button: string | null;
+  /** (148) an authorization scheme; Always execute (also for DELETE); where the error shows */
+  authz?: string | null;
+  always_execute?: boolean;
+  display_location?: 'inline_and_notification' | 'inline' | 'notification' | null;
   /** (147) a server-side condition: when false the validation is skipped */
   condition_type?: ConditionType | null;
   condition_expr?: string | null;

@@ -93,6 +93,13 @@ const conditionFields = (group: string, expr = 'condition_expr', type = 'conditi
   { name: value, label: 'Condition value', kind: 'text', group, help: VALUE_HELP, ...(common ? { common } : {}) },
 ];
 
+// (148, CD-1) APEX's validation types
+const VALIDATION_TYPES = ['sql', 'exists', 'not_exists', 'function_body', 'function_error', 'not_null', 'not_null_or_zero', 'not_zero', 'no_spaces',
+  'alphanumeric', 'numeric', 'valid_date', 'valid_timestamp', 'equals', 'not_equals', 'in_list', 'not_in_list', 'chars_only', 'chars_any', 'chars_none', 'regex'];
+const VALIDATION_HELP = 'APEX: Expression (sql), Rows returned / No rows returned (exists / not_exists), Function Body returning Boolean / Error Text (function_body / function_error), '
+  + 'Item is NOT NULL / NOT NULL or zero / NOT zero / contains no spaces / alphanumeric / numeric / a valid date (in the application\'s date format) / a valid timestamp, '
+  + 'Item = / != Value, Item is (NOT) contained in Value, contains only / at least one / none of the characters, matches Regular Expression. Format checks pass an empty item: add not_null for a required one.';
+
 /** JSON "menu" field: empty means no menu (null), not {}. */
 const menuBeforeSave = async (v: Record<string, unknown>) => {
   if (v.menu === '{}' || v.menu === '[]') v.menu = null;
@@ -253,11 +260,16 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     defaults: { type: 'sql' },
     fields: [
       { name: 'name', label: 'Name', kind: 'text' },
-      { name: 'type', label: 'Type', kind: 'select', options: ['sql', 'not_null', 'regex'] },
-      { name: 'item_name', label: 'Associated item', kind: 'upper' },
-      { name: 'expression', label: 'Expression', kind: 'code', wide: true, help: 'sql: boolean expression that must be true · regex: POSIX pattern' },
+      { name: 'type', label: 'Type', kind: 'select', options: VALIDATION_TYPES, help: VALIDATION_HELP },
+      { name: 'item_name', label: 'Associated item', kind: 'upper', help: 'The item the error shows next to; the item types test its value.' },
+      { name: 'expression', label: 'Expression / value', kind: 'code', wide: true,
+        help: 'sql: a boolean expression that must be true · exists / not_exists: a query · function_body: PL/pgSQL returning boolean · function_error: PL/pgSQL returning the error text (null: valid) · equals / not_equals: the value · in_list / not_in_list: values separated by colons (CLERK:ANALYST) · chars_*: the characters · regex: a POSIX pattern' },
       { name: 'message', label: 'Error message', kind: 'text' },
+      { name: 'display_location', label: 'Display location', kind: 'select', options: ['', 'inline_and_notification', 'inline', 'notification'],
+        help: 'Where the error shows: inline with the item and in the notification at the top, inline only (empty: inline, with "correct the errors below" at the top), or in the notification only. Without an associated item it is always in the notification.' },
       { name: 'when_button', label: 'When button pressed', kind: 'upper' },
+      { name: 'always_execute', label: 'Always execute', kind: 'bool', help: 'Also for a DELETE request (other validations without When button pressed are skipped for DELETE).' },
+      { name: 'authz', label: 'Authorization', kind: 'authz', help: AUTHZ_HELP },
       ...conditionFields('Server-side condition'),
       { name: 'seq', label: 'Sequence', kind: 'int' },
       buildOption(),

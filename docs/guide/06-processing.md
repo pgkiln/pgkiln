@@ -79,11 +79,32 @@ process fails, earlier inserts and updates are rolled back too.
 
 ## Validations
 
-| `type` | Passes when |
-|---|---|
-| `not_null` | the associated item has a value |
-| `sql` | `expression` (a SQL boolean expression, binds allowed) is true |
-| `regex` | the item's value matches `expression` (a POSIX regular expression, checked in Postgres) |
+APEX's validation types (sprint 154–155; APEX: *Validation → Type*):
+
+| `type` | APEX | Passes when |
+|---|---|---|
+| `sql` | Expression | `expression` (a SQL boolean expression, binds allowed) is true |
+| `exists` / `not_exists` | Rows returned / No rows returned | the query in `expression` returns a row / no row |
+| `function_body` | Function Body (returning Boolean) | the PL/pgSQL body in `expression` returns true |
+| `function_error` | Function Body (returning Error Text) | the body returns null or empty; otherwise its text is the error message |
+| `not_null` | Item is NOT NULL | the associated item has a value |
+| `not_null_or_zero` | Item is NOT NULL or zero | the item has a value that is not zero |
+| `not_zero` | Item is NOT zero | the item is empty or not zero |
+| `no_spaces` | Item contains no spaces | the item has no white space |
+| `alphanumeric` | Item is alphanumeric | the item has only letters and digits (any script) |
+| `numeric` | Item is numeric | the item is a number (a number item's format mask is read back first) |
+| `valid_date` | Item is a valid date | the item is a date in the application's date format, or ISO |
+| `valid_timestamp` | Item is a valid timestamp | the item is `YYYY-MM-DD HH:MI[:SS]` (or with a `T`) |
+| `equals` / `not_equals` | Item = Value / Item != Value | the item's value is / isn't `expression` |
+| `in_list` / `not_in_list` | Item is (NOT) contained in Value | the item's value is / isn't one of `expression`'s values, colon separated (`CLERK:ANALYST`) |
+| `chars_only` / `chars_any` / `chars_none` | Item contains only / at least one / none of the characters in Value | checked against the characters of `expression` |
+| `regex` | Item matches Regular Expression | the item's value matches `expression` (a POSIX regular expression, checked in Postgres) |
+
+The format checks (`no_spaces` … `valid_timestamp`, `chars_*`, `regex`, `not_zero`, `not_in_list`,
+`not_equals`) pass an empty item, as APEX's do: add `not_null` (or *Value required*) when it must
+have one. The database refuses a type without the associated item or expression it needs. The SQL
+types run as the application's role; the [Advisor](03-builder.md#advisor) names SQL validations a type
+says exactly (`:P3_SAL is not null` → `not_null`).
 
 Plus: every **required** editable item must have a value.
 
@@ -93,6 +114,9 @@ Plus: every **required** editable item must have a value.
 | `message` | The error message |
 | `when_button` | Only validate for this request. A `DELETE` request runs only the validations with `when_button` `DELETE` (e.g. "approved requests can't be deleted"), not the item checks |
 | `condition_type`, `condition_expr`, `condition_value` | Only validate when the [server-side condition](#server-side-conditions) holds, e.g. `request_in` `SAVE,CREATE` (sprint 154) |
+| `authz` | Only validate for users the authorization scheme lets through (sprint 155) |
+| `always_execute` | Also validate for a `DELETE` request (APEX: *Always Execute*) |
+| `display_location` | Where the error shows: `inline_and_notification` (next to the item and at the top), `inline` (empty: next to the item, with "correct the errors below" at the top) or `notification` (at the top only). Without an associated item it is at the top |
 
 Example: commission only for salesmen.
 

@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { applyBinds, literal } from '../binds.ts';
 import { runtime, savepoint, type Client } from '../db.ts';
-import type { Condition, Item, Process, Region } from '../metadata.ts';
+import type { Condition, Item, Process, Region, Validation } from '../metadata.ts';
 import { isAuthorized } from './authz.ts';
 import { gridDml } from './grid.ts';
 import { dropObjects, dropObjectsSince, formRegion, isMultiple, isTempId, removals, REMOVE, saveFileLists, storedFiles, storeOf, storeTempFile, tempIds } from './files.ts';
@@ -14,7 +14,8 @@ import { runPendingAi } from '../ai/requests.ts';
 import { runAiProcess } from './ai.ts';
 import { itemMask, LOV_CHECKED, lovContains, MULTI_VALUE, ratingMax, splitValues } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
-import { conditionHolds } from './logic.ts';
+import { parseDateMask } from './format.ts';
+import { conditionHolds, functionBody } from './logic.ts';
 import { runPluginProcess } from './plugins.ts';
 import { BACKGROUND_TYPES, downloadFile, sendEmailProcess, sendPushProcess, workflowProcess, type ChainConfig } from './processes.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type Errors, type PageContext } from './context.ts';
@@ -138,6 +139,76 @@ async function storedFileExists(ctx: PageContext, r: Region, column: string) {
   return res.rows[0]?.ok === true;
 }
 
+const VALID_TIMESTAMP = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(:(\d{2})(\.\d{1,6})?)?$/;
+const isZero = (v: string) => isPlainNumber(v) && Number(v) === 0;
+
+/**
+ * (148, CD-1) Does a validation pass? true, false (its message), or an error text (function_error). Item types
+ * test the item's posted value; format checks pass an empty one (as in APEX). SQL types run as the app's role.
+ */
+async function validationPasses(ctx: PageContext, v: Validation, value: string | null): Promise<boolean | string> {
+  const c = ctx.client!;
+  const expr = v.expression ?? '';
+  const sql = async (text: string) => (await savepoint(c, () => c.query(text))).rows[0]?.ok === true;
+  switch (v.type) {
+    case 'sql':
+      return sql(`select (${stripSemicolon(applyBinds(v.expression ?? 'true', bindValues(ctx)))})::boolean as ok`);
+    case 'exists':
+    case 'not_exists': {
+      const found = await sql(`select exists (${stripSemicolon(applyBinds(expr, bindValues(ctx)))}) as ok`);
+      return v.type === 'exists' ? found : !found;
+    }
+    case 'function_body': {
+      const r = await savepoint(c, () => functionBody(ctx, expr));
+      return r === 'true' || r === 't';
+    }
+    case 'function_error': {
+      const r = await savepoint(c, () => functionBody(ctx, expr));
+      return r === null || r.trim() === '' ? true : r;
+    }
+    case 'not_null':
+      return value !== null;
+    case 'not_null_or_zero':
+      return value !== null && !isZero(value);
+    case 'not_zero':
+      return value === null || !isZero(value);
+    case 'equals':
+      return value === (v.expression ?? null) || (value === null && (v.expression ?? '') === '');
+    case 'not_equals':
+      return !(value === (v.expression ?? null) || (value === null && (v.expression ?? '') === ''));
+    case 'in_list':
+      return value !== null && expr.split(':').includes(value);
+    case 'not_in_list':
+      return value === null || !expr.split(':').includes(value);
+  }
+  // format checks: an empty item passes
+  if (value === null) return true;
+  switch (v.type) {
+    case 'no_spaces':
+      return !/\s/.test(value);
+    case 'alphanumeric':
+      return /^[\p{L}\p{N}]+$/u.test(value);
+    case 'numeric':
+      return isPlainNumber(value);
+    case 'valid_date':
+      return parseDateMask(value, ctx.app.date_format ?? 'YYYY-MM-DD', ctx.locale.lang) !== null;
+    case 'valid_timestamp': {
+      const m = VALID_TIMESTAMP.exec(value.trim());
+      return !!m && parseDateMask(m[1], 'YYYY-MM-DD', ctx.locale.lang) !== null && Number(m[2]) < 24 && Number(m[3]) < 60 && Number(m[5] ?? 0) < 60;
+    }
+    case 'chars_only':
+      return [...value].every((ch) => expr.includes(ch));
+    case 'chars_any':
+      return [...value].some((ch) => expr.includes(ch));
+    case 'chars_none':
+      return ![...value].some((ch) => expr.includes(ch));
+    case 'regex':
+      return (await savepoint(c, () => c.query(`select ${literal(value)} ~ ${literal(expr)} as ok`))).rows[0].ok === true;
+    default:
+      return false; // an unknown type fails closed
+  }
+}
+
 /**
  * The page's checks before processing. A DELETE request skips the item checks (required, list,
  * number and format: the values don't matter for a delete) and the validations of every button,
@@ -212,22 +283,26 @@ export async function validate(ctx: PageContext) {
   }
 
   for (const v of ctx.page.validations) {
-    if (v.when_button ? v.when_button !== ctx.request : deleting) continue;
+    // (148) Always execute: also for a DELETE request
+    if (v.when_button ? v.when_button !== ctx.request : deleting && !v.always_execute) continue;
     if (v.item_name && (!vis.items.has(v.item_name) || errors.items[v.item_name])) continue;
+    if (v.authz && !(await isAuthorized(ctx, v.authz))) continue;
     if (v.condition_type && !(await conditionHolds(ctx, v as Condition, `condition of validation ${v.name}`))) continue;
     const value = v.item_name ? (state[v.item_name] ?? null) : null;
-    try {
-      let ok = true;
-      if (v.type === 'not_null') ok = value !== null;
-      else if (v.type === 'regex') {
-        if (value !== null) ok = (await savepoint(c, () => c.query(`select ${literal(value)} ~ ${literal(v.expression ?? '')} as ok`))).rows[0].ok;
-      } else {
-        const sql = `select (${stripSemicolon(applyBinds(v.expression ?? 'true', bindValues(ctx)))})::boolean as ok`;
-        ok = (await savepoint(c, () => c.query(sql))).rows[0].ok === true;
+    // (148) where the error shows: inline (as before), inline and in the notification, or the notification only
+    const report = (msg: string) => {
+      const inline = v.item_name && vis.items.has(v.item_name) && !errors.items[v.item_name];
+      if (v.display_location === 'notification' || !inline) errors.page.push(msg);
+      else {
+        errors.items[v.item_name!] = msg;
+        if (v.display_location === 'inline_and_notification') errors.page.push(msg);
       }
-      if (!ok) fail(v.item_name, v.message);
+    };
+    try {
+      const outcome = await validationPasses(ctx, v, value);
+      if (outcome !== true) report(typeof outcome === 'string' ? outcome : v.message);
     } catch (e) {
-      fail(v.item_name, `${v.message} (${await publicError(ctx, e, `validation ${v.name}`)})`);
+      report(`${v.message} (${await publicError(ctx, e, `validation ${v.name}`)})`);
     }
   }
 

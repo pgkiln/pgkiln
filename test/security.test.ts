@@ -13471,3 +13471,35 @@ describe('sprint 154 server-side conditions', () => {
     assert.doesNotMatch(res.body, /V\[accepted\]/);
   });
 });
+
+describe('sprint 155 validation types', () => {
+  const alias = 'sec-s155';
+  const ROLE = 'pgkiln_s155_sec';
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec 155', 'none', $2) returning id`, [alias, ROLE])).id;
+    const page = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
+    const r = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 1, 'Main', 'static', 'main') returning id`, [page])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, type) values ($1, $2, 1, 'P1_X', 'text')`, [page, r]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label) values ($1, $2, 1, 'GO', 'Go')`, [page, r]);
+    await owner.query(`insert into meta.validation (page_id, seq, name, item_name, type, expression, message) values
+      ($1, 1, 'echo', 'P1_X', 'function_error', 'return ''Bad: '' || :P1_X;', 'm'),
+      ($1, 2, 'meta', null, 'function_body', 'return exists (select 1 from meta.app);', 'V[meta-unreadable]')`, [page]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  test('a function body returning error text: the text is escaped, and the body runs as the application\'s role', async () => {
+    const b = new Browser();
+    await b.get(`/a/${alias}/1`);
+    const res = await b.post(`/a/${alias}/1`, { __csrf: b.lastCsrf, P1_X: '<img src=x onerror=alert(1)>', __request: 'GO' });
+    assert.match(res.body, /Bad: &lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(res.body, /<img src=x/);
+    assert.match(res.body, /V\[meta-unreadable\]/, 'meta is not readable as the app role: the validation fails closed');
+  });
+});
