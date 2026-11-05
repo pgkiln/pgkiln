@@ -16,6 +16,11 @@ All notable changes to this project are documented here. The format follows
   step are mapped and checked with the same rules (a join stays a join, a branch not onto its own join), and the
   branches' join and split are renamed so the join counts them. `meta.migrate_workflows` returns a row per path (new
   column `branch`); the builder's page lists the branches' steps and previews each path.
+- **Remote databases** (AP-7 leftover, APEX's REST Enabled SQL; migration 145). Workspace utilities → Remote databases
+  (administrators): another PostgreSQL database's tables as `postgres_fdw` foreign tables in a local schema of their
+  own, granted (read only or also writing) to chosen application roles, so regions, reports, forms, grids and lists of
+  values query them like the application's own tables. The password lives only in PostgreSQL's user mapping; *Test the
+  connection* is rolled back; *Import again* picks up remote changes; *Delete* drops the schema and the server.
 
 ## [0.79.0] - 2026-11-05
 
