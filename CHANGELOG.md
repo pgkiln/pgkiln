@@ -26,6 +26,9 @@ All notable changes to this project are documented here. The format follows
   the embedding inside PostgreSQL as the query's role, with no AI service: vector columns kept at once by their
   trigger, searches embedding the text in the query, Retrieve tools, `meta.embed`. The builder's form says when
   PostgresML is missing; the model name is checked and passed as a value.
+- **More of the builder in its eleven languages** (WS-7 leftover; no migration): Workspace utilities, the workspace
+  Dashboard, Mail queue, Network access, Instance settings and LDAP directories (285 texts each in Deutsch,
+  Español, Français, Italiano, Nederlands, Português, 中文 (简体), 中文 (繁體), 日本語 and 한국어). English is unchanged.
 
 ## [0.79.0] - 2026-11-05
 

@@ -212,7 +212,7 @@ describe('network access lists', () => {
     assert.deepEqual((await owner.one('select network_restricted as r, network_hosts as h from meta.workspace where id = $1', [wsId])), { r: true, h: ['api.example.com', '*.example.org'] });
     page = await wa.get(`/builder/network?ws=${wsId}&url=${encodeURIComponent(`${mockBase}/json`)}`);
     assert.match(page.body, /alert-error">The host 127\.0\.0\.1:\d+ is not on the network access list/);
-    assert.match(page.body, /Not on the installation.s list, so never reachable: api\.example\.com, \*\.example\.org/);
+    assert.match(page.body, /Not on the installation(?:.|&#39;)s list, so never reachable: api\.example\.com, \*\.example\.org/);
     res = await wa.submit('/builder/network', { ws: String(wsId), restricted: 'true', hosts: 'https://x' });
     assert.match((await wa.get(`/builder/network?ws=${wsId}`)).body, /is not a host/);
     // another workspace's list: refused

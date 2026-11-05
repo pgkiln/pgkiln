@@ -6,6 +6,7 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, select, send, shell, type Req } from './ui.ts';
 import { workspaceAdmin } from './workspaces.ts';
+import { tr } from './i18n.ts';
 
 // (sprint 118, WS-9; APEX 26.2 Administration → Mail queue) Delivery health of
 // the mail queue (meta.mail_queue): queued, sent, failed and retrying mail per
@@ -18,6 +19,8 @@ import { workspaceAdmin } from './workspaces.ts';
 // attachments are never shown here.
 
 export const PERIODS: [string, string][] = [['24', 'Last 24 hours'], ['48', 'Last 48 hours'], ['168', 'Last 7 days']];
+/** (sprint 152) the periods in the developer's language */
+const periods = (tx: ReturnType<typeof tr>): [string, string][] => PERIODS.map(([v]) => [v, tx(`mq.period.${v}` as 'mq.period.24')]);
 
 /** The mail a developer may see: every workspace (null) or one; false when none. */
 export async function queueScope(s: Session): Promise<{ admin: boolean; workspace: number | null } | false> {
@@ -27,8 +30,9 @@ export async function queueScope(s: Session): Promise<{ admin: boolean; workspac
 }
 
 async function refuse(s: Session, reply: FastifyReply) {
-  const main = html`<h1 class="u-mb1">Mail queue</h1><div class="alert alert-error" role="alert">Only administrators and workspace administrators see the mail queue.</div>`;
-  await send(reply.code(403), s, shell(s, 'Mail queue', [['Administration'], ['Mail queue']], main, 'users'));
+  const tx = tr(s);
+  const main = html`<h1 class="u-mb1">${tx('mq.title')}</h1><div class="alert alert-error" role="alert">${tx('mq.refused')}</div>`;
+  await send(reply.code(403), s, shell(s, tx('mq.title'), [[tx('rail.admin')], [tx('mq.title')]], main, 'users'));
 }
 
 const when = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') : '');
@@ -42,6 +46,7 @@ export async function mailQueueRoutes(app: FastifyInstance) {
     if (!s) return;
     const scope = await queueScope(s);
     if (!scope) return refuse(s, reply);
+    const tx = tr(s);
     const hours = PERIODS.some(([v]) => v === req.query.period) ? Number(req.query.period) : 24;
     const ws = scope.admin ? id(req.query.ws) : scope.workspace;
     const appId = id(req.query.app);
@@ -94,10 +99,10 @@ export async function mailQueueRoutes(app: FastifyInstance) {
     ]);
     const wsName = ws ? (scope.admin ? workspaces.find((w) => w.id === ws)?.name : s.workspace?.name) : null;
     const filters = html`<form method="get" class="filter-row mail-queue-filters">
-        ${select('period', 'Period', String(hours), PERIODS)}
-        ${scope.admin ? select('ws', 'Workspace', ws ? String(ws) : '', [['', 'All workspaces'], ...workspaces.map((w): [string, string] => [String(w.id), w.name])]) : ''}
-        ${select('app', 'Application', appId ? String(appId) : '', [['', 'All applications'], ...apps.map((a): [string, string] => [String(a.id), a.alias])])}
-        <div class="buttons"><button class="btn">Show</button></div></form>`;
+        ${select('period', tx('mq.period'), String(hours), periods(tx))}
+        ${scope.admin ? select('ws', tx('mq.workspace'), ws ? String(ws) : '', [['', tx('mq.all_workspaces')], ...workspaces.map((w): [string, string] => [String(w.id), w.name])]) : ''}
+        ${select('app', tx('mq.app'), appId ? String(appId) : '', [['', tx('mq.all_apps')], ...apps.map((a): [string, string] => [String(a.id), a.alias])])}
+        <div class="buttons"><button class="btn">${tx('common.show')}</button></div></form>`;
     const total = totals.sent + totals.failed;
     const health = total ? Math.round((totals.sent / total) * 1000) / 10 : null;
     const stat = (n: unknown, label: string, cls = '') => html`<div class="stat${cls}"><b>${n ?? '–'}</b><span>${label}</span></div>`;
@@ -105,50 +110,50 @@ export async function mailQueueRoutes(app: FastifyInstance) {
     const action = (path: string, label: unknown, cls: string, confirm?: string) =>
       html`<form method="post" action="${BASE}/mail-queue${path}?${keep}" class="inline-form">${csrf(s)}<button class="btn btn-sm${cls}"${confirm ? html` data-confirm="${confirm}"` : ''}>${label}</button></form>`;
     const main = html`
-      <div class="title-row"><h1>Mail queue</h1></div>
-      <p class="muted u-mt0">Delivery of the mail ${wsName ? html`of workspace <b>${wsName}</b>` : 'of every workspace'}: what was queued, sent and failed, which mail is being retried, how long the providers took, and the failures with the provider's answer. Mail is kept 30 days.${scope.admin ? '' : ' You see your workspace\'s applications only.'}</p>
+      <div class="title-row"><h1>${tx('mq.title')}</h1></div>
+      <p class="muted u-mt0">${wsName ? tx.rich('mq.intro_ws', { workspace: html`<b>${wsName}</b>` }) : tx('mq.intro_all')}${scope.admin ? '' : ` ${tx('mq.only_yours')}`}</p>
       ${filters}
       <div class="stat-grid mail-queue-stats">
-        ${stat(totals.queued, 'queued now')}${stat(totals.retrying, 'retrying now')}${stat(totals.sending, 'being sent')}
-        ${stat(totals.sent, 'sent')}${stat(totals.failed, 'failed', totals.failed ? ' stat-bad' : '')}
-        ${stat(health === null ? null : `${health}%`, 'delivered')}${stat(totals.avg_ms === null ? null : `${totals.avg_ms} ms`, 'average provider call')}
+        ${stat(totals.queued, tx('mq.stat.queued'))}${stat(totals.retrying, tx('mq.stat.retrying'))}${stat(totals.sending, tx('mq.stat.sending'))}
+        ${stat(totals.sent, tx('mq.stat.sent'))}${stat(totals.failed, tx('mq.stat.failed'), totals.failed ? ' stat-bad' : '')}
+        ${stat(health === null ? null : `${health}%`, tx('mq.stat.delivered'))}${stat(totals.avg_ms === null ? null : `${totals.avg_ms} ms`, tx('mq.stat.avg'))}
       </div>
       <div class="columns">
-        ${region('Per hour', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>Hour (UTC)</th><th class="num">Queued</th><th class="num">Sent</th><th class="num">Failed</th><th class="num">Retrying</th></tr></thead>
-          <tbody>${perHour.length ? perHour.map((h) => html`<tr><td data-label="Hour">${when(h.hour)}</td><td class="num" data-label="Queued">${h.queued}</td>
-              <td class="num" data-label="Sent">${h.sent}</td><td class="num" data-label="Failed">${h.failed ? html`<b>${h.failed}</b>` : 0}</td><td class="num" data-label="Retrying">${h.retrying}</td></tr>`)
-            : html`<tr><td colspan="5" class="empty">No mail in this period.</td></tr>`}</tbody></table></div>`)}
-        ${region('Slowest provider calls', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>When (UTC)</th><th>Application</th><th>Service</th><th>Status</th><th class="num">Time</th></tr></thead>
-          <tbody>${slowest.length ? slowest.map((m) => html`<tr><td data-label="When">${when(m.last_attempt_at)}</td><td data-label="Application">${m.alias}</td>
-              <td data-label="Service" class="u-break">${m.service ?? ''}${m.provider ? html` <span class="muted">${m.provider}</span>` : ''}</td>
-              <td data-label="Status"><span class="tag${m.status === 'sent' ? ' tag-ok' : m.status === 'error' ? ' tag-error' : ''}">${m.status === 'queued' ? 'retrying' : m.status}</span></td>
-              <td class="num" data-label="Time">${m.duration_ms} ms</td></tr>`)
-            : html`<tr><td colspan="5" class="empty">No provider calls in this period.</td></tr>`}</tbody></table></div>`)}
+        ${region(tx('mq.per_hour'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('mq.col.hour')}</th><th class="num">${tx('mq.col.queued')}</th><th class="num">${tx('mq.col.sent')}</th><th class="num">${tx('mq.col.failed')}</th><th class="num">${tx('mq.col.retrying')}</th></tr></thead>
+          <tbody>${perHour.length ? perHour.map((h) => html`<tr><td data-label="${tx('mq.col.hour_short')}">${when(h.hour)}</td><td class="num" data-label="${tx('mq.col.queued')}">${h.queued}</td>
+              <td class="num" data-label="${tx('mq.col.sent')}">${h.sent}</td><td class="num" data-label="${tx('mq.col.failed')}">${h.failed ? html`<b>${h.failed}</b>` : 0}</td><td class="num" data-label="${tx('mq.col.retrying')}">${h.retrying}</td></tr>`)
+            : html`<tr><td colspan="5" class="empty">${tx('mq.none_period')}</td></tr>`}</tbody></table></div>`)}
+        ${region(tx('mq.slowest'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('mq.col.when')}</th><th>${tx('mq.app')}</th><th>${tx('mq.col.service')}</th><th>${tx('mq.col.status')}</th><th class="num">${tx('mq.col.time')}</th></tr></thead>
+          <tbody>${slowest.length ? slowest.map((m) => html`<tr><td data-label="${tx('mq.col.when_short')}">${when(m.last_attempt_at)}</td><td data-label="${tx('mq.app')}">${m.alias}</td>
+              <td data-label="${tx('mq.col.service')}" class="u-break">${m.service ?? ''}${m.provider ? html` <span class="muted">${m.provider}</span>` : ''}</td>
+              <td data-label="${tx('mq.col.status')}"><span class="tag${m.status === 'sent' ? ' tag-ok' : m.status === 'error' ? ' tag-error' : ''}">${m.status === 'queued' ? tx('mq.status.retrying') : ['sent', 'error', 'sending', 'cancelled'].includes(m.status) ? tx(`mq.status.${m.status}` as 'mq.status.sent') : m.status}</span></td>
+              <td class="num" data-label="${tx('mq.col.time')}">${m.duration_ms} ms</td></tr>`)
+            : html`<tr><td colspan="5" class="empty">${tx('mq.none_calls')}</td></tr>`}</tbody></table></div>`)}
       </div>
-      ${region('Per workspace and application', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Workspace</th><th>Application</th><th class="num">Sent</th><th class="num">Failed</th><th class="num">Retrying</th><th class="num">Queued</th><th class="num">Average</th><th class="num">Slowest</th></tr></thead>
-        <tbody>${usage.length ? usage.map((u) => html`<tr><td data-label="Workspace">${u.workspace}</td>
-            <td data-label="Application"><a href="${BASE}/mail-queue?${new URLSearchParams({ period: String(hours), ...(scope.admin && ws ? { ws: String(ws) } : {}), app: String(u.app_id) }).toString()}">${u.alias}</a></td>
-            <td class="num" data-label="Sent">${u.sent}</td><td class="num" data-label="Failed">${u.failed ? html`<b>${u.failed}</b>` : 0}</td>
-            <td class="num" data-label="Retrying">${u.retrying}</td><td class="num" data-label="Queued">${u.queued}</td>
-            <td class="num" data-label="Average">${u.avg_ms === null ? '–' : `${u.avg_ms} ms`}</td><td class="num" data-label="Slowest">${u.max_ms === null ? '–' : `${u.max_ms} ms`}</td></tr>`)
-          : html`<tr><td colspan="8" class="empty">No mail in this period.</td></tr>`}</tbody></table></div>`)}
-      ${region('Failures', html`<p class="muted u-mt0">Mail that will not be tried again: the provider refused it, or it failed ${5} times. <b>Retry</b> queues it again with fresh attempts; <b>Purge</b> deletes it.</p>
+      ${region(tx('mq.per_app'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('mq.workspace')}</th><th>${tx('mq.app')}</th><th class="num">${tx('mq.col.sent')}</th><th class="num">${tx('mq.col.failed')}</th><th class="num">${tx('mq.col.retrying')}</th><th class="num">${tx('mq.col.queued')}</th><th class="num">${tx('mq.col.average')}</th><th class="num">${tx('mq.col.slowest')}</th></tr></thead>
+        <tbody>${usage.length ? usage.map((u) => html`<tr><td data-label="${tx('mq.workspace')}">${u.workspace}</td>
+            <td data-label="${tx('mq.app')}"><a href="${BASE}/mail-queue?${new URLSearchParams({ period: String(hours), ...(scope.admin && ws ? { ws: String(ws) } : {}), app: String(u.app_id) }).toString()}">${u.alias}</a></td>
+            <td class="num" data-label="${tx('mq.col.sent')}">${u.sent}</td><td class="num" data-label="${tx('mq.col.failed')}">${u.failed ? html`<b>${u.failed}</b>` : 0}</td>
+            <td class="num" data-label="${tx('mq.col.retrying')}">${u.retrying}</td><td class="num" data-label="${tx('mq.col.queued')}">${u.queued}</td>
+            <td class="num" data-label="${tx('mq.col.average')}">${u.avg_ms === null ? '–' : `${u.avg_ms} ms`}</td><td class="num" data-label="${tx('mq.col.slowest')}">${u.max_ms === null ? '–' : `${u.max_ms} ms`}</td></tr>`)
+          : html`<tr><td colspan="8" class="empty">${tx('mq.none_period')}</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('mq.failures'), html`<p class="muted u-mt0">${tx.rich('mq.failures_intro', { n: 5, retry: html`<b>${tx('mq.retry')}</b>`, purge: html`<b>${tx('mq.purge')}</b>` })}</p>
         <div class="table-wrap"><table class="report report-reflow mail-failures">
-        <thead><tr><th>Failed (UTC)</th><th>Application</th><th>To</th><th>Subject</th><th>Provider's answer</th><th>Actions</th></tr></thead>
+        <thead><tr><th>${tx('mq.col.failed_at')}</th><th>${tx('mq.app')}</th><th>${tx('mq.col.to')}</th><th>${tx('mq.col.subject')}</th><th>${tx('mq.col.answer')}</th><th>${tx('mq.col.actions')}</th></tr></thead>
         <tbody>${failures.length ? failures.map((m) => html`<tr>
-            <td data-label="Failed">${when(m.failed_at)}<br><span class="muted small">queued ${when(m.created_at)} · ${m.attempts} attempt${m.attempts === 1 ? '' : 's'}</span></td>
-            <td data-label="Application">${m.alias}${scope.admin && !ws ? html`<br><span class="muted small">${m.workspace}</span>` : ''}</td>
-            <td data-label="To" class="u-break">${[...m.to_addresses, ...m.cc_addresses].join(', ')}${m.bcc_addresses.length ? html` <span class="muted">+${m.bcc_addresses.length} bcc</span>` : ''}</td>
-            <td data-label="Subject" class="u-break">${m.subject}</td>
-            <td data-label="Provider's answer" class="u-break">${m.service ? html`<span class="muted small">${m.service}${m.provider ? ` (${m.provider})` : ''}</span><br>` : ''}<span class="mail-answer">${m.message ?? ''}</span></td>
-            <td data-label="Actions"><div class="buttons u-mt0">${action(`/${m.id}/retry`, 'Retry', '')}${action(`/${m.id}/purge`, 'Purge', ' btn-danger', 'Delete this mail?')}</div></td></tr>`)
-          : html`<tr><td colspan="6" class="empty">No failed mail.</td></tr>`}</tbody></table></div>
-        ${failures.length ? html`<div class="buttons">${action('/retry', html`${icon('refresh')} Retry all failed`, '')}${action('/purge', html`${icon('trash')} Purge all failed`, ' btn-danger', 'Delete every failed mail shown here?')}</div>` : ''}`,
+            <td data-label="${tx('mq.col.failed')}">${when(m.failed_at)}<br><span class="muted small">${tx('mq.queued_at', { when: when(m.created_at) })} · ${tx(m.attempts === 1 ? 'mq.attempts_one' : 'mq.attempts', { n: m.attempts })}</span></td>
+            <td data-label="${tx('mq.app')}">${m.alias}${scope.admin && !ws ? html`<br><span class="muted small">${m.workspace}</span>` : ''}</td>
+            <td data-label="${tx('mq.col.to')}" class="u-break">${[...m.to_addresses, ...m.cc_addresses].join(', ')}${m.bcc_addresses.length ? html` <span class="muted">+${m.bcc_addresses.length} bcc</span>` : ''}</td>
+            <td data-label="${tx('mq.col.subject')}" class="u-break">${m.subject}</td>
+            <td data-label="${tx('mq.col.answer')}" class="u-break">${m.service ? html`<span class="muted small">${m.service}${m.provider ? ` (${m.provider})` : ''}</span><br>` : ''}<span class="mail-answer">${m.message ?? ''}</span></td>
+            <td data-label="${tx('mq.col.actions')}"><div class="buttons u-mt0">${action(`/${m.id}/retry`, tx('mq.retry'), '')}${action(`/${m.id}/purge`, tx('mq.purge'), ' btn-danger', tx('mq.purge_confirm'))}</div></td></tr>`)
+          : html`<tr><td colspan="6" class="empty">${tx('mq.none_failed')}</td></tr>`}</tbody></table></div>
+        ${failures.length ? html`<div class="buttons">${action('/retry', html`${icon('refresh')} ${tx('mq.retry_all')}`, '')}${action('/purge', html`${icon('trash')} ${tx('mq.purge_all')}`, ' btn-danger', tx('mq.purge_all_confirm'))}</div>` : ''}`,
         '', 'failures')}`;
-    return send(reply, s, shell(s, 'Mail queue', [['Administration'], ['Mail queue']], main, 'users'));
+    return send(reply, s, shell(s, tx('mq.title'), [[tx('rail.admin')], [tx('mq.title')]], main, 'users'));
   });
 
   /** One mail's id when this developer may act on it (its application is in their scope). */
@@ -174,7 +179,7 @@ export async function mailQueueRoutes(app: FastifyInstance) {
     const r = await owner.query(`update meta.mail_queue set status = 'queued', attempts = 0, not_before = now(), message = null where id = $1 and status in ('error', 'cancelled')`, [m.id]);
     if (r.rowCount) await owner.query(`select pg_notify('pgkiln_mail', $1)`, [String(m.id)]);
     await logActivity({ appId: m.app_id, username: s.username, event: 'mail_queue', ip: clientIp(req), detail: `retry mail ${m.id}` });
-    flash(s, r.rowCount ? 'The mail is queued again.' : 'The mail has changed meanwhile.', r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? tr(s)('mq.requeued') : tr(s)('mq.changed'), r.rowCount ? 'ok' : 'error');
     return back(reply, s, redirect(req));
   });
 
@@ -187,7 +192,7 @@ export async function mailQueueRoutes(app: FastifyInstance) {
     // mail that is waiting or being sent is cancelled on the application's Mail page, not purged
     const r = await owner.query(`delete from meta.mail_queue where id = $1 and status in ('error', 'cancelled', 'sent')`, [m.id]);
     await logActivity({ appId: m.app_id, username: s.username, event: 'mail_queue', ip: clientIp(req), detail: `purged mail ${m.id}` });
-    flash(s, r.rowCount ? 'The mail is deleted.' : 'Only sent, failed or cancelled mail can be purged.', r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? tr(s)('mq.deleted') : tr(s)('mq.only_done'), r.rowCount ? 'ok' : 'error');
     return back(reply, s, redirect(req));
   });
 
@@ -206,7 +211,7 @@ export async function mailQueueRoutes(app: FastifyInstance) {
       if (what === 'retry' && r.rowCount) await owner.query(`select pg_notify('pgkiln_mail', '')`);
       await logActivity({ appId: appId, username: s.username, event: 'mail_queue', ip: clientIp(req),
         detail: `${what === 'retry' ? 'retried' : 'purged'} ${r.rowCount} failed mail(s)${ws ? ` of workspace ${ws}` : ''}${appId ? ` of application ${appId}` : ''}` });
-      flash(s, `${r.rowCount} mail${r.rowCount === 1 ? '' : 's'} ${what === 'retry' ? 'queued again' : 'deleted'}.`);
+      flash(s, tr(s)(what === 'retry' ? (r.rowCount === 1 ? 'mq.n_requeued_one' : 'mq.n_requeued') : (r.rowCount === 1 ? 'mq.n_deleted_one' : 'mq.n_deleted'), { n: r.rowCount ?? 0 }));
       return back(reply, s, redirect(req));
     });
 }
