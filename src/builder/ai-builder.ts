@@ -11,6 +11,7 @@ import { isAdmin } from './locks.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, select, send, shell, workshopTabs, type Req } from './ui.ts';
 import { workshopDb } from './workspaces.ts';
 import { WIZARD_KINDS, wizardTables } from './wizards.ts';
+import { tr } from './i18n.ts';
 
 // App Builder AI (migration 062), with the AI service an administrator
 // chooses for the builder (meta.builder_ai):
@@ -114,16 +115,17 @@ const opt = (value: string, label: string, current: unknown) => html`<option val
 async function serviceBox(s: Session) {
   const svc = await builderService();
   const admin = await isAdmin(s.username);
+  const tx = tr(s);
   if (!admin)
     return svc
-      ? html`<p class="muted">AI service: <b>${svc.name}</b> (${providerLabel(svc.provider)}, ${svc.model}). Table and column names, types and descriptions, and what you type, are sent to it.</p>`
-      : html`<div class="alert alert-info">The App Builder has no AI service yet: ask an administrator to choose one here.</div>`;
+      ? html`<p class="muted">${tx.rich('swai.service', { name: html`<b>${svc.name}</b>`, provider: providerLabel(svc.provider), model: svc.model })}</p>`
+      : html`<div class="alert alert-info">${tx('swai.no_service')}</div>`;
   const all = (await owner.query<{ name: string; provider: string; model: string }>('select name, provider, model from meta.ai_service where enabled order by name')).rows;
   return html`<form method="post" action="${BASE}/sql/ai/service" class="component-form">${csrf(s)}
-    <div class="form-grid"><div class="field"><label class="label" for="f_ai_builder_service">AI service of the App Builder (administrators)</label>
-      <select id="f_ai_builder_service" name="service">${opt('', '- none: no AI in the App Builder -', svc?.name ?? '')}${all.map((x) => opt(x.name, `${x.name} (${providerLabel(x.provider)}, ${x.model})`, svc?.name ?? ''))}</select>
-      <small class="help">Table and column names, types and descriptions (never rows), and what developers type, are sent to it. Its calls are logged without an application.</small></div></div>
-    <div class="buttons"><button class="btn">Save</button></div></form>`;
+    <div class="form-grid"><div class="field"><label class="label" for="f_ai_builder_service">${tx('swai.service_label')}</label>
+      <select id="f_ai_builder_service" name="service">${opt('', tx('swai.none'), svc?.name ?? '')}${all.map((x) => opt(x.name, `${x.name} (${providerLabel(x.provider)}, ${x.model})`, svc?.name ?? ''))}</select>
+      <small class="help">${tx('swai.service_help')}</small></div></div>
+    <div class="buttons"><button class="btn">${tx('scr.save')}</button></div></form>`;
 }
 
 const errorBox = (e: unknown) => html`<div class="alert alert-error" role="alert">${e instanceof AiError || e instanceof Error ? e.message : 'The AI request failed.'}</div>`;
@@ -142,30 +144,31 @@ const SQL_SCHEMA = {
 
 async function workshopPage(s: Session, reply: FastifyReply, out: { question?: string; schema?: string; sql?: string; error?: string; result?: Raw }) {
   const list = await schemas(s);
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai', s)}
+  const tx = tr(s);
+  const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('ai', s)}
     ${await serviceBox(s)}
-    <p><a href="${BASE}/sql/ai/describe">Describe tables for AI ▸</a> <span class="muted">(better answers: say what tables and columns mean)</span></p>
+    <p><a href="${BASE}/sql/ai/describe">${tx('swai.describe_link')} ▸</a> <span class="muted">${tx('swai.describe_why')}</span></p>
     ${out.result ?? ''}
     <div class="columns">
-      ${region('SQL from a question', html`
-        <p class="muted u-mt0">The answer is shown, never run: check it, then run it in the SQL Worksheet if you want.</p>
+      ${region(tx('swai.question_title'), html`
+        <p class="muted u-mt0">${tx('swai.question_intro')}</p>
         <form method="post" action="${BASE}/sql/ai/sql">${csrf(s)}
-          <div class="form-grid">${select('schema', 'Schema', out.schema ?? list[0] ?? '', list)}</div>
-          <div class="field"><label class="label" for="f_question">Question</label>
-            <textarea id="f_question" name="question" rows="4" maxlength="4000" required placeholder="e.g. employees per department with their average salary">${out.question ?? ''}</textarea></div>
-          <div class="buttons"><button class="btn btn-hot" data-busy="Thinking…">Write the SQL</button></div>
+          <div class="form-grid">${select('schema', tx('sm.schema'), out.schema ?? list[0] ?? '', list)}</div>
+          <div class="field"><label class="label" for="f_question">${tx('swai.question')}</label>
+            <textarea id="f_question" name="question" rows="4" maxlength="4000" required placeholder="${tx('swai.question_placeholder')}">${out.question ?? ''}</textarea></div>
+          <div class="buttons"><button class="btn btn-hot" data-busy="${tx('swai.thinking')}">${tx('swai.write_sql')}</button></div>
         </form>`)}
-      ${region('Explain a query or an error', html`
+      ${region(tx('swai.explain_title'), html`
         <form method="post" action="${BASE}/sql/ai/explain">${csrf(s)}
-          <div class="form-grid">${select('schema', 'Schema (optional)', out.schema ?? '', [['', '- none -'], ...list.map((x): [string, string] => [x, x])])}</div>
+          <div class="form-grid">${select('schema', tx('swai.schema_optional'), out.schema ?? '', [['', tx('swai.none_short')], ...list.map((x): [string, string] => [x, x])])}</div>
           <div class="field"><label class="label" for="f_sql">SQL</label>
             <textarea id="f_sql" name="sql" class="code" rows="6" maxlength="20000" spellcheck="false">${out.sql ?? ''}</textarea></div>
-          <div class="field"><label class="label" for="f_error">Error message (optional)</label>
+          <div class="field"><label class="label" for="f_error">${tx('swai.error_optional')}</label>
             <textarea id="f_error" name="error" rows="2" maxlength="4000">${out.error ?? ''}</textarea></div>
-          <div class="buttons"><button class="btn btn-hot" data-busy="Thinking…">Explain</button></div>
+          <div class="buttons"><button class="btn btn-hot" data-busy="${tx('swai.thinking')}">${tx('sm.explain')}</button></div>
         </form>`)}
     </div>`;
-  return send(reply, s, shell(s, 'SQL Workshop', [['SQL Workshop', `${BASE}/sql`], ['AI']], main, 'sql'));
+  return send(reply, s, shell(s, tx('rail.sql_workshop'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.ai')]], main, 'sql'));
 }
 
 // ---------------------------------------------------------------- describe tables
@@ -178,30 +181,31 @@ async function describePage(s: Session, reply: FastifyReply, schema: string, tab
   const t = table ? tables.find((x) => x.table === table) : undefined;
   const noted = new Set((await owner.query<{ t: string }>(`select distinct table_name as t from meta.ai_table_note where schema_name = $1`, [schema])).rows.map((r) => r.t));
   const value = (col: string, current: string | null) => (draft ? (col === '' ? draft.table : draft.columns?.[col]) ?? current ?? '' : current ?? '');
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('ai', s)}
-    <p><a href="${BASE}/sql/ai">◂ SQL Workshop AI</a></p>
+  const tx = tr(s);
+  const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('ai', s)}
+    <p><a href="${BASE}/sql/ai">◂ ${tx('swai.back')}</a></p>
     ${message ?? ''}
-    ${region('Describe tables for AI', html`
-      <p class="muted u-mt0">Say what tables and columns mean: the descriptions go with the table list when the App Builder asks a model for SQL or pages. Without one, the database comment is used.</p>
+    ${region(tx('swai.describe_link'), html`
+      <p class="muted u-mt0">${tx('swai.describe_intro')}</p>
       <form method="get" action="${BASE}/sql/ai/describe"><div class="form-grid">
-        ${select('schema', 'Schema', schema, [['', '- choose -'], ...list.map((x): [string, string] => [x, x])])}
-      </div><div class="buttons"><button class="btn">Show tables</button></div></form>
-      ${tables.length ? html`<ul class="ai-tables">${tables.map((x) => html`<li><a href="${BASE}/sql/ai/describe?schema=${encodeURIComponent(schema)}&amp;table=${encodeURIComponent(x.table)}"${x.table === table ? raw(' aria-current="true"') : ''}>${x.table}</a> <span class="muted">${x.kind}${noted.has(x.table) ? ', described' : ''}</span></li>`)}</ul>` : ''}`)}
+        ${select('schema', tx('sm.schema'), schema, [['', tx('swai.choose')], ...list.map((x): [string, string] => [x, x])])}
+      </div><div class="buttons"><button class="btn">${tx('swai.show_tables')}</button></div></form>
+      ${tables.length ? html`<ul class="ai-tables">${tables.map((x) => html`<li><a href="${BASE}/sql/ai/describe?schema=${encodeURIComponent(schema)}&amp;table=${encodeURIComponent(x.table)}"${x.table === table ? raw(' aria-current="true"') : ''}>${x.table}</a> <span class="muted">${x.kind}${noted.has(x.table) ? `, ${tx('swai.described')}` : ''}</span></li>`)}</ul>` : ''}`)}
     ${t ? region(`${t.schema}.${t.table}`, html`
-      ${draft ? html`<div class="alert alert-info">Drafted by AI from the names and types: check and change the descriptions, then save.</div>` : ''}
+      ${draft ? html`<div class="alert alert-info">${tx('swai.drafted')}</div>` : ''}
       <form method="post" action="${BASE}/sql/ai/describe">${csrf(s)}
         <input type="hidden" name="schema" value="${t.schema}"><input type="hidden" name="table" value="${t.table}">
-        <div class="field"><label class="label" for="f_note_">The ${t.kind}</label>
+        <div class="field"><label class="label" for="f_note_">${tx('swai.the_kind', { kind: t.kind })}</label>
           <textarea id="f_note_" name="note:" rows="2" maxlength="2000">${value('', t.note)}</textarea></div>
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Column</th><th scope="col">Description</th></tr></thead><tbody>
-          ${t.columns.map((c) => html`<tr><td data-label="Column"><code>${c.name}</code> <span class="muted">${c.type}${c.pk ? ', key' : ''}${c.fk ? `, → ${c.fk}` : ''}</span></td>
-            <td data-label="Description"><input name="note:${c.name}" maxlength="2000" value="${value(c.name, c.note)}" aria-label="Description of ${c.name}"></td></tr>`)}
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('dm.col.column')}</th><th scope="col">${tx('scr.description')}</th></tr></thead><tbody>
+          ${t.columns.map((c) => html`<tr><td data-label="${tx('dm.col.column')}"><code>${c.name}</code> <span class="muted">${c.type}${c.pk ? `, ${tx('swai.key')}` : ''}${c.fk ? `, → ${c.fk}` : ''}</span></td>
+            <td data-label="${tx('scr.description')}"><input name="note:${c.name}" maxlength="2000" value="${value(c.name, c.note)}" aria-label="${tx('swai.description_of', { name: c.name })}"></td></tr>`)}
         </tbody></table></div>
-        <div class="field"><label class="check"><input type="checkbox" name="comments" value="true"> Also save them as database comments (COMMENT ON)</label></div>
-        <div class="buttons"><button class="btn btn-hot">Save the descriptions</button>
-          <button class="btn" formaction="${BASE}/sql/ai/describe/draft" data-busy="Thinking…">Draft with AI</button></div>
+        <div class="field"><label class="check"><input type="checkbox" name="comments" value="true"> ${tx('swai.as_comments')}</label></div>
+        <div class="buttons"><button class="btn btn-hot">${tx('swai.save_descriptions')}</button>
+          <button class="btn" formaction="${BASE}/sql/ai/describe/draft" data-busy="${tx('swai.thinking')}">${tx('swai.draft')}</button></div>
       </form>`) : ''}`;
-  return send(reply, s, shell(s, 'SQL Workshop', [['SQL Workshop', `${BASE}/sql`], ['AI', `${BASE}/sql/ai`], ['Describe tables']], main, 'sql'));
+  return send(reply, s, shell(s, tx('rail.sql_workshop'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.ai'), `${BASE}/sql/ai`], [tx('swai.describe_crumb')]], main, 'sql'));
 }
 
 // ---------------------------------------------------------------- pages from a description
@@ -293,11 +297,11 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     const name = String(req.body?.service ?? '').toUpperCase();
     const svc = name ? await owner.one<{ id: number }>('select id from meta.ai_service where name = $1', [name]) : null;
     if (name && !svc) {
-      flash(s, `There is no AI service ${name}.`, 'error');
+      flash(s, tr(s)('swai.err.no_such', { name }), 'error');
       return back(reply, s, `${BASE}/sql/ai`);
     }
     await owner.query('update meta.builder_ai set service_id = $1, updated_by = $2, updated_at = now()', [svc?.id ?? null, s.username]);
-    flash(s, svc ? `The App Builder uses AI service ${name}.` : 'The App Builder uses no AI service.');
+    flash(s, svc ? tr(s)('swai.uses', { name }) : tr(s)('swai.uses_none'));
     return back(reply, s, `${BASE}/sql/ai`);
   });
 
@@ -309,8 +313,8 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     const schema = String(b.schema ?? '');
     let result: Raw;
     try {
-      if (!question) throw new AiError('config', 'Type a question.');
-      if (!(await schemas(s)).includes(schema)) throw new AiError('config', 'Choose a schema.');
+      if (!question) throw new AiError('config', tr(s)('swai.err.question'));
+      if (!(await schemas(s)).includes(schema)) throw new AiError('config', tr(s)('swai.err.schema'));
       const res = await ask(s, {
         system: `You write PostgreSQL ${(await owner.one<{ v: number }>(`select current_setting('server_version_num')::int / 10000 as v`))!.v} SQL for a developer, for these tables and views:\n\n${describeTables(await tableInfo({ schema }))}\n\n` +
           'Use only those tables and columns, qualified with their schema. Write a SELECT unless the question clearly asks to change data. The developer reviews the SQL before anything runs.',
@@ -319,12 +323,12 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
       });
       const a = res.json as { sql?: unknown; explanation?: unknown };
       const sql = typeof a.sql === 'string' ? a.sql.trim().replace(/;+\s*$/, '') : '';
-      result = region('Proposed SQL', html`
+      result = region(tr(s)('swai.proposed'), html`
         <p>${typeof a.explanation === 'string' ? a.explanation : ''}</p>
         <form method="post" action="${BASE}/sql">${csrf(s)}
-          <div class="field"><label class="label" for="f_ai_sql">SQL (not run)</label>
+          <div class="field"><label class="label" for="f_ai_sql">${tr(s)('swai.not_run')}</label>
             <textarea id="f_ai_sql" name="sql" class="code sql-editor" rows="10" spellcheck="false" data-code="plpgsql">${sql}</textarea></div>
-          <div class="buttons"><button class="btn">Run in the SQL Worksheet</button></div>
+          <div class="buttons"><button class="btn">${tr(s)('qb.run')}</button></div>
         </form>`);
     } catch (e) {
       result = errorBox(e);
@@ -341,14 +345,14 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     const schema = String(b.schema ?? '');
     let result: Raw;
     try {
-      if (!sql.trim() && !error.trim()) throw new AiError('config', 'Paste a query, an error message or both.');
+      if (!sql.trim() && !error.trim()) throw new AiError('config', tr(s)('swai.err.paste'));
       const tables = schema && (await schemas(s)).includes(schema) ? describeTables(await tableInfo({ schema })) : '';
       const res = await ask(s, {
         system: 'You explain PostgreSQL to a developer: what a query does, why an error happens and how to fix it. Be concise; show corrected SQL when it helps.' +
           (tables ? `\n\nThe tables and views of the schema:\n\n${tables}` : ''),
         prompt: [sql.trim() ? `Query:\n${sql.trim()}` : '', error.trim() ? `Error:\n${error.trim()}` : ''].filter(Boolean).join('\n\n'),
       });
-      result = region('Explanation', html`<div class="ai-answer">${formatAnswer(res.text)}</div>`);
+      result = region(tr(s)('swai.explanation'), html`<div class="ai-answer">${formatAnswer(res.text)}</div>`);
     } catch (e) {
       result = errorBox(e);
     }
@@ -392,9 +396,9 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
         }
         if (b.comments === 'true' && db === owner) await comment(c, t, notes);
       });
-      flash(s, `Descriptions of ${t.schema}.${t.table} saved${b.comments === 'true' ? ', also as database comments' : ''}.`);
+      flash(s, tr(s)(b.comments === 'true' ? 'swai.saved_comments' : 'swai.saved', { name: `${t.schema}.${t.table}` }));
     } catch (e) {
-      flash(s, `Not saved: ${(e as Error).message}`, 'error');
+      flash(s, tr(s)('swai.not_saved', { error: (e as Error).message }), 'error');
     }
     return back(reply, s, `${BASE}/sql/ai/describe?schema=${encodeURIComponent(t.schema)}&table=${encodeURIComponent(t.table)}`);
   });
