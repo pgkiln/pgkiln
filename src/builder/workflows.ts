@@ -5,6 +5,7 @@ import type { Session } from '../session.ts';
 import { invokeStepReferences, outcomeMap, stepProblems, stepWarnings, workflowDiagram, type Step } from '../workflow.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { scopedTx as tx, type BuilderKey } from './i18n.ts';
 
 // Shared Components → Workflows: versions (APEX: development, active,
 // inactive), the diagram of the steps, problems with them, and the instances
@@ -53,7 +54,7 @@ export async function workflowBeforeSave(values: Record<string, unknown>, cid: s
       return false;
     }
   };
-  if (!cid && hasDraft(values.steps)) throw new Error('Draft steps belong in a development version: create the workflow without them, then create a new version to model with drafts.');
+  if (!cid && hasDraft(values.steps)) throw new Error(tx('wfv.draft_new'));
   if (!cid || values.steps === undefined) return;
   const d = await owner.one('select version, dev_version, steps = $2::jsonb as same from meta.workflow_definition where id = $1', [cid, values.steps]);
   if (!d) return;
@@ -61,8 +62,8 @@ export async function workflowBeforeSave(values: Record<string, unknown>, cid: s
     values.dev_steps = values.steps;
     delete values.steps;
   } else if (d.same) delete values.steps;
-  else if (hasDraft(values.steps)) throw new Error(`Version ${d.version} is active: draft steps belong in a development version.`);
-  else throw new Error(`Version ${d.version} is active and can't be changed. Create a new version to edit its steps.`);
+  else if (hasDraft(values.steps)) throw new Error(tx('wfv.draft_active', { version: d.version }));
+  else throw new Error(tx('wfv.active_fixed', { version: d.version }));
 }
 
 export async function workflowExtras(appId: number, row: Definition, s: Session, query: Record<string, string | undefined> = {}) {
@@ -103,7 +104,7 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
   const action = `${base}/versions`;
   const usage = (v: string) => {
     const u = perVersion.get(v);
-    return u ? `${u.n}${u.running ? ` (${u.running} running)` : ''}` : '0';
+    return u ? `${u.n}${u.running ? ` ${tx('wfv.running', { n: u.running })}` : ''}` : '0';
   };
   const inactive = Array.isArray(row.inactive_versions) ? row.inactive_versions : [];
   const nextLabel = String(Math.max(0, ...[row.version, ...inactive.map((v) => v.version)].filter((v) => /^\d{1,9}$/.test(v)).map(Number)) + 1);
@@ -112,58 +113,58 @@ export async function workflowExtras(appId: number, row: Definition, s: Session,
     { version: row.version, state: 'active', at: row.activated_at, steps: row.steps },
     ...[...inactive].reverse().map((v) => ({ version: v.version, state: 'inactive', at: v.activated_at, steps: v.steps })),
   ];
-  return html`<fieldset class="prop-group u-mt125"><legend>Versions</legend>
-    <p class="muted u-mt0">New instances start the <b>active</b> version; running instances keep the version they started with. Edit a <b>development</b> version, then activate it.</p>
-    <div class="table-wrap"><table class="report report-reflow wf-versions"><thead><tr><th>Version</th><th>State</th><th>Activated</th><th class="num">Instances</th><th></th></tr></thead><tbody>
+  return html`<fieldset class="prop-group u-mt125"><legend>${tx('wfv.versions')}</legend>
+    <p class="muted u-mt0">${tx.rich('wfv.intro', { active: html`<b>${tx('wfv.state.active')}</b>`, development: html`<b>${tx('wfv.state.development')}</b>` })}</p>
+    <div class="table-wrap"><table class="report report-reflow wf-versions"><thead><tr><th>${tx('wfv.version')}</th><th>${tx('wfv.state')}</th><th>${tx('wfv.activated')}</th><th class="num">${tx('wfv.instances')}</th><th></th></tr></thead><tbody>
       ${versions.map((v, i) => html`<tr>
-        <td data-label="Version"><b>${v.version}</b></td>
-        <td data-label="State"><span class="tag${v.state === 'active' ? ' tag-info' : v.state === 'development' ? ' tag-warning' : ''}">${v.state}</span></td>
-        <td data-label="Activated">${v.state === 'development' ? '—' : when(v.at)}</td>
-        <td class="num" data-label="Instances">${usage(v.version)}</td>
+        <td data-label="${tx('wfv.version')}"><b>${v.version}</b></td>
+        <td data-label="${tx('wfv.state')}"><span class="tag${v.state === 'active' ? ' tag-info' : v.state === 'development' ? ' tag-warning' : ''}">${tx(`wfv.state.${v.state}` as BuilderKey)}</span></td>
+        <td data-label="${tx('wfv.activated')}">${v.state === 'development' ? '—' : when(v.at)}</td>
+        <td class="num" data-label="${tx('wfv.instances')}">${usage(v.version)}</td>
         <td data-label="">${v.state === 'development'
           ? html`<form method="post" action="${action}" class="wf-version-actions">${csrf(s)}
-              <button class="btn btn-hot" name="action" value="activate"${problems.length || drafts.length ? raw(' disabled') : ''} data-confirm="${`Activate version ${v.version}? New instances start it; running ones keep their version.`}">Activate</button>
-              <button class="btn btn-danger" name="action" value="discard" data-confirm="${`Discard version ${v.version} and its changes?`}">Discard</button></form>`
-          : v.steps !== shown ? html`<details class="wf-version-diagram"><summary>Diagram</summary><div class="wf-wrap">${workflowDiagram(v.steps, { id: `v${i}` })}</div></details>` : ''}</td>
+              <button class="btn btn-hot" name="action" value="activate"${problems.length || drafts.length ? raw(' disabled') : ''} data-confirm="${tx('wfv.activate_confirm', { version: v.version })}">${tx('wfv.activate')}</button>
+              <button class="btn btn-danger" name="action" value="discard" data-confirm="${tx('wfv.discard_confirm', { version: v.version })}">${tx('wfv.discard')}</button></form>`
+          : v.steps !== shown ? html`<details class="wf-version-diagram"><summary>${tx('wfv.diagram')}</summary><div class="wf-wrap">${workflowDiagram(v.steps, { id: `v${i}` })}</div></details>` : ''}</td>
       </tr>`)}
     </tbody></table></div>
     ${dev
       ? ''
       : html`<form method="post" action="${action}" class="search u-mwnone u-mt075">${csrf(s)}
-          <label class="sr-only" for="wf-new-version">Label of the new version</label>
+          <label class="sr-only" for="wf-new-version">${tx('wfv.new_label')}</label>
           <input id="wf-new-version" name="version" placeholder="${nextLabel}" maxlength="30" aria-describedby="wf-new-version-help">
-          <button class="btn" name="action" value="new">Create new version</button>
-          <small id="wf-new-version-help" class="help">A copy of version ${row.version} to edit; the label is optional (${nextLabel}).</small>
+          <button class="btn" name="action" value="new">${tx('wfv.new')}</button>
+          <small id="wf-new-version-help" class="help">${tx('wfv.new_help', { version: row.version, next: nextLabel })}</small>
         </form>`}
   </fieldset>
-  <fieldset class="prop-group u-mt125"><legend>Diagram of version ${dev ? `${row.dev_version} (development)` : row.version}</legend>
+  <fieldset class="prop-group u-mt125"><legend>${dev ? tx('wfv.diagram_dev', { version: row.dev_version! }) : tx('wfv.diagram_of', { version: row.version })}</legend>
     ${problems.length ? html`<div class="alert alert-error" role="alert"><ul class="u-m0">${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` : ''}
     ${warnings.length ? html`<div class="alert wf-warnings" role="status"><ul class="u-m0">${warnings.map((p) => html`<li>${p}</li>`)}</ul></div>` : ''}
-    ${drafts.length ? html`<div class="alert wf-warnings" role="status">Draft steps (${drafts.join(', ')}) are placeholders: replace them before activating version ${row.dev_version}.</div>` : ''}
+    ${drafts.length ? html`<div class="alert wf-warnings" role="status">${tx('wfv.drafts', { steps: drafts.join(', '), version: row.dev_version! })}</div>` : ''}
     <div class="wf-wrap">${workflowDiagram(shown, { id: 'def' })}</div>
     <p class="wf-export">
-      <a class="btn btn-sm" href="${`${base}/diagram.svg?v=${encodeURIComponent(dev ? row.dev_version! : row.version)}`}" download data-wf-svg>Download SVG</a>
-      <button type="button" class="btn btn-sm" data-wf-png hidden>Download PNG</button>
+      <a class="btn btn-sm" href="${`${base}/diagram.svg?v=${encodeURIComponent(dev ? row.dev_version! : row.version)}`}" download data-wf-svg>${tx('wfv.svg')}</a>
+      <button type="button" class="btn btn-sm" data-wf-png hidden>${tx('wfv.png')}</button>
     </p>
-    <p class="muted small">Instances: ${counts.length ? counts.map((c, i) => html`${i ? ', ' : ''}${c.n} ${c.state}`) : 'none yet'}. Running instances keep the steps of the version they started with.</p>
+    <p class="muted small">${tx.rich('wfv.counts', { counts: counts.length ? html`${counts.map((c, i) => html`${i ? ', ' : ''}${c.n} ${c.state}`)}` : tx('wfv.none_yet') })}</p>
   </fieldset>
   ${instances.length
-    ? html`<fieldset class="prop-group u-mt125"><legend>Instances</legend>
+    ? html`<fieldset class="prop-group u-mt125"><legend>${tx('wfv.instances')}</legend>
         ${instances.some((w) => ['active', 'waiting', 'faulted'].includes(w.state) && (w.version ?? '1') !== row.version)
-          ? html`<p class="u-mt0"><a class="btn btn-sm" href="${`${base}/migrate`}" title="Migrate running instances to a newer version">Migrate instances…</a></p>` : ''}
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Id</th><th>Title</th><th>Version</th><th>State</th><th>At</th><th>Started</th></tr></thead><tbody>
+          ? html`<p class="u-mt0"><a class="btn btn-sm" href="${`${base}/migrate`}" title="${tx('wfv.migrate_title')}">${tx('wfv.migrate')}</a></p>` : ''}
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">${tx('wfv.id')}</th><th>${tx('wfv.title')}</th><th>${tx('wfv.version')}</th><th>${tx('wfv.state')}</th><th>${tx('wfv.at')}</th><th>${tx('wfv.started')}</th></tr></thead><tbody>
           ${instances.map((w) => html`<tr${picked?.id === w.id ? raw(' aria-current="true"') : ''}>
-            <td class="num" data-label="Id"><a href="?c=workflow_definition-${row.id}&amp;wf=${w.id}">${w.id}</a></td>
-            <td data-label="Title">${w.title}</td>
-            <td data-label="Version">${w.version ?? '1'}</td>
-            <td data-label="State"><span class="tag${w.state === 'faulted' ? ' tag-error' : w.state === 'completed' || w.state === 'terminated' ? '' : ' tag-info'}">${w.state}</span></td>
-            <td data-label="At">${w.active_steps.join(', ') || '—'}</td>
-            <td data-label="Started">${when(w.started_at)} · ${w.initiator}</td></tr>`)}
+            <td class="num" data-label="${tx('wfv.id')}"><a href="?c=workflow_definition-${row.id}&amp;wf=${w.id}">${w.id}</a></td>
+            <td data-label="${tx('wfv.title')}">${w.title}</td>
+            <td data-label="${tx('wfv.version')}">${w.version ?? '1'}</td>
+            <td data-label="${tx('wfv.state')}"><span class="tag${w.state === 'faulted' ? ' tag-error' : w.state === 'completed' || w.state === 'terminated' ? '' : ' tag-info'}">${w.state}</span></td>
+            <td data-label="${tx('wfv.at')}">${w.active_steps.join(', ') || '—'}</td>
+            <td data-label="${tx('wfv.started')}">${when(w.started_at)} · ${w.initiator}</td></tr>`)}
         </tbody></table></div>
         ${picked && Array.isArray(pickedSteps)
-          ? html`<h3 class="u-mt125">Instance ${picked.id}, version ${picked.version ?? '1'}${picked.active_steps.length ? `: at ${picked.active_steps.join(', ')}` : ''}</h3>
+          ? html`<h3 class="u-mt125">${picked.active_steps.length ? tx('wfv.instance_at', { id: picked.id, version: picked.version ?? '1', steps: picked.active_steps.join(', ') }) : tx('wfv.instance', { id: picked.id, version: picked.version ?? '1' })}</h3>
               <div class="wf-wrap">${workflowDiagram(pickedSteps, { active: picked.active_steps, id: `wf${picked.id}` })}</div>`
-          : html`<p class="muted small">Pick an instance to see where it is in the diagram of its version.</p>`}
+          : html`<p class="muted small">${tx('wfv.pick')}</p>`}
       </fieldset>`
     : ''}`;
 }
@@ -182,20 +183,20 @@ export async function workflowBuilderRoutes(app: FastifyInstance) {
     try {
       if (b.action === 'new') {
         const label = String(b.version ?? '').trim();
-        if (label && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(label)) throw new Error('A version label is letters, digits, dots, dashes and underscores (at most 30).');
+        if (label && !/^[A-Za-z0-9][A-Za-z0-9._-]{0,29}$/.test(label)) throw new Error(tx('wfv.bad_label'));
         const v = (await owner.one('select meta.new_workflow_version($1, $2) as v', [d.id, label || null])).v;
-        flash(s, `Version ${v} created (development): edit its steps, then activate it.`);
+        flash(s, tx('wfv.created', { version: v }));
       } else if (b.action === 'activate') {
-        if (!d.dev_version) throw new Error('There is no version in development.');
+        if (!d.dev_version) throw new Error(tx('wfv.no_dev'));
         const tasks = new Set((await owner.query('select name from meta.task_definition where app_id = $1', [id])).rows.map((r) => r.name as string));
         const outcomes = outcomeMap((await owner.query('select name, type, outcomes from meta.task_definition where app_id = $1', [id])).rows);
         const problems = stepProblems(d.dev_steps, tasks, { outcomes, drafts: false });
-        if (problems.length) throw new Error(`Version ${d.dev_version} can't be activated: ${problems.join(' ')}`);
+        if (problems.length) throw new Error(tx('wfv.cant_activate', { version: d.dev_version, problems: problems.join(' ') }));
         const v = (await owner.one('select meta.activate_workflow_version($1) as v', [d.id])).v;
-        flash(s, `Version ${v} is active: new instances start it.`);
+        flash(s, tx('wfv.activated_flash', { version: v }));
       } else if (b.action === 'discard') {
         await owner.query('select meta.discard_workflow_version($1)', [d.id]);
-        flash(s, d.dev_version ? `Version ${d.dev_version} discarded.` : 'There was no version in development.');
+        flash(s, d.dev_version ? tx('wfv.discarded', { version: d.dev_version }) : tx('wfv.was_no_dev'));
       } else return reply.code(400).send('Unknown action');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
