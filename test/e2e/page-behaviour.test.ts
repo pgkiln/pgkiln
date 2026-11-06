@@ -29,6 +29,9 @@ before(async () => {
   await add('dynamic_action', `insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, affected_items, css_classes) values ($1, 992, 'typed', 'key_release', 'P1_PB_A', 'add_class', 'P1_PB_A', 'pb-typed') returning id`, [pageId]);
   await add('dynamic_action', `insert into meta.dynamic_action (page_id, seq, name, event, action, message) values ($1, 993, 'leave?', 'before_submit', 'confirm', 'Submit now?') returning id`, [pageId]);
   await add('process', `insert into meta.process (page_id, seq, name, type, point, code) values ($1, 990, 'PB_ECHO', 'sql', 'ajax', 'select upper(:X01) as shout') returning id`, [pageId]);
+  // (166) a submit button the user clicks: before_submit used to swallow that submit
+  await add('button', `insert into meta.button (page_id, region_id, seq, name, label, action)
+    select $1, r.id, 990, 'PB_SUBMIT', 'PB submit', 'submit' from meta.region r where r.page_id = $1 order by r.seq limit 1 returning id`, [pageId]);
   close = async () => {
     for (const m of made.reverse()) await owner.query(`delete from meta.${m.table} where id = $1`, [m.id]);
     await owner.query('update meta.app set session_warning_seconds = 120 where id = $1', [appId]);
@@ -79,6 +82,19 @@ describe('page behaviour', () => {
       assert.equal(await page.evaluate(() => (window as any).__marker), 1, 'not submitted');
       page.once('dialog', (d) => void d.accept());
       await Promise.all([page.waitForNavigation(), page.evaluate(() => (document.querySelector('form.page-form') as HTMLFormElement).requestSubmit())]);
+      assert.equal(await page.evaluate(() => (window as any).__marker), undefined, 'submitted');
+    } finally {
+      await page.close();
+    }
+  });
+
+  test('before submit: a submit the user starts (a button) goes ahead after the actions', async () => {
+    const page = await browser.newPage();
+    try {
+      await signIn(page);
+      await page.evaluate(() => ((window as any).__marker = 1));
+      page.once('dialog', (d) => void d.accept());
+      await Promise.all([page.waitForNavigation({ timeout: 5000 }), page.getByRole('button', { name: 'PB submit' }).click()]);
       assert.equal(await page.evaluate(() => (window as any).__marker), undefined, 'submitted');
     } finally {
       await page.close();

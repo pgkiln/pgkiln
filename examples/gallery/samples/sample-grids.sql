@@ -3,8 +3,8 @@
 --
 -- The interactive grid: an editable grid made by the wizard; a grid with
 -- select lists, required columns, totals, a frozen column, a row menu and a
--- default column layout; a master grid with its detail grid; and a
--- read-only grid with its single row, group by and chart views.
+-- default column layout, and dynamic actions on a new row and after a
+-- save; a master grid with its detail grid; and a read-only grid with its single row, group by and chart views.
 --
 -- Installed by an administrator from the App Gallery, or with
 --   psql "$DATABASE_URL" -1 -f examples/gallery/samples/sample-grids.sql
@@ -109,7 +109,7 @@ select pg_temp.page_id('sample-grids', r.page), r.seq, r.title, r.type, 12, r.te
 
   -- 3 Grid features
   (3, 5, 'About this page', 'static', 'plain',
-   '<p class="lead">The grid''s attributes: <code>columns</code> gives the team column a list of values and makes the name required; <code>aggregates</code> adds totals over every row of the search; <code>frozen</code> keeps the name in view while the grid scrolls sideways; <code>row_actions</code> adds a menu per row (duplicate, delete); <code>layout</code> sets the default order and widths, and every user can rearrange it (Actions → Columns).</p>',
+   '<p class="lead">The grid''s attributes: <code>columns</code> gives the team column a list of values and makes the name required; <code>aggregates</code> adds totals over every row of the search; <code>frozen</code> keeps the name in view while the grid scrolls sideways; <code>row_actions</code> adds a menu per row (duplicate, delete); <code>layout</code> sets the default order and widths, and every user can rearrange it (Actions → Columns).</p><p>Two dynamic actions listen to the grid itself (the trigger is its static id <code>members</code>): <strong>Row initialization</strong> (<code>grid_row_init</code>) runs when <strong>Add row</strong> or Duplicate adds a row, and an <em>Execute JavaScript</em> action fills its empty role, start date and hours with defaults (the function <code>grids.memberDefaults</code> in the static file <code>sample-grids.js</code>); <strong>Save</strong> (<code>grid_save</code>) shows a message on the page that comes back after the grid was saved.</p>',
    null, null, '{}', null),
   (3, 10, 'Members', 'grid', 'standard',
    E'select id, name, team_id, role, starts, hours, rate, remote\n  from sample_grids.member order by team_id, name',
@@ -149,3 +149,35 @@ select pg_temp.page_id('sample-grids', 3), 10, 'Save the members', 'grid_dml', r
 -- the detail grid of page 4: the role as a select list
 update meta.region set config = jsonb_set(config, '{columns,role}', '{"lov": "STATIC:Lead,Developer,Designer,Tester,Analyst", "required": true}')
  where page_id = pg_temp.page_id('sample-grids', 4) and seq = 20;
+
+-- page 3: dynamic actions on the grid's own events (trigger: the grid's static id).
+-- grid_row_init: a new row (Add row, Duplicate) gets defaults from a JavaScript function of a static file;
+-- grid_save: a message on the page that comes back after a save.
+insert into meta.static_file (app_id, name, mime, content)
+select a.id, 'sample-grids.js', 'text/javascript', convert_to($js$// Sample Interactive Grids: functions for "Execute JavaScript" dynamic actions.
+// A new member row: its empty role, start date and hours get defaults (a duplicated row keeps its copied values).
+pgkiln.actions.register('grids.memberDefaults', (da) => {
+  const row = da.element;
+  if (!row) return;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const defaults = { role: 'Developer', starts: today, hours: '40' };
+  for (const th of row.closest('table').querySelectorAll('thead th[data-col-name]')) {
+    const value = defaults[th.dataset.colName];
+    const control = value && row.querySelector(`td[data-col="${th.dataset.col}"] :is(input:not([type=hidden]), select)`);
+    if (!control || control.value) continue;
+    control.value = value;
+    control.dispatchEvent(new Event('input', { bubbles: true }));
+    control.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+});
+$js$, 'utf8')
+  from meta.app a where a.alias = 'sample-grids';
+
+update meta.app set static_includes = '{sample-grids.js}' where alias = 'sample-grids';
+
+insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, code, message)
+values
+  (pg_temp.page_id('sample-grids', 3), 10, 'Defaults for a new member', 'grid_row_init', 'members', 'execute_javascript', 'grids.memberDefaults', null),
+  (pg_temp.page_id('sample-grids', 3), 20, 'Saved', 'grid_save', 'members', 'show_success', null,
+   'A grid_save dynamic action: the members are saved, and the totals include your changes.');

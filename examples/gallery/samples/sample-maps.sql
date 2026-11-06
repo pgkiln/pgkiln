@@ -4,8 +4,9 @@
 -- Map regions on Dutch museums, without PostGIS: markers with popups and
 -- clustering; several layers (markers, a route and an area as GeoJSON, a
 -- heat map that starts hidden); a map that filters the report beside it by
--- distance; and a form with a location item ("Use my location") whose
--- places show on a map.
+-- distance; a form with a location item ("Use my location"), a geocoded
+-- address and a display map, whose places show on a map; and dynamic
+-- actions on a map's own events and on the device's position.
 --
 -- Installed by an administrator from the App Gallery, or with
 --   psql "$DATABASE_URL" -1 -f examples/gallery/samples/sample-maps.sql
@@ -94,7 +95,7 @@ select id, 'demo', meta.hash_password('demo'), '{}' from meta.app where alias = 
 
 insert into meta.page (app_id, page_no, name, title, parent_page)
 select a.id, p.no, p.name, p.name, p.parent
-  from meta.app a, (values (1, 'Sample Maps', null), (2, 'Museums', 1), (3, 'Layers', 1), (4, 'Map and list', 1)) as p (no, name, parent)
+  from meta.app a, (values (1, 'Sample Maps', null), (2, 'Museums', 1), (3, 'Layers', 1), (4, 'Map and list', 1), (7, 'Map events', 1)) as p (no, name, parent)
  where a.alias = 'sample-maps';
 
 -- page 5 and its form, page 6: the Report and form wizard on the places
@@ -107,7 +108,7 @@ insert into meta.nav_entry (app_id, seq, label, icon, target_page)
 select a.id, n.seq, n.label, n.icon, n.page
   from meta.app a, (values
   (10, 'Home', 'home', 1), (20, 'Museums', 'map', 2), (30, 'Layers', 'layers', 3),
-  (40, 'Map and list', 'list', 4), (50, 'My places', 'map', 5)
+  (40, 'Map and list', 'list', 4), (50, 'My places', 'map', 5), (60, 'Map events', 'bolt', 7)
   ) as n (seq, label, icon, page)
  where a.alias = 'sample-maps';
 
@@ -120,7 +121,8 @@ select a.id, 'MAP_TOPICS', e.seq, e.label, e.icon, e.page, e.description
   (10, 'Museums', 'map', 2, 'Markers from latitude and longitude columns, popups, and clusters that open as you zoom in.'),
   (20, 'Layers', 'layers', 3, 'Several queries on one map: markers, a route and an area as GeoJSON, a heat map you switch on.'),
   (30, 'Map and list', 'list', 4, 'Move the map, then show only the museums within that distance in the list beside it.'),
-  (40, 'My places', 'map', 5, 'A form with a location item: Use my location stores latitude,longitude, the map shows them.')
+  (40, 'My places', 'map', 5, 'A form with a location item: Use my location stores latitude,longitude, the map shows them.'),
+  (50, 'Map events', 'bolt', 7, 'Dynamic actions on a marker clicked and the map moved, and the museums nearest to you.')
   ) as e (seq, label, icon, page, description)
  where a.alias = 'sample-maps';
 
@@ -164,12 +166,68 @@ select pg_temp.page_id('sample-maps', r.page), r.seq, r.title, r.type, r.cols, r
 
   -- 5 My places (the wizard's report follows at seq 10)
   (5, 5, 'About this page', 'static', 12, 'plain',
-   '<p class="lead">The form''s <strong>Location</strong> is a location item: <em>Use my location</em> asks the browser for the device''s position and stores it as <code>latitude,longitude</code> text, which a check constraint on the column keeps in shape. The map reads the same column.</p>',
+   '<p class="lead">The form''s <strong>Location</strong> is a location item: <em>Use my location</em> asks the browser for the device''s position and stores it as <code>latitude,longitude</code> text, which a check constraint on the column keeps in shape. The map reads the same column.</p><p>The form also has an <strong>Address</strong> (an <code>address</code> item, not stored): its <em>Check address</em> button offers the matching addresses, and the one chosen puts its position into Location (<code>coordinates_item</code>). For a new place, naming it runs two dynamic actions: a <em>Set Value</em> copies the name into Address and <code>trigger_geocoding</code> looks it up, as if you had pressed Check address. It needs the installation''s geocoder (<code>GEOCODER_URL</code>); without one it is a plain text field. Below it, <strong>On the map</strong> is a <code>display_map</code> item: a small map of the stored location with a pin.</p>',
    '{}', null),
   (5, 20, 'On the map', 'map', 12, 'standard',
    'select id, name as title, note as body, location from sample_maps.place where location is not null',
-   '{"link": {"page": 6, "items": {"P6_ID": "#id#"}}, "empty": "No place has a location yet."}', null)
+   '{"link": {"page": 6, "items": {"P6_ID": "#id#"}}, "empty": "No place has a location yet."}', null),
+
+  -- 7 Map events
+  (7, 5, 'About this page', 'static', 12, 'plain',
+   '<p class="lead">Dynamic actions can listen to the map itself (the trigger is its static id <code>events-map</code>). <strong>Map Object Clicked</strong> (<code>map_object_click</code>) sees the marker''s <code>id</code> column: a <em>Set Value</em> without SQL puts it into <code>P7_MUSEUM</code> and the region <em>Clicked museum</em> is refreshed with it. <strong>Map Changed</strong> (<code>map_change</code>) runs when you move or zoom the map and sees the zoom level, shown in <code>P7_ZOOM</code>. The button <strong>Museums near me</strong> runs <code>current_position</code>, which asks the browser for the device''s position and puts it into <code>P7_HERE</code> as <code>latitude,longitude</code>; then the nearest museums are listed.</p>',
+   '{}', null),
+  (7, 10, 'Museums', 'map', 8, 'standard',
+   E'select id, name as title, city || '' · '' || kind as body, lat, lng\n  from sample_maps.museum',
+   '{"zoom": 7, "height": "large", "name": "Museums"}', 'events-map'),
+  (7, 20, 'Map state', 'static', 4, 'standard', null, '{}', 'map-state'),
+  (7, 30, 'Clicked museum', 'classic_report', 4, 'standard',
+   E'select name as "Museum", city as "City", kind as "Kind", to_char(visitors, ''FM9G999G999'') as "Visitors"\n  from sample_maps.museum where id::text = :P7_MUSEUM',
+   '{"empty": "Click a marker on the map."}', 'clicked'),
+  (7, 40, 'Nearest museums', 'classic_report', 4, 'standard',
+   E'with here as (\n  select substring(:P7_HERE from ''^(-?\\d+(?:\\.\\d+)?),'')::numeric as lat,\n         substring(:P7_HERE from '',(-?\\d+(?:\\.\\d+)?)$'')::numeric as lng)\nselect m.name as "Museum", m.city as "City",\n       round(111.2 * sqrt(power(m.lat - h.lat, 2) + power((m.lng - h.lng) * cos(radians(h.lat)), 2))) || '' km'' as "Distance"\n  from sample_maps.museum m, here h\n where h.lat is not null and h.lng is not null\n order by power(m.lat - h.lat, 2) + power((m.lng - h.lng) * cos(radians(h.lat)), 2)\n limit 5',
+   '{"empty": "Press Museums near me."}', 'nearest')
   ) as r (page, seq, title, type, cols, template, source, config, sid);
 
 update meta.region set config = config || jsonb_build_object('report', pg_temp.region_id('sample-maps', 4, 'filter-list'))
  where id = pg_temp.region_id('sample-maps', 4, 'filter-map');
+
+-- page 6: a geocoded address (not stored), looked up when a new place gets its name, and a display map of the location
+insert into meta.item (page_id, region_id, seq, name, label, type, help, config)
+select i.page_id, i.region_id, x.seq, x.name, x.label, x.type, x.help, x.config::jsonb
+  from meta.item i, (values
+  (35, 'P6_ADDRESS', 'Address', 'address', 'Check address offers the matching addresses; the one you choose fills in Location.',
+   '{"coordinates_item": "P6_LOCATION", "country": "nl"}'),
+  (50, 'P6_MAP', 'On the map', 'display_map', null, '{"coordinates_item": "P6_LOCATION", "zoom": 15}')
+  ) as x (seq, name, label, type, help, config)
+ where i.page_id = pg_temp.page_id('sample-maps', 6) and i.name = 'P6_LOCATION';
+
+insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, condition_type, action, affected_items, code,
+                                 items_to_submit, server_condition_type, server_condition_expr)
+values
+  (pg_temp.page_id('sample-maps', 6), 10, 'The name as the address', 'change', 'P6_NAME', 'is_not_null', 'set_value', 'P6_ADDRESS',
+   'select :P6_NAME as "P6_ADDRESS"', 'P6_NAME', 'item_null', 'P6_ID'),
+  (pg_temp.page_id('sample-maps', 6), 20, 'Look the address up', 'change', 'P6_NAME', 'is_not_null', 'trigger_geocoding', 'P6_ADDRESS',
+   null, null, 'item_null', 'P6_ID');
+
+-- page 7: dynamic actions on the map's own events (trigger: its static id) and the device's position
+insert into meta.item (page_id, region_id, seq, name, label, type, help, config)
+select pg_temp.page_id('sample-maps', 7), pg_temp.region_id('sample-maps', 7, 'map-state'), x.seq, x.name, x.label, x.type, x.help, '{"warn_unsaved": false}'
+  from (values
+  (10, 'P7_MUSEUM', 'Museum clicked', 'text', 'Set by the map_object_click dynamic action: the marker''s id column.'),
+  (20, 'P7_ZOOM', 'Zoom level', 'display', 'Set by the map_change dynamic action when you move or zoom the map.'),
+  (30, 'P7_HERE', 'Your position', 'text', 'Set by the current_position action: latitude,longitude. You can also type one, e.g. 52.09,5.12.')
+  ) as x (seq, name, label, type, help);
+
+insert into meta.button (page_id, region_id, seq, name, label, action)
+values (pg_temp.page_id('sample-maps', 7), pg_temp.region_id('sample-maps', 7, 'map-state'), 10, 'NEAR_ME', 'Museums near me', 'da');
+
+insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, affected_items, affected_region_id, items_to_submit)
+select pg_temp.page_id('sample-maps', 7), d.seq, d.name, d.event, d.trig, d.action, d.items, pg_temp.region_id('sample-maps', 7, d.region), d.submit
+  from (values
+  (10, 'The museum into P7_MUSEUM', 'map_object_click', 'events-map', 'set_value', 'P7_MUSEUM', null, null),
+  (20, 'Show the museum', 'map_object_click', 'events-map', 'refresh_region', null, 'clicked', 'P7_MUSEUM'),
+  (30, 'The zoom level into P7_ZOOM', 'map_change', 'events-map', 'set_value', 'P7_ZOOM', null, null),
+  (40, 'Where am I', 'click', 'NEAR_ME', 'current_position', 'P7_HERE', null, null),
+  (50, 'The nearest museums', 'click', 'NEAR_ME', 'refresh_region', null, 'nearest', 'P7_HERE'),
+  (60, 'The nearest museums (typed)', 'change', 'P7_HERE', 'refresh_region', null, 'nearest', 'P7_HERE')
+  ) as d (seq, name, event, trig, action, items, region, submit);

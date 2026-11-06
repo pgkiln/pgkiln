@@ -13697,3 +13697,43 @@ describe('sprint 165 notifications and live badges', () => {
     await assert.rejects(owner.query(`insert into meta.notification (app_id, username, title, url) values ($1, 'allen', 'x', 'https://evil.example/')`, [appId]), /notification_url_check/);
   });
 });
+
+describe('sprint 166 &ITEM. in validation and success messages', () => {
+  let pageId = 0;
+  const NO = 9166;
+  const EVIL = '<img src=x onerror=alert(166)>';
+  before(async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no = $2', [appId, NO]);
+    pageId = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec166') returning id`, [appId, NO])).id;
+    const region = (await owner.one(`insert into meta.region (page_id, seq, title, type) values ($1, 10, 'Sec166', 'static') returning id`, [pageId])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 10, 'P9166_NAME', 'Name', 'text')`, [pageId, region]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'CHECK', 'Check', 'submit'), ($1, $2, 20, 'SAVE', 'Save', 'submit')`, [pageId, region]);
+    await owner.query(
+      `insert into meta.validation (page_id, seq, name, item_name, type, expression, message, when_button)
+       values ($1, 10, 'Refuse', 'P9166_NAME', 'function_body', 'return false;', 'The name &P9166_NAME. is refused.', 'CHECK')`, [pageId]);
+    await owner.query(
+      `insert into meta.process (page_id, seq, name, type, code, when_button, success_message)
+       values ($1, 10, 'Save', 'sql', 'select 1', 'SAVE', 'Saved &P9166_NAME. for &APP_USER..')`, [pageId]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.page where id = $1', [pageId]);
+  });
+
+  test('a validation message fills in the submitted value, escaped', async () => {
+    const king = await as('king');
+    await king.get(`/a/hr/${NO}`);
+    const res = await king.post(`/a/hr/${NO}`, { __csrf: king.lastCsrf, __request: 'CHECK', P9166_NAME: EVIL });
+    assert.match(res.body, /The name &lt;img src=x onerror=alert\(166\)&gt; is refused\./);
+    assert.doesNotMatch(res.body, /<img src=x/);
+  });
+
+  test('a success message fills in the item and APP_USER after the process, escaped', async () => {
+    const king = await as('king');
+    await king.get(`/a/hr/${NO}`);
+    const res = await king.post(`/a/hr/${NO}`, { __csrf: king.lastCsrf, __request: 'SAVE', P9166_NAME: EVIL });
+    assert.equal(res.statusCode, 303);
+    const page = (await king.get(res.headers.location as string)).body;
+    assert.match(page, /Saved &lt;img src=x onerror=alert\(166\)&gt; for king\./);
+    assert.doesNotMatch(page, /<img src=x/);
+  });
+});

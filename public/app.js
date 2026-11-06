@@ -595,9 +595,16 @@ const pgkilnUnsaved = (() => {
       // (156) stops the actions after it; the triggering event's own effect is stopped by its handler (cancels())
       case 'cancel_event':
         return STOP;
-      case 'set_style':
-        for (const el of targets(da)) for (const [k, v] of Object.entries(da.styles || {})) el.style.setProperty(k, v);
+      case 'set_style': {
+        // (166) an item's own field (input, select, text area), as in APEX; its wrapper only when it has none
+        const field = (n) => {
+          const f = document.getElementById(n);
+          return f && f.matches('input, select, textarea') ? f : wrapperOf(n);
+        };
+        const els = [...da.items.map(field).filter(Boolean), ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : [])];
+        for (const el of els) for (const [k, v] of Object.entries(da.styles || {})) el.style.setProperty(k, v);
         return;
+      }
       case 'collapse_tree':
       case 'expand_tree':
         for (const el of targets(da)) el.querySelectorAll('.tree-view details').forEach((d) => (d.open = da.action === 'expand_tree'));
@@ -615,7 +622,12 @@ const pgkilnUnsaved = (() => {
         }
         return;
       case 'trigger_geocoding':
-        for (const n of da.items) document.querySelector(`[data-geocode="${CSS.escape(n)}"]`)?.click();
+        for (const n of da.items) {
+          // (166) not for the address just chosen from the list (a change action on the address item itself would reopen it)
+          const field = document.getElementById(n);
+          if (field && field.dataset.geocoded !== undefined && field.value === field.dataset.geocoded) continue;
+          document.querySelector(`[data-geocode="${CSS.escape(n)}"]`)?.click();
+        }
         return;
       case 'open_report_dialog':
         for (const el of targets(da)) {
@@ -1015,12 +1027,17 @@ const pgkilnUnsaved = (() => {
     e.stopImmediatePropagation();
     const submitter = e.submitter;
     if (!(await runChain(run))) return;
-    submitting = true;
-    try {
-      form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
-    } finally {
-      submitting = false;
-    }
+    // (166) in a new task: for a submit the user started (a button, Enter) the browser is still firing
+    // this submit event when the actions end, and ignores a requestSubmit made then. requestSubmit
+    // dispatches its submit event synchronously, so the flag lets exactly that one through.
+    setTimeout(() => {
+      submitting = true;
+      try {
+        form.requestSubmit(submitter && submitter.form === form ? submitter : undefined);
+      } finally {
+        submitting = false;
+      }
+    });
   }, true);
 
   // ------------------------------------------------------------ cascading lists of values
@@ -3082,6 +3099,8 @@ const liveBadges = (() => {
       b.textContent = p.label;
       b.addEventListener('click', () => {
         input.value = p.label;
+        // (166) the address chosen: trigger_geocoding on this item's change doesn't look it up again
+        input.dataset.geocoded = p.label;
         input.dispatchEvent(new Event('change', { bubbles: true }));
         const target = btn.dataset.coords && document.getElementById(btn.dataset.coords);
         if (target) {

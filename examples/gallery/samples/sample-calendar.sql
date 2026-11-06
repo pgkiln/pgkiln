@@ -3,7 +3,8 @@
 --
 -- The calendar region: month, week, day and list views, all-day and timed
 -- events, events over several days, create on click, drag and drop through
--- a PL/pgSQL function with its own rule, and a calendar filtered by an item.
+-- a PL/pgSQL function with its own rule, a calendar filtered by an item, and
+-- dynamic actions on a day chosen and on another view.
 -- The events are placed around today, so there is always something to see.
 --
 -- Installed by an administrator from the App Gallery, or with
@@ -79,7 +80,7 @@ select id, 'demo', meta.hash_password('demo'), '{}' from meta.app where alias = 
 insert into meta.page (app_id, page_no, name, title, parent_page)
 select a.id, p.no, p.name, p.name, p.parent
   from meta.app a, (values
-  (1, 'Sample Calendar', null), (2, 'Month', 1), (4, 'Week planner', 1), (5, 'Agenda', 1), (6, 'By category', 1)
+  (1, 'Sample Calendar', null), (2, 'Month', 1), (4, 'Week planner', 1), (5, 'Agenda', 1), (6, 'By category', 1), (7, 'Calendar events', 1)
   ) as p (no, name, parent)
  where a.alias = 'sample-calendar';
 
@@ -96,7 +97,7 @@ insert into meta.nav_entry (app_id, seq, label, icon, target_page)
 select a.id, n.seq, n.label, n.icon, n.page
   from meta.app a, (values
   (10, 'Home', 'home', 1), (20, 'Month', 'calendar', 2), (30, 'Week planner', 'clock', 4),
-  (40, 'Agenda', 'list', 5), (50, 'By category', 'filter', 6)
+  (40, 'Agenda', 'list', 5), (50, 'By category', 'filter', 6), (60, 'Calendar events', 'bolt', 7)
   ) as n (seq, label, icon, page)
  where a.alias = 'sample-calendar';
 
@@ -109,7 +110,8 @@ select a.id, 'CALENDAR_TOPICS', e.seq, e.label, e.icon, e.page, e.description
   (10, 'Month', 'calendar', 2, 'All four views; click a day to add an event, drag an event to move it.'),
   (20, 'Week planner', 'clock', 4, 'Week and day views from 7:00 to 19:00, opened on the week.'),
   (30, 'Agenda', 'list', 5, 'The list view only: a month of events per day.'),
-  (40, 'By category', 'filter', 6, 'A calendar whose query uses a page item, refreshed when it changes.')
+  (40, 'By category', 'filter', 6, 'A calendar whose query uses a page item, refreshed when it changes.'),
+  (50, 'Calendar events', 'bolt', 7, 'Dynamic actions on the calendar''s own events: a day chosen, another view or period.')
   ) as e (seq, label, icon, page, description)
  where a.alias = 'sample-calendar';
 
@@ -159,7 +161,19 @@ select pg_temp.page_id('sample-calendar', r.page), r.seq, r.title, r.type, r.col
   (6, 10, 'Filter', 'static', 12, 'standard', null, '{}', 'filter'),
   (6, 20, 'Events of the category', 'calendar', 12, 'standard',
    E'select starts as start_date, ends as end_date, title, id\n  from sample_calendar.event\n where :P6_CATEGORY is null or category = :P6_CATEGORY',
-   '{"views": ["month", "list"], "link": {"page": 3, "items": {"P3_ID": "#id#"}}}', 'category-calendar')
+   '{"views": ["month", "list"], "link": {"page": 3, "items": {"P3_ID": "#id#"}}}', 'category-calendar'),
+
+  -- 7 Calendar events
+  (7, 5, 'About this page', 'static', 12, 'plain',
+   '<p class="lead">Dynamic actions can listen to the calendar itself (the trigger is its static id <code>planner</code>). <strong>Date Select</strong> (<code>calendar_date_select</code>) runs when you click an empty day or hour: a <em>Set Value</em> without SQL puts the chosen date into <code>P7_DAY</code> and the report beside it is refreshed with that day''s events. This calendar has no <code>create</code> link, so a click only chooses (with one, a <em>Cancel Event</em> on this event would keep the form closed). <strong>View Change</strong> (<code>calendar_view_change</code>) runs on the page that comes back from another view or period: the view (<code>month</code>, <code>week</code>, <code>day</code> or <code>list</code>) goes into <code>P7_VIEW</code>, and the day view adds a hint.</p>',
+   '{}', null),
+  (7, 10, 'Planner', 'calendar', 8, 'standard',
+   E'select starts as start_date, ends as end_date, title, id\n  from sample_calendar.event',
+   '{"views": ["month", "week", "day", "list"], "link": {"page": 3, "items": {"P3_ID": "#id#"}}}', 'planner'),
+  (7, 20, 'Chosen day', 'static', 4, 'standard', null, '{}', 'chosen'),
+  (7, 30, 'Events of the day', 'classic_report', 4, 'standard',
+   E'select to_char(starts, ''HH24:MI'') as "Time", title as "Event", category as "Category"\n  from sample_calendar.event\n where :P7_DAY is not null\n   and starts::date <= left(:P7_DAY, 10)::date and coalesce(ends, starts)::date >= left(:P7_DAY, 10)::date\n order by starts',
+   '{"empty": "Click a day in the calendar."}', 'day-events')
   ) as r (page, seq, title, type, cols, template, source, config, sid);
 
 insert into meta.item (page_id, region_id, seq, name, label, type, lov, config)
@@ -170,3 +184,24 @@ select pg_temp.page_id('sample-calendar', 6), r.id, 10, 'P6_CATEGORY', 'Category
 insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, affected_region_id, items_to_submit)
 select pg_temp.page_id('sample-calendar', 6), 10, 'Refresh the calendar', 'change', 'P6_CATEGORY', 'refresh_region', r.id, 'P6_CATEGORY'
   from meta.region r where r.page_id = pg_temp.page_id('sample-calendar', 6) and r.static_id = 'category-calendar';
+
+-- page 7: dynamic actions on the calendar's own events (trigger: its static id)
+insert into meta.item (page_id, region_id, seq, name, label, type, help, config)
+select pg_temp.page_id('sample-calendar', 7), r.id, i.seq, i.name, i.label, i.type, i.help, '{"warn_unsaved": false}'
+  from meta.region r, (values
+  (10, 'P7_DAY', 'Chosen day', 'text', 'Set by the calendar_date_select dynamic action: YYYY-MM-DD, or YYYY-MM-DDTHH:MM for an hour.'),
+  (20, 'P7_VIEW', 'Calendar view', 'display', 'Set by the calendar_view_change dynamic action.')
+  ) as i (seq, name, label, type, help)
+ where r.page_id = pg_temp.page_id('sample-calendar', 7) and r.static_id = 'chosen';
+
+insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, condition_type, condition_value, action,
+                                 affected_items, affected_region_id, items_to_submit, message)
+select pg_temp.page_id('sample-calendar', 7), d.seq, d.name, d.event, 'planner', d.ctype, d.cvalue, d.action, d.items,
+       (select id from meta.region where page_id = pg_temp.page_id('sample-calendar', 7) and static_id = d.region), d.submit, d.message
+  from (values
+  (10, 'The chosen day into P7_DAY', 'calendar_date_select', null, null, 'set_value', 'P7_DAY', null, null, null),
+  (20, 'Its events', 'calendar_date_select', null, null, 'refresh_region', null, 'day-events', 'P7_DAY', null),
+  (40, 'The view into P7_VIEW', 'calendar_view_change', null, null, 'set_value', 'P7_VIEW', null, null, null),
+  (50, 'A hint for the day view', 'calendar_view_change', 'equals', 'day', 'show_success', null, null, null,
+   'The day view: click an hour to see the events of that day.')
+  ) as d (seq, name, event, ctype, cvalue, action, items, region, submit, message);
