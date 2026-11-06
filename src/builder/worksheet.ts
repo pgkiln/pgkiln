@@ -121,9 +121,9 @@ async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema:
   return html`<ul class="ws-tree" id="ws-tree">${objects.map((o) => {
     const list = cols.get(o.ref);
     const obLink = `${BASE}/sql/objects?${new URLSearchParams(o.type === 'policy' ? { schema, k: 'table', o: o.ref, tab: 'rls' } : { schema, k: o.type, o: o.ref })}`;
-    if (!list) return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}"><a href="${obLink}" title="${label(o.type)}">${icon(iconOf(o.type))}<span>${o.name}</span></a>${objectMenu(schema, o)}</li>`;
+    if (!list) return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}"><a href="${obLink}" title="${label(o.type)}">${icon(iconOf(o.type))}<span>${o.name}</span></a>${objectMenu(schema, o, tx)}</li>`;
     const st = objectStatements(schema, o.name, list, o.type);
-    return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}">${objectMenu(schema, o)}<details>
+    return html`<li class="ws-obj" data-name="${o.name.toLowerCase()}">${objectMenu(schema, o, tx)}<details>
       <summary draggable="true" data-ws-sql="${st.select}" title="${tx('ws.nav.drag', { type: tx.lang === 'en' ? label(o.type).replace(/s$/, '') : label(o.type) })}">${icon(iconOf(o.type))}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}</summary>
       <ul class="ws-cols">${list.map((c) => html`<li title="${c.type}${c.notnull ? ' not null' : ''}">${c.pk ? icon('key') : icon('minus')}<span>${c.name}</span><small class="muted">${c.type}</small></li>`)}</ul>
       <div class="ws-obj-actions">

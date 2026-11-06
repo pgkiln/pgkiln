@@ -140,7 +140,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         if (!list.length && filter) return '';
         return html`<details class="ob-folder"${list.length && (filter || list.length <= 50 || selected?.type === t) ? raw(' open') : ''}>
           <summary>${icon(ic)}<span>${tx.dyn(`ob.type.${t}`, label)}</span><span class="kind">${list.length}</span></summary>
-          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">${tx('ob.extension')}</span>` : ''}</a>${objectMenu(schema, o)}</li>`)}</ul>
+          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">${tx('ob.extension')}</span>` : ''}</a>${objectMenu(schema, o, tx)}</li>`)}</ul>
         </details>`;
       })}</div>`;
 
