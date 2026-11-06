@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { applicationRoles, applyRemote, disconnect, dropRemote, fdwStatus, MAX_TABLES, remoteDbProblems, serverNameOf, type RemoteDb } from '../remote-db.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { administrator, back, BASE, csrf, flash, input, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 150, AP-7 leftover; APEX: REST Enabled SQL services) Workspace utilities → Remote databases
 // (administrators): another PostgreSQL database's tables as foreign tables in a local schema (src/remote-db.ts).
@@ -16,8 +17,8 @@ import { administrator, back, BASE, csrf, flash, input, region, send, shell, typ
 //   POST /builder/remote-databases/extension       create extension postgres_fdw (a superuser connection)
 
 const PAGE = `${BASE}/remote-databases`;
-const TITLE = 'Remote databases';
-const crumbs: [string, string?][] = [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [TITLE]];
+const TITLE = () => tx('rdb.title');
+const crumbs = (): [string, string?][] => [[tx('rdb.app_builder'), BASE], [tx('rdb.workspace_utilities'), `${BASE}/utilities`], [TITLE()]];
 const rid = (v: unknown) => (/^\d{1,9}$/.test(String(v ?? '')) ? Number(v) : null);
 const when = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') : '');
 const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === 'string' && v ? [v] : []);
@@ -37,72 +38,70 @@ function fromBody(b: Record<string, unknown>): RemoteDb {
 
 function form(s: Session, x: Partial<Row>, roles: string[]) {
   const editing = !!x.id;
-  return region(editing ? `Edit ${x.name}` : 'Add a remote database', html`<form method="post" action="${PAGE}" id="rdb-form">${csrf(s)}
+  return region(editing ? tx('rdb.edit_named', { name: x.name }) : tx('rdb.add_a_remote_database'), html`<form method="post" action="${PAGE}" id="rdb-form">${csrf(s)}
     ${editing ? html`<input type="hidden" name="id" value="${x.id}">` : ''}
     <div class="form-grid">
-      ${input('name', 'Name', x.name ?? '', { help: 'A static id, e.g. CRM. The server is pgkiln_rdb_<name>.', required: true })}
-      ${input('description', 'Description', x.description ?? '')}
-      ${input('host', 'Host', x.host ?? '', { help: 'As the database server reaches it (it makes the connection, not pgkiln).', required: true })}
-      ${input('port', 'Port', String(x.port ?? 5432), { type: 'number' })}
-      ${input('dbname', 'Database', x.dbname ?? '', { required: true })}
-      ${input('user_name', 'User', x.user_name ?? '', { required: true, help: 'A user of the remote database: what it may read or change there is what the applications may.' })}
-      ${input('password', 'Password', '', { type: 'password', auto: 'new-password', help: editing ? 'Kept by PostgreSQL in the user mapping and never shown; type a new one to replace it.' : 'Kept by PostgreSQL in the user mapping (pgkiln never stores it).' })}
-      ${input('remote_schema', 'Remote schema', x.remote_schema ?? 'public')}
-      ${input('local_schema', 'Local schema', x.local_schema ?? '', { required: true, help: 'A new schema here for the foreign tables, e.g. crm: regions query crm.<table>.' })}
-      ${input('tables', 'Tables', (x.tables ?? []).join(', '), { help: `Remote tables and views to import, separated by commas (at most ${MAX_TABLES}); empty: all of the remote schema's.` })}
+      ${input('name', tx('rdb.name'), x.name ?? '', { help: tx('rdb.a_static_id_e_g'), required: true })}
+      ${input('description', tx('rdb.description'), x.description ?? '')}
+      ${input('host', tx('rdb.host'), x.host ?? '', { help: tx('rdb.as_the_database_server_reaches'), required: true })}
+      ${input('port', tx('rdb.port'), String(x.port ?? 5432), { type: 'number' })}
+      ${input('dbname', tx('rdb.database'), x.dbname ?? '', { required: true })}
+      ${input('user_name', tx('rdb.user'), x.user_name ?? '', { required: true, help: tx('rdb.a_user_of_the_remote') })}
+      ${input('password', tx('rdb.password'), '', { type: 'password', auto: 'new-password', help: editing ? tx('rdb.kept_by_postgresql_in_the') : tx('rdb.kept_by_postgresql_in_the_2') })}
+      ${input('remote_schema', tx('rdb.remote_schema'), x.remote_schema ?? 'public')}
+      ${input('local_schema', tx('rdb.local_schema'), x.local_schema ?? '', { required: true, help: tx('rdb.a_new_schema_here_for') })}
+      ${input('tables', tx('rdb.tables'), (x.tables ?? []).join(', '), { help: tx('rdb.tables_help', { n: MAX_TABLES }) })}
     </div>
-    <fieldset class="prop-group u-mt1"><legend>Grant to the applications' database roles</legend>
+    <fieldset class="prop-group u-mt1"><legend>${tx('rdb.grant_to_the_applications_database')}</legend>
       ${roles.length
         ? html`<div class="check-list">${roles.map((r) => html`<label><input type="checkbox" name="grant_roles" value="${r}"${(x.grant_roles ?? []).includes(r) ? raw(' checked') : ''}> ${r}</label>`)}</div>`
-        : html`<p class="muted">No application has a database role yet (Application settings → Database role).</p>`}
-      <label class="u-mt1"><input type="checkbox" name="writable" value="true"${x.writable ? raw(' checked') : ''}> Also INSERT, UPDATE and DELETE (else SELECT only)</label>
+        : html`<p class="muted">${tx('rdb.no_application_has_a_database')}</p>`}
+      <label class="u-mt1"><input type="checkbox" name="writable" value="true"${x.writable ? raw(' checked') : ''}> ${tx('rdb.also_insert_update_and_delete')}</label>
     </fieldset>
     <div class="buttons u-mt1">
-      <button class="btn btn-hot" name="mode" value="save">${editing ? 'Save and import again' : 'Add and import'}</button>
-      <button class="btn" name="mode" value="test">Test the connection</button>
-      <a class="btn" href="${PAGE}">Cancel</a>
+      <button class="btn btn-hot" name="mode" value="save">${editing ? tx('rdb.save_and_import_again') : tx('rdb.add_and_import')}</button>
+      <button class="btn" name="mode" value="test">${tx('rdb.test_the_connection')}</button>
+      <a class="btn" href="${PAGE}">${tx('rdb.cancel')}</a>
     </div></form>`);
 }
 
 export async function remoteDatabaseRoutes(app: FastifyInstance) {
   app.get(PAGE, async (req: Req, reply) => {
-    const s = await administrator(req, reply, TITLE);
+    const s = await administrator(req, reply, TITLE());
     if (!s) return;
     const q = (req.query ?? {}) as Record<string, string>;
     const st = await fdwStatus(owner);
     const all = await rows();
     const roles = await applicationRoles(owner);
     const edit = rid(q.edit) ? all.find((r) => r.id === rid(q.edit)) : undefined;
-    const main = html`<h1 class="u-mb1">${TITLE}</h1>
-      <p class="muted u-mt0">Another PostgreSQL database's tables as foreign tables (postgres_fdw) in a local schema: regions, reports, forms and lists
-        of values use them like the application's own tables, as its database role, with the grants given here.</p>
+    const main = html`<h1 class="u-mb1">${TITLE()}</h1>
+      <p class="muted u-mt0">${tx('rdb.another_postgresql_database_s_tables')}</p>
       ${st.installed
         ? html`<p class="muted">${icon('check')} postgres_fdw is installed.</p>`
-        : html`<div class="alert alert-info" role="status"><p><strong>postgres_fdw is not installed in this database.</strong></p>
+        : html`<div class="alert alert-info" role="status"><p><strong>${tx('rdb.postgres_fdw_is_not_installed')}</strong></p>
             ${st.available && st.canCreate
-              ? html`<form method="post" action="${PAGE}/extension">${csrf(s)}<button class="btn">Create extension postgres_fdw</button></form>`
-              : html`<p>${st.available ? 'A superuser runs' : 'The server needs PostgreSQL\'s contrib package, then a superuser runs'} <code>create extension postgres_fdw;</code>
-                  and <code>grant usage on foreign data wrapper postgres_fdw to</code> pgkiln's owner role.</p>`}</div>`}
-      ${region('Remote databases', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Name</th><th>Connection</th><th>Local schema</th>
-          <th class="num">Tables</th><th>Granted to</th><th>Imported</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+              ? html`<form method="post" action="${PAGE}/extension">${csrf(s)}<button class="btn">${tx('rdb.create_extension_postgres_fdw')}</button></form>`
+              : html`<p>${tx.rich(st.available ? 'rdb.fdw_superuser' : 'rdb.fdw_missing', { create: html`<code>create extension postgres_fdw;</code>`, grant: html`<code>grant usage on foreign data wrapper postgres_fdw to</code>` })}</p>`}</div>`}
+      ${region(tx('rdb.remote_databases'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rdb.name')}</th><th>${tx('rdb.connection')}</th><th>${tx('rdb.local_schema')}</th>
+          <th class="num">${tx('rdb.tables')}</th><th>${tx('rdb.granted_to')}</th><th>${tx('rdb.imported')}</th><th><span class="sr-only">${tx('rdb.actions')}</span></th></tr></thead><tbody>
         ${all.length ? all.map((r) => html`<tr>
-            <td data-label="Name"><strong>${r.name}</strong>${r.description ? html`<br><small class="muted">${r.description}</small>` : ''}</td>
-            <td data-label="Connection"><code>${r.user_name}@${r.host}:${r.port}/${r.dbname}</code> (${r.remote_schema})</td>
-            <td data-label="Local schema"><code>${r.local_schema}</code></td>
-            <td class="num" data-label="Tables">${r.imported ?? '—'}</td>
-            <td data-label="Granted to">${r.grant_roles.join(', ') || '—'}${r.writable ? ' (read and write)' : ''}</td>
-            <td data-label="Imported">${when(r.imported_at)}${r.error ? html`<br><span class="wf-problem">${r.error}</span>` : ''}</td>
-            <td data-label="Actions"><a class="btn btn-sm" href="${PAGE}?edit=${r.id}#rdb-form">Edit</a>
-              <form method="post" action="${`${PAGE}/${r.id}/refresh`}" class="inline">${csrf(s)}<button class="btn btn-sm">Import again</button></form>
-              <form method="post" action="${`${PAGE}/${r.id}/delete`}" class="inline">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${`Delete ${r.name}? Its schema ${r.local_schema} and its foreign tables are dropped.`}">Delete</button></form></td>
-          </tr>`) : html`<tr><td colspan="7" class="empty">No remote databases yet.</td></tr>`}
+            <td data-label="${tx('rdb.name')}"><strong>${r.name}</strong>${r.description ? html`<br><small class="muted">${r.description}</small>` : ''}</td>
+            <td data-label="${tx('rdb.connection')}"><code>${r.user_name}@${r.host}:${r.port}/${r.dbname}</code> (${r.remote_schema})</td>
+            <td data-label="${tx('rdb.local_schema')}"><code>${r.local_schema}</code></td>
+            <td class="num" data-label="${tx('rdb.tables')}">${r.imported ?? '—'}</td>
+            <td data-label="${tx('rdb.granted_to')}">${r.grant_roles.join(', ') || '—'}${r.writable ? ' (read and write)' : ''}</td>
+            <td data-label="${tx('rdb.imported')}">${when(r.imported_at)}${r.error ? html`<br><span class="wf-problem">${r.error}</span>` : ''}</td>
+            <td data-label="${tx('rdb.actions')}"><a class="btn btn-sm" href="${PAGE}?edit=${r.id}#rdb-form">${tx('rdb.edit')}</a>
+              <form method="post" action="${`${PAGE}/${r.id}/refresh`}" class="inline">${csrf(s)}<button class="btn btn-sm">${tx('rdb.import_again')}</button></form>
+              <form method="post" action="${`${PAGE}/${r.id}/delete`}" class="inline">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('rdb.delete_confirm', { name: r.name, schema: r.local_schema })}">${tx('rdb.delete')}</button></form></td>
+          </tr>`) : html`<tr><td colspan="7" class="empty">${tx('rdb.no_remote_databases_yet')}</td></tr>`}
         </tbody></table></div>`)}
       ${st.installed ? form(s, edit ?? {}, roles) : ''}`;
-    return send(reply, s, shell(s, TITLE, crumbs, main));
+    return send(reply, s, shell(s, TITLE(), crumbs(), main));
   });
 
   app.post(PAGE, async (req: Req, reply) => {
-    const s = await administrator(req, reply, TITLE);
+    const s = await administrator(req, reply, TITLE());
     if (!s) return;
     const b = (req.body ?? {}) as Record<string, unknown>;
     const x = fromBody(b);
@@ -110,7 +109,7 @@ export async function remoteDatabaseRoutes(app: FastifyInstance) {
     const password = typeof b.password === 'string' && b.password ? b.password : null;
     const retry = editId ? `${PAGE}?edit=${editId}#rdb-form` : `${PAGE}#rdb-form`;
     const problems = remoteDbProblems(x, await applicationRoles(owner));
-    if (password && password.length > 1000) problems.push('The password has at most 1000 characters.');
+    if (password && password.length > 1000) problems.push(tx('rdb.the_password_has_at_most'));
     if (problems.length) {
       flash(s, problems.join(' '), 'error');
       return back(reply, s, retry);
@@ -119,14 +118,14 @@ export async function remoteDatabaseRoutes(app: FastifyInstance) {
     try {
       const count = await owner.tx(async (c) => {
         const old = editId ? (await c.query<Row>('select * from meta.remote_database where id = $1 for update', [editId])).rows[0] : undefined;
-        if (editId && !old) throw new Error('No such remote database.');
+        if (editId && !old) throw new Error(tx('rdb.no_such_remote_database'));
         // a renamed one, or a new local schema: the old server and schema go first
         if (old && (old.name !== x.name || old.local_schema !== x.local_schema)) {
-          if (!password) throw new Error('Renaming it, or moving it to another local schema, needs the password again.');
+          if (!password) throw new Error(tx('rdb.renaming_it_or_moving_it'));
           await dropRemote(c, old);
         }
         const n = await applyRemote(c, x, password, old && old.name === x.name && old.local_schema === x.local_schema ? old.grant_roles : []);
-        if (test) throw Object.assign(new Error('rolled back'), { tested: n });
+        if (test) throw Object.assign(new Error(tx('rdb.rolled_back')), { tested: n });
         if (old)
           await c.query(
             `update meta.remote_database set name = $2, description = $3, host = $4, port = $5, dbname = $6, user_name = $7, remote_schema = $8, local_schema = $9,
@@ -149,22 +148,22 @@ export async function remoteDatabaseRoutes(app: FastifyInstance) {
     } catch (e) {
       const tested = (e as { tested?: number }).tested;
       if (tested !== undefined) {
-        flash(s, `The connection works: ${tested} table(s) would be imported into ${x.local_schema}. Nothing was saved.`);
+        flash(s, tx('rdb.test_ok', { n: tested, schema: x.local_schema }));
       } else {
-        const msg = (e as Error).message.includes('remote_database_name_key') ? `There is a remote database ${x.name} already.`
-          : (e as Error).message.includes('remote_database_local_schema_key') ? `Another remote database uses schema ${x.local_schema}.` : (e as Error).message;
-        flash(s, `${test ? 'The test failed' : 'Nothing was changed'}: ${msg}`, 'error');
+        const msg = (e as Error).message.includes('remote_database_name_key') ? tx('rdb.name_taken', { name: x.name })
+          : (e as Error).message.includes('remote_database_local_schema_key') ? tx('rdb.schema_taken', { schema: x.local_schema }) : (e as Error).message;
+        flash(s, `${test ? tx('rdb.the_test_failed') : tx('rdb.nothing_was_changed')}: ${msg}`, 'error');
       }
       return back(reply, s, retry);
     }
   });
 
   app.post(`${PAGE}/:rid/refresh`, async (req: Req, reply) => {
-    const s = await administrator(req, reply, TITLE);
+    const s = await administrator(req, reply, TITLE());
     if (!s) return;
     const r = (await rows()).find((x) => x.id === rid(req.params.rid));
     if (!r) {
-      flash(s, 'No such remote database.', 'error');
+      flash(s, tx('rdb.no_such_remote_database'), 'error');
       return back(reply, s, PAGE);
     }
     try {
@@ -180,11 +179,11 @@ export async function remoteDatabaseRoutes(app: FastifyInstance) {
   });
 
   app.post(`${PAGE}/:rid/delete`, async (req: Req, reply) => {
-    const s = await administrator(req, reply, TITLE);
+    const s = await administrator(req, reply, TITLE());
     if (!s) return;
     const r = (await rows()).find((x) => x.id === rid(req.params.rid));
     if (!r) {
-      flash(s, 'No such remote database.', 'error');
+      flash(s, tx('rdb.no_such_remote_database'), 'error');
       return back(reply, s, PAGE);
     }
     try {
@@ -201,12 +200,12 @@ export async function remoteDatabaseRoutes(app: FastifyInstance) {
   });
 
   app.post(`${PAGE}/extension`, async (req: Req, reply) => {
-    const s = await administrator(req, reply, TITLE);
+    const s = await administrator(req, reply, TITLE());
     if (!s) return;
     try {
       await owner.query('create extension if not exists postgres_fdw');
       await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: 'create extension if not exists postgres_fdw' });
-      flash(s, 'The postgres_fdw extension is installed.');
+      flash(s, tx('rdb.the_postgres_fdw_extension_is'));
     } catch (e) {
       flash(s, `create extension postgres_fdw failed: ${(e as Error).message}`, 'error');
     }

@@ -4,6 +4,7 @@ import { html, raw } from '../html.ts';
 import { baseLanguage, BUILTIN_LANGUAGES, LANGUAGE_NAMES } from '../i18n.ts';
 import { clearLocaleCache, translatableTexts } from '../runtime/locale.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Shared Components → Globalization (APEX: Translate Application, Text
 // Messages). Translations live in the application itself: one text in the
@@ -84,19 +85,19 @@ export async function timeZoneSettings(a: { time_zone: string | null; time_zone_
   const zones = (await owner.query<{ name: string }>(`select name from pg_timezone_names where name !~ '^(posix|right)/' order by name`)).rows.map((r) => r.name);
   const dbZone = (await owner.one<{ tz: string }>(`select current_setting('TimeZone') as tz`))?.tz ?? '';
   return html`<div class="form-grid">
-      ${input('currency', 'Currency', a.currency ?? '', { placeholder: 'e.g. EUR (empty: per language)', help: 'ISO 4217 code for L (symbol) and C (code) in number format masks such as FML999G990D00. A text message FORMAT.CURRENCY overrides it per language.' })}
-      ${select('time_zone', 'Time zone', a.time_zone ?? '', [['', `- the database's (${dbZone}) -`], ...zones], 'Queries run in this time zone (SET LOCAL timezone), so timestamp with time zone values show in it.')}
+      ${input('currency', tx('glob.currency'), a.currency ?? '', { placeholder: tx('glob.e_g_eur_empty_per'), help: tx('glob.iso_4217_code_for_l') })}
+      ${select('time_zone', tx('glob.time_zone'), a.time_zone ?? '', [['', `- the database's (${dbZone}) -`], ...zones], tx('glob.queries_run_in_this_time'))}
     </div>
-    <div class="field"><label class="check"><input type="checkbox" name="time_zone_auto" value="true"${a.time_zone_auto ? raw(' checked') : ''}> Automatic time zone</label>
-      <small class="help">Each user sees times in their own time zone: the browser's (sent once per session), or the one they choose on My account. Without JavaScript the app's time zone applies (APEX: Automatic Time Zone).</small></div>`;
+    <div class="field"><label class="check"><input type="checkbox" name="time_zone_auto" value="true"${a.time_zone_auto ? raw(' checked') : ''}> ${tx('glob.automatic_time_zone')}</label>
+      <small class="help">${tx('glob.each_user_sees_times_in')}</small></div>`;
 }
 
 /** Save the currency and time zone settings; an unknown time zone or currency is an error. */
 export async function saveTimeZoneSettings(appId: string, b: Record<string, string | undefined>) {
   const zone = b.time_zone?.trim() || null;
-  if (zone && !(await owner.one('select 1 from pg_timezone_names where name = $1', [zone]))) throw new Error(`Unknown time zone "${zone}".`);
+  if (zone && !(await owner.one('select 1 from pg_timezone_names where name = $1', [zone]))) throw new Error(tx('glob.unknown_zone', { zone }));
   const currency = b.currency?.trim().toUpperCase() || null;
-  if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error('Currency: a three-letter ISO 4217 code such as EUR or USD.');
+  if (currency && !/^[A-Z]{3}$/.test(currency)) throw new Error(tx('glob.currency_a_three_letter_iso'));
   await owner.query('update meta.app set time_zone = $2, time_zone_auto = $3, currency = $4 where id = $1', [appId, zone, b.time_zone_auto === 'true', currency]);
 }
 
@@ -143,75 +144,75 @@ export async function globalizationRoutes(app: FastifyInstance) {
     const all = [...new Set([a.language, ...langs])];
 
     const main = html`${appHeader(a, 'shared', s)}
-      <p class="muted u-mt0"><a href="${BASE}/apps/${a.id}/shared">Shared Components</a> / Globalization</p>
+      <p class="muted u-mt0"><a href="${BASE}/apps/${a.id}/shared">${tx('glob.shared_components')}</a> / Globalization</p>
       <div class="columns">
-        ${region('Languages', html`<ul class="checklist">
-            <li>Primary language: <b>${langName(a.language)}</b></li>
-            <li>Translated into: ${langs.length ? langs.map((l, i) => html`${i ? ', ' : ''}<b>${langName(l)}</b>`) : html`<span class="muted">none yet</span>`}</li>
-            <li>Language derived from: <b>${{ browser: 'the browser', user: 'the user’s preference, then the browser', primary: 'always the primary language' }[a.language_from as string]}</b></li>
-            <li>pgkiln’s own texts (sign-in, reports, messages) exist in ${BUILTIN_LANGUAGES.slice(0, -1).map(([, n]) => n).join(', ')} and ${BUILTIN_LANGUAGES.at(-1)?.[1]}; override any of them with a text message of the same name.</li>
+        ${region(tx('glob.languages'), html`<ul class="checklist">
+            <li>${tx.rich('glob.primary', { lang: html`<b>${langName(a.language)}</b>` })}</li>
+            <li>${tx.rich('glob.translated_into', { langs: langs.length ? html`${langs.map((l, i) => html`${i ? ', ' : ''}<b>${langName(l)}</b>`)}` : html`<span class="muted">${tx('glob.none_yet')}</span>` })}</li>
+            <li>${tx.rich('glob.derived', { from: html`<b>${tx.dyn(`glob.from.${a.language_from}`, String(a.language_from))}</b>` })}</li>
+            <li>${tx('glob.builtin', { list: BUILTIN_LANGUAGES.slice(0, -1).map(([, n]) => n).join(', '), last: BUILTIN_LANGUAGES.at(-1)?.[1] ?? '' })}</li>
           </ul>
-          <p><a class="btn" href="${BASE}/apps/${a.id}/settings">Change languages in Settings</a></p>`)}
-        ${lang ? region('Export and import', html`
-          <p class="muted u-mt0">Give translators an XLIFF file (as in APEX) or a CSV file, then import it here. Empty targets are ignored on import.</p>
+          <p><a class="btn" href="${BASE}/apps/${a.id}/settings">${tx('glob.change_languages_in_settings')}</a></p>`)}
+        ${lang ? region(tx('glob.export_and_import'), html`
+          <p class="muted u-mt0">${tx('glob.give_translators_an_xliff_file')}</p>
           <div class="buttons">
             <a class="btn" href="${BASE}/apps/${a.id}/globalization/export?lang=${lang}&format=xliff">${raw('&#8595;')} XLIFF (${lang})</a>
             <a class="btn" href="${BASE}/apps/${a.id}/globalization/export?lang=${lang}&format=csv">${raw('&#8595;')} CSV (${lang})</a>
           </div>
           <form method="post" action="${BASE}/apps/${a.id}/globalization/import" class="u-mt1">${csrf(s)}
             <input type="hidden" name="lang" value="${lang}">
-            <div class="field" data-wide><label class="label" for="f_file">File</label><input id="f_file" type="file" accept=".xlf,.xliff,.csv,.xml,text/csv,application/xml" data-fill="f_doc"></div>
-            <div class="field" data-wide><label class="label" for="f_doc">…or paste XLIFF / CSV</label><textarea id="f_doc" name="doc" class="code" rows="4" required></textarea></div>
+            <div class="field" data-wide><label class="label" for="f_file">${tx('glob.file')}</label><input id="f_file" type="file" accept=".xlf,.xliff,.csv,.xml,text/csv,application/xml" data-fill="f_doc"></div>
+            <div class="field" data-wide><label class="label" for="f_doc">${tx('glob.or_paste_xliff_csv')}</label><textarea id="f_doc" name="doc" class="code" rows="4" required></textarea></div>
             <div class="buttons"><button class="btn btn-hot">Import into ${lang}</button></div>
           </form>`) : ''}
       </div>
       ${lang
-        ? region(`Translate into ${langName(lang)}`, html`
-            ${langs.length > 1 ? html`<nav class="chips" aria-label="Language">${langs.map((l) => html`<a class="chip" href="?lang=${l}"${l === lang ? raw(' aria-current="page"') : ''}>${langName(l)}</a> `)}</nav>` : ''}
+        ? region(tx('glob.translate_into', { lang: langName(lang) }), html`
+            ${langs.length > 1 ? html`<nav class="chips" aria-label="${tx('glob.language')}">${langs.map((l) => html`<a class="chip" href="?lang=${l}"${l === lang ? raw(' aria-current="page"') : ''}>${langName(l)}</a> `)}</nav>` : ''}
             <p class="muted u-mt0">${done} of ${texts.length} texts translated. Leave a translation empty to show the ${a.language} text.</p>
             <form method="post" action="${BASE}/apps/${a.id}/globalization/save">${csrf(s)}
               <input type="hidden" name="lang" value="${lang}">
               <div class="table-wrap"><table class="report report-reflow translate-table">
-                <thead><tr><th>${langName(a.language)}</th><th>${langName(lang)}</th><th>Used in</th></tr></thead>
+                <thead><tr><th>${langName(a.language)}</th><th>${langName(lang)}</th><th>${tx('glob.used_in')}</th></tr></thead>
                 <tbody>${[...texts, ...extra.map((r: { source: string }) => ({ text: r.source, places: 'added by hand' }))].map((t, i) => html`<tr>
                   <td data-label="${a.language}"><input type="hidden" name="s${i}" value="${t.text}"><span class="source-text">${t.text}</span></td>
                   <td data-label="${lang}">${t.text.length > 80 || t.text.includes('\n')
-                    ? html`<textarea name="t${i}" rows="3" aria-label="Translation of: ${t.text.slice(0, 60)}" lang="${lang}">${map.get(t.text) ?? ''}</textarea>`
-                    : html`<input name="t${i}" value="${map.get(t.text) ?? ''}" aria-label="Translation of: ${t.text}" lang="${lang}">`}</td>
-                  <td data-label="Used in" class="muted">${t.places}</td></tr>`)}</tbody>
+                    ? html`<textarea name="t${i}" rows="3" aria-label="${tx('glob.aria_translation', { text: t.text.slice(0, 60) })}" lang="${lang}">${map.get(t.text) ?? ''}</textarea>`
+                    : html`<input name="t${i}" value="${map.get(t.text) ?? ''}" aria-label="${tx('glob.aria_translation', { text: t.text })}" lang="${lang}">`}</td>
+                  <td data-label="${tx('glob.used_in')}" class="muted">${t.places}</td></tr>`)}</tbody>
               </table></div>
-              <div class="buttons"><button class="btn btn-hot">Save translations</button></div>
+              <div class="buttons"><button class="btn btn-hot">${tx('glob.save_translations')}</button></div>
             </form>
-            <h3>Add a text</h3>
-            <p class="muted">For texts pgkiln derives itself, such as column headings made from column names (<code>hiredate</code> → “Hiredate”).</p>
+            <h3>${tx('glob.add_a_text')}</h3>
+            <p class="muted">${tx.code('glob.for_texts_pgkiln_derives_itself')}</p>
             <form method="post" action="${BASE}/apps/${a.id}/globalization/save" class="form-grid">${csrf(s)}
               <input type="hidden" name="lang" value="${lang}">
-              ${input('s0', `Text (${a.language})`, '', { required: true })}
-              ${input('t0', `Translation (${lang})`, '', { required: true })}
-              <div class="buttons"><button class="btn">Add</button></div>
+              ${input('s0', tx('glob.text_lang', { lang: a.language }), '', { required: true })}
+              ${input('t0', tx('glob.translation_lang', { lang }), '', { required: true })}
+              <div class="buttons"><button class="btn">${tx('glob.add')}</button></div>
             </form>`)
-        : region('Translate', html`<p>Add a translated language under <a href="${BASE}/apps/${a.id}/settings">Settings → Globalization</a> first (for example <code>nl</code>).</p>`)}
-      ${region('Text messages', html`
-        <p class="muted u-mt0">Use them in SQL with <code>meta.message('NAME', param0, …)</code> (placeholders <code>%0</code>…<code>%9</code>) and in texts as <code>&amp;APP_TEXT$NAME.</code>, like APEX_LANG.MESSAGE. A message named like a pgkiln text (e.g. <code>login.title</code>, <code>report.no_data</code>) replaces it. Missing languages fall back to the primary language.</p>
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Name</th><th>Language</th><th>Text</th><th></th></tr></thead><tbody>
+        : region(tx('glob.translate'), html`<p>${tx.rich('glob.add_lang_first', { link: html`<a href="${BASE}/apps/${a.id}/settings">${tx('glob.settings_globalization')}</a>`, example: html`<code>nl</code>` })}</p>`)}
+      ${region(tx('glob.text_messages'), html`
+        <p class="muted u-mt0">${tx.code('glob.use_them_in_sql_with')}</p>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('glob.name')}</th><th>${tx('glob.language')}</th><th>${tx('glob.text')}</th><th></th></tr></thead><tbody>
           ${messages.rows.length
             ? messages.rows.map((m) => html`<tr>
-                <td data-label="Name"><code>${m.name}</code></td><td data-label="Language">${m.language}</td>
-                <td data-label="Text"><form method="post" action="${BASE}/apps/${a.id}/globalization/message" class="search u-m0 u-mwnone">${csrf(s)}
+                <td data-label="${tx('glob.name')}"><code>${m.name}</code></td><td data-label="${tx('glob.language')}">${m.language}</td>
+                <td data-label="${tx('glob.text')}"><form method="post" action="${BASE}/apps/${a.id}/globalization/message" class="search u-m0 u-mwnone">${csrf(s)}
                   <input type="hidden" name="name" value="${m.name}"><input type="hidden" name="language" value="${m.language}">
-                  <input name="text" value="${m.text}" aria-label="Text of ${m.name} (${m.language})"><button class="btn">Save</button></form></td>
+                  <input name="text" value="${m.text}" aria-label="${tx('glob.aria_text_of', { name: m.name, lang: m.language })}"><button class="btn">${tx('glob.save')}</button></form></td>
                 <td data-label=""><form method="post" action="${BASE}/apps/${a.id}/globalization/message/delete">${csrf(s)}
-                  <input type="hidden" name="name" value="${m.name}"><input type="hidden" name="language" value="${m.language}"><button class="link-button" data-confirm="Delete ${m.name} (${m.language})?">Delete</button></form></td></tr>`)
-            : html`<tr><td colspan="4" class="empty">No text messages.</td></tr>`}
+                  <input type="hidden" name="name" value="${m.name}"><input type="hidden" name="language" value="${m.language}"><button class="link-button" data-confirm="${tx('glob.delete_confirm', { name: m.name, lang: m.language })}">${tx('glob.delete')}</button></form></td></tr>`)
+            : html`<tr><td colspan="4" class="empty">${tx('glob.no_text_messages')}</td></tr>`}
         </tbody></table></div>
-        <h3>Add a text message</h3>
+        <h3>${tx('glob.add_a_text_message')}</h3>
         <form method="post" action="${BASE}/apps/${a.id}/globalization/message" class="form-grid">${csrf(s)}
-          ${input('name', 'Name', '', { required: true, placeholder: 'e.g. GREETING or login.title' })}
-          ${select('language', 'Language', a.language, all.map((l): [string, string] => [l, langName(l)]))}
-          ${input('text', 'Text', '', { required: true, placeholder: 'Hello %0!' })}
-          <div class="buttons"><button class="btn btn-hot">Add message</button></div>
+          ${input('name', tx('glob.name'), '', { required: true, placeholder: tx('glob.e_g_greeting_or_login') })}
+          ${select('language', tx('glob.language'), a.language, all.map((l): [string, string] => [l, langName(l)]))}
+          ${input('text', tx('glob.text'), '', { required: true, placeholder: tx('glob.hello_0') })}
+          <div class="buttons"><button class="btn btn-hot">${tx('glob.add_message')}</button></div>
         </form>`)}`;
-    return send(reply, s, shell(s, `${a.name} globalization`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Globalization']], main));
+    return send(reply, s, shell(s, `${a.name} globalization`, [[tx('glob.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('glob.shared_components'), `${BASE}/apps/${a.id}/shared`], [tx('glob.globalization')]], main));
   });
 
   app.post(`${BASE}/apps/:id/globalization/save`, async (req: Req, reply) => {
@@ -267,7 +268,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
       const n = await saveTranslations(a.id, lang, pairs.filter(([, t]) => t.trim() !== ''));
       flash(s, `${n} translation(s) imported into ${lang}.`);
     } catch (e) {
-      flash(s, `Import failed: ${(e as Error).message}`, 'error');
+      flash(s, tx('glob.import_failed', { error: (e as Error).message }), 'error');
     }
     return back(reply, s, `${BASE}/apps/${req.params.id}/globalization?lang=${encodeURIComponent(lang)}`);
   });
@@ -283,9 +284,9 @@ export async function globalizationRoutes(app: FastifyInstance) {
         [req.params.id, b.name?.trim(), b.language?.trim().toLowerCase(), b.text ?? ''],
       );
       clearLocaleCache(Number(req.params.id));
-      flash(s, 'Text message saved.');
+      flash(s, tx('glob.text_message_saved'));
     } catch (e) {
-      flash(s, /text_message_name_check/.test((e as Error).message) ? 'Names start with a letter and contain letters, digits, _ . $ or -.' : (e as Error).message, 'error');
+      flash(s, /text_message_name_check/.test((e as Error).message) ? tx('glob.names_start_with_a_letter') : (e as Error).message, 'error');
     }
     return back(reply, s, `${BASE}/apps/${req.params.id}/globalization`);
   });
@@ -295,7 +296,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
     if (!s) return;
     await owner.query('delete from meta.text_message where app_id = $1 and name = $2 and language = $3', [req.params.id, req.body?.name, req.body?.language]);
     clearLocaleCache(Number(req.params.id));
-    flash(s, 'Text message deleted.');
+    flash(s, tx('glob.text_message_deleted'));
     return back(reply, s, `${BASE}/apps/${req.params.id}/globalization`);
   });
 }
