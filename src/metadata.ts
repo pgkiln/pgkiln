@@ -320,7 +320,9 @@ export interface DynamicAction {
     /** (124) a menu button's entry {"action": NAME} was chosen (trigger: entry or menu button names) */
     | 'menu_entry'
     /** (149) */
-    | 'double_click' | 'key_down' | 'key_press' | 'mouse_enter' | 'mouse_leave' | 'select' | 'resize' | 'scroll' | 'page_unload' | 'before_refresh' | 'facets_change';
+    | 'double_click' | 'key_down' | 'key_press' | 'mouse_enter' | 'mouse_leave' | 'select' | 'resize' | 'scroll' | 'page_unload' | 'before_refresh' | 'facets_change'
+    /** (153) component events: trigger = the grid, calendar, map or tree region */
+    | 'grid_row_init' | 'grid_save' | 'calendar_date_select' | 'calendar_view_change' | 'map_object_click' | 'map_change' | 'tree_selection_change';
   trigger_element: string | null;
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | 'greater' | 'greater_equal' | 'less' | 'less_equal' | 'not_in_list' | null;
   condition_value: string | null;

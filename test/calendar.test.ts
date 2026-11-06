@@ -76,7 +76,7 @@ describe('calendar: views', () => {
     const body = (await king.get(`/a/hr/24?r${rid}_d=${monday}`)).body;
     assert.match(body, /<table class="cal-grid cal-week">/);
     assert.match(body, /<a class="btn active" href="[^"]*" aria-current="page">Week<\/a>/);
-    assert.match(body, new RegExp(`<td data-drop="${monday}T09:00" data-add>.*?Team stand-up.*?09:00–09:30`, 's'));
+    assert.match(body, new RegExp(`<td data-drop="${monday}T09:00" data-add[^>]*>.*?Team stand-up.*?09:00–09:30`, 's'));
     assert.match(body, /<tr class="cal-allday"><th scope="row">All day<\/th>/);
     assert.match(body, /<th scope="row" class="cal-hour">08:00<\/th>/);
     assert.match(body, /<th scope="row" class="cal-hour">17:00<\/th>/);
@@ -155,7 +155,7 @@ describe('calendar: drag and drop', () => {
     assert.equal(res.statusCode, 200, res.body);
     const out = res.json();
     assert.match(out.message, /^Team stand-up moved to \d{4}-\d{2}-\d{2} 15:00\.$/);
-    assert.match(out.region, new RegExp(`<td data-drop="${monday}T15:00" data-add>.*?Team stand-up`, 's'));
+    assert.match(out.region, new RegExp(`<td data-drop="${monday}T15:00" data-add[^>]*>.*?Team stand-up`, 's'));
     assert.match(out.region, /^<section class="region region-calendar/);
     const row = await owner.one(`select to_char(starts_at, 'HH24:MI') as s, to_char(ends_at, 'HH24:MI') as e from hr.meeting where id = $1`, [id]);
     assert.deepEqual(row, { s: '15:00', e: '15:30' });

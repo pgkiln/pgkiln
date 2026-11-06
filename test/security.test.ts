@@ -13568,3 +13568,39 @@ describe('sprint 160 Workflow Diagram region', () => {
     assert.equal(queried, false, 'not a number: no query at all');
   });
 });
+
+describe('sprint 161 component events', () => {
+  const alias = 'sec-s161';
+  const ROLE = 'pgkiln_s161_sec';
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec 161', 'none', $2) returning id`, [alias, ROLE])).id;
+    const page = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
+    const r = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 1, 'Main', 'static', 'main') returning id`, [page])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, type) values ($1, $2, 1, 'P1_X', 'text')`, [page, r]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label) values ($1, $2, 1, 'GO', 'Go')`, [page, r]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  test('grid_save: a posted __GRID_SAVED or a query parameter does not mark grids as saved', async () => {
+    const b = new Browser();
+    await b.get(`/a/${alias}/1`);
+    const res = await b.post(`/a/${alias}/1`, { __csrf: b.lastCsrf, P1_X: 'x', __GRID_SAVED: '1,2', __request: 'GO' });
+    assert.equal(res.statusCode, 303);
+    const page = await b.get(`/a/${alias}/1?__GRID_SAVED=3&cal_changed=%3Cscript%3E`);
+    assert.doesNotMatch(page.body, /savedGrids/);
+    assert.doesNotMatch(page.body, /<script>/);
+  });
+
+  test('component events are the only new events the database takes', async () => {
+    const page = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1`, [alias])).id;
+    await assert.rejects(owner.query(`insert into meta.dynamic_action (page_id, name, event, action) values ($1, 'x', 'grid_row_destroy', 'alert')`, [page]), /dynamic_action_event_check/);
+    await owner.query(`insert into meta.dynamic_action (page_id, name, event, action) values ($1, 'x', 'map_object_click', 'alert')`, [page]);
+  });
+});
