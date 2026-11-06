@@ -104,7 +104,7 @@ Region **templates**:
 |---|---|
 | `standard` | A card with a header (title and buttons) and a body |
 | `plain` | No frame and no header: content only (good for KPI cards and intro text) |
-| `collapsible` | A standard card whose body can be collapsed by clicking the header |
+| `collapsible` | A standard card whose body can be collapsed by clicking the header; its header buttons stay visible while it is collapsed |
 | `hero` | A large banner: an icon (`{"icon": "users"}` in the attributes), the title, the text and the buttons (APEX: Hero) |
 | `title_bar` | The title and buttons on one line over the content, without a card (APEX: Title Bar) |
 | `buttons_container` | The buttons only (after any text), without a header (APEX: Buttons Container) |

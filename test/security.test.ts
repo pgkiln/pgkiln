@@ -1605,7 +1605,7 @@ describe('sprint 26 logic: computations, branches, menus, badges, dynamic action
       assert.ok(body.includes('&lt;img src=x onerror=alert(1)&gt;'));
       assert.ok(!body.includes('"><script>'));
       assert.ok(body.includes('&lt;b&gt;king&lt;/b&gt;'));
-      assert.match(body, /value="PLAN"[^>]*>Plan <span class="btn-badge">hr_app<\/span>/);
+      assert.match(body, /value="PLAN"[^>]*>Plan <span class="btn-badge"[^>]*>hr_app<\/span>/);
     } finally {
       await owner.query(`update meta.button set menu = $2, badge = null where page_id = $1 and name = 'MORE'`, [pid, JSON.stringify(before)]);
       await owner.query(`update meta.button set badge_query = null where page_id = $1 and name = 'PLAN'`, [pid]);

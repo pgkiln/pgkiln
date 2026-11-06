@@ -185,7 +185,7 @@ describe('menu buttons and badges', () => {
     await owner.query(`update meta.button set badge = '&P22_NOTHING.' where page_id = $1 and name = 'HIGHLIGHT'`, [pageId]);
     try {
       const body = (await (await as('king')).get('/a/hr/22')).body;
-      assert.match(body, /value="PLAN"[^>]*>Plan <span class="btn-badge">42<\/span>/);
+      assert.match(body, /value="PLAN"[^>]*>Plan <span class="btn-badge"[^>]*>42<\/span>/); // (166) HR has live badges: data-badge too
       // an unknown substitution stays as written (APEX behaviour): only empty values hide the badge
       await owner.query(`update meta.button set badge = null where page_id = $1 and name = 'HIGHLIGHT'`, [pageId]);
       assert.doesNotMatch((await (await as('king')).get('/a/hr/22')).body, /data-button="HIGHLIGHT">Highlight <span/);

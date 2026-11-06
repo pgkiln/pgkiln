@@ -34,6 +34,11 @@ All notable changes to this project are documented here. The format follows
 - **Trigger Geocoding on the address item's own change** no longer looks the chosen address up again and reopens the
   list (found by Sample Maps).
 - **Push notifications without `PGKILN_SECRET_KEY`**: the missing key is logged once, not on every page.
+- **Header buttons of a collapsible region** are no longer inside its toggle (`<summary>`), where screen readers heard
+  nested controls (axe: nested-interactive); they sit beside it and stay visible while the region is collapsed (found
+  by Sample UX Patterns).
+- **Navigation bar entries with an icon and a badge** keep the badge in their accessible name: on small screens the
+  label is hidden visually instead of being replaced by an `aria-label` (axe: label-content-name-mismatch).
 - **Docs: Reset Pagination** acts on interactive grids; a report starts on its first page after any submit anyway.
 
 ## [0.85.0] - 2026-11-06

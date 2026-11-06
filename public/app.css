@@ -426,6 +426,12 @@ dialog.region-inline_drawer:target { inset: 0 0 0 auto; }
 .region-collapsible summary.region-header { cursor: pointer; list-style: none; }
 .region-collapsible summary.region-header::-webkit-details-marker { display: none; }
 .region-collapsible details:not([open]) summary.region-header { border-bottom: 0; }
+/* (166) header buttons of a collapsible region: over the header row, outside the summary (the toggle) */
+.region-collapsible.has-header-buttons { position: relative; }
+.region-collapsible > .region-header-buttons { position: absolute; top: 0; right: 1rem; z-index: 1; max-width: calc(min(50%, 22rem) - 1rem); min-height: 50px; display: flex; align-items: center; justify-content: flex-end; }
+.region-collapsible > .region-header-buttons .buttons { margin: 0; flex-wrap: wrap; justify-content: flex-end; }
+.region-collapsible.has-header-buttons > details > summary.region-header { padding-right: min(50%, 22rem); }
+.region.to-compact > .region-header-buttons { min-height: 0; top: 0.35rem; }
 .region-body { padding: 1rem; }
 .region-footer { display: flex; padding: 0.75rem 1rem; border-top: 1px solid var(--border); background: var(--surface-2); border-radius: 0 0 var(--radius) var(--radius); }
 .region-plain > .region-footer { background: none; padding: 1rem 0 0; }
@@ -1815,7 +1821,8 @@ td.tc-cell { overflow-wrap: anywhere; }
 .t-navbar a[aria-current="page"] { background: rgb(255 255 255 / 16%); }
 .t-navbar-menu a { display: flex; align-items: center; gap: 0.45rem; padding: 0.4rem 0.9rem; }
 @media (max-width: 1024px) {
-  .t-navbar .nb-icon > span:not(.badge) { display: none; }
+  /* (166) visually hidden, still the link's name: an aria-label would leave out the badge (label-content-name-mismatch) */
+  .t-navbar .nb-icon > span:not(.badge) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
 @media (max-width: 640px) {
   .list-badges { grid-template-columns: repeat(2, minmax(0, 1fr)); }
