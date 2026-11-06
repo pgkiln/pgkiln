@@ -145,11 +145,11 @@ function filterForm(f: Filters, lk: Lookups, action: string, hidden: Record<stri
     ${Object.entries(hidden).map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}
     ${f.page ? html`<input type="hidden" name="page" value="${f.page}">` : ''}
     <div class="field team-q"><label class="label" for="tf_q">${tx('tm.search')}</label><input id="tf_q" name="q" type="search" value="${f.q}" maxlength="100" placeholder="${tx('tm.title_text_or_number')}"></div>
-    ${sel('status', 'Status', f.status, [opt('open', 'Open', f.status), opt('closed', 'Closed', f.status), opt('all', 'All', f.status)])}
-    ${sel('label', 'Label', f.label, [opt('', 'Any', f.label), ...lk.labels.map((l) => opt(String(l.id), l.group_name ? `${l.group_name}: ${l.name}` : l.name, f.label))])}
-    ${sel('milestone', 'Milestone', f.milestone, [opt('', 'Any', f.milestone), opt('none', 'None', f.milestone), ...lk.milestones.map((m) => opt(String(m.id), m.name, f.milestone))])}
-    ${sel('assignee', 'Assignee', f.assignee, [opt('', 'Anyone', f.assignee), opt('me', 'Me', f.assignee), opt('none', 'Nobody', f.assignee), ...lk.devs.map((d) => opt(d, d, f.assignee))])}
-    ${sel('app', 'Application', f.app, [opt('', 'Any', f.app), ...lk.apps.map((a) => opt(String(a.id), a.name, f.app))])}
+    ${sel('status', tx('tm.f.status'), f.status, [opt('open', tx('tm.f.open'), f.status), opt('closed', tx('tm.closed'), f.status), opt('all', tx('tm.f.all'), f.status)])}
+    ${sel('label', tx('tm.label'), f.label, [opt('', tx('tm.f.any'), f.label), ...lk.labels.map((l) => opt(String(l.id), l.group_name ? `${l.group_name}: ${l.name}` : l.name, f.label))])}
+    ${sel('milestone', tx('tm.milestone'), f.milestone, [opt('', tx('tm.f.any'), f.milestone), opt('none', tx('tm.none'), f.milestone), ...lk.milestones.map((m) => opt(String(m.id), m.name, f.milestone))])}
+    ${sel('assignee', tx('tm.f.assignee'), f.assignee, [opt('', tx('tm.f.anyone'), f.assignee), opt('me', tx('tm.f.me'), f.assignee), opt('none', tx('tm.nobody'), f.assignee), ...lk.devs.map((d) => opt(d, d, f.assignee))])}
+    ${sel('app', tx('tm.application'), f.app, [opt('', tx('tm.f.any'), f.app), ...lk.apps.map((a) => opt(String(a.id), a.name, f.app))])}
     <div class="buttons"><button class="btn btn-sm">${icon('filter')} ${tx('tm.show')}</button>${filterQuery(f) ? html`<a class="btn btn-sm" href="${action}${Object.keys(hidden).length ? `?${new URLSearchParams(hidden)}` : ''}">${tx('tm.clear')}</a>` : ''}</div>
   </form>`;
 }
@@ -247,10 +247,10 @@ async function setLinks(c: (sql: string, params?: unknown[]) => Promise<unknown>
 const issueOf = async (ws: number, id: string) =>
   isId(id) ? owner.one(`select i.*, m.name as milestone from meta.team_issue i left join meta.team_milestone m on m.id = i.milestone_id where i.id = $1 and i.workspace_id = $2`, [id, ws]) : undefined;
 
-const EVENT_TEXT: Record<string, string> = {
-  created: 'created the issue', closed: 'closed the issue', reopened: 'reopened the issue', title: 'changed the title', body: 'edited the description',
-  labels: 'changed the labels', assignees: 'changed the assignees', milestone: 'set the milestone', link: 'linked', commented: 'commented',
-};
+const EVENT_TEXT = (action: string): string | undefined => ({
+  created: tx('tm.ev.created'), closed: tx('tm.ev.closed'), reopened: tx('tm.ev.reopened'), title: tx('tm.changed_the_title'), body: tx('tm.ev.body'),
+  labels: tx('tm.ev.labels'), assignees: tx('tm.ev.assignees'), milestone: tx('tm.ev.milestone'), link: tx('tm.ev.link'), commented: tx('tm.ev.commented'),
+} as Record<string, string>)[action];
 
 export async function teamRoutes(app: FastifyInstance) {
   // ------------------------------------------------------------------ the issue list
@@ -282,7 +282,7 @@ export async function teamRoutes(app: FastifyInstance) {
               : html`<p class="muted small">${tx('tm.nobody_mentioned_you_in_an')}</p>`}</section>
           <section aria-labelledby="team-views-h"><h2 id="team-views-h">${tx('tm.saved_views')}</h2>
             ${views.rows.length ? html`<ul class="team-views">${views.rows.map((v) => html`<li><a href="${TEAM}${v.query ? `?${v.query}` : ''}"${v.query === current ? raw(' aria-current="true"') : ''}>${v.name}</a>
-                <form method="post" action="${TEAM}/views/${v.id}/delete" class="u-inline">${csrf(s)}<button class="link-button" title="Delete the view ${v.name}" data-confirm="Delete the view ${v.name}?">${icon('trash')}<span class="sr-only">Delete ${v.name}</span></button></form></li>`)}</ul>`
+                <form method="post" action="${TEAM}/views/${v.id}/delete" class="u-inline">${csrf(s)}<button class="link-button" title="${tx('tm.delete_view_confirm', { name: v.name })}" data-confirm="${tx('tm.delete_view_confirm', { name: v.name })}">${icon('trash')}<span class="sr-only">${tx('tm.delete_named', { name: v.name })}</span></button></form></li>`)}</ul>`
               : html`<p class="muted small">${tx('tm.save_the_filters_you_use')}</p>`}
             <form method="post" action="${TEAM}/views" class="team-save-view">${csrf(s)}<input type="hidden" name="query" value="${current}">
               <label class="sr-only" for="tv_name">${tx('tm.name_of_the_view')}</label><input id="tv_name" name="name" maxlength="40" required placeholder="${tx('tm.name_of_this_view')}">
@@ -458,7 +458,7 @@ export async function teamRoutes(app: FastifyInstance) {
       ...comments.rows.map((c) => ({ at: new Date(c.created_at).getTime(), r: html`<li class="team-comment" id="comment-${c.id}">
           <div class="team-comment-head"><b>${c.author}</b> <span class="muted small">${when(c.created_at)}</span></div>
           <div class="rich-text team-md">${raw(issueHtml(c.body, lk.devs))}</div></li>` })),
-      ...events.rows.map((e) => ({ at: new Date(e.at).getTime(), r: html`<li class="team-event small muted">${icon('history')}<span><b>${e.username ?? 'someone'}</b> ${EVENT_TEXT[e.action] ?? e.action}${e.detail ? html`: ${e.detail}` : ''} · ${when(e.at)}</span></li>` })),
+      ...events.rows.map((e) => ({ at: new Date(e.at).getTime(), r: html`<li class="team-event small muted">${icon('history')}<span><b>${e.username ?? tx('tm.someone')}</b> ${EVENT_TEXT(e.action) ?? e.action}${e.detail ? html`: ${e.detail}` : ''} · ${when(e.at)}</span></li>` })),
     ].sort((a, b) => a.at - b.at);
     const v: IssueInput = { title: i.title, body: i.body, labels: labels.rows.map((l) => String(l.id)), milestone: i.milestone_id ? String(i.milestone_id) : null,
       assignees: assignees.rows.map((a) => a.username), app: appRow?.id ?? null, page: appRow ? i.page_no : null };
@@ -496,7 +496,7 @@ export async function teamRoutes(app: FastifyInstance) {
               : html`<span class="muted small">${tx('tm.none')}</span>`}</p></section>
             ${source ? html`<section><h2>${tx('tm.from_feedback')}</h2><p><a href="${BASE}/apps/${source.app_id}/feedback#feedback-${source.id}">Feedback of ${source.username}</a> <span class="small muted">(${source.name})</span></p></section>` : ''}
             ${comment ? html`<section><h2>${tx('tm.from_a_developer_comment')}</h2><p><a href="${comment.page_no ? designerUrl(comment.app_id, comment.page_no) : `${BASE}/apps/${comment.app_id}#app-lock`}">${comment.author}'s comment</a> <span class="small muted">(${comment.name}${comment.page_no ? `, page ${comment.page_no}` : ''})</span></p></section>` : ''}
-            ${i.created_by === s.username || admin ? html`<section><h2>${tx('tm.delete')}</h2><form method="post" action="${TEAM}/issues/${i.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete issue #${i.id} with its comments and history?">${icon('trash')} ${tx('tm.delete_issue')}</button></form></section>` : ''}
+            ${i.created_by === s.username || admin ? html`<section><h2>${tx('tm.delete')}</h2><form method="post" action="${TEAM}/issues/${i.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('tm.delete_issue_confirm', { id: i.id })}">${icon('trash')} ${tx('tm.delete_issue')}</button></form></section>` : ''}
           </aside>
         </div>
         <details class="team-edit" id="edit"><summary class="btn btn-sm">${icon('edit')} ${tx('tm.edit_the_issue')}</summary>
@@ -756,7 +756,7 @@ export async function teamRoutes(app: FastifyInstance) {
           <progress class="team-progress" max="${total || 1}" value="${m.closed}" aria-label="${m.closed} of ${total} issues closed"></progress>
           <p class="small"><a href="${TEAM}?milestone=${m.id}">${m.open} open</a> · <a href="${TEAM}?milestone=${m.id}&amp;status=closed">${m.closed} closed</a></p>
           <details class="team-inline-edit"><summary class="link-button">${tx('tm.edit')}</summary>${form(m, `m${m.id}`)}
-            ${admin ? html`<form method="post" action="${TEAM}/milestones/${m.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the milestone ${m.name}? Its issues keep no milestone.">${icon('trash')} ${tx('tm.delete_milestone')}</button></form>` : ''}</details>
+            ${admin ? html`<form method="post" action="${TEAM}/milestones/${m.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('tm.delete_milestone_confirm', { name: m.name })}">${icon('trash')} ${tx('tm.delete_milestone')}</button></form>` : ''}</details>
         </li>`;
       })}</ul>` : html`<p class="muted">${tx('tm.no_milestones_yet')}</p>`)}
       ${region(tx('tm.add_a_milestone'), form({}, 'nm'))}`;
@@ -811,7 +811,7 @@ export async function teamRoutes(app: FastifyInstance) {
       return xs.length ? html`<ul class="team-template-list">${xs.map((x) => html`<li><b>${x.name}</b>
           ${kind === 'issue' ? html` <a class="small" href="${TEAM}/issues/new?template=${x.id}">${tx('tm.use')}</a>` : ''}
           <details class="team-inline-edit"><summary class="link-button">${tx('tm.edit')}</summary>${form(x, `t${x.id}`)}
-            <form method="post" action="${TEAM}/templates/${x.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the template ${x.name}?">${icon('trash')} ${tx('tm.delete_template')}</button></form></details></li>`)}</ul>`
+            <form method="post" action="${TEAM}/templates/${x.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('tm.delete_template_confirm', { name: x.name })}">${icon('trash')} ${tx('tm.delete_template')}</button></form></details></li>`)}</ul>`
         : html`<p class="muted small">${tx('tm.none_yet')}</p>`;
     };
     const main = html`${teamHeader('templates')}
@@ -904,7 +904,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const existing = await owner.one('select id from meta.team_issue where feedback_id = $1 and workspace_id = $2', [f.id, ws]);
     if (existing) return back(reply, s, `${TEAM}/issues/${existing.id}`);
     const kindLabel = f.kind === 'problem' ? 'bug' : f.kind === 'idea' ? 'feature' : null;
-    const title = `${f.kind === 'problem' ? 'Problem' : f.kind === 'idea' ? 'Idea' : 'Feedback'}: ${firstLine(f.body)}`;
+    const title = `${f.kind === 'problem' ? tx('tm.problem') : f.kind === 'idea' ? tx('tm.idea') : tx('tm.feedback')}: ${firstLine(f.body)}`;
     const body = `Feedback of **${mdEscape(f.username)}** (${f.kind}${f.rating ? `, ${f.rating} of 5` : ''}) on ${f.page_no ? `page ${f.page_no} of ` : ''}${mdEscape(f.app_name)}:\n\n${quote(f.body)}`;
     const id = await owner.tx(async (c) => {
       const id = Number((await c.query(`insert into meta.team_issue (workspace_id, title, body, app_id, page_no, feedback_id, created_by) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
@@ -941,7 +941,7 @@ export async function teamRoutes(app: FastifyInstance) {
 }
 
 const firstLine = (t: string) => {
-  const l = String(t).split('\n').map((x) => x.trim()).find(Boolean) ?? 'Untitled';
+  const l = String(t).split('\n').map((x) => x.trim()).find(Boolean) ?? tx('tm.untitled');
   return l.length > 80 ? `${l.slice(0, 79)}…` : l;
 };
 const mdEscape = (t: string) => String(t).replace(/[\\`*_[\]<>#]/g, (c) => `\\${c}`);

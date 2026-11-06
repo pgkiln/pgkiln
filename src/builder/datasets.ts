@@ -15,6 +15,7 @@ import { logActivity, clientIp, type Session } from '../session.ts';
 import { checkNewApp, createAppError } from './newapp.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Body, type Req } from './ui.ts';
 import { currentWorkspace, usableSchemas, workshopDb } from './workspaces.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 110, migration 120) App Builder → Data Reporter (/builder/reporter; APEX 26.1: Data Reporter as a
 // workspace tool): the workspace's datasets (tables and views of one schema, joins proposed from foreign keys,
@@ -27,7 +28,7 @@ import { currentWorkspace, usableSchemas, workshopDb } from './workspaces.ts';
 const root = `${BASE}/reporter`;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const PREVIEW_ROWS = 10;
-const crumbs = (extra: [string, string?][] = []): [string, string?][] => [['App Builder', BASE], ['Data Reporter', root], ...extra];
+const crumbs = (extra: [string, string?][] = []): [string, string?][] => [[tx('dts.app_builder'), BASE], ['Data Reporter', root], ...extra];
 const when = (d: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') : '');
 
 const page = (s: Session, reply: FastifyReply, title: string, extra: [string, string?][], main: Raw) =>
@@ -106,7 +107,7 @@ export function datasetFromForm(d: Dataset, b: Body, cat: Awaited<ReturnType<typ
 
 /** The first rows of a dataset, read only, through the SQL Workshop's connection (a timeout; errors as text). */
 async function preview(db: Db, d: Dataset): Promise<{ fields: string[]; rows: unknown[][] } | { error: string }> {
-  if (!d.columns.length) return { error: 'The dataset offers no columns.' };
+  if (!d.columns.length) return { error: tx('dts.the_dataset_offers_no_columns') };
   try {
     return await db.tx(async (c) => {
       await c.query('set transaction read only');
@@ -129,30 +130,30 @@ export async function datasetRoutes(app: FastifyInstance) {
     const ws = currentWorkspace(s);
     const sets = await workspaceDatasets(owner, ws);
     const apps = await reportingApps(ws);
-    const main = html`<div class="title-row"><h1>Data Reporter</h1>
-        <div class="buttons"><a class="btn btn-hot" href="${root}/datasets/new">${icon('plus')} New dataset</a><a class="btn" href="${root}/import">${icon('upload')} Import</a>${sets.length ? html`<a class="btn" href="${root}/export">${icon('download')} Export all</a>` : ''}</div></div>
+    const main = html`<div class="title-row"><h1>${tx('dts.data_reporter')}</h1>
+        <div class="buttons"><a class="btn btn-hot" href="${root}/datasets/new">${icon('plus')} ${tx('dts.new_dataset')}</a><a class="btn" href="${root}/import">${icon('upload')} ${tx('dts.import')}</a>${sets.length ? html`<a class="btn" href="${root}/export">${icon('download')} ${tx('dts.export_all')}</a>` : ''}</div></div>
       <p class="muted u-mt0">Datasets are trusted views of ${s.workspace?.name ?? 'this workspace'}'s data for business users: tables and views of one schema, joined, with the columns they may see, labels, format masks and descriptions, and a row filter. A reporting application on one or more datasets lets its users build, save, publish and share reports; every report runs as the application's database role, so grants and row level security apply.</p>
-      ${region('Datasets', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">Dataset</th><th scope="col">Schema</th><th scope="col">Tables and views</th><th scope="col" class="num">Columns</th><th scope="col">Updated (UTC)</th><th scope="col">Actions</th></tr></thead>
+      ${region(tx('dts.datasets'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th scope="col">${tx('dts.dataset')}</th><th scope="col">${tx('dts.schema')}</th><th scope="col">${tx('dts.tables_and_views')}</th><th scope="col" class="num">${tx('dts.columns')}</th><th scope="col">${tx('dts.updated_utc')}</th><th scope="col">${tx('dts.actions')}</th></tr></thead>
         <tbody>${sets.length ? sets.map((d) => html`<tr>
-          <td data-label="Dataset"><a href="${root}/datasets/${d.id}">${d.label}</a> <code>${d.name}</code>${d.description ? html`<br><span class="muted small">${d.description.slice(0, 160)}</span>` : ''}</td>
-          <td data-label="Schema"><code>${d.schema_name}</code></td>
-          <td data-label="Tables and views">${d.tables.map((t) => t.table).join(', ')}</td>
-          <td class="num" data-label="Columns">${d.columns.length}</td>
-          <td data-label="Updated (UTC)">${when(d.updated_at)}${d.updated_by ? html` <span class="muted">${d.updated_by}</span>` : ''}</td>
-          <td data-label=""><a class="btn" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} Create reporting application</a></td>
-        </tr>`) : html`<tr><td colspan="6" class="empty">No datasets yet: create one on tables and views of a schema, or import a dataset file.</td></tr>`}</tbody></table></div>`)}
-      ${region('Reporting applications', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">Application</th><th scope="col">Datasets</th><th scope="col" class="num">Users</th><th scope="col" class="num">Published reports</th><th scope="col">Actions</th></tr></thead>
+          <td data-label="${tx('dts.dataset')}"><a href="${root}/datasets/${d.id}">${d.label}</a> <code>${d.name}</code>${d.description ? html`<br><span class="muted small">${d.description.slice(0, 160)}</span>` : ''}</td>
+          <td data-label="${tx('dts.schema')}"><code>${d.schema_name}</code></td>
+          <td data-label="${tx('dts.tables_and_views')}">${d.tables.map((t) => t.table).join(', ')}</td>
+          <td class="num" data-label="${tx('dts.columns')}">${d.columns.length}</td>
+          <td data-label="${tx('dts.updated_utc')}">${when(d.updated_at)}${d.updated_by ? html` <span class="muted">${d.updated_by}</span>` : ''}</td>
+          <td data-label=""><a class="btn" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} ${tx('dts.create_reporting_application')}</a></td>
+        </tr>`) : html`<tr><td colspan="6" class="empty">${tx('dts.no_datasets_yet_create_one')}</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('dts.reporting_applications'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th scope="col">${tx('dts.application')}</th><th scope="col">${tx('dts.datasets')}</th><th scope="col" class="num">${tx('dts.users')}</th><th scope="col" class="num">${tx('dts.published_reports')}</th><th scope="col">${tx('dts.actions')}</th></tr></thead>
         <tbody>${apps.length ? apps.map((a) => html`<tr>
-          <td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <code>${a.alias}</code></td>
-          <td data-label="Datasets">${a.datasets.join(', ')}</td>
-          <td class="num" data-label="Users">${a.users}</td>
-          <td class="num" data-label="Published reports">${a.reports}</td>
-          <td data-label=""><a class="btn" href="/a/${a.alias}/">${icon('play')} Run</a> <a class="btn" href="${BASE}/apps/${a.id}/shared">${icon('users')} Users and roles</a></td>
-        </tr>`) : html`<tr><td colspan="5" class="empty">No reporting applications yet: choose Create reporting application on a dataset.</td></tr>`}</tbody></table></div>
-        <p class="muted small">Roles: <b>viewer</b> runs published reports (every user with access), <b>editor</b> also builds, saves, publishes and unpublishes reports, <b>administrator</b> also unpublishes and deletes anyone's. Give accounts access and roles under Users and roles.</p>`)}`;
-    return page(s, reply, 'Data Reporter', [], main);
+          <td data-label="${tx('dts.application')}"><a href="${BASE}/apps/${a.id}">${a.name}</a> <code>${a.alias}</code></td>
+          <td data-label="${tx('dts.datasets')}">${a.datasets.join(', ')}</td>
+          <td class="num" data-label="${tx('dts.users')}">${a.users}</td>
+          <td class="num" data-label="${tx('dts.published_reports')}">${a.reports}</td>
+          <td data-label=""><a class="btn" href="/a/${a.alias}/">${icon('play')} ${tx('dts.run')}</a> <a class="btn" href="${BASE}/apps/${a.id}/shared">${icon('users')} ${tx('dts.users_and_roles')}</a></td>
+        </tr>`) : html`<tr><td colspan="5" class="empty">${tx('dts.no_reporting_applications_yet_choose')}</td></tr>`}</tbody></table></div>
+        <p class="muted small">${tx.rich('dts.roles_help', { viewer: html`<b>viewer</b>`, editor: html`<b>editor</b>`, administrator: html`<b>administrator</b>` })}</p>`)}`;
+    return page(s, reply, tx('dts.data_reporter'), [], main);
   });
 
   // ---------------------------------------------------------------- a new dataset: schema, then tables and views
@@ -163,23 +164,23 @@ export async function datasetRoutes(app: FastifyInstance) {
     const schemas = await usableSchemas(db);
     const schema = await usableSchema(db, String(req.query.schema ?? ''));
     const cat = schema ? await readSchemaCatalog(db, schema) : null;
-    const main = html`<h1>New dataset</h1>
-      ${region('1. Schema', html`<form method="get" action="${root}/datasets/new" class="search u-mwnone dataset-schema">
-        <label class="label" for="f_schema">Schema</label>
+    const main = html`<h1>${tx('dts.new_dataset')}</h1>
+      ${region(tx('dts.1_schema'), html`<form method="get" action="${root}/datasets/new" class="search u-mwnone dataset-schema">
+        <label class="label" for="f_schema">${tx('dts.schema')}</label>
         <select id="f_schema" name="schema">${schemas.map((n) => html`<option${n === schema ? raw(' selected') : ''}>${n}</option>`)}</select>
-        <button class="btn">Show its tables and views</button></form>`)}
-      ${cat ? region('2. Tables and views', html`<form method="post" action="${root}/datasets">${csrf(s)}<input type="hidden" name="schema" value="${schema}">
+        <button class="btn">${tx('dts.show_its_tables_and_views')}</button></form>`)}
+      ${cat ? region(tx('dts.2_tables_and_views'), html`<form method="post" action="${root}/datasets">${csrf(s)}<input type="hidden" name="schema" value="${schema}">
         <div class="form-grid">
-          ${input('name', 'Name', '', { required: true, placeholder: 'e.g. sales', help: 'Lower case letters, digits and _ (at most 40): reports and files use it. It can\'t be changed later.' })}
-          ${input('label', 'Label', '', { placeholder: 'e.g. Sales', help: 'What business users see.' })}
+          ${input('name', tx('dts.name'), '', { required: true, placeholder: tx('dts.e_g_sales'), help: tx('dts.lower_case_letters_digits_and') })}
+          ${input('label', tx('dts.label'), '', { placeholder: tx('dts.e_g_sales_2'), help: tx('dts.what_business_users_see') })}
         </div>
-        <fieldset class="prop-group"><legend>Tables and views (the first is the main one)</legend>
+        <fieldset class="prop-group"><legend>${tx('dts.tables_and_views_the_first')}</legend>
           ${cat.objects.length ? html`<div class="dataset-checks">${cat.objects.map((o) => html`<label class="check"><input type="checkbox" name="tables" value="${o.name}"> ${o.name} <span class="muted">${o.kind}, ${o.columns.length} columns</span></label>`)}</div>`
-            : html`<p class="muted">The schema has no tables or views you may use.</p>`}
-          <small class="help">Joins are proposed from foreign keys; every column is offered at first, labelled from its name. You change all of it on the next page.</small>
+            : html`<p class="muted">${tx('dts.the_schema_has_no_tables')}</p>`}
+          <small class="help">${tx('dts.joins_are_proposed_from_foreign')}</small>
         </fieldset>
-        <div class="buttons"><a class="btn" href="${root}">Cancel</a><button class="btn btn-hot">${icon('plus')} Create dataset</button></div></form>`) : ''}`;
-    return page(s, reply, 'New dataset', [['New dataset']], main);
+        <div class="buttons"><a class="btn" href="${root}">${tx('dts.cancel')}</a><button class="btn btn-hot">${icon('plus')} ${tx('dts.create_dataset')}</button></div></form>`) : ''}`;
+    return page(s, reply, tx('dts.new_dataset_title'), [[tx('dts.new_dataset')]], main);
   });
 
   app.post(`${root}/datasets`, async (req: Req, reply) => {
@@ -190,20 +191,20 @@ export async function datasetRoutes(app: FastifyInstance) {
     const schema = await usableSchema(db, String(b.schema ?? ''));
     const name = String(b.name ?? '').trim().toLowerCase();
     const again = (msg: string) => (flash(s, msg, 'error'), back(reply, s, `${root}/datasets/new${schema ? `?schema=${encodeURIComponent(schema)}` : ''}`));
-    if (!schema) return again('Choose one of the schemas in the list.');
+    if (!schema) return again(tx('dts.choose_one_of_the_schemas'));
     if (!DATASET_NAME.test(name)) return again(`"${name}" is not a valid dataset name: lower case letters, digits and _, starting with a letter (at most 40).`);
     const raw = (req.body as unknown as Record<string, unknown>)?.tables;
     const chosen = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(String);
-    if (!chosen.length) return again('Choose at least one table or view.');
+    if (!chosen.length) return again(tx('dts.choose_at_least_one_table'));
     const cat = await readSchemaCatalog(db, schema);
     const proposed = proposeDataset(name, String(b.label ?? '').trim(), schema, chosen, cat);
     const { dataset, errors } = checkDataset(proposed.dataset, catalogOf(cat.objects));
     if (errors.length || !dataset.tables.length) return again([...proposed.errors, ...errors].join(' ') || 'The dataset is not valid.');
     const exists = await owner.one('select 1 from meta.dataset where workspace_id = $1 and name = $2', [currentWorkspace(s), name]);
-    if (exists) return again(`There is already a dataset ${name}.`);
+    if (exists) return again(tx('dts.exists', { name }));
     const id = await storeDataset(owner, currentWorkspace(s), dataset, s.username, { replace: false });
     logActivity({ appId: null, username: s.username, event: 'dataset_create', ip: clientIp(req), detail: `${name} on ${schema}` });
-    flash(s, proposed.errors.length ? `Dataset ${name} created. ${proposed.errors.join(' ')}` : `Dataset ${name} created: check its columns and labels.`, proposed.errors.length ? 'error' : 'ok');
+    flash(s, proposed.errors.length ? tx('dts.created_errors', { name, errors: proposed.errors.join(' ') }) : tx('dts.created', { name }), proposed.errors.length ? 'error' : 'ok');
     return back(reply, s, `${root}/datasets/${id}`);
   });
 
@@ -232,60 +233,60 @@ export async function datasetRoutes(app: FastifyInstance) {
     const shown = req.query.preview === '1' ? await preview(db, d) : null;
     const opt = (v: string, l: string, cur: string) => html`<option value="${v}"${v === cur ? raw(' selected') : ''}>${l}</option>`;
     const main = html`<div class="title-row"><h1>${d.label} <code>${d.name}</code></h1>
-        <div class="buttons"><a class="btn" href="${root}/datasets/${row.id}/export">${icon('download')} Download</a><a class="btn btn-hot" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} Create reporting application</a></div></div>
+        <div class="buttons"><a class="btn" href="${root}/datasets/${row.id}/export">${icon('download')} ${tx('dts.download')}</a><a class="btn btn-hot" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} ${tx('dts.create_reporting_application')}</a></div></div>
       <p class="muted u-mt0">On schema <code>${d.schema}</code>${used.length ? html` · used by ${used.map((a, i) => html`${i ? ', ' : ''}<a href="${BASE}/apps/${a.id}">${a.name}</a>`)}` : ''} · updated ${when(row.updated_at)} (UTC)${row.updated_by ? ` by ${row.updated_by}` : ''}</p>
-      ${errors.length ? html`<div class="alert alert-error" role="alert"><b>The dataset doesn't match the database (any more):</b><ul>${errors.map((e) => html`<li>${e}</li>`)}</ul></div>` : ''}
+      ${errors.length ? html`<div class="alert alert-error" role="alert"><b>${tx('dts.the_dataset_doesn_t_match')}</b><ul>${errors.map((e) => html`<li>${e}</li>`)}</ul></div>` : ''}
       <form method="post" action="${root}/datasets/${row.id}">${csrf(s)}
-      ${region('Dataset', html`<div class="form-grid">
-        ${input('label', 'Label', d.label, { required: true })}
-        <div class="field" data-wide><label class="label" for="f_description">Description (shown to users)</label><input id="f_description" name="description" maxlength="${DATASET_LIMITS.description}" value="${d.description ?? ''}"></div>
+      ${region(tx('dts.dataset'), html`<div class="form-grid">
+        ${input('label', tx('dts.label'), d.label, { required: true })}
+        <div class="field" data-wide><label class="label" for="f_description">${tx('dts.description_shown_to_users')}</label><input id="f_description" name="description" maxlength="${DATASET_LIMITS.description}" value="${d.description ?? ''}"></div>
       </div>`)}
-      ${region('Tables and views', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">Alias</th><th scope="col">Table or view</th><th scope="col">Joins to</th><th scope="col">Join</th><th scope="col">On (column = its column)</th><th scope="col">Remove</th></tr></thead><tbody>
+      ${region(tx('dts.tables_and_views'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th scope="col">${tx('dts.alias')}</th><th scope="col">${tx('dts.table_or_view')}</th><th scope="col">${tx('dts.joins_to')}</th><th scope="col">${tx('dts.join')}</th><th scope="col">${tx('dts.on_header')}</th><th scope="col">${tx('dts.remove')}</th></tr></thead><tbody>
         ${d.tables.map((t, i) => html`<tr>
-          <td data-label="Alias"><code>${t.alias}</code><input type="hidden" name="t${i}_alias" value="${t.alias}"></td>
-          <td data-label="Table or view"><code>${t.table}</code></td>
-          ${i === 0 ? html`<td data-label="Joins to" colspan="3"><span class="muted">the main table</span></td>` : html`
-          <td data-label="Joins to"><select name="t${i}_to" aria-label="${t.table} joins to">${d.tables.slice(0, i).map((x) => opt(x.alias, `${x.alias} ${x.table}`, t.join?.to ?? ''))}</select></td>
-          <td data-label="Join"><select name="t${i}_type" aria-label="Join type of ${t.table}">${opt('left', 'Left (keep rows without a match)', t.join?.type ?? 'left')}${opt('inner', 'Inner (only matching rows)', t.join?.type ?? 'left')}</select></td>
-          <td data-label="On"><input name="t${i}_on" value="${t.join?.on.map((p) => `${p.column} = ${p.ref}`).join(', ') ?? ''}" aria-label="Join columns of ${t.table}" placeholder="deptno = deptno"></td>`}
-          <td data-label="Remove">${i === 0 ? '' : html`<input type="checkbox" name="t${i}_remove" value="true" aria-label="Remove ${t.table}">`}</td>
+          <td data-label="${tx('dts.alias')}"><code>${t.alias}</code><input type="hidden" name="t${i}_alias" value="${t.alias}"></td>
+          <td data-label="${tx('dts.table_or_view')}"><code>${t.table}</code></td>
+          ${i === 0 ? html`<td data-label="${tx('dts.joins_to')}" colspan="3"><span class="muted">${tx('dts.the_main_table')}</span></td>` : html`
+          <td data-label="${tx('dts.joins_to')}"><select name="t${i}_to" aria-label="${t.table} joins to">${d.tables.slice(0, i).map((x) => opt(x.alias, `${x.alias} ${x.table}`, t.join?.to ?? ''))}</select></td>
+          <td data-label="${tx('dts.join')}"><select name="t${i}_type" aria-label="${tx('dts.aria_join_type', { table: t.table })}">${opt('left', tx('dts.join_left'), t.join?.type ?? 'left')}${opt('inner', tx('dts.join_inner'), t.join?.type ?? 'left')}</select></td>
+          <td data-label="${tx('dts.on')}"><input name="t${i}_on" value="${t.join?.on.map((p) => `${p.column} = ${p.ref}`).join(', ') ?? ''}" aria-label="${tx('dts.aria_join_cols', { table: t.table })}" placeholder="deptno = deptno"></td>`}
+          <td data-label="${tx('dts.remove')}">${i === 0 ? '' : html`<input type="checkbox" name="t${i}_remove" value="true" aria-label="${tx('dts.aria_remove', { table: t.table })}">`}</td>
         </tr>`)}</tbody></table></div>
         ${d.tables.length < DATASET_LIMITS.tables ? html`<div class="form-grid">
-          <div class="field"><label class="label" for="f_new_table">Add a table or view</label><select id="f_new_table" name="new_table"><option value="">- none -</option>${cat.objects.map((o) => html`<option value="${o.name}">${o.name} (${o.kind})</option>`)}</select></div>
-          <div class="field"><label class="label" for="f_new_to">Joined to</label><select id="f_new_to" name="new_to">${d.tables.map((x) => opt(x.alias, `${x.alias} ${x.table}`, ''))}</select></div>
-          <div class="field"><label class="label" for="f_new_on">On</label><input id="f_new_on" name="new_on" placeholder="from a foreign key"><small class="help">Empty: proposed from a foreign key.</small></div>
+          <div class="field"><label class="label" for="f_new_table">${tx('dts.add_a_table_or_view')}</label><select id="f_new_table" name="new_table"><option value="">- none -</option>${cat.objects.map((o) => html`<option value="${o.name}">${o.name} (${o.kind})</option>`)}</select></div>
+          <div class="field"><label class="label" for="f_new_to">${tx('dts.joined_to')}</label><select id="f_new_to" name="new_to">${d.tables.map((x) => opt(x.alias, `${x.alias} ${x.table}`, ''))}</select></div>
+          <div class="field"><label class="label" for="f_new_on">${tx('dts.on')}</label><input id="f_new_on" name="new_on" placeholder="${tx('dts.from_a_foreign_key')}"><small class="help">${tx('dts.empty_proposed_from_a_foreign')}</small></div>
         </div>` : ''}`)}
-      ${region('Columns', html`<p class="muted u-mt0">Business users see only the offered columns, under their labels. The name is how reports refer to a column: changing it breaks saved reports that use it.</p>
+      ${region(tx('dts.columns'), html`<p class="muted u-mt0">${tx('dts.business_users_see_only_the')}</p>
         <div class="table-wrap"><table class="report report-reflow dataset-columns">
-        <thead><tr><th scope="col">Offer</th><th scope="col">Column</th><th scope="col">Name</th><th scope="col">Label</th><th scope="col">Format mask</th><th scope="col">Description</th></tr></thead><tbody>
+        <thead><tr><th scope="col">${tx('dts.offer')}</th><th scope="col">${tx('dts.column')}</th><th scope="col">${tx('dts.name')}</th><th scope="col">${tx('dts.label')}</th><th scope="col">${tx('dts.format_mask')}</th><th scope="col">${tx('dts.description')}</th></tr></thead><tbody>
         ${rows.map((r, j) => html`<tr>
-          <td data-label="Offer"><input type="hidden" name="c${j}_ref" value="${r.ref}"><input type="checkbox" name="c${j}_on" value="true"${r.c ? raw(' checked') : ''} aria-label="Offer ${r.table}.${r.column}"></td>
-          <td data-label="Column"><code>${r.alias}.${r.column}</code> <span class="muted">${r.type}</span></td>
-          <td data-label="Name"><input name="c${j}_name" maxlength="40" value="${r.c?.name ?? r.column.toLowerCase()}" aria-label="Name of ${r.table}.${r.column}"></td>
-          <td data-label="Label"><input name="c${j}_label" maxlength="${DATASET_LIMITS.label}" value="${r.c?.label ?? ''}" placeholder="${heading(r.column)}" aria-label="Label of ${r.table}.${r.column}"></td>
-          <td data-label="Format mask"><input name="c${j}_format" maxlength="${DATASET_LIMITS.format}" value="${r.c?.format ?? ''}" placeholder="999G990D00" aria-label="Format mask of ${r.table}.${r.column}"></td>
-          <td data-label="Description"><input name="c${j}_desc" maxlength="${DATASET_LIMITS.columnDescription}" value="${r.c?.description ?? ''}" aria-label="Description of ${r.table}.${r.column}"></td>
+          <td data-label="${tx('dts.offer')}"><input type="hidden" name="c${j}_ref" value="${r.ref}"><input type="checkbox" name="c${j}_on" value="true"${r.c ? raw(' checked') : ''} aria-label="${tx('dts.aria_offer', { column: `${r.table}.${r.column}` })}"></td>
+          <td data-label="${tx('dts.column')}"><code>${r.alias}.${r.column}</code> <span class="muted">${r.type}</span></td>
+          <td data-label="${tx('dts.name')}"><input name="c${j}_name" maxlength="40" value="${r.c?.name ?? r.column.toLowerCase()}" aria-label="${tx('dts.aria_name', { column: `${r.table}.${r.column}` })}"></td>
+          <td data-label="${tx('dts.label')}"><input name="c${j}_label" maxlength="${DATASET_LIMITS.label}" value="${r.c?.label ?? ''}" placeholder="${heading(r.column)}" aria-label="${tx('dts.aria_label', { column: `${r.table}.${r.column}` })}"></td>
+          <td data-label="${tx('dts.format_mask')}"><input name="c${j}_format" maxlength="${DATASET_LIMITS.format}" value="${r.c?.format ?? ''}" placeholder="999G990D00" aria-label="${tx('dts.aria_format', { column: `${r.table}.${r.column}` })}"></td>
+          <td data-label="${tx('dts.description')}"><input name="c${j}_desc" maxlength="${DATASET_LIMITS.columnDescription}" value="${r.c?.description ?? ''}" aria-label="${tx('dts.aria_desc', { column: `${r.table}.${r.column}` })}"></td>
         </tr>`)}</tbody></table></div>`)}
-      ${region('Row filter', html`<p class="muted u-mt0">Only rows that match every condition are in the dataset (on top of the application role's row level security).</p>
+      ${region(tx('dts.row_filter'), html`<p class="muted u-mt0">${tx('dts.only_rows_that_match_every')}</p>
         ${Array.from({ length: DATASET_LIMITS.filters }, (_, k) => {
           const f = d.filters[k];
           return html`<div class="dataset-filter">
-            <select name="f${k}_col" aria-label="Filter ${k + 1}: column">${opt('', '- none -', '')}${colOptions.map(([v, l]) => opt(v, l, f ? `${f.table}.${f.column}` : ''))}</select>
-            <select name="f${k}_op" aria-label="Filter ${k + 1}: operator">${Object.keys(OPERATORS).map((o) => opt(o, opLabel(english, o), f?.op ?? 'eq'))}</select>
-            <input name="f${k}_value" maxlength="${DATASET_LIMITS.value}" value="${f?.value ?? ''}" aria-label="Filter ${k + 1}: value" placeholder="value">
+            <select name="f${k}_col" aria-label="${tx('dts.aria_filter_col', { n: k + 1 })}">${opt('', tx('dts.none_opt'), '')}${colOptions.map(([v, l]) => opt(v, l, f ? `${f.table}.${f.column}` : ''))}</select>
+            <select name="f${k}_op" aria-label="${tx('dts.aria_filter_op', { n: k + 1 })}">${Object.keys(OPERATORS).map((o) => opt(o, opLabel(english, o), f?.op ?? 'eq'))}</select>
+            <input name="f${k}_value" maxlength="${DATASET_LIMITS.value}" value="${f?.value ?? ''}" aria-label="${tx('dts.aria_filter_value', { n: k + 1 })}" placeholder="${tx('dts.value')}">
           </div>`;
         })}`)}
-      <div class="buttons"><button class="btn btn-hot">${icon('save')} Save dataset</button></div>
+      <div class="buttons"><button class="btn btn-hot">${icon('save')} ${tx('dts.save_dataset')}</button></div>
       </form>
-      ${region('Query and preview', html`<p class="muted u-mt0">The query reports run on (as the application's role). The preview runs it read only through your SQL Workshop connection.</p>
+      ${region(tx('dts.query_and_preview'), html`<p class="muted u-mt0">${tx('dts.the_query_reports_run_on')}</p>
         <pre class="code" data-code-view="sql">${datasetSql(d)}</pre>
         <p><a class="btn" href="${root}/datasets/${row.id}?preview=1#preview">${icon('play')} Preview ${PREVIEW_ROWS} rows</a></p>
         ${shown ? 'error' in shown ? html`<div class="alert alert-error" role="alert" id="preview">${shown.error}</div>` : html`<div class="table-wrap" id="preview"><table class="report report-reflow"><thead><tr>${shown.fields.map((f) => html`<th scope="col">${d.columns.find((c) => c.name === f)?.label ?? f}</th>`)}</tr></thead>
-          <tbody>${shown.rows.length ? shown.rows.map((r) => html`<tr>${r.map((v, i) => html`<td data-label="${shown.fields[i]}">${cellText(v)}</td>`)}</tr>`) : html`<tr><td colspan="${shown.fields.length}" class="empty">No rows.</td></tr>`}</tbody></table></div>` : ''}`)}
-      ${region('Delete', html`<form method="post" action="${root}/datasets/${row.id}/delete">${csrf(s)}
-        <p class="muted u-mt0">${used.length ? `Reporting applications using it (${used.map((a) => a.name).join(', ')}) lose this data source: their reports on it stop working.` : 'No reporting application uses it.'}</p>
-        <button class="btn btn-danger" data-confirm="Delete the dataset ${d.name}?">${icon('trash')} Delete dataset</button></form>`)}`;
+          <tbody>${shown.rows.length ? shown.rows.map((r) => html`<tr>${r.map((v, i) => html`<td data-label="${shown.fields[i]}">${cellText(v)}</td>`)}</tr>`) : html`<tr><td colspan="${shown.fields.length}" class="empty">${tx('dts.no_rows')}</td></tr>`}</tbody></table></div>` : ''}`)}
+      ${region(tx('dts.delete'), html`<form method="post" action="${root}/datasets/${row.id}/delete">${csrf(s)}
+        <p class="muted u-mt0">${used.length ? tx('dts.used_by', { apps: used.map((a) => a.name).join(', ') }) : tx('dts.no_reporting_application_uses_it')}</p>
+        <button class="btn btn-danger" data-confirm="${tx('dts.delete_confirm', { name: d.name })}">${icon('trash')} ${tx('dts.delete_dataset')}</button></form>`)}`;
     return page(s, reply, d.label, [[d.label]], main);
   });
 
@@ -297,7 +298,7 @@ export async function datasetRoutes(app: FastifyInstance) {
     const d = datasetOf(row);
     const db = await workshopDb(s);
     if (!(await usableSchema(db, d.schema))) {
-      flash(s, `Your SQL Workshop connection may not use the schema ${d.schema}.`, 'error');
+      flash(s, tx('dts.schema_refused', { schema: d.schema }), 'error');
       return back(reply, s, `${root}/datasets/${row.id}`);
     }
     const cat = await readSchemaCatalog(db, d.schema);
@@ -308,7 +309,7 @@ export async function datasetRoutes(app: FastifyInstance) {
     }
     await storeDataset(owner, row.workspace_id, dataset, s.username);
     logActivity({ appId: null, username: s.username, event: 'dataset_save', ip: clientIp(req), detail: dataset.name });
-    flash(s, errors.length ? `Saved, but: ${errors.join(' ')}` : 'Dataset saved.', errors.length ? 'error' : 'ok');
+    flash(s, errors.length ? `Saved, but: ${errors.join(' ')}` : tx('dts.dataset_saved'), errors.length ? 'error' : 'ok');
     return back(reply, s, `${root}/datasets/${row.id}`);
   });
 
@@ -319,7 +320,7 @@ export async function datasetRoutes(app: FastifyInstance) {
     if (!row) return reply.code(404).send('Not found');
     await owner.query('delete from meta.dataset where id = $1', [row.id]);
     logActivity({ appId: null, username: s.username, event: 'dataset_delete', ip: clientIp(req), detail: row.name });
-    flash(s, `Dataset ${row.name} deleted.`);
+    flash(s, tx('dts.deleted', { name: row.name }));
     return back(reply, s, root);
   });
 
@@ -345,16 +346,16 @@ export async function datasetRoutes(app: FastifyInstance) {
   app.get(`${root}/import`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const main = html`<h1>Import datasets</h1>
-      ${region('A dataset file', html`<form method="post" action="${root}/import" enctype="multipart/form-data">${csrf(s)}
-        <p class="muted u-mt0">A file downloaded from a Data Reporter (<code>*.dataset.json</code>, format pgkiln-dataset/1), with one dataset or several. Each is checked against this installation's database: its schema, tables, views and columns must exist here.</p>
+    const main = html`<h1>${tx('dts.import_datasets')}</h1>
+      ${region(tx('dts.a_dataset_file'), html`<form method="post" action="${root}/import" enctype="multipart/form-data">${csrf(s)}
+        <p class="muted u-mt0">${tx.code('dts.import_intro')}</p>
         <div class="form-grid">
-          <div class="field"><label class="label" for="f_file">File</label><input id="f_file" type="file" name="file" accept=".json,application/json"></div>
-          <div class="field" data-wide><label class="label" for="f_text">Or paste it</label><textarea id="f_text" name="text" class="code" rows="5" spellcheck="false"></textarea></div>
-          <div class="field"><label class="check"><input type="checkbox" name="replace" value="true"> Replace datasets with the same name</label></div>
+          <div class="field"><label class="label" for="f_file">${tx('dts.file')}</label><input id="f_file" type="file" name="file" accept=".json,application/json"></div>
+          <div class="field" data-wide><label class="label" for="f_text">${tx('dts.or_paste_it')}</label><textarea id="f_text" name="text" class="code" rows="5" spellcheck="false"></textarea></div>
+          <div class="field"><label class="check"><input type="checkbox" name="replace" value="true"> ${tx('dts.replace_datasets_with_the_same')}</label></div>
         </div>
-        <div class="buttons"><a class="btn" href="${root}">Cancel</a><button class="btn btn-hot">${icon('upload')} Import</button></div></form>`)}`;
-    return page(s, reply, 'Import datasets', [['Import']], main);
+        <div class="buttons"><a class="btn" href="${root}">${tx('dts.cancel')}</a><button class="btn btn-hot">${icon('upload')} ${tx('dts.import')}</button></div></form>`)}`;
+    return page(s, reply, tx('dts.import_title'), [[tx('dts.import')]], main);
   });
 
   app.post(`${root}/import`, async (req: Req, reply) => {
@@ -371,9 +372,9 @@ export async function datasetRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const fail = (msg: string) => (flash(s, msg, 'error'), back(reply, s, `${root}/import`));
-    if (tooLarge) return fail('The file is larger than 2 MB.');
+    if (tooLarge) return fail(tx('dts.too_large'));
     if (!text.trim()) text = String(req.body?.text ?? '');
-    if (!text.trim()) return fail('Choose a file or paste one.');
+    if (!text.trim()) return fail(tx('dts.no_file'));
     let list: any[];
     try {
       list = readDatasetFile(text);
@@ -391,10 +392,10 @@ export async function datasetRoutes(app: FastifyInstance) {
         for (const loose of list) {
           const schema = typeof loose?.schema === 'string' ? loose.schema : '';
           const name = typeof loose?.name === 'string' ? loose.name : '?';
-          if (!schemas.includes(schema)) throw new Error(`Dataset ${name}: the schema "${schema}" doesn't exist here, or your SQL Workshop connection may not use it.`);
+          if (!schemas.includes(schema)) throw new Error(tx('dts.no_schema', { name, schema }));
           if (!cats.has(schema)) cats.set(schema, await readSchemaCatalog(db, schema));
           const { dataset, errors } = checkDataset(loose, catalogOf(cats.get(schema)!.objects));
-          if (errors.length || !dataset.columns.length) throw new Error(`Dataset ${name}: ${errors.join(' ') || 'it offers no columns.'}`);
+          if (errors.length || !dataset.columns.length) throw new Error(tx('dts.import_errors', { name, errors: errors.join(' ') || tx('dts.no_columns') }));
           const exists = (await c.query('select 1 from meta.dataset where workspace_id = $1 and name = $2', [ws, dataset.name])).rowCount;
           if (exists && !replace) {
             lines.push(`${dataset.name}: kept (same name)`);
@@ -405,7 +406,7 @@ export async function datasetRoutes(app: FastifyInstance) {
         }
       });
     } catch (e) {
-      return fail(`Nothing was imported. ${(e as Error).message}`);
+      return fail(tx('dts.nothing_imported', { error: (e as Error).message }));
     }
     logActivity({ appId: null, username: s.username, event: 'dataset_import', ip: clientIp(req), detail: lines.join('; ') });
     flash(s, `Imported: ${lines.join('; ')}.`);
@@ -415,18 +416,18 @@ export async function datasetRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- create a reporting application
   const appForm = async (s: Session, b: Body & { datasets?: string | string[] }, sets: DatasetRow[], error?: string) => {
     const chosen = new Set(Array.isArray(b.datasets) ? b.datasets : b.datasets ? [b.datasets] : []);
-    return html`<h1>Create a reporting application</h1>
+    return html`<h1>${tx('dts.create_a_reporting_application')}</h1>
       ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
       <form method="post" action="${root}/apps">${csrf(s)}
-      ${region('Application', html`<div class="form-grid">
-        ${input('name', 'Name', b.name ?? '', { required: true })}
-        ${input('alias', 'Alias', b.alias ?? '', { required: true, help: 'Its address: /a/<alias>. Its database role is app_<alias>, which may only read the datasets\' tables and views.' })}
-        ${input('admin_user', 'First administrator', b.admin_user ?? s.username ?? '', { required: true, help: 'An account of the user directory (users sign in with their workspace accounts).' })}
-        ${input('admin_password', 'Password', '', { type: 'password', auto: 'new-password', help: 'Only for a new account.' })}
+      ${region(tx('dts.application'), html`<div class="form-grid">
+        ${input('name', tx('dts.name'), b.name ?? '', { required: true })}
+        ${input('alias', tx('dts.alias'), b.alias ?? '', { required: true, help: tx('dts.its_address_a_alias_its') })}
+        ${input('admin_user', tx('dts.first_administrator'), b.admin_user ?? s.username ?? '', { required: true, help: tx('dts.an_account_of_the_user') })}
+        ${input('admin_password', tx('dts.password'), '', { type: 'password', auto: 'new-password', help: tx('dts.only_for_a_new_account') })}
       </div>`)}
-      ${region('Datasets', html`<div class="dataset-checks">${sets.map((d) => html`<label class="check"><input type="checkbox" name="datasets" value="${d.name}"${chosen.has(d.name) ? raw(' checked') : ''}> ${d.label} <code>${d.name}</code> <span class="muted">${d.schema_name}: ${d.tables.map((t) => t.table).join(', ')}</span></label>`)}</div>
-        <small class="help">The first dataset's schema is the application's parsing schema.</small>`)}
-      <div class="buttons"><a class="btn" href="${root}">Cancel</a><button class="btn btn-hot">${icon('plus')} Create</button></div></form>`;
+      ${region(tx('dts.datasets'), html`<div class="dataset-checks">${sets.map((d) => html`<label class="check"><input type="checkbox" name="datasets" value="${d.name}"${chosen.has(d.name) ? raw(' checked') : ''}> ${d.label} <code>${d.name}</code> <span class="muted">${d.schema_name}: ${d.tables.map((t) => t.table).join(', ')}</span></label>`)}</div>
+        <small class="help">${tx('dts.the_first_dataset_s_schema')}</small>`)}
+      <div class="buttons"><a class="btn" href="${root}">${tx('dts.cancel')}</a><button class="btn btn-hot">${icon('plus')} ${tx('dts.create')}</button></div></form>`;
   };
 
   app.get(`${root}/apps/new`, async (req: Req, reply) => {
@@ -434,12 +435,12 @@ export async function datasetRoutes(app: FastifyInstance) {
     if (!s) return;
     const sets = await workspaceDatasets(owner, currentWorkspace(s));
     if (!sets.length) {
-      flash(s, 'Create a dataset first.', 'error');
+      flash(s, tx('dts.create_a_dataset_first'), 'error');
       return back(reply, s, root);
     }
     const first = sets.find((d) => d.name === req.query.dataset) ?? sets[0];
     const base = first.name.replace(/_/g, '-').slice(0, 40);
-    return page(s, reply, 'Create reporting application', [['Create reporting application']],
+    return page(s, reply, tx('dts.create_app_title'), [[tx('dts.create_reporting_application')]],
       await appForm(s, { name: `${first.label} reports`, alias: `${base}-reports`, datasets: first.name }, sets));
   });
 
@@ -452,10 +453,10 @@ export async function datasetRoutes(app: FastifyInstance) {
     const chosen = names.map((n) => sets.find((d) => d.name === n)).filter((d): d is DatasetRow => !!d);
     const failed = async (msg: string) => {
       reply.code(422);
-      return page(s, reply, 'Create reporting application', [['Create reporting application']], await appForm(s, b, sets, msg));
+      return page(s, reply, tx('dts.create_app_title'), [[tx('dts.create_reporting_application')]], await appForm(s, b, sets, msg));
     };
-    if (!chosen.length) return failed('Choose at least one dataset.');
-    if (chosen.length > MAX_REPORTING_DATASETS) return failed(`Choose at most ${MAX_REPORTING_DATASETS} datasets.`);
+    if (!chosen.length) return failed(tx('dts.choose_one'));
+    if (chosen.length > MAX_REPORTING_DATASETS) return failed(tx('dts.choose_max', { n: MAX_REPORTING_DATASETS }));
     let created: { id: number; existingAccount: boolean };
     let alias = '';
     try {
@@ -466,7 +467,7 @@ export async function datasetRoutes(app: FastifyInstance) {
       return failed(createAppError(e, alias || String(b.alias ?? '')));
     }
     logActivity({ appId: created.id, username: s.username, event: 'app_create', ip: clientIp(req), detail: `reporting application on ${chosen.map((d) => d.name).join(', ')}` });
-    flash(s, `Reporting application ${b.name} created: run it at /a/${alias}/, and give accounts access and the roles viewer, editor or administrator under Users and roles.`);
+    flash(s, tx('dts.app_created', { name: b.name, path: `/a/${alias}/` }));
     return back(reply, s, root);
   });
 }

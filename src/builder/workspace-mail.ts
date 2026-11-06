@@ -8,6 +8,7 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { formValues, parseForm, PROVIDER_TEXT, runCheck, serviceForm } from './mail.ts';
 import { back, BASE, csrf, developer, flash, region, select, send, shell, type Req } from './ui.ts';
 import { workspaceAdmin } from './workspaces.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 118, WS-9; APEX 26.1 workspace-level SMTP credentials) A workspace's
 // own mail service, managed by its administrators on /builder/workspaces/:id/mail:
@@ -23,8 +24,8 @@ type Service = MailService & { has_secret: boolean };
 
 async function wsAdminOnly(s: Session, reply: FastifyReply, wsId: string) {
   if (await workspaceAdmin(s.username, wsId)) return true;
-  const main = html`<h1 class="u-mb1">Workspace mail service</h1><div class="alert alert-error" role="alert">Only the workspace's administrators manage its mail service.</div>`;
-  await send(reply.code(403), s, shell(s, 'Workspace mail service', [['Administration'], ['Workspace mail service']], main, 'users'));
+  const main = html`<h1 class="u-mb1">${tx('wml.workspace_mail_service')}</h1><div class="alert alert-error" role="alert">${tx('wml.only_the_workspace_s_administrators')}</div>`;
+  await send(reply.code(403), s, shell(s, tx('wml.workspace_mail_service'), [[tx('wml.administration')], [tx('wml.workspace_mail_service')]], main, 'users'));
   return false;
 }
 
@@ -43,22 +44,22 @@ export async function workspaceMailRoutes(app: FastifyInstance) {
          from meta.app a where meta.app_workspace(a.id) = $1 order by a.alias`, [w.id])).rows;
     const shown = typed ? { ...x, description: typed.description, provider: typed.provider, settings: typed.settings, senders: typed.senders, enabled: typed.enabled } : x ?? {};
     const main = html`
-      <div class="title-row"><h1>Mail service · ${w.name}</h1></div>
-      <p class="muted u-mt0">This workspace's own mail service: its applications that an administrator gave no service of their own send through it (<code>meta.send_mail()</code>, the Send e-mail process). The secret is stored encrypted and never shown again. It uses the provider's own API; an SMTP server must be on the installation's allow-list and this workspace's <a href="${BASE}/network">network access</a> list.</p>
+      <div class="title-row"><h1>${tx('wml.title', { workspace: w.name })}</h1></div>
+      <p class="muted u-mt0">${tx.rich('wml.intro', { fn: html`<code>meta.send_mail()</code>`, network: html`<a href="${BASE}/network">${tx('wml.network_access')}</a>` })}</p>
       <div class="mail-form-page">
-        ${region('Settings', html`
-          <form method="get" class="provider-switch">${select('provider', 'Provider', provider, PROVIDERS.map((p): [string, string] => [p, PROVIDER_LABELS[p]]),
-            x && provider !== x.provider ? 'Not saved yet: fill in the settings below and save to switch.' : PROVIDER_TEXT[provider][1])}<button class="btn btn-sm">Change</button></form>
+        ${region(tx('wml.settings'), html`
+          <form method="get" class="provider-switch">${select('provider', tx('wml.provider'), provider, PROVIDERS.map((p): [string, string] => [p, PROVIDER_LABELS[p]]),
+            x && provider !== x.provider ? tx('wml.not_saved_yet_fill_in') : PROVIDER_TEXT(provider)[1])}<button class="btn btn-sm">${tx('wml.change')}</button></form>
           ${serviceForm(shown, provider, `${BASE}/workspaces/${w.id}/mail`, csrf(s), !x, tried, { id: w.id })}
           ${x ? html`<form method="post" action="${BASE}/workspaces/${w.id}/mail/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="Delete this workspace's mail service? Its applications without a service of their own can't send mail then.">Delete service</button></form>` : ''}`)}
+            <button class="btn btn-danger" data-confirm="${tx('wml.delete_this_workspace_s_mail')}">${tx('wml.delete_service')}</button></form>` : ''}`)}
       </div>
-      ${region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Application</th><th>Sends through</th></tr></thead>
-        <tbody>${users.length ? users.map((a) => html`<tr><td data-label="Application">${a.alias}</td>
-            <td data-label="Sends through">${a.own ? html`${a.own} <span class="muted">(chosen by an administrator)</span>` : x ? 'this service' : html`<span class="muted">nothing yet</span>`}</td></tr>`)
-          : html`<tr><td colspan="2" class="empty">No applications.</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, `Mail service · ${w.name}`, [['Administration'], [w.name, `${BASE}/workspaces/${w.id}`], ['Mail service']], main, 'users'));
+      ${region(tx('wml.applications'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('wml.application')}</th><th>${tx('wml.sends_through')}</th></tr></thead>
+        <tbody>${users.length ? users.map((a) => html`<tr><td data-label="${tx('wml.application')}">${a.alias}</td>
+            <td data-label="${tx('wml.sends_through')}">${a.own ? html`${a.own} <span class="muted">${tx('wml.chosen_by_an_administrator')}</span>` : x ? 'this service' : html`<span class="muted">${tx('wml.nothing_yet')}</span>`}</td></tr>`)
+          : html`<tr><td colspan="2" class="empty">${tx('wml.no_applications')}</td></tr>`}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, tx('wml.title', { workspace: w.name }), [[tx('wml.administration')], [w.name, `${BASE}/workspaces/${w.id}`], [tx('wml.mail_service')]], main, 'users'));
   };
 
   app.get(`${BASE}/workspaces/:id(^\\d{1,9}$)/mail`, async (req: Req, reply) => {
@@ -88,7 +89,7 @@ export async function workspaceMailRoutes(app: FastifyInstance) {
           `insert into meta.mail_service (name, description, provider, settings, senders, enabled, secret_enc, workspace_id) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [`WORKSPACE_${w.id}`, v.description, v.provider, JSON.stringify(v.settings), v.senders, v.enabled, secret, w.id]);
       await logActivity({ appId: null, username: s.username, event: 'mail_service', ip: clientIp(req), detail: `${old ? 'changed' : 'added'} the mail service of workspace ${w.id} (${v.provider})` });
-      flash(s, old ? 'Mail service saved.' : 'Mail service added: send a test mail to check it.');
+      flash(s, old ? tx('wml.mail_service_saved') : tx('wml.mail_service_added_send_a'));
     } catch (e) {
       flash(s, (e as Error).message.includes('mail_service_name_key') ? `A service named WORKSPACE_${w.id} exists already: an administrator renames it first.` : (e as Error).message, 'error');
     }
@@ -115,7 +116,7 @@ export async function workspaceMailRoutes(app: FastifyInstance) {
     if (!s || !(await wsAdminOnly(s, reply, req.params.id))) return;
     const r = await owner.query('delete from meta.mail_service where workspace_id = $1', [req.params.id]);
     await logActivity({ appId: null, username: s.username, event: 'mail_service', ip: clientIp(req), detail: `deleted the mail service of workspace ${req.params.id}` });
-    flash(s, r.rowCount ? 'Mail service deleted.' : 'There was no mail service.');
+    flash(s, r.rowCount ? tx('wml.mail_service_deleted') : tx('wml.there_was_no_mail_service'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}/mail`);
   });
 }
