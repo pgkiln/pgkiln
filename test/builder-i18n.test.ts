@@ -395,6 +395,20 @@ describe('choosing the builder language', () => {
     // English without a choice
     assert.ok((await (await signIn(OTHER)).get(url(report))).body.includes('>Save report settings<'));
   });
+
+  test('RESTful Services and Load Data follow the language (sprint 162)', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const mods = (await b.get('/builder/sql/rest/modules')).body;
+    for (const k of ['rm.modules', 'rm.create_a_module', 'rm.create_module', 'rm.base_path'] as BuilderKey[]) assert.ok(mods.includes(esc(de[k])), k);
+    assert.ok(mods.includes('<code>meta.app_user()</code>'), 'the intro keeps its code');
+    const auto = (await b.get('/builder/sql/rest')).body;
+    for (const k of ['ar.published', 'ar.enable_a', 'ar.table_or_view', 'ar.m.post'] as BuilderKey[]) assert.ok(auto.includes(esc(de[k])), k);
+    const load = (await b.get('/builder/sql/load')).body;
+    for (const k of ['dl.from_file', 'dl.headers', 'dl.next'] as BuilderKey[]) assert.ok(load.includes(esc(de[k])), k);
+    for (const page of [mods, auto, load]) assert.ok(!/>(Create module|Published objects|Load data from a file)</.test(page), 'not English');
+    await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
+  });
   test('the builder error pages follow the device language', async () => {
     const b = new Browser(app, { accept: 'text/html' });
     await b.get('/builder/login?lang=de');
