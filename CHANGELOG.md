@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.85.0] - 2026-11-06
+
 ### Added
 - **Every App Builder screen in the eleven builder languages** (sprint 164; no migration): Team Development, mail
   services, Data Reporter datasets, REST data sources and catalogs, workspace files, remote servers, web credentials,
