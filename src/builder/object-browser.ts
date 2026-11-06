@@ -160,7 +160,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         <a class="create-source" href="${BASE}/sql/load">${icon('upload')}<span><b>${tx('ob.tile.load')}</b><small class="muted">${tx('ob.tile.load.desc')}</small></span></a></div>
         <p class="muted">${tx('ob.select_hint')}</p>`);
 
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects', s)}
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('objects', s)}
       <div class="ob-head">
         <form method="get" class="ob-schema">${filter ? html`<input type="hidden" name="q" value="${filter}">` : ''}
           <label class="label" for="ob-schema">${tx('ob.schema')}</label>
