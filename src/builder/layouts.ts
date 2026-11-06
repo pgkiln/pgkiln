@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { readMultipart } from '../runtime/files.ts';
 import { layoutPreview, type PdfLayout } from '../runtime/pdf.ts';
 import type { Session } from '../session.ts';
+import { scopedTx as tx } from './i18n.ts';
 import { back, BASE, csrf, developer, flash, type Body, type Req } from './ui.ts';
 
 // Shared Components → Report layouts: the logo and the preview. The other
@@ -22,15 +23,15 @@ export function imageType(b: Buffer): 'image/png' | 'image/jpeg' | null {
 /** Logo and preview forms under a layout's settings. */
 export function layoutExtras(appId: number, row: { id: number; logo: Buffer | null }, s: Session) {
   const base = `${BASE}/apps/${appId}/shared/report_layout/${row.id}`;
-  return html`<fieldset class="prop-group u-mt125"><legend>Logo image</legend>
-      ${row.logo ? html`<p><img src="${base}/logo" alt="Logo of this layout" class="layout-logo"></p>` : html`<p class="muted">No logo. It prints at the top right of the first page.</p>`}
+  return html`<fieldset class="prop-group u-mt125"><legend>${tx('lay.logo_image')}</legend>
+      ${row.logo ? html`<p><img src="${base}/logo" alt="${tx('lay.logo_alt')}" class="layout-logo"></p>` : html`<p class="muted">${tx('lay.no_logo')}</p>`}
       <form method="post" action="${base}/logo" enctype="multipart/form-data" class="search u-mwnone">${csrf(s)}
-        <input type="file" name="logo" accept="image/png,image/jpeg" aria-label="Logo (PNG or JPEG)">
-        <button class="btn">${icon('upload')} Upload</button>
-        ${row.logo ? html`<button class="btn" name="remove" value="1">Remove logo</button>` : ''}
+        <input type="file" name="logo" accept="image/png,image/jpeg" aria-label="${tx('lay.logo_file')}">
+        <button class="btn">${icon('upload')} ${tx('lay.upload')}</button>
+        ${row.logo ? html`<button class="btn" name="remove" value="1">${tx('lay.remove')}</button>` : ''}
       </form>
     </fieldset>
-    <div class="buttons"><a class="btn" href="${base}/preview" target="_blank" rel="noopener">${icon('printer')} Preview PDF</a></div>`;
+    <div class="buttons"><a class="btn" href="${base}/preview" target="_blank" rel="noopener">${icon('printer')} ${tx('lay.preview_pdf')}</a></div>`;
 }
 
 export async function layoutRoutes(app: FastifyInstance) {
@@ -56,16 +57,16 @@ export async function layoutRoutes(app: FastifyInstance) {
     if (!(await find(id, cid))) return reply.code(404).send('Not found');
     if (req.body?.remove === '1') {
       await owner.query('update meta.report_layout set logo = null, logo_mime = null where id = $1 and app_id = $2', [cid, id]);
-      flash(s, 'Logo removed.');
+      flash(s, tx('lay.removed'));
       return back(reply, s, target);
     }
     const type = file && !file.truncated ? imageType(file.data) : null;
-    if (!file) flash(s, 'Choose a PNG or JPEG file.', 'error');
-    else if (file.truncated) flash(s, `The logo is larger than ${LOGO_MAX_MB} MB.`, 'error');
-    else if (!type) flash(s, 'The logo must be a PNG or JPEG image.', 'error');
+    if (!file) flash(s, tx('lay.choose'), 'error');
+    else if (file.truncated) flash(s, tx('lay.too_large', { mb: LOGO_MAX_MB }), 'error');
+    else if (!type) flash(s, tx('lay.not_image'), 'error');
     else {
       await owner.query('update meta.report_layout set logo = $3, logo_mime = $4 where id = $1 and app_id = $2', [cid, id, file.data, type]);
-      flash(s, 'Logo saved.');
+      flash(s, tx('lay.saved'));
     }
     return back(reply, s, target);
   });

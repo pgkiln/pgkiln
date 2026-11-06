@@ -7,6 +7,7 @@ import { publicUrl } from '../sso.ts';
 import { icon } from '../icons.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 import { roleHints, roleHintsHtml, splitRoles } from './users.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Per-application REST API page: the database role API tokens use, what
 // PostgREST exposes to it, and developer-issued tokens for trying it out.
@@ -58,43 +59,42 @@ async function clientsRegion(s: Session, a: any, secret?: NewSecret, usable = tr
     html`<form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/${path}" class="inline-form">${csrf(s)}${extra}<button class="${cls}">${label}</button></form>`;
   const createForm = html`<form method="post" action="${BASE}/apps/${a.id}/api/clients">${csrf(s)}
         <div class="form-grid">
-          ${input('name', 'Name', '', { required: true, placeholder: 'e.g. payroll-sync', help: 'Lower case letters, digits, . _ -' })}
-          ${input('token_minutes', 'Token lifetime (minutes)', 60, { type: 'number', help: '5 to 1440.' })}
-          <div class="field"><label class="label" for="f_roles">Roles</label><input id="f_roles" name="roles" placeholder="comma separated, or pick below">${roleHintsHtml(hints)}</div>
-          ${input('description', 'Description', '', { placeholder: 'who uses it' })}
+          ${input('name', tx('apip.name'), '', { required: true, placeholder: tx('apip.e_g_payroll_sync'), help: tx('apip.lower_case_letters_digits') })}
+          ${input('token_minutes', tx('apip.token_lifetime_minutes'), 60, { type: 'number', help: tx('apip.5_to_1440') })}
+          <div class="field"><label class="label" for="f_roles">${tx('apip.roles')}</label><input id="f_roles" name="roles" placeholder="${tx('apip.comma_separated_or_pick_below')}">${roleHintsHtml(hints)}</div>
+          ${input('description', tx('apip.description'), '', { placeholder: tx('apip.who_uses_it') })}
         </div>
-        <div class="buttons"><button class="btn btn-hot"${usable ? '' : raw(' disabled')}>Create client</button></div>
+        <div class="buttons"><button class="btn btn-hot"${usable ? '' : raw(' disabled')}>${tx('apip.create_client')}</button></div>
       </form>`;
   return region(
     'OAuth clients',
-    html`<p class="muted u-mt0">For systems that call the API (like ORDS's <code>oauth.create_client</code>): a client exchanges its id and secret for an access token at
-        <code>${tokenUrl}</code> (<code>grant_type=client_credentials</code>) and acts as <code>client:&lt;name&gt;</code> with its roles, read at every request.</p>
+    html`<p class="muted u-mt0">${tx.rich('apip.oauth_intro', { ords: html`<code>oauth.create_client</code>`, url: html`<code>${tokenUrl}</code>`, grant: html`<code>grant_type=client_credentials</code>`, client: html`<code>client:&lt;name&gt;</code>` })}</p>
       ${secret
-        ? html`<div class="alert alert-success" role="status">${secret.rotated ? `New secret for ${secret.name}` : `Client ${secret.name} created`}. Copy the secret now: it is shown only once.${
-            secret.rotated && secret.graceHours ? ` The previous secret keeps working for ${secret.graceHours} hours.` : ''}</div>
+        ? html`<div class="alert alert-success" role="status">${secret.rotated ? tx('apip.new_secret_for', { name: secret.name }) : tx('apip.client_created', { name: secret.name })}. ${tx('apip.copy_now')}${
+            secret.rotated && secret.graceHours ? ` ${tx('apip.grace', { n: secret.graceHours })}` : ''}</div>
           <div class="form-grid">
-            <div class="field"><label class="label" for="oauth_id">Client ID</label><input id="oauth_id" class="code" readonly value="${secret.clientId}"></div>
-            <div class="field"><label class="label" for="oauth_secret">Client secret</label><input id="oauth_secret" class="code" readonly value="${secret.secret}"></div>
+            <div class="field"><label class="label" for="oauth_id">${tx('apip.client_id')}</label><input id="oauth_id" class="code" readonly value="${secret.clientId}"></div>
+            <div class="field"><label class="label" for="oauth_secret">${tx('apip.client_secret')}</label><input id="oauth_secret" class="code" readonly value="${secret.secret}"></div>
           </div>
           <pre class="source">curl -u '${secret.clientId}:${secret.secret}' -d grant_type=client_credentials ${tokenUrl}</pre>`
         : ''}
       ${clients.length
-        ? html`<div class="table-wrap"><table class="report report-reflow api-clients"><thead><tr><th>Client</th><th>Roles</th><th class="num">Token</th><th>Secret changed</th><th>Last used</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+        ? html`<div class="table-wrap"><table class="report report-reflow api-clients"><thead><tr><th>${tx('apip.client')}</th><th>${tx('apip.roles')}</th><th class="num">${tx('apip.token')}</th><th>${tx('apip.secret_changed')}</th><th>${tx('apip.last_used')}</th><th><span class="sr-only">${tx('apip.actions')}</span></th></tr></thead><tbody>
             ${clients.map((c) => html`<tr${c.active ? '' : raw(' class="muted"')}>
-              <td data-label="Client"><strong>${c.name}</strong>${c.active ? '' : html` <span class="tag">revoked</span>`}<br><code class="small">${c.client_id}</code>${c.description ? html`<br><small class="help">${c.description}</small>` : ''}</td>
-              <td data-label="Roles"><form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/roles" class="search roles-form u-m0 u-mwnone">${csrf(s)}
-                <input name="roles" value="${c.roles.join(', ')}" aria-label="Roles of ${c.name}" placeholder="no roles"><button class="btn btn-sm">Save</button>${roleHintsHtml(hints, 'Add')}</form></td>
-              <td class="num" data-label="Token">${c.token_minutes} min</td>
-              <td data-label="Secret changed">${when(c.secret_changed_at)}${c.grace ? html`<br><small class="help">old secret valid until ${when(c.previous_valid_until)}</small>` : ''}</td>
-              <td data-label="Last used">${when(c.last_used_at) || html`<span class="muted">never</span>`}</td>
+              <td data-label="${tx('apip.client')}"><strong>${c.name}</strong>${c.active ? '' : html` <span class="tag">revoked</span>`}<br><code class="small">${c.client_id}</code>${c.description ? html`<br><small class="help">${c.description}</small>` : ''}</td>
+              <td data-label="${tx('apip.roles')}"><form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/roles" class="search roles-form u-m0 u-mwnone">${csrf(s)}
+                <input name="roles" value="${c.roles.join(', ')}" aria-label="${tx('apip.aria_roles', { name: c.name })}" placeholder="${tx('apip.no_roles')}"><button class="btn btn-sm">${tx('apip.save')}</button>${roleHintsHtml(hints, tx('apip.add'))}</form></td>
+              <td class="num" data-label="${tx('apip.token')}">${tx('apip.minutes', { n: c.token_minutes })}</td>
+              <td data-label="${tx('apip.secret_changed')}">${when(c.secret_changed_at)}${c.grace ? html`<br><small class="help">${tx('apip.old_valid_until', { when: when(c.previous_valid_until) })}</small>` : ''}</td>
+              <td data-label="${tx('apip.last_used')}">${when(c.last_used_at) || html`<span class="muted">${tx('apip.never')}</span>`}</td>
               <td class="actions"><div class="api-client-actions">
-                ${action(c, 'rotate', 'New secret', html`<select name="grace" aria-label="Keep the old secret"><option value="24">old valid 24 h</option><option value="168">old valid 7 days</option><option value="0">old invalid now</option></select>`, 'btn btn-sm')}
-                ${action(c, 'active', c.active ? 'Revoke' : 'Reactivate', html`<input type="hidden" name="active" value="${c.active ? 'false' : 'true'}">`, 'btn btn-sm')}
-                ${action(c, 'delete', 'Delete', '', 'btn btn-sm btn-danger')}
+                ${action(c, 'rotate', tx('apip.new_secret'), html`<select name="grace" aria-label="${tx('apip.keep_the_old_secret')}"><option value="24">${tx('apip.old_24h')}</option><option value="168">${tx('apip.old_7d')}</option><option value="0">${tx('apip.old_now')}</option></select>`, 'btn btn-sm')}
+                ${action(c, 'active', c.active ? tx('apip.revoke') : tx('apip.reactivate'), html`<input type="hidden" name="active" value="${c.active ? 'false' : 'true'}">`, 'btn btn-sm')}
+                ${action(c, 'delete', tx('apip.delete'), '', 'btn btn-sm btn-danger')}
               </div></td></tr>`)}
           </tbody></table></div>
-          <details class="api-new u-mt1"><summary class="btn">${icon('plus')} New client</summary><div class="api-new-body">${createForm}</div></details>`
-        : html`<p class="muted">No clients yet.</p>${createForm}`}`,
+          <details class="api-new u-mt1"><summary class="btn">${icon('plus')} ${tx('apip.new_client')}</summary><div class="api-new-body">${createForm}</div></details>`
+        : html`<p class="muted">${tx('apip.no_clients_yet')}</p>${createForm}`}`,
     html`<span class="count">${clients.length}</span>`,
   );
 }
@@ -117,42 +117,42 @@ async function apiPage(s: Session, a: any, issued?: { token: string; username: s
       `curl -X POST ${url}/rpc/${e.name} -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" -d '{ … }'`),
   ].join('\n');
 
-  const pill = (ok: boolean, text: Raw | string) => html`<li class="${ok ? 'is-ok' : 'is-bad'}"><span aria-hidden="true">${ok ? '✓' : '✗'}</span> <span class="sr-only">${ok ? 'OK:' : 'Problem:'}</span>${text}</li>`;
+  const pill = (ok: boolean, text: Raw | string) => html`<li class="${ok ? 'is-ok' : 'is-bad'}"><span aria-hidden="true">${ok ? '✓' : '✗'}</span> <span class="sr-only">${ok ? tx('apip.ok') : tx('apip.problem')}</span>${text}</li>`;
   const main = html`${appHeader(a, 'api', s)}
-    <p class="muted api-intro">PostgREST runs next to pgkiln and serves the <code>${API_SCHEMA}</code> schema over HTTP. Requests carry a JWT whose <code>role</code> claim is this application’s API role; row level security uses the same <code>meta.app_user()</code> and <code>meta.has_role()</code> as the web pages.</p>
-    <ul class="api-status" aria-label="Status">
-      ${pill(status.ok, html`PostgREST at <code>${url}</code>: ${status.ok ? status.detail : html`<b>not reachable</b> (${status.detail})`}`)}
-      ${role ? pill(!problem, problem ?? html`<code>${role}</code> is a dedicated role`) : pill(false, 'No API role: tokens are for the REST modules pgkiln serves only')}
-      ${role && !problem ? pill(!!granted?.ok, granted?.ok ? html`pgkiln_authenticator may switch to <code>${role}</code>` : html`<b>run</b> <code>grant ${role} to pgkiln_authenticator;</code>`) : ''}
+    <p class="muted api-intro">${tx.rich('apip.intro', { schema: html`<code>${API_SCHEMA}</code>`, role: html`<code>role</code>`, user: html`<code>meta.app_user()</code>`, has: html`<code>meta.has_role()</code>` })}</p>
+    <ul class="api-status" aria-label="${tx('apip.status')}">
+      ${pill(status.ok, html`${tx.rich('apip.at', { url: html`<code>${url}</code>` })} ${status.ok ? status.detail : html`<b>${tx('apip.not_reachable')}</b> (${status.detail})`}`)}
+      ${role ? pill(!problem, problem ?? tx.rich('apip.dedicated', { role: html`<code>${role}</code>` })) : pill(false, tx('apip.no_role'))}
+      ${role && !problem ? pill(!!granted?.ok, granted?.ok ? tx.rich('apip.may_switch', { role: html`<code>${role}</code>` }) : tx.rich('apip.run_grant', { run: html`<b>${tx('apip.run')}</b>`, sql: html`<code>grant ${role} to pgkiln_authenticator;</code>` })) : ''}
     </ul>
     <div class="columns api-top">
-      ${region('Setup', html`<form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
-          ${input('api_role', 'API database role', role, { placeholder: 'e.g. myapp_api', help: 'Grant it only the api schema’s views and functions, and grant it to pgkiln_authenticator. Empty: tokens work only for the REST modules pgkiln serves (Shared Components → REST modules).' })}
-          <div class="field"><label class="check"><input type="checkbox" name="api_self_tokens" value="true"${a.api_self_tokens ? raw(' checked') : ''}> Users create their own tokens</label>
-            <small class="help">On <em>My account</em>, signed-in users create a token that acts as them. A user the application requires two-factor sign-in of gives a second step first (if their last one is older than 15 minutes).</small></div>
-          <div class="buttons"><button class="btn btn-hot">Save</button></div>
+      ${region(tx('apip.setup'), html`<form method="post" action="${BASE}/apps/${a.id}/api">${csrf(s)}
+          ${input('api_role', tx('apip.api_database_role'), role, { placeholder: tx('apip.e_g_myapp_api'), help: tx('apip.grant_it_only_the_api') })}
+          <div class="field"><label class="check"><input type="checkbox" name="api_self_tokens" value="true"${a.api_self_tokens ? raw(' checked') : ''}> ${tx('apip.users_create_their_own_tokens')}</label>
+            <small class="help">${tx.rich('apip.self_help', { account: html`<em>${tx('apip.my_account')}</em>` })}</small></div>
+          <div class="buttons"><button class="btn btn-hot">${tx('apip.save')}</button></div>
         </form>`)}
-      ${region('Issue a token', html`<p class="muted u-mt0">For development and trusted scripts: the token acts as the account until it expires. Roles are read at each request; deactivating the account or revoking its access stops the token at once (<code>meta.api_check</code>). To invalidate all tokens, change <code>API_JWT_SECRET</code>.</p>
+      ${region(tx('apip.issue_a_token'), html`<p class="muted u-mt0">${tx.code('apip.for_development_and_trusted_scripts')}</p>
         <form method="post" action="${BASE}/apps/${a.id}/api/token">${csrf(s)}
           <div class="form-grid">
-            ${input('username', 'Account', issued?.username ?? '', { required: true, auto: 'off' })}
-            ${input('hours', 'Valid for (hours)', issued?.expiresInHours ?? 8, { type: 'number', help: `1 to ${MAX_TOKEN_HOURS}.` })}
+            ${input('username', tx('apip.account'), issued?.username ?? '', { required: true, auto: 'off' })}
+            ${input('hours', tx('apip.valid_for_hours'), issued?.expiresInHours ?? 8, { type: 'number', help: `1 to ${MAX_TOKEN_HOURS}.` })}
           </div>
-          <div class="buttons"><button class="btn btn-hot"${!problem ? '' : raw(' disabled')}>Issue token</button></div>
+          <div class="buttons"><button class="btn btn-hot"${!problem ? '' : raw(' disabled')}>${tx('apip.issue_token')}</button></div>
         </form>
         ${issued ? html`<div class="field u-mt1" data-wide><label class="label" for="api_token">Token for ${issued.username} (shown once, valid ${issued.expiresInHours} h)</label>
           <textarea id="api_token" class="code" rows="4" readonly spellcheck="false">${issued.token}</textarea></div>` : ''}`)}
     </div>
-    ${region('Endpoints', html`${eps.length
-      ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Path</th><th>Kind</th><th>Methods for ${role}</th></tr></thead>
-          <tbody>${eps.map((e) => html`<tr><td data-label="Path"><code>/${e.kind === 'function' ? 'rpc/' : ''}${e.name}</code></td><td data-label="Kind">${e.kind}</td><td data-label="Methods">${e.methods || html`<span class="muted">none</span>`}</td></tr>`)}</tbody></table></div>`
-      : html`<p class="muted u-mt0">Nothing in the <code>${API_SCHEMA}</code> schema yet${role ? '' : ', or no API role set'}. Create views and functions there and grant them to the API role.</p>`}
-      <h3 class="api-sub">Try it</h3>
+    ${region(tx('apip.endpoints'), html`${eps.length
+      ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('apip.path')}</th><th>${tx('apip.kind')}</th><th>${tx('apip.methods_for', { role: role ?? '' })}</th></tr></thead>
+          <tbody>${eps.map((e) => html`<tr><td data-label="${tx('apip.path')}"><code>/${e.kind === 'function' ? 'rpc/' : ''}${e.name}</code></td><td data-label="${tx('apip.kind')}">${e.kind}</td><td data-label="${tx('apip.methods')}">${e.methods || html`<span class="muted">${tx('apip.none')}</span>`}</td></tr>`)}</tbody></table></div>`
+      : html`<p class="muted u-mt0">${tx.rich(role ? 'apip.nothing_yet' : 'apip.nothing_yet_no_role', { schema: html`<code>${API_SCHEMA}</code>` })}</p>`}
+      <h3 class="api-sub">${tx('apip.try_it')}</h3>
       <pre class="source">${examples}</pre>
-      <p class="muted small">After schema changes run <code>notify pgrst, 'reload schema';</code> so PostgREST picks them up. OpenAPI description: <a href="${url}/" target="_blank" rel="noopener">${url}/</a>.</p>`,
+      <p class="muted small">${tx.rich('apip.reload', { sql: html`<code>notify pgrst, 'reload schema';</code>`, link: html`<a href="${url}/" target="_blank" rel="noopener">${url}/</a>` })}</p>`,
       html`<span class="count">${eps.length}</span>`)}
     ${await clientsRegion(s, a, secret, !problem)}`;
-  return shell(s, `${a.name} REST API`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['REST API']], main);
+  return shell(s, `${a.name} REST API`, [[tx('apip.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('apip.rest_api')]], main);
 }
 
 export async function apiRoutes(app: FastifyInstance) {
@@ -214,7 +214,7 @@ export async function apiRoutes(app: FastifyInstance) {
       return send(reply.header('cache-control', 'no-store'), s, await apiPage(s, a, undefined, { name, clientId: r.client_id, secret: r.client_secret, rotated: false }));
     } catch (e) {
       const err = e as { code?: string; message: string };
-      flash(s, err.code === '23505' ? 'A client with this name already exists.' : err.code === '23514' ? 'Check the name (lower case letters, digits, . _ -) and the token lifetime (5–1440 minutes).' : err.message, 'error');
+      flash(s, err.code === '23505' ? 'A client with this name already exists.' : err.code === '23514' ? tx('apip.check_the_name_lower_case') : err.message, 'error');
       return back(reply, s, `${BASE}/apps/${a.id}/api`);
     }
   });
@@ -246,7 +246,7 @@ export async function apiRoutes(app: FastifyInstance) {
       flash(s, active ? `${c.name} can get tokens again.` : `${c.name} is revoked: its tokens stop working now.`);
     } else if (op === 'roles') {
       await owner.query('update meta.api_client set roles = $2 where id = $1', [c.id, splitRoles(req.body?.roles ?? '')]);
-      flash(s, `Roles of ${c.name} saved.`);
+      flash(s, tx('apip.roles_saved', { name: c.name }));
     } else if (op === 'delete') {
       await owner.query('delete from meta.api_client where id = $1', [c.id]);
       flash(s, `${c.name} deleted.`);

@@ -6,6 +6,7 @@ import { icon } from '../icons.ts';
 import { clientIp, logActivity } from '../session.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx, type BuilderKey } from './i18n.ts';
 
 // Application → Backups (APEX: Application Backups, migration 082): the
 // exports this installation keeps of an application (before every import
@@ -14,8 +15,8 @@ import { appHeader, back, BASE, csrf, developer, flash, input, region, send, she
 // backup, so the version it replaces is backed up as well. Locks of the
 // application are respected (developer() refuses a POST to a locked app).
 
-const REASON: Record<string, string> = {
-  import: 'before an import', merge: 'before a working copy merge', restore: 'before a restore', daily: 'daily', manual: 'made by hand',
+const REASON: Record<string, BuilderKey> = {
+  import: 'bkp.reason.import', merge: 'bkp.reason.merge', restore: 'bkp.reason.restore', daily: 'bkp.reason.daily', manual: 'bkp.reason.manual',
 };
 const when = (d: string | Date) => new Date(d).toISOString().slice(0, 16).replace('T', ' ');
 const kb = (n: number) => (n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -39,35 +40,33 @@ export async function backupRoutes(app: FastifyInstance) {
     const rows = (await owner.query(
       'select id, created_at, created_by, reason, note, size from meta.app_backup where app_id = $1 order by created_at desc, id desc', [a.id])).rows;
     const body = html`
-      ${region('Backups', html`
-        <p class="muted u-mt0">Exports of this application kept by this installation: one before every import that replaces it (also from the
-          command line and the MCP server), before a working copy merge and a restore, one a day when it changed, and the ones made here.
-          The newest ${a.backups_keep} are kept. Backups are not exported.</p>
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Made (UTC)</th><th>Why</th><th>By</th><th>Note</th><th class="num">Size</th><th>Actions</th></tr></thead><tbody>
+      ${region(tx('app.head.backups'), html`
+        <p class="muted u-mt0">${tx('bkp.intro', { n: a.backups_keep })}</p>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('bkp.made_utc')}</th><th>${tx('bkp.why')}</th><th>${tx('bkp.by')}</th><th>${tx('bkp.note')}</th><th class="num">${tx('bkp.size')}</th><th>${tx('bkp.actions')}</th></tr></thead><tbody>
         ${rows.length ? rows.map((b) => html`<tr>
-          <td data-label="Made">${when(b.created_at)}</td>
-          <td data-label="Why">${REASON[b.reason] ?? b.reason}</td>
-          <td data-label="By">${b.created_by ?? ''}</td>
-          <td data-label="Note" class="u-break">${b.note ?? ''}</td>
-          <td class="num" data-label="Size">${kb(b.size)}</td>
-          <td data-label="Actions"><div class="buttons">
-            <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups/${b.id}/download">${icon('download')} Download</a>
+          <td data-label="${tx('bkp.made')}">${when(b.created_at)}</td>
+          <td data-label="${tx('bkp.why')}">${REASON[b.reason] ? tx(REASON[b.reason]) : b.reason}</td>
+          <td data-label="${tx('bkp.by')}">${b.created_by ?? ''}</td>
+          <td data-label="${tx('bkp.note')}" class="u-break">${b.note ?? ''}</td>
+          <td class="num" data-label="${tx('bkp.size')}">${kb(b.size)}</td>
+          <td data-label="${tx('bkp.actions')}"><div class="buttons">
+            <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups/${b.id}/download">${icon('download')} ${tx('bkp.download')}</a>
             <form method="post" action="${BASE}/apps/${a.id}/backups/${b.id}/restore" class="u-inline">${csrf(s)}
-              <button class="btn btn-sm" data-confirm="Restore the application as it was on ${when(b.created_at)}? Its pages, shared components and settings become those of the backup; the current version is backed up first.">${icon('history')} Restore</button></form>
+              <button class="btn btn-sm" data-confirm="${tx('bkp.restore_confirm', { when: when(b.created_at) })}">${icon('history')} ${tx('bkp.restore')}</button></form>
             <form method="post" action="${BASE}/apps/${a.id}/backups/${b.id}/delete" class="u-inline">${csrf(s)}
-              <button class="btn btn-sm btn-danger" data-confirm="Delete this backup?">Delete</button></form>
+              <button class="btn btn-sm btn-danger" data-confirm="${tx('bkp.delete_confirm')}">${tx('bkp.delete')}</button></form>
           </div></td></tr>`)
-          : html`<tr><td colspan="6" class="empty">No backups yet.</td></tr>`}</tbody></table></div>`)}
+          : html`<tr><td colspan="6" class="empty">${tx('bkp.none')}</td></tr>`}</tbody></table></div>`)}
       <div class="columns">
-        ${region('Back up now', html`<form method="post" action="${BASE}/apps/${a.id}/backups">${csrf(s)}
-          <div class="form-grid">${input('note', 'Note', '', { placeholder: 'e.g. before the new dashboard' })}</div>
-          <div class="buttons"><button class="btn btn-hot">${icon('save')} Back up now</button></div></form>`)}
-        ${region('Keep', html`<form method="post" action="${BASE}/apps/${a.id}/backups/settings">${csrf(s)}
-          <div class="form-grid">${input('keep', 'Backups to keep', a.backups_keep, { type: 'number', help: '0 to 500; 0 makes no backups at all (also not before an import).' })}</div>
-          <div class="buttons"><button class="btn">Save</button></div></form>`)}
+        ${region(tx('bkp.back_up_now'), html`<form method="post" action="${BASE}/apps/${a.id}/backups">${csrf(s)}
+          <div class="form-grid">${input('note', tx('bkp.note'), '', { placeholder: tx('bkp.note_placeholder') })}</div>
+          <div class="buttons"><button class="btn btn-hot">${icon('save')} ${tx('bkp.back_up_now')}</button></div></form>`)}
+        ${region(tx('bkp.keep'), html`<form method="post" action="${BASE}/apps/${a.id}/backups/settings">${csrf(s)}
+          <div class="form-grid">${input('keep', tx('bkp.to_keep'), a.backups_keep, { type: 'number', help: tx('bkp.to_keep_help') })}</div>
+          <div class="buttons"><button class="btn">${tx('common.save')}</button></div></form>`)}
       </div>`;
     const main = html`${appHeader(a, 'pages', s)}<div class="ide-body">${body}</div>`;
-    return send(reply, s, shell(s, `${a.name} backups`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Backups']], main));
+    return send(reply, s, shell(s, tx('bkp.page_title', { name: a.name }), [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('app.head.backups')]], main));
   });
 
   app.post(`${BASE}/apps/:id(^\\d+$)/backups`, async (req: Req, reply) => {
@@ -76,7 +75,7 @@ export async function backupRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.one(`select meta.backup_app($1, 'manual', $2, $3) as id`, [a.id, s.username, String(req.body?.note ?? '').trim().slice(0, 500) || null]);
-    flash(s, r.id ? 'Backup made.' : 'No backup made: this application keeps none (set "Backups to keep").', r.id ? 'ok' : 'error');
+    flash(s, r.id ? tx('bkp.made_flash') : tx('bkp.none_kept'), r.id ? 'ok' : 'error');
     return back(reply, s, `${BASE}/apps/${a.id}/backups`);
   });
 
@@ -84,12 +83,12 @@ export async function backupRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const keep = Number(req.body?.keep);
-    if (!Number.isInteger(keep) || keep < 0 || keep > 500) flash(s, 'Backups to keep: a whole number from 0 to 500.', 'error');
+    if (!Number.isInteger(keep) || keep < 0 || keep > 500) flash(s, tx('bkp.keep_invalid'), 'error');
     else {
       await owner.query('update meta.app set backups_keep = $2, updated_at = now() where id = $1', [req.params.id, keep]);
       // fewer to keep: the oldest go now
       await owner.query(`delete from meta.app_backup where app_id = $1 and id not in (select id from meta.app_backup where app_id = $1 order by created_at desc, id desc limit $2)`, [req.params.id, keep]);
-      flash(s, 'Saved.');
+      flash(s, tx('bkp.saved'));
     }
     return back(reply, s, `${BASE}/apps/${req.params.id}/backups`);
   });
@@ -112,14 +111,14 @@ export async function backupRoutes(app: FastifyInstance) {
     try {
       const at = await owner.tx(async (c) => {
         const b = (await c.query('select doc, created_at from meta.app_backup where id = $1 and app_id = $2', [req.params.bid, a.id])).rows[0];
-        if (!b) throw new Error('Backup not found.');
+        if (!b) throw new Error(tx('bkp.not_found'));
         await replaceApp(c, b.doc, a.alias, { backup: { reason: 'restore', user: s.username, note: `before restoring the backup of ${when(b.created_at)}` } });
         return when(b.created_at);
       });
       await logActivity({ appId: a.id, username: s.username, event: 'backup_restored', ip: clientIp(req), detail: `backup ${req.params.bid} of ${at}` });
-      flash(s, `Restored the application as it was on ${at}. The version it replaced is the newest backup.`);
+      flash(s, tx('bkp.restored', { when: at }));
     } catch (e) {
-      flash(s, `Restore failed: ${(e as Error).message}`, 'error');
+      flash(s, tx('bkp.restore_failed', { message: (e as Error).message }), 'error');
     }
     return back(reply, s, `${BASE}/apps/${a.id}/backups`);
   });
@@ -128,7 +127,7 @@ export async function backupRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const r = await owner.query('delete from meta.app_backup where id = $1 and app_id = $2', [req.params.bid, req.params.id]);
-    flash(s, r.rowCount ? 'Backup deleted.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? tx('bkp.deleted') : tx('bkp.not_found_short'), r.rowCount ? 'ok' : 'error');
     return back(reply, s, `${BASE}/apps/${req.params.id}/backups`);
   });
 }

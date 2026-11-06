@@ -43,9 +43,10 @@ test('the builder names every provider of src/ai/types.ts', () => {
   const types = readFileSync(join(root, 'src/ai/types.ts'), 'utf8');
   assert.match(types, /ProviderName = 'anthropic' \| 'openai' \| 'gemini' \| 'openai_compatible'/, 'a new provider: update this test and the texts');
   // (sprint 152) the Workspace utilities card's text is a message in every builder language
-  const card = (lang: string) => new RegExp(`'wu\\.ai_text': '([^']*)'`).exec(readFileSync(join(root, `src/builder/i18n/${lang}.ts`), 'utf8'))?.[1] ?? '';
-  const texts: [string, string][] = [['src/builder/assistant.ts', readFileSync(join(root, 'src/builder/assistant.ts'), 'utf8')],
-    ...['en', 'de', 'es', 'fr', 'it', 'nl', 'pt', 'zh-cn', 'zh-tw', 'ja', 'ko'].map((l): [string, string] => [`wu.ai_text (${l})`, card(l)])];
+  const message = (key: string, lang: string) => new RegExp(`'${key.replace('.', '\\.')}': '((?:[^'\\\\]|\\\\.)*)'`).exec(readFileSync(join(root, `src/builder/i18n/${lang}.ts`), 'utf8'))?.[1] ?? '';
+  // (sprint 164) the AI assistant region's settings text is a message too (asst.a_chat_with_an_ai)
+  const langs = ['en', 'de', 'es', 'fr', 'it', 'nl', 'pt', 'zh-cn', 'zh-tw', 'ja', 'ko'];
+  const texts: [string, string][] = ['wu.ai_text', 'asst.a_chat_with_an_ai'].flatMap((key) => langs.map((l): [string, string] => [`${key} (${l})`, message(key, l)]));
   // every language names the providers; "OpenAI-compatible" itself is translated (OpenAI-kompatible, compatible con OpenAI …)
   for (const [where, s] of texts)
     for (const name of ['Claude', 'OpenAI', 'Gemini', ...(where.includes('(') && !where.includes('(en)') ? [] : ['OpenAI-compatible'])])

@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Every App Builder screen in the eleven builder languages** (sprint 164; no migration): Team Development, mail
+  services, Data Reporter datasets, REST data sources and catalogs, workspace files, remote servers, web credentials,
+  template components, vector providers, AI services, the AI assistant and AI agents, blueprints, JSON sources, the
+  REST API page, globalization, remote databases, debug messages and the installation log, sign-in settings, the
+  Create Application and create page wizards, Theme Roller, features, OpenTelemetry, the Form Designer, utilities,
+  subscriptions, working copies, application groups, *Find my workspace* (its mail in the language of the page it was
+  asked from), static application files, locks and developer comments, automations, workflow versions and
+  migration, plug-ins, the App Gallery, PWA settings, search, backups, availability, feedback, cross-application
+  reports, workspace export / import, upgrade application, page layouts, dependencies, UI defaults and supporting
+  objects. Property names and help, and the Advisor's checks (shared with `pgkiln advise`), stay English by design.
+
 ## [0.84.0] - 2026-11-06
 
 ### Added

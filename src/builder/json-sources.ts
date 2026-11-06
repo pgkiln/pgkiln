@@ -13,6 +13,7 @@ import { clearCompletions } from './code-editor.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, usableSchemas, workshopDb } from './workspaces.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 142, AP-8; APEX: Shared Components → Data Sources → JSON Sources)
 //
@@ -30,8 +31,8 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 const SYSTEM = ['pg_catalog', 'information_schema', 'meta'];
 
 const crumbs = (a: { id: number; name: string }, last?: string): [string, string?][] => [
-  ['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`],
-  ...(last ? [['JSON sources', `${BASE}/apps/${a.id}/json-sources`], [last]] as [string, string?][] : [['JSON sources']] as [string, string?][]),
+  [tx('jsrc.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('jsrc.shared_components'), `${BASE}/apps/${a.id}/shared`],
+  ...(last ? [[tx('jsrc.json_sources'), `${BASE}/apps/${a.id}/json-sources`], [last]] as [string, string?][] : [[tx('jsrc.json_sources')]] as [string, string?][]),
 ];
 const listOf = (a: any) => (Array.isArray(a.json_sources) ? a.json_sources : []) as JsonSource[];
 const srcUrl = (appId: number, name: string) => `${BASE}/apps/${appId}/json-sources/source?name=${encodeURIComponent(name)}`;
@@ -61,12 +62,12 @@ async function viewState(db: Db, x: JsonSource) {
 
 function columnsTable(prefix: string, cols: JsonColumn[], extra: number, emptyPath: boolean): Raw {
   const rows = [...cols, ...Array.from({ length: extra }, (): JsonColumn => ({ name: '', path: [], type: 'text' }))];
-  return html`<div class="table-wrap"><table class="report js-cols"><thead><tr><th scope="col">Column</th><th scope="col">Path</th><th scope="col">Type</th><th scope="col">Read only</th></tr></thead><tbody>
+  return html`<div class="table-wrap"><table class="report js-cols"><thead><tr><th scope="col">${tx('jsrc.column')}</th><th scope="col">${tx('jsrc.path')}</th><th scope="col">${tx('jsrc.type')}</th><th scope="col">${tx('jsrc.read_only')}</th></tr></thead><tbody>
     ${rows.map((c, i) => html`<tr>
-      <td><input name="${prefix}.${i}.name" value="${c.name}" class="code" aria-label="Column ${i + 1}: name" autocomplete="off" spellcheck="false"></td>
-      <td><input name="${prefix}.${i}.path" value="${pathText(c.path)}" class="code" aria-label="Column ${i + 1}: path" autocomplete="off" spellcheck="false"${emptyPath ? raw(' placeholder="(the element itself)"') : ''}></td>
-      <td><select name="${prefix}.${i}.type" aria-label="Column ${i + 1}: type">${JSON_TYPES.map((t) => html`<option${t === c.type ? raw(' selected') : ''}>${t}</option>`)}</select></td>
-      <td class="te-c"><input type="checkbox" name="${prefix}.${i}.readonly" aria-label="Column ${i + 1}: read only"${c.readonly ? raw(' checked') : ''}></td></tr>`)}
+      <td><input name="${prefix}.${i}.name" value="${c.name}" class="code" aria-label="${tx('jsrc.aria_name', { n: i + 1 })}" autocomplete="off" spellcheck="false"></td>
+      <td><input name="${prefix}.${i}.path" value="${pathText(c.path)}" class="code" aria-label="${tx('jsrc.aria_path', { n: i + 1 })}" autocomplete="off" spellcheck="false"${emptyPath ? html` placeholder="${tx('jsrc.the_element_itself')}"` : ''}></td>
+      <td><select name="${prefix}.${i}.type" aria-label="${tx('jsrc.aria_type', { n: i + 1 })}">${JSON_TYPES.map((t) => html`<option${t === c.type ? raw(' selected') : ''}>${t}</option>`)}</select></td>
+      <td class="te-c"><input type="checkbox" name="${prefix}.${i}.readonly" aria-label="${tx('jsrc.aria_readonly', { n: i + 1 })}"${c.readonly ? raw(' checked') : ''}></td></tr>`)}
     </tbody></table></div>`;
 }
 
@@ -76,33 +77,33 @@ function sourceForm(a: any, s: Session, x: JsonSource, original: string, problem
   if (cur && !opts.includes(cur)) opts.unshift(cur);
   return html`${problems.length ? html`<div class="alert alert-error" role="alert"><ul>${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` : ''}
     <form method="post" action="${BASE}/apps/${a.id}/json-sources/source">${csrf(s)}<input type="hidden" name="original" value="${original}">
-      <fieldset class="prop-group"><legend>JSON source</legend><div class="form-grid">
-        ${input('name', 'Name (static ID)', x.name, { required: true, placeholder: 'e.g. EMP_PROFILE', help: 'Upper case letters, digits and _.' })}
-        ${input('description', 'Description', x.description ?? '')}
-        <div class="field"><label class="label" for="js-source">Table and jsonb column</label>
-          <select id="js-source" name="source">${opts.length ? opts.map((o) => html`<option${o === cur ? raw(' selected') : ''}>${o}</option>`) : html`<option value="">(no table with a json or jsonb column)</option>`}</select>
-          <small class="help">A column of a table, or the document column of a table of documents. The table needs a primary key.</small></div>
-        ${input('view', 'View', x.view, { required: true, placeholder: 'e.g. emp_profile', help: 'Made in the table\'s schema. Regions, REST and MCP use it like a table.' })}
-        <div class="field"><label class="check"><input type="checkbox" name="rows"${x.rows ? raw(' checked') : ''}> The view also adds and deletes rows of the table</label>
-          <small class="help">For a table of documents: an insert into the view adds a row, a delete removes it. Off: the view only changes the documents of existing rows.</small></div>
+      <fieldset class="prop-group"><legend>${tx('jsrc.json_source')}</legend><div class="form-grid">
+        ${input('name', tx('jsrc.name_static_id'), x.name, { required: true, placeholder: tx('jsrc.e_g_emp_profile'), help: tx('jsrc.upper_case_letters_digits_and') })}
+        ${input('description', tx('jsrc.description'), x.description ?? '')}
+        <div class="field"><label class="label" for="js-source">${tx('jsrc.table_and_jsonb_column')}</label>
+          <select id="js-source" name="source">${opts.length ? opts.map((o) => html`<option${o === cur ? raw(' selected') : ''}>${o}</option>`) : html`<option value="">${tx('jsrc.no_json_table')}</option>`}</select>
+          <small class="help">${tx('jsrc.a_column_of_a_table')}</small></div>
+        ${input('view', tx('jsrc.view'), x.view, { required: true, placeholder: tx('jsrc.e_g_emp_profile_2'), help: tx('jsrc.made_in_the_table_s') })}
+        <div class="field"><label class="check"><input type="checkbox" name="rows"${x.rows ? raw(' checked') : ''}> ${tx('jsrc.the_view_also_adds_and')}</label>
+          <small class="help">${tx('jsrc.for_a_table_of_documents')}</small></div>
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Columns</legend>
-        <p class="muted u-mt0">A column per path in the document (keys separated by dots, e.g. <code>address.city</code>). A value that doesn't read as the type shows empty. Saving a row writes only the paths whose values changed: keys this list doesn't name stay in the document. Clear a name to remove a column.</p>
+      <fieldset class="prop-group"><legend>${tx('jsrc.columns')}</legend>
+        <p class="muted u-mt0">${tx.code('jsrc.a_column_per_path_in')}</p>
         ${columnsTable('c', x.columns, 3, false)}</fieldset>
       ${x.arrays.map((y, j) => html`<fieldset class="prop-group"><legend>Array ${y.name}</legend><div class="form-grid">
-          ${input(`a.${j}.name`, 'Name', y.name, { required: true })}
-          ${input(`a.${j}.path`, 'Path', pathText(y.path), { required: true, help: 'The array in the document, e.g. skills.' })}
-          ${input(`a.${j}.view`, 'View', y.view, { required: true, help: `One row per element: the table's key, ${ROW_KEY} (the element's key) and ${POSITION} (1, 2 …), then these columns. Use it as a detail grid.` })}
-          <div class="field"><label class="check"><input type="checkbox" name="a.${j}.drop"> Remove this array</label></div>
+          ${input(`a.${j}.name`, tx('jsrc.name'), y.name, { required: true })}
+          ${input(`a.${j}.path`, tx('jsrc.path'), pathText(y.path), { required: true, help: tx('jsrc.the_array_in_the_document') })}
+          ${input(`a.${j}.view`, tx('jsrc.view'), y.view, { required: true, help: tx('jsrc.array_view_help', { rowkey: ROW_KEY, position: POSITION }) })}
+          <div class="field"><label class="check"><input type="checkbox" name="a.${j}.drop"> ${tx('jsrc.remove_this_array')}</label></div>
         </div>${columnsTable(`a.${j}.c`, y.columns, 2, true)}</fieldset>`)}
-      <fieldset class="prop-group"><legend>Add an array</legend><div class="form-grid">
-        ${input(`a.${x.arrays.length}.name`, 'Name', '', { placeholder: 'e.g. skills' })}
-        ${input(`a.${x.arrays.length}.path`, 'Path', '', { placeholder: 'e.g. skills' })}
-        ${input(`a.${x.arrays.length}.view`, 'View', '', { placeholder: 'e.g. emp_profile_skills' })}
-      </div><small class="help">Add the array, then Propose from the data fills its columns (or type them after saving).</small></fieldset>
+      <fieldset class="prop-group"><legend>${tx('jsrc.add_an_array')}</legend><div class="form-grid">
+        ${input(`a.${x.arrays.length}.name`, tx('jsrc.name'), '', { placeholder: tx('jsrc.e_g_skills') })}
+        ${input(`a.${x.arrays.length}.path`, tx('jsrc.path'), '', { placeholder: tx('jsrc.e_g_skills') })}
+        ${input(`a.${x.arrays.length}.view`, tx('jsrc.view'), '', { placeholder: tx('jsrc.e_g_emp_profile_skills') })}
+      </div><small class="help">${tx('jsrc.add_the_array_then_propose')}</small></fieldset>
       <div class="buttons">
-        <button class="btn btn-hot" name="mode" value="save">${original ? 'Save' : 'Add JSON source'}</button>
-        <button class="btn" name="mode" value="propose" formnovalidate>${icon('lightbulb')} Propose from the data</button>
+        <button class="btn btn-hot" name="mode" value="save">${original ? tx('jsrc.save') : tx('jsrc.add_json_source')}</button>
+        <button class="btn" name="mode" value="propose" formnovalidate>${icon('lightbulb')} ${tx('jsrc.propose_from_the_data')}</button>
       </div>
     </form>`;
 }
@@ -157,11 +158,11 @@ const label = (n: string) => n.replace(/_/g, ' ').replace(/^./, (c) => c.toUpper
 
 /** A form on the source's view with a detail grid per array; returns the page number. */
 export async function createSourcePage(appId: number, x: JsonSource, pageNo: number, title: string) {
-  if (x.key.length !== 1) throw new Error('Create page needs a table with a one-column key; use the views in regions of your own.');
+  if (x.key.length !== 1) throw new Error(tx('jsrc.create_page_needs_a_table'));
   const key = x.key[0];
   const keyItem = `P${pageNo}_${key.toUpperCase()}`;
   return owner.tx(async (c) => {
-    if ((await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, pageNo])).rows.length) throw new Error(`Page ${pageNo} exists already.`);
+    if ((await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [appId, pageNo])).rows.length) throw new Error(tx('jsrc.page_exists', { n: pageNo }));
     const pageId = (await c.query<{ id: number }>('insert into meta.page (app_id, page_no, name, title) values ($1, $2, $3, $3) returning id', [appId, pageNo, title])).rows[0].id;
     const form = (await c.query<{ id: number }>(
       `insert into meta.region (page_id, seq, title, type, table_name, pk_column, pk_item) values ($1, 10, $2, 'form', $3, $4, $5) returning id`,
@@ -210,15 +211,15 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     const db = await workshopDb(s);
     const states = await Promise.all(list.map((x) => viewState(db, x).catch(() => new Map<string, boolean>())));
     const main = html`${appHeader(a, 'shared', s)}
-      <div class="title-row"><h1>JSON sources</h1></div>
-      <p class="muted u-mt0">A JSON source describes a jsonb column: a column per path in its documents, and arrays of objects as rows of their own. pgkiln makes updatable views from it, so forms, reports, interactive grids, REST and MCP read and write the documents like tables. Saving a row changes only the paths it changed: keys the source doesn't know about stay. For a table with its child tables as one document, see SQL Workshop › Table Properties › Document view.</p>
-      ${region('Sources', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Name</th><th scope="col">Column</th><th scope="col">Views</th></tr></thead>
-        <tbody>${list.length ? list.map((x, i) => html`<tr><td data-label="Name"><a href="${srcUrl(a.id, x.name)}">${x.name}</a>${x.description ? html` <span class="muted">${x.description}</span>` : ''}</td>
-          <td data-label="Column"><code>${x.schema}.${x.table}.${x.column}</code></td>
-          <td data-label="Views">${[x.view, ...x.arrays.map((y) => y.view)].map((v) => html`<code>${v}</code>${states[i].get(v) ? '' : html` <span class="tag">not made</span>`} `)}</td></tr>`)
-          : html`<tr><td colspan="3" class="empty">No JSON sources yet.</td></tr>`}</tbody></table></div>
-        <p><a class="btn" href="${BASE}/apps/${a.id}/json-sources/source">${icon('plus')} Add JSON source</a></p>`)}`;
-    return send(reply, s, shell(s, 'JSON sources', crumbs(a), main));
+      <div class="title-row"><h1>${tx('jsrc.json_sources')}</h1></div>
+      <p class="muted u-mt0">${tx('jsrc.a_json_source_describes_a')}</p>
+      ${region(tx('jsrc.sources'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('jsrc.name')}</th><th scope="col">${tx('jsrc.column')}</th><th scope="col">${tx('jsrc.views')}</th></tr></thead>
+        <tbody>${list.length ? list.map((x, i) => html`<tr><td data-label="${tx('jsrc.name')}"><a href="${srcUrl(a.id, x.name)}">${x.name}</a>${x.description ? html` <span class="muted">${x.description}</span>` : ''}</td>
+          <td data-label="${tx('jsrc.column')}"><code>${x.schema}.${x.table}.${x.column}</code></td>
+          <td data-label="${tx('jsrc.views')}">${[x.view, ...x.arrays.map((y) => y.view)].map((v) => html`<code>${v}</code>${states[i].get(v) ? '' : html` <span class="tag">${tx('jsrc.not_made')}</span>`} `)}</td></tr>`)
+          : html`<tr><td colspan="3" class="empty">${tx('jsrc.no_json_sources_yet')}</td></tr>`}</tbody></table></div>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/json-sources/source">${icon('plus')} ${tx('jsrc.add_json_source')}</a></p>`)}`;
+    return send(reply, s, shell(s, tx('jsrc.json_sources'), crumbs(a), main));
   });
 
   app.get(`${BASE}/apps/:id(^\\d+$)/json-sources/source`, async (req: Req, reply) => {
@@ -238,20 +239,20 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
       const st = await viewState(db, x).catch(() => new Map<string, boolean>());
       const made = st.get(x.view) === true;
       const ddl = jsonSourceDdl(x, { app: a.alias, grants: await tableGrants(db, x.schema, x.table).catch(() => []), replace: st.size > 0 });
-      extra = html`${region('Views', html`
-        <p>${made ? html`${icon('check')} The views exist. Make them again after changing the columns.` : 'The views are not made yet.'}</p>
+      extra = html`${region(tx('jsrc.views'), html`
+        <p>${made ? html`${icon('check')} The views exist. Make them again after changing the columns.` : tx('jsrc.the_views_are_not_made')}</p>
         <details><summary>DDL</summary><pre class="source te-ddl" data-code-view="sql" tabindex="0" aria-label="DDL">${ddl.map((d) => `${d};`).join('\n\n')}</pre></details>
         <form method="post" action="${BASE}/apps/${a.id}/json-sources/views" class="buttons">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
-          <button class="btn btn-hot" name="mode" value="apply">${icon('check')} ${made ? 'Make the views again' : 'Create views'}</button>
-          <button class="btn" name="mode" value="worksheet">${icon('code')} Open in the SQL Worksheet</button></form>`)}
-        ${made ? region('Create page', html`<form method="post" action="${BASE}/apps/${a.id}/json-sources/page">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
-          <p class="muted u-mt0">A form on <code>${x.view}</code>${x.arrays.length ? html` with ${x.arrays.length === 1 ? 'a detail grid' : 'detail grids'} for ${x.arrays.map((y) => y.name).join(', ')}` : ''}. Open it with the key in the URL (<code>P<i>n</i>_${(x.key[0] ?? '').toUpperCase()}</code>), e.g. from a report's link.</p>
-          <div class="form-grid">${input('page_no', 'Page number', '', { type: 'number', required: true })}${input('title', 'Title', x.name.replace(/_/g, ' ').toLowerCase().replace(/^./, (ch) => ch.toUpperCase()), { required: true })}</div>
-          <div class="buttons"><button class="btn">${icon('plus')} Create page</button></div></form>`) : ''}
+          <button class="btn btn-hot" name="mode" value="apply">${icon('check')} ${made ? tx('jsrc.make_the_views_again') : tx('jsrc.create_views')}</button>
+          <button class="btn" name="mode" value="worksheet">${icon('code')} ${tx('jsrc.open_in_the_sql_worksheet')}</button></form>`)}
+        ${made ? region(tx('jsrc.create_page'), html`<form method="post" action="${BASE}/apps/${a.id}/json-sources/page">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
+          <p class="muted u-mt0">${tx.rich(x.arrays.length === 0 ? 'jsrc.form_on' : x.arrays.length === 1 ? 'jsrc.form_on_grid' : 'jsrc.form_on_grids', { view: html`<code>${x.view}</code>`, arrays: x.arrays.map((y) => y.name).join(', '), item: html`<code>P<i>n</i>_${(x.key[0] ?? '').toUpperCase()}</code>` })}</p>
+          <div class="form-grid">${input('page_no', tx('jsrc.page_number'), '', { type: 'number', required: true })}${input('title', tx('jsrc.title'), x.name.replace(/_/g, ' ').toLowerCase().replace(/^./, (ch) => ch.toUpperCase()), { required: true })}</div>
+          <div class="buttons"><button class="btn">${icon('plus')} ${tx('jsrc.create_page')}</button></div></form>`) : ''}
         <form method="post" action="${BASE}/apps/${a.id}/json-sources/source/delete" class="danger-zone">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
-          <button class="btn btn-danger" data-confirm="Delete JSON source ${x.name}? Its views stay in the database (drop them in the SQL Workshop).">Delete JSON source</button></form>`;
+          <button class="btn btn-danger" data-confirm="${tx('jsrc.delete_confirm', { name: x.name })}">${tx('jsrc.delete_json_source')}</button></form>`;
     }
-    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1>${title}</h1></div>${region('JSON source', sourceForm(a, s, x, name, [], tables))}${extra}`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1>${title}</h1></div>${region(tx('jsrc.json_source'), sourceForm(a, s, x, name, [], tables))}${extra}`;
     return send(reply, s, shell(s, title, crumbs(a, title), main));
   });
 
@@ -265,7 +266,7 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     const tables = await jsonColumns(db);
     let x = sourceFrom(b, []);
     const errors: string[] = [];
-    if (!tables.some((t) => t.schema === x.schema && t.table === x.table && t.column === x.column)) errors.push('Choose a table and its json or jsonb column.');
+    if (!tables.some((t) => t.schema === x.schema && t.table === x.table && t.column === x.column)) errors.push(tx('jsrc.choose_a_table_and_its'));
     else x.key = await primaryKey(db, x.schema, x.table);
     if (!x.view && x.table) x.view = `${x.table}_${x.column}`.toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 63);
     if (!errors.length && one(b.mode) === 'propose') {
@@ -280,8 +281,8 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
       }
       const title = original || 'New JSON source';
       const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1>${title}</h1></div>
-        <p class="alert alert-info" role="status">Proposed from up to 200 documents: check the names and types, then save.</p>
-        ${region('JSON source', sourceForm(a, s, x, original, [], tables))}`;
+        <p class="alert alert-info" role="status">${tx('jsrc.proposed_from_up_to_200')}</p>
+        ${region(tx('jsrc.json_source'), sourceForm(a, s, x, original, [], tables))}`;
       return send(reply, s, shell(s, title, crumbs(a, title), main));
     }
     const problems = errors.length ? errors : await update(a.id, (list) => {
@@ -290,7 +291,7 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
       if (original && at < 0) out.push(`JSON source ${original} no longer exists.`);
       if (list.some((y, i) => y.name === x.name && i !== at)) out.push(`A JSON source ${x.name} exists already.`);
       const views = new Map(list.filter((_, i) => i !== at).flatMap((y) => [y.view, ...y.arrays.map((z) => z.view)].map((v) => [`${y.schema}.${v}`, y.name])));
-      for (const v of [x.view, ...x.arrays.map((z) => z.view)]) if (views.has(`${x.schema}.${v}`)) out.push(`The view ${v} belongs to JSON source ${views.get(`${x.schema}.${v}`)}.`);
+      for (const v of [x.view, ...x.arrays.map((z) => z.view)]) if (views.has(`${x.schema}.${v}`)) out.push(tx('jsrc.view_taken', { view: v, source: views.get(`${x.schema}.${v}`) ?? '' }));
       if (out.length) return out;
       if (at >= 0) list[at] = x;
       else list.push(x);
@@ -298,10 +299,10 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     });
     if (problems.length) {
       const title = original || 'New JSON source';
-      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1>${title}</h1></div>${region('JSON source', sourceForm(a, s, x, original, problems, tables))}`;
+      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1>${title}</h1></div>${region(tx('jsrc.json_source'), sourceForm(a, s, x, original, problems, tables))}`;
       return send(reply.code(422), s, shell(s, title, crumbs(a, title), main));
     }
-    flash(s, 'JSON source saved.');
+    flash(s, tx('jsrc.json_source_saved'));
     return back(reply, s, srcUrl(a.id, x.name));
   });
 
@@ -333,7 +334,7 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     const tables = await jsonColumns(db);
     const problems = jsonSourceProblems(x);
     if (!tables.some((t) => t.schema === x.schema && t.table === x.table && t.column === x.column)) problems.push(`${x.schema}.${x.table}.${x.column} is not a json or jsonb column this connection may use.`);
-    else if ((await primaryKey(db, x.schema, x.table)).join(',') !== x.key.join(',')) problems.push(`The primary key of ${x.schema}.${x.table} changed: save the source again.`);
+    else if ((await primaryKey(db, x.schema, x.table)).join(',') !== x.key.join(',')) problems.push(tx('jsrc.key_changed', { table: `${x.schema}.${x.table}` }));
     const st = problems.length ? new Map() : await viewState(db, x);
     for (const [v, ours] of st) if (!ours) problems.push(`${x.schema}.${v} exists and is not a view of a JSON source: choose another name.`);
     if (problems.length) {
@@ -343,7 +344,7 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     const ddl = jsonSourceDdl(x, { app: a.alias, grants: await tableGrants(db, x.schema, x.table), replace: st.size > 0 });
     if (one(b.mode) === 'worksheet') {
       s.state.__SQLDRAFT = `${ddl.join(';\n\n')};`;
-      flash(s, 'Check the statements, then run them as a script.');
+      flash(s, tx('jsrc.check_the_statements_then_run'));
       return back(reply, s, `${BASE}/sql/worksheet`);
     }
     const c = await db.pool.connect();
@@ -361,11 +362,11 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: ddl.join(';\n').slice(0, 2000) });
     clearCompletions();
     if (failed) {
-      flash(s, `Nothing was changed: ${failed}`, 'error');
+      flash(s, tx('jsrc.nothing_changed', { error: failed }), 'error');
       return back(reply, s, to);
     }
     await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'table', defaultSchema: x.schema, statements: [joinStatements(ddl)] });
-    flash(s, `The views of ${x.name} are made: ${[x.view, ...x.arrays.map((y) => y.view)].join(', ')}.`);
+    flash(s, tx('jsrc.views_made', { name: x.name, views: [x.view, ...x.arrays.map((y) => y.view)].join(', ') }));
     return back(reply, s, to);
   });
 
@@ -379,7 +380,7 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
     const pageNo = Number(one(b.page_no));
     const title = one(b.title).trim().slice(0, 200) || x.name;
     if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > 99999) {
-      flash(s, 'The page number is a whole number from 1.', 'error');
+      flash(s, tx('jsrc.the_page_number_is_a'), 'error');
       return back(reply, s, srcUrl(a.id, x.name));
     }
     try {
@@ -388,7 +389,7 @@ export async function jsonSourceRoutes(app: FastifyInstance) {
       flash(s, (e as Error).message, 'error');
       return back(reply, s, srcUrl(a.id, x.name));
     }
-    flash(s, `Page ${pageNo} made: a form on ${x.view}${x.arrays.length ? ' with detail grids' : ''}.`);
+    flash(s, x.arrays.length ? tx('jsrc.page_made_grids', { n: pageNo, view: x.view }) : tx('jsrc.page_made', { n: pageNo, view: x.view }));
     return back(reply, s, `${BASE}/apps/${a.id}/pages/${pageNo}`);
   });
 }

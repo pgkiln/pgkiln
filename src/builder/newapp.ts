@@ -7,6 +7,7 @@ import { BASE_STYLES, NEW_APP_BASE } from '../runtime/styles.ts';
 import { LANGUAGE_NAMES } from '../i18n.ts';
 import { isIcon } from '../icons.ts';
 import { secretKeyConfigured } from '../secrets.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 /** (097) The icon of a new application's home page when the developer chose none. */
 export const DEFAULT_APP_ICON = 'layers';
@@ -64,6 +65,8 @@ export const FEATURES: [keyof Features, string, string, boolean][] = [
   ['pwa', 'Install as an app (PWA)', 'Installable on phones and desktops, with offline pages.', false],
   ['push', 'Push notifications', 'Notifications to the users\' devices (with Install as an app).', false],
 ];
+/** A feature's label and help in the builder language (FEATURES stays English). */
+export const featureText = (k: string, label: string, help: string): [string, string] => [tx.dyn(`nwa.f.${k}`, label), tx.dyn(`nwa.fh.${k}`, help)];
 /** The features ticked on a form (a form without them: the defaults). */
 export const featuresFrom = (b: Record<string, unknown>, posted: boolean): Features =>
   Object.fromEntries(FEATURES.map(([k, , , on]) => [k, posted ? b[`f_${k}`] === 'true' : on])) as unknown as Features;
@@ -122,7 +125,7 @@ async function applyFeatures(c: Client, appId: number, f: Partial<Features>, not
   if (f.pwa || f.push) await c.query('update meta.app set pwa = true where id = $1', [appId]);
   if (f.push) {
     if (secretKeyConfigured()) await c.query('update meta.app set pwa_push = true where id = $1', [appId]);
-    else notes.push('Push notifications are off: they need PGKILN_SECRET_KEY in the server\'s environment.');
+    else notes.push(tx('nwa.push_off'));
   }
 }
 
@@ -214,19 +217,19 @@ export const reservedSchema = (schema: string) => /^pg_/i.test(schema) || ['meta
 
 /** Validate the form (outside the transaction: the password check may look up the account). Throws an Error with a message for the developer. */
 export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<CheckedApp> {
-  if (!(workspaceId > 0)) throw new Error('You are not a developer of any workspace yet: ask an administrator to add you to one.');
+  if (!(workspaceId > 0)) throw new Error(tx('nwa.no_workspace'));
   const alias = (b.alias ?? '').trim().toLowerCase();
-  if (!/^[a-z][a-z0-9_-]*$/.test(alias) || alias.length > 50) throw new Error('The alias must start with a letter and contain only a-z, 0-9, _ and - (at most 50 characters).');
+  if (!/^[a-z][a-z0-9_-]*$/.test(alias) || alias.length > 50) throw new Error(tx('nwa.bad_alias'));
   const name = (b.name ?? '').trim();
-  if (!name) throw new Error('Enter a name for the application.');
+  if (!name) throw new Error(tx('nwa.enter_name'));
   const schema = (b.schema ?? '').trim() || alias.replace(/-/g, '_');
-  if (reservedSchema(schema) || schema.length > 63) throw new Error(`The schema ${schema} can't be the parsing schema of an application.`);
+  if (reservedSchema(schema) || schema.length > 63) throw new Error(tx('nwa.bad_schema', { schema }));
   const authentication = (b.authentication ?? '').trim() || 'app_users';
   let adminUser: string | null = null;
   let adminPassword: string | null = null;
   if (authentication !== 'none') {
     adminUser = (b.admin_user ?? '').trim();
-    if (!adminUser) throw new Error('Apps with a login page need a first user.');
+    if (!adminUser) throw new Error(tx('nwa.first_user'));
     const known = await owner.one('select 1 from meta.account where lower(username) = lower($1)', [adminUser]);
     const problem = known ? null : await passwordProblem(b.admin_password);
     if (problem) throw new Error(problem);
@@ -234,11 +237,11 @@ export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<
   }
   const description = (b.description ?? '').trim().slice(0, 300) || null;
   const appIcon = (b.icon ?? '').trim();
-  if (appIcon && !isIcon(appIcon)) throw new Error('Choose one of the icons in the list.');
+  if (appIcon && !isIcon(appIcon)) throw new Error(tx('nwa.choose_icon'));
   const base = b.base === 'lavender' || b.base === 'standard' ? b.base : 'iris';
   const accent = /^#[0-9a-f]{6}$/i.test(b.accent ?? '') && b.accent!.toLowerCase() !== BASE_STYLES[base].accent ? b.accent!.toLowerCase() : null;
   const language = (b.language ?? '').trim() || 'en';
-  if (!(language in LANGUAGE_NAMES)) throw new Error('Choose one of the languages in the list.');
+  if (!(language in LANGUAGE_NAMES)) throw new Error(tx('nwa.choose_language'));
   return {
     name, alias, schema, role: `app_${alias.replace(/-/g, '_')}`, authentication, adminUser, adminPassword, workspaceId, description, icon: appIcon || null,
     base, topNav: b.nav === 'top', accent, language,
@@ -257,13 +260,13 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
   if (isolated) {
     // (a taken alias fails below, with its own message)
     const aliasTaken = (await c.query('select 1 from meta.app where alias = $1', [a.alias])).rowCount;
-    if (roleExists && !aliasTaken) throw new Error(`The database role ${a.role} exists already: choose another alias.`);
+    if (roleExists && !aliasTaken) throw new Error(tx('nwa.role_exists', { role: a.role }));
     const foreign = await c.query(
       `select 1 from pg_namespace n where n.nspname = $1
           and n.nspowner::regrole::text not in (select role_name from meta.workspace_role where workspace_id = $2)`,
       [a.schema, a.workspaceId],
     );
-    if (foreign.rowCount) throw new Error(`The schema ${a.schema} exists already and doesn't belong to this workspace: choose another schema.`);
+    if (foreign.rowCount) throw new Error(tx('nwa.schema_foreign', { schema: a.schema }));
   }
   if (!roleExists) await c.query(`create role ${R} nologin`);
   await c.query(`create schema if not exists ${S}${isolated ? ` authorization ${R}` : ''}`);
@@ -318,7 +321,7 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
  */
 export async function startFromBoilerplate(c: Client, appId: number, a: CheckedApp, boilerplateId: number) {
   const bp = (await c.query<{ alias: string }>(`select alias from meta.app where id = $1 and app_type = 'boilerplate'`, [boilerplateId])).rows[0];
-  if (!bp) throw new Error('Choose a boilerplate application (an application of type Boilerplate).');
+  if (!bp) throw new Error(tx('nwa.choose_boilerplate'));
   const doc = (await c.query('select meta.export_app($1) as d', [bp.alias])).rows[0].d;
   await replaceApp(c, doc, a.alias, { backup: null });
   await c.query(`update meta.app set name = $2, db_role = $3, authentication = $4, app_type = 'standard', api_role = null, updated_at = now() where id = $1`, [
@@ -329,6 +332,6 @@ export async function startFromBoilerplate(c: Client, appId: number, a: CheckedA
 /** A friendlier message for the errors creating an application can raise. */
 export function createAppError(e: unknown, alias: string) {
   const err = e as { code?: string; constraint?: string; message: string };
-  if (err.code === '23505' && /alias/.test(err.constraint ?? err.message)) return `An application with the alias ${alias} already exists.`;
+  if (err.code === '23505' && /alias/.test(err.constraint ?? err.message)) return tx('nwa.alias_taken', { alias });
   return err.message;
 }

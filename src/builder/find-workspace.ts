@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
-import { esc, html, type Raw } from '../html.ts';
+import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
 import { senderAllowed, sendWith, type MailService } from '../mail/mail.ts';
 import { clientIp, getSession, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { publicUrl } from '../sso.ts';
 import { back, BASE, brandMark, builderHead, csrf, flash, THEME_COOKIE, validTheme, type Req } from './ui.ts';
+import { cookieLanguage, translatorFor, type BuilderTranslate } from './i18n.ts';
 
 // "Find my workspace" on the builder's sign-in page (migration 096; APEX: Find
 // My Workspace): a developer who forgot which workspace to sign in to enters
@@ -30,8 +31,8 @@ export async function builderMail(): Promise<{ service: MailService; from: strin
   return service && from && senderAllowed(service.senders, from) ? { service, from } : null;
 }
 
-/** The mail for one address: each account with it, and its workspaces. */
-export async function workspacesMail(email: string): Promise<{ to: string; subject: string; text: string; html: string } | null> {
+/** The mail for one address: each account with it, and its workspaces (in the language of the page it was asked from). */
+export async function workspacesMail(email: string, tx: BuilderTranslate = translatorFor('en')): Promise<{ to: string; subject: string; text: string; html: string } | null> {
   const accounts = (await owner.query<{ username: string; admin: boolean; workspaces: string[] }>(
     `select d.username, d.is_admin as admin,
             coalesce((select array_agg(w.name order by w.id = 1 desc, lower(w.name)) from meta.workspace w
@@ -39,28 +40,29 @@ export async function workspacesMail(email: string): Promise<{ to: string; subje
        from meta.developer d where lower(d.email) = lower($1) order by d.username`, [email])).rows;
   if (!accounts.length) return null;
   const signIn = `${publicUrl()}${BASE}/login`;
-  const lines = accounts.map((a) => `${a.username}${a.admin ? ' (administrator: every workspace)' : ''}\n${a.workspaces.length ? a.workspaces.map((w) => `  - ${w}`).join('\n') : '  (no workspace yet: ask an administrator)'}`);
-  const text = `You asked which pgkiln workspaces you can sign in to.\n\n${lines.join('\n\n')}\n\nSign in at ${signIn}\n\nIf you didn't ask, you can ignore this mail: nothing was changed.`;
-  const body = `<p>You asked which pgkiln workspaces you can sign in to.</p>${accounts.map((a) => `<p><b>${esc(a.username)}</b>${a.admin ? ' (administrator: every workspace)' : ''}</p><ul>${a.workspaces.length ? a.workspaces.map((w) => `<li>${esc(w)}</li>`).join('') : '<li>No workspace yet: ask an administrator.</li>'}</ul>`).join('')}<p>Sign in at <a href="${esc(signIn)}">${esc(signIn)}</a></p><p>If you didn't ask, you can ignore this mail: nothing was changed.</p>`;
-  return { to: email, subject: 'Your pgkiln workspaces', text, html: body };
+  const admin = ` (${tx('fw.mail_admin')})`;
+  const lines = accounts.map((a) => `${a.username}${a.admin ? admin : ''}\n${a.workspaces.length ? a.workspaces.map((w) => `  - ${w}`).join('\n') : `  (${tx('fw.mail_no_ws')})`}`);
+  const text = `${tx('fw.mail_intro')}\n\n${lines.join('\n\n')}\n\n${tx('fw.mail_sign_in', { url: signIn })}\n\n${tx('fw.mail_ignore')}`;
+  const body = `<p>${esc(tx('fw.mail_intro'))}</p>${accounts.map((a) => `<p><b>${esc(a.username)}</b>${a.admin ? esc(admin) : ''}</p><ul>${a.workspaces.length ? a.workspaces.map((w) => `<li>${esc(w)}</li>`).join('') : `<li>${esc(tx('fw.mail_no_ws'))}</li>`}</ul>`).join('')}<p>${tx.rich('fw.mail_sign_in', { url: raw(`<a href="${esc(signIn)}">${esc(signIn)}</a>`) })}</p><p>${esc(tx('fw.mail_ignore'))}</p>`;
+  return { to: email, subject: tx('fw.mail_subject'), text, html: body };
 }
 
-const page = (s: Session, theme: ReturnType<typeof validTheme>, body: Raw) =>
+const page = (s: Session, theme: ReturnType<typeof validTheme>, body: Raw, tx: BuilderTranslate) =>
   documentShell(
-    'Find my workspace · Builder',
+    `${tx('signin.find_ws')} · ${tx('shell.builder')}`,
     html`<main class="signin">
       <section class="signin-hero" aria-label="pgkiln">
         <span class="signin-logo" aria-hidden="true">${brandMark()}</span>
         <h1 class="signin-title">pgkiln</h1>
-        <p class="signin-tagline">Build data applications on PostgreSQL, in SQL you can trust</p>
+        <p class="signin-tagline">${tx('signin.tagline')}</p>
       </section>
       <section class="signin-panel"><div class="signin-form">${body}
-        <nav class="signin-actions" aria-label="Quick actions"><a href="${BASE}/login">${icon('arrow-left')} Back to sign in</a></nav></div></section>
+        <nav class="signin-actions" aria-label="${tx('signin.quick')}"><a href="${BASE}/login">${icon('arrow-left')} ${tx('fw.back')}</a></nav></div></section>
     </main>`,
     'login-body ide-login signin-body',
     {},
     builderHead(),
-    { theme: theme ?? 'dark' },
+    { theme: theme ?? 'dark', lang: tx.lang },
   );
 
 export async function findWorkspaceRoutes(app: FastifyInstance) {
@@ -71,31 +73,33 @@ export async function findWorkspaceRoutes(app: FastifyInstance) {
     await saveState(s);
     const mail = await builderMail();
     const theme = validTheme(req.cookies?.[THEME_COOKIE]);
+    const tx = translatorFor(cookieLanguage(req));
     const body = !mail
-      ? html`<h2>Find my workspace</h2><p class="muted u-mt0">This installation doesn't send mail to developers. Ask an administrator which workspaces you belong to; or sign in with your user name and password only: the workspace is optional.</p>`
+      ? html`<h2>${tx('signin.find_ws')}</h2><p class="muted u-mt0">${tx('fw.no_mail')}</p>`
       : done
-        ? html`<h2>Check your mail</h2><div class="alert alert-success" role="status">${done}</div>`
-        : html`<h2>Find my workspace</h2>
-          <p class="muted u-mt0">Enter the e-mail address of your developer account: we send you your user name and the workspaces you can sign in to.</p>
+        ? html`<h2>${tx('fw.check_mail')}</h2><div class="alert alert-success" role="status">${done}</div>`
+        : html`<h2>${tx('signin.find_ws')}</h2>
+          <p class="muted u-mt0">${tx('fw.intro')}</p>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
           <form method="post" action="${BASE}/find-workspace">${csrf(s)}
-            <div class="field signin-field"><label class="sr-only" for="f_email">E-mail address</label>
-              <div class="signin-input">${icon('at')}<input id="f_email" name="email" type="email" placeholder="E-mail address" required autocomplete="email" maxlength="254"></div></div>
-            <button class="btn btn-hot signin-submit">Send</button>
+            <div class="field signin-field"><label class="sr-only" for="f_email">${tx('dev.email')}</label>
+              <div class="signin-input">${icon('at')}<input id="f_email" name="email" type="email" placeholder="${tx('dev.email')}" required autocomplete="email" maxlength="254"></div></div>
+            <button class="btn btn-hot signin-submit">${tx('fw.send')}</button>
           </form>`;
-    return reply.type('text/html').send(page(s, theme, body));
+    return reply.type('text/html').send(page(s, theme, body, tx));
   });
 
   app.post(`${BASE}/find-workspace`, async (req: Req, reply) => {
     const s = await getSession(req, reply, null, BASE);
     const to = `${BASE}/find-workspace`;
+    const tx = translatorFor(cookieLanguage(req));
     if (req.body?.__csrf !== s.csrf_token) {
-      flash(s, 'Your session expired. Please try again.', 'error');
+      flash(s, tx('signin.expired'), 'error');
       return back(reply, s, to);
     }
     const email = String(req.body?.email ?? '').trim().slice(0, 254);
     if (!EMAIL.test(email)) {
-      flash(s, 'Enter an e-mail address, e.g. ann@example.com.', 'error');
+      flash(s, tx('fw.bad_email'), 'error');
       return back(reply, s, to);
     }
     const ip = clientIp(req);
@@ -109,11 +113,11 @@ export async function findWorkspaceRoutes(app: FastifyInstance) {
     if (mail && !limited)
       // after the answer: the time it takes never tells whether an account has the address
       setImmediate(() => {
-        workspacesMail(email)
+        workspacesMail(email, tx)
           .then((m) => (m ? sendWith(mail.service, { from: mail.from, to: [m.to], cc: [], bcc: [], replyTo: null, subject: m.subject, text: m.text, html: m.html, attachments: [] }) : null))
           .catch((e) => console.error('find my workspace: the mail was not sent:', (e as Error).message));
       });
-    flash(s, `If a developer account has the address ${email}, it gets a mail with its user name and workspaces in a few minutes. No mail? Ask an administrator.`);
+    flash(s, tx('fw.sent', { email }));
     return back(reply, s, to);
   });
 }

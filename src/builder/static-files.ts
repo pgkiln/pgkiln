@@ -8,6 +8,7 @@ import type { Session } from '../session.ts';
 import { WORKSPACE_FILES } from '../metadata.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, type Body, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Shared Components → Static application files (APEX: Static Application
 // Files): upload, write and remove an application's JavaScript, CSS, images
@@ -56,48 +57,46 @@ async function page(s: Session, a: any, query: Record<string, string | undefined
   const everyPage = new Set<string>(a.static_includes ?? []);
 
   const editor = editName || creating
-    ? region(editName ? `Edit ${editName}` : 'New file', html`<form method="post" action="${base}/save">${csrf(s)}
+    ? region(editName ? tx('sf.edit_title', { name: editName }) : tx('sf.new_file'), html`<form method="post" action="${base}/save">${csrf(s)}
         ${editName ? html`<input type="hidden" name="original" value="${editName}">` : ''}
-        <div class="form-grid">${input('name', 'File name', editName ?? '', { required: true, placeholder: 'app.js', help: 'Letters, digits, _, - and . (e.g. app.js, styles.css, data.json).' })}</div>
-        <div class="field" data-wide><label class="label" for="f_content">Content</label>
+        <div class="form-grid">${input('name', tx('sf.file_name'), editName ?? '', { required: true, placeholder: 'app.js', help: tx('sf.file_name_help') })}</div>
+        <div class="field" data-wide><label class="label" for="f_content">${tx('sf.content')}</label>
           <textarea id="f_content" name="content" class="code" rows="18" spellcheck="false">${content}</textarea>
-          <small class="help">JavaScript registers functions for the dynamic action "Execute JavaScript" with <code>pgkiln.actions.register('name', (da) =&gt; { … })</code>; it can also use <code>pgkiln.getValue</code>, <code>setValue</code>, <code>showSuccess</code> and <code>showError</code>. No inline scripts: everything runs from these files.</small></div>
-        <div class="buttons"><a class="btn" href="${base}">Cancel</a><button class="btn btn-hot">${icon('check')} Save</button></div>
+          <small class="help">${tx.code('sf.content_help')}</small></div>
+        <div class="buttons"><a class="btn" href="${base}">${tx('common.cancel')}</a><button class="btn btn-hot">${icon('check')} ${tx('common.save')}</button></div>
       </form>`)
     : '';
 
   return html`${appHeader(a, 'shared', s)}
     ${editor}
-    ${region('Static application files', html`<p class="muted u-mt0">JavaScript, CSS, JSON, images and fonts of this application, served at
-        <code>/a/${a.alias}/static/<i>name</i></code> and exported with it. Pages load the scripts and stylesheets chosen below
-        (and those a page adds in its properties), so code runs from files, never inline. Up to ${size(STATIC_MAX)} per file; no HTML.</p>
+    ${region(tx('sf.title'), html`<p class="muted u-mt0">${tx.rich('sf.intro', { path: html`<code>/a/${a.alias}/static/<i>name</i></code>`, max: size(STATIC_MAX) })}</p>
       ${files.length
-        ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">Static application files</caption>
-            <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col" class="num">Size</th><th scope="col">Loaded by</th><th scope="col">Changed</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">${tx('sf.title')}</caption>
+            <thead><tr><th scope="col">${tx('sf.name')}</th><th scope="col">${tx('sf.type')}</th><th scope="col" class="num">${tx('sf.size')}</th><th scope="col">${tx('sf.loaded_by')}</th><th scope="col">${tx('sf.changed')}</th><th scope="col"><span class="sr-only">${tx('sf.actions')}</span></th></tr></thead>
             <tbody>${files.map((f) => html`<tr>
               <td><a href="/a/${a.alias}/static/${encodeURIComponent(f.name)}" target="_blank" rel="noopener">${f.name}</a></td>
               <td>${f.mime}</td><td class="num">${size(Number(f.bytes))}</td>
-              <td>${includable(f.name) ? [everyPage.has(f.name) ? 'every page' : '', pagesOf(f.name).length ? `page ${pagesOf(f.name).join(', ')}` : ''].filter(Boolean).join('; ') || html`<span class="muted">-</span>` : ''}</td>
+              <td>${includable(f.name) ? [everyPage.has(f.name) ? tx('sf.every_page') : '', pagesOf(f.name).length ? tx('sf.pages', { pages: pagesOf(f.name).join(', ') }) : ''].filter(Boolean).join('; ') || html`<span class="muted">-</span>` : ''}</td>
               <td>${f.changed}</td>
-              <td class="nowrap">${editable(f.name) ? html`<a class="btn btn-small" href="${base}?edit=${encodeURIComponent(f.name)}">Edit</a> ` : ''}
+              <td class="nowrap">${editable(f.name) ? html`<a class="btn btn-small" href="${base}?edit=${encodeURIComponent(f.name)}">${tx('sf.edit')}</a> ` : ''}
                 <form method="post" action="${base}/delete" class="inline">${csrf(s)}<input type="hidden" name="name" value="${f.name}">
-                  <button class="btn btn-small btn-danger" data-confirm="Delete ${f.name}?" aria-label="Delete ${f.name}">${icon('trash')}</button></form></td>
+                  <button class="btn btn-small btn-danger" data-confirm="${tx('sf.delete_confirm', { name: f.name })}" aria-label="${tx('sf.delete_name', { name: f.name })}">${icon('trash')}</button></form></td>
             </tr>`)}</tbody></table></div>`
-        : html`<p class="muted">No files yet.</p>`}
-      <div class="buttons u-mt1"><a class="btn" href="${base}?new=1">${icon('plus')} New file</a></div>
+        : html`<p class="muted">${tx('sf.no_files')}</p>`}
+      <div class="buttons u-mt1"><a class="btn" href="${base}?new=1">${icon('plus')} ${tx('sf.new_file')}</a></div>
       <form method="post" action="${base}/upload" enctype="multipart/form-data" class="search u-mwnone u-mt1">${csrf(s)}
-        <input type="file" name="file" multiple aria-label="Files to upload" accept="${Object.keys(STATIC_TYPES).map((x) => `.${x}`).join(',')}">
-        <button class="btn">${icon('upload')} Upload</button>
-        <small class="help">A file with the same name is replaced.</small>
+        <input type="file" name="file" multiple aria-label="${tx('sf.files_to_upload')}" accept="${Object.keys(STATIC_TYPES).map((x) => `.${x}`).join(',')}">
+        <button class="btn">${icon('upload')} ${tx('sf.upload')}</button>
+        <small class="help">${tx('sf.replaced')}</small>
       </form>`)}
-    ${region('Every page loads', html`<form method="post" action="${base}/includes">${csrf(s)}
-        <div class="form-grid">${input('includes', 'Scripts and stylesheets, in order', (a.static_includes ?? []).join(', '), { placeholder: 'e.g. library.js, app.js, app-styles.css', help: `Up to ${MAX_INCLUDES} .js and .css files, loaded in this order after pgkiln's own (scripts deferred). #WORKSPACE_FILES#name is a static workspace file (Workspace utilities). A page adds its own files under Page → Appearance.` })}</div>
-        <div class="buttons"><button class="btn btn-hot">Save</button></div>
+    ${region(tx('sf.every_page_loads'), html`<form method="post" action="${base}/includes">${csrf(s)}
+        <div class="form-grid">${input('includes', tx('sf.includes'), (a.static_includes ?? []).join(', '), { placeholder: tx('sf.includes_ph'), help: tx('sf.includes_help', { max: MAX_INCLUDES }) })}</div>
+        <div class="buttons"><button class="btn btn-hot">${tx('common.save')}</button></div>
       </form>`)}`;
 }
 
 export async function staticFileBuilderRoutes(app: FastifyInstance) {
-  const title = (a: any) => [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Static application files']] as [string, string?][];
+  const title = (a: any) => [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('app.tab.shared'), `${BASE}/apps/${a.id}/shared`], [tx('sf.title')]] as [string, string?][];
   const find = async (id: string) => (/^\d+$/.test(id) ? appOr404(id) : undefined);
 
   app.get(`${BASE}/apps/:id/static-files`, async (req: Req, reply) => {
@@ -105,7 +104,7 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await find(req.params.id);
     if (!a) return reply.code(404).send('Not found');
-    return send(reply, s, shell(s, 'Static application files', title(a), await page(s, a, req.query ?? {})));
+    return send(reply, s, shell(s, tx('sf.title'), title(a), await page(s, a, req.query ?? {})));
   });
 
   app.post(`${BASE}/apps/:id/static-files/upload`, async (req: Req, reply) => {
@@ -121,15 +120,15 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const target = `${BASE}/apps/${a.id}/static-files`;
     if (!uploads.length) {
-      flash(s, 'Choose one or more files.', 'error');
+      flash(s, tx('sf.choose_files'), 'error');
       return back(reply, s, target);
     }
     const saved: string[] = [];
     for (const u of uploads) {
       const name = u.filename.split(/[\\/]/).pop()!.trim();
       const type = staticType(name);
-      if (u.truncated) flash(s, `${name} is larger than ${size(STATIC_MAX)}.`, 'error');
-      else if (!type) flash(s, `${name}: not an allowed name or type (letters, digits, _, - and .; ${Object.keys(STATIC_TYPES).join(', ')}).`, 'error');
+      if (u.truncated) flash(s, tx('sf.too_large_name', { name, max: size(STATIC_MAX) }), 'error');
+      else if (!type) flash(s, tx('sf.bad_type', { name, types: Object.keys(STATIC_TYPES).join(', ') }), 'error');
       else {
         await owner.query(
           `insert into meta.static_file (app_id, name, mime, content) values ($1, $2, $3, $4)
@@ -138,7 +137,7 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
         saved.push(name);
       }
     }
-    if (saved.length) flash(s, `Uploaded: ${saved.join(', ')}.`);
+    if (saved.length) flash(s, tx('sf.uploaded', { names: saved.join(', ') }));
     return back(reply, s, target);
   });
 
@@ -154,11 +153,11 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
     const content = Buffer.from(String(b.content ?? '').replace(/\r\n/g, '\n'), 'utf8');
     const base = `${BASE}/apps/${a.id}/static-files`;
     if (!type || !editable(name)) {
-      flash(s, 'The name must end in a text type (.js, .css, .json, .txt, .csv, .md, .map) and use letters, digits, _, - and . only.', 'error');
+      flash(s, tx('sf.bad_text_name'), 'error');
       return back(reply, s, original ? `${base}?edit=${encodeURIComponent(original)}` : `${base}?new=1`);
     }
     if (content.length > STATIC_MAX) {
-      flash(s, `The file is larger than ${size(STATIC_MAX)}.`, 'error');
+      flash(s, tx('sf.too_large', { max: size(STATIC_MAX) }), 'error');
       return back(reply, s, base);
     }
     try {
@@ -172,7 +171,7 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
           `insert into meta.static_file (app_id, name, mime, content) values ($1, $2, $3, $4)
            on conflict (app_id, name) do update set mime = excluded.mime, content = excluded.content, updated_at = now()`,
           [a.id, name, type, content]);
-      flash(s, `${name} saved.`);
+      flash(s, tx('sf.saved_name', { name }));
       return back(reply, s, `${base}?edit=${encodeURIComponent(name)}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -187,7 +186,7 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const name = String(req.body?.name ?? '');
     const r = await owner.query('delete from meta.static_file where app_id = $1 and name = $2', [a.id, name]);
-    flash(s, r.rowCount ? `${name} deleted.` : 'No such file.', r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? tx('sf.deleted', { name }) : tx('sf.no_such_file'), r.rowCount ? 'ok' : 'error');
     return back(reply, s, `${BASE}/apps/${a.id}/static-files`);
   });
 
@@ -202,7 +201,7 @@ export async function staticFileBuilderRoutes(app: FastifyInstance) {
       `select n from unnest($2::text[]) n
         where not exists (select 1 from meta.static_file f where f.app_id = $1 and f.name = n)
           and not exists (select 1 from meta.workspace_file w where w.workspace_id = meta.app_workspace($1) and $3 || w.name = n)`, [a.id, names, WORKSPACE_FILES])).rows.map((r) => r.n);
-    flash(s, missing.length ? `Saved. Not uploaded yet (left out until they are): ${missing.join(', ')}.` : 'Saved.');
+    flash(s, missing.length ? tx('sf.saved_missing', { names: missing.join(', ') }) : tx('sf.saved'));
     return back(reply, s, `${BASE}/apps/${a.id}/static-files`);
   });
 }

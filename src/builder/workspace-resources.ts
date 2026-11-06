@@ -12,6 +12,7 @@ import { scopeProblem, urlProblem } from '../webclient.ts';
 import { clearResponseCache, clearTokens, credentialProblems, GRANT_TYPES } from '../websources.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 import { workspaceAdmin } from './workspaces.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 141, AP-7) Workspace utilities → Static workspace files, Remote
 // servers and Web credentials (APEX: Static Workspace Files, Remote Servers,
@@ -28,7 +29,7 @@ import { workspaceAdmin } from './workspaces.ts';
 const FILES = `${BASE}/workspace-files`;
 const SERVERS = `${BASE}/remote-servers`;
 const CREDS = `${BASE}/workspace-credentials`;
-const crumbs = (title: string): [string, string?][] => [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [title]];
+const crumbs = (title: string): [string, string?][] => [[tx('wres.app_builder'), BASE], [tx('wres.workspace_utilities'), `${BASE}/utilities`], [title]];
 const id = (v: unknown) => (/^\d{1,9}$/.test(String(v ?? '')) ? Number(v) : null);
 const when = (d: Date | string | null) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') : '');
 const size = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
@@ -45,7 +46,7 @@ async function context(req: Req, reply: FastifyReply, title: string): Promise<Ct
   const s = await developer(req, reply);
   if (!s) return null;
   if (!s.workspace) {
-    await send(reply.code(403), s, shell(s, title, crumbs(title), html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">You are not a developer of any workspace yet.</div>`));
+    await send(reply.code(403), s, shell(s, title, crumbs(title), html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">${tx('wres.you_are_not_a_developer')}</div>`));
     return null;
   }
   return { s, ws: { id: s.workspace.id, name: s.workspace.name }, admin: await workspaceAdmin(s.username, s.workspace.id) };
@@ -56,11 +57,11 @@ async function manager(req: Req, reply: FastifyReply, title: string): Promise<Ct
   const c = await context(req, reply, title);
   if (!c) return null;
   if (c.admin) return c;
-  await send(reply.code(403), c.s, shell(c.s, title, crumbs(title), html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">Only the workspace's administrators change these.</div>`));
+  await send(reply.code(403), c.s, shell(c.s, title, crumbs(title), html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">${tx('wres.only_the_workspace_s_administrators')}</div>`));
   return null;
 }
 
-const readOnlyNote = (c: Ctx) => (c.admin ? '' : html`<div class="alert alert-info" role="status">You can see these; the workspace's administrators change them.</div>`);
+const readOnlyNote = (c: Ctx) => (c.admin ? '' : html`<div class="alert alert-info" role="status">${tx('wres.you_can_see_these_the')}</div>`);
 
 // ====================================================================== static workspace files
 
@@ -89,40 +90,36 @@ async function filesPage(c: Ctx, query: Record<string, string | undefined>) {
     ? (await owner.one<{ content: Buffer }>('select content from meta.workspace_file where workspace_id = $1 and name = $2', [ws.id, editName]))!.content.toString('utf8')
     : '';
   const editor = editName || creating
-    ? region(editName ? `Edit ${editName}` : 'New file', html`<form method="post" action="${FILES}/save">${csrf(s)}
+    ? region(editName ? tx('wres.edit_named', { name: editName }) : tx('wres.new_file'), html`<form method="post" action="${FILES}/save">${csrf(s)}
         ${editName ? html`<input type="hidden" name="original" value="${editName}">` : ''}
-        <div class="form-grid">${input('name', 'File name', editName ?? '', { required: true, placeholder: 'brand.css', help: 'Letters, digits, _, - and . (e.g. brand.css, common.js).' })}</div>
-        <div class="field" data-wide><label class="label" for="f_content">Content</label>
+        <div class="form-grid">${input('name', tx('wres.file_name'), editName ?? '', { required: true, placeholder: 'brand.css', help: tx('wres.letters_digits_and_e_g') })}</div>
+        <div class="field" data-wide><label class="label" for="f_content">${tx('wres.content')}</label>
           <textarea id="f_content" name="content" class="code" rows="18" spellcheck="false">${content}</textarea></div>
-        <div class="buttons"><a class="btn" href="${FILES}">Cancel</a><button class="btn btn-hot">${icon('check')} Save</button></div>
+        <div class="buttons"><a class="btn" href="${FILES}">${tx('wres.cancel')}</a><button class="btn btn-hot">${icon('check')} ${tx('wres.save')}</button></div>
       </form>`)
     : '';
-  return html`<div class="title-row"><h1>Static workspace files</h1></div>
-    <p class="muted u-mt0">CSS, JavaScript, JSON, images and fonts that every application of ${ws.name} may use: an application loads one on
-      every page with <code>#WORKSPACE_FILES#<i>name</i></code> in Shared Components → Static application files → Every page loads (a page:
-      Page → Appearance), and templates, HTML and links use <code>#WORKSPACE_FILES#</code> for their URL. Each application serves them from its
-      own address (<code>/a/<i>alias</i>/workspace-files/<i>name</i></code>), never another workspace's. Up to ${size(STATIC_MAX)} per file; no HTML.
-      They travel with the workspace export.</p>
+  return html`<div class="title-row"><h1>${tx('wres.static_workspace_files')}</h1></div>
+    <p class="muted u-mt0">${tx.rich('wres.files_intro', { workspace: ws.name, tag: html`<code>#WORKSPACE_FILES#<i>name</i></code>`, sub: html`<code>#WORKSPACE_FILES#</code>`, path: html`<code>/a/<i>alias</i>/workspace-files/<i>name</i></code>`, size: size(STATIC_MAX) })}</p>
     ${readOnlyNote(c)}
     ${editor}
-    ${region('Files', html`${files.length
+    ${region(tx('wres.files'), html`${files.length
       ? html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col" class="num">Size</th><th scope="col">Loaded by</th><th scope="col">Changed (UTC)</th>${c.admin ? html`<th scope="col">Actions</th>` : ''}</tr></thead>
+          <thead><tr><th scope="col">${tx('wres.name')}</th><th scope="col">${tx('wres.type')}</th><th scope="col" class="num">${tx('wres.size')}</th><th scope="col">${tx('wres.loaded_by')}</th><th scope="col">${tx('wres.changed_utc')}</th>${c.admin ? html`<th scope="col">${tx('wres.actions')}</th>` : ''}</tr></thead>
           <tbody>${files.map((f) => html`<tr>
-            <td data-label="Name" class="u-break"><a href="${FILES}/file/${encodeURIComponent(f.name)}" target="_blank" rel="noopener">${f.name}</a></td>
-            <td data-label="Type">${f.mime}</td><td class="num" data-label="Size">${size(Number(f.bytes))}</td>
-            <td data-label="Loaded by" class="u-break">${includable(f.name) ? (users.get(f.name)?.join(', ') || html`<span class="muted">-</span>`) : ''}</td>
-            <td data-label="Changed">${when(f.changed)}${f.updated_by ? html` <span class="muted">${f.updated_by}</span>` : ''}</td>
-            ${c.admin ? html`<td data-label="Actions" class="nowrap">${editable(f.name) ? html`<a class="btn btn-small" href="${FILES}?edit=${encodeURIComponent(f.name)}">Edit</a> ` : ''}
+            <td data-label="${tx('wres.name')}" class="u-break"><a href="${FILES}/file/${encodeURIComponent(f.name)}" target="_blank" rel="noopener">${f.name}</a></td>
+            <td data-label="${tx('wres.type')}">${f.mime}</td><td class="num" data-label="${tx('wres.size')}">${size(Number(f.bytes))}</td>
+            <td data-label="${tx('wres.loaded_by')}" class="u-break">${includable(f.name) ? (users.get(f.name)?.join(', ') || html`<span class="muted">-</span>`) : ''}</td>
+            <td data-label="${tx('wres.changed')}">${when(f.changed)}${f.updated_by ? html` <span class="muted">${f.updated_by}</span>` : ''}</td>
+            ${c.admin ? html`<td data-label="${tx('wres.actions')}" class="nowrap">${editable(f.name) ? html`<a class="btn btn-small" href="${FILES}?edit=${encodeURIComponent(f.name)}">${tx('wres.edit')}</a> ` : ''}
               <form method="post" action="${FILES}/delete" class="inline">${csrf(s)}<input type="hidden" name="name" value="${f.name}">
-                <button class="btn btn-small btn-danger" data-confirm="Delete ${f.name}? Applications that load it leave it out." aria-label="Delete ${f.name}">${icon('trash')}</button></form></td>` : ''}
+                <button class="btn btn-small btn-danger" data-confirm="${tx('wres.delete_file_confirm', { name: f.name })}" aria-label="${tx('wres.delete_named', { name: f.name })}">${icon('trash')}</button></form></td>` : ''}
           </tr>`)}</tbody></table></div>`
-      : html`<p class="muted">No files yet.</p>`}
-      ${c.admin ? html`<div class="buttons u-mt1"><a class="btn" href="${FILES}?new=1">${icon('plus')} New file</a></div>
+      : html`<p class="muted">${tx('wres.no_files_yet')}</p>`}
+      ${c.admin ? html`<div class="buttons u-mt1"><a class="btn" href="${FILES}?new=1">${icon('plus')} ${tx('wres.new_file')}</a></div>
       <form method="post" action="${FILES}/upload" enctype="multipart/form-data" class="search u-mwnone u-mt1">${csrf(s)}
-        <input type="file" name="file" multiple aria-label="Files to upload" accept="${Object.keys(STATIC_TYPES).map((x) => `.${x}`).join(',')}">
-        <button class="btn">${icon('upload')} Upload</button>
-        <small class="help">A file with the same name is replaced.</small>
+        <input type="file" name="file" multiple aria-label="${tx('wres.files_to_upload')}" accept="${Object.keys(STATIC_TYPES).map((x) => `.${x}`).join(',')}">
+        <button class="btn">${icon('upload')} ${tx('wres.upload')}</button>
+        <small class="help">${tx('wres.a_file_with_the_same')}</small>
       </form>` : ''}`)}`;
 }
 
@@ -170,44 +167,41 @@ async function serversPage(c: Ctx, query: Record<string, string | undefined>) {
     try {
       url = new URL(u.url);
     } catch {
-      return html`<span class="tag tag-error">not a valid URL</span>`;
+      return html`<span class="tag tag-error">${tx('wres.not_a_valid_url')}</span>`;
     }
     const problem = urlProblem(url) ?? scopeProblem(scope, url);
-    return problem ? html`<span class="tag tag-error">refused</span> <span class="muted small">${problem}</span>` : html`<span class="tag tag-ok">may be called</span>`;
+    return problem ? html`<span class="tag tag-error">refused</span> <span class="muted small">${problem}</span>` : html`<span class="tag tag-ok">${tx('wres.may_be_called')}</span>`;
   };
   const form = editing || creating
-    ? region(editing ? `Remote server ${editing.static_id}` : 'New remote server', html`<form method="post" action="${SERVERS}">${csrf(s)}
+    ? region(editing ? tx('wres.server_title', { id: editing.static_id }) : tx('wres.new_remote_server'), html`<form method="post" action="${SERVERS}">${csrf(s)}
         ${editing ? html`<input type="hidden" name="id" value="${editing.id}">` : ''}
         <div class="form-grid">
-          ${input('static_id', 'Static id', v.static_id ?? '', { required: true, placeholder: 'CRM', help: 'Upper case letters, digits and _: REST data sources, catalogs and AI services name the server by it. Renaming it moves this workspace\'s sources and catalogs along.' })}
-          ${input('name', 'Name', v.name ?? '', { required: true, placeholder: 'CRM system' })}
-          ${input('base_url', 'Base URL (this installation)', v.base_url ?? '', { placeholder: 'https://crm.example.com/api', help: 'No trailing slash, query or fragment. Sources add their path after it.' })}
-          ${input('env_var', 'Or from the environment variable', v.env_var ?? '', { placeholder: `${ENV_PREFIX}CRM`, help: `When the server's environment sets it, it wins over the base URL (one value per environment: development, test, production). Only ${ENV_PREFIX}… names.` })}
-          ${input('credential', 'Default web credential', v.credential ?? '', { placeholder: 'e.g. CRM_API', help: 'Sources on this server that name no credential of their own use this one (an application\'s credential of that name, else the workspace\'s).' })}
-          <div class="field" data-wide><label class="label" for="f_description">Description</label><textarea id="f_description" name="description" rows="2">${v.description ?? ''}</textarea></div>
+          ${input('static_id', tx('wres.static_id'), v.static_id ?? '', { required: true, placeholder: 'CRM', help: tx('wres.upper_case_letters_digits_and') })}
+          ${input('name', tx('wres.name'), v.name ?? '', { required: true, placeholder: tx('wres.crm_system') })}
+          ${input('base_url', tx('wres.base_url_this_installation'), v.base_url ?? '', { placeholder: tx('wres.https_crm_example_com_api'), help: tx('wres.no_trailing_slash_query_or') })}
+          ${input('env_var', tx('wres.or_from_the_environment_variable'), v.env_var ?? '', { placeholder: `${ENV_PREFIX}CRM`, help: tx('wres.env_help', { prefix: ENV_PREFIX }) })}
+          ${input('credential', tx('wres.default_web_credential'), v.credential ?? '', { placeholder: tx('wres.e_g_crm_api'), help: tx('wres.sources_on_this_server_that') })}
+          <div class="field" data-wide><label class="label" for="f_description">${tx('wres.description')}</label><textarea id="f_description" name="description" rows="2">${v.description ?? ''}</textarea></div>
         </div>
-        <div class="buttons"><a class="btn" href="${SERVERS}">Cancel</a><button class="btn btn-hot">${icon('check')} Save</button></div></form>
+        <div class="buttons"><a class="btn" href="${SERVERS}">${tx('wres.cancel')}</a><button class="btn btn-hot">${icon('check')} ${tx('wres.save')}</button></div></form>
         ${editing ? html`<form method="post" action="${SERVERS}/${editing.id}/delete" class="danger-zone">${csrf(s)}
-          <button class="btn btn-danger" data-confirm="Delete remote server ${editing.static_id}? Sources on it fail until a server gets its static id again.">Delete server</button></form>` : ''}`, '', 'server-form')
+          <button class="btn btn-danger" data-confirm="${tx('wres.delete_server_confirm', { id: editing.static_id })}">${tx('wres.delete_server')}</button></form>` : ''}`, '', 'server-form')
     : '';
-  return html`<div class="title-row"><h1>Remote servers</h1>${c.admin ? html`<a class="btn" href="${SERVERS}?new=1#server-form">${icon('plus')} New server</a>` : ''}</div>
-    <p class="muted u-mt0">Named base URLs of ${ws.name}: a REST data source, a REST source catalog or an AI service names a server and a path
-      instead of a full URL, so moving from development to production changes one value here (or one environment variable), and every source on
-      the server follows at once. The URL still passes every check a full URL does: the installation's allow-list, this workspace's
-      <a href="${BASE}/network">network access</a> list and the address checks when the call is made.</p>
+  return html`<div class="title-row"><h1>${tx('wres.remote_servers')}</h1>${c.admin ? html`<a class="btn" href="${SERVERS}?new=1#server-form">${icon('plus')} ${tx('wres.new_server')}</a>` : ''}</div>
+    <p class="muted u-mt0">${tx.rich('wres.servers_intro', { workspace: ws.name, network: html`<a href="${BASE}/network">${tx('wres.network_access')}</a>` })}</p>
     ${readOnlyNote(c)}
     ${form}
-    ${region('Servers', html`<div class="table-wrap"><table class="report report-reflow">
-      <thead><tr><th>Server</th><th>URL now</th><th>Network access</th><th>Default credential</th><th>Used by</th></tr></thead>
+    ${region(tx('wres.servers'), html`<div class="table-wrap"><table class="report report-reflow">
+      <thead><tr><th>${tx('wres.server')}</th><th>${tx('wres.url_now')}</th><th>${tx('wres.network_access_2')}</th><th>${tx('wres.default_credential')}</th><th>${tx('wres.used_by')}</th></tr></thead>
       <tbody>${servers.length ? servers.map((x) => {
         const u = serverUrl(x);
         return html`<tr>
-          <td data-label="Server">${c.admin ? html`<a href="${SERVERS}?edit=${x.id}#server-form">${x.static_id}</a>` : x.static_id}<br><span class="muted small">${x.name}</span></td>
-          <td data-label="URL now" class="u-break">${u.url ? html`<code>${u.url}</code>` : ''}<br><span class="muted small">${u.from === 'env' ? `from ${x.env_var}` : x.env_var ? `stored (${x.env_var} is not set)` : 'stored'}</span></td>
-          <td data-label="Network access">${verdict(x)}</td>
-          <td data-label="Default credential">${x.credential ?? html`<span class="muted">none</span>`}</td>
-          <td data-label="Used by" class="u-break">${users.get(x.static_id)?.join(', ') || html`<span class="muted">nothing yet</span>`}</td></tr>`;
-      }) : html`<tr><td colspan="5" class="empty">No remote servers yet.</td></tr>`}</tbody></table></div>`)}`;
+          <td data-label="${tx('wres.server')}">${c.admin ? html`<a href="${SERVERS}?edit=${x.id}#server-form">${x.static_id}</a>` : x.static_id}<br><span class="muted small">${x.name}</span></td>
+          <td data-label="${tx('wres.url_now')}" class="u-break">${u.url ? html`<code>${u.url}</code>` : ''}<br><span class="muted small">${u.from === 'env' ? `from ${x.env_var}` : x.env_var ? `stored (${x.env_var} is not set)` : 'stored'}</span></td>
+          <td data-label="${tx('wres.network_access_2')}">${verdict(x)}</td>
+          <td data-label="${tx('wres.default_credential')}">${x.credential ?? html`<span class="muted">none</span>`}</td>
+          <td data-label="${tx('wres.used_by')}" class="u-break">${users.get(x.static_id)?.join(', ') || html`<span class="muted">${tx('wres.nothing_yet')}</span>`}</td></tr>`;
+      }) : html`<tr><td colspan="5" class="empty">${tx('wres.no_remote_servers_yet')}</td></tr>`}</tbody></table></div>`)}`;
 }
 
 // ====================================================================== workspace web credentials
@@ -246,47 +240,45 @@ async function credentialsPage(c: Ctx, query: Record<string, string | undefined>
   const creating = c.admin && query.new === '1';
   const v: Partial<CredentialRow> = editing ?? { type: 'basic', grant_type: 'client_credentials' };
   const secret = (name: string, label: string, stored: boolean | undefined, help: string) =>
-    html`${input(name, label, '', { type: 'password', auto: 'new-password', help: `${help} ${stored ? 'One is stored (encrypted): it is never shown; type a new one to replace it.' : 'Write-only: never shown again or exported.'}` })}
-      ${stored ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_${name}" value="true"> Remove the stored ${label.toLowerCase()}</label></div>` : ''}`;
+    html`${input(name, label, '', { type: 'password', auto: 'new-password', help: `${help} ${stored ? tx('wres.one_is_stored_encrypted_it') : tx('wres.write_only_never_shown_again')}` })}
+      ${stored ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_${name}" value="true"> ${tx('wres.remove_stored', { what: label.toLowerCase() })}</label></div>` : ''}`;
   const form = editing || creating
-    ? region(editing ? `Web credential ${editing.name}` : 'New web credential', html`<form method="post" action="${CREDS}">${csrf(s)}
+    ? region(editing ? tx('wres.credential_title', { name: editing.name }) : tx('wres.new_web_credential'), html`<form method="post" action="${CREDS}">${csrf(s)}
         ${editing ? html`<input type="hidden" name="id" value="${editing.id}">` : ''}
-        ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: secrets can't be stored until it is set.</div>`}
+        ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">${tx.code('wres.no_secret_key')}</div>`}
         <div class="form-grid">
-          ${input('name', 'Name', v.name ?? '', { required: true, placeholder: 'CRM_API', help: 'The applications of the workspace use it by this name (an application\'s own credential of the same name wins).' })}
-          ${select('type', 'Authentication', v.type ?? 'basic', ['basic', 'header', 'bearer', 'oauth2', 'aws_sigv4'], 'basic: user name + password · header: an HTTP header with the secret (API key) · bearer: Authorization: Bearer <secret> · oauth2: client credentials, password or refresh token grant · aws_sigv4: an S3-compatible object store.')}
-          ${input('username', 'User name / client id / access key id', v.username ?? '')}
-          ${select('grant_type', 'Grant type (oauth2)', v.grant_type ?? 'client_credentials', GRANT_TYPES)}
-          ${input('oauth_username', 'OAuth2 user name (password grant)', v.oauth_username ?? '')}
-          ${input('header_name', 'Header name (header)', v.header_name ?? '', { placeholder: 'X-API-Key' })}
-          ${input('token_url', 'Token URL (oauth2)', v.token_url ?? '', { placeholder: 'https://login.example.com/oauth/token' })}
-          ${input('scope', 'Scope (oauth2) / region (aws_sigv4)', v.scope ?? '')}
-          ${input('valid_for', 'Valid for URLs', (v.valid_for ?? []).join(', '), { placeholder: 'https://crm.example.com/api/', help: 'Comma separated URL prefixes: the credential is only ever sent to these. Recommended.' })}
-          ${secret('secret', 'Secret', v.has_secret, 'The password, header value, token, client secret or secret access key.')}
-          ${secret('password', 'OAuth2 password', v.has_password, 'The password grant: the OAuth2 user\'s password.')}
-          ${secret('refresh_token', 'Refresh token', v.has_refresh, 'The refresh token grant: a refresh token to start with.')}
-          <div class="field" data-wide><label class="label" for="f_description">Description</label><textarea id="f_description" name="description" rows="2">${v.description ?? ''}</textarea></div>
+          ${input('name', tx('wres.name'), v.name ?? '', { required: true, placeholder: 'CRM_API', help: tx('wres.the_applications_of_the_workspace') })}
+          ${select('type', tx('wres.authentication'), v.type ?? 'basic', ['basic', 'header', 'bearer', 'oauth2', 'aws_sigv4'], tx('wres.type_help'))}
+          ${input('username', tx('wres.user_name_client_id_access'), v.username ?? '')}
+          ${select('grant_type', tx('wres.grant_type_oauth2'), v.grant_type ?? 'client_credentials', GRANT_TYPES)}
+          ${input('oauth_username', tx('wres.oauth2_user_name_password_grant'), v.oauth_username ?? '')}
+          ${input('header_name', tx('wres.header_name_header'), v.header_name ?? '', { placeholder: tx('wres.x_api_key') })}
+          ${input('token_url', tx('wres.token_url_oauth2'), v.token_url ?? '', { placeholder: tx('wres.https_login_example_com_oauth') })}
+          ${input('scope', tx('wres.scope_oauth2_region_aws_sigv4'), v.scope ?? '')}
+          ${input('valid_for', tx('wres.valid_for_urls'), (v.valid_for ?? []).join(', '), { placeholder: tx('wres.https_crm_example_com_api_2'), help: tx('wres.comma_separated_url_prefixes_the') })}
+          ${secret('secret', tx('wres.secret'), v.has_secret, tx('wres.the_password_header_value_token'))}
+          ${secret('password', 'OAuth2 password', v.has_password, tx('wres.the_password_grant_the_oauth2'))}
+          ${secret('refresh_token', tx('wres.refresh_token'), v.has_refresh, tx('wres.the_refresh_token_grant_a'))}
+          <div class="field" data-wide><label class="label" for="f_description">${tx('wres.description')}</label><textarea id="f_description" name="description" rows="2">${v.description ?? ''}</textarea></div>
         </div>
-        <div class="buttons"><a class="btn" href="${CREDS}">Cancel</a><button class="btn btn-hot">${icon('check')} Save</button></div></form>
+        <div class="buttons"><a class="btn" href="${CREDS}">${tx('wres.cancel')}</a><button class="btn btn-hot">${icon('check')} ${tx('wres.save')}</button></div></form>
         ${editing ? html`<form method="post" action="${CREDS}/${editing.id}/delete" class="danger-zone">${csrf(s)}
-          <button class="btn btn-danger" data-confirm="Delete web credential ${editing.name}? Applications that use it fail until one of that name exists.">Delete credential</button></form>` : ''}`, '', 'credential-form')
+          <button class="btn btn-danger" data-confirm="${tx('wres.delete_credential_confirm', { name: editing.name })}">${tx('wres.delete_credential')}</button></form>` : ''}`, '', 'credential-form')
     : '';
-  return html`<div class="title-row"><h1>Workspace web credentials</h1>${c.admin ? html`<a class="btn" href="${CREDS}?new=1#credential-form">${icon('plus')} New credential</a>` : ''}</div>
-    <p class="muted u-mt0">Web credentials of ${ws.name} that its applications use by name in REST data sources, the Invoke API process,
-      remote servers and object storage, so a key is entered once for the workspace. An application's own credential (Shared Components →
-      Web credentials) with the same name wins. Secrets are encrypted with the server's key, never shown again and never exported.</p>
+  return html`<div class="title-row"><h1>${tx('wres.workspace_web_credentials')}</h1>${c.admin ? html`<a class="btn" href="${CREDS}?new=1#credential-form">${icon('plus')} ${tx('wres.new_credential')}</a>` : ''}</div>
+    <p class="muted u-mt0">${tx('wres.credentials_intro', { workspace: ws.name })}</p>
     ${readOnlyNote(c)}
     ${form}
-    ${region('Credentials', html`<div class="table-wrap"><table class="report report-reflow">
-      <thead><tr><th>Name</th><th>Authentication</th><th>Secret</th><th>Valid for</th><th>Overridden by</th><th>Changed (UTC)</th></tr></thead>
+    ${region(tx('wres.credentials'), html`<div class="table-wrap"><table class="report report-reflow">
+      <thead><tr><th>${tx('wres.name')}</th><th>${tx('wres.authentication')}</th><th>${tx('wres.secret')}</th><th>${tx('wres.valid_for')}</th><th>${tx('wres.overridden_by')}</th><th>${tx('wres.changed_utc')}</th></tr></thead>
       <tbody>${creds.length ? creds.map((x) => html`<tr>
-        <td data-label="Name">${c.admin ? html`<a href="${CREDS}?edit=${x.id}#credential-form">${x.name}</a>` : x.name}${x.description ? html`<br><span class="muted small">${x.description}</span>` : ''}</td>
-        <td data-label="Authentication">${x.type}${x.type === 'oauth2' ? html` <span class="muted">(${x.grant_type})</span>` : ''}</td>
-        <td data-label="Secret">${x.has_secret || x.has_password || x.has_refresh ? 'stored (encrypted)' : html`<span class="muted">none yet</span>`}</td>
-        <td data-label="Valid for" class="u-break">${x.valid_for.length ? x.valid_for.join(', ') : html`<span class="muted">any URL</span>`}</td>
-        <td data-label="Overridden by" class="u-break">${shadowed.find((r) => r.name === x.name)?.apps ?? html`<span class="muted">-</span>`}</td>
-        <td data-label="Changed">${when(x.updated_at)}${x.updated_by ? html` <span class="muted">${x.updated_by}</span>` : ''}</td></tr>`)
-        : html`<tr><td colspan="6" class="empty">No workspace web credentials yet.</td></tr>`}</tbody></table></div>`)}`;
+        <td data-label="${tx('wres.name')}">${c.admin ? html`<a href="${CREDS}?edit=${x.id}#credential-form">${x.name}</a>` : x.name}${x.description ? html`<br><span class="muted small">${x.description}</span>` : ''}</td>
+        <td data-label="${tx('wres.authentication')}">${x.type}${x.type === 'oauth2' ? html` <span class="muted">(${x.grant_type})</span>` : ''}</td>
+        <td data-label="${tx('wres.secret')}">${x.has_secret || x.has_password || x.has_refresh ? 'stored (encrypted)' : html`<span class="muted">${tx('wres.none_yet')}</span>`}</td>
+        <td data-label="${tx('wres.valid_for')}" class="u-break">${x.valid_for.length ? x.valid_for.join(', ') : html`<span class="muted">${tx('wres.any_url')}</span>`}</td>
+        <td data-label="${tx('wres.overridden_by')}" class="u-break">${shadowed.find((r) => r.name === x.name)?.apps ?? html`<span class="muted">-</span>`}</td>
+        <td data-label="${tx('wres.changed')}">${when(x.updated_at)}${x.updated_by ? html` <span class="muted">${x.updated_by}</span>` : ''}</td></tr>`)
+        : html`<tr><td colspan="6" class="empty">${tx('wres.no_workspace_web_credentials_yet')}</td></tr>`}</tbody></table></div>`)}`;
 }
 
 // ====================================================================== routes
@@ -294,14 +286,14 @@ async function credentialsPage(c: Ctx, query: Record<string, string | undefined>
 export async function workspaceResourceRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- files
   app.get(FILES, async (req: Req, reply) => {
-    const c = await context(req, reply, 'Static workspace files');
+    const c = await context(req, reply, tx('wres.files_title'));
     if (!c) return;
-    return send(reply, c.s, shell(c.s, 'Static workspace files', crumbs('Static workspace files'), await filesPage(c, req.query ?? {})));
+    return send(reply, c.s, shell(c.s, tx('wres.files_title'), crumbs(tx('wres.files_title')), await filesPage(c, req.query ?? {})));
   });
 
   // a file for the workspace's developers, with the headers the applications serve it with
   app.get(`${FILES}/file/:name`, async (req: Req, reply) => {
-    const c = await context(req, reply, 'Static workspace files');
+    const c = await context(req, reply, tx('wres.files_title'));
     if (!c) return;
     const type = staticType(String(req.params.name));
     const f = type ? await owner.one<{ content: Buffer }>('select content from meta.workspace_file where workspace_id = $1 and name = $2', [c.ws.id, req.params.name]) : null;
@@ -320,11 +312,11 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       req.body = parsed.body as Body;
       uploads = parsed.lists.get('file') ?? [];
     }
-    const c = await manager(req, reply, 'Static workspace files');
+    const c = await manager(req, reply, tx('wres.files_title'));
     if (!c) return;
     const { s } = c;
     if (!uploads.length) {
-      flash(s, 'Choose one or more files.', 'error');
+      flash(s, tx('wres.choose_one_or_more_files'), 'error');
       return back(reply, s, FILES);
     }
     const saved: string[] = [];
@@ -346,7 +338,7 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
   });
 
   app.post(`${FILES}/save`, async (req: Req, reply) => {
-    const c = await manager(req, reply, 'Static workspace files');
+    const c = await manager(req, reply, tx('wres.files_title'));
     if (!c) return;
     const { s } = c;
     const b = req.body ?? {};
@@ -355,47 +347,47 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
     const type = staticType(name);
     const content = Buffer.from(String(b.content ?? '').replace(/\r\n/g, '\n'), 'utf8');
     if (!type || !editable(name)) {
-      flash(s, 'The name must end in a text type (.js, .css, .json, .txt, .csv, .md, .map) and use letters, digits, _, - and . only.', 'error');
+      flash(s, tx('wres.the_name_must_end_in'), 'error');
       return back(reply, s, original ? `${FILES}?edit=${encodeURIComponent(original)}` : `${FILES}?new=1`);
     }
     if (content.length > STATIC_MAX) {
-      flash(s, `The file is larger than ${size(STATIC_MAX)}.`, 'error');
+      flash(s, tx('wres.too_large', { size: size(STATIC_MAX) }), 'error');
       return back(reply, s, FILES);
     }
     try {
       if (original && original !== name) {
         const r = await owner.query('update meta.workspace_file set name = $3, mime = $4, content = $5, updated_by = $6, updated_at = now() where workspace_id = $1 and name = $2',
           [c.ws.id, original, name, type, content, s.username]);
-        if (!r.rowCount) throw new Error('No such file.');
+        if (!r.rowCount) throw new Error(tx('wres.no_such_file'));
       } else await storeFile(c.ws.id, name, type, content, s.username);
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${c.ws.id} file saved: ${name}` });
       flash(s, `${name} saved.`);
       return back(reply, s, `${FILES}?edit=${encodeURIComponent(name)}`);
     } catch (e) {
-      flash(s, (e as Error).message.includes('workspace_file_workspace_id_name_key') ? `There is a file ${name} already.` : (e as Error).message, 'error');
+      flash(s, (e as Error).message.includes('workspace_file_workspace_id_name_key') ? tx('wres.file_exists', { name }) : (e as Error).message, 'error');
       return back(reply, s, FILES);
     }
   });
 
   app.post(`${FILES}/delete`, async (req: Req, reply) => {
-    const c = await manager(req, reply, 'Static workspace files');
+    const c = await manager(req, reply, tx('wres.files_title'));
     if (!c) return;
     const name = String(req.body?.name ?? '');
     const r = await owner.query('delete from meta.workspace_file where workspace_id = $1 and name = $2', [c.ws.id, name]);
     if (r.rowCount) await logActivity({ appId: null, username: c.s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${c.ws.id} file deleted: ${name}` });
-    flash(c.s, r.rowCount ? `${name} deleted.` : 'No such file.', r.rowCount ? 'ok' : 'error');
+    flash(c.s, r.rowCount ? `${name} deleted.` : tx('wres.no_such_file'), r.rowCount ? 'ok' : 'error');
     return back(reply, c.s, FILES);
   });
 
   // ---------------------------------------------------------------- remote servers
   app.get(SERVERS, async (req: Req, reply) => {
-    const c = await context(req, reply, 'Remote servers');
+    const c = await context(req, reply, tx('wres.servers_title'));
     if (!c) return;
-    return send(reply, c.s, shell(c.s, 'Remote servers', crumbs('Remote servers'), await serversPage(c, req.query ?? {})));
+    return send(reply, c.s, shell(c.s, tx('wres.servers_title'), crumbs(tx('wres.servers_title')), await serversPage(c, req.query ?? {})));
   });
 
   app.post(SERVERS, async (req: Req, reply) => {
-    const c = await manager(req, reply, 'Remote servers');
+    const c = await manager(req, reply, tx('wres.servers_title'));
     if (!c) return;
     const { s } = c;
     const b = req.body ?? {};
@@ -415,7 +407,7 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       await owner.tx(async (db) => {
         if (editId) {
           const old = (await db.query<{ static_id: string }>('select static_id from meta.remote_server where id = $1 and workspace_id = $2 for update', [editId, c.ws.id])).rows[0];
-          if (!old) throw new Error('No such remote server.');
+          if (!old) throw new Error(tx('wres.no_such_remote_server'));
           await db.query(
             `update meta.remote_server set static_id = $3, name = $4, description = $5, base_url = $6, env_var = $7, credential = $8, updated_by = $9, updated_at = now()
               where id = $1 and workspace_id = $2`, [editId, c.ws.id, v.static_id, v.name, v.description, v.base_url, v.env_var, v.credential, s.username]);
@@ -433,35 +425,35 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       clearResponseCache();
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req),
         detail: `workspace ${c.ws.id} remote server ${v.static_id} ${editId ? 'changed' : 'added'}: ${v.base_url ?? ''}${v.env_var ? ` (${v.env_var})` : ''}`.slice(0, 1000) });
-      flash(s, `Remote server ${v.static_id} saved.`);
+      flash(s, tx('wres.server_saved', { id: v.static_id }));
       return back(reply, s, SERVERS);
     } catch (e) {
-      flash(s, (e as Error).message.includes('remote_server_workspace_id_static_id_key') ? `This workspace has a remote server ${v.static_id} already.` : (e as Error).message, 'error');
+      flash(s, (e as Error).message.includes('remote_server_workspace_id_static_id_key') ? tx('wres.server_exists', { id: v.static_id }) : (e as Error).message, 'error');
       return back(reply, s, retry);
     }
   });
 
   app.post(`${SERVERS}/:sid/delete`, async (req: Req, reply) => {
-    const c = await manager(req, reply, 'Remote servers');
+    const c = await manager(req, reply, tx('wres.servers_title'));
     if (!c) return;
     const r = await owner.one<{ static_id: string }>('delete from meta.remote_server where id = $1 and workspace_id = $2 returning static_id', [id(req.params.sid), c.ws.id]);
     if (r) {
       clearResponseCache();
       await logActivity({ appId: null, username: c.s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${c.ws.id} remote server ${r.static_id} deleted` });
     }
-    flash(c.s, r ? `Remote server ${r.static_id} deleted.` : 'No such remote server.', r ? 'ok' : 'error');
+    flash(c.s, r ? tx('wres.server_deleted', { id: r.static_id }) : tx('wres.no_such_remote_server'), r ? 'ok' : 'error');
     return back(reply, c.s, SERVERS);
   });
 
   // ---------------------------------------------------------------- web credentials
   app.get(CREDS, async (req: Req, reply) => {
-    const c = await context(req, reply, 'Workspace web credentials');
+    const c = await context(req, reply, tx('wres.credentials_title'));
     if (!c) return;
-    return send(reply, c.s, shell(c.s, 'Workspace web credentials', crumbs('Workspace web credentials'), await credentialsPage(c, req.query ?? {})));
+    return send(reply, c.s, shell(c.s, tx('wres.credentials_title'), crumbs(tx('wres.credentials_title')), await credentialsPage(c, req.query ?? {})));
   });
 
   app.post(CREDS, async (req: Req, reply) => {
-    const c = await manager(req, reply, 'Workspace web credentials');
+    const c = await manager(req, reply, tx('wres.credentials_title'));
     if (!c) return;
     const { s } = c;
     const b = req.body ?? {};
@@ -475,7 +467,7 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       valid_for: [...new Set(String(b.valid_for ?? '').split(',').map((x) => x.trim()).filter(Boolean))],
       grant_type: GRANT_TYPES.includes(String(b.grant_type)) ? String(b.grant_type) : 'client_credentials', oauth_username: text('oauth_username'),
     };
-    const problems = [...(/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name) ? [] : ['The name is upper case letters, digits and _, starting with a letter, e.g. CRM_API.']), ...credentialProblems(v)];
+    const problems = [...(/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name) ? [] : [tx('wres.the_name_is_upper_case')]), ...credentialProblems(v)];
     if (problems.length) {
       flash(s, problems.join(' '), 'error');
       return back(reply, s, retry);
@@ -495,7 +487,7 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
                   ${sets.join(', ')}, token_refreshed_at = case when $18::text is not null or $19 then null else token_refreshed_at end
             where id = $1 and workspace_id = $2`,
           [editId, c.ws.id, ...vals, s.username, secrets.secret_enc, remove.secret_enc, secrets.password_enc, remove.password_enc, secrets.refresh_token_enc, remove.refresh_token_enc]);
-        if (!r.rowCount) throw new Error('No such web credential.');
+        if (!r.rowCount) throw new Error(tx('wres.no_such_web_credential'));
         clearTokens(`w${editId}`);
       } else
         await owner.query(
@@ -504,16 +496,16 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
           [c.ws.id, ...vals, s.username, secrets.secret_enc, secrets.password_enc, secrets.refresh_token_enc]);
       clearResponseCache();
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${c.ws.id} web credential ${v.name} ${editId ? 'changed' : 'added'}` });
-      flash(s, `Web credential ${v.name} saved.`);
+      flash(s, tx('wres.credential_saved', { name: v.name }));
       return back(reply, s, CREDS);
     } catch (e) {
-      flash(s, (e as Error).message.includes('workspace_credential_workspace_id_name_key') ? `This workspace has a web credential ${v.name} already.` : (e as Error).message, 'error');
+      flash(s, (e as Error).message.includes('workspace_credential_workspace_id_name_key') ? tx('wres.credential_exists', { name: v.name }) : (e as Error).message, 'error');
       return back(reply, s, retry);
     }
   });
 
   app.post(`${CREDS}/:cid/delete`, async (req: Req, reply) => {
-    const c = await manager(req, reply, 'Workspace web credentials');
+    const c = await manager(req, reply, tx('wres.credentials_title'));
     if (!c) return;
     const r = await owner.one<{ id: number; name: string }>('delete from meta.workspace_credential where id = $1 and workspace_id = $2 returning id, name', [id(req.params.cid), c.ws.id]);
     if (r) {
@@ -521,7 +513,7 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       clearResponseCache();
       await logActivity({ appId: null, username: c.s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${c.ws.id} web credential ${r.name} deleted` });
     }
-    flash(c.s, r ? `Web credential ${r.name} deleted.` : 'No such web credential.', r ? 'ok' : 'error');
+    flash(c.s, r ? tx('wres.credential_deleted', { name: r.name }) : tx('wres.no_such_web_credential'), r ? 'ok' : 'error');
     return back(reply, c.s, CREDS);
   });
 }

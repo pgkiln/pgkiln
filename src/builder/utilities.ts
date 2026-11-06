@@ -6,6 +6,7 @@ import { html, raw, type Raw } from '../html.ts';
 import { icon, ICONS, LUCIDE_VERSION, lucideNames, searchIcons } from '../icons.ts';
 import { appOfPath } from './locks.ts';
 import { appHeader, BASE, designerUrl, developer, region, select, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 138, AP-5) App Builder → an application's Utilities (APEX: Application
 // Utilities): one page for what an application's maintenance needs, the tools
@@ -76,34 +77,34 @@ export async function utilityRoutes(app: FastifyInstance) {
     const u = `${BASE}/apps/${a.id}`;
     const main = html`${appHeader(a, 'utilities', s)}
       <div class="ab-tiles ab-tiles-wrap util-tiles">
-        ${card(`${u}/advisor`, 'check', 'Advisor', 'Plans every SQL statement as the application\'s role and checks every reference.')}
-        ${card(`${u}/utilities/dependencies`, 'database', 'Database object dependencies', 'The tables, views, sequences and functions the application uses, missing ones and missing grants.')}
-        ${card(`${u}/utilities/history`, 'history', 'Change history', 'Who changed which component and when, with the differences.')}
-        ${card(`${u}/utilities/upgrade`, 'refresh', 'Upgrade application', 'Components that can use a newer default of this pgkiln version.')}
-        ${card(`${BASE}/ui-defaults`, 'sliders-horizontal', 'UI defaults', 'Labels, format masks, help and lists of values per table column, used by the page wizards.')}
-        ${card(`${u}/search`, 'search', 'Search', 'Names, SQL, conditions, settings and help texts of every component.')}
-        ${card(`${u}/debug`, 'list', 'Debug messages', 'Timed steps of each request and messages from meta.debug().')}
-        ${card(`${u}/activity`, 'activity', 'Activity', 'Page views, errors, sign-ins and the application\'s logs.')}
-        ${card(`${u}/backups`, 'archive', 'Backups', 'Back up now, download and restore earlier versions.')}
-        ${card(`${u}/working-copies`, 'layers', 'Working copies', 'Change a copy, compare it and merge it back.')}
-        ${card(`${u}/export`, 'download', 'Export', `The application as a file (checksum ${shortSum(sum)}).`)}
-        ${card(`${BASE}/icons`, 'image', 'Icons', 'Browse the icons the icon picker offers.')}
+        ${card(`${u}/advisor`, 'check', tx('util.c_advisor'), tx('util.plans_every_sql_statement_as'))}
+        ${card(`${u}/utilities/dependencies`, 'database', tx('util.c_deps'), tx('util.the_tables_views_sequences_and'))}
+        ${card(`${u}/utilities/history`, 'history', tx('util.c_history'), tx('util.who_changed_which_component_and'))}
+        ${card(`${u}/utilities/upgrade`, 'refresh', tx('util.c_upgrade'), tx('util.components_that_can_use_a'))}
+        ${card(`${BASE}/ui-defaults`, 'sliders-horizontal', tx('util.c_ui_defaults'), tx('util.labels_format_masks_help_and'))}
+        ${card(`${u}/search`, 'search', tx('util.c_search'), tx('util.names_sql_conditions_settings_and'))}
+        ${card(`${u}/debug`, 'list', tx('util.c_debug'), tx('util.timed_steps_of_each_request'))}
+        ${card(`${u}/activity`, 'activity', tx('util.c_activity'), tx('util.page_views_errors_sign_ins'))}
+        ${card(`${u}/backups`, 'archive', tx('util.c_backups'), tx('util.back_up_now_download_and'))}
+        ${card(`${u}/working-copies`, 'layers', tx('util.c_wc'), tx('util.change_a_copy_compare_it'))}
+        ${card(`${u}/export`, 'download', tx('util.c_export'), tx('util.export_text', { sum: shortSum(sum) }))}
+        ${card(`${BASE}/icons`, 'image', tx('util.c_icons'), tx('util.browse_the_icons_the_icon'))}
       </div>
-      ${region('Application dashboard', html`<dl class="util-stats">
-          <div><dt>Pages</dt><dd>${counts.pages}</dd></div><div><dt>Regions</dt><dd>${counts.regions}</dd></div>
-          <div><dt>Items</dt><dd>${counts.items}</dd></div><div><dt>Processes</dt><dd>${counts.processes}</dd></div>
-          <div><dt>Lists of values</dt><dd>${counts.lovs}</dd></div><div><dt>Changes in 7 days</dt><dd>${counts.week}</dd></div>
+      ${region(tx('util.application_dashboard'), html`<dl class="util-stats">
+          <div><dt>${tx('util.pages')}</dt><dd>${counts.pages}</dd></div><div><dt>${tx('util.regions')}</dt><dd>${counts.regions}</dd></div>
+          <div><dt>${tx('util.items')}</dt><dd>${counts.items}</dd></div><div><dt>${tx('util.processes')}</dt><dd>${counts.processes}</dd></div>
+          <div><dt>${tx('util.lists_of_values')}</dt><dd>${counts.lovs}</dd></div><div><dt>${tx('util.changes_in_7_days')}</dt><dd>${counts.week}</dd></div>
         </dl>`)}
-      ${region('Recently updated pages', recent.length
-        ? html`<div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">Page</th><th scope="col">Last change</th><th scope="col">By</th><th scope="col">Changes</th></tr></thead><tbody>
-            ${recent.map((r) => html`<tr><td data-label="Page"><a href="${designerUrl(a.id, r.page_no)}">${r.page_no}${pageName.has(r.page_no) ? `: ${pageName.get(r.page_no)}` : ''}</a></td><td data-label="Last change">${when(r.changed_at)}</td>
-              <td data-label="By">${r.changed_by ?? 'command line'}</td><td data-label="Changes"><a href="${u}/utilities/history?page=${r.page_no}">${r.n}</a></td></tr>`)}</tbody></table></div>`
-        : html`<p class="muted u-mt0">No recorded changes yet: the change history starts with the first change after the upgrade to this version.</p>`)}
-      ${region('Application checksum', html`<p class="u-mt0">The checksum of the application's definition (its export without the alias): the same definition gives the same checksum on any installation, so two installations, or an application and its working copy, compare at a glance.</p>
+      ${region(tx('util.recently_updated_pages'), recent.length
+        ? html`<div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">${tx('util.page')}</th><th scope="col">${tx('util.last_change')}</th><th scope="col">${tx('util.by')}</th><th scope="col">${tx('util.changes')}</th></tr></thead><tbody>
+            ${recent.map((r) => html`<tr><td data-label="${tx('util.page')}"><a href="${designerUrl(a.id, r.page_no)}">${r.page_no}${pageName.has(r.page_no) ? `: ${pageName.get(r.page_no)}` : ''}</a></td><td data-label="${tx('util.last_change')}">${when(r.changed_at)}</td>
+              <td data-label="${tx('util.by')}">${r.changed_by ?? 'command line'}</td><td data-label="${tx('util.changes')}"><a href="${u}/utilities/history?page=${r.page_no}">${r.n}</a></td></tr>`)}</tbody></table></div>`
+        : html`<p class="muted u-mt0">${tx('util.no_recorded_changes_yet_the')}</p>`)}
+      ${region(tx('util.application_checksum'), html`<p class="u-mt0">${tx('util.the_checksum_of_the_application')}</p>
         <p class="util-sum"><code>${sum}</code></p>
-        <details><summary>Page checksums (${pageSums.size})</summary><div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">Page</th><th scope="col">Checksum</th></tr></thead><tbody>
-          ${[...pageSums].map(([p, h]) => html`<tr><td data-label="Page">${p}${pageName.has(p) ? `: ${pageName.get(p)}` : ''}</td><td data-label="Checksum"><code>${shortSum(h)}</code></td></tr>`)}</tbody></table></div></details>`, '', 'checksum')}`;
-    return send(reply, s, shell(s, `Utilities · ${a.name}`, [['App Builder', BASE], [a.name, u], ['Utilities']], main));
+        <details><summary>Page checksums (${pageSums.size})</summary><div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">${tx('util.page')}</th><th scope="col">${tx('util.checksum')}</th></tr></thead><tbody>
+          ${[...pageSums].map(([p, h]) => html`<tr><td data-label="${tx('util.page')}">${p}${pageName.has(p) ? `: ${pageName.get(p)}` : ''}</td><td data-label="${tx('util.checksum')}"><code>${shortSum(h)}</code></td></tr>`)}</tbody></table></div></details>`, '', 'checksum')}`;
+    return send(reply, s, shell(s, tx('util.title', { app: a.name }), [[tx('util.app_builder'), BASE], [a.name, u], [tx('util.utilities')]], main));
   });
 
   // ---------------------------------------------------------------- change history
@@ -141,23 +142,23 @@ export async function utilityRoutes(app: FastifyInstance) {
     const link = (id: string) => `?${new URLSearchParams([...keep, ['c', id]])}#change`;
     const OPS: Record<string, string> = { added: 'tag-info', changed: 'tag-warning', deleted: 'tag-error' };
     const main = html`${appHeader(a, 'utilities', s)}
-      ${region('Change history', html`<p class="muted u-mt0">Every change made in the builder (and every import, restore or merge) is compared with the application before it: each component that was added, changed or deleted is listed here with who and when. Changes from the command line or the MCP server have no developer.</p>
+      ${region(tx('util.change_history'), html`<p class="muted u-mt0">${tx('util.every_change_made_in_the')}</p>
         <form method="get" class="util-filters">
-          ${select('dev', 'Developer', dev, [['', 'All'], ...devs.map((d): [string, string] => (d === null ? ['(command line)', 'Command line / import'] : [d, d]))])}
-          <div class="field"><label class="label" for="f_from">From</label><input id="f_from" name="from" type="date" value="${from}"></div>
-          <div class="field"><label class="label" for="f_to">To</label><input id="f_to" name="to" type="date" value="${to}"></div>
-          <div class="field"><label class="label" for="f_page">Page</label><input id="f_page" name="page" type="number" value="${page ?? ''}"></div>
-          <div class="field"><label class="label" for="f_q">Component</label><input id="f_q" name="q" type="search" value="${text}" placeholder="e.g. P3_ID"></div>
-          <div class="buttons"><button class="btn btn-sm">${icon('filter')} Show</button></div></form>
+          ${select('dev', tx('util.developer'), dev, [['', tx('util.all')], ...devs.map((d): [string, string] => (d === null ? ['(command line)', tx('util.cmd_line')] : [d, d]))])}
+          <div class="field"><label class="label" for="f_from">${tx('util.from')}</label><input id="f_from" name="from" type="date" value="${from}"></div>
+          <div class="field"><label class="label" for="f_to">${tx('util.to')}</label><input id="f_to" name="to" type="date" value="${to}"></div>
+          <div class="field"><label class="label" for="f_page">${tx('util.page')}</label><input id="f_page" name="page" type="number" value="${page ?? ''}"></div>
+          <div class="field"><label class="label" for="f_q">${tx('util.component')}</label><input id="f_q" name="q" type="search" value="${text}" placeholder="${tx('util.e_g_p3_id')}"></div>
+          <div class="buttons"><button class="btn btn-sm">${icon('filter')} ${tx('util.show')}</button></div></form>
         ${rows.length
-          ? html`<div class="table-wrap"><table class="table util-history report-reflow"><thead><tr><th scope="col">When</th><th scope="col">Developer</th><th scope="col">Component</th><th scope="col">Change</th><th scope="col">Differences</th></tr></thead><tbody>
-              ${rows.map((r) => html`<tr${r.id === shown ? raw(' aria-current="true"') : ''}><td data-label="When">${when(r.changed_at)}</td><td data-label="Developer">${r.changed_by ?? html`<span class="muted">${r.source === 'import' ? 'import' : 'command line'}</span>`}</td>
-                <td data-label="Component"><a href="${componentUrl(a.id, r.page_no)}">${r.label}</a></td>
-                <td data-label="Change"><span class="tag ${OPS[r.op] ?? ''}">${r.op}</span>${r.source !== 'builder' ? html` <span class="tag">${r.source}</span>` : ''}</td>
-                <td data-label="Differences"><a class="btn btn-sm" href="${link(r.id)}">Show</a></td></tr>`)}</tbody></table></div>`
-          : html`<p class="muted">No changes${where.length > 1 ? ' with these filters' : ' recorded yet'}.</p>`}`)}
-      ${detail ? region(`Differences: ${detail.label}`, html`<p class="muted u-mt0">${detail.op} by ${detail.changed_by ?? 'the command line'}, ${when(detail.changed_at)}. Lines with <code>-</code> are before the change, lines with <code>+</code> after it.</p>${changeDiff(detail.before, detail.after)}`, '', 'change') : ''}`;
-    return send(reply, s, shell(s, `Change history · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Utilities', `${BASE}/apps/${a.id}/utilities`], ['Change history']], main));
+          ? html`<div class="table-wrap"><table class="table util-history report-reflow"><thead><tr><th scope="col">${tx('util.when')}</th><th scope="col">${tx('util.developer')}</th><th scope="col">${tx('util.component')}</th><th scope="col">${tx('util.change')}</th><th scope="col">${tx('util.differences')}</th></tr></thead><tbody>
+              ${rows.map((r) => html`<tr${r.id === shown ? raw(' aria-current="true"') : ''}><td data-label="${tx('util.when')}">${when(r.changed_at)}</td><td data-label="${tx('util.developer')}">${r.changed_by ?? html`<span class="muted">${r.source === 'import' ? tx('util.import') : tx('util.command_line')}</span>`}</td>
+                <td data-label="${tx('util.component')}"><a href="${componentUrl(a.id, r.page_no)}">${r.label}</a></td>
+                <td data-label="${tx('util.change')}"><span class="tag ${OPS[r.op] ?? ''}">${tx.dyn(`util.op.${r.op}`, r.op)}</span>${r.source !== 'builder' ? html` <span class="tag">${r.source}</span>` : ''}</td>
+                <td data-label="${tx('util.differences')}"><a class="btn btn-sm" href="${link(r.id)}">${tx('util.show')}</a></td></tr>`)}</tbody></table></div>`
+          : html`<p class="muted">${where.length > 1 ? tx('util.no_changes_filtered') : tx('util.no_changes')}</p>`}`)}
+      ${detail ? region(tx('util.diff_title', { label: detail.label }), html`<p class="muted u-mt0">${tx.rich('util.diff_intro', { op: tx.dyn(`util.op.${detail.op}`, detail.op), who: detail.changed_by ?? tx('util.the_command_line'), when: when(detail.changed_at), minus: html`<code>-</code>`, plus: html`<code>+</code>` })}</p>${changeDiff(detail.before, detail.after)}`, '', 'change') : ''}`;
+    return send(reply, s, shell(s, tx('util.history_title', { app: a.name }), [[tx('util.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('util.utilities'), `${BASE}/apps/${a.id}/utilities`], [tx('util.change_history')]], main));
   });
 
   // ---------------------------------------------------------------- icons
@@ -169,13 +170,13 @@ export async function utilityRoutes(app: FastifyInstance) {
     const own = (ICONS as readonly string[]).filter((n) => !needle || n.includes(needle));
     const lucide = needle ? searchIcons(q, 300) : [];
     const tile = (n: string) => html`<li><span class="icon-tile">${icon(n, 'icon icon-2x')}<code>${n}</code></span></li>`;
-    const main = html`<h1 class="u-mb1">Icons</h1>
-      ${region('Icon browser', html`<p class="muted u-mt0">The icons of the icon picker: pgkiln's own set and ${String(lucideNames().size)} Lucide icons (${LUCIDE_VERSION}, ISC licence). Use the name in an icon field; modifiers such as <code>lg</code>, <code>spin</code> or <code>success</code> may follow it (e.g. <code>truck lg success</code>), and Font APEX names work where Lucide has the same icon (<code>fa-users</code>).</p>
-        <form method="get" role="search" class="util-filters"><div class="field"><label class="label" for="f_icon_q">Search</label><input id="f_icon_q" name="q" type="search" value="${q}" placeholder="e.g. truck, money, arrow"></div>
-          <div class="buttons"><button class="btn btn-sm">${icon('search')} Search</button></div></form>
+    const main = html`<h1 class="u-mb1">${tx('util.icons')}</h1>
+      ${region(tx('util.icon_browser'), html`<p class="muted u-mt0">${tx.rich('util.icons_intro', { n: String(lucideNames().size), version: LUCIDE_VERSION, lg: html`<code>lg</code>`, spin: html`<code>spin</code>`, success: html`<code>success</code>`, example: html`<code>truck lg success</code>`, fa: html`<code>fa-users</code>` })}</p>
+        <form method="get" role="search" class="util-filters"><div class="field"><label class="label" for="f_icon_q">${tx('util.search')}</label><input id="f_icon_q" name="q" type="search" value="${q}" placeholder="${tx('util.e_g_truck_money_arrow')}"></div>
+          <div class="buttons"><button class="btn btn-sm">${icon('search')} ${tx('util.search')}</button></div></form>
         <h3>pgkiln (${own.length})</h3><ul class="util-icons">${own.map(tile)}</ul>
-        ${needle ? html`<h3>Lucide (${lucide.length}${lucide.length === 300 ? '+' : ''})</h3>${lucide.length ? html`<ul class="util-icons">${lucide.map(tile)}</ul>` : html`<p class="muted">No Lucide icon matches.</p>`}`
-          : html`<p class="muted">Search to see the matching Lucide icons.</p>`}`)}`;
-    return send(reply, s, shell(s, 'Icons', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Icons']], main));
+        ${needle ? html`<h3>Lucide (${lucide.length}${lucide.length === 300 ? '+' : ''})</h3>${lucide.length ? html`<ul class="util-icons">${lucide.map(tile)}</ul>` : html`<p class="muted">${tx('util.no_lucide_icon_matches')}</p>`}`
+          : html`<p class="muted">${tx('util.search_to_see_the_matching')}</p>`}`)}`;
+    return send(reply, s, shell(s, tx('util.icons'), [[tx('util.app_builder'), BASE], [tx('util.workspace_utilities'), `${BASE}/utilities`], [tx('util.icons')]], main));
   });
 }

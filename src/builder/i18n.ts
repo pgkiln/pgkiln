@@ -143,9 +143,23 @@ export const builderMessages = (lang: BuilderLang): Readonly<Record<string, stri
 // (sprint 162, CD-8) Long form builders (region and report settings) take the translator of the request being rendered
 // from the async context instead of a parameter on every helper: withTranslator(tr(s), () => build()), and inside,
 // scopedTx('key') like tx. Outside withTranslator it is English.
-const SCOPE = new AsyncLocalStorage<BuilderTranslate>();
-const current = () => SCOPE.getStore() ?? translatorFor('en');
-export const withTranslator = <T>(t: BuilderTranslate, fn: () => T): T => SCOPE.run(t, fn);
+// (sprint 164) Every builder route runs in a request scope (app.ts wraps the handlers of /builder routes): developer()
+// sets the developer's translator in it once the session is loaded, so scopedTx works in any builder handler and the
+// helpers it calls; before that (the sign-in pages) it is the device's language (the cookie).
+interface Scope { t?: BuilderTranslate; req?: FastifyRequest }
+const SCOPE = new AsyncLocalStorage<Scope>();
+const current = () => {
+  const sc = SCOPE.getStore();
+  return sc?.t ?? (sc?.req ? translatorFor(cookieLanguage(sc.req)) : translatorFor('en'));
+};
+export const withTranslator = <T>(t: BuilderTranslate, fn: () => T): T => SCOPE.run({ t }, fn);
+/** (sprint 164) Runs a builder request's handler in its own scope (app.ts). */
+export const inRequestScope = <T>(req: FastifyRequest, fn: () => T): T => SCOPE.run({ req }, fn);
+/** (sprint 164) The signed-in developer's translator for the rest of the request (developer() in ui.ts). */
+export const setRequestTranslator = (t: BuilderTranslate) => {
+  const sc = SCOPE.getStore();
+  if (sc) sc.t = t;
+};
 export const scopedTx = ((key: BuilderKey, params?: Params) => current()(key, params)) as BuilderTranslate;
 Object.defineProperty(scopedTx, 'lang', { get: () => current().lang });
 scopedTx.dyn = (key, fallback, params) => current().dyn(key, fallback, params);

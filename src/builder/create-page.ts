@@ -2,10 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { featureStates } from './features.ts';
+import { featHelp, featLabel, featureStates } from './features.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
-import { NO_TABLE, PAGE_KINDS, wizardTables } from './wizards.ts';
+import { kindHelp, kindLabel, NO_TABLE, PAGE_KINDS, wizardTables } from './wizards.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 137, AP-3) Create Page like APEX's: a grid of page types with small previews (tab Component), the
 // features (tab Feature, features.ts) and Create page as copy (tab Copy), at /builder/apps/:id/create-page.
@@ -14,12 +15,12 @@ import { NO_TABLE, PAGE_KINDS, wizardTables } from './wizards.ts';
 // forms: no JavaScript needed. The previews are inline SVG drawn with classes (public/builder.css), no styles.
 
 /** The grid's order (APEX's names), each with the step it starts with. */
-const GRID: { key: string; label: string; help: string; table: boolean }[] = [
-  { key: 'blank', label: 'Blank page', help: 'An empty page to build in the Page Designer.', table: false },
+const GRID = (): { key: string; label: string; help: string; table: boolean }[] => [
+  { key: 'blank', label: tx('cpg.blank_page'), help: tx('cpg.an_empty_page_to_build'), table: false },
   ...['calendar', 'cards', 'chart', 'comments', 'content_row', 'dashboard', 'data_load', 'facets', 'form', 'grid', 'report', 'map',
     'master_detail', 'media_list', 'report_form', 'search', 'smart_filters', 'timeline', 'tree', 'tasks', 'wizard', 'workflows'].map((k) => {
     const d = PAGE_KINDS.find((x) => x[0] === k)!;
-    return { key: k, label: d[1], help: d[2], table: !NO_TABLE.has(k) };
+    return { key: k, label: kindLabel(k, d[1]), help: kindHelp(k, d[2]), table: !NO_TABLE.has(k) };
   }),
 ];
 
@@ -66,7 +67,7 @@ const PREVIEWS: Record<string, string> = {
 export const preview = (key: string): Raw =>
   raw(`<svg class="cp-svg" viewBox="0 0 80 50" aria-hidden="true" focusable="false">${PREVIEWS[key] ?? PREVIEWS.blank}</svg>`);
 
-const TABS: [string, string][] = [['component', 'Component'], ['feature', 'Feature'], ['copy', 'Copy']];
+const TABS: [string, string][] = [['component', tx('cpg.component')], ['feature', tx('cpg.feature')], ['copy', tx('cpg.copy')]];
 
 export async function createPageRoutes(app: FastifyInstance) {
   app.get(`${BASE}/apps/:id/create-page`, async (req: Req, reply) => {
@@ -76,8 +77,8 @@ export async function createPageRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const q = req.query as Record<string, string | undefined>;
     const tab = TABS.some(([t]) => t === q.tab) ? q.tab! : 'component';
-    const type = GRID.find((g) => g.key === q.type);
-    const crumbs: [string, string?][] = [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create page', type ? `${BASE}/apps/${a.id}/create-page` : undefined]];
+    const type = GRID().find((g) => g.key === q.type);
+    const crumbs: [string, string?][] = [[tx('cpg.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create page', type ? `${BASE}/apps/${a.id}/create-page` : undefined]];
     const nextPage = async () => {
       const used = new Set((await owner.query('select page_no from meta.page where app_id = $1', [a.id])).rows.map((r) => r.page_no as number));
       let n = Math.max(0, ...[...used].filter((x) => x < 9000)) + 1;
@@ -91,49 +92,49 @@ export async function createPageRoutes(app: FastifyInstance) {
       if (type.key === 'blank') {
         body = html`<form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
             <div class="form-grid">
-              ${input('page_no', 'Page number', await nextPage(), { type: 'number', required: true })}
-              ${input('name', 'Name', '', { required: true })}
-              ${select('mode', 'Page mode', 'normal', [['normal', 'Normal page'], ['modal', 'Modal dialog']])}
-              ${input('parent_page', 'Breadcrumb parent', a.home_page ?? '', { type: 'number' })}
+              ${input('page_no', tx('cpg.page_number'), await nextPage(), { type: 'number', required: true })}
+              ${input('name', tx('cpg.name'), '', { required: true })}
+              ${select('mode', tx('cpg.page_mode'), 'normal', [['normal', tx('cpg.normal_page')], ['modal', tx('cpg.modal_dialog')]])}
+              ${input('parent_page', tx('cpg.breadcrumb_parent'), a.home_page ?? '', { type: 'number' })}
             </div>
-            <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page">Back</a><button class="btn btn-hot">Create page</button></div>
+            <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page">${tx('cpg.back')}</a><button class="btn btn-hot">${tx('cpg.create_page')}</button></div>
           </form>`;
       } else {
         const tables = await wizardTables(a.db_role);
         body = html`<form method="get" action="${BASE}/apps/${a.id}/wizard">
             <input type="hidden" name="kind" value="${type.key}">
             <div class="form-grid">
-              ${select('table', 'Table or view', '', tables.map((t): [string, string] => [t.t, t.access ? t.t : `${t.t} (no access for ${a.db_role})`]),
+              ${select('table', tx('cpg.table_or_view'), '', tables.map((t): [string, string] => [t.t, t.access ? t.t : `${t.t} (no access for ${a.db_role})`]),
                 'The next step proposes the columns, keys and foreign keys from the database catalog.')}
             </div>
-            <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page">Back</a><button class="btn btn-hot">Next</button></div>
+            <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page">${tx('cpg.back')}</a><button class="btn btn-hot">${tx('cpg.next')}</button></div>
           </form>`;
       }
       const main = html`${appHeader(a, 'pages', s)}
         ${region(type.label, html`<div class="cp-step"><span class="cp-preview cp-preview-lg">${preview(type.key)}</span><p class="muted">${type.help}</p></div>${body}`)}`;
-      return send(reply, s, shell(s, `Create page · ${a.name}`, [...crumbs, [type.label]], main));
+      return send(reply, s, shell(s, tx('cpg.page_title', { app: a.name }), [...crumbs, [type.label]], main));
     }
 
-    const tabs = html`<nav class="gal-tabs segmented cp-tabs" aria-label="Create page">${TABS.map(([t, l]) =>
+    const tabs = html`<nav class="gal-tabs segmented cp-tabs" aria-label="${tx('cpg.create_page')}">${TABS.map(([t, l]) =>
       html`<a href="${BASE}/apps/${a.id}/create-page?tab=${t}"${t === tab ? raw(' aria-current="page"') : ''}>${l}</a>`)}</nav>`;
     let body: Raw;
     if (tab === 'component') {
-      const href = (g: (typeof GRID)[number]) =>
+      const href = (g: ReturnType<typeof GRID>[number]) =>
         g.key !== 'blank' && !g.table ? `${BASE}/apps/${a.id}/wizard?kind=${g.key}` : `${BASE}/apps/${a.id}/create-page?type=${g.key}`;
-      body = html`<p class="muted u-mt0">Choose a page type. Types on a table ask for it next; every type proposes its settings and opens the new page in the Page Designer.</p>
-        <ul class="cp-grid">${GRID.map((g) => html`<li><a class="cp-type" href="${href(g)}"><span class="cp-preview">${preview(g.key)}</span><b>${g.label}</b><small>${g.help}</small></a></li>`)}
-          <li><a class="cp-type" href="${BASE}/apps/${a.id}/ai-pages"><span class="cp-preview">${preview('ai')}</span><b>Create pages with AI</b><small>Describe the pages in your own words; check the proposals before they are made.</small></a></li></ul>`;
+      body = html`<p class="muted u-mt0">${tx('cpg.choose_a_page_type_types')}</p>
+        <ul class="cp-grid">${GRID().map((g) => html`<li><a class="cp-type" href="${href(g)}"><span class="cp-preview">${preview(g.key)}</span><b>${g.label}</b><small>${g.help}</small></a></li>`)}
+          <li><a class="cp-type" href="${BASE}/apps/${a.id}/ai-pages"><span class="cp-preview">${preview('ai')}</span><b>${tx('cpg.create_pages_with_ai')}</b><small>${tx('cpg.describe_the_pages_in_your')}</small></a></li></ul>`;
     } else if (tab === 'feature') {
       const states = await featureStates(a.id);
-      body = html`<p class="muted u-mt0">Features add pages and settings to the application. Each lists what it adds before it creates anything; an installed feature is greyed out.</p>
+      body = html`<p class="muted u-mt0">${tx('cpg.features_add_pages_and_settings')}</p>
         <ul class="cp-grid">${states.map(({ f, installed, blocked }) => html`<li><a class="cp-type${installed || blocked ? ' cp-done' : ''}" href="${BASE}/apps/${a.id}/features/${f.key}">
-            <span class="cp-feature-icon">${icon(f.icon)}</span><b>${f.label}</b><small>${f.help}</small>
-            ${installed ? html`<span class="tag">Installed</span>` : blocked ? html`<span class="tag">Not available</span>` : ''}</a></li>`)}</ul>`;
+            <span class="cp-feature-icon">${icon(f.icon)}</span><b>${featLabel(f)}</b><small>${featHelp(f)}</small>
+            ${installed ? html`<span class="tag">${tx('cpg.installed')}</span>` : blocked ? html`<span class="tag">${tx('cpg.not_available')}</span>` : ''}</a></li>`)}</ul>`;
     } else {
       body = await copyStep1(a, s.username!);
     }
-    const main = html`${appHeader(a, 'pages', s)}${region('Create page', html`${tabs}${body}`)}`;
-    return send(reply, s, shell(s, `Create page · ${a.name}`, crumbs, main));
+    const main = html`${appHeader(a, 'pages', s)}${region(tx('cpg.create_page'), html`${tabs}${body}`)}`;
+    return send(reply, s, shell(s, tx('cpg.page_title', { app: a.name }), crumbs, main));
   });
 
   // ---------------------------------------------------------------- Create page as copy
@@ -146,17 +147,17 @@ export async function createPageRoutes(app: FastifyInstance) {
     const q = req.query as Record<string, string | undefined>;
     const from = await sourceApp(a.id, q.from);
     if (!from) {
-      flash(s, 'Choose an application of this workspace.', 'error');
+      flash(s, tx('cpg.choose_an_application_of_this'), 'error');
       return back(reply, s, `${BASE}/apps/${a.id}/create-page?tab=copy`);
     }
     const pages = (await owner.query<{ id: number; page_no: number; name: string }>('select id, page_no, name from meta.page where app_id = $1 order by page_no', [from.id])).rows;
     const page = pages.find((p) => String(p.page_no) === q.page);
-    const crumbs: [string, string?][] = [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create page', `${BASE}/apps/${a.id}/create-page?tab=copy`], ['Copy']];
+    const crumbs: [string, string?][] = [[tx('cpg.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('cpg.create_page'), `${BASE}/apps/${a.id}/create-page?tab=copy`], [tx('cpg.copy')]];
     let body: Raw;
     if (!page) {
       body = html`<form method="get" action="${BASE}/apps/${a.id}/copy-page"><input type="hidden" name="from" value="${from.id}">
-          <div class="form-grid">${select('page', `Page of ${from.name}`, '', pages.map((p): [string, string] => [String(p.page_no), `${p.page_no} ${p.name}`]))}</div>
-          <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page?tab=copy">Back</a><button class="btn btn-hot">Next</button></div></form>`;
+          <div class="form-grid">${select('page', tx('cpg.page_of', { app: from.name }), '', pages.map((p): [string, string] => [String(p.page_no), `${p.page_no} ${p.name}`]))}</div>
+          <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page?tab=copy">${tx('cpg.back')}</a><button class="btn btn-hot">${tx('cpg.next')}</button></div></form>`;
     } else {
       const refs = (await owner.query<{ kind: string; name: string; in_target: boolean }>('select * from meta.page_shared_refs($1, $2)', [page.id, a.id])).rows;
       const used = new Set((await owner.query('select page_no from meta.page where app_id = $1', [a.id])).rows.map((r) => r.page_no as number));
@@ -166,27 +167,27 @@ export async function createPageRoutes(app: FastifyInstance) {
       const options = async (kind: string) => (await owner.query<{ n: string }>(SHARED_NAMES[kind], [a.id])).rows.map((r) => r.n);
       const mapRows = await Promise.all(refs.map(async (r) => {
         const names = await options(r.kind);
-        const opts: [string, string][] = [...(same || r.in_target ? [] : [['', 'Copy it into this application'] as [string, string]]), ...names.map((n): [string, string] => [n, `Use ${n}`])];
-        return html`<tr><td>${KIND_LABELS[r.kind] ?? r.kind}</td><td><code>${r.name}</code></td><td>
-          <select name="map:${r.kind}:${r.name}" aria-label="${KIND_LABELS[r.kind] ?? r.kind} ${r.name}">${opts.map(([v, l]) => html`<option value="${v}"${v === (r.in_target || same ? r.name : '') ? raw(' selected') : ''}>${l}</option>`)}</select></td></tr>`;
+        const opts: [string, string][] = [...(same || r.in_target ? [] : [['', tx('cpg.copy_it_into_this_application')] as [string, string]]), ...names.map((n): [string, string] => [n, tx('cpg.use_name', { name: n })])];
+        return html`<tr><td>${kindName(r.kind)}</td><td><code>${r.name}</code></td><td>
+          <select name="map:${r.kind}:${r.name}" aria-label="${kindName(r.kind)} ${r.name}">${opts.map(([v, l]) => html`<option value="${v}"${v === (r.in_target || same ? r.name : '') ? raw(' selected') : ''}>${l}</option>`)}</select></td></tr>`;
       }));
-      body = html`<p class="muted u-mt0">Page ${page.page_no} <b>${page.name}</b> of ${from.name}: its regions, items, buttons, dynamic actions, validations, processes, computations and branches. Items named P${page.page_no}_… are renamed to the new number, also where the page's code refers to them.</p>
+      body = html`<p class="muted u-mt0">${tx.rich('cpg.copy_intro', { n: page.page_no, name: html`<b>${page.name}</b>`, app: from.name, prefix: `P${page.page_no}_` })}</p>
         <form method="post" action="${BASE}/apps/${a.id}/copy-page">${csrf(s)}
           <input type="hidden" name="from" value="${from.id}"><input type="hidden" name="page" value="${page.page_no}">
           <div class="form-grid">
-            ${input('new_page', 'New page number', no, { type: 'number', required: true })}
-            ${input('name', 'Name', page.name, { required: true })}
+            ${input('new_page', tx('cpg.new_page_number'), no, { type: 'number', required: true })}
+            ${input('name', tx('cpg.name'), page.name, { required: true })}
           </div>
           ${refs.length
-            ? html`<h3>Shared components</h3><p class="muted small">The page refers to these by name. ${same ? 'In the same application they stay as they are, or point to another of the same kind.' : 'Use one of this application\'s, or copy it from the other application.'}</p>
-              <div class="table-wrap"><table class="report"><thead><tr><th>Kind</th><th>Name</th><th>In this application</th></tr></thead><tbody>${mapRows}</tbody></table></div>`
-            : html`<p class="muted">The page uses no shared components.</p>`}
-          ${same ? '' : html`<p class="muted small">Its SQL runs as this application's database role <code>${a.db_role ?? '(none)'}</code>: grant it what ${from.name}'s role may read and change.</p>`}
-          <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/copy-page?from=${from.id}">Back</a><button class="btn btn-hot">Copy page</button></div>
+            ? html`<h3>${tx('cpg.shared_components')}</h3><p class="muted small">${tx('cpg.refers_by_name')} ${same ? tx('cpg.in_the_same_application_they') : tx('cpg.use_one_of_this_application')}</p>
+              <div class="table-wrap"><table class="report"><thead><tr><th>${tx('cpg.kind')}</th><th>${tx('cpg.name')}</th><th>${tx('cpg.in_this_application')}</th></tr></thead><tbody>${mapRows}</tbody></table></div>`
+            : html`<p class="muted">${tx('cpg.the_page_uses_no_shared')}</p>`}
+          ${same ? '' : html`<p class="muted small">${tx.rich('cpg.sql_runs_as', { role: html`<code>${a.db_role ?? tx('cpg.none')}</code>`, app: from.name })}</p>`}
+          <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/copy-page?from=${from.id}">${tx('cpg.back')}</a><button class="btn btn-hot">${tx('cpg.copy_page')}</button></div>
         </form>`;
     }
-    const main = html`${appHeader(a, 'pages', s)}${region('Create page as copy', body)}`;
-    return send(reply, s, shell(s, `Copy page · ${a.name}`, crumbs, main));
+    const main = html`${appHeader(a, 'pages', s)}${region(tx('cpg.create_page_as_copy'), body)}`;
+    return send(reply, s, shell(s, tx('cpg.copy_title', { app: a.name }), crumbs, main));
   });
 
   app.post(`${BASE}/apps/:id/copy-page`, async (req: Req, reply) => {
@@ -198,15 +199,15 @@ export async function createPageRoutes(app: FastifyInstance) {
     const from = await sourceApp(a.id, String(b.from ?? ''));
     const retry = `${BASE}/apps/${a.id}/copy-page?from=${encodeURIComponent(String(b.from ?? ''))}&page=${encodeURIComponent(String(b.page ?? ''))}`;
     if (!from) {
-      flash(s, 'Choose an application of this workspace.', 'error');
+      flash(s, tx('cpg.choose_an_application_of_this'), 'error');
       return back(reply, s, `${BASE}/apps/${a.id}/create-page?tab=copy`);
     }
     try {
       const page = /^\d{1,6}$/.test(String(b.page ?? '')) ? Number(b.page) : NaN;
       const no = /^\d{1,6}$/.test(String(b.new_page ?? '').trim()) ? Number(String(b.new_page).trim()) : NaN;
-      if (!(no >= 1)) throw new Error('Enter a page number.');
+      if (!(no >= 1)) throw new Error(tx('cpg.enter_a_page_number'));
       const name = String(b.name ?? '').trim().slice(0, 200);
-      if (!name) throw new Error('Enter a name.');
+      if (!name) throw new Error(tx('cpg.enter_a_name'));
       // map:<kind>:<NAME> → a name of the target's (empty: copy); only known kinds pass
       const map: Record<string, string> = {};
       for (const [k, v] of Object.entries(b)) {
@@ -214,7 +215,7 @@ export async function createPageRoutes(app: FastifyInstance) {
         if (m && Object.hasOwn(SHARED_NAMES, m[1]) && typeof v === 'string') map[`${m[1]}:${m[2]}`] = v.slice(0, 100);
       }
       const id = await owner.tx(async (c) => (await c.query('select meta.copy_page($1, $2, $3, $4, $5, $6::jsonb) as id', [from.id, page, a.id, no, name, JSON.stringify(map)])).rows[0].id as number);
-      flash(s, `Page ${no} "${name}" created as a copy of page ${page}${from.id === a.id ? '' : ` of ${from.name}`}.`);
+      flash(s, from.id === a.id ? tx('cpg.copied', { n: no, name, page }) : tx('cpg.copied_from', { n: no, name, page, app: from.name }));
       return back(reply, s, `${BASE}/pages/${id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -227,6 +228,7 @@ const KIND_LABELS: Record<string, string> = {
   authz_scheme: 'Authorization scheme', build_option: 'Build option', lov: 'List of values', list: 'List',
   template_component: 'Template component', search_config: 'Search configuration', data_load_def: 'Data load definition',
 };
+const kindName = (k: string) => (Object.hasOwn(KIND_LABELS, k) ? tx.dyn(`cpg.k.${k}`, KIND_LABELS[k]) : k);
 /** The target application's names of each kind (the choices of the mapping). */
 const SHARED_NAMES: Record<string, string> = {
   authz_scheme: 'select name as n from meta.authz_scheme where app_id = $1 order by 1',
@@ -251,9 +253,9 @@ async function copyStep1(a: { id: number; name: string }, _user: string): Promis
   const apps = (await owner.query<{ id: number; name: string; alias: string }>(
     'select id, name, alias from meta.app where meta.app_workspace(id) = meta.app_workspace($1) order by id <> $1, lower(name)', [a.id],
   )).rows;
-  return html`<p class="muted u-mt0">Copy a page of this application or another application of the workspace, under a new number and name. The shared components it uses (lists of values, authorization schemes, lists…) are mapped to this application's or copied.</p>
+  return html`<p class="muted u-mt0">${tx('cpg.copy_a_page_of_this')}</p>
     <form method="get" action="${BASE}/apps/${a.id}/copy-page">
-      <div class="form-grid">${select('from', 'Copy from application', String(a.id), apps.map((x): [string, string] => [String(x.id), x.id === a.id ? `${x.name} (this application)` : `${x.name} (${x.alias})`]))}</div>
-      <div class="buttons"><button class="btn btn-hot">Next</button></div>
+      <div class="form-grid">${select('from', tx('cpg.copy_from_application'), String(a.id), apps.map((x): [string, string] => [String(x.id), x.id === a.id ? `${x.name} (this application)` : `${x.name} (${x.alias})`]))}</div>
+      <div class="buttons"><button class="btn btn-hot">${tx('cpg.next')}</button></div>
     </form>`;
 }

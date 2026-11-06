@@ -160,7 +160,7 @@ async function reportSettingsFormInner(pageId: number, appId: number, r: { id: n
       <fieldset class="prop-group"><legend>${tx('rpt.json_path_columns')}</legend><div class="form-grid">
         <div class="field" data-wide><label class="label" for="${id('json_columns')}">${tx('rpt.columns_read_from_a_json')}</label>
           <input id="${id('json_columns')}" name="json_columns" value="${jsonColumnsText(cfg.json_columns)}" placeholder="city=profile:address.city; first_skill=profile:skills.0.name; since=profile:since:date" class="code">
-          <small class="help">name=column:path[:type]; separate them with ";". A path is keys separated by dots, a number picks an element of an array. Types: ${JSON_TYPES.join(', ')} (text when left out); a value that doesn't read as the type shows empty. They are columns like the others: search, filters, sorting, headings and downloads. To edit documents, use a JSON source (Shared Components).</small></div>
+          <small class="help">${tx('rs.json_columns_help', { types: JSON_TYPES.join(', ') })}</small></div>
       </div></fieldset>
       <fieldset class="prop-group"><legend>${tx('rpt.columns')}</legend>
         ${all.length

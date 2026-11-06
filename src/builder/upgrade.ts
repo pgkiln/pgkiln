@@ -5,6 +5,7 @@ import { recordHistory } from '../history.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { appHeader, back, BASE, csrf, designerUrl, developer, flash, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx, type BuilderKey } from './i18n.ts';
 import { diffHtml } from './utilities.ts';
 
 // (sprint 138, AP-5) App Builder → Utilities → Upgrade application (APEX:
@@ -39,10 +40,10 @@ export interface Candidate {
 }
 
 export type Rule = 'nav_appearance' | 'date_picker' | 'popup_lov';
-export const RULES: Record<Rule, { title: string; since: string }> = {
-  nav_appearance: { title: 'Navigation appearance', since: 'Navigation appearances (Pillar Light, Pillar Dark) came with sprint 117.' },
-  date_picker: { title: 'Date picker for date columns', since: 'Date and date-time items have had pgkiln\'s date picker since sprint 84.' },
-  popup_lov: { title: 'Paged list of values for large tables', since: 'Popup lists of values search and page on the server.' },
+export const RULES: Record<Rule, { title: BuilderKey; since: BuilderKey }> = {
+  nav_appearance: { title: 'upg.rule_nav_title', since: 'upg.rule_nav_since' },
+  date_picker: { title: 'upg.rule_date_title', since: 'upg.rule_date_since' },
+  popup_lov: { title: 'upg.rule_popup_title', since: 'upg.rule_popup_since' },
 };
 
 /** The relations a list of values query reads (FROM / JOIN names). */
@@ -57,8 +58,8 @@ export async function upgradeCandidates(appId: number): Promise<Candidate[]> {
   const theme = app.theme && typeof app.theme === 'object' ? app.theme : {};
   if (typeof theme.appearance !== 'string' || !theme.appearance) {
     out.push({
-      key: 'nav_appearance:app', rule: 'nav_appearance', label: 'Application settings › Theme', page: null, url: `${BASE}/apps/${appId}/theme`,
-      reason: 'The application has no navigation appearance: Pillar Light gives the header strip and the filled current page of new applications.',
+      key: 'nav_appearance:app', rule: 'nav_appearance', label: tx('upg.label_theme'), page: null, url: `${BASE}/apps/${appId}/theme`,
+      reason: tx('upg.reason_nav'),
       before: { appearance: theme.appearance ?? null }, after: { appearance: 'pillar_light' },
       sql: [`update meta.app set theme = coalesce(theme, '{}'::jsonb) || '{"appearance": "pillar_light"}' where id = $1 and coalesce(theme ->> 'appearance', '') = ''`, [appId]],
     });
@@ -74,8 +75,8 @@ export async function upgradeCandidates(appId: number): Promise<Candidate[]> {
   for (const r of dates) {
     const to = r.is_date ? 'date' : 'datetime';
     out.push({
-      key: `date_picker:${r.id}`, rule: 'date_picker', label: `Page ${r.page_no} › item ${r.name}`, page: r.page_no, url: designerUrl(appId, r.page_no, `c=item-${r.id}`),
-      reason: `${r.table_name}.${r.source_column} is a ${r.coltype} column shown as a text field: a ${to} item has the date picker and reads the date in the application's format.`,
+      key: `date_picker:${r.id}`, rule: 'date_picker', label: tx('upg.label_item', { page: r.page_no, name: r.name }), page: r.page_no, url: designerUrl(appId, r.page_no, `c=item-${r.id}`),
+      reason: tx(r.is_date ? 'upg.reason_date' : 'upg.reason_datetime', { column: `${r.table_name}.${r.source_column}`, type: r.coltype }),
       before: { type: 'text' }, after: { type: to },
       sql: [`update meta.item set type = $2 where id = $1 and type = 'text'`, [r.id, to]],
     });
@@ -92,8 +93,8 @@ export async function upgradeCandidates(appId: number): Promise<Candidate[]> {
       [names, POPUP_ROWS]).catch(() => ({ rows: [] }))).rows[0];
     if (!big) continue;
     out.push({
-      key: `popup_lov:${r.id}`, rule: 'popup_lov', label: `Page ${r.page_no} › item ${r.name}`, page: r.page_no, url: designerUrl(appId, r.page_no, `c=item-${r.id}`),
-      reason: `Its list of values reads ${big.name} (about ${big.n} rows): a select list sends every row with the page; a popup list of values searches and pages on the server.`,
+      key: `popup_lov:${r.id}`, rule: 'popup_lov', label: tx('upg.label_item', { page: r.page_no, name: r.name }), page: r.page_no, url: designerUrl(appId, r.page_no, `c=item-${r.id}`),
+      reason: tx('upg.reason_popup', { table: big.name, n: big.n }),
       before: { type: 'select' }, after: { type: 'popup_lov' },
       sql: [`update meta.item set type = 'popup_lov' where id = $1 and type = 'select'`, [r.id]],
     });
@@ -114,20 +115,20 @@ export async function upgradeRoutes(app: FastifyInstance) {
     const u = `${BASE}/apps/${a.id}/utilities/upgrade`;
     const sections = (Object.keys(RULES) as Rule[]).map((rule) => {
       const list = all.filter((c) => c.rule === rule);
-      return html`<section class="util-upgrade" aria-labelledby="up-${rule}"><h3 id="up-${rule}">${RULES[rule].title} <span class="tag">${list.length}</span></h3>
-        <p class="muted small">${RULES[rule].since}</p>
-        ${list.length ? html`<div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">Component</th><th scope="col">Why</th><th scope="col">Actions</th></tr></thead><tbody>
-          ${list.map((c) => html`<tr${preview?.key === c.key ? raw(' aria-current="true"') : ''}><td data-label="Component"><a href="${c.url}">${c.label}</a></td><td data-label="Why">${c.reason}</td>
-            <td data-label="Actions"><div class="buttons"><a class="btn btn-sm" href="${u}?preview=${encodeURIComponent(c.key)}#preview">Preview</a>
-              <form method="post" action="${u}">${csrf(s)}<input type="hidden" name="key" value="${c.key}"><button class="btn btn-sm btn-hot">${icon('refresh')} Upgrade</button></form></div></td></tr>`)}</tbody></table></div>
-          ${list.length > 1 ? html`<form method="post" action="${u}" class="u-mt075">${csrf(s)}<input type="hidden" name="rule" value="${rule}"><button class="btn btn-sm">${icon('refresh')} Upgrade all ${list.length}</button></form>` : ''}`
-          : html`<p class="muted">Nothing to upgrade.</p>`}</section>`;
+      return html`<section class="util-upgrade" aria-labelledby="up-${rule}"><h3 id="up-${rule}">${tx(RULES[rule].title)} <span class="tag">${list.length}</span></h3>
+        <p class="muted small">${tx(RULES[rule].since)}</p>
+        ${list.length ? html`<div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">${tx('upg.col_component')}</th><th scope="col">${tx('upg.col_why')}</th><th scope="col">${tx('upg.col_actions')}</th></tr></thead><tbody>
+          ${list.map((c) => html`<tr${preview?.key === c.key ? raw(' aria-current="true"') : ''}><td data-label="${tx('upg.col_component')}"><a href="${c.url}">${c.label}</a></td><td data-label="${tx('upg.col_why')}">${c.reason}</td>
+            <td data-label="${tx('upg.col_actions')}"><div class="buttons"><a class="btn btn-sm" href="${u}?preview=${encodeURIComponent(c.key)}#preview">${tx('upg.preview')}</a>
+              <form method="post" action="${u}">${csrf(s)}<input type="hidden" name="key" value="${c.key}"><button class="btn btn-sm btn-hot">${icon('refresh')} ${tx('upg.upgrade')}</button></form></div></td></tr>`)}</tbody></table></div>
+          ${list.length > 1 ? html`<form method="post" action="${u}" class="u-mt075">${csrf(s)}<input type="hidden" name="rule" value="${rule}"><button class="btn btn-sm">${icon('refresh')} ${tx('upg.upgrade_all', { n: list.length })}</button></form>` : ''}`
+          : html`<p class="muted">${tx('upg.nothing')}</p>`}</section>`;
     });
     const main = html`${appHeader(a, 'utilities', s)}
-      ${region('Upgrade application', html`<p class="muted u-mt0">Components made before a pgkiln version that brought a better default. Preview a change, then upgrade one component or all of a kind; every upgrade is in the change history (and the backups) if you want to go back.</p>${sections}`)}
-      ${preview ? region(`Preview: ${preview.label}`, html`<p class="muted u-mt0">${preview.reason}</p>${diffHtml('settings', stableJson(preview.before), stableJson(preview.after), ['now', 'upgraded'])}
-        <form method="post" action="${u}">${csrf(s)}<input type="hidden" name="key" value="${preview.key}"><div class="buttons"><button class="btn btn-hot">${icon('refresh')} Upgrade</button></div></form>`, '', 'preview') : ''}`;
-    return send(reply, s, shell(s, `Upgrade application · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Utilities', `${BASE}/apps/${a.id}/utilities`], ['Upgrade application']], main));
+      ${region(tx('util.c_upgrade'), html`<p class="muted u-mt0">${tx('upg.intro')}</p>${sections}`)}
+      ${preview ? region(tx('upg.preview_title', { label: preview.label }), html`<p class="muted u-mt0">${preview.reason}</p>${diffHtml('settings', stableJson(preview.before), stableJson(preview.after), ['now', 'upgraded'])}
+        <form method="post" action="${u}">${csrf(s)}<input type="hidden" name="key" value="${preview.key}"><div class="buttons"><button class="btn btn-hot">${icon('refresh')} ${tx('upg.upgrade')}</button></div></form>`, '', 'preview') : ''}`;
+    return send(reply, s, shell(s, tx('upg.title', { name: a.name }), [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('app.tab.utilities'), `${BASE}/apps/${a.id}/utilities`], [tx('util.c_upgrade')]], main));
   });
 
   app.post(`${BASE}/apps/:id/utilities/upgrade`, async (req: Req, reply) => {
@@ -141,14 +142,14 @@ export async function upgradeRoutes(app: FastifyInstance) {
     const chosen = key ? all.filter((c) => c.key === key) : all.filter((c) => c.rule === rule);
     const to = `${BASE}/apps/${a.id}/utilities/upgrade`;
     if (!chosen.length) {
-      flash(s, 'Nothing to upgrade: the component was changed or upgraded in the meantime.', 'error');
+      flash(s, tx('upg.gone'), 'error');
       return back(reply, s, to);
     }
     await owner.tx(async (c) => {
       for (const x of chosen) await c.query(x.sql[0], x.sql[1]);
     });
     await recordHistory(a.id, s.username, 'upgrade').catch((err) => req.log.warn({ err }, 'change history not recorded'));
-    flash(s, chosen.length === 1 ? `${chosen[0].label} upgraded.` : `${chosen.length} components upgraded.`);
+    flash(s, chosen.length === 1 ? tx('upg.done_one', { label: chosen[0].label }) : tx('upg.done_n', { n: chosen.length }));
     return back(reply, s, to);
   });
 }

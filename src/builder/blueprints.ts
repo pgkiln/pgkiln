@@ -16,6 +16,7 @@ import { devDbForApp } from '../workspace-db.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { WIZARD_KINDS } from './wizards.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Create → From a blueprint (migration 063, src/blueprint.ts): saved
 // blueprints, an editor (JSON), an AI draft from a description (the App
@@ -68,38 +69,38 @@ const signed = (s: Session, spec: string, sig: unknown) => {
 };
 
 function parse(spec: string): { json: unknown; error: string | null } {
-  if (spec.length > MAX_SPEC_CHARS) return { json: null, error: `The blueprint is too long (at most ${MAX_SPEC_CHARS} characters).` };
+  if (spec.length > MAX_SPEC_CHARS) return { json: null, error: tx('bp.too_long', { n: MAX_SPEC_CHARS }) };
   try {
     return { json: JSON.parse(spec), error: null };
   } catch (e) {
-    return { json: null, error: `Not valid JSON: ${(e as Error).message}` };
+    return { json: null, error: tx('bp.bad_json', { error: (e as Error).message }) };
   }
 }
 
 const page = (s: Session, reply: FastifyReply, crumb: string, main: Raw) =>
-  send(reply, s, shell(s, 'Blueprints', [['App Builder', BASE], ['Create', `${BASE}/create`], ['Blueprints', `${BASE}/blueprints`], ...(crumb ? [[crumb] as [string]] : [])], html`<div class="ab-narrow">${main}</div>`));
+  send(reply, s, shell(s, tx('bp.blueprints'), [[tx('bp.app_builder'), BASE], [tx('bp.create'), `${BASE}/create`], [tx('bp.blueprints'), `${BASE}/blueprints`], ...(crumb ? [[crumb] as [string]] : [])], html`<div class="ab-narrow">${main}</div>`));
 
 async function editor(s: Session, reply: FastifyReply, o: { id?: number | null; name: string; spec: string; description?: string; message?: Raw }) {
   const svc = await builderService();
-  return page(s, reply, o.id ? o.name : 'New blueprint', html`<h1>${o.id ? `Blueprint: ${o.name}` : 'New blueprint'}</h1>
-    <p class="muted">A blueprint describes an application: its tables (every table gets an <code>id</code>; <code>"references"</code> makes a foreign key), pages (${PAGE_TYPES.join(', ')}), menu and sample rows. <b>Review</b> shows what it will create; nothing is created before you confirm it there.</p>
+  return page(s, reply, o.id ? o.name : tx('bp.new_blueprint'), html`<h1>${o.id ? tx('bp.title', { name: o.name }) : tx('bp.new_blueprint')}</h1>
+    <p class="muted">${tx.rich('bp.intro', { id: html`<code>id</code>`, references: html`<code>"references"</code>`, pages: PAGE_TYPES.join(', '), review: html`<b>${tx('bp.review')}</b>` })}</p>
     ${o.message ?? ''}
-    ${region('Draft with AI', svc
+    ${region(tx('bp.draft_with_ai'), svc
       ? html`<form method="post" action="${BASE}/blueprints/draft">${csrf(s)}
           <input type="hidden" name="id" value="${o.id ?? ''}"><input type="hidden" name="name" value="${o.name}">
-          <div class="field"><label class="label" for="f_description">Describe the application</label>
-            <textarea id="f_description" name="description" rows="3" maxlength="4000" required placeholder="e.g. Track projects with tasks and due dates, and the hours people spend on them">${o.description ?? ''}</textarea>
-            <small class="help">The AI service ${svc.name} writes a blueprint into the editor below (replacing what is there). Only your description is sent.</small></div>
-          <div class="buttons"><button class="btn" data-busy="Thinking…">Draft a blueprint</button></div>
+          <div class="field"><label class="label" for="f_description">${tx('bp.describe_the_application')}</label>
+            <textarea id="f_description" name="description" rows="3" maxlength="4000" required placeholder="${tx('bp.e_g_track_projects_with')}">${o.description ?? ''}</textarea>
+            <small class="help">${tx('bp.ai_help', { service: svc.name })}</small></div>
+          <div class="buttons"><button class="btn" data-busy="${tx('bp.thinking')}">${tx('bp.draft_a_blueprint')}</button></div>
         </form>`
-      : html`<p class="muted">The App Builder has no AI service: an administrator chooses one under <a href="${BASE}/sql/ai">SQL Workshop → AI</a>. You can write the blueprint yourself.</p>`)}
-    ${region('Blueprint', html`<form method="post" action="${BASE}/blueprints/review">${csrf(s)}
+      : html`<p class="muted">${tx.rich('bp.no_service', { link: html`<a href="${BASE}/sql/ai">${tx('bp.sql_workshop_ai')}</a>` })}</p>`)}
+    ${region(tx('bp.blueprint'), html`<form method="post" action="${BASE}/blueprints/review">${csrf(s)}
       <input type="hidden" name="id" value="${o.id ?? ''}">
-      <div class="form-grid"><div class="field"><label class="label" for="f_name">Name</label><input id="f_name" name="name" maxlength="100" required value="${o.name}"></div></div>
+      <div class="form-grid"><div class="field"><label class="label" for="f_name">${tx('bp.name')}</label><input id="f_name" name="name" maxlength="100" required value="${o.name}"></div></div>
       <div class="field"><label class="label" for="f_spec">JSON</label>
         <textarea id="f_spec" name="spec" class="code" rows="24" spellcheck="false" data-code="json">${o.spec}</textarea>
-        <small class="help">Column types: ${Object.keys(COLUMN_TYPES).join(', ')}; <code>"required"</code>, <code>"unique"</code>, <code>"values"</code> (allowed texts). Page types: ${WIZARD_KINDS.map(([k]) => k).join(', ')} and blank (<code>"text"</code>). Optional: <code>"dashboard": true</code>, <code>"navigation": [{"label", "page", "icon"}]</code>, <code>"sample_data": [{"table", "columns", "rows"}]</code>.</small></div>
-      <div class="buttons"><button class="btn btn-hot">Review</button><button class="btn" formaction="${BASE}/blueprints/save">Save</button></div>
+        <small class="help">${tx.rich('bp.spec_help', { types: Object.keys(COLUMN_TYPES).join(', '), required: html`<code>"required"</code>`, unique: html`<code>"unique"</code>`, values: html`<code>"values"</code>`, kinds: WIZARD_KINDS.map(([k]) => k).join(', '), text: html`<code>"text"</code>`, dashboard: html`<code>"dashboard": true</code>`, navigation: html`<code>"navigation": [{"label", "page", "icon"}]</code>`, sample: html`<code>"sample_data": [{"table", "columns", "rows"}]</code>` })}</small></div>
+      <div class="buttons"><button class="btn btn-hot">${tx('bp.review')}</button><button class="btn" formaction="${BASE}/blueprints/save">${tx('bp.save')}</button></div>
     </form>`)}`);
 }
 
@@ -107,28 +108,28 @@ function review(s: Session, bp: Blueprint, spec: string, id: number | null, name
   const sql = blueprintSql(bp);
   const rows = (t: string) => bp.sample_data.filter((d) => d.table === t).reduce((n, d) => n + d.rows.length, 0);
   return html`<h1>Review: ${bp.name}</h1>
-    <p class="muted">This is what the blueprint creates. Check it; go back to change it, or create the application.</p>
-    ${region('Application', html`<dl class="bp-facts">
-      <dt>Name</dt><dd>${bp.name}</dd><dt>Alias</dt><dd><code>/a/${bp.alias}</code></dd>
-      <dt>Schema</dt><dd><code>${bp.schema}</code> (database role <code>app_${bp.alias.replace(/-/g, '_')}</code>)</dd>
-      <dt>Sign-in</dt><dd>${bp.authentication === 'none' ? 'none: every page is public' : 'a login page (application users)'}</dd></dl>`)}
-    ${region('Tables', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Table</th><th scope="col">Columns</th><th scope="col" class="num">Sample rows</th></tr></thead><tbody>
-      ${bp.tables.map((t) => html`<tr><td data-label="Table"><code>${t.name}</code>${t.label ? html` <span class="muted">${t.label}</span>` : ''}</td>
-        <td data-label="Columns">${t.columns.map((c, i) => html`${i ? ', ' : ''}<code>${c.name}</code> <span class="muted">${c.references ? `→ ${c.references}` : c.type}${c.required ? ', required' : ''}${c.unique ? ', unique' : ''}${c.values.length ? `, ${c.values.join(' / ')}` : ''}</span>`)}</td>
-        <td data-label="Sample rows" class="num">${rows(t.name)}</td></tr>`)}
+    <p class="muted">${tx('bp.this_is_what_the_blueprint')}</p>
+    ${region(tx('bp.application'), html`<dl class="bp-facts">
+      <dt>${tx('bp.name')}</dt><dd>${bp.name}</dd><dt>${tx('bp.alias')}</dt><dd><code>/a/${bp.alias}</code></dd>
+      <dt>${tx('bp.schema')}</dt><dd><code>${bp.schema}</code> ${tx.rich('bp.db_role', { role: html`<code>app_${bp.alias.replace(/-/g, '_')}</code>` })}</dd>
+      <dt>${tx('bp.sign_in')}</dt><dd>${bp.authentication === 'none' ? 'none: every page is public' : 'a login page (application users)'}</dd></dl>`)}
+    ${region(tx('bp.tables'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('bp.table')}</th><th scope="col">${tx('bp.columns')}</th><th scope="col" class="num">${tx('bp.sample_rows')}</th></tr></thead><tbody>
+      ${bp.tables.map((t) => html`<tr><td data-label="${tx('bp.table')}"><code>${t.name}</code>${t.label ? html` <span class="muted">${t.label}</span>` : ''}</td>
+        <td data-label="${tx('bp.columns')}">${t.columns.map((c, i) => html`${i ? ', ' : ''}<code>${c.name}</code> <span class="muted">${c.references ? `→ ${c.references}` : c.type}${c.required ? ', required' : ''}${c.unique ? ', unique' : ''}${c.values.length ? `, ${c.values.join(' / ')}` : ''}</span>`)}</td>
+        <td data-label="${tx('bp.sample_rows')}" class="num">${rows(t.name)}</td></tr>`)}
     </tbody></table></div>
-    <details class="u-mt1"><summary>The SQL</summary><pre class="bp-sql">${sql.join(';\n\n')};</pre></details>`)}
-    ${region('Pages', html`<ul>${bp.pages.map((p) => html`<li>Page ${p.page}${p.form_page ? html` and ${p.form_page}` : ''}: ${p.label} <span class="muted">(${p.type}${p.table ? ` on ${p.table}` : ''})</span></li>`)}
-      ${bp.dashboard ? html`<li>A dashboard with charts per table</li>` : ''}</ul>
-      ${bp.navigation ? html`<p>Menu: ${bp.navigation.map((n) => n.label).join(' · ')}</p>` : html`<p class="muted">Menu: Home and the pages' own entries.</p>`}`)}
-    ${region('Create the application', html`<form method="post" action="${BASE}/blueprints/create">${csrf(s)}
+    <details class="u-mt1"><summary>${tx('bp.the_sql')}</summary><pre class="bp-sql">${sql.join(';\n\n')};</pre></details>`)}
+    ${region(tx('bp.pages'), html`<ul>${bp.pages.map((p) => html`<li>Page ${p.page}${p.form_page ? html` and ${p.form_page}` : ''}: ${p.label} <span class="muted">(${p.type}${p.table ? ` on ${p.table}` : ''})</span></li>`)}
+      ${bp.dashboard ? html`<li>${tx('bp.a_dashboard_with_charts_per')}</li>` : ''}</ul>
+      ${bp.navigation ? html`<p>Menu: ${bp.navigation.map((n) => n.label).join(' · ')}</p>` : html`<p class="muted">${tx('bp.menu_home_and_the_pages')}</p>`}`)}
+    ${region(tx('bp.create_the_application'), html`<form method="post" action="${BASE}/blueprints/create">${csrf(s)}
       <input type="hidden" name="id" value="${id ?? ''}"><input type="hidden" name="name" value="${name}">
       <input type="hidden" name="spec" value="${spec}"><input type="hidden" name="sig" value="${sign(s, spec)}">
       ${bp.authentication === 'none' ? '' : html`<div class="form-grid">
-        <div class="field"><label class="label" for="f_admin_user">First user (admin role)</label><input id="f_admin_user" name="admin_user" required value="${s.username}" autocomplete="off"></div>
-        <div class="field"><label class="label" for="f_admin_password">Password (for a new account)</label><input id="f_admin_password" name="admin_password" type="password" autocomplete="new-password"></div>
+        <div class="field"><label class="label" for="f_admin_user">${tx('bp.first_user_admin_role')}</label><input id="f_admin_user" name="admin_user" required value="${s.username}" autocomplete="off"></div>
+        <div class="field"><label class="label" for="f_admin_password">${tx('bp.password_for_a_new_account')}</label><input id="f_admin_password" name="admin_password" type="password" autocomplete="new-password"></div>
       </div>`}
-      <div class="buttons"><button class="btn" formaction="${BASE}/blueprints/edit">Back to the editor</button><button class="btn btn-hot">${icon('plus')} Create the application</button></div>
+      <div class="buttons"><button class="btn" formaction="${BASE}/blueprints/edit">${tx('bp.back_to_the_editor')}</button><button class="btn btn-hot">${icon('plus')} ${tx('bp.create_the_application')}</button></div>
     </form>`)}`;
 }
 
@@ -140,10 +141,10 @@ export async function openBlueprint(s: Session, reply: FastifyReply, name: strin
   const { json, error } = parse(spec);
   const { blueprint, problems } = error ? { blueprint: null, problems: [error] } : checkBlueprint(json);
   const taken = blueprint ? await owner.one('select 1 from meta.app where alias = $1', [blueprint.alias]) : null;
-  if (taken) problems.push(`An application with the alias ${blueprint!.alias} already exists: change "alias" and "schema" in the blueprint.`);
+  if (taken) problems.push(tx('bp.alias_taken', { alias: blueprint!.alias }));
   if (!blueprint || problems.length)
-    return editor(s, reply, { name, spec, message: html`<div class="alert alert-error" role="alert"><p>The blueprint can't be created yet:</p><ul>${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` });
-  return page(s, reply, 'Review', review(s, blueprint, spec, null, name));
+    return editor(s, reply, { name, spec, message: html`<div class="alert alert-error" role="alert"><p>${tx('bp.the_blueprint_can_t_be')}</p><ul>${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` });
+  return page(s, reply, tx('bp.review_title'), review(s, blueprint, spec, null, name));
 }
 
 export async function blueprintRoutes(app: FastifyInstance) {
@@ -152,23 +153,23 @@ export async function blueprintRoutes(app: FastifyInstance) {
     if (!s) return;
     const list = (await owner.query(`select b.id, b.name, b.created_by, b.updated_at::text as updated, a.id as app_id, a.alias from meta.blueprint b left join meta.app a on a.id = b.app_id where b.workspace_id = $1 order by lower(b.name), b.id`, [currentWorkspace(s)])).rows;
     const apps = (await owner.query(`select id, name, alias from meta.app where meta.app_workspace(id) = $1 order by lower(name), id`, [currentWorkspace(s)])).rows;
-    return page(s, reply, '', html`<h1>Blueprints</h1>
-      <p class="muted">Describe an application as a blueprint (tables, pages, menu, sample rows), review it and create it. <a class="btn btn-hot" href="${BASE}/blueprints/new">${icon('plus')} New blueprint</a></p>
+    return page(s, reply, '', html`<h1>${tx('bp.blueprints')}</h1>
+      <p class="muted">${tx('bp.list_intro')} <a class="btn btn-hot" href="${BASE}/blueprints/new">${icon('plus')} ${tx('bp.new_blueprint')}</a></p>
       ${list.length
-        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Blueprint</th><th scope="col">Application created</th><th scope="col">Changed</th><th scope="col"></th></tr></thead><tbody>
-            ${list.map((x) => html`<tr><td data-label="Blueprint"><a href="${BASE}/blueprints/${x.id}">${x.name}</a> <span class="muted">${x.created_by ?? ''}</span></td>
-              <td data-label="Application created">${x.app_id ? html`<a href="${BASE}/apps/${x.app_id}">${x.alias}</a>` : '—'}</td><td data-label="Changed">${String(x.updated).slice(0, 16)}</td>
-              <td><form method="post" action="${BASE}/blueprints/${x.id}/delete">${csrf(s)}<button class="btn btn-small">Delete</button></form></td></tr>`)}
+        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('bp.blueprint')}</th><th scope="col">${tx('bp.application_created')}</th><th scope="col">${tx('bp.changed')}</th><th scope="col"></th></tr></thead><tbody>
+            ${list.map((x) => html`<tr><td data-label="${tx('bp.blueprint')}"><a href="${BASE}/blueprints/${x.id}">${x.name}</a> <span class="muted">${x.created_by ?? ''}</span></td>
+              <td data-label="${tx('bp.application_created')}">${x.app_id ? html`<a href="${BASE}/apps/${x.app_id}">${x.alias}</a>` : '—'}</td><td data-label="${tx('bp.changed')}">${String(x.updated).slice(0, 16)}</td>
+              <td><form method="post" action="${BASE}/blueprints/${x.id}/delete">${csrf(s)}<button class="btn btn-small">${tx('bp.delete')}</button></form></td></tr>`)}
           </tbody></table></div>`
-        : html`<p class="muted">No saved blueprints yet.</p>`}
-      ${apps.length ? region('From an application', html`<form method="post" action="${BASE}/blueprints/from-app">${csrf(s)}
-        <p class="muted u-mt0">A blueprint of an application of this workspace: the tables its pages use, its pages and its menu, to review and change in the editor (for a copy, a new version or a test system). Nothing is created until you confirm the review.</p>
+        : html`<p class="muted">${tx('bp.no_saved_blueprints_yet')}</p>`}
+      ${apps.length ? region(tx('bp.from_an_application'), html`<form method="post" action="${BASE}/blueprints/from-app">${csrf(s)}
+        <p class="muted u-mt0">${tx('bp.a_blueprint_of_an_application')}</p>
         <div class="form-grid">
-          <div class="field"><label class="label" for="f_bp_app">Application</label><select id="f_bp_app" name="app">${apps.map((a) => html`<option value="${a.id}">${a.name} (${a.alias})</option>`)}</select></div>
-          <div class="field"><label class="check"><input type="checkbox" name="rows" value="true"> Sample rows: up to 20 per table</label>
-            <small class="help">The rows are copied into the blueprint as they are: leave this off for personal or confidential data.</small></div>
+          <div class="field"><label class="label" for="f_bp_app">${tx('bp.application')}</label><select id="f_bp_app" name="app">${apps.map((a) => html`<option value="${a.id}">${a.name} (${a.alias})</option>`)}</select></div>
+          <div class="field"><label class="check"><input type="checkbox" name="rows" value="true"> ${tx('bp.sample_rows_up_to_20')}</label>
+            <small class="help">${tx('bp.the_rows_are_copied_into')}</small></div>
         </div>
-        <div class="buttons"><button class="btn">${icon('layers')} Create a blueprint</button></div></form>`) : ''}`);
+        <div class="buttons"><button class="btn">${icon('layers')} ${tx('bp.create_a_blueprint')}</button></div></form>`) : ''}`);
   });
 
   // (sprint 66) a blueprint from an application of the current workspace, opened in the editor
@@ -184,15 +185,15 @@ export async function blueprintRoutes(app: FastifyInstance) {
     await logActivity({ appId: a.id, username: s.username, event: 'blueprint', ip: clientIp(req), detail: `blueprint from the application${rows ? ', with sample rows' : ''}` });
     return editor(s, reply, {
       name: `${a.name} blueprint`.slice(0, 100), spec: JSON.stringify(spec, null, 2),
-      message: html`<div class="alert alert-info" role="status"><p>A blueprint of ${a.name}: review it, change the name, alias and schema, then <b>Review</b>.</p>
-        ${notes.length ? html`<details><summary>${notes.length} note${notes.length === 1 ? '' : 's'} on what didn't carry over</summary><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></details>` : ''}</div>`,
+      message: html`<div class="alert alert-info" role="status"><p>${tx.rich('bp.of_app', { app: a.name, review: html`<b>${tx('bp.review')}</b>` })}</p>
+        ${notes.length ? html`<details><summary>${notes.length === 1 ? tx('bp.notes_1') : tx('bp.notes', { n: notes.length })}</summary><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></details>` : ''}</div>`,
     });
   });
 
   app.get(`${BASE}/blueprints/new`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    return editor(s, reply, { name: 'Projects', spec: JSON.stringify(EXAMPLE, null, 2) });
+    return editor(s, reply, { name: tx('bp.projects'), spec: JSON.stringify(EXAMPLE, null, 2) });
   });
 
   app.get(`${BASE}/blueprints/:id(^\\d+$)`, async (req: Req, reply) => {
@@ -225,7 +226,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
       ? (await owner.one('update meta.blueprint set name = $2, spec = $3, updated_at = now() where id = $1 and workspace_id = $4 returning id', [o.id, o.name, JSON.stringify(json), currentWorkspace(s)]))?.id
       : (await owner.one('insert into meta.blueprint (name, spec, created_by, workspace_id) values ($1, $2, $3, $4) returning id', [o.name, JSON.stringify(json), s.username, currentWorkspace(s)])).id;
     if (!id) return reply.code(404).send('Not found');
-    flash(s, `Blueprint ${o.name} saved.`);
+    flash(s, tx('bp.saved', { name: o.name }));
     return back(reply, s, `${BASE}/blueprints/${id}`);
   });
 
@@ -236,8 +237,8 @@ export async function blueprintRoutes(app: FastifyInstance) {
     const description = String(req.body?.description ?? '').trim().slice(0, 4000);
     try {
       const svc = await builderService();
-      if (!svc) throw new AiError('config', 'The App Builder has no AI service yet.');
-      if (!description) throw new AiError('config', 'Describe the application.');
+      if (!svc) throw new AiError('config', tx('bp.the_app_builder_has_no'));
+      if (!description) throw new AiError('config', tx('bp.describe_the_application_2'));
       const res = await generate(svc.name, {
         system: 'You design small business web applications on PostgreSQL as blueprints. Use singular lower-case table names, a few meaningful columns per table, '
           + '"references" for relations (never an id column: every table has one), "values" for short fixed lists, and pages of the given types (report_form for the main tables; '
@@ -248,7 +249,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
       }, { appId: null, user: s.username, source: 'builder' });
       const spec = JSON.stringify(fromDraft(res.json), null, 2);
       return editor(s, reply, { ...o, name: o.id ? o.name : String((res.json as any)?.name ?? o.name).slice(0, 100), spec, description,
-        message: html`<div class="alert alert-info">Drafted by AI: review it before you create anything.</div>` });
+        message: html`<div class="alert alert-info">${tx('bp.drafted_by_ai_review_it')}</div>` });
     } catch (e) {
       return editor(s, reply, { ...o, description, message: html`<div class="alert alert-error" role="alert">${(e as Error).message}</div>` });
     }
@@ -261,10 +262,10 @@ export async function blueprintRoutes(app: FastifyInstance) {
     const { json, error } = parse(o.spec);
     const { blueprint, problems } = error ? { blueprint: null, problems: [error] } : checkBlueprint(json);
     const taken = blueprint ? await owner.one('select 1 from meta.app where alias = $1', [blueprint.alias]) : null;
-    if (taken) problems.push(`An application with the alias ${blueprint!.alias} already exists.`);
+    if (taken) problems.push(tx('bp.alias_taken_short', { alias: blueprint!.alias }));
     if (!blueprint || problems.length)
-      return editor(s, reply, { ...o, message: html`<div class="alert alert-error" role="alert"><p>The blueprint can't be created yet:</p><ul>${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` });
-    return page(s, reply, 'Review', review(s, blueprint, o.spec, o.id, o.name));
+      return editor(s, reply, { ...o, message: html`<div class="alert alert-error" role="alert"><p>${tx('bp.the_blueprint_can_t_be')}</p><ul>${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` });
+    return page(s, reply, tx('bp.review_title'), review(s, blueprint, o.spec, o.id, o.name));
   });
 
   app.post(`${BASE}/blueprints/create`, async (req: Req, reply) => {
@@ -290,10 +291,10 @@ export async function blueprintRoutes(app: FastifyInstance) {
         return { ...r, existing: a.existingAccount };
       });
       await logActivity({ username: s.username, event: 'blueprint', ip: clientIp(req), detail: `created ${blueprint.alias} from blueprint ${o.name}` });
-      flash(s, `Application ${blueprint.alias} created from the blueprint: ${blueprint.tables.length} table(s), ${built.rows} sample row(s).${built.existing ? ` The existing account ${String(b.admin_user)} got the admin role.` : ''}`);
+      flash(s, `${tx('bp.created', { alias: blueprint.alias, tables: blueprint.tables.length, rows: built.rows })}${built.existing ? ` ${tx('bp.admin_role', { user: String(b.admin_user) })}` : ''}`);
       return back(reply, s, `${BASE}/apps/${built.appId}`);
     } catch (e) {
-      return page(s, reply, 'Review', html`<div class="alert alert-error" role="alert">No application was created: ${(e as Error).message}</div>${review(s, blueprint, o.spec, o.id, o.name)}`);
+      return page(s, reply, tx('bp.review_title'), html`<div class="alert alert-error" role="alert">${tx('bp.not_created', { error: (e as Error).message })}</div>${review(s, blueprint, o.spec, o.id, o.name)}`);
     }
   });
 
@@ -301,7 +302,7 @@ export async function blueprintRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     const r = await owner.query('delete from meta.blueprint where id = $1 and workspace_id = $2', [req.params.id, currentWorkspace(s)]);
-    flash(s, r.rowCount ? 'Blueprint deleted (applications created from it stay).' : 'There is no such blueprint.');
+    flash(s, r.rowCount ? tx('bp.blueprint_deleted_applications_created_from') : tx('bp.there_is_no_such_blueprint'));
     return back(reply, s, `${BASE}/blueprints`);
   });
 }

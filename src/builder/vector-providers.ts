@@ -13,6 +13,7 @@ import { appOr404 } from './forms.ts';
 import { isAdmin } from './locks.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql } from './workspaces.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 136, AP-1; APEX: Workspace Utilities and Shared Components → Vector Providers)
 //
@@ -29,20 +30,20 @@ type Body = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 
 const crumbs = (a: { id: number; name: string }, last?: string): [string, string?][] => [
-  ['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`],
-  ...(last ? [['Vector providers', `${BASE}/apps/${a.id}/vector-providers`], [last]] as [string, string?][] : [['Vector providers']] as [string, string?][]),
+  [tx('vp.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('vp.shared_components'), `${BASE}/apps/${a.id}/shared`],
+  ...(last ? [[tx('vp.vector_providers'), `${BASE}/apps/${a.id}/vector-providers`], [last]] as [string, string?][] : [[tx('vp.vector_providers')]] as [string, string?][]),
 ];
 
 /** pgvector's state as a short paragraph (with how to get it). */
 export function pgvectorNote(st: PgvectorStatus, admin: boolean, s: Session): Raw {
-  if (st.installed) return html`<p class="muted u-mt0">${icon('check')} pgvector ${st.version} is installed (schema <code>${st.schema}</code>).</p>`;
-  return html`<div class="alert alert-info" role="status"><p><strong>pgvector is not installed in this database.</strong>
-    Vector providers can be defined, but vector columns, vector search and Retrieve tools need the extension.</p>
+  if (st.installed) return html`<p class="muted u-mt0">${icon('check')} ${tx.rich('vp.installed', { version: st.version ?? '', schema: html`<code>${st.schema}</code>` })}</p>`;
+  return html`<div class="alert alert-info" role="status"><p><strong>${tx('vp.pgvector_is_not_installed_in')}</strong>
+    ${tx('vp.not_installed_detail')}</p>
     ${st.available
       ? admin && st.canCreate
-        ? html`<form method="post" action="${BASE}/vector-providers/extension">${csrf(s)}<button class="btn btn-hot">${icon('plus')} Create extension vector ${st.availableVersion}</button></form>`
-        : html`<p>The database server has pgvector ${st.availableVersion}: ${admin ? 'a superuser' : 'an administrator'} runs <code>create extension vector;</code> in this database.</p>`
-      : html`<p>The database server doesn't have the pgvector package: install it (for example <code>apt install postgresql-17-pgvector</code>, the <code>pgvector/pgvector:pg17</code> Docker image, or your cloud provider's <i>vector</i> extension), then create the extension.</p>`}
+        ? html`<form method="post" action="${BASE}/vector-providers/extension">${csrf(s)}<button class="btn btn-hot">${icon('plus')} ${tx('vp.create_extension', { version: st.availableVersion ?? '' })}</button></form>`
+        : html`<p>${tx.rich('vp.has_pgvector', { version: st.availableVersion ?? '', who: admin ? tx('vp.a_superuser') : tx('vp.an_administrator'), sql: html`<code>create extension vector;</code>` })}</p>`
+      : html`<p>${tx.rich('vp.no_package', { apt: html`<code>apt install postgresql-17-pgvector</code>`, docker: html`<code>pgvector/pgvector:pg17</code>`, vector: html`<i>vector</i>` })}</p>`}
   </div>`;
 }
 
@@ -64,60 +65,60 @@ async function providerForm(a: any, s: Session, x: Partial<VectorProvider>, orig
   const columns = original ? (await vectorTriggers(await devDbForApp(a.id))).filter((t) => t.appId === a.id && t.provider === original) : [];
   return html`${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
     <form method="post" action="${BASE}/apps/${a.id}/vector-providers/provider">${csrf(s)}<input type="hidden" name="original" value="${original}">
-      <fieldset class="prop-group"><legend>Vector provider</legend><div class="form-grid">
-        ${input('name', 'Name (static ID)', x.name ?? '', { required: true, placeholder: 'e.g. DOC_EMBEDDINGS', help: 'Upper case letters, digits and _. Search configurations name it; in SQL: meta.embed(text, \'DOC_EMBEDDINGS\') (function and database model providers).' })}
-        ${input('description', 'Description', x.description ?? '')}
-        ${select('type', 'Type', x.type ?? 'ai_service', [['ai_service', 'AI service with an embedding model'], ['database_model', 'Model in the database (PostgresML)'], ['function', 'SQL or PL/pgSQL function']], 'Where the embeddings come from.')}
-        ${input('dimensions', 'Dimensions', x.dimensions ?? '', { type: 'number', required: true, placeholder: 'e.g. 1536', help: `The length of each vector: text-embedding-3-small 1536 (or fewer: OpenAI shortens them), text-embedding-3-large 3072, nomic-embed-text 768, gemini-embedding-001 3072. A vector column is vector(n) with this n; an HNSW index takes up to ${HNSW_MAX_DIMENSIONS}.` })}
+      <fieldset class="prop-group"><legend>${tx('vp.vector_provider')}</legend><div class="form-grid">
+        ${input('name', tx('vp.name_static_id'), x.name ?? '', { required: true, placeholder: tx('vp.e_g_doc_embeddings'), help: tx('vp.upper_case_letters_digits_and') })}
+        ${input('description', tx('vp.description'), x.description ?? '')}
+        ${select('type', tx('vp.type'), x.type ?? 'ai_service', [['ai_service', tx('vp.ai_service_with_an_embedding')], ['database_model', tx('vp.model_in_the_database_postgresml')], ['function', tx('vp.sql_or_pl_pgsql_function')]], tx('vp.where_the_embeddings_come_from'))}
+        ${input('dimensions', tx('vp.dimensions'), x.dimensions ?? '', { type: 'number', required: true, placeholder: tx('vp.eg_1536'), help: tx('vp.dimensions_help', { max: HNSW_MAX_DIMENSIONS }) })}
       </div></fieldset>
-      <fieldset class="prop-group"><legend>AI service</legend><div class="form-grid">
-        ${services.length ? '' : html`<p class="muted" data-wide>This application may not use an OpenAI, Gemini or OpenAI-compatible AI service yet: an administrator adds one under <a href="${BASE}/ai">Workspace utilities → AI services</a> (Claude has no embeddings) and allows this application to use it.</p>`}
-        ${select('service', 'AI service', x.service ?? '', svc, 'Its key, base URL and daily limits apply; the texts to embed go to its provider.')}
-        ${input('model', 'Embedding model', x.model ?? '', { placeholder: 'e.g. text-embedding-3-small', help: 'Exactly as the provider names it: text-embedding-3-small, gemini-embedding-001, nomic-embed-text, mxbai-embed-large …' })}
-        ${input('batch_size', 'Texts per request', x.batch_size ?? '', { type: 'number', placeholder: String(DEFAULT_BATCH), help: 'When the server embeds queued rows (vector columns).' })}
-        ${input('per_minute', 'Requests per minute', x.per_minute ?? '', { type: 'number', placeholder: String(DEFAULT_PER_MINUTE), help: 'At most this many background requests per minute (per server), under the provider\'s rate limit.' })}
+      <fieldset class="prop-group"><legend>${tx('vp.ai_service')}</legend><div class="form-grid">
+        ${services.length ? '' : html`<p class="muted" data-wide>${tx.rich('vp.no_service', { link: html`<a href="${BASE}/ai">${tx('vp.workspace_utilities_ai_services')}</a>` })}</p>`}
+        ${select('service', tx('vp.ai_service'), x.service ?? '', svc, tx('vp.its_key_base_url_and'))}
+        ${input('model', tx('vp.embedding_model'), x.model ?? '', { placeholder: tx('vp.e_g_text_embedding_3'), help: tx('vp.exactly_as_the_provider_names') })}
+        ${input('batch_size', tx('vp.texts_per_request'), x.batch_size ?? '', { type: 'number', placeholder: String(DEFAULT_BATCH), help: tx('vp.when_the_server_embeds_queued') })}
+        ${input('per_minute', tx('vp.requests_per_minute'), x.per_minute ?? '', { type: 'number', placeholder: String(DEFAULT_PER_MINUTE), help: tx('vp.at_most_this_many_background') })}
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Model in the database</legend><div class="form-grid">
-        ${pgml ? '' : html`<p class="muted" data-wide>PostgresML (<code>pgml</code>) is not installed in this database: install it on the database server, then <code>create extension pgml;</code>. It runs Hugging Face models (ONNX among them) inside PostgreSQL.</p>`}
-        ${select('engine', 'Engine', x.engine ?? 'pgml', MODEL_ENGINES.map((e): [string, string] => [e, e === 'pgml' ? 'PostgresML: pgml.embed(model, text)' : e]), 'The extension that runs the model. Nothing leaves the database; grant usage on its schema (pgml) to the application\'s role.')}
-        ${input('db_model', 'Model', x.type === 'database_model' ? (x.model ?? '') : '', { placeholder: 'e.g. intfloat/e5-small-v2', help: 'A model the engine loads (the first call downloads it): intfloat/e5-small-v2 (384), Alibaba-NLP/gte-base-en-v1.5 (768), mixedbread-ai/mxbai-embed-large-v1 (1024) …' })}
+      <fieldset class="prop-group"><legend>${tx('vp.model_in_the_database')}</legend><div class="form-grid">
+        ${pgml ? '' : html`<p class="muted" data-wide>${tx.rich('vp.no_pgml', { pgml: html`<code>pgml</code>`, sql: html`<code>create extension pgml;</code>` })}</p>`}
+        ${select('engine', tx('vp.engine'), x.engine ?? 'pgml', MODEL_ENGINES.map((e): [string, string] => [e, e === 'pgml' ? tx('vp.postgresml_pgml_embed_model_text') : e]), tx('vp.the_extension_that_runs_the'))}
+        ${input('db_model', tx('vp.model'), x.type === 'database_model' ? (x.model ?? '') : '', { placeholder: tx('vp.e_g_intfloat_e5_small'), help: tx('vp.a_model_the_engine_loads') })}
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Function</legend><div class="form-grid">
-        ${input('function', 'Function', x.function ?? '', { placeholder: 'e.g. sales.embed', help: 'schema.name of a function (text) returning vector, real[] or float8[]. meta.embed calls it as the role that runs the query (its grants apply): grant execute on it to the application\'s role.' })}
+      <fieldset class="prop-group"><legend>${tx('vp.function')}</legend><div class="form-grid">
+        ${input('function', tx('vp.function'), x.function ?? '', { placeholder: tx('vp.e_g_sales_embed'), help: tx('vp.schema_name_of_a_function') })}
       </div></fieldset>
-      <div class="buttons"><button class="btn btn-hot">${original ? 'Save' : 'Add vector provider'}</button></div>
+      <div class="buttons"><button class="btn btn-hot">${original ? tx('vp.save') : tx('vp.add_vector_provider')}</button></div>
     </form>
     ${original ? html`
       <form method="post" action="${BASE}/apps/${a.id}/vector-providers/test" class="u-mt1">${csrf(s)}<input type="hidden" name="name" value="${original}">
-        <button class="btn">${icon('play')} Test: embed a sample text</button></form>
-      <h3>Used by</h3>
+        <button class="btn">${icon('play')} ${tx('vp.test_embed_a_sample_text')}</button></form>
+      <h3>${tx('vp.used_by')}</h3>
       ${configs.length || columns.length ? html`<ul>
-        ${configs.map((c) => html`<li>Search configuration <a href="${BASE}/apps/${a.id}/shared?c=search_config-${c.id}">${c.name}</a> (${c.search_type})</li>`)}
-        ${columns.map((c) => html`<li>Vector column <a href="${BASE}/sql/objects/vector?${new URLSearchParams({ o: c.table })}"><code>${c.table}.${c.vectorColumn}</code></a> (${c.mode === 'set' ? 'set by a trigger' : 'queued for the server'})</li>`)}
-      </ul>` : html`<p class="muted">No search configuration or vector column uses this provider yet.</p>`}
+        ${configs.map((c) => html`<li>${tx.rich('vp.used_config', { link: html`<a href="${BASE}/apps/${a.id}/shared?c=search_config-${c.id}">${c.name}</a>`, type: c.search_type })}</li>`)}
+        ${columns.map((c) => html`<li>${tx.rich('vp.used_column', { link: html`<a href="${BASE}/sql/objects/vector?${new URLSearchParams({ o: c.table })}"><code>${c.table}.${c.vectorColumn}</code></a>`, mode: c.mode === 'set' ? tx('vp.set_by_trigger') : tx('vp.queued_server') })}</li>`)}
+      </ul>` : html`<p class="muted">${tx('vp.no_search_configuration_or_vector')}</p>`}
       <form method="post" action="${BASE}/apps/${a.id}/vector-providers/provider/delete" class="danger-zone">${csrf(s)}<input type="hidden" name="name" value="${original}">
-        <button class="btn btn-danger" data-confirm="Delete vector provider ${original}? Search configurations and vector columns that use it stop working.">Delete vector provider</button></form>` : ''}`;
+        <button class="btn btn-danger" data-confirm="${tx('vp.delete_confirm', { name: original })}">${tx('vp.delete_vector_provider')}</button></form>` : ''}`;
 }
 
 const intOrUndef = (v: string, what: string, errors: string[]) => {
   const t = v.trim();
   if (!t) return undefined;
   const n = Number(t);
-  if (!Number.isInteger(n)) errors.push(`${what} is a whole number.`);
+  if (!Number.isInteger(n)) errors.push(tx('vp.whole_number', { what }));
   return n;
 };
 
 function providerFrom(b: Body, errors: string[]): VectorProvider {
   const type = one(b.type) as VectorProvider['type'];
-  const x: VectorProvider = { name: one(b.name).trim().toUpperCase(), type, dimensions: intOrUndef(one(b.dimensions), 'Dimensions', errors) ?? 0 };
+  const x: VectorProvider = { name: one(b.name).trim().toUpperCase(), type, dimensions: intOrUndef(one(b.dimensions), tx('vp.f_dimensions'), errors) ?? 0 };
   const description = one(b.description).trim().slice(0, 500);
   if (description) x.description = description;
   if (type === 'ai_service') {
     x.service = one(b.service).trim().toUpperCase();
     x.model = one(b.model).trim();
-    const batch = intOrUndef(one(b.batch_size), 'Texts per request', errors);
+    const batch = intOrUndef(one(b.batch_size), tx('vp.f_batch'), errors);
     if (batch !== undefined) x.batch_size = batch;
-    const pm = intOrUndef(one(b.per_minute), 'Requests per minute', errors);
+    const pm = intOrUndef(one(b.per_minute), tx('vp.f_per_minute'), errors);
     if (pm !== undefined) x.per_minute = pm;
   }
   if (type === 'function') x.function = one(b.function).trim();
@@ -159,16 +160,16 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
     const list = (a.vector_providers ?? []) as VectorProvider[];
     const st = await pgvectorStatus(await devDbForApp(a.id));
     const main = html`${appHeader(a, 'shared', s)}
-      <div class="title-row"><h1>Vector providers</h1></div>
-      <p class="muted u-mt0">A vector provider turns text into an embedding: a list of numbers whose distance says how close two texts are in meaning. Vector columns keep the embeddings of a table's rows (SQL Workshop › Table Properties › Add vector column), and search configurations of type vector or hybrid, and the Retrieve tools of AI agents, find rows by meaning. The texts go to the provider's AI service.</p>
+      <div class="title-row"><h1>${tx('vp.vector_providers')}</h1></div>
+      <p class="muted u-mt0">${tx('vp.a_vector_provider_turns_text')}</p>
       ${pgvectorNote(st, await isAdmin(s.username), s)}
-      ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Name</th><th>Type</th><th>Model or function</th><th class="num">Dimensions</th></tr></thead>
-        <tbody>${list.length ? list.map((p) => html`<tr><td data-label="Name"><a href="${BASE}/apps/${a.id}/vector-providers/provider?name=${encodeURIComponent(p.name)}">${p.name}</a>${p.description ? html` <span class="muted">${p.description}</span>` : ''}</td>
-          <td data-label="Type">${p.type === 'ai_service' ? html`AI service ${p.service}` : p.type === 'database_model' ? `in the database (${p.engine})` : 'function'}</td><td data-label="Model or function"><code>${p.type === 'function' ? p.function : p.model}</code></td>
-          <td class="num" data-label="Dimensions">${p.dimensions}</td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No vector providers yet.</td></tr>`}</tbody></table></div>
-        <p><a class="btn" href="${BASE}/apps/${a.id}/vector-providers/provider">${icon('plus')} Add vector provider</a></p>`)}`;
-    return send(reply, s, shell(s, 'Vector providers', crumbs(a), main));
+      ${region(tx('vp.providers'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('vp.name')}</th><th>${tx('vp.type')}</th><th>${tx('vp.model_or_function')}</th><th class="num">${tx('vp.dimensions')}</th></tr></thead>
+        <tbody>${list.length ? list.map((p) => html`<tr><td data-label="${tx('vp.name')}"><a href="${BASE}/apps/${a.id}/vector-providers/provider?name=${encodeURIComponent(p.name)}">${p.name}</a>${p.description ? html` <span class="muted">${p.description}</span>` : ''}</td>
+          <td data-label="${tx('vp.type')}">${p.type === 'ai_service' ? html`AI service ${p.service}` : p.type === 'database_model' ? `in the database (${p.engine})` : 'function'}</td><td data-label="${tx('vp.model_or_function')}"><code>${p.type === 'function' ? p.function : p.model}</code></td>
+          <td class="num" data-label="${tx('vp.dimensions')}">${p.dimensions}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('vp.no_vector_providers_yet')}</td></tr>`}</tbody></table></div>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/vector-providers/provider">${icon('plus')} ${tx('vp.add_vector_provider')}</a></p>`)}`;
+    return send(reply, s, shell(s, tx('vp.vector_providers'), crumbs(a), main));
   });
 
   app.get(`${BASE}/apps/:id(^\\d+$)/vector-providers/provider`, async (req: Req, reply) => {
@@ -179,7 +180,7 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
     const x = name ? ((a.vector_providers ?? []) as VectorProvider[]).find((p) => p.name === name) : {};
     if (!x) return reply.code(404).send('Not found');
     const title = name || 'New vector provider';
-    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('Vector provider', await providerForm(a, s, x, name, []))}`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region(tx('vp.vector_provider'), await providerForm(a, s, x, name, []))}`;
     return send(reply, s, shell(s, title, crumbs(a, title), main));
   });
 
@@ -194,20 +195,20 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
     const problems = errors.length ? errors : await update(a.id, (list) => {
       const out = vectorProviderProblems(x);
       const at = original ? list.findIndex((p) => p.name === original) : -1;
-      if (original && at < 0) out.push(`Vector provider ${original} no longer exists.`);
-      if (list.some((p, i) => p.name === x.name && i !== at)) out.push(`A vector provider ${x.name} exists already.`);
+      if (original && at < 0) out.push(tx('vp.gone', { name: original }));
+      if (list.some((p, i) => p.name === x.name && i !== at)) out.push(tx('vp.exists', { name: x.name }));
       if (out.length) return out;
       if (at >= 0) list[at] = x;
       else list.push(x);
       return [];
     });
     if (problems.length) {
-      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New vector provider'}</h1></div>${region('Vector provider', await providerForm(a, s, x, original, problems))}`;
+      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New vector provider'}</h1></div>${region(tx('vp.vector_provider'), await providerForm(a, s, x, original, problems))}`;
       return send(reply.code(422), s, shell(s, original || 'New vector provider', crumbs(a, original || 'New vector provider'), main));
     }
     // a renamed provider keeps its search configurations
     if (original && original !== x.name) await owner.query('update meta.search_config set vector_provider = $3 where app_id = $1 and vector_provider = $2', [a.id, original, x.name]);
-    flash(s, 'Vector provider saved.');
+    flash(s, tx('vp.vector_provider_saved'));
     return back(reply, s, `${BASE}/apps/${a.id}/vector-providers/provider?name=${encodeURIComponent(x.name)}`);
   });
 
@@ -221,7 +222,7 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
       if (at >= 0) list.splice(at, 1);
       return [];
     });
-    flash(s, `Vector provider ${name} deleted.`);
+    flash(s, tx('vp.deleted', { name }));
     return back(reply, s, `${BASE}/apps/${a.id}/vector-providers`);
   });
 
@@ -241,7 +242,7 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
     }
     const t0 = performance.now();
     try {
-      const [v] = await embedTexts(p, ['The quick brown fox jumps over the lazy dog.'], { appId: a.id, user: s.username, pageNo: null }, await devDbForApp(a.id));
+      const [v] = await embedTexts(p, [tx('vp.the_quick_brown_fox_jumps')], { appId: a.id, user: s.username, pageNo: null }, await devDbForApp(a.id));
       flash(s, `${name} answered in ${Math.round(performance.now() - t0)} ms with ${v.length} dimensions, as the provider says: [${v.slice(0, 4).map((n) => n.toFixed(4)).join(', ')}, …].`);
     } catch (e) {
       flash(s, `${name}: ${isAiError(e) ? e.message : (e as Error).message}`, 'error');
@@ -261,20 +262,20 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
     const ids = new Set(apps.map((x) => x.id));
     const columns = st.installed ? (await vectorTriggers(owner)).filter((t) => ids.has(t.appId)) : [];
     const rows = apps.flatMap((x) => x.vector_providers.map((p) => ({ app: x, p })));
-    const main = html`<div class="title-row"><h1>Vector providers</h1></div>
-      <p class="muted u-mt0">The vector providers of this workspace's applications (each application defines its own under Shared Components → Vector providers), and the vector columns they keep current.</p>
+    const main = html`<div class="title-row"><h1>${tx('vp.vector_providers')}</h1></div>
+      <p class="muted u-mt0">${tx('vp.the_vector_providers_of_this')}</p>
       ${pgvectorNote(st, admin, s)}
-      ${region('Providers', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Application</th><th>Name</th><th>Type</th><th>Model or function</th><th class="num">Dimensions</th></tr></thead>
-        <tbody>${rows.length ? rows.map(({ app: x, p }) => html`<tr><td data-label="Application">${x.name}</td>
-          <td data-label="Name"><a href="${BASE}/apps/${x.id}/vector-providers/provider?name=${encodeURIComponent(p.name)}">${p.name}</a></td>
-          <td data-label="Type">${p.type === 'ai_service' ? html`AI service ${p.service}` : p.type === 'database_model' ? `in the database (${p.engine})` : 'function'}</td><td data-label="Model or function"><code>${p.type === 'function' ? p.function : p.model}</code></td>
-          <td class="num" data-label="Dimensions">${p.dimensions}</td></tr>`)
-          : html`<tr><td colspan="5" class="empty">No vector providers yet.</td></tr>`}</tbody></table></div>`)}
-      ${region('Vector columns', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Provider</th><th>Source columns</th><th>Kept by</th></tr></thead>
-        <tbody>${columns.length ? columns.map((c) => html`<tr><td data-label="Column"><a href="${BASE}/sql/objects/vector?${new URLSearchParams({ o: c.table })}"><code>${c.table}.${c.vectorColumn}</code></a></td>
-          <td data-label="Provider">${c.provider}</td><td data-label="Source columns">${c.sourceColumns.join(', ')}</td><td data-label="Kept by">${c.mode === 'set' ? 'a trigger' : 'the server\'s queue'}</td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No vector columns yet (SQL Workshop › Table Properties › Add vector column).</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, 'Vector providers', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Vector providers']], main));
+      ${region(tx('vp.providers'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('vp.application')}</th><th>${tx('vp.name')}</th><th>${tx('vp.type')}</th><th>${tx('vp.model_or_function')}</th><th class="num">${tx('vp.dimensions')}</th></tr></thead>
+        <tbody>${rows.length ? rows.map(({ app: x, p }) => html`<tr><td data-label="${tx('vp.application')}">${x.name}</td>
+          <td data-label="${tx('vp.name')}"><a href="${BASE}/apps/${x.id}/vector-providers/provider?name=${encodeURIComponent(p.name)}">${p.name}</a></td>
+          <td data-label="${tx('vp.type')}">${p.type === 'ai_service' ? html`AI service ${p.service}` : p.type === 'database_model' ? `in the database (${p.engine})` : 'function'}</td><td data-label="${tx('vp.model_or_function')}"><code>${p.type === 'function' ? p.function : p.model}</code></td>
+          <td class="num" data-label="${tx('vp.dimensions')}">${p.dimensions}</td></tr>`)
+          : html`<tr><td colspan="5" class="empty">${tx('vp.no_vector_providers_yet')}</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('vp.vector_columns'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('vp.column')}</th><th>${tx('vp.provider')}</th><th>${tx('vp.source_columns')}</th><th>${tx('vp.kept_by')}</th></tr></thead>
+        <tbody>${columns.length ? columns.map((c) => html`<tr><td data-label="${tx('vp.column')}"><a href="${BASE}/sql/objects/vector?${new URLSearchParams({ o: c.table })}"><code>${c.table}.${c.vectorColumn}</code></a></td>
+          <td data-label="${tx('vp.provider')}">${c.provider}</td><td data-label="${tx('vp.source_columns')}">${c.sourceColumns.join(', ')}</td><td data-label="${tx('vp.kept_by')}">${c.mode === 'set' ? 'a trigger' : 'the server\'s queue'}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('vp.no_vector_columns_yet_sql')}</td></tr>`}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, tx('vp.vector_providers'), [[tx('vp.app_builder'), BASE], [tx('vp.workspace_utilities'), `${BASE}/utilities`], [tx('vp.vector_providers')]], main));
   });
 
   // administrators: create extension vector (pgvector is not a trusted extension: the owner connection must be a superuser)
@@ -285,7 +286,7 @@ export async function vectorProviderRoutes(app: FastifyInstance) {
     try {
       await owner.query('create extension if not exists vector');
       await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: 'create extension if not exists vector' });
-      flash(s, 'The pgvector extension is installed.');
+      flash(s, tx('vp.the_pgvector_extension_is_installed'));
     } catch (e) {
       flash(s, `create extension vector failed: ${(e as Error).message}`, 'error');
     }

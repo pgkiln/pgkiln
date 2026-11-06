@@ -106,6 +106,7 @@ import { runtimeScope } from './db.ts';
 import { startTelemetry } from './telemetry/export.ts';
 import { telemetryHooks, telemetryRoutes } from './telemetry/http.ts';
 import { telemetryBuilderRoutes } from './builder/telemetry.ts';
+import { inRequestScope } from './builder/i18n.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   // a database older than the code: apply the migrations (MIGRATE_ON_START=true)
@@ -208,6 +209,14 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     if (!svg) return reply.code(404).type('text/plain').send('Not found');
     // the page's URL carries the package version, so the file never changes under it
     return reply.header('cache-control', 'public, max-age=31536000, immutable').type('image/svg+xml').send(svg);
+  });
+  // (sprint 164) builder handlers run in a request scope: scopedTx (src/builder/i18n.ts) takes the developer's language from it
+  app.addHook('onRoute', (opts) => {
+    if (!opts.url.startsWith('/builder')) return;
+    const handler = opts.handler;
+    opts.handler = function (this: unknown, req, reply) {
+      return inRequestScope(req, () => (handler as (this: unknown, ...a: unknown[]) => unknown).call(this, req, reply));
+    } as typeof opts.handler;
   });
   await app.register(runtimeRoutes);
   await app.register(accountRoutes);

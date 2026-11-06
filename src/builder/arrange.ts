@@ -3,6 +3,7 @@ import { owner } from '../db.ts';
 import { saveState, type Session } from '../session.ts';
 import { COMPONENTS } from './components.ts';
 import { BASE, developer, flash, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Page designer layout: moving regions, items and buttons (drag and drop on
 // the Layout tab, or the Move up / Move down / column span buttons), creating
@@ -142,7 +143,7 @@ async function targetRegion(c: Q, pid: number, value: string): Promise<number | 
   if (value === '') return null;
   const id = int(value);
   if (id === null || !(await c.query('select 1 from meta.region where id = $1 and page_id = $2', [id, pid])).rowCount)
-    throw new LayoutError(400, 'That region is not on this page.');
+    throw new LayoutError(400, tx('arr.that_region_is_not_on'));
   return id;
 }
 
@@ -165,8 +166,8 @@ export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: num
   if (kind === 'region' && o.position !== undefined && !o.dir) place = o.position || 'body';
   if (kind === 'button' && o.slot !== undefined && !o.dir) place = o.slot || 'region';
   if (kind === 'button' && region === null) place = '';
-  if (kind === 'region' && !POSITIONS().includes(place)) throw new LayoutError(400, 'Unknown position.');
-  if (kind === 'button' && place && !SLOTS().includes(place)) throw new LayoutError(400, 'Unknown button position.');
+  if (kind === 'region' && !POSITIONS().includes(place)) throw new LayoutError(400, tx('arr.unknown_position'));
+  if (kind === 'button' && place && !SLOTS().includes(place)) throw new LayoutError(400, tx('arr.unknown_button_position'));
   const scope = kind === 'region' ? " and coalesce(position, 'body') = $2"
     : kind === 'button' ? " and region_id is not distinct from $2 and (region_id is null or coalesce(slot, 'region') = $3)"
     : ' and region_id is not distinct from $2';
@@ -178,13 +179,13 @@ export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: num
     const now = list.indexOf(id);
     at = Math.max(0, Math.min(others.length, now + (o.dir === 'up' ? -1 : 1)));
   } else if (o.dir) {
-    throw new LayoutError(400, 'Unknown direction.');
+    throw new LayoutError(400, tx('arr.unknown_direction'));
   } else if (!o.before) {
     at = others.length;
   } else {
     const before = int(o.before);
     at = before === null ? -1 : others.indexOf(before);
-    if (at < 0) throw new LayoutError(400, 'The place to move to is not in that region.');
+    if (at < 0) throw new LayoutError(400, tx('arr.the_place_to_move_to'));
   }
   others.splice(at, 0, id);
   const stored = place === 'body' || place === 'region' || place === '' ? null : place;
@@ -198,9 +199,9 @@ export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: num
 /** Sets a region's column span (1–12), or widens / narrows it by one column. */
 export async function spanRegion(c: Q, pid: number, id: number, o: { columns?: string; delta?: string }) {
   const row = (await c.query('select columns from meta.region where id = $1 and page_id = $2', [id, pid])).rows[0];
-  if (!row) throw new LayoutError(404, 'Region not found on this page.');
+  if (!row) throw new LayoutError(404, tx('arr.region_not_found_on_this'));
   const n = o.delta === '1' ? row.columns + 1 : o.delta === '-1' ? row.columns - 1 : int(o.columns);
-  if (n === null || n < 1 || n > 12) throw new LayoutError(400, 'The column span is 1 to 12.');
+  if (n === null || n < 1 || n > 12) throw new LayoutError(400, tx('arr.the_column_span_is_1'));
   await c.query('update meta.region set columns = $3 where id = $1 and page_id = $2', [id, pid, n]);
   return n;
 }
@@ -208,10 +209,10 @@ export async function spanRegion(c: Q, pid: number, id: number, o: { columns?: s
 /** A new component from the gallery, with a working default; placed like moveComponent. Returns its id. */
 export async function createComponent(c: Q, pid: number, kind: LayoutKind, type: string, o: { region?: string; before?: string; position?: string; slot?: string }) {
   const page = (await c.query('select page_no from meta.page where id = $1', [pid])).rows[0];
-  if (!page) throw new LayoutError(404, 'Page not found.');
+  if (!page) throw new LayoutError(404, tx('arr.page_not_found'));
   let id: number;
   if (kind === 'region') {
-    if (!REGION_TYPES().includes(type)) throw new LayoutError(400, 'Unknown region type.');
+    if (!REGION_TYPES().includes(type)) throw new LayoutError(400, tx('arr.unknown_region_type'));
     id = (await c.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 999999, $2, $3, $4) returning id`,
       [pid, `New ${REGION_LABELS[type]?.[0].toLowerCase() ?? type}`, type, NEW_REGION_SOURCE[type] ?? null])).rows[0].id;
     // (140) a breadcrumb goes in the breadcrumb bar, without a frame of its own (unless it is dropped elsewhere)
@@ -222,14 +223,14 @@ export async function createComponent(c: Q, pid: number, kind: LayoutKind, type:
   } else {
     const region = await targetRegion(c, pid, o.region ?? '');
     if (kind === 'item') {
-      if (!ITEM_TYPES().includes(type)) throw new LayoutError(400, 'Unknown item type.');
+      if (!ITEM_TYPES().includes(type)) throw new LayoutError(400, tx('arr.unknown_item_type'));
       const taken = new Set((await c.query('select name from meta.item where page_id = $1', [pid])).rows.map((r) => r.name));
       const base = `P${page.page_no}_NEW`;
       let name = base;
       for (let i = 2; taken.has(name); i++) name = `${base}_${i}`;
       id = (await c.query(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 999999, $3, 'New item', $4) returning id`, [pid, region, name, type])).rows[0].id;
     } else {
-      if (!BUTTON_ACTIONS().includes(type)) throw new LayoutError(400, 'Unknown button action.');
+      if (!BUTTON_ACTIONS().includes(type)) throw new LayoutError(400, tx('arr.unknown_button_action'));
       const taken = new Set((await c.query('select name from meta.button where page_id = $1', [pid])).rows.map((r) => r.name));
       let name = 'NEW_BUTTON';
       for (let i = 2; taken.has(name); i++) name = `NEW_BUTTON_${i}`;
@@ -268,7 +269,7 @@ export async function duplicateComponent(c: Q, pid: number, kind: LayoutKind, id
   const row = (await c.query(`select * from ${table} where id = $1 and page_id = $2`, [id, pid])).rows[0];
   if (!row) throw new LayoutError(404, `${COMPONENTS[kind].label} not found on this page.`);
   const pages = (await c.query('select t.page_no from meta.page t join meta.page f on f.app_id = t.app_id where t.id = $1 and f.id = $2', [toPid, pid])).rows;
-  if (!pages.length) throw new LayoutError(400, 'That page is not in this application.');
+  if (!pages.length) throw new LayoutError(400, tx('arr.that_page_is_not_in'));
   const same = toPid === pid;
   const rename = (name: string) => (same ? name : name.replace(/^P\d+_/, `P${pages[0].page_no}_`));
   const copyChild = async (k: 'item' | 'button', x: any, regionId: number | null) =>
@@ -336,24 +337,24 @@ export async function arrangeRoutes(app: FastifyInstance) {
   route('move', async (s, pid, b) => {
     const kind = b.kind;
     const id = int(b.id);
-    if (!isKind(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
+    if (!isKind(kind) || id === null) throw new LayoutError(400, tx('arr.unknown_component'));
     await recorded(s, pid, `Move ${await describe(kind, id)}`, (c) => moveComponent(c, pid, kind, id, { dir: b.dir, region: b.region, before: b.before, position: b.position, slot: b.slot }));
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} moved.` };
   });
 
   route('span', async (s, pid, b) => {
     const id = int(b.id);
-    if (id === null) throw new LayoutError(400, 'Unknown region.');
+    if (id === null) throw new LayoutError(400, tx('arr.unknown_region'));
     let n = 0;
     await recorded(s, pid, `Resize ${await describe('region', id)}`, async (c) => {
       n = await spanRegion(c, pid, id, { columns: b.columns, delta: b.delta });
     });
-    return { sel: `region-${id}`, message: `Region spans ${n} of 12 columns.` };
+    return { sel: `region-${id}`, message: tx('arr.spans', { n }) };
   });
 
   route('create', async (s, pid, b) => {
     const kind = b.kind;
-    if (!isKind(kind)) throw new LayoutError(400, 'Unknown component type.');
+    if (!isKind(kind)) throw new LayoutError(400, tx('arr.unknown_component_type'));
     const id = await owner.tx((c) => createComponent(c, pid, kind, b.type ?? '', { region: b.region, before: b.before, position: b.position, slot: b.slot }));
     keep(s, { pid, undo: [], redo: [] }); // earlier layout steps no longer line up with the new component
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} created; set its properties on the right.` };
@@ -365,7 +366,7 @@ export async function arrangeRoutes(app: FastifyInstance) {
   route('comment', async (_s, pid, b) => {
     const kind = b.kind ?? '';
     const id = int(b.id);
-    if (!COMMENTABLE.has(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
+    if (!COMMENTABLE.has(kind) || id === null) throw new LayoutError(400, tx('arr.unknown_component'));
     const on = b.on !== 'false';
     const done = await owner.tx(async (c) => {
       if (on)
@@ -375,14 +376,14 @@ export async function arrangeRoutes(app: FastifyInstance) {
            on conflict (app_id, name) do nothing`, [pid]);
       return (await c.query(`update ${COMPONENTS[kind].table} set build_option = $3 where id = $1 and page_id = $2 and ${on ? 'true' : `build_option = 'COMMENTED_OUT'`}`, [id, pid, on ? 'COMMENTED_OUT' : null])).rowCount;
     });
-    if (!done) throw new LayoutError(404, 'Unknown component.');
+    if (!done) throw new LayoutError(404, tx('arr.unknown_component'));
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} ${on ? 'commented out: it stays in the page designer and is left out of the page (build option COMMENTED_OUT)' : 'back on the page'}.` };
   });
 
   route('duplicate', async (s, pid, b) => {
     const kind = b.kind;
     const id = int(b.id);
-    if (!isKind(kind) || id === null) throw new LayoutError(400, 'Unknown component.');
+    if (!isKind(kind) || id === null) throw new LayoutError(400, tx('arr.unknown_component'));
     const copy = await owner.tx((c) => duplicateComponent(c, pid, kind, id));
     keep(s, { pid, undo: [], redo: [] });
     return { sel: `${kind}-${copy}`, message: `${COMPONENTS[kind].label} duplicated.` };
@@ -398,7 +399,7 @@ export async function arrangeRoutes(app: FastifyInstance) {
     const id = int(b.id);
     try {
       if (pid === null || !(await owner.one('select 1 as ok from meta.page where id = $1', [pid]))) throw new LayoutError(404, 'Page not found');
-      if (!isKind(kind) || id === null || to === null) throw new LayoutError(400, 'Unknown component or page.');
+      if (!isKind(kind) || id === null || to === null) throw new LayoutError(400, tx('arr.unknown_component_or_page'));
       const copy = await owner.tx((c) => duplicateComponent(c, pid, kind, id, to));
       if (to === pid) keep(s, { pid, undo: [], redo: [] });
       flash(s, `${COMPONENTS[kind].label} copied.`);
@@ -415,10 +416,10 @@ export async function arrangeRoutes(app: FastifyInstance) {
     route(op, async (s, pid) => {
       const h = history(s, pid);
       const step = (op === 'undo' ? h.undo : h.redo).pop();
-      if (!step) return { sel: '', message: `Nothing to ${op}.` };
+      if (!step) return { sel: '', message: op === 'undo' ? tx('arr.nothing_undo') : tx('arr.nothing_redo') };
       await owner.tx((c) => restore(c, pid, op === 'undo' ? step.before : step.after));
       (op === 'undo' ? h.redo : h.undo).push(step);
       keep(s, h);
-      return { sel: '', message: `${op === 'undo' ? 'Undone' : 'Redone'}: ${step.label}.` };
+      return { sel: '', message: `${op === 'undo' ? tx('arr.undone') : tx('arr.redone')}: ${step.label}.` };
     });
 }

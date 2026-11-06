@@ -5674,7 +5674,7 @@ describe('sprint 36 blueprints', () => {
     assert.equal((await owner.one(`select to_regclass('hr.emp') is not null as ok`)).ok, true);
     for (const bad of [{ schema: 'meta' }, { schema: 'pg_temp' }, { schema: 'public' }, { tables: [{ name: 'x"; drop table hr.emp; --', columns: [{ name: 'a' }] }] }, { tables: [{ name: 'x', columns: [{ name: 'a', type: 'text; drop table hr.emp' }] }] }]) {
       const res = await dev.post('/builder/blueprints/review', { __csrf: dev.lastCsrf, name: 'x', spec: spec({ alias: 'sec36-bp-bad', ...bad }) });
-      assert.match(res.body, /can't be created yet/, JSON.stringify(bad));
+      assert.match(res.body, /can(?:'|&#39;)t be created yet/, JSON.stringify(bad));
       assert.doesNotMatch(res.body, /name="sig"/);
     }
   });

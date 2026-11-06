@@ -5,6 +5,7 @@ import { ICONS } from '../icons.ts';
 import { appOr404 } from './forms.ts';
 import { addDashboard } from './appsheets.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Create page wizards (APEX: Create Page). Step 1, on the app's Pages tab,
 // picks the page type and a table or view (a GET form); step 2 (GET
@@ -46,12 +47,15 @@ export const MORE_KINDS: [string, string, string][] = [
 ];
 /** All the page types step 2 knows: [key, label, description]. */
 export const PAGE_KINDS: [string, string, string][] = [...WIZARD_KINDS, ...MORE_KINDS];
+/** A page type's label and description in the builder language (the lists above stay English for the AI path). */
+export const kindLabel = (k: string, fallback: string) => tx.dyn(`wiz.kind.${k}`, fallback);
+export const kindHelp = (k: string, fallback: string) => tx.dyn(`wiz.kind_help.${k}`, fallback);
 const KINDS = new Set(PAGE_KINDS.map((k) => k[0]));
 /** Page types that need no table (search takes one optionally, for a new search configuration). */
 export const NO_TABLE = new Set(['search', 'tasks', 'workflows', 'dashboard']);
-const TASK_CONTEXTS: [string, string][] = [['my', 'My tasks (to act on or claim)'], ['initiated', 'Tasks I requested'], ['admin', 'Tasks I administer']];
+const TASK_CONTEXTS = (): [string, string][] => [['my', tx('wiz.my_tasks_to_act_on')], ['initiated', tx('wiz.tasks_i_requested')], ['admin', tx('wiz.tasks_i_administer')]];
 const CHART_KINDS = ['bar', 'column', 'line', 'area', 'donut', 'pie', 'funnel'];
-const FUNCTIONS: [string, string][] = [['count', 'Count'], ['sum', 'Sum'], ['avg', 'Average'], ['min', 'Minimum'], ['max', 'Maximum']];
+const FUNCTIONS = (): [string, string][] => [['count', tx('wiz.count')], ['sum', tx('wiz.sum')], ['avg', tx('wiz.average')], ['min', tx('wiz.minimum')], ['max', tx('wiz.maximum')]];
 
 interface Col {
   column_name: string;
@@ -121,7 +125,7 @@ export function wizardOptions(kind: string, b: Record<string, unknown>) {
       break;
     case 'chart':
       o.chart = CHART_KINDS.includes(str('chart')) ? str('chart') : 'bar';
-      o.function = FUNCTIONS.some(([f]) => f === str('function')) ? str('function') : 'count';
+      o.function = FUNCTIONS().some(([f]) => f === str('function')) ? str('function') : 'count';
       o.label_column = str('label_column') || null;
       o.value_column = str('value_column') || null;
       break;
@@ -176,7 +180,7 @@ export function wizardOptions(kind: string, b: Record<string, unknown>) {
       o.form_page = formPage();
       break;
     case 'tasks':
-      o.context = TASK_CONTEXTS.some(([c]) => c === str('context')) ? str('context') : 'my';
+      o.context = TASK_CONTEXTS().some(([c]) => c === str('context')) ? str('context') : 'my';
       o.completed = b.completed === 'true';
       break;
     case 'workflows':
@@ -213,7 +217,7 @@ export async function wizardRoutes(app: FastifyInstance) {
         )
       : null;
     if (!rel && !(NO_TABLE.has(kind) && !table)) {
-      flash(s, KINDS.has(kind) ? 'Choose a table or view.' : 'Choose a page type.', 'error');
+      flash(s, KINDS.has(kind) ? tx('wiz.choose_a_table_or_view') : tx('wiz.choose_a_page_type'), 'error');
       // (137) back to the type's table step on the Create page grid
       return back(reply, s, KINDS.has(kind) ? `${BASE}/apps/${a.id}/create-page?type=${encodeURIComponent(kind)}` : `${BASE}/apps/${a.id}/create-page`);
     }
@@ -233,7 +237,7 @@ export async function wizardRoutes(app: FastifyInstance) {
         )
       : null;
 
-    const none: [string, string] = ['', '- none -'];
+    const none: [string, string] = ['', tx('wiz.none')];
     const colOpts = (pred: (c: Col) => boolean, withNone = true): [string, string][] => [
       ...(withNone ? [none] : []),
       ...cols.filter(pred).map((c): [string, string] => [c.column_name, `${c.column_name} (${c.type_sql}${c.fk_table ? `, shows ${c.fk_table}.${c.fk_display ?? '?'}` : ''})`]),
@@ -245,7 +249,7 @@ export async function wizardRoutes(app: FastifyInstance) {
       html`<fieldset class="prop-group"><legend>${legend}</legend><div class="qb-pick">${cols.filter(pred).map(
         (c) => html`<label class="check"><input type="checkbox" name="${name}" value="${c.column_name}"${chosen.includes(c.column_name) ? raw(' checked') : ''}> ${c.column_name} <span class="muted small">${c.type_sql}${note(c)}</span></label>`,
       )}</div></fieldset>`;
-    const formPage = (help: string) => input('form_page', 'Form page', '', { type: 'number', placeholder: `e.g. ${nextPage + 1} (empty: no form)`, help });
+    const formPage = (help: string) => input('form_page', tx('wiz.form_page'), '', { type: 'number', placeholder: tx('wiz.form_page_ph', { n: nextPage + 1 }), help });
     const needsPk = ['report_form', 'grid', 'form', 'master_detail'].includes(kind);
     const allCols = (c: Col) => c.kind !== 'binary';
     const dates = (c: Col) => c.kind === 'date' || c.kind === 'timestamp';
@@ -253,146 +257,146 @@ export async function wizardRoutes(app: FastifyInstance) {
     let fields: Raw | string = '';
     switch (kind) {
       case 'report_form':
-        fields = input('form_page', 'Form page', nextPage + 1, { type: 'number', required: true, help: 'The modal form page opened from the report.' });
+        fields = input('form_page', tx('wiz.form_page'), nextPage + 1, { type: 'number', required: true, help: tx('wiz.the_modal_form_page_opened') });
         break;
       case 'form':
         fields = html`<div class="form-grid">
-            ${select('mode', 'Page mode', defaults.mode, [['normal', 'Normal page'], ['modal', 'Modal dialog']])}
-            ${input('return_page', 'After saving or cancelling, go to page', defaults.return_page ?? '', { type: 'number', placeholder: a.home_page ? `empty: the home page (${a.home_page})` : 'empty: this page', help: 'Cancel, Create, Apply Changes and Delete return there.' })}
+            ${select('mode', tx('wiz.page_mode'), defaults.mode, [['normal', tx('wiz.normal_page')], ['modal', tx('wiz.modal_dialog')]])}
+            ${input('return_page', tx('wiz.after_saving_or_cancelling_go'), defaults.return_page ?? '', { type: 'number', placeholder: a.home_page ? tx('wiz.return_home', { n: a.home_page }) : tx('wiz.return_this'), help: tx('wiz.cancel_create_apply_changes_and') })}
           </div>
-          ${colChecks('columns', 'Columns', defaults.columns ?? [], (c) => !c.is_pk && !c.generated && c.kind !== 'binary', (c) => (c.not_null && !c.has_default ? ', required: always included' : c.fk_table ? `, a select list of ${c.fk_table}` : ''))}`;
+          ${colChecks('columns', tx('wiz.col_columns'), defaults.columns ?? [], (c) => !c.is_pk && !c.generated && c.kind !== 'binary', (c) => (c.not_null && !c.has_default ? tx('wiz.note_required') : c.fk_table ? tx('wiz.note_select_list', { table: c.fk_table }) : ''))}`;
         break;
       case 'cards':
         fields = html`<div class="form-grid">
-            ${select('title', 'Title', defaults.title, colOpts(notBinary, false))}
-            ${select('subtitle', 'Subtitle', defaults.subtitle ?? '', colOpts(notBinary))}
-            ${select('body', 'Body', defaults.body ?? '', colOpts(notBinary))}
-            ${select('badge', 'Badge', defaults.badge ?? '', colOpts(notBinary))}
+            ${select('title', tx('wiz.title'), defaults.title, colOpts(notBinary, false))}
+            ${select('subtitle', tx('wiz.subtitle'), defaults.subtitle ?? '', colOpts(notBinary))}
+            ${select('body', tx('wiz.body'), defaults.body ?? '', colOpts(notBinary))}
+            ${select('badge', tx('wiz.badge'), defaults.badge ?? '', colOpts(notBinary))}
             ${pk ? formPage('A modal form page for a card (a link on each card and a Create button).') : ''}
           </div>`;
         break;
       case 'calendar':
         fields = html`<div class="form-grid">
-            ${select('start', 'Start date', defaults.start ?? '', colOpts((c) => c.kind === 'date' || c.kind === 'timestamp', false))}
-            ${select('end', 'End date', defaults.end ?? '', colOpts((c) => c.kind === 'date' || c.kind === 'timestamp'))}
-            ${select('title', 'Event title', defaults.title ?? '', colOpts(notBinary))}
+            ${select('start', tx('wiz.start_date'), defaults.start ?? '', colOpts((c) => c.kind === 'date' || c.kind === 'timestamp', false))}
+            ${select('end', tx('wiz.end_date'), defaults.end ?? '', colOpts((c) => c.kind === 'date' || c.kind === 'timestamp'))}
+            ${select('title', tx('wiz.event_title'), defaults.title ?? '', colOpts(notBinary))}
             ${pk ? formPage('A modal form page: each event links to it, and a + on every day creates an event there.') : ''}
           </div>
-          ${pk ? check('drag', 'Drag and drop', !!defaults.drag, 'Users who see the calendar can move events to another day or hour (an UPDATE of the start and end columns as the app\'s role; row level security applies). Set an authorization in the region\'s "move_authz" to limit it.') : ''}`;
+          ${pk ? check('drag', tx('wiz.drag_and_drop'), !!defaults.drag, tx('wiz.users_who_see_the_calendar')) : ''}`;
         break;
       case 'chart':
         fields = html`<div class="form-grid">
-            ${select('chart', 'Chart type', defaults.chart, CHART_KINDS)}
-            ${select('label_column', 'Label (one bar, slice or point per value)', defaults.label_column ?? '', colOpts(notBinary, false))}
-            ${select('function', 'Value', defaults.function, FUNCTIONS)}
-            ${select('value_column', 'Of column', defaults.value_column ?? '', colOpts((c) => c.kind === 'number'), 'Count: empty counts the rows. Sum, average, minimum and maximum need a number column.')}
+            ${select('chart', tx('wiz.chart_type'), defaults.chart, CHART_KINDS)}
+            ${select('label_column', tx('wiz.label_one_bar_slice_or'), defaults.label_column ?? '', colOpts(notBinary, false))}
+            ${select('function', tx('wiz.value'), defaults.function, FUNCTIONS())}
+            ${select('value_column', tx('wiz.of_column'), defaults.value_column ?? '', colOpts((c) => c.kind === 'number'), tx('wiz.count_empty_counts_the_rows'))}
           </div>`;
         break;
       case 'map':
         fields = html`<div class="form-grid">
-            ${select('location', 'Position', defaults.location ?? '', colOpts((c) => c.kind === 'geometry' || c.kind === 'point' || c.kind === 'text'), 'A PostGIS geometry, a point, or text "latitude,longitude" (a location item). Empty: the latitude and longitude columns.')}
-            ${select('lat', 'Latitude', defaults.lat ?? '', colOpts((c) => c.kind === 'number'))}
-            ${select('lng', 'Longitude', defaults.lng ?? '', colOpts((c) => c.kind === 'number'))}
-            ${select('title', 'Popup title', defaults.title ?? '', colOpts(notBinary))}
-            ${select('body', 'Popup text', defaults.body ?? '', colOpts(notBinary))}
-            ${pk ? formPage('A modal form page, linked from the popups and the list.') : ''}
+            ${select('location', tx('wiz.position'), defaults.location ?? '', colOpts((c) => c.kind === 'geometry' || c.kind === 'point' || c.kind === 'text'), 'A PostGIS geometry, a point, or text "latitude,longitude" (a location item). Empty: the latitude and longitude columns.')}
+            ${select('lat', tx('wiz.latitude'), defaults.lat ?? '', colOpts((c) => c.kind === 'number'))}
+            ${select('lng', tx('wiz.longitude'), defaults.lng ?? '', colOpts((c) => c.kind === 'number'))}
+            ${select('title', tx('wiz.popup_title'), defaults.title ?? '', colOpts(notBinary))}
+            ${select('body', tx('wiz.popup_text'), defaults.body ?? '', colOpts(notBinary))}
+            ${pk ? formPage(tx('wiz.form_map')) : ''}
           </div>
-          ${check('report', 'A list below the map', defaults.report !== false, 'An interactive report of the same rows; moving the map offers "Show this area in the list".')}`;
+          ${check('report', tx('wiz.a_list_below_the_map'), defaults.report !== false, tx('wiz.an_interactive_report_of_the'))}`;
         break;
       case 'facets':
         fields = html`
-          ${colChecks('columns', 'Report columns', defaults.columns ?? [], notBinary, (c) => (c.is_pk ? ', key: always included' : c.fk_table && c.fk_display ? `, with ${c.fk_table}.${c.fk_display}` : ''))}
-          ${colChecks('facets', 'Facets', defaults.facets ?? [], (c) => notBinary(c) && c.kind !== 'point' && c.kind !== 'other', (c) => (c.fk_table ? `: values of ${c.fk_table}.${c.fk_display ?? c.column_name}` : ['number', 'date', 'timestamp'].includes(c.kind) ? ': a range (from / to)' : ': values with counts'))}
-          ${check('search', 'A search field above the facets', defaults.search !== false)}
-          ${pk ? html`<div class="form-grid">${formPage('A modal form page, linked from each row, and a Create button.')}</div>` : ''}`;
+          ${colChecks('columns', tx('wiz.col_report_columns'), defaults.columns ?? [], notBinary, (c) => (c.is_pk ? tx('wiz.note_key') : c.fk_table && c.fk_display ? tx('wiz.note_with', { col: `${c.fk_table}.${c.fk_display}` }) : ''))}
+          ${colChecks('facets', tx('wiz.col_facets'), defaults.facets ?? [], (c) => notBinary(c) && c.kind !== 'point' && c.kind !== 'other', (c) => (c.fk_table ? tx('wiz.note_values_of', { col: `${c.fk_table}.${c.fk_display ?? c.column_name}` }) : ['number', 'date', 'timestamp'].includes(c.kind) ? tx('wiz.note_range') : tx('wiz.note_counts')))}
+          ${check('search', tx('wiz.a_search_field_above_the'), defaults.search !== false)}
+          ${pk ? html`<div class="form-grid">${formPage(tx('wiz.form_rows'))}</div>` : ''}`;
         break;
       // (137) the page types of migration 137
       case 'report':
-        fields = pk ? html`<div class="form-grid">${formPage('A modal form page, linked from each row, and a Create button.')}</div>` : '';
+        fields = pk ? html`<div class="form-grid">${formPage(tx('wiz.form_rows'))}</div>` : '';
         break;
       case 'smart_filters':
         fields = html`
-          ${colChecks('facets', 'Filters (suggested in the search field)', defaults.facets ?? [], (c) => notBinary(c) && c.kind !== 'point' && c.kind !== 'other', (c) => (c.fk_table ? `: values of ${c.fk_table}.${c.fk_display ?? c.column_name}` : ['number', 'date', 'timestamp'].includes(c.kind) ? ': ranges' : ': values'))}
-          ${pk ? html`<div class="form-grid">${formPage('A modal form page, linked from each row, and a Create button.')}</div>` : ''}`;
+          ${colChecks('facets', tx('wiz.col_filters'), defaults.facets ?? [], (c) => notBinary(c) && c.kind !== 'point' && c.kind !== 'other', (c) => (c.fk_table ? tx('wiz.note_values_of', { col: `${c.fk_table}.${c.fk_display ?? c.column_name}` }) : ['number', 'date', 'timestamp'].includes(c.kind) ? tx('wiz.note_ranges') : tx('wiz.note_values')))}
+          ${pk ? html`<div class="form-grid">${formPage(tx('wiz.form_rows'))}</div>` : ''}`;
         break;
       case 'tree':
         fields = html`<div class="form-grid">
-            ${select('id_column', 'Node id', defaults.id_column ?? '', colOpts(allCols, false), 'What identifies a node: usually the primary key.')}
-            ${select('parent_column', 'Parent', defaults.parent_column ?? '', colOpts(allCols), 'The column with the parent node\'s id; proposed from a foreign key to the table itself. Rows whose parent is not in the table are the top level.')}
-            ${select('label_column', 'Label', defaults.label_column ?? '', colOpts(notBinary, false))}
-            ${input('expanded', 'Levels open at first', defaults.expanded ?? 1, { type: 'number' })}
+            ${select('id_column', tx('wiz.node_id'), defaults.id_column ?? '', colOpts(allCols, false), tx('wiz.what_identifies_a_node_usually'))}
+            ${select('parent_column', tx('wiz.parent'), defaults.parent_column ?? '', colOpts(allCols), tx('wiz.the_column_with_the_parent'))}
+            ${select('label_column', tx('wiz.label'), defaults.label_column ?? '', colOpts(notBinary, false))}
+            ${input('expanded', tx('wiz.levels_open_at_first'), defaults.expanded ?? 1, { type: 'number' })}
             ${pk ? formPage('A modal form page, opened by clicking a node.') : ''}
           </div>`;
         break;
       case 'timeline':
         fields = html`<div class="form-grid">
-            ${select('title', 'Title', defaults.title ?? '', colOpts(notBinary, false))}
-            ${select('when', 'When', defaults.when ?? '', colOpts(dates), 'The events come newest first.')}
-            ${select('who', 'Who', defaults.who ?? '', colOpts(notBinary))}
-            ${select('body', 'Text', defaults.body ?? '', colOpts(notBinary))}
+            ${select('title', tx('wiz.title'), defaults.title ?? '', colOpts(notBinary, false))}
+            ${select('when', tx('wiz.when'), defaults.when ?? '', colOpts(dates), tx('wiz.the_events_come_newest_first'))}
+            ${select('who', tx('wiz.who'), defaults.who ?? '', colOpts(notBinary))}
+            ${select('body', tx('wiz.text'), defaults.body ?? '', colOpts(notBinary))}
             ${pk ? formPage('A modal form page, linked from each title.') : ''}
           </div>`;
         break;
       case 'media_list':
       case 'content_row':
         fields = html`<div class="form-grid">
-            ${select('title', 'Title', defaults.title ?? '', colOpts(notBinary, false), 'Its first two letters are the initials.')}
-            ${select('description', 'Description', defaults.description ?? '', colOpts(notBinary))}
-            ${kind === 'content_row' ? select('misc', 'Secondary text (on the right)', defaults.misc ?? '', colOpts(notBinary)) : ''}
-            ${select('badge', 'Badge', defaults.badge ?? '', colOpts(notBinary))}
+            ${select('title', tx('wiz.title'), defaults.title ?? '', colOpts(notBinary, false), tx('wiz.its_first_two_letters_are'))}
+            ${select('description', tx('wiz.description'), defaults.description ?? '', colOpts(notBinary))}
+            ${kind === 'content_row' ? select('misc', tx('wiz.secondary_text_on_the_right'), defaults.misc ?? '', colOpts(notBinary)) : ''}
+            ${select('badge', tx('wiz.badge'), defaults.badge ?? '', colOpts(notBinary))}
             ${pk ? formPage('A modal form page, linked from each title.') : ''}
           </div>`;
         break;
       case 'comments':
         fields = html`<div class="form-grid">
-            ${select('user', 'Who wrote it', defaults.user ?? '', colOpts(notBinary))}
-            ${select('date', 'When', defaults.date ?? '', colOpts(dates), 'The newest first.')}
-            ${select('comment', 'Comment', defaults.comment ?? '', colOpts(notBinary, false))}
+            ${select('user', tx('wiz.who_wrote_it'), defaults.user ?? '', colOpts(notBinary))}
+            ${select('date', tx('wiz.when'), defaults.date ?? '', colOpts(dates), tx('wiz.the_newest_first'))}
+            ${select('comment', tx('wiz.comment'), defaults.comment ?? '', colOpts(notBinary, false))}
           </div>`;
         break;
       case 'data_load': {
         const defs = (await owner.query<{ name: string; table_name: string }>('select name, table_name from meta.data_load_def where app_id = $1 order by name', [a.id])).rows;
         fields = html`<div class="form-grid">
-            ${input('definition', 'Data load definition', defaults.definition ?? '', { required: true, help: `Upper case, e.g. ORDERS_LOAD. A new definition for ${rel?.t ?? 'the table'}; an existing one of that name is used as it is${defs.length ? ` (this application has ${defs.map((d) => d.name).join(', ')})` : ''}.` })}
-            ${select('mode', 'Mode', defaults.mode ?? 'append', [['append', 'Append: add the rows'], ['merge', 'Merge: update rows with the same key, add the others'], ['replace', 'Replace: delete all rows first']])}
+            ${input('definition', tx('wiz.data_load_definition'), defaults.definition ?? '', { required: true, help: defs.length ? tx('wiz.def_help_has', { table: rel?.t ?? tx('wiz.the_table'), list: defs.map((d) => d.name).join(', ') }) : tx('wiz.def_help', { table: rel?.t ?? tx('wiz.the_table') }) })}
+            ${select('mode', tx('wiz.mode'), defaults.mode ?? 'append', [['append', tx('wiz.append_add_the_rows')], ['merge', tx('wiz.merge_update_rows_with_the')], ['replace', tx('wiz.replace_delete_all_rows_first')]])}
           </div>
-          ${check('skip_errors', 'Skip rows with errors', !!defaults.skip_errors, 'Load the good rows and list the others; otherwise nothing is loaded when a row fails.')}`;
+          ${check('skip_errors', tx('wiz.skip_rows_with_errors'), !!defaults.skip_errors, tx('wiz.load_the_good_rows_and'))}`;
         break;
       }
       case 'wizard':
         fields = html`<div class="form-grid">
-            ${input('steps', 'Steps', defaults.steps ?? 2, { type: 'number', help: 'One page per step, numbered from the page number up; the columns are shared out in order.' })}
-            ${input('return_page', 'After Finish or Cancel, go to page', defaults.return_page ?? '', { type: 'number', placeholder: a.home_page ? `empty: the home page (${a.home_page})` : 'empty: this page' })}
+            ${input('steps', tx('wiz.steps'), defaults.steps ?? 2, { type: 'number', help: tx('wiz.one_page_per_step_numbered') })}
+            ${input('return_page', tx('wiz.after_finish_or_cancel_go'), defaults.return_page ?? '', { type: 'number', placeholder: a.home_page ? tx('wiz.return_home', { n: a.home_page }) : tx('wiz.return_this') })}
           </div>
-          ${colChecks('columns', 'Columns', defaults.columns ?? [], (c) => !c.is_pk && !c.generated && c.kind !== 'binary' && c.kind !== 'geometry', (c) => (c.not_null && !c.has_default ? ', required: always included' : c.fk_table ? `, a select list of ${c.fk_table}` : ''))}`;
+          ${colChecks('columns', tx('wiz.col_columns'), defaults.columns ?? [], (c) => !c.is_pk && !c.generated && c.kind !== 'binary' && c.kind !== 'geometry', (c) => (c.not_null && !c.has_default ? tx('wiz.note_required') : c.fk_table ? tx('wiz.note_select_list', { table: c.fk_table }) : ''))}`;
         break;
       case 'search': {
         const configs = (await owner.query<{ name: string; label: string; source: string }>('select name, label, source from meta.search_config where app_id = $1 order by seq, name', [a.id])).rows;
         const tables = await wizardTables(role);
         fields = html`
           ${configs.length
-            ? html`<fieldset class="prop-group"><legend>Search configurations</legend><div class="qb-pick">${configs.map((c) => html`<label class="check"><input type="checkbox" name="configs" value="${c.name}" checked> ${c.label} <span class="muted small">${c.name}, ${c.source.slice(0, 60)}</span></label>`)}</div></fieldset>`
-            : html`<p class="muted">This application has no search configurations yet (<a href="${BASE}/apps/${a.id}/shared?type=search_config">Shared Components → Search configurations</a>): choose a table to search below.</p>`}
+            ? html`<fieldset class="prop-group"><legend>${tx('wiz.search_configurations')}</legend><div class="qb-pick">${configs.map((c) => html`<label class="check"><input type="checkbox" name="configs" value="${c.name}" checked> ${c.label} <span class="muted small">${c.name}, ${c.source.slice(0, 60)}</span></label>`)}</div></fieldset>`
+            : html`<p class="muted">${tx.rich('wiz.no_search_configs', { link: html`<a href="${BASE}/apps/${a.id}/shared?type=search_config">${tx('wiz.shared_components_search_configurations')}</a>` })}</p>`}
           <div class="form-grid">
-            ${select('table', 'And a new configuration on', rel?.t ?? '', [['', '- none -'], ...tables.filter((t) => t.access).map((t): [string, string] => [t.t, t.t])], 'Searches the table\'s text columns and shows its name (or first text) column as the result\'s title.')}
-            ${formPage('With a table: a modal form page that each result links to.')}
+            ${select('table', tx('wiz.and_a_new_configuration_on'), rel?.t ?? '', [['', tx('wiz.none')], ...tables.filter((t) => t.access).map((t): [string, string] => [t.t, t.t])], tx('wiz.searches_the_table_s_text'))}
+            ${formPage(tx('wiz.form_search'))}
           </div>`;
         break;
       }
       case 'tasks':
-        fields = html`<div class="form-grid">${select('context', 'Show', defaults.context ?? 'my', TASK_CONTEXTS)}</div>
-          ${check('completed', 'Also completed tasks', !!defaults.completed)}
-          <p class="muted small">Tasks come from task definitions (Shared Components → Task definitions) and approvals started in processes or workflows.</p>`;
+        fields = html`<div class="form-grid">${select('context', tx('wiz.show'), defaults.context ?? 'my', TASK_CONTEXTS())}</div>
+          ${check('completed', tx('wiz.also_completed_tasks'), !!defaults.completed)}
+          <p class="muted small">${tx('wiz.tasks_come_from_task_definitions')}</p>`;
         break;
       case 'workflows':
-        fields = html`<div class="form-grid">${select('context', 'Show', defaults.context ?? 'initiator', [['initiator', 'The workflows the user started'], ['admin', 'The workflows the user administers']])}</div>`;
+        fields = html`<div class="form-grid">${select('context', tx('wiz.show'), defaults.context ?? 'initiator', [['initiator', tx('wiz.the_workflows_the_user_started')], ['admin', tx('wiz.the_workflows_the_user_administers')]])}</div>`;
         break;
       case 'dashboard': {
         const tables = (await wizardTables(role)).filter((t) => t.access);
         fields = tables.length
-          ? html`<fieldset class="prop-group"><legend>Tables</legend><div class="qb-pick">${tables.map((t, n) => html`<label class="check"><input type="checkbox" name="tables" value="${t.t}"${n < 12 ? raw(' checked') : ''}> ${t.t}</label>`)}</div></fieldset>
-              <p class="muted small">A chart per table (at most six) of the rows per parent row or per repeating value, read from the data; tables with row level security are left out.</p>`
-          : html`<p class="alert alert-error" role="status">The application's database role can't read any table.</p>`;
+          ? html`<fieldset class="prop-group"><legend>${tx('wiz.tables')}</legend><div class="qb-pick">${tables.map((t, n) => html`<label class="check"><input type="checkbox" name="tables" value="${t.t}"${n < 12 ? raw(' checked') : ''}> ${t.t}</label>`)}</div></fieldset>
+              <p class="muted small">${tx('wiz.a_chart_per_table_at')}</p>`
+          : html`<p class="alert alert-error" role="status">${tx('wiz.the_application_s_database_role')}</p>`;
         break;
       }
       case 'master_detail': {
@@ -407,33 +411,33 @@ export async function wizardRoutes(app: FastifyInstance) {
           )
         ).rows;
         fields = details.length
-          ? select('detail', 'Detail table', defaults.detail ? `${defaults.detail}|${defaults.detail_column}` : '', details.map((d): [string, string] => [`${d.t}|${d.col}`, `${d.t} (${d.col} → ${t})`]), 'Tables with a foreign key to this table. Selecting a master row shows its details; new detail rows get the master\'s key.')
-          : html`<p class="alert alert-error" role="status">No table has a foreign key to ${t}: a master-detail page needs one.</p>`;
+          ? select('detail', tx('wiz.detail_table'), defaults.detail ? `${defaults.detail}|${defaults.detail_column}` : '', details.map((d): [string, string] => [`${d.t}|${d.col}`, `${d.t} (${d.col} → ${t})`]), tx('wiz.tables_with_a_foreign_key'))
+          : html`<p class="alert alert-error" role="status">${tx('wiz.no_fk', { table: t })}</p>`;
         break;
       }
     }
 
     const kindDef = PAGE_KINDS.find((k) => k[0] === kind)!;
-    const kindName = kindDef[1];
+    const kindName = kindLabel(kindDef[0], kindDef[1]);
     const main = html`${appHeader(a, 'pages', s)}
-      ${region(rel && kind !== 'search' ? `${kindName} on ${rel.t}` : kindName, html`
-        <p class="muted u-mt0">${kindDef[2]} ${rel ? 'The proposals come from the table\'s columns, key and foreign keys; change them below.' : ''} <a href="${BASE}/apps/${a.id}/create-page">Back to choose another type${rel ? ' or table' : ''}</a>.</p>
-        ${rel && needsPk && !pk ? html`<p class="alert alert-error" role="status">${rel.t} has no single-column primary key, which this page type needs.</p>` : ''}
+      ${region(rel && kind !== 'search' ? tx('wiz.kind_on', { kind: kindName, table: rel.t }) : kindName, html`
+        <p class="muted u-mt0">${kindHelp(kindDef[0], kindDef[2])} ${rel ? tx('wiz.the_proposals_come_from_the') : ''} <a href="${BASE}/apps/${a.id}/create-page">${rel ? tx('wiz.back_choose_table') : tx('wiz.back_choose')}</a>.</p>
+        ${rel && needsPk && !pk ? html`<p class="alert alert-error" role="status">${tx('wiz.no_pk', { table: rel.t })}</p>` : ''}
         ${rel && role && access && !(access.s && (!(needsPk || kind === 'wizard' || kind === 'data_load') || (access.i && (kind === 'wizard' || (access.u && access.d)))))
-          ? html`<p class="alert alert-error" role="status">The application's database role <code>${role}</code> ${access.s ? 'can read but not change' : 'has no access to'} ${rel.t}: grant it the privileges the page needs (${needsPk ? 'select, insert, update, delete' : kind === 'wizard' ? 'select, insert' : kind === 'data_load' ? 'select, insert, update, delete for merge or replace' : 'select'}).</p>`
+          ? html`<p class="alert alert-error" role="status">${tx.rich(access.s ? 'wiz.role_read_only' : 'wiz.role_no_access', { role: html`<code>${role}</code>`, table: rel.t, privs: needsPk ? 'select, insert, update, delete' : kind === 'wizard' ? 'select, insert' : kind === 'data_load' ? tx('wiz.privs_merge') : 'select' })}</p>`
           : ''}
         <form method="post" action="${BASE}/apps/${a.id}/wizard">${csrf(s)}
           <input type="hidden" name="kind" value="${kind}">${rel && kind !== 'search' ? html`<input type="hidden" name="table" value="${rel.t}">` : ''}
           <div class="form-grid">
-            ${input('report_page', 'Page number', nextPage, { type: 'number', required: true })}
-            ${input('label', 'Name', defaults.label ?? '', { help: 'The page title and the navigation entry.' })}
-            ${select('icon', 'Menu icon', defaults.icon ?? 'table', [...ICONS])}
+            ${input('report_page', tx('wiz.page_number'), nextPage, { type: 'number', required: true })}
+            ${input('label', tx('wiz.name'), defaults.label ?? '', { help: tx('wiz.the_page_title_and_the') })}
+            ${select('icon', tx('wiz.menu_icon'), defaults.icon ?? 'table', [...ICONS])}
           </div>
-          ${['report_form', 'grid', 'dashboard'].includes(kind) ? '' : check('nav', 'Add a navigation entry', !!defaults.nav)}
+          ${['report_form', 'grid', 'dashboard'].includes(kind) ? '' : check('nav', tx('wiz.add_a_navigation_entry'), !!defaults.nav)}
           ${fields}
-          <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}">Cancel</a><button class="btn btn-hot">Create page</button></div>
+          <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}">${tx('wiz.cancel')}</a><button class="btn btn-hot">${tx('wiz.create_page')}</button></div>
         </form>`)}`;
-    return send(reply, s, shell(s, `Create page · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create page', `${BASE}/apps/${a.id}/create-page`], [kindName]], main));
+    return send(reply, s, shell(s, tx('wiz.page_title', { app: a.name }), [[tx('wiz.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('wiz.create_page'), `${BASE}/apps/${a.id}/create-page`], [kindName]], main));
   });
 
   app.post(`${BASE}/apps/:id/wizard`, async (req: Req, reply) => {
@@ -445,22 +449,22 @@ export async function wizardRoutes(app: FastifyInstance) {
     const retry = `${BASE}/apps/${req.params.id}/wizard?kind=${encodeURIComponent(kind)}${table && kind !== 'search' ? `&table=${encodeURIComponent(table)}` : ''}`;
     try {
       const page = pageNo(b.report_page);
-      if (page === null) throw new Error('Enter a page number.');
+      if (page === null) throw new Error(tx('wiz.enter_a_page_number'));
       const options = wizardOptions(kind, b);
-      if (!table && !NO_TABLE.has(kind)) throw new Error('Choose a table or view.');
+      if (!table && !NO_TABLE.has(kind)) throw new Error(tx('wiz.choose_a_table_or_view'));
       const id = await owner.tx(async (c) => {
         const a = await c.query('select alias, db_role from meta.app where id = $1', [req.params.id]);
-        if (!a.rowCount) throw new Error('This application does not exist.');
+        if (!a.rowCount) throw new Error(tx('wiz.this_application_does_not_exist'));
         // report and form and grid keep their own icons and need no step 2 (older forms post here directly)
-        if (kind === 'report_form' && options.form_page === null) throw new Error('Enter the form page number.');
+        if (kind === 'report_form' && options.form_page === null) throw new Error(tx('wiz.enter_the_form_page_number'));
         if (['report_form', 'grid'].includes(kind) && !options.icon) options.icon = kind === 'grid' ? 'grid' : 'table';
         if (kind === 'dashboard') {
           // (137) only tables the application's role can read
           const readable = new Set((await wizardTables(a.rows[0].db_role)).filter((t) => t.access).map((t) => t.t));
           const tables = (options.tables as string[]).filter((t) => readable.has(t));
-          if (!tables.length) throw new Error('Choose at least one table the application can read.');
+          if (!tables.length) throw new Error(tx('wiz.choose_at_least_one_table'));
           const made = await addDashboard(c, a.rows[0].alias, tables, page);
-          if (!made) throw new Error('None of these tables has a column worth a chart (a foreign key, or values that repeat).');
+          if (!made) throw new Error(tx('wiz.none_of_these_tables_has'));
           const pid = (await c.query('select id from meta.page where app_id = $1 and page_no = $2', [req.params.id, page])).rows[0].id as number;
           if (options.label) {
             await c.query('update meta.page set name = $2, title = $2 where id = $1', [pid, options.label]);
@@ -472,7 +476,9 @@ export async function wizardRoutes(app: FastifyInstance) {
         return (await c.query('select meta.generate_page($1, $2, $3::regclass, $4, $5::jsonb) as id', [a.rows[0].alias, kind, table || null, page, JSON.stringify(options)])).rows[0].id as number;
       });
       const pages = (await owner.query('select page_no from meta.page where app_id = $1 and id >= $2 order by page_no', [req.params.id, id])).rows.map((r) => r.page_no);
-      flash(s, `${pages.length > 1 ? `Pages ${pages.join(', ')}` : `Page ${page}`} created${table ? ` for ${table}. Make sure the app's database role has privileges on it` : ''}.`);
+      flash(s, table
+        ? (pages.length > 1 ? tx('wiz.created_pages_for', { list: pages.join(', '), table }) : tx('wiz.created_page_for', { n: page, table }))
+        : (pages.length > 1 ? tx('wiz.created_pages', { list: pages.join(', ') }) : tx('wiz.created_page', { n: page })));
       return back(reply, s, `${BASE}/pages/${id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');

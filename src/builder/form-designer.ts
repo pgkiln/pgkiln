@@ -7,6 +7,7 @@ import { fdSourcesOf, type FdColumn, type FdSource } from '../runtime/form-desig
 import type { Session } from '../session.ts';
 import { findObject, objectList, type DbObject } from './reporter.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Page designer → a Form Designer region → Settings (sprint 85): the tables
 // and views the region offers (which columns forms may show and change, their
@@ -53,7 +54,7 @@ export async function mergeFormDesignerSettings(
   else delete out.empty;
   delete out.design_authz;
   if (b.design_authz && a.authz.has(b.design_authz.toUpperCase())) out.design_authz = b.design_authz;
-  else if (b.design_authz) errors.push(`There is no authorization scheme ${b.design_authz}.`);
+  else if (b.design_authz) errors.push(tx('fdz.no_authz', { name: String(b.design_authz) }));
 
   const lovOk = (v: string) => LOV_REF.test(v) && (!/^LOV:/i.test(v) || a.lovs.has(v.slice(4).toUpperCase()));
   const sources: FdSource[] = [];
@@ -78,7 +79,7 @@ export async function mergeFormDesignerSettings(
       }
       columns.push({ name, ...(label ? { label } : {}), ...(lov ? { lov } : {}) });
     }
-    if (!columns.length) errors.push(`Data source ${s.id} offers no columns.`);
+    if (!columns.length) errors.push(tx('fdz.no_columns', { id: s.id }));
     const key = clip(b[`s${i}_keycol`], 63);
     if (key && !names.has(key)) errors.push(`${s.id}: the key column ${key} is not in ${s.schema}.${s.table}.`);
     const label = clip(b[`s${i}_label`], 80);
@@ -92,7 +93,7 @@ export async function mergeFormDesignerSettings(
 
   if (b.new_object) {
     const obj = /^\d{1,10}$/.test(b.new_object) ? await lookup.byOid(Number(b.new_object)) : null;
-    if (!obj || RESERVED_SCHEMAS.test(obj.schema)) errors.push('Choose a table or view for the new data source.');
+    if (!obj || RESERVED_SCHEMAS.test(obj.schema)) errors.push(tx('fdz.choose_a_table_or_view'));
     else if (sources.length >= MAX_FD_SOURCES) errors.push(`A region offers at most ${MAX_FD_SOURCES} data sources.`);
     else {
       let id = clip(b.new_id, 40).toLowerCase();
@@ -101,7 +102,7 @@ export async function mergeFormDesignerSettings(
         id = '';
       }
       if (id && sources.some((s) => s.id === id)) {
-        errors.push(`There is already a data source ${id}.`);
+        errors.push(tx('fdz.dup_source', { id }));
         id = '';
       }
       if (!id) {
@@ -154,56 +155,56 @@ export async function formDesignerSettingsForm(pageId: number, appId: number, r:
       const missing = privileges ? (['sel', 'ins', 'upd', 'del'] as const).filter((k) => !privileges[k] && (k === 'sel' || src[({ ins: 'insert', upd: 'update', del: 'delete' } as const)[k as 'ins' | 'upd' | 'del']])) : [];
       const grant = { sel: 'SELECT', ins: 'INSERT', upd: 'UPDATE', del: 'DELETE' };
       const check = (k: 'insert' | 'update' | 'delete', label: string, needsKey: boolean) =>
-        html`<label class="check"><input type="checkbox" name="s${i}_${k}" value="true"${src[k] ? raw(' checked') : ''}> ${label}${needsKey && !src.key ? ' (needs a key column)' : ''}</label>`;
+        html`<label class="check"><input type="checkbox" name="s${i}_${k}" value="true"${src[k] ? raw(' checked') : ''}> ${label}${needsKey && !src.key ? ` ${tx('fdz.needs_key')}` : ''}</label>`;
       return html`<fieldset class="prop-group"><legend>${src.label || src.id} <span class="muted">(${src.schema}.${src.table})</span></legend>
         <input type="hidden" name="s${i}_key" value="${src.id}">
-        ${!obj ? html`<div class="alert alert-error" role="alert">The table or view ${src.schema}.${src.table} does not exist (any more).</div>` : ''}
-        ${missing.length ? html`<div class="alert alert-error" role="alert">The application's database role lacks ${missing.map((k) => grant[k]).join(', ')} on ${src.schema}.${src.table}: grant it, or forms can't do that.</div>` : ''}
+        ${!obj ? html`<div class="alert alert-error" role="alert">${tx('fdz.no_object', { object: `${src.schema}.${src.table}` })}</div>` : ''}
+        ${missing.length ? html`<div class="alert alert-error" role="alert">${tx('fdz.lacks', { privs: missing.map((k) => grant[k]).join(', '), object: `${src.schema}.${src.table}` })}</div>` : ''}
         <div class="form-grid">
-          <div class="field"><label class="label" for="${id(`s${i}_id`)}">Static id</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
-          <div class="field"><label class="label" for="${id(`s${i}_label`)}">Label</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${heading(src.table)}"></div>
-          <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">Description (shown to designers)</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}"></div>
-          <div class="field"><label class="label" for="${id(`s${i}_keycol`)}">Key column (identifies a row)</label>
-            <select id="${id(`s${i}_keycol`)}" name="s${i}_keycol"><option value="">- none: forms only add rows -</option>${(obj?.columns ?? []).map((c) => opt(c.name, c.name, src.key ?? ''))}</select></div>
-          <div class="field"><span class="label">Forms on it may</span>
-            ${check('insert', 'add rows', false)} ${check('update', 'change rows', true)} ${check('delete', 'delete rows', true)}</div>
+          <div class="field"><label class="label" for="${id(`s${i}_id`)}">${tx('fdz.static_id')}</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
+          <div class="field"><label class="label" for="${id(`s${i}_label`)}">${tx('fdz.label')}</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${heading(src.table)}"></div>
+          <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">${tx('fdz.description_shown_to_designers')}</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}"></div>
+          <div class="field"><label class="label" for="${id(`s${i}_keycol`)}">${tx('fdz.key_column_identifies_a_row')}</label>
+            <select id="${id(`s${i}_keycol`)}" name="s${i}_keycol"><option value="">${tx('fdz.no_key')}</option>${(obj?.columns ?? []).map((c) => opt(c.name, c.name, src.key ?? ''))}</select></div>
+          <div class="field"><span class="label">${tx('fdz.forms_on_it_may')}</span>
+            ${check('insert', tx('fdz.add_rows'), false)} ${check('update', tx('fdz.change_rows'), true)} ${check('delete', tx('fdz.delete_rows'), true)}</div>
         </div>
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Offer</th><th scope="col">Column</th><th scope="col">Label</th><th scope="col">List of values</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('fdz.offer')}</th><th scope="col">${tx('fdz.column')}</th><th scope="col">${tx('fdz.label')}</th><th scope="col">${tx('fdz.list_of_values')}</th></tr></thead><tbody>
           ${all.map((c, j) => {
             const o = offered.get(c.name);
             return html`<tr>
-              <td data-label="Offer"><input type="hidden" name="s${i}_col_${j}" value="${c.name}"><input type="checkbox" name="s${i}_on_${j}" value="true"${o ? raw(' checked') : ''} aria-label="Offer ${c.name}"></td>
-              <td data-label="Column"><code>${c.name}</code> <span class="muted">${c.type}</span>${c.missing ? html` <span class="tag tag-error">not in the table</span>` : ''}</td>
-              <td data-label="Label"><input name="s${i}_label_${j}" maxlength="80" value="${o?.label ?? ''}" placeholder="${heading(c.name)}" aria-label="Label of ${c.name}"></td>
-              <td data-label="List of values"><input name="s${i}_lov_${j}" maxlength="2000" value="${o?.lov ?? ''}" placeholder="LOV:NAME" list="${id('lovs')}" aria-label="List of values of ${c.name}"></td>
+              <td data-label="${tx('fdz.offer')}"><input type="hidden" name="s${i}_col_${j}" value="${c.name}"><input type="checkbox" name="s${i}_on_${j}" value="true"${o ? raw(' checked') : ''} aria-label="${tx('fdz.offer_col', { col: c.name })}"></td>
+              <td data-label="${tx('fdz.column')}"><code>${c.name}</code> <span class="muted">${c.type}</span>${c.missing ? html` <span class="tag tag-error">${tx('fdz.not_in_the_table')}</span>` : ''}</td>
+              <td data-label="${tx('fdz.label')}"><input name="s${i}_label_${j}" maxlength="80" value="${o?.label ?? ''}" placeholder="${heading(c.name)}" aria-label="${tx('fdz.label_of', { col: c.name })}"></td>
+              <td data-label="${tx('fdz.list_of_values')}"><input name="s${i}_lov_${j}" maxlength="2000" value="${o?.lov ?? ''}" placeholder="LOV:NAME" list="${id('lovs')}" aria-label="${tx('fdz.lov_of', { col: c.name })}"></td>
             </tr>`;
           })}
         </tbody></table></div>
-        <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> Remove this data source (forms on it stop working)</label></div>
+        <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> ${tx('fdz.remove_this_data_source_forms')}</label></div>
       </fieldset>`;
     }),
   );
-  return html`<h3 class="u-mt15">Form Designer settings</h3>
-    <p class="muted u-mt0">Users that pass the designers' authorization scheme build data entry forms on the tables and views below: they pick offered columns, labels, help texts, required fields and defaults, and publish forms for everyone who can see this region. Forms read and write rows as the application's database role, so grants and row level security apply.</p>
+  return html`<h3 class="u-mt15">${tx('fdz.form_designer_settings')}</h3>
+    <p class="muted u-mt0">${tx('fdz.users_that_pass_the_designers')}</p>
     <datalist id="${id('lovs')}">${lovs.map((n) => html`<option value="LOV:${n}">`)}</datalist>
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/form-designer" class="component-form">${csrf(s)}
-      <fieldset class="prop-group"><legend>Forms</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('design_authz')}">Who may design forms</label>
-          <select id="${id('design_authz')}" name="design_authz">${opt('', 'Nobody (choose an authorization scheme)', designAuthz)}${schemes.map((n) => opt(n, `Authorization: ${n}`, designAuthz))}</select></div>
-        <div class="field"><label class="label" for="${id('page_size')}">Rows per page</label>
+      <fieldset class="prop-group"><legend>${tx('fdz.forms')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('design_authz')}">${tx('fdz.who_may_design_forms')}</label>
+          <select id="${id('design_authz')}" name="design_authz">${opt('', tx('fdz.nobody_choose_an_authorization_scheme'), designAuthz)}${schemes.map((n) => opt(n, `Authorization: ${n}`, designAuthz))}</select></div>
+        <div class="field"><label class="label" for="${id('page_size')}">${tx('fdz.rows_per_page')}</label>
           <input id="${id('page_size')}" name="page_size" type="number" min="5" max="200" value="${cfg.page_size ?? ''}" placeholder="25"></div>
-        <div class="field" data-wide><label class="label" for="${id('empty')}">Text when there are no rows</label>
-          <input id="${id('empty')}" name="empty" maxlength="200" value="${cfg.empty ?? ''}" placeholder="No data found"></div>
+        <div class="field" data-wide><label class="label" for="${id('empty')}">${tx('fdz.text_when_there_are_no')}</label>
+          <input id="${id('empty')}" name="empty" maxlength="200" value="${cfg.empty ?? ''}" placeholder="${tx('fdz.no_data_found')}"></div>
       </div></fieldset>
       ${sourceSets}
-      <fieldset class="prop-group"><legend>Add a data source</legend><div class="form-grid">
-        <div class="field" data-wide><label class="label" for="${id('new_object')}">Table or view</label>
+      <fieldset class="prop-group"><legend>${tx('fdz.add_a_data_source')}</legend><div class="form-grid">
+        <div class="field" data-wide><label class="label" for="${id('new_object')}">${tx('fdz.table_or_view')}</label>
           <select id="${id('new_object')}" name="new_object"><option value="">- none -</option>${objects.map((o) => html`<option value="${o.oid}">${o.name}${o.access ? '' : ' (no access for the app role)'}</option>`)}</select></div>
-        <div class="field"><label class="label" for="${id('new_id')}">Static id</label><input id="${id('new_id')}" name="new_id" maxlength="40" pattern="[a-z][a-z0-9_]*" placeholder="from the name"></div>
-        <div class="field"><label class="label" for="${id('new_label')}">Label</label><input id="${id('new_label')}" name="new_label" maxlength="80"></div>
+        <div class="field"><label class="label" for="${id('new_id')}">${tx('fdz.static_id')}</label><input id="${id('new_id')}" name="new_id" maxlength="40" pattern="[a-z][a-z0-9_]*" placeholder="${tx('fdz.from_the_name')}"></div>
+        <div class="field"><label class="label" for="${id('new_label')}">${tx('fdz.label')}</label><input id="${id('new_label')}" name="new_label" maxlength="80"></div>
       </div>
-      <small class="help">All columns are offered at first (except binary and JSON ones), the primary key is the key column, and forms may add and change rows, not delete them. Untick columns designers should not put on forms, such as generated keys and audit columns.</small></fieldset>
-      <div class="buttons"><button class="btn btn-hot">Save Form Designer settings</button></div>
+      <small class="help">${tx('fdz.all_columns_are_offered_at')}</small></fieldset>
+      <div class="buttons"><button class="btn btn-hot">${tx('fdz.save_form_designer_settings')}</button></div>
     </form>`;
 }
 
@@ -223,7 +224,7 @@ export async function formDesignerBuilderRoutes(app: FastifyInstance) {
       { authz: new Set(schemes.map((x) => x.name.toUpperCase())), lovs: new Set(lovs.map((x) => x.name.toUpperCase())) });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     if (errors.length) flash(s, errors.join(' '), 'error');
-    else flash(s, 'Settings saved.');
+    else flash(s, tx('fdz.settings_saved'));
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });
 }

@@ -4,6 +4,7 @@ import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { COMPONENTS, type FieldKind } from './components.ts';
 import { appHeader, BASE, designerUrl, developer, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // App Builder → Search and "Where used": every component of an application
 // (pages, regions, items, buttons, dynamic actions, validations, processes
@@ -184,8 +185,8 @@ export function targetOf(kind: string, row: any): Target | null {
 
 function hitList(hits: Hit[], showPage = true) {
   return html`<ul class="hits">${hits.map((h) => html`<li>
-      <a href="${h.entry.url}">${icon(h.entry.icon)}<span>${h.entry.kindLabel}: ${h.entry.label}</span></a>
-      ${showPage && h.entry.pageNo !== null && h.entry.kind !== 'page' ? html`<span class="tag">page ${h.entry.pageNo}</span>` : ''}
+      <a href="${h.entry.url}">${icon(h.entry.icon)}<span>${tx.dyn(`comp.${h.entry.kind}`, h.entry.kindLabel)}: ${h.entry.label}</span></a>
+      ${showPage && h.entry.pageNo !== null && h.entry.kind !== 'page' ? html`<span class="tag">${tx('srch.page_tag', { n: h.entry.pageNo })}</span>` : ''}
       <span class="muted">${h.field}</span>
       <code class="hit-snippet">${h.snippet}</code>
     </li>`)}</ul>`;
@@ -197,9 +198,9 @@ export async function usedInPanel(appId: number, kind: string, row: any): Promis
   if (!target) return '';
   const hits = whereUsed(await appEntries(appId), target, { kind, id: row.id });
   return html`<section class="used-in" aria-labelledby="used-in-${kind}-${row.id}">
-    <h3 id="used-in-${kind}-${row.id}">Used in (${hits.length})</h3>
-    ${hits.length ? hitList(hits) : html`<p class="muted">Not referenced anywhere in this application${target.type === 'item' ? ' (outside its own definition)' : ''}.</p>`}
-    ${target.type === 'item' || target.type === 'page' ? html`<p class="muted small">Found in SQL, substitutions, links and settings of this application. Database code (views, functions, policies) isn't searched.</p>` : ''}
+    <h3 id="used-in-${kind}-${row.id}">${tx('srch.used_in', { n: hits.length })}</h3>
+    ${hits.length ? hitList(hits) : html`<p class="muted">${tx(target.type === 'item' ? 'srch.not_referenced_item' : 'srch.not_referenced')}</p>`}
+    ${target.type === 'item' || target.type === 'page' ? html`<p class="muted small">${tx('srch.found_in')}</p>` : ''}
   </section>`;
 }
 
@@ -214,16 +215,16 @@ export async function searchRoutes(app: FastifyInstance) {
     const groups = new Map<string, Hit[]>();
     for (const h of hits) groups.set(h.entry.kindLabel, [...(groups.get(h.entry.kindLabel) ?? []), h]);
     const main = html`${appHeader(a, 'search', s)}
-      ${region('Search', html`<form method="get" action="${BASE}/apps/${a.id}/search" class="search u-mwnone" role="search">
-          <input type="search" name="q" value="${q}" placeholder="Text in names, titles, SQL, settings…" aria-label="Search the application" autofocus>
-          <button class="btn btn-hot">Search</button></form>
+      ${region(tx('common.search'), html`<form method="get" action="${BASE}/apps/${a.id}/search" class="search u-mwnone" role="search">
+          <input type="search" name="q" value="${q}" placeholder="${tx('srch.placeholder')}" aria-label="${tx('srch.aria')}" autofocus>
+          <button class="btn btn-hot">${tx('common.search')}</button></form>
         ${q.trim()
           ? hits.length
-            ? html`<p class="muted">${hits.length}${hits.length >= 500 ? '+' : ''} matches</p>
-                ${[...groups].map(([label, list]) => html`<h3>${label} (${list.length})</h3>${hitList(list)}`)}`
-            : html`<p class="muted">Nothing found for “${q}”.</p>`
-          : html`<p class="muted">Searches every page and component of ${a.name}: names, titles, SQL, conditions, settings and help texts.</p>`}`)}`;
-    return send(reply, s, shell(s, `Search · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Search']], main));
+            ? html`<p class="muted">${tx(hits.length >= 500 ? 'srch.matches_more' : 'srch.matches', { n: hits.length })}</p>
+                ${[...groups].map(([label, list]) => html`<h3>${tx.dyn(`comp.${list[0].entry.kind}`, label)} (${list.length})</h3>${hitList(list)}`)}`
+            : html`<p class="muted">${tx('srch.nothing', { q })}</p>`
+          : html`<p class="muted">${tx('srch.intro', { name: a.name })}</p>`}`)}`;
+    return send(reply, s, shell(s, tx('srch.page_title', { name: a.name }), [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('common.search')]], main));
   });
 }
 

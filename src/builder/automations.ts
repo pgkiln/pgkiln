@@ -5,6 +5,7 @@ import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Shared Components → Automations: the actions (add, edit, reorder),
 // next run, Run now and the run history with the errors per row, under the
@@ -23,13 +24,13 @@ export function actionPrefill(automation: string, actions: any[]) {
 /** Under an action's form: back to its automation. */
 export function actionExtras(row: any, automations: any[]): Raw {
   const a = automations.find((x) => x.name === row.automation_name);
-  return a ? html`<p class="u-mt1"><a class="btn" href="?c=automation-${a.id}">${icon('clock')} Back to ${a.name}</a></p>` : html``;
+  return a ? html`<p class="u-mt1"><a class="btn" href="?c=automation-${a.id}">${icon('clock')} ${tx('au.back_to', { name: a.name })}</a></p>` : html``;
 }
 
 function rowErrors(errors: RowError[] | null, failed: number | null): Raw {
   if (!errors?.length) return html``;
-  return html`<details><summary>${failed ?? errors.length} failed row(s)${failed && failed > errors.length ? ` (first ${errors.length})` : ''}</summary>
-    <ul class="small">${errors.map((e) => html`<li>Row ${e.row}, action <b>${e.action}</b>: ${e.message}${e.values ? html`<br><code>${e.values}</code>` : ''}</li>`)}</ul></details>`;
+  return html`<details><summary>${tx('au.failed_rows', { n: failed ?? errors.length })}${failed && failed > errors.length ? ` ${tx('au.first', { n: errors.length })}` : ''}</summary>
+    <ul class="small">${errors.map((e) => html`<li>${tx.rich('au.row_action', { row: e.row, action: html`<b>${e.action}</b>` })}: ${e.message}${e.values ? html`<br><code>${e.values}</code>` : ''}</li>`)}</ul></details>`;
 }
 
 /** Actions, next run, Run now and the last runs of an automation. */
@@ -43,44 +44,44 @@ export async function automationExtras(appId: number, row: { id: number; name: s
   ).rows;
   let next: string;
   try {
-    next = row.enabled ? when(nextRun(parseCron(row.schedule), row.time_zone, new Date())) : 'not scheduled (disabled)';
+    next = row.enabled ? when(nextRun(parseCron(row.schedule), row.time_zone, new Date())) : tx('au.not_scheduled');
   } catch (e) {
-    next = `never: ${(e as Error).message}`;
+    next = tx('au.never', { message: (e as Error).message });
   }
-  const scheduler = process.env.AUTOMATIONS === 'off' ? html` <b>(the scheduler is off on this server: AUTOMATIONS=off)</b>` : '';
+  const scheduler = process.env.AUTOMATIONS === 'off' ? html` <b>${tx('au.scheduler_off')}</b>` : '';
   const move = (id: number, dir: 'up' | 'down', label: string, disabled: boolean) =>
     html`<form method="post" action="${BASE}/apps/${appId}/shared/automation_action/${id}/move" class="u-inline">${csrf(s)}<input type="hidden" name="dir" value="${dir}"><button class="link-button" aria-label="${label}"${disabled ? html` disabled` : ''}>${dir === 'up' ? '↑' : '↓'}</button></form>`;
-  const actionsHtml = html`<fieldset class="prop-group u-mt125"><legend>Actions</legend>
-      <p class="muted u-mt0">Run in this order${row.query?.trim() ? ', for each row of the query' : ', once'}, in one transaction${row.error_handling === 'skip' && row.query?.trim() ? ' per run; a failing row is rolled back and skipped' : ''}.</p>
+  const actionsHtml = html`<fieldset class="prop-group u-mt125"><legend>${tx('au.actions')}</legend>
+      <p class="muted u-mt0">${tx(!row.query?.trim() ? 'au.order_once' : row.error_handling === 'skip' ? 'au.order_rows_skip' : 'au.order_rows')}</p>
       ${actions.length
-        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Seq</th><th>Action</th><th>Condition</th><th>Order</th></tr></thead><tbody>
+        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">${tx('au.seq')}</th><th>${tx('au.action')}</th><th>${tx('au.condition')}</th><th>${tx('au.order')}</th></tr></thead><tbody>
             ${actions.map((x, i) => html`<tr>
-              <td class="num" data-label="Seq">${x.seq}</td>
-              <td data-label="Action"><a href="?c=automation_action-${x.id}">${x.name}</a></td>
-              <td data-label="Condition">${x.condition ? html`<code>${x.condition.length > 80 ? x.condition.slice(0, 80) + '…' : x.condition}</code>` : html`<span class="muted">always</span>`}</td>
-              <td data-label="Order">${move(x.id, 'up', `Move ${x.name} up`, i === 0)} ${move(x.id, 'down', `Move ${x.name} down`, i === actions.length - 1)}</td></tr>`)}
+              <td class="num" data-label="${tx('au.seq')}">${x.seq}</td>
+              <td data-label="${tx('au.action')}"><a href="?c=automation_action-${x.id}">${x.name}</a></td>
+              <td data-label="${tx('au.condition')}">${x.condition ? html`<code>${x.condition.length > 80 ? x.condition.slice(0, 80) + '…' : x.condition}</code>` : html`<span class="muted">${tx('au.always')}</span>`}</td>
+              <td data-label="${tx('au.order')}">${move(x.id, 'up', tx('au.move_up', { name: x.name }), i === 0)} ${move(x.id, 'down', tx('au.move_down', { name: x.name }), i === actions.length - 1)}</td></tr>`)}
           </tbody></table></div>`
-        : html`<p class="muted">No actions yet: a run does nothing.</p>`}
-      <p><a class="btn" href="?new=automation_action&amp;automation=${encodeURIComponent(row.name)}">＋ Add action</a></p>
+        : html`<p class="muted">${tx('au.no_actions')}</p>`}
+      <p><a class="btn" href="?new=automation_action&amp;automation=${encodeURIComponent(row.name)}">＋ ${tx('au.add_action')}</a></p>
     </fieldset>`;
-  return html`${actionsHtml}<fieldset class="prop-group u-mt125"><legend>Runs</legend>
-      <p>Next run: <b>${next}</b>${scheduler}</p>
-      <p class="muted">From application code: <code>select meta.run_automation('${row.name}')</code> runs it now, in the caller's transaction.</p>
+  return html`${actionsHtml}<fieldset class="prop-group u-mt125"><legend>${tx('au.runs')}</legend>
+      <p>${tx.rich('au.next_run', { when: html`<b>${next}</b>` })}${scheduler}</p>
+      <p class="muted">${tx.rich('au.from_code', { call: html`<code>select meta.run_automation('${row.name}')</code>` })}</p>
       <form method="post" action="${BASE}/apps/${appId}/shared/automation/${row.id}/run">${csrf(s)}
-        <button class="btn">${icon('play')} Run now</button>
+        <button class="btn">${icon('play')} ${tx('au.run_now')}</button>
       </form>
       ${log.length
-        ? html`<div class="table-wrap u-mt075"><table class="report report-reflow"><thead><tr><th>Started</th><th>Took</th><th>By</th><th>Status</th><th class="num">Rows</th><th class="num">Failed</th><th>Message</th></tr></thead><tbody>
+        ? html`<div class="table-wrap u-mt075"><table class="report report-reflow"><thead><tr><th>${tx('au.started')}</th><th>${tx('au.took')}</th><th>${tx('au.by')}</th><th>${tx('au.status')}</th><th class="num">${tx('au.rows')}</th><th class="num">${tx('au.failed')}</th><th>${tx('au.message')}</th></tr></thead><tbody>
             ${log.map((l) => html`<tr>
-              <td data-label="Started">${when(l.started_at)}</td>
-              <td data-label="Took">${l.finished_at ? `${((new Date(l.finished_at).getTime() - new Date(l.started_at).getTime()) / 1000).toFixed(1)} s` : '…'}</td>
-              <td data-label="By">${l.trigger}${l.run_by ? html` <span class="muted">(${l.run_by})</span>` : ''}</td>
-              <td data-label="Status"><span class="tag${STATUS_TAG[l.status] ?? ''}">${l.status}</span></td>
-              <td class="num" data-label="Rows">${l.rows ?? ''}</td>
-              <td class="num" data-label="Failed">${l.rows_failed || ''}</td>
-              <td data-label="Message">${l.message ?? ''}${rowErrors(l.errors, l.rows_failed)}</td></tr>`)}
+              <td data-label="${tx('au.started')}">${when(l.started_at)}</td>
+              <td data-label="${tx('au.took')}">${l.finished_at ? `${((new Date(l.finished_at).getTime() - new Date(l.started_at).getTime()) / 1000).toFixed(1)} s` : '…'}</td>
+              <td data-label="${tx('au.by')}">${l.trigger}${l.run_by ? html` <span class="muted">(${l.run_by})</span>` : ''}</td>
+              <td data-label="${tx('au.status')}"><span class="tag${STATUS_TAG[l.status] ?? ''}">${l.status}</span></td>
+              <td class="num" data-label="${tx('au.rows')}">${l.rows ?? ''}</td>
+              <td class="num" data-label="${tx('au.failed')}">${l.rows_failed || ''}</td>
+              <td data-label="${tx('au.message')}">${l.message ?? ''}${rowErrors(l.errors, l.rows_failed)}</td></tr>`)}
           </tbody></table></div>`
-        : html`<p class="muted">No runs yet.</p>`}
+        : html`<p class="muted">${tx('au.no_runs')}</p>`}
     </fieldset>`;
 }
 
@@ -93,9 +94,9 @@ export async function automationRoutes(app: FastifyInstance) {
     const a = /^\d+$/.test(id) && /^\d+$/.test(cid) ? await owner.one('select id from meta.automation where id = $1 and app_id = $2', [cid, id]) : undefined;
     if (!a) return reply.code(404).send('Not found');
     const r = await runAutomation(a.id, 'manual');
-    if (r.status === 'ok') flash(s, `Ran successfully${r.rows ? ` for ${r.rows} row(s)` : ''}.`);
-    else if (r.status === 'warning') flash(s, `Ran with errors: ${r.message}. See the run history.`, 'error');
-    else flash(s, r.message ?? 'The automation failed.', 'error');
+    if (r.status === 'ok') flash(s, r.rows ? tx('au.ran_rows', { n: r.rows }) : tx('au.ran'));
+    else if (r.status === 'warning') flash(s, tx('au.ran_errors', { message: r.message ?? '' }), 'error');
+    else flash(s, r.message ?? tx('au.failed_run'), 'error');
     return back(reply, s, target);
   });
 

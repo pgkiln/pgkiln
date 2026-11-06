@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { APPEARANCE_DEFAULT, appStyles, BASE_STYLES, baseStyleOf, FONT_SIZES, FONTS, HEX, ITEM_REF, MAX_STYLES, NAV_APPEARANCES, navAppearance, parseStyle, RADII, STYLE_NAME, type StyleVariant } from '../runtime/styles.ts';
 import { REGION_OPTIONS, BUTTON_OPTIONS } from '../runtime/template-options.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // App → Settings → Theme Roller: style variants (APEX: theme styles). The
 // styles live in meta.app.theme ("styles", "style", "style_choice"), so they
@@ -27,12 +28,12 @@ async function updateTheme(id: string, change: (theme: Theme) => Theme | string)
   });
 }
 
-const label = (list: Record<string, { label: string }>, k: string | undefined) => (k && list[k] ? list[k].label : '- as the base -');
+const label = (list: Record<string, { label: string }>, k: string | undefined) => (k && list[k] ? list[k].label : tx('thr.as_base'));
 /** (sprint 117) a style's navigation appearance as shown in the list */
-const appearanceLabel = (k: string | undefined) => (k === APPEARANCE_DEFAULT ? 'Default' : k && NAV_APPEARANCES[k] ? NAV_APPEARANCES[k].label : '- as the application -');
+const appearanceLabel = (k: string | undefined) => (k === APPEARANCE_DEFAULT ? tx('thr.default') : k && NAV_APPEARANCES[k] ? NAV_APPEARANCES[k].label : tx('thr.as_app'));
 const appearanceChoices = (forStyle: boolean): [string, string][] => [
-  forStyle ? ['', '- as the application -'] : ['', 'Default (the base style\'s header and menu)'],
-  ...(forStyle ? [[APPEARANCE_DEFAULT, 'Default (the base style\'s header and menu)'] as [string, string]] : []),
+  forStyle ? ['', tx('thr.as_the_application')] : ['', tx('thr.default_the_base_style_s')],
+  ...(forStyle ? [[APPEARANCE_DEFAULT, tx('thr.default_base_style')] as [string, string]] : []),
   ...Object.entries(NAV_APPEARANCES).map(([k, v]): [string, string] => [k, v.label]),
 ];
 const APPEARANCE_HELP = 'APEX 26.2: Pillar Light puts the header and menu on the page\'s own light surfaces, Pillar Dark makes them one dark column in the header colour; both have a header pillar strip and show the current page as a filled pill.';
@@ -44,13 +45,13 @@ function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVarian
     const value = (own ? st?.[name] : undefined) ?? (typeof base[name] === 'string' && HEX.test(base[name] as string) ? (base[name] as string) : fallback);
     return html`<div class="field"><label class="label" for="f_${name}">${title}</label>
       <input id="f_${name}" name="${name}" type="color" value="${value}">
-      <label class="check"><input type="checkbox" name="${name}_own" value="true"${own ? raw(' checked') : ''}> Use this colour (else the base colour)</label>
-      <label class="sub" for="f_${name}_item">…or the value of an item</label>
+      <label class="check"><input type="checkbox" name="${name}_own" value="true"${own ? raw(' checked') : ''}> ${tx('thr.use_this_colour_else_the')}</label>
+      <label class="sub" for="f_${name}_item">${tx('thr.or_the_value_of_an')}</label>
       <input id="f_${name}_item" name="${name}_item" value="${ref}" placeholder="&amp;APP_BRAND_COLOUR." autocomplete="off" spellcheck="false">
-      <small class="help">A dynamic colour: the item's value when it is #rrggbb (else the base colour).</small></div>`;
+      <small class="help">${tx('thr.a_dynamic_colour_the_item')}</small></div>`;
   };
   const baseOf = BASE_STYLES[baseStyleOf(base)];
-  const choices = (list: Record<string, { label: string }>) => [['', '- as the base -'] as [string, string], ...Object.entries(list).map(([k, v]): [string, string] => [k, v.label])];
+  const choices = (list: Record<string, { label: string }>) => [['', tx('thr.as_the_base')] as [string, string], ...Object.entries(list).map(([k, v]): [string, string] => [k, v.label])];
   // the live preview (builder.js): the style form's values as CSS variables on a sample of the application's look
   const lists = JSON.stringify({
     fonts: Object.fromEntries(Object.entries(FONTS).map(([k, v]) => [k, v.css])),
@@ -59,40 +60,40 @@ function styleForm(appId: number, s: Parameters<typeof csrf>[0], st: StyleVarian
   });
   // (sprint 117) the preview has a menu: the current page, its parent and the appearance in use
   const appearance = navAppearance(base as never, st) ?? '';
-  const preview = html`<div class="tr-preview tr-preview-${baseStyleOf(base)}" data-tr-preview="${lists}" data-tr-app-appearance="${navAppearance(base as never, null) ?? ''}" data-appearance="${appearance}" aria-label="Preview of the style">
-    <div class="tr-preview-header">${icon('menu')}<span>Preview</span></div>
+  const preview = html`<div class="tr-preview tr-preview-${baseStyleOf(base)}" data-tr-preview="${lists}" data-tr-app-appearance="${navAppearance(base as never, null) ?? ''}" data-appearance="${appearance}" aria-label="${tx('thr.preview_of_the_style')}">
+    <div class="tr-preview-header">${icon('menu')}<span>${tx('thr.preview')}</span></div>
     <div class="tr-preview-main">
-    <ul class="tr-preview-nav" aria-label="Sample menu">
-      <li><span class="tr-nav-parent">${icon('users')}<span>Employees</span></span>
-        <ul><li><span class="tr-nav-current">Employee list</span></li><li><span>Directory</span></li></ul></li>
-      <li><span>${icon('chart')}<span>Reports</span></span></li>
+    <ul class="tr-preview-nav" aria-label="${tx('thr.sample_menu')}">
+      <li><span class="tr-nav-parent">${icon('users')}<span>${tx('thr.employees')}</span></span>
+        <ul><li><span class="tr-nav-current">${tx('thr.employee_list')}</span></li><li><span>${tx('thr.directory')}</span></li></ul></li>
+      <li><span>${icon('chart')}<span>${tx('thr.reports')}</span></span></li>
     </ul>
     <div class="tr-preview-body">
-      <section class="region region-standard"><header class="region-header"><h2>A region</h2></header>
-        <div class="region-body"><p class="u-mt0">Text with a <a href="#tr-preview-link" id="tr-preview-link">link</a> and a <span class="tc-badge tc-badge-info">badge</span>.</p>
-          <div class="field"><label class="label" for="tr-preview-input">A field</label><input id="tr-preview-input" value="Value" readonly></div>
-          <div class="buttons"><button type="button" class="btn">Cancel</button><button type="button" class="btn btn-hot">Save</button></div></div></section>
+      <section class="region region-standard"><header class="region-header"><h2>${tx('thr.a_region')}</h2></header>
+        <div class="region-body"><p class="u-mt0">${tx.rich('thr.preview_text', { link: html`<a href="#tr-preview-link" id="tr-preview-link">${tx('thr.link')}</a>`, badge: html`<span class="tc-badge tc-badge-info">${tx('thr.badge')}</span>` })}</p>
+          <div class="field"><label class="label" for="tr-preview-input">${tx('thr.a_field')}</label><input id="tr-preview-input" value="${tx('thr.value')}" readonly></div>
+          <div class="buttons"><button type="button" class="btn">${tx('thr.cancel')}</button><button type="button" class="btn btn-hot">${tx('thr.save')}</button></div></div></section>
     </div></div></div>`;
   return html`${preview}<form method="post" action="${BASE}/apps/${appId}/theme/styles" data-tr-form>${csrf(s)}
     ${st ? html`<input type="hidden" name="original" value="${st.name}">` : ''}
     <div class="form-grid">
-      ${input('name', 'Name', st?.name ?? '', { required: true, placeholder: 'e.g. Ocean', help: 'Shown to users who may choose a style. 1–30 letters, digits, spaces, - or _.' })}
-      ${colour('accent', 'Accent colour', baseOf.accent)}
-      ${colour('header', 'Header colour', baseOf.header)}
-      ${colour('accent_dark', 'Accent colour in dark mode', '#a59cff')}
-      ${colour('header_dark', 'Header colour in dark mode', '#0d0c1a')}
-      ${select('appearance', 'Navigation appearance', st?.appearance ?? '', appearanceChoices(true), APPEARANCE_HELP)}
-      ${colour('strip', 'Header strip colour', baseOf.accent)}
-      ${colour('strip_dark', 'Header strip colour in dark mode', '#a59cff')}
-      ${select('font', 'Font', st?.font ?? '', choices(FONTS))}
-      ${select('font_size', 'Font size', st?.font_size ?? '', choices(FONT_SIZES))}
-      ${select('radius', 'Corners', st?.radius ?? '', choices(RADII))}
-      <div class="field" data-wide><label class="label" for="f_condition">Condition (SQL)</label>
+      ${input('name', tx('thr.name'), st?.name ?? '', { required: true, placeholder: tx('thr.e_g_ocean'), help: tx('thr.shown_to_users_who_may') })}
+      ${colour('accent', tx('thr.c_accent'), baseOf.accent)}
+      ${colour('header', tx('thr.c_header'), baseOf.header)}
+      ${colour('accent_dark', tx('thr.c_accent_dark'), '#a59cff')}
+      ${colour('header_dark', tx('thr.c_header_dark'), '#0d0c1a')}
+      ${select('appearance', tx('thr.navigation_appearance'), st?.appearance ?? '', appearanceChoices(true), APPEARANCE_HELP)}
+      ${colour('strip', tx('thr.c_strip'), baseOf.accent)}
+      ${colour('strip_dark', tx('thr.c_strip_dark'), '#a59cff')}
+      ${select('font', tx('thr.font'), st?.font ?? '', choices(FONTS))}
+      ${select('font_size', tx('thr.font_size'), st?.font_size ?? '', choices(FONT_SIZES))}
+      ${select('radius', tx('thr.corners'), st?.radius ?? '', choices(RADII))}
+      <div class="field" data-wide><label class="label" for="f_condition">${tx('thr.condition_sql')}</label>
         <textarea id="f_condition" name="condition" class="code" rows="2" spellcheck="false" data-code="sql" placeholder=":APP_TENANT = 'north'">${st?.condition ?? ''}</textarea>
-        <small class="help">Optional. A boolean expression with bind variables, run as the application's role on every page: users who did not choose a style get the first style whose condition holds, else the default style (APEX: conditional theme styles).</small></div>
+        <small class="help">${tx('thr.optional_a_boolean_expression_with')}</small></div>
     </div>
-    <div class="buttons"><button class="btn btn-hot">${st ? 'Save style' : 'Add style'}</button>
-      ${st ? html`<a class="btn" href="${BASE}/apps/${appId}/theme">Cancel</a>` : ''}</div>
+    <div class="buttons"><button class="btn btn-hot">${st ? tx('thr.save_style') : tx('thr.add_style')}</button>
+      ${st ? html`<a class="btn" href="${BASE}/apps/${appId}/theme">${tx('thr.cancel')}</a>` : ''}</div>
   </form>`;
 }
 
@@ -110,46 +111,42 @@ export async function themeRollerRoutes(app: FastifyInstance) {
       const v = typeof theme[k] === 'string' && HEX.test(theme[k] as string) ? (theme[k] as string) : '';
       return html`<div class="field"><label class="label" for="f_app_${k}">${title}</label>
         <input id="f_app_${k}" name="${k}" type="color" value="${v || fallback}">
-        <label class="check"><input type="checkbox" name="${k}_own" value="true"${v ? raw(' checked') : ''}> Use this colour (else the accent colour)</label></div>`;
+        <label class="check"><input type="checkbox" name="${k}_own" value="true"${v ? raw(' checked') : ''}> ${tx('thr.use_this_colour_else_the_2')}</label></div>`;
     };
     const swatch = (hex: string | undefined) =>
       !hex ? html`<span class="muted">base</span>` : ITEM_REF.test(hex) ? html`<code>${hex}</code>` : html`<input type="color" value="${hex}" disabled aria-label="${hex}" class="swatch"> <code>${hex}</code>`;
     const main = html`${appHeader(a, 'settings', s)}
       <div class="ide-body">
-        ${region('Theme Roller: style variants', html`
-          <p class="muted u-mt0">Several saved styles for this application (APEX: theme styles). The base style
-            (${BASE_STYLES[baseStyleOf(a.theme)].label}) and colours under <a href="${BASE}/apps/${a.id}/settings">Settings → Theme</a>
-            are what users see without a style; each style below changes the colours and may set a font, font size and corners.
-            The colours apply to the light theme, the dark-mode colours to the dark theme (pick light colours there); fonts, sizes and corners to both.</p>
+        ${region(tx('thr.theme_roller_style_variants'), html`
+          <p class="muted u-mt0">${tx.rich('thr.variants_intro', { base: BASE_STYLES[baseStyleOf(a.theme)].label, settings: html`<a href="${BASE}/apps/${a.id}/settings">${tx('thr.settings_theme')}</a>` })}</p>
           ${styles.length
-            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Name</th><th>Accent</th><th>Header</th><th>Dark accent</th><th>Dark header</th><th>Navigation</th><th>Strip</th><th>Font</th><th>Font size</th><th>Corners</th><th><span class="sr-only">Actions</span></th></tr></thead><tbody>
+            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>${tx('thr.name')}</th><th>${tx('thr.accent')}</th><th>${tx('thr.header')}</th><th>${tx('thr.dark_accent')}</th><th>${tx('thr.dark_header')}</th><th>${tx('thr.navigation')}</th><th>${tx('thr.strip')}</th><th>${tx('thr.font')}</th><th>${tx('thr.font_size')}</th><th>${tx('thr.corners')}</th><th><span class="sr-only">${tx('thr.actions')}</span></th></tr></thead><tbody>
                 ${styles.map((x) => html`<tr><td>${x.name}${theme.style === x.name ? html` <span class="badge">default</span>` : ''}${x.condition ? html`<br><small class="muted">when <code>${x.condition.length > 60 ? `${x.condition.slice(0, 60)}…` : x.condition}</code></small>` : ''}</td>
                   <td>${swatch(x.accent)}</td><td>${swatch(x.header)}</td><td>${swatch(x.accent_dark)}</td><td>${swatch(x.header_dark)}</td><td>${appearanceLabel(x.appearance)}</td><td>${swatch(x.strip)}</td><td>${label(FONTS, x.font)}</td><td>${label(FONT_SIZES, x.font_size)}</td><td>${label(RADII, x.radius)}</td>
-                  <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/theme?edit=${encodeURIComponent(x.name)}">${icon('edit')} Edit</a>
+                  <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/theme?edit=${encodeURIComponent(x.name)}">${icon('edit')} ${tx('thr.edit')}</a>
                     <form method="post" action="${BASE}/apps/${a.id}/theme/styles/delete" class="u-inline">${csrf(s)}<input type="hidden" name="name" value="${x.name}">
-                      <button class="btn btn-sm btn-danger" data-confirm="Delete style ${x.name}?">Delete</button></form></td></tr>`)}
+                      <button class="btn btn-sm btn-danger" data-confirm="${tx('thr.delete_confirm', { name: x.name })}">${tx('thr.delete')}</button></form></td></tr>`)}
               </tbody></table></div>`
-            : html`<p class="muted">No styles yet: the application uses its base colours.</p>`}
+            : html`<p class="muted">${tx('thr.no_styles_yet_the_application')}</p>`}
           <form method="post" action="${BASE}/apps/${a.id}/theme/settings" class="u-mt1">${csrf(s)}
             <div class="form-grid">
-              ${select('style', 'Default style', typeof theme.style === 'string' ? theme.style : '', [['', 'None (the base style and colours)'], ...styles.map((x): [string, string] => [x.name, x.name])], 'What everyone sees unless they chose another style.')}
-              ${select('appearance', 'Navigation appearance', navAppearance(theme as never, null) ?? '', appearanceChoices(false), `${APPEARANCE_HELP} A style may choose its own.`)}
-              ${appColour('strip', 'Header strip colour', BASE_STYLES[baseStyleOf(a.theme)].accent)}
-              ${appColour('strip_dark', 'Header strip colour in dark mode', '#a59cff')}
+              ${select('style', tx('thr.default_style'), typeof theme.style === 'string' ? theme.style : '', [['', tx('thr.none_the_base_style_and')], ...styles.map((x): [string, string] => [x.name, x.name])], tx('thr.what_everyone_sees_unless_they'))}
+              ${select('appearance', tx('thr.navigation_appearance'), navAppearance(theme as never, null) ?? '', appearanceChoices(false), `${APPEARANCE_HELP} A style may choose its own.`)}
+              ${appColour('strip', tx('thr.c_strip'), BASE_STYLES[baseStyleOf(a.theme)].accent)}
+              ${appColour('strip_dark', tx('thr.c_strip_dark'), '#a59cff')}
             </div>
-            <div class="field"><label class="check"><input type="checkbox" name="style_choice" value="true"${theme.style_choice === true ? raw(' checked') : ''}> Users may choose a style</label>
-              <small class="help">Adds the styles to the user menu and My account (APEX: "Enable End Users to Choose Theme Style"). A user's choice is kept per application on the account; only this application's styles can be chosen.</small></div>
-            <div class="buttons"><button class="btn btn-hot">Save</button></div>
+            <div class="field"><label class="check"><input type="checkbox" name="style_choice" value="true"${theme.style_choice === true ? raw(' checked') : ''}> ${tx('thr.users_may_choose_a_style')}</label>
+              <small class="help">${tx('thr.adds_the_styles_to_the')}</small></div>
+            <div class="buttons"><button class="btn btn-hot">${tx('thr.save')}</button></div>
           </form>`)}
-        ${region(editing ? `Edit style ${editing.name}` : 'Add a style', styles.length >= MAX_STYLES && !editing
-          ? html`<p class="muted">At most ${MAX_STYLES} styles per application.</p>`
+        ${region(editing ? tx('thr.edit_style', { name: editing.name }) : tx('thr.add_a_style'), styles.length >= MAX_STYLES && !editing
+          ? html`<p class="muted">${tx('thr.max_styles', { n: MAX_STYLES })}</p>`
           : styleForm(a.id, s, editing, theme))}
-        ${region('Template options', html`<p class="muted u-mt0">Regions and buttons have <em>Template options</em> in the Page Designer
-            (group Appearance): CSS classes from a fixed list, which these styles also affect.</p>
-          <ul class="u-mt0"><li>Regions: ${REGION_OPTIONS.map((o, i) => html`${i ? ', ' : ''}<code>${o.cls}</code>`)}</li>
-            <li>Buttons: ${BUTTON_OPTIONS.map((o, i) => html`${i ? ', ' : ''}<code>${o.cls}</code>`)}</li></ul>`)}
+        ${region(tx('thr.template_options'), html`<p class="muted u-mt0">${tx.rich('thr.options_intro', { options: html`<em>${tx('thr.template_options')}</em>` })}</p>
+          <ul class="u-mt0"><li>${tx.rich('thr.regions_list', { list: html`${REGION_OPTIONS.map((o, i) => html`${i ? ', ' : ''}<code>${o.cls}</code>`)}` })}</li>
+            <li>${tx.rich('thr.buttons_list', { list: html`${BUTTON_OPTIONS.map((o, i) => html`${i ? ', ' : ''}<code>${o.cls}</code>`)}` })}</li></ul>`)}
       </div>`;
-    return send(reply, s, shell(s, `${a.name} Theme Roller`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Settings', `${BASE}/apps/${a.id}/settings`], ['Theme Roller']], main));
+    return send(reply, s, shell(s, tx('thr.title', { app: a.name }), [[tx('thr.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('thr.settings'), `${BASE}/apps/${a.id}/settings`], [tx('thr.theme_roller')]], main));
   });
 
   // add or change a style
@@ -180,9 +177,9 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     const problem = await updateTheme(id, (t) => {
       const styles = appStyles(t as never);
       const at = original ? styles.findIndex((x) => x.name === original) : -1;
-      if (original && at < 0) return `Style ${original} no longer exists.`;
-      if (styles.some((x, i) => i !== at && x.name.toLowerCase() === parsed.name.toLowerCase())) return `There is already a style named ${parsed.name}.`;
-      if (at < 0 && styles.length >= MAX_STYLES) return `At most ${MAX_STYLES} styles per application.`;
+      if (original && at < 0) return tx('thr.gone', { name: original });
+      if (styles.some((x, i) => i !== at && x.name.toLowerCase() === parsed.name.toLowerCase())) return tx('thr.exists', { name: parsed.name });
+      if (at < 0 && styles.length >= MAX_STYLES) return tx('thr.max_styles', { n: MAX_STYLES });
       if (at >= 0) styles[at] = parsed;
       else styles.push(parsed);
       const next: Theme = { ...t, styles };
@@ -196,7 +193,7 @@ export async function themeRollerRoutes(app: FastifyInstance) {
     // users who chose the renamed style keep it
     if (original && original !== parsed.name)
       await owner.query('update meta.account_style set style = $3 where app_id = $1 and style = $2', [id, original, parsed.name]);
-    flash(s, `Style ${parsed.name} saved.`);
+    flash(s, tx('thr.saved', { name: parsed.name }));
     return back(reply, s, target);
   });
 
@@ -214,7 +211,7 @@ export async function themeRollerRoutes(app: FastifyInstance) {
       return next;
     });
     if (!problem) await owner.query('delete from meta.account_style where app_id = $1 and style = $2', [id, name]);
-    flash(s, problem ?? `Style ${name} deleted.`, problem ? 'error' : 'ok');
+    flash(s, problem ?? tx('thr.deleted', { name }), problem ? 'error' : 'ok');
     return back(reply, s, `${BASE}/apps/${id}/theme`);
   });
 
@@ -242,7 +239,7 @@ export async function themeRollerRoutes(app: FastifyInstance) {
       else return 'Choose one of the styles.';
       return next;
     });
-    flash(s, problem ?? 'Theme Roller settings saved.', problem ? 'error' : 'ok');
+    flash(s, problem ?? tx('thr.theme_roller_settings_saved'), problem ? 'error' : 'ok');
     return back(reply, s, `${BASE}/apps/${id}/theme`);
   });
 }
