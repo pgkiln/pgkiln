@@ -10,6 +10,9 @@
 // Strict CSP: no inline styles; geometry goes into SVG attributes, sizes through the CSSOM.
 (() => {
   'use strict';
+  // (sprint 162) texts in the builder's language: #builder-texts (shell(), keys js.*), English in en.ts
+  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
+  const msg = (key, params = {}) => (TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
   // the data dictionary's Print button
   for (const b of document.querySelectorAll('.dm-dict-actions [data-dm=print]')) {
     b.hidden = false;
@@ -104,7 +107,7 @@
     btn('redo').disabled = !redo.length;
     const d = dirty();
     btn('save').classList.toggle('btn-hot', d);
-    status.textContent = d ? 'Unsaved changes' : '';
+    status.textContent = d ? msg('js.dm.unsaved') : '';
   }
   function remember(before) {
     undo.push(before);
@@ -136,15 +139,15 @@
       format: 'json',
       positions: JSON.stringify([...boxes].map(([name, b]) => ({ name, x: Math.round(b.x), y: Math.round(b.y) }))),
     });
-    status.textContent = 'Saving…';
+    status.textContent = msg('js.dm.saving');
     try {
       const res = await fetch(saveForm.action, { method: 'POST', body, credentials: 'same-origin', headers: { accept: 'application/json' } });
       if (!res.ok) throw new Error(String(res.status));
       saved = JSON.stringify(snapshot());
       changed();
-      status.textContent = 'Saved';
+      status.textContent = msg('js.dm.saved');
     } catch (e) {
-      status.textContent = `Not saved (${e.message}): try again`;
+      status.textContent = msg('js.dm.not_saved', { error: e.message });
     }
   }
   btn('save').addEventListener('click', save);
@@ -333,7 +336,7 @@
       ctx.drawImage(img, 0, 0, W, H);
       c.toBlob((blob) => blob && download(blob, `${fileName}.png`), 'image/png');
     };
-    img.onerror = () => (status.textContent = 'The PNG could not be made: export SVG instead');
+    img.onerror = () => (status.textContent = msg('js.dm.no_png'));
     img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText())}`;
   });
   btn('print').addEventListener('click', () => {

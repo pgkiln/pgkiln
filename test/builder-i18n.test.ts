@@ -67,7 +67,7 @@ describe('builder message files and their coverage', () => {
     for (const f of SOURCE) {
       const src = readFileSync(f, 'utf8');
       // tx('key'), tx.rich('key', …), tr(s)('key'), tx(cond ? 'a' : 'b')
-      for (const m of src.matchAll(/\b(?:tx(?:\.rich)?|tr\([^()]*\))\(\s*([^,)]*)/g)) {
+      for (const m of src.matchAll(/\b(?:tx(?:\.rich|\.code)?|tr\([^()]*\))\(\s*([^,)]*)/g)) {
         const arg = m[1];
         for (const k of arg.matchAll(/'([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)'/g)) {
           literal++;

@@ -6,6 +6,7 @@
 // A page gets its translator from the session: `const tx = tr(s)`, then `tx('rail.app_builder')`, or with
 // {placeholders}: `tx('ab.count', { n: 3 })`. The result is plain text: the html`` tag escapes it like any value.
 // `tx.rich()` puts markup (links) into a sentence: the message is escaped, Raw parameters are kept.
+// `tx.code()` (sprint 162): a sentence whose `backticked` parts are code (syntax help).
 // `tx.dyn()` takes a key made at run time (a region type's gallery label, a SQL Workshop tool) with a fallback.
 // A text that is not keyed yet simply stays English. Moving a screen over: docs/guide/12-development.md.
 //
@@ -70,6 +71,8 @@ export interface BuilderTranslate {
   dyn(key: string, fallback: string, params?: Params): string;
   /** A sentence with markup: the message is escaped, string parameters too; Raw parameters (links) are kept. */
   rich(key: BuilderKey, params: Record<string, string | number | Raw>): Raw;
+  /** (sprint 162) A sentence with `code` in backticks: escaped, each `…` becomes <code>…</code> (syntax help, settings). */
+  code(key: BuilderKey, params?: Params): Raw;
   /** An English label passed around as text (a breadcrumb, a page title) in this language, when it is a known one. */
   label(text: string): string;
 }
@@ -117,6 +120,7 @@ export function builderTranslator(lang: BuilderLang, own: Readonly<Record<string
       const v = params[k];
       return v === undefined ? m : v instanceof Raw ? v.value : esc(v);
     }));
+  tx.code = (key, params) => raw(esc(fill(text(key) ?? key, params)).replace(/`([^`]+)`/g, '<code>$1</code>'));
   tx.label = (label) => (Object.hasOwn(LABELS, label) ? tx(LABELS[label]) : label);
   return tx;
 }

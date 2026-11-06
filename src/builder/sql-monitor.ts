@@ -9,6 +9,7 @@ import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, 
 import { isAdmin } from './locks.ts';
 import { planView } from './plan-view.ts';
 import { statementsNote, statementsState } from './top-sql.ts';
+import { tr, type BuilderKey, type BuilderTranslate } from './i18n.ts';
 
 // (sprint 102, Database Actions DA-14) SQL Workshop › SQL Monitor, for administrators: Database Actions' Real Time
 // SQL Monitor and Performance Hub on PostgreSQL's statistics views.
@@ -37,7 +38,7 @@ async function readOnly<T>(fn: (q: (sql: string, params?: unknown[]) => Promise<
   });
 }
 
-const crumbs = (...more: [string, string?][]): [string, string?][] => [['SQL Workshop', `${BASE}/sql`], ['SQL Monitor', more.length ? URL_BASE : undefined], ...more];
+const crumbs = (tx: BuilderTranslate, ...more: [string, string?][]): [string, string?][] => [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.monitor'), more.length ? URL_BASE : undefined], ...more];
 const num = (v: unknown) => (v == null ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 }));
 const QUERYID_RE = /^-?\d{1,20}$/;
 
@@ -45,10 +46,10 @@ const QUERYID_RE = /^-?\d{1,20}$/;
 const bar = (value: number, max: number) =>
   html`<svg class="sm-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true" focusable="false"><rect class="sm-bar-track" width="100" height="8"></rect><rect class="sm-bar-fill" width="${max > 0 ? Math.max(1, Math.round((value / max) * 100)) : 0}" height="8"></rect></svg>`;
 
-const viewTabs = (active: 'sessions' | 'top') =>
-  html`<nav class="seg u-mb1" aria-label="SQL Monitor views">
-    <a href="${URL_BASE}"${active === 'sessions' ? raw(' aria-current="page"') : ''}>Sessions</a>
-    <a href="${URL_BASE}/top"${active === 'top' ? raw(' aria-current="page"') : ''}>Top SQL</a></nav>`;
+const viewTabs = (tx: BuilderTranslate, active: 'sessions' | 'top') =>
+  html`<nav class="seg u-mb1" aria-label="${tx('sm.views')}">
+    <a href="${URL_BASE}"${active === 'sessions' ? raw(' aria-current="page"') : ''}>${tx('sm.sessions')}</a>
+    <a href="${URL_BASE}/top"${active === 'top' ? raw(' aria-current="page"') : ''}>${tx('sql.tool.topsql')}</a></nav>`;
 
 // ------------------------------------------------------------------ sessions
 
@@ -104,57 +105,58 @@ async function liveData(showIdle: boolean) {
 
 /** The part of the Sessions view that public/sql-monitor.js reloads in place. */
 async function livePart(s: Session, showIdle: boolean): Promise<Raw> {
+  const tx = tr(s);
   const d = await liveData(showIdle);
   const t = d.totals as Record<string, number>;
   const backTo = `${URL_BASE}${showIdle ? '?idle=1' : ''}`;
   const action = (pid: unknown, kind: 'cancel' | 'terminate') => html`<form method="post" action="${URL_BASE}/session" class="sm-action">${csrf(s)}
     <input type="hidden" name="pid" value="${String(pid)}"><input type="hidden" name="action" value="${kind}"><input type="hidden" name="idle" value="${showIdle ? '1' : ''}">
-    <button class="btn btn-sm${kind === 'terminate' ? ' btn-danger' : ''}" data-confirm="${kind === 'cancel' ? `Cancel the statement session ${pid} is running?` : `Terminate session ${pid}? Its open transaction is rolled back and the client is disconnected.`}"
-      aria-label="${kind === 'cancel' ? 'Cancel the statement of' : 'Terminate'} session ${String(pid)}">${kind === 'cancel' ? 'Cancel' : 'Terminate'}</button></form>`;
+    <button class="btn btn-sm${kind === 'terminate' ? ' btn-danger' : ''}" data-confirm="${kind === 'cancel' ? tx('sm.cancel_confirm', { pid: String(pid) }) : tx('sm.terminate_confirm', { pid: String(pid) })}"
+      aria-label="${kind === 'cancel' ? tx('sm.cancel_label', { pid: String(pid) }) : tx('sm.terminate_label', { pid: String(pid) })}">${kind === 'cancel' ? tx('sm.cancel') : tx('sm.terminate')}</button></form>`;
   return html`<div class="stat-grid u-mb1">
-      ${([['Sessions', `${t.sessions} / ${t.max}`], ['Active', t.active], ['Idle in a transaction', t.idle_tx], ['Blocked', t.blocked], ['Longest running (s)', t.longest]] as [string, unknown][])
+      ${([[tx('sm.sessions'), `${t.sessions} / ${t.max}`], [tx('sm.active'), t.active], [tx('sm.idle_tx'), t.idle_tx], [tx('sm.blocked'), t.blocked], [tx('sm.longest'), t.longest]] as [string, unknown][])
         .map(([l, v]) => html`<div class="stat"><b>${String(v)}</b><span>${l}</span></div>`)}
     </div>
-    ${region('Sessions', html`<p class="muted u-mt0">The client sessions of this database (pg_stat_activity)${showIdle ? '' : ', without idle ones'}, active ones first.
-        <a href="${showIdle ? URL_BASE : `${URL_BASE}?idle=1`}">${showIdle ? 'Hide idle sessions' : 'Show idle sessions'}</a>.
-        A query's text is shown only for roles whose statistics the owner may read (<code>pg_read_all_stats</code>).</p>
+    ${region(tx('sm.sessions'), html`<p class="muted u-mt0">${showIdle ? tx('sm.sessions_intro_all') : tx('sm.sessions_intro')}
+        <a href="${showIdle ? URL_BASE : `${URL_BASE}?idle=1`}">${showIdle ? tx('sm.hide_idle') : tx('sm.show_idle')}</a>.
+        ${tx.rich('sm.query_text_note', { role: html`<code>pg_read_all_stats</code>` })}</p>
       <div class="table-wrap"><table class="report report-reflow sm-sessions">
-      <thead><tr><th class="num">PID</th><th>User</th><th>Application</th><th>State</th><th>Wait</th><th class="num">Running (s)</th><th>Blocked by</th><th>Query</th><th>Actions</th></tr></thead>
+      <thead><tr><th class="num">PID</th><th>${tx('sm.col.user')}</th><th>${tx('sm.col.application')}</th><th>${tx('sm.col.state')}</th><th>${tx('sm.col.wait')}</th><th class="num">${tx('sm.col.running')}</th><th>${tx('sm.col.blocked_by')}</th><th>${tx('sm.col.query')}</th><th>${tx('sm.col.actions')}</th></tr></thead>
       <tbody>${d.sessions.length ? d.sessions.map((x) => html`<tr${(x.blocked_by as number[]).length ? raw(' class="is-blocked"') : ''}>
         <td class="num" data-label="PID">${String(x.pid)}</td>
-        <td data-label="User">${String(x.user ?? '')}</td>
-        <td data-label="Application" class="u-break">${String(x.app ?? '')}${x.client ? html` <span class="muted">${String(x.client)}</span>` : ''}</td>
-        <td data-label="State">${x.idle_tx_s != null ? html`<span class="tag tag-warning">${String(x.state)} ${String(x.idle_tx_s)} s</span>` : String(x.state ?? '')}</td>
-        <td data-label="Wait">${x.wait_type ? `${x.wait_type}: ${x.wait ?? ''}` : ''}</td>
-        <td class="num" data-label="Running">${x.running_s != null ? String(x.running_s) : ''}</td>
-        <td data-label="Blocked by">${(x.blocked_by as number[]).length ? html`<span class="tag tag-warning">${(x.blocked_by as number[]).join(', ')}</span>` : ''}</td>
-        <td data-label="Query" class="u-break">${x.query ? x.queryid && x.queryid !== '0'
-          ? html`<a href="${URL_BASE}/statements/${String(x.queryid)}" title="Statistics and plan of this statement"><code>${String(x.query).slice(0, 500)}</code></a>`
+        <td data-label="${tx('sm.col.user')}">${String(x.user ?? '')}</td>
+        <td data-label="${tx('sm.col.application')}" class="u-break">${String(x.app ?? '')}${x.client ? html` <span class="muted">${String(x.client)}</span>` : ''}</td>
+        <td data-label="${tx('sm.col.state')}">${x.idle_tx_s != null ? html`<span class="tag tag-warning">${String(x.state)} ${String(x.idle_tx_s)} s</span>` : String(x.state ?? '')}</td>
+        <td data-label="${tx('sm.col.wait')}">${x.wait_type ? `${x.wait_type}: ${x.wait ?? ''}` : ''}</td>
+        <td class="num" data-label="${tx('sm.col.running')}">${x.running_s != null ? String(x.running_s) : ''}</td>
+        <td data-label="${tx('sm.col.blocked_by')}">${(x.blocked_by as number[]).length ? html`<span class="tag tag-warning">${(x.blocked_by as number[]).join(', ')}</span>` : ''}</td>
+        <td data-label="${tx('sm.col.query')}" class="u-break">${x.query ? x.queryid && x.queryid !== '0'
+          ? html`<a href="${URL_BASE}/statements/${String(x.queryid)}" title="${tx('sm.statement_link')}"><code>${String(x.query).slice(0, 500)}</code></a>`
           : html`<code>${String(x.query).slice(0, 500)}</code>` : ''}</td>
-        <td data-label="Actions"><div class="sm-actions">${x.state === 'active' ? action(x.pid, 'cancel') : ''}${action(x.pid, 'terminate')}</div></td></tr>`)
-        : html`<tr><td colspan="9" class="empty">No ${showIdle ? 'other' : 'busy'} sessions.</td></tr>`}</tbody></table></div>`)}
-    ${region('Wait events', html`<p class="muted u-mt0">What the active sessions of the server wait for now (<em>CPU: running</em> when they don't wait).</p>
-      ${d.waits.length ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Type</th><th>Event</th><th class="num">Sessions</th></tr></thead>
-        <tbody>${d.waits.map((w) => html`<tr><td data-label="Type">${String(w.type)}</td><td data-label="Event">${String(w.event)}</td><td class="num" data-label="Sessions">${String(w.sessions)}</td></tr>`)}</tbody></table></div>`
-        : html`<p class="muted">No other active sessions.</p>`}`)}
-    ${d.progress.length ? region('In progress', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">PID</th><th>Command</th><th>Object</th><th>Phase</th><th>Done</th></tr></thead>
-      <tbody>${d.progress.map((p) => html`<tr><td class="num" data-label="PID">${String(p.pid)}</td><td data-label="Command">${String(p.command)}</td>
-        <td data-label="Object" class="u-break">${String(p.relation ?? '')}</td><td data-label="Phase">${String(p.phase ?? '')}</td>
-        <td data-label="Done">${p.pct != null ? html`<progress max="100" value="${String(p.pct)}" aria-label="${String(p.command)} ${String(p.pid)}"></progress> ${String(p.pct)}%` : ''}</td></tr>`)}</tbody></table></div>`) : ''}
-    <p class="muted small sm-updated" data-sm-updated>Updated ${new Date().toISOString().slice(11, 19)} UTC · <a href="${backTo}">Refresh</a></p>`;
+        <td data-label="${tx('sm.col.actions')}"><div class="sm-actions">${x.state === 'active' ? action(x.pid, 'cancel') : ''}${action(x.pid, 'terminate')}</div></td></tr>`)
+        : html`<tr><td colspan="9" class="empty">${showIdle ? tx('sm.no_other') : tx('sm.no_busy')}</td></tr>`}</tbody></table></div>`)}
+    ${region(tx('sm.waits'), html`<p class="muted u-mt0">${tx.rich('sm.waits_intro', { cpu: html`<em>${tx('sm.cpu_running')}</em>` })}</p>
+      ${d.waits.length ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('sm.col.type')}</th><th>${tx('sm.col.event')}</th><th class="num">${tx('sm.sessions')}</th></tr></thead>
+        <tbody>${d.waits.map((w) => html`<tr><td data-label="${tx('sm.col.type')}">${String(w.type)}</td><td data-label="${tx('sm.col.event')}">${String(w.event)}</td><td class="num" data-label="${tx('sm.sessions')}">${String(w.sessions)}</td></tr>`)}</tbody></table></div>`
+        : html`<p class="muted">${tx('sm.no_other_active')}</p>`}`)}
+    ${d.progress.length ? region(tx('sm.in_progress'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">PID</th><th>${tx('sm.col.command')}</th><th>${tx('sm.col.object')}</th><th>${tx('sm.col.phase')}</th><th>${tx('sm.col.done')}</th></tr></thead>
+      <tbody>${d.progress.map((p) => html`<tr><td class="num" data-label="PID">${String(p.pid)}</td><td data-label="${tx('sm.col.command')}">${String(p.command)}</td>
+        <td data-label="${tx('sm.col.object')}" class="u-break">${String(p.relation ?? '')}</td><td data-label="${tx('sm.col.phase')}">${String(p.phase ?? '')}</td>
+        <td data-label="${tx('sm.col.done')}">${p.pct != null ? html`<progress max="100" value="${String(p.pct)}" aria-label="${String(p.command)} ${String(p.pid)}"></progress> ${String(p.pct)}%` : ''}</td></tr>`)}</tbody></table></div>`) : ''}
+    <p class="muted small sm-updated" data-sm-updated>${tx('sm.updated', { time: new Date().toISOString().slice(11, 19) })} · <a href="${backTo}">${tx('sm.refresh')}</a></p>`;
 }
 
 // ------------------------------------------------------------------ Top SQL
 
-const SORTS: Record<string, { col: string; label: string; asc?: boolean }> = {
-  role: { col: 'r.rolname', label: 'Role', asc: true },
-  calls: { col: 's.calls', label: 'Calls' },
-  total: { col: 's.total_exec_time', label: 'Total ms' },
-  mean: { col: 's.mean_exec_time', label: 'Mean ms' },
-  rows: { col: 's.rows', label: 'Rows' },
-  hit: { col: 's.shared_blks_hit', label: 'Blocks hit' },
-  read: { col: 's.shared_blks_read', label: 'Blocks read' },
-  query: { col: 's.query', label: 'Statement', asc: true },
+const SORTS: Record<string, { col: string; label: BuilderKey; asc?: boolean }> = {
+  role: { col: 'r.rolname', label: 'sm.col.role', asc: true },
+  calls: { col: 's.calls', label: 'sm.col.calls' },
+  total: { col: 's.total_exec_time', label: 'sm.col.total_ms' },
+  mean: { col: 's.mean_exec_time', label: 'sm.col.mean_ms' },
+  rows: { col: 's.rows', label: 'sm.col.rows' },
+  hit: { col: 's.shared_blks_hit', label: 'sm.col.hit' },
+  read: { col: 's.shared_blks_read', label: 'sm.col.read' },
+  query: { col: 's.query', label: 'sm.col.statement', asc: true },
 };
 
 export interface TopRow { queryid: string | null; role: string | null; calls: number; total_ms: number; mean_ms: number; rows: number; hit: number; read: number; query: string }
@@ -176,7 +178,7 @@ export async function topStatements(sort: string, desc: boolean, filter: string,
 
 const EXPLAINABLE = /^(select|with|insert|update|delete|merge|values|table)\b/i;
 
-export type MonitorPlan = { ok: true; plan: Plan; text: string; generic: boolean } | { ok: false; error: string };
+export type MonitorPlan = { ok: true; plan: Plan; text: string; generic: boolean } | { ok: false; error: string; key?: BuilderKey };
 
 /**
  * EXPLAIN (never ANALYZE) of a statement someone else ran: one statement only, of a kind that has a plan, in a
@@ -185,14 +187,14 @@ export type MonitorPlan = { ok: true; plan: Plan; text: string; generic: boolean
  */
 export async function explainForMonitor(sql: string, schema: string | null): Promise<MonitorPlan> {
   const stmts = splitScript(sql);
-  if (stmts.length !== 1 || stmts[0].psql) return { ok: false, error: 'Only one SQL statement can be explained.' };
+  if (stmts.length !== 1 || stmts[0].psql) return { ok: false, error: 'Only one SQL statement can be explained.', key: 'sm.err.one' };
   const text = stmts[0].sql;
-  if (!EXPLAINABLE.test(text)) return { ok: false, error: 'Only SELECT, INSERT, UPDATE, DELETE, MERGE and VALUES statements have a plan.' };
+  if (!EXPLAINABLE.test(text)) return { ok: false, error: 'Only SELECT, INSERT, UPDATE, DELETE, MERGE and VALUES statements have a plan.', key: 'sm.err.kind' };
   const generic = /\$\d+/.test(text);
   const c = await owner.pool.connect();
   try {
     if (generic && Number((await c.query(`select current_setting('server_version_num') as v`)).rows[0].v) < 160000)
-      return { ok: false, error: 'The statement has parameters ($1, …): PostgreSQL 16 or later can explain it with a generic plan. Open it in the worksheet and fill in values.' };
+      return { ok: false, error: 'The statement has parameters ($1, …): PostgreSQL 16 or later can explain it with a generic plan. Open it in the worksheet and fill in values.', key: 'sm.err.generic' };
     await c.query('begin transaction read only');
     await c.query(`set local statement_timeout = '5s'`);
     await c.query(`set local lock_timeout = '1s'`);
@@ -200,7 +202,7 @@ export async function explainForMonitor(sql: string, schema: string | null): Pro
     // the extended protocol (Parse/Bind): the server accepts one statement only, whatever the text hides; a generic
     // plan's parameters are bound to nulls, which it doesn't look at
     const params = Math.max(0, ...[...text.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])));
-    if (params > 100) return { ok: false, error: 'The statement has too many parameters to explain.' };
+    if (params > 100) return { ok: false, error: 'The statement has too many parameters to explain.', key: 'sm.err.params' };
     const out = await c.query({ text: `explain (format json, verbose, costs${generic ? ', generic_plan' : ''}) ${text}`, values: Array(params).fill(null), queryMode: 'extended' } as never);
     const json = (out as { rows: Row[] }).rows[0]?.['QUERY PLAN'];
     const plan = parsePlan(typeof json === 'string' ? JSON.parse(json) : json, false);
@@ -246,14 +248,15 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     const showIdle = req.query?.idle === '1';
     const live = await livePart(s, showIdle);
     if (req.query?.fragment === '1') return reply.header('cache-control', 'no-store').type('text/html').send(String(live));
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('monitor', s)}${viewTabs('sessions')}
+    const tx = tr(s);
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('monitor', s)}${viewTabs(tx, 'sessions')}
       <div class="sm-toolbar" data-sm-controls hidden>
-        <label for="sm-interval">Refresh every</label>
-        <select id="sm-interval" data-sm-interval>${REFRESH_SECONDS.map((n) => html`<option value="${n}">${n} seconds</option>`)}</select>
-        <button type="button" class="btn btn-sm" data-sm-pause aria-pressed="false">Pause</button>
+        <label for="sm-interval">${tx('sm.refresh_every')}</label>
+        <select id="sm-interval" data-sm-interval>${REFRESH_SECONDS.map((n) => html`<option value="${n}">${tx('sm.seconds', { n })}</option>`)}</select>
+        <button type="button" class="btn btn-sm" data-sm-pause aria-pressed="false">${tx('sm.pause')}</button>
       </div>
       <div class="sm-live" data-sm-live="${URL_BASE}?${showIdle ? 'idle=1&' : ''}fragment=1" aria-live="off">${live}</div>`;
-    return send(reply, s, shell(s, 'SQL Monitor', crumbs(), main, 'sql'));
+    return send(reply, s, shell(s, tx('sql.tool.monitor'), crumbs(tx), main, 'sql'));
   });
 
   app.post(`${URL_BASE}/session`, async (req: Req, reply) => {
@@ -265,15 +268,16 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     // only a client session of this database, and not the connection doing it
     const target = await owner.one<{ pid: number }>(
       `select pid from pg_stat_activity where pid = $1 and datname = current_database() and backend_type = 'client backend' and pid <> pg_backend_pid()`, [Number(b.pid)]);
+    const tx = tr(s);
     if (!target) {
-      flash(s, `Session ${b.pid} isn't a client session of this database (any more).`, 'error');
+      flash(s, tx('sm.not_client', { pid: String(b.pid) }), 'error');
       return back(reply, s, to);
     }
     try {
       const fn = b.action === 'cancel' ? 'pg_cancel_backend' : 'pg_terminate_backend';
       const r = await owner.one<{ ok: boolean }>(`select ${fn}($1) as ok`, [target.pid]);
-      if (r?.ok) flash(s, b.action === 'cancel' ? `Asked session ${target.pid} to cancel its statement.` : `Terminated session ${target.pid}.`);
-      else flash(s, `Session ${target.pid} could not be signalled.`, 'error');
+      if (r?.ok) flash(s, b.action === 'cancel' ? tx('sm.cancelled', { pid: target.pid }) : tx('sm.terminated', { pid: target.pid }));
+      else flash(s, tx('sm.not_signalled', { pid: target.pid }), 'error');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -287,9 +291,10 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     const sort = SORTS[q.sort ?? ''] ? q.sort! : 'total';
     const desc = q.dir ? q.dir !== 'asc' : !SORTS[sort].asc;
     const filter = String(q.q ?? '').slice(0, 200);
+    const tx = tr(s);
     const state = await statementsState();
     let body: Raw;
-    if (!state.ok) body = statementsNote(state.reason, state.message);
+    if (!state.ok) body = statementsNote(tx, state.reason, state.message);
     else {
       const [rows, info] = await Promise.all([
         topStatements(sort, desc, filter),
@@ -301,32 +306,32 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
         const on = key === sort;
         const nextDesc = on ? !desc : !SORTS[key].asc;
         const params = new URLSearchParams({ sort: key, dir: nextDesc ? 'desc' : 'asc', ...(filter ? { q: filter } : {}) });
-        return html`<a href="${URL_BASE}/top?${params}" title="Sort by ${SORTS[key].label.toLowerCase()}">${SORTS[key].label}${on ? (desc ? ' ▼' : ' ▲') : ''}</a>`;
+        return html`<a href="${URL_BASE}/top?${params}" title="${tx('sm.sort_by', { column: tx(SORTS[key].label) })}">${tx(SORTS[key].label)}${on ? (desc ? ' ▼' : ' ▲') : ''}</a>`;
       };
       const th = (key: string, numeric = true) => html`<th${numeric ? raw(' class="num"') : ''}${key === sort ? raw(` aria-sort="${desc ? 'descending' : 'ascending'}"`) : ''}>${link(key)}</th>`;
       const i = info[0] as Row | undefined;
       body = html`<form method="get" action="${URL_BASE}/top" class="sm-filter u-mb1" role="search">
           <input type="hidden" name="sort" value="${sort}"><input type="hidden" name="dir" value="${desc ? 'desc' : 'asc'}">
-          <label class="sr-only" for="sm-q">Statement contains</label><input id="sm-q" name="q" type="search" value="${filter}" maxlength="200" placeholder="Statement contains…">
-          <button class="btn btn-sm">${icon('search')} Search</button></form>
+          <label class="sr-only" for="sm-q">${tx('sm.contains')}</label><input id="sm-q" name="q" type="search" value="${filter}" maxlength="200" placeholder="${tx('sm.contains')}…">
+          <button class="btn btn-sm">${icon('search')} ${tx('common.search')}</button></form>
         <div class="table-wrap"><table class="report report-reflow sm-top"><thead><tr>${th('role', false)}${th('calls')}${th('total')}${th('mean')}${th('rows')}${th('hit')}${th('read')}${th('query', false)}</tr></thead>
         <tbody>${rows.length ? rows.map((r) => html`<tr>
-          <td data-label="Role">${r.role ?? ''}</td>
-          <td class="num" data-label="Calls">${num(r.calls)}</td>
-          <td class="num sm-barcell" data-label="Total ms">${bar(r.total_ms, maxTotal)}<span>${num(r.total_ms)}</span></td>
-          <td class="num sm-barcell" data-label="Mean ms">${bar(r.mean_ms, maxMean)}<span>${num(r.mean_ms)}</span></td>
-          <td class="num" data-label="Rows">${num(r.rows)}</td>
-          <td class="num" data-label="Blocks hit">${num(r.hit)}</td>
-          <td class="num" data-label="Blocks read">${num(r.read)}</td>
-          <td data-label="Statement" class="u-break">${r.queryid ? html`<a href="${URL_BASE}/statements/${r.queryid}"><code class="sql-text">${r.query}</code></a>` : html`<code class="sql-text">${r.query}</code>`}</td></tr>`)
-          : html`<tr><td colspan="8" class="empty">${filter ? 'No statements match.' : 'No statements recorded yet.'}</td></tr>`}</tbody></table></div>
-        <p class="muted small">${i?.reset ? `Statistics since ${String(i.reset)}. ` : ''}At most 100 statements are shown; literals and binds show as <code>$1</code>, <code>$2</code>….</p>
+          <td data-label="${tx('sm.col.role')}">${r.role ?? ''}</td>
+          <td class="num" data-label="${tx('sm.col.calls')}">${num(r.calls)}</td>
+          <td class="num sm-barcell" data-label="${tx('sm.col.total_ms')}">${bar(r.total_ms, maxTotal)}<span>${num(r.total_ms)}</span></td>
+          <td class="num sm-barcell" data-label="${tx('sm.col.mean_ms')}">${bar(r.mean_ms, maxMean)}<span>${num(r.mean_ms)}</span></td>
+          <td class="num" data-label="${tx('sm.col.rows')}">${num(r.rows)}</td>
+          <td class="num" data-label="${tx('sm.col.hit')}">${num(r.hit)}</td>
+          <td class="num" data-label="${tx('sm.col.read')}">${num(r.read)}</td>
+          <td data-label="${tx('sm.col.statement')}" class="u-break">${r.queryid ? html`<a href="${URL_BASE}/statements/${r.queryid}"><code class="sql-text">${r.query}</code></a>` : html`<code class="sql-text">${r.query}</code>`}</td></tr>`)
+          : html`<tr><td colspan="8" class="empty">${filter ? tx('sm.no_match') : tx('sm.none_yet')}</td></tr>`}</tbody></table></div>
+        <p class="muted small">${i?.reset ? `${tx('sm.since', { time: String(i.reset) })} ` : ''}${tx.rich('sm.at_most', { p1: html`<code>$1</code>`, p2: html`<code>$2</code>` })}</p>
         <form method="post" action="${URL_BASE}/reset">${csrf(s)}
-          <button class="btn" data-confirm="Clear the statement statistics of the whole server?">${icon('history')} Reset statistics</button></form>`;
+          <button class="btn" data-confirm="${tx('sm.reset_confirm')}">${icon('history')} ${tx('sm.reset')}</button></form>`;
     }
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('monitor', s)}${viewTabs('top')}
-      ${region('Top SQL', html`<p class="muted u-mt0">The statements of this database from <code>pg_stat_statements</code>, every role. Click a statement for its plan.</p>${body}`)}`;
-    return send(reply, s, shell(s, 'Top SQL', crumbs(['Top SQL']), main, 'sql'));
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('monitor', s)}${viewTabs(tx, 'top')}
+      ${region(tx('sql.tool.topsql'), html`<p class="muted u-mt0">${tx.rich('sm.top_intro', { ext: html`<code>pg_stat_statements</code>` })}</p>${body}`)}`;
+    return send(reply, s, shell(s, tx('sql.tool.topsql'), crumbs(tx, [tx('sql.tool.topsql')]), main, 'sql'));
   });
 
   app.post(`${URL_BASE}/reset`, async (req: Req, reply) => {
@@ -334,7 +339,7 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     if (!s) return;
     try {
       await owner.query('select pg_stat_statements_reset()');
-      flash(s, 'Statement statistics reset.');
+      flash(s, tr(s)('sm.reset_done'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -346,10 +351,11 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     if (!s) return;
     const queryid = String(req.params.queryid);
     if (!QUERYID_RE.test(queryid)) return reply.code(404).send('Not found');
+    const tx = tr(s);
     const state = await statementsState();
     if (!state.ok) {
-      const main = html`<h1 class="u-mb1">Statement</h1>${statementsNote(state.reason, state.message)}`;
-      return send(reply, s, shell(s, 'Statement', crumbs(['Statement']), main, 'sql'));
+      const main = html`<h1 class="u-mb1">${tx('sm.statement')}</h1>${statementsNote(tx, state.reason, state.message)}`;
+      return send(reply, s, shell(s, tx('sm.statement'), crumbs(tx, [tx('sm.statement')]), main, 'sql'));
     }
     let rows: Row[];
     try {
@@ -366,22 +372,22 @@ export async function sqlMonitorRoutes(app: FastifyInstance) {
     const calls = sum('calls');
     const total = sum('total_ms');
     const tile = (label: string, v: string) => html`<div class="stat"><b>${v}</b><span>${label}</span></div>`;
-    const main = html`<h1 class="u-mb1">Statement</h1>
-      <div class="stat-grid u-mb1">${tile('Calls', num(calls))}${tile('Total ms', num(total))}${tile('Mean ms', num(calls ? total / calls : 0))}${tile('Rows', num(sum('rows')))}
-        ${tile('Blocks hit', num(sum('hit')))}${tile('Blocks read', num(sum('read')))}${tile('Temp blocks written', num(sum('temp_written')))}</div>
-      ${region('Text', html`<pre class="source u-break sm-sql" data-code-view="sql" tabindex="0" aria-label="SQL text">${sql}</pre>
-        <div class="buttons"><form method="post" action="${URL_BASE}/statements/${queryid}/worksheet">${csrf(s)}<button class="btn">${icon('code')} Open in worksheet</button></form>
-          <a class="btn" href="${URL_BASE}/top">Back to Top SQL</a></div>`)}
-      ${region('By role', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Role</th><th class="num">Calls</th><th class="num">Total ms</th><th class="num">Mean ms</th><th class="num">Std dev ms</th><th class="num">Min ms</th><th class="num">Max ms</th><th class="num">Rows</th><th class="num">Hit</th><th class="num">Read</th><th class="num">Temp read</th><th class="num">Temp written</th></tr></thead>
-        <tbody>${rows.map((r) => html`<tr><td data-label="Role">${String(r.role ?? '')}${r.toplevel === false ? html` <span class="tag">nested</span>` : ''}</td>
-          ${(['calls', 'total_ms', 'mean_ms', 'stddev_ms', 'min_ms', 'max_ms', 'rows', 'hit', 'read', 'temp_read', 'temp_written'] as const).map((k) =>
-            html`<td class="num" data-label="${k.replace('_ms', ' ms').replace('_', ' ')}">${num(r[k])}</td>`)}</tr>`)}</tbody></table></div>`)}
-      ${region('Explain Plan', html`<p class="muted u-mt0">EXPLAIN without running the statement${/\$\d+/.test(sql) ? ': its parameters ($1, …) get a generic plan' : ''}. Unqualified names are looked up in the schema you choose first.</p>
+    const BY_ROLE: Record<string, BuilderKey> = { calls: 'sm.col.calls', total_ms: 'sm.col.total_ms', mean_ms: 'sm.col.mean_ms', stddev_ms: 'sm.col.stddev_ms', min_ms: 'sm.col.min_ms', max_ms: 'sm.col.max_ms', rows: 'sm.col.rows', hit: 'sm.col.hit_short', read: 'sm.col.read_short', temp_read: 'sm.col.temp_read', temp_written: 'sm.col.temp_written' };
+    const main = html`<h1 class="u-mb1">${tx('sm.statement')}</h1>
+      <div class="stat-grid u-mb1">${tile(tx('sm.col.calls'), num(calls))}${tile(tx('sm.col.total_ms'), num(total))}${tile(tx('sm.col.mean_ms'), num(calls ? total / calls : 0))}${tile(tx('sm.col.rows'), num(sum('rows')))}
+        ${tile(tx('sm.col.hit'), num(sum('hit')))}${tile(tx('sm.col.read'), num(sum('read')))}${tile(tx('sm.temp_blocks_written'), num(sum('temp_written')))}</div>
+      ${region(tx('sm.text'), html`<pre class="source u-break sm-sql" data-code-view="sql" tabindex="0" aria-label="${tx('sm.sql_text')}">${sql}</pre>
+        <div class="buttons"><form method="post" action="${URL_BASE}/statements/${queryid}/worksheet">${csrf(s)}<button class="btn">${icon('code')} ${tx('sm.open_worksheet')}</button></form>
+          <a class="btn" href="${URL_BASE}/top">${tx('sm.back_top')}</a></div>`)}
+      ${region(tx('sm.by_role'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('sm.col.role')}</th>${Object.values(BY_ROLE).map((k) => html`<th class="num">${tx(k)}</th>`)}</tr></thead>
+        <tbody>${rows.map((r) => html`<tr><td data-label="${tx('sm.col.role')}">${String(r.role ?? '')}${r.toplevel === false ? html` <span class="tag">${tx('sm.nested')}</span>` : ''}</td>
+          ${Object.entries(BY_ROLE).map(([k, label]) => html`<td class="num" data-label="${tx(label)}">${num(r[k])}</td>`)}</tr>`)}</tbody></table></div>`)}
+      ${region(tx('sm.explain_plan'), html`<p class="muted u-mt0">${/\$\d+/.test(sql) ? tx('sm.explain_intro_params') : tx('sm.explain_intro')}</p>
         <form method="get" action="${URL_BASE}/statements/${queryid}" class="sm-filter u-mb1"><input type="hidden" name="explain" value="1">
-          <label for="sm-schema">Schema</label><select id="sm-schema" name="schema"><option value="">(the search path)</option>${schemas.map((n) => html`<option value="${n}"${n === schema ? raw(' selected') : ''}>${n}</option>`)}</select>
-          <button class="btn">${icon('play')} Explain</button></form>
-        ${explained ? explained.ok ? planView(explained.plan, explained.text) : html`<div class="alert alert-error" role="alert">${explained.error}</div>` : ''}`)}`;
-    return send(reply, s, shell(s, 'Statement', crumbs(['Statement']), main, 'sql'));
+          <label for="sm-schema">${tx('sm.schema')}</label><select id="sm-schema" name="schema"><option value="">${tx('sm.search_path')}</option>${schemas.map((n) => html`<option value="${n}"${n === schema ? raw(' selected') : ''}>${n}</option>`)}</select>
+          <button class="btn">${icon('play')} ${tx('sm.explain')}</button></form>
+        ${explained ? explained.ok ? planView(explained.plan, explained.text) : html`<div class="alert alert-error" role="alert">${explained.key ? tx(explained.key) : explained.error}</div>` : ''}`)}`;
+    return send(reply, s, shell(s, tx('sm.statement'), crumbs(tx, [tx('sm.statement')]), main, 'sql'));
   });
 
   app.post(`${URL_BASE}/statements/:queryid/worksheet`, async (req: Req, reply) => {

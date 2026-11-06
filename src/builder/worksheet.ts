@@ -525,7 +525,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
     else {
       const d = drawChart('', lastQuery.columns, lastQuery.data ?? [], spec);
       chartCss = d.css;
-      chartPane = html`${chartControls(lastQuery.columns, spec)}
+      chartPane = html`${chartControls(lastQuery.columns, spec, 'ch', tx)}
         <div class="ch-actions"><button class="btn btn-sm" name="mode" value="chart">${icon('refresh')} ${tx('ws.chart.again')}</button>
           <input type="hidden" name="chart_sql" value="${lastQuery.sql}">
           <label class="sr-only" for="ws-chart-name">${tx('ws.chart.name')}</label><input id="ws-chart-name" name="chart_name" placeholder="${tx('ws.chart.name')}" maxlength="120">
