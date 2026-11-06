@@ -7,7 +7,7 @@ import { icon } from '../icons.ts';
 import { COMPONENTS } from './components.ts';
 import { back, BASE, bicon, csrf, designerUrl, developer, flash, input, select, send, shell, type Req } from './ui.ts';
 import { wantsHtml } from './errors.ts';
-import { tr } from './i18n.ts';
+import { scopedTx as tx, tr } from './i18n.ts';
 import type { Session } from '../session.ts';
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionConfigHelp } from './region-help.ts';
@@ -299,20 +299,20 @@ export async function designerRoutes(app: FastifyInstance) {
         </div>
       </div>`;
     const help = html`<div class="pd-help">
-      <h3>Layout</h3>
-      <p>Regions sit on a 12-column grid in sequence order; a region's <em>column span</em> sets its width, and regions wrap to a new row when the row is full.</p>
+      <h3>${tx('pdz.layout')}</h3>
+      <p>${tx.rich('pdz.grid_help', { span: html`<em>${tx('pdz.column_span')}</em>` })}</p>
       <ul>
-        <li>Drag a region by its header to move it, or drag its right edge to make it wider or narrower.</li>
-        <li>Drag items and buttons to another place or another region.</li>
-        <li>Drag a region, item or button from the gallery onto the layout to create it; or open a gallery entry to create one with a form.</li>
-        <li>Keyboard: focus a component on the layout and press <kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd> to move it, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>←</kbd> / <kbd>→</kbd> to change a region's width. The <strong>Arrange</strong> buttons above the properties do the same.</li>
-        <li><strong>Undo</strong> and <strong>Redo</strong> in the toolbar take back layout changes.</li>
+        <li>${tx('pdz.drag_a_region_by_its')}</li>
+        <li>${tx('pdz.drag_items_and_buttons_to')}</li>
+        <li>${tx('pdz.drag_a_region_item_or')}</li>
+        <li>${tx.rich('pdz.keyboard_help', { move: html`<kbd>${tx('pdz.alt')}</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>`, resize: html`<kbd>${tx('pdz.alt')}</kbd>+<kbd>${tx('pdz.shift')}</kbd>+<kbd>←</kbd> / <kbd>→</kbd>`, arrange: html`<strong>${tx('pdz.arrange')}</strong>` })}</li>
+        <li>${tx.rich('pdz.undo_help', { undo: html`<strong>${tx('pdz.undo')}</strong>`, redo: html`<strong>${tx('pdz.redo')}</strong>` })}</li>
       </ul>
-      <h3>Cheat sheet</h3>
-      <p><code>:P1_ITEM</code> binds an item value in any SQL (always escaped). <code>:APP_USER</code>, <code>:APP_PAGE_ID</code>, <code>:REQUEST</code> are built in.</p>
-      <p><code>&amp;P1_ITEM.</code> substitutes into titles, static HTML and link targets (HTML-escaped).</p>
-      <p>In SQL, PL/pgSQL and RLS policies: <code>meta.app_user()</code>, <code>meta.has_role('admin')</code>, <code>meta.v('P1_ITEM')</code>, <code>meta.page_url(3, '{"P3_ID": 7}')</code>.</p>
-      <p>A PL/pgSQL <code>raise exception 'Message' using column = 'sal'</code> shows the message on the item whose source column is <code>sal</code>.</p>
+      <h3>${tx('pdz.cheat_sheet')}</h3>
+      <p>${tx.code('pdz.p1_item_binds_an_item')}</p>
+      <p>${tx.code('pdz.p1_item_substitutes_into_titles')}</p>
+      <p>${tx.code('pdz.in_sql_pl_pgsql_and')}</p>
+      <p>${tx.code('pdz.a_pl_pgsql_raise_exception')}</p>
     </div>`;
     const pageSearch = html`<form method="get" action="${BASE}/apps/${p.app_id}/search" class="pd-search" role="search">
         <label class="label" for="pd-q">${tx('pd.search_label')}</label>
@@ -388,34 +388,34 @@ export async function designerRoutes(app: FastifyInstance) {
       heading = html`${icon('file')}<span>${tx('pd.page_title', { n: p.page_no, name: p.name })}</span>`;
       props = html`${peTabs([tab('pd-r-props', tx('pd.copy.page'), html`
         <form method="post" action="${BASE}/pages/${p.id}" class="component-form" id="${formId}">${csrf(s)}
-          <fieldset class="prop-group"><legend>Identification</legend><div class="form-grid">
-            ${input('page_no', 'Page number', p.page_no, { type: 'number', required: true })}
-            ${input('name', 'Name', p.name, { required: true })}
-            ${input('title', 'Title', p.title, { help: 'Supports &ITEM. substitutions.' })}
+          <fieldset class="prop-group"><legend>${tx('pdz.identification')}</legend><div class="form-grid">
+            ${input('page_no', tx('pdz.page_number'), p.page_no, { type: 'number', required: true })}
+            ${input('name', tx('pdz.name'), p.name, { required: true })}
+            ${input('title', tx('pdz.title'), p.title, { help: tx('pdz.title_help') })}
           </div></fieldset>
-          <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
-            ${select('mode', 'Page mode', p.mode, [['normal', 'Normal'], ['modal', 'Modal dialog']])}
-            ${select('page_group', 'Page group', p.page_group ?? '', [['', '- none -'], ...lk.pageGroups.map((g): [string, string] => [g, g]), ...(p.page_group && !lk.pageGroups.includes(p.page_group) ? [[p.page_group, `${p.page_group} (no such group)`] as [string, string]] : [])], 'Organises the pages in the App Builder (Shared Components → Page groups). Changes nothing when the application runs.')}
-            ${select('page_template', 'Page template', p.page_template ?? 'standard', [['standard', 'Standard'], ['left_side_column', 'Left side column'], ['right_side_column', 'Right side column'], ['minimal', 'Minimal (no navigation)']], 'Side column: regions with position left (or right) show in a column beside the body (under it on narrow screens). Minimal: no header and navigation menu, e.g. for a login page (Application settings → Login page).')}
-            ${select('dialog_position', 'Dialog position', p.dialog_position ?? 'center', [['center', 'Centred dialog'], ['right', 'Drawer from the right'], ['left', 'Drawer from the left'], ['top', 'Drawer from the top'], ['bottom', 'Drawer from the bottom']], 'Modal pages only. On phones dialogs and side drawers fill the screen.')}
-            ${select('dialog_size', 'Dialog size', p.dialog_size ?? 'medium', [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']], 'The width (the height of top and bottom drawers).')}
-            ${input('static_includes', 'JavaScript and CSS files', (p.static_includes ?? []).join(', '), { placeholder: 'e.g. page-3.js, page-3.css', help: 'Static application files (.js, .css) this page loads after the application\'s own, in this order; #WORKSPACE_FILES#name for a static workspace file.' })}
-            <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="warn_unsaved" value="true"${p.warn_unsaved ? raw(' checked') : ''}> Warn on unsaved changes</label>
-              <small class="help">Ask before the user leaves the page (a link, a redirect button, closing the tab) while an item has a changed value. Submitting doesn't ask. Leave an item out with {"warn_unsaved": false} in its attributes.</small></div>
-            ${select('parent_page', 'Breadcrumb parent', p.parent_page ?? '', [['', '- none -'], ...lk.pages.filter((x) => x.page_no !== p.page_no).map((x): [string, string] => [String(x.page_no), `${x.page_no}. ${x.name}`])])}
+          <fieldset class="prop-group"><legend>${tx('pdz.appearance')}</legend><div class="form-grid">
+            ${select('mode', tx('pdz.page_mode'), p.mode, [['normal', tx('pdz.normal')], ['modal', tx('pdz.modal_dialog')]])}
+            ${select('page_group', tx('pdz.page_group'), p.page_group ?? '', [['', tx('pdz.none')], ...lk.pageGroups.map((g): [string, string] => [g, g]), ...(p.page_group && !lk.pageGroups.includes(p.page_group) ? [[p.page_group, `${p.page_group} (no such group)`] as [string, string]] : [])], tx('pdz.organises_the_pages_in_the'))}
+            ${select('page_template', tx('pdz.page_template'), p.page_template ?? 'standard', [['standard', tx('pdz.standard')], ['left_side_column', tx('pdz.left_side_column')], ['right_side_column', tx('pdz.right_side_column')], ['minimal', tx('pdz.minimal_no_navigation')]], tx('pdz.side_column_regions_with_position'))}
+            ${select('dialog_position', tx('pdz.dialog_position'), p.dialog_position ?? 'center', [['center', tx('pdz.centred_dialog')], ['right', tx('pdz.drawer_from_the_right')], ['left', tx('pdz.drawer_from_the_left')], ['top', tx('pdz.drawer_from_the_top')], ['bottom', tx('pdz.drawer_from_the_bottom')]], tx('pdz.modal_pages_only_on_phones'))}
+            ${select('dialog_size', tx('pdz.dialog_size'), p.dialog_size ?? 'medium', [['small', tx('pdz.small')], ['medium', tx('pdz.medium')], ['large', tx('pdz.large')]], tx('pdz.the_width_the_height_of'))}
+            ${input('static_includes', tx('pdz.javascript_and_css_files'), (p.static_includes ?? []).join(', '), { placeholder: tx('pdz.e_g_page_3_js'), help: tx('pdz.static_application_files_js_css') })}
+            <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="warn_unsaved" value="true"${p.warn_unsaved ? raw(' checked') : ''}> ${tx('pdz.warn_on_unsaved_changes')}</label>
+              <small class="help">${tx('pdz.ask_before_the_user_leaves')}</small></div>
+            ${select('parent_page', tx('pdz.breadcrumb_parent'), p.parent_page ?? '', [['', tx('pdz.none')], ...lk.pages.filter((x) => x.page_no !== p.page_no).map((x): [string, string] => [String(x.page_no), `${x.page_no}. ${x.name}`])])}
           </div></fieldset>
-          <fieldset class="prop-group"><legend>Security</legend><div class="form-grid">
-            <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="requires_auth" value="true"${p.requires_auth ? raw(' checked') : ''}> Requires authentication</label></div>
-            ${select('authz', 'Authorization scheme', p.authz ?? '', [['', '- none -'], ...['MUST_NOT_BE_PUBLIC_USER', ...lk.authz].flatMap((n): [string, string][] => [[n, n], [`!${n}`, `Not ${n}`]])])}
-            ${select('protection', 'Page access protection', p.protection, [['checksum', 'Arguments must have checksum'], ['unrestricted', 'Unrestricted']],
+          <fieldset class="prop-group"><legend>${tx('pdz.security')}</legend><div class="form-grid">
+            <div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="requires_auth" value="true"${p.requires_auth ? raw(' checked') : ''}> ${tx('pdz.requires_authentication')}</label></div>
+            ${select('authz', tx('pdz.authorization_scheme'), p.authz ?? '', [['', tx('pdz.none')], ...['MUST_NOT_BE_PUBLIC_USER', ...lk.authz].flatMap((n): [string, string][] => [[n, n], [`!${n}`, tx('pdz.not_authz', { name: n })]])])}
+            ${select('protection', tx('pdz.page_access_protection'), p.protection, [['checksum', tx('pdz.arguments_must_have_checksum')], ['unrestricted', tx('pdz.unrestricted')]],
               'With checksum, item values in the URL (?P3_ID=…) are only accepted from links the runtime generated.')}
-            ${select('build_option', 'Build option', p.build_option ?? '', buildOptionChoices(lk, p.build_option),
+            ${select('build_option', tx('pdz.build_option'), p.build_option ?? '', buildOptionChoices(lk, p.build_option),
               'While the option is excluded (or "Not": included) the page does not exist in the running application.')}
           </div></fieldset>
-          <fieldset class="prop-group"><legend>Help</legend><div class="form-grid">
-            <div class="field" data-wide><label class="label" for="f_help">Help text</label>
+          <fieldset class="prop-group"><legend>${tx('pdz.help')}</legend><div class="form-grid">
+            <div class="field" data-wide><label class="label" for="f_help">${tx('pdz.help_text')}</label>
               <textarea id="f_help" name="help" rows="5" maxlength="20000">${p.help ?? ''}</textarea>
-              <small class="help">Markdown with &amp;ITEM. substitutions. A region of type Help Text on the page shows it (APEX: Page → Help).</small></div>
+              <small class="help">${tx('pdz.markdown_with_amp_item_substitutions')}</small></div>
           </div></fieldset>
           <div class="buttons"><button class="btn btn-hot">${tx('pd.save_page')}</button></div>
         </form>`, true)])}
@@ -494,7 +494,7 @@ export async function designerRoutes(app: FastifyInstance) {
         <section class="pd-pane pd-center tab-panel" id="pd-p-layout" data-tab${pane === 'pd-p-layout' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>${tx('pd.layout')}</span></h2>${center}</section>
         <section class="pd-pane pd-right tab-panel" id="pd-p-props" data-tab${pane === 'pd-p-props' ? raw(' data-tab-active') : ''}><h2 class="tab-title pd-pane-title"><span>${tx('pd.properties')}</span></h2>${right}</section>
       </div>`;
-    return send(reply, s, shell(s, tx('pd.page_n_title', { n: p.page_no }), [['App Builder', BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [tx('pd.page_title', { n: p.page_no, name: p.name })]], main, 'apps', { toolbar, full: true }));
+    return send(reply, s, shell(s, tx('pd.page_n_title', { n: p.page_no }), [[tx('pdz.app_builder'), BASE], [p.app_name, `${BASE}/apps/${p.app_id}`], [tx('pd.page_title', { n: p.page_no, name: p.name })]], main, 'apps', { toolbar, full: true }));
   }
 
   // (sprint 59) Quick edit from the developer toolbar: an item or button of the page by its name

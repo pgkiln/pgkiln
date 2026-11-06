@@ -29,7 +29,7 @@ import { featureRoutes } from './features.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
-import { cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
+import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
 import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeyByCredential, passkeySignin, passkeysOf, trustBrowser, trustDays, usePasskey, userHandle } from '../mfa.ts';
 import { isIP } from 'node:net';
 import { giveChallenge, takeChallenge } from './security.ts';
@@ -587,7 +587,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     try {
       const ws = currentWorkspace(s);
-      if (ws < 1) throw new Error('you are not a developer of any workspace yet: ask an administrator to add you to one.');
+      if (ws < 1) throw new Error(tx('rte.you_are_not_a_developer'));
       const doc = JSON.parse(req.body?.doc ?? '');
       const r = await owner.tx(async (c) => {
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
@@ -722,7 +722,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li><a href="${BASE}/apps/${a.id}/settings?tab=definition">${icon('trash')} ${tx('app.task.delete')}</a></li>
         </ul></aside>
       </div>`;
-    return send(reply, s, shell(s, a.name, [['App Builder', BASE], [a.name]], main));
+    return send(reply, s, shell(s, a.name, [[tx('rte.app_builder'), BASE], [a.name]], main));
   });
 
   app.post(`${BASE}/apps/:id/pages`, async (req: Req, reply) => {
@@ -775,8 +775,8 @@ export async function builderRoutes(app: FastifyInstance) {
   // ---------------------------------------------------------------- settings
   /** (sprint 74) The tabs of an application's Settings. */
   const SETTINGS_TABS: [string, string][] = [
-    ['definition', 'Definition'], ['security', 'Security'], ['signin', 'Sign-in'], ['ui', 'User Interface'],
-    ['globalization', 'Globalization'], ['errors', 'Errors and Sessions'], ['pwa', 'Progressive Web App'],
+    ['definition', tx('rte.definition')], ['security', tx('rte.security')], ['signin', tx('rte.sign_in')], ['ui', tx('rte.user_interface')],
+    ['globalization', tx('rte.globalization')], ['errors', tx('rte.errors_and_sessions')], ['pwa', tx('rte.progressive_web_app')],
   ];
   app.get(`${BASE}/apps/:id/settings`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -908,17 +908,17 @@ export async function builderRoutes(app: FastifyInstance) {
         ${panel('security')}${region(tx('st.checklist'), html`<ul class="checklist">
           <li>${a.db_role ? '✓' : '✗'} ${tx('st.ck.role')} ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>${tx('st.ck.runtime')}</b>`}</li>
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? tx('st.ck.signin') : tx('st.ck.public')}</li>
-          ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>refused: PGKILN_AUTH_HEADER_PROXIES is not set</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
-          ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>no roles allowed</b>`})</li>` : ''}
-          ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>no check configured: nobody can sign in</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
-          ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>no method enabled</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
+          ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>${tx('rte.refused_pgkiln_auth_header_proxies')}</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
+          ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>${tx('rte.no_roles_allowed')}</b>`})</li>` : ''}
+          ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>${tx('rte.no_check_configured_nobody_can')}</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
+          ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>${tx('rte.no_method_enabled')}</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? `✗ ${tx('st.ck.debug_on')}` : `✓ ${tx('st.ck.debug_off')}`}</li>
           <li>${a.debug_level ? `✗ ${tx('st.ck.msgs_on', { level: a.debug_level })}` : `✓ ${tx('st.ck.msgs_off')}`}</li>
           <li>${tx('st.ck.unprotected', { n: (await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n })}</li>
           <li>${tx('st.ck.public_pages', { n: (await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n })}</li>
         </ul>`)}${end}
       </div>`;
-    return send(reply, s, shell(s, tx('st.title', { app: a.name }), [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Settings']], main));
+    return send(reply, s, shell(s, tx('st.title', { app: a.name }), [[tx('rte.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('rte.settings')]], main));
   });
 
   // (085) error handling function and session timeout warning
@@ -1041,25 +1041,25 @@ export async function builderRoutes(app: FastifyInstance) {
     ]);
     const main = html`${appHeader(a, 'activity', s)}
       <div class="stat-grid">
-        <div class="stat"><b>${stats.views}</b><span>page views (24h)</span></div>
-        <div class="stat"><b>${stats.users}</b><span>distinct users (24h)</span></div>
-        <div class="stat"><b>${stats.avg_ms} ms</b><span>average page time</span></div>
-        <div class="stat"><b>${stats.failures}</b><span>failed / locked sign-ins (24h)</span></div>
-        <div class="stat"><b>${stats.problems}</b><span>errors / access denied (24h)</span></div>
+        <div class="stat"><b>${stats.views}</b><span>${tx('rte.page_views_24h')}</span></div>
+        <div class="stat"><b>${stats.users}</b><span>${tx('rte.distinct_users_24h')}</span></div>
+        <div class="stat"><b>${stats.avg_ms} ms</b><span>${tx('rte.average_page_time')}</span></div>
+        <div class="stat"><b>${stats.failures}</b><span>${tx('rte.failed_locked_sign_ins_24h')}</span></div>
+        <div class="stat"><b>${stats.problems}</b><span>${tx('rte.errors_access_denied_24h')}</span></div>
       </div>
       <div class="columns">
-        <p><a class="btn" href="${BASE}/apps/${a.id}/top-sql">${icon('database')} Top SQL</a> <span class="muted">the slowest statements of this application's database role</span></p>
-        <p><a class="btn" href="${BASE}/apps/${a.id}/ai">${icon('bolt')} AI usage</a> <span class="muted">the AI services this application may use, and its requests</span></p>
-        <p><a class="btn" href="${BASE}/apps/${a.id}/feedback">${icon('chat')} Feedback</a> <span class="muted">what users sent from the application's Feedback link, and your answers</span></p>
-        <p><a class="btn" href="${BASE}/apps/${a.id}/mail">${icon('send')} Mail</a> <span class="muted">the mail this application queued and sent, with retry and cancel</span></p>
-        <p><a class="btn" href="${BASE}/apps/${a.id}/debug">${icon('list')} Debug messages</a> <span class="muted">${a.debug_level ? `on (level ${a.debug_level}): ` : 'off: '}timed steps of each request and messages from <code>meta.debug()</code></span></p>
-        ${region('Page views by page (7 days)', html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">Page</th><th>Name</th><th class="num">Views</th><th class="num">Avg ms</th><th class="num">Max ms</th></tr></thead>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/top-sql">${icon('database')} ${tx('rte.top_sql')}</a> <span class="muted">${tx('rte.the_slowest_statements_of_this')}</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/ai">${icon('bolt')} ${tx('rte.ai_usage')}</a> <span class="muted">${tx('rte.the_ai_services_this_application')}</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/feedback">${icon('chat')} ${tx('rte.feedback')}</a> <span class="muted">${tx('rte.what_users_sent_from_the')}</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/mail">${icon('send')} ${tx('rte.mail')}</a> <span class="muted">${tx('rte.the_mail_this_application_queued')}</span></p>
+        <p><a class="btn" href="${BASE}/apps/${a.id}/debug">${icon('list')} ${tx('rte.debug_messages')}</a> <span class="muted">${a.debug_level ? `on (level ${a.debug_level}): ` : 'off: '}timed steps of each request and messages from <code>meta.debug()</code></span></p>
+        ${region(tx('rte.page_views_by_page_7'), html`<div class="table-wrap"><table class="report"><thead><tr><th class="num">${tx('rte.page')}</th><th>${tx('rte.name')}</th><th class="num">${tx('rte.views')}</th><th class="num">${tx('rte.avg_ms')}</th><th class="num">${tx('rte.max_ms')}</th></tr></thead>
           <tbody>${byPage.rows.map((r) => html`<tr><td class="num">${r.page_no}</td><td>${r.name}</td><td class="num">${r.views}</td><td class="num">${r.avg_ms}</td><td class="num">${r.max_ms}</td></tr>`)}</tbody></table></div>`)}
-        ${region('Recent events', html`<p class="muted u-mt0">${req.query.all === '1' ? html`Showing all events. <a href="?">Hide page views</a>` : html`Sign-ins, denials and errors. <a href="?all=1">Include page views</a>`}</p>
-          <div class="table-wrap"><table class="report"><thead><tr><th>When</th><th>Event</th><th>User</th><th class="num">Page</th><th>IP</th><th>Detail</th></tr></thead>
+        ${region(tx('rte.recent_events'), html`<p class="muted u-mt0">${req.query.all === '1' ? html`Showing all events. <a href="?">${tx('rte.hide_page_views')}</a>` : html`Sign-ins, denials and errors. <a href="?all=1">${tx('rte.include_page_views')}</a>`}</p>
+          <div class="table-wrap"><table class="report"><thead><tr><th>${tx('rte.when')}</th><th>${tx('rte.event')}</th><th>${tx('rte.user')}</th><th class="num">${tx('rte.page')}</th><th>IP</th><th>${tx('rte.detail')}</th></tr></thead>
           <tbody>${events.rows.map((r) => html`<tr><td>${String(r.at).slice(0, 19)}</td><td><span class="ev ev-${r.event}">${r.event}</span></td><td>${r.username}</td><td class="num">${r.page_no}</td><td>${r.ip}</td><td title="${r.detail}">${r.detail}</td></tr>`)}</tbody></table></div>`)}
       </div>`;
-    return send(reply, s, shell(s, 'Activity', [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Activity']], main));
+    return send(reply, s, shell(s, tx('rte.activity'), [[tx('rte.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('rte.activity')]], main));
   });
 
   // ---------------------------------------------------------------- developers
@@ -1108,7 +1108,7 @@ export async function builderRoutes(app: FastifyInstance) {
               </form>`
             : html`<p class="muted">${tx('dev.admins_only')}</p>`}`)}
       </div>`;
-    return send(reply, s, shell(s, tx('dev.title'), [['Developers']], main, 'developers'));
+    return send(reply, s, shell(s, tx('dev.title'), [[tx('rte.developers')]], main, 'developers'));
   });
 
   app.post(`${BASE}/developers`, async (req: Req, reply) => {

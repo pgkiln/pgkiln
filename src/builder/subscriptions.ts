@@ -8,6 +8,7 @@ import {
   SubscriptionError, subscribeGroup, unsubscribe, type AppType, type Kind,
 } from '../subscriptions.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Shared Components → Subscriptions (APEX: subscribed shared components; 26.1
 // theme and library applications). An application subscribes to a component
@@ -26,7 +27,9 @@ const TYPE_HELP: Record<AppType, string> = {
   reporting: 'Made by App Builder → Data Reporter on datasets of the workspace: its users build, publish and share reports.',
 };
 
-const what = (kind: Kind, name: string) => (kind === 'theme' ? 'Theme' : `${KINDS[kind].label} ${name}`);
+const kindLabel = (kind: Kind) => tx.dyn(`sub.k.${kind}`, KINDS[kind].label);
+const typeLabel = (t: AppType) => tx.dyn(`st.type.${t}`, APP_TYPE_LABELS[t] ?? t);
+const what = (kind: Kind, name: string) => (kind === 'theme' ? tx('sub.theme') : tx('sub.what', { kind: kindLabel(kind), name }));
 
 /** Another developer's application lock (page 0): such applications are not changed by publishing. */
 const lockedByOther = (username: string) => async (appId: number) =>
@@ -40,16 +43,15 @@ export async function subscriptionNote(appId: number, kind: string, row: any, s:
   const subscribers = (await owner.one<{ n: number }>('select count(*)::int as n from meta.subscription where master_app_id = $1 and kind = $2 and name = $3', [appId, kind, name]))!.n;
   if (!sub && !subscribers) return '';
   const hidden = html`<input type="hidden" name="kind" value="${kind}"><input type="hidden" name="name" value="${name}">`;
-  return html`<section class="used-in"><h3>Subscription</h3>
+  return html`<section class="used-in"><h3>${tx('sub.subscription')}</h3>
     ${sub
-      ? html`<p class="u-mt0">Subscribed from <a href="${BASE}/apps/${sub.master_app_id}/subscriptions">${sub.master_name}</a>${sub.refreshed_at ? `, refreshed ${sub.refreshed_at.slice(0, 16)}` : ''}.
-          Changes made here are overwritten by the next refresh.</p>
-          <form method="post" action="${BASE}/apps/${appId}/subscriptions/refresh" class="u-inline">${csrf(s)}${hidden}<button class="btn btn-sm">Refresh from ${sub.master_name}</button></form>`
+      ? html`<p class="u-mt0">${((m) => (sub.refreshed_at ? tx.rich('sub.subscribed_from_at', { master: m, at: sub.refreshed_at.slice(0, 16) }) : tx.rich('sub.subscribed_from', { master: m })))(html`<a href="${BASE}/apps/${sub.master_app_id}/subscriptions">${sub.master_name}</a>`)}</p>
+          <form method="post" action="${BASE}/apps/${appId}/subscriptions/refresh" class="u-inline">${csrf(s)}${hidden}<button class="btn btn-sm">${tx('sub.refresh_from', { master: sub.master_name })}</button></form>`
       : ''}
     ${subscribers
-      ? html`<p>${subscribers} application${subscribers === 1 ? ' subscribes' : 's subscribe'} to this ${KINDS[kind].label.toLowerCase()}.</p>
-          <form method="post" action="${BASE}/apps/${appId}/subscriptions/publish" class="u-inline">${csrf(s)}${hidden}<button class="btn btn-sm">Publish to subscribers</button></form>
-          <a class="btn btn-sm" href="${BASE}/apps/${appId}/subscriptions">Subscribers…</a>`
+      ? html`<p>${subscribers === 1 ? tx('sub.subscribers_1', { kind: kindLabel(kind).toLowerCase() }) : tx('sub.subscribers_n', { n: subscribers, kind: kindLabel(kind).toLowerCase() })}</p>
+          <form method="post" action="${BASE}/apps/${appId}/subscriptions/publish" class="u-inline">${csrf(s)}${hidden}<button class="btn btn-sm">${tx('sub.publish_to_subscribers')}</button></form>
+          <a class="btn btn-sm" href="${BASE}/apps/${appId}/subscriptions">${tx('sub.subscribers')}</a>`
       : ''}
   </section>`;
 }
@@ -64,61 +66,59 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     const sync = await Promise.all(subs.map((x) => inSync(x)));
     const subSync = await Promise.all(subscribers.map((x) => inSync(x)));
     const hidden = (kind: string, name: string) => html`<input type="hidden" name="kind" value="${kind}"><input type="hidden" name="name" value="${name}">`;
-    const state = (ok: boolean) => (ok ? html`<span class="badge">in sync</span>` : html`<span class="badge badge-warn">differs</span>`);
+    const state = (ok: boolean) => (ok ? html`<span class="badge">${tx('sub.in_sync')}</span>` : html`<span class="badge badge-warn">differs</span>`);
     const groups = new Map<number, typeof offered>();
     for (const o of offered) groups.set(o.master.id, [...(groups.get(o.master.id) ?? []), o]);
     const published = [...new Map(subscribers.map((x) => [`${x.kind}|${x.name}`, x])).values()];
 
     const main = html`${appHeader(a, 'shared', s)}<div class="ide-body">
-      ${region('Application type', html`<p class="u-mt0"><b>${APP_TYPE_LABELS[a.app_type as AppType] ?? a.app_type}</b>: ${TYPE_HELP[a.app_type as AppType] ?? ''}
-          Change it under <a href="${BASE}/apps/${a.id}/settings">Settings</a>.</p>`)}
-      ${region('Subscriptions', html`
-        <p class="muted u-mt0">Components of this application that are copies of a component in a theme or library application.
-          Refreshing copies the master's definition again, replacing changes made here.</p>
+      ${region(tx('sub.application_type'), html`<p class="u-mt0">${tx.rich('sub.type_line', { type: html`<b>${typeLabel(a.app_type as AppType)}</b>`, help: tx.dyn(`sub.th.${a.app_type}`, TYPE_HELP[a.app_type as AppType] ?? ''), settings: html`<a href="${BASE}/apps/${a.id}/settings">${tx('sub.settings')}</a>` })}</p>`)}
+      ${region(tx('sub.subscriptions'), html`
+        <p class="muted u-mt0">${tx('sub.components_of_this_application_that')}</p>
         ${subs.length
-          ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Component</th><th>From</th><th>Refreshed</th><th>State</th><th>Actions</th></tr></thead><tbody>
+          ? html`<div class="table-wrap"><table class="report"><thead><tr><th>${tx('sub.component')}</th><th>${tx('sub.from')}</th><th>${tx('sub.refreshed')}</th><th>${tx('sub.state')}</th><th>${tx('sub.actions')}</th></tr></thead><tbody>
               ${subs.map((x, i) => html`<tr><td>${what(x.kind, x.name)}</td><td><a href="${BASE}/apps/${x.master_app_id}/subscriptions">${x.master_name}</a></td>
                 <td>${x.refreshed_at ? x.refreshed_at.slice(0, 16) : '—'}</td><td>${state(sync[i])}</td>
-                <td><form method="post" action="${BASE}/apps/${a.id}/subscriptions/refresh" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}<button class="btn btn-sm">Refresh</button></form>
-                  <form method="post" action="${BASE}/apps/${a.id}/subscriptions/unsubscribe" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}<button class="btn btn-sm" data-confirm="Unsubscribe? The component stays as it is.">Unsubscribe</button></form></td></tr>`)}
+                <td><form method="post" action="${BASE}/apps/${a.id}/subscriptions/refresh" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}<button class="btn btn-sm">${tx('sub.refresh')}</button></form>
+                  <form method="post" action="${BASE}/apps/${a.id}/subscriptions/unsubscribe" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}<button class="btn btn-sm" data-confirm="${tx('sub.unsubscribe_the_component_stays_as')}">${tx('sub.unsubscribe')}</button></form></td></tr>`)}
             </tbody></table></div>
-            <form method="post" action="${BASE}/apps/${a.id}/subscriptions/refresh">${csrf(s)}<div class="buttons"><button class="btn">Refresh all</button></div></form>`
-          : html`<p class="muted">No subscriptions.</p>`}
-        <h3>Subscribe</h3>
+            <form method="post" action="${BASE}/apps/${a.id}/subscriptions/refresh">${csrf(s)}<div class="buttons"><button class="btn">${tx('sub.refresh_all')}</button></div></form>`
+          : html`<p class="muted">${tx('sub.no_subscriptions')}</p>`}
+        <h3>${tx('sub.subscribe')}</h3>
         ${offered.length
           ? html`<form method="post" action="${BASE}/apps/${a.id}/subscriptions">${csrf(s)}
-              <div class="field"><label class="label" for="f_component">Component</label>
-                <select id="f_component" name="component" required><option value="">- choose -</option>
-                  ${[...groups.values()].map((list) => html`<optgroup label="${list[0].master.name} (${APP_TYPE_LABELS[list[0].master.app_type]})">
+              <div class="field"><label class="label" for="f_component">${tx('sub.component')}</label>
+                <select id="f_component" name="component" required><option value="">${tx('sub.choose_dash')}</option>
+                  ${[...groups.values()].map((list) => html`<optgroup label="${list[0].master.name} (${typeLabel(list[0].master.app_type)})">
                     ${list.map((o) => html`<option value="${o.master.id}|${o.kind}|${o.name}">${what(o.kind, o.name)}</option>`)}</optgroup>`)}
                 </select>
-                <small class="help">The component is copied now. A component of this application with the same name is replaced.</small></div>
-              <div class="buttons"><button class="btn btn-hot">Subscribe</button></div></form>`
-          : html`<p class="muted">No theme or library applications offer components. Set an application's type under its Settings.</p>`}
+                <small class="help">${tx('sub.the_component_is_copied_now')}</small></div>
+              <div class="buttons"><button class="btn btn-hot">${tx('sub.subscribe')}</button></div></form>`
+          : html`<p class="muted">${tx('sub.no_theme_or_library_applications')}</p>`}
         ${groupList.length
-          ? html`<h3>Subscribe to a component group</h3>
+          ? html`<h3>${tx('sub.subscribe_to_a_component_group')}</h3>
             <form method="post" action="${BASE}/apps/${a.id}/subscriptions/group">${csrf(s)}
-              <div class="field"><label class="label" for="f_group">Component group</label>
-                <select id="f_group" name="group" required><option value="">- choose -</option>
+              <div class="field"><label class="label" for="f_group">${tx('sub.component_group')}</label>
+                <select id="f_group" name="group" required><option value="">${tx('sub.choose_dash')}</option>
                   ${groupList.map((g) => html`<option value="${g.master_id}|${g.name}">${g.master_name}: ${g.name} (${g.members.length})</option>`)}
                 </select>
-                <small class="help">Every component of the group is copied now and subscribed (Shared Components → Component Groups of a theme or library application).</small></div>
-              <div class="buttons"><button class="btn btn-hot">Subscribe to the group</button></div></form>`
+                <small class="help">${tx('sub.every_component_of_the_group')}</small></div>
+              <div class="buttons"><button class="btn btn-hot">${tx('sub.subscribe_to_the_group')}</button></div></form>`
           : ''}`)}
       ${a.app_type === 'theme' || a.app_type === 'library' || subscribers.length
-        ? region('Subscribers', subscribers.length
-            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>Component</th><th>Application</th><th>Refreshed</th><th>State</th></tr></thead><tbody>
+        ? region(tx('sub.subscribers_2'), subscribers.length
+            ? html`<div class="table-wrap"><table class="report"><thead><tr><th>${tx('sub.component')}</th><th>${tx('sub.application')}</th><th>${tx('sub.refreshed')}</th><th>${tx('sub.state')}</th></tr></thead><tbody>
                 ${subscribers.map((x, i) => html`<tr><td>${what(x.kind, x.name)}</td><td><a href="${BASE}/apps/${x.app_id}/subscriptions">${x.app_name}</a></td>
                   <td>${x.refreshed_at ? x.refreshed_at.slice(0, 16) : '—'}</td><td>${state(subSync[i])}</td></tr>`)}
               </tbody></table></div>
-              <h3>Publish</h3>
-              <p class="muted u-mt0">Publishing refreshes every subscriber of a component with this application's version. Applications locked by another developer are skipped.</p>
+              <h3>${tx('sub.publish')}</h3>
+              <p class="muted u-mt0">${tx('sub.publishing_refreshes_every_subscriber_of')}</p>
               <div class="buttons publish-buttons">${published.map((x) => html`<form method="post" action="${BASE}/apps/${a.id}/subscriptions/publish" class="u-inline">${csrf(s)}${hidden(x.kind, x.name)}
                 <button class="btn btn-sm">${icon('upload')} ${what(x.kind, x.name)}</button></form>`)}</div>`
-            : html`<p class="muted">No application subscribes to this application's components yet.</p>`)
+            : html`<p class="muted">${tx('sub.no_application_subscribes_to_this')}</p>`)
         : ''}
     </div>`;
-    return send(reply, s, shell(s, `${a.name} subscriptions`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Subscriptions']], main));
+    return send(reply, s, shell(s, tx('sub.title', { app: a.name }), [[tx('sub.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('sub.shared_components'), `${BASE}/apps/${a.id}/shared`], [tx('sub.subscriptions')]], main));
   });
 
   const target = (id: number) => `${BASE}/apps/${id}/subscriptions`;
@@ -142,10 +142,10 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     const v = String(req.body?.component ?? '');
     const m = /^(\d{1,9})\|([a-z_]+)\|(.*)$/s.exec(v);
     return handle(req, reply, s, a.id, async () => {
-      if (!m) throw new SubscriptionError('Choose a component.');
+      if (!m) throw new SubscriptionError(tx('sub.choose_component'));
       await subscribe(a.id, Number(m[1]), m[2], m[3], s.username!);
       await logActivity({ appId: a.id, username: s.username, event: 'subscription', ip: clientIp(req), detail: `subscribed ${m[2]} ${m[3]} from application ${m[1]}` });
-      return `Subscribed: ${isKind(m[2]) ? what(m[2], m[3]) : m[2]} copied.`;
+      return tx('sub.subscribed', { what: isKind(m[2]) ? what(m[2], m[3]) : m[2] });
     });
   });
 
@@ -157,11 +157,12 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const m = /^(\d{1,9})\|(.{1,60})$/s.exec(String(req.body?.group ?? ''));
     return handle(req, reply, s, a.id, async () => {
-      if (!m) throw new SubscriptionError('Choose a component group.');
-      if (!(await groupsOffered(a.id)).some((g) => g.master_id === Number(m[1]) && g.name === m[2])) throw new SubscriptionError('Choose a component group.');
+      if (!m) throw new SubscriptionError(tx('sub.choose_group'));
+      if (!(await groupsOffered(a.id)).some((g) => g.master_id === Number(m[1]) && g.name === m[2])) throw new SubscriptionError(tx('sub.choose_group'));
       const { done, skipped } = await subscribeGroup(a.id, Number(m[1]), m[2], s.username!);
       await logActivity({ appId: a.id, username: s.username, event: 'subscription', ip: clientIp(req), detail: `subscribed component group ${m[2]} from application ${m[1]}: ${done.join(', ')}` });
-      return `Subscribed to ${m[2]}: ${done.length} component${done.length === 1 ? '' : 's'} copied${skipped.length ? `; skipped ${skipped.join(', ')}` : ''}.`;
+      const one = done.length === 1;
+      return skipped.length ? tx(one ? 'sub.subscribed_group_skipped_1' : 'sub.subscribed_group_skipped', { group: m[2], n: done.length, skipped: skipped.join(', ') }) : tx(one ? 'sub.subscribed_group_1' : 'sub.subscribed_group', { group: m[2], n: done.length });
     });
   });
 
@@ -185,7 +186,7 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     const a = await appRow(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     return handle(req, reply, s, a.id, async () => {
-      if (!(await unsubscribe(a.id, String(req.body?.kind ?? ''), String(req.body?.name ?? '')))) throw new SubscriptionError('Not subscribed.');
+      if (!(await unsubscribe(a.id, String(req.body?.kind ?? ''), String(req.body?.name ?? '')))) throw new SubscriptionError(tx('sub.not_subscribed'));
       return 'Unsubscribed: the component stays as it is.';
     });
   });
@@ -199,8 +200,9 @@ export async function subscriptionRoutes(app: FastifyInstance) {
     return handle(req, reply, s, a.id, async () => {
       const r = await publish(a.id, kind, name, s.username!, lockedByOther(s.username!));
       await logActivity({ appId: a.id, username: s.username, event: 'subscription', ip: clientIp(req), detail: `published ${kind} ${name} to ${r.done.length} applications${r.skipped.length ? `, skipped locked ${r.skipped.join(', ')}` : ''}` });
-      if (!r.done.length && !r.skipped.length) throw new SubscriptionError('No application subscribes to it.');
-      return `Published to ${r.done.length} application${r.done.length === 1 ? '' : 's'}${r.skipped.length ? `; ${r.skipped.length} skipped (locked by another developer)` : ''}.`;
+      if (!r.done.length && !r.skipped.length) throw new SubscriptionError(tx('sub.no_subscriber'));
+      const one = r.done.length === 1;
+      return r.skipped.length ? tx(one ? 'sub.published_skipped_1' : 'sub.published_skipped', { n: r.done.length, skipped: r.skipped.length }) : tx(one ? 'sub.published_1' : 'sub.published', { n: r.done.length });
     });
   });
 }
