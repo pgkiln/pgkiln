@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
-import { html, raw, type Raw } from '../html.ts';
+import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
 import { issuesFrom } from '../team.ts';
+import { scopedTx as tx, type BuilderKey } from './i18n.ts';
 
 // Page locks, the application lock and developer comments (APEX: page locks,
 // application lock in 26.1, developer comments). A developer locks a page
@@ -79,12 +80,12 @@ export async function blockingLock(username: string, path: string): Promise<{ lo
 
 export const lockText = (l: Pick<Lock, 'page_no' | 'locked_by' | 'locked_at' | 'note' | 'run_only'>) =>
   l.run_only
-    ? 'The application is Run only (Availability → Build status).'
-    : `${l.page_no ? `Page ${l.page_no}` : 'The application'} is locked by ${l.locked_by} since ${l.locked_at.slice(0, 16)}${l.note ? ` (${l.note})` : ''}.`;
+    ? tx('lk.run_only')
+    : tx(l.page_no ? 'lk.page_locked_by' : 'lk.app_locked_by', { page: l.page_no, user: l.locked_by, since: l.locked_at.slice(0, 16), note: l.note ? ` (${l.note})` : '' });
 
 /** Refuse a change to a locked page or application: a JSON error or a message on the page it came from. */
 export async function refuseLocked(req: Req, reply: FastifyReply, s: Session, hit: NonNullable<Awaited<ReturnType<typeof blockingLock>>>) {
-  const message = hit.lock.run_only ? `${lockText(hit.lock)} Set it back to Run and build to change it.` : `${lockText(hit.lock)} Changes are refused until it is unlocked.`;
+  const message = `${lockText(hit.lock)} ${tx(hit.lock.run_only ? 'lk.run_only_refused' : 'lk.refused')}`;
   if (String(req.headers.accept ?? '').includes('application/json')) return reply.code(423).send({ ok: false, error: message });
   flash(s, message, 'error');
   return back(reply, s, hit.pageId ? `${BASE}/pages/${hit.pageId}` : `${BASE}/apps/${hit.appId}`);
@@ -101,40 +102,40 @@ export async function lockPanel(s: Session, appId: number, pageNo: number, opts:
   const issues = await issuesFrom('comment', comments.rows.map((c) => Number(c.id)));
   const own = locks.find((l) => l.page_no === pageNo);
   const appLock = pageNo ? locks.find((l) => l.page_no === 0) : undefined;
-  const what = pageNo ? `page ${pageNo}` : 'the application';
+  const pick = (page: BuilderKey, app: BuilderKey, params: Record<string, string | number> = {}) => tx(pageNo ? page : app, { page: pageNo, ...params });
   const hidden = html`<input type="hidden" name="page_no" value="${pageNo}">`;
   const lockState = own
     ? html`<p class="lock-state">${icon('key')} <span>${lockText(own)}</span></p>
         ${own.locked_by === s.username || admin
           ? html`<form method="post" action="${BASE}/apps/${appId}/unlock">${csrf(s)}${hidden}
-              <button class="btn"${own.locked_by !== s.username ? raw(` data-confirm="Break ${own.locked_by}'s lock on ${what}?"`) : ''}>${own.locked_by === s.username ? 'Unlock' : 'Break lock (administrator)'}</button></form>`
-          : html`<p class="muted">Only ${own.locked_by} or an administrator can unlock it.</p>`}`
-    : html`<p class="muted">Not locked: every developer can change ${what}.</p>
+              <button class="btn"${own.locked_by !== s.username ? html` data-confirm="${pick('lk.break_confirm_page', 'lk.break_confirm_app', { user: own.locked_by })}"` : ''}>${own.locked_by === s.username ? tx('lk.unlock') : tx('lk.break')}</button></form>`
+          : html`<p class="muted">${tx('lk.only_owner', { user: own.locked_by })}</p>`}`
+    : html`<p class="muted">${pick('lk.not_locked_page', 'lk.not_locked_app')}</p>
         <form method="post" action="${BASE}/apps/${appId}/lock" class="search u-mwnone">${csrf(s)}${hidden}
-          <label class="sr-only" for="lock-note-${pageNo}">Note</label>
-          <input id="lock-note-${pageNo}" name="note" maxlength="500" placeholder="Note (optional), e.g. reworking the form">
-          <button class="btn">${icon('key')} Lock ${what}</button></form>`;
+          <label class="sr-only" for="lock-note-${pageNo}">${tx('lk.note')}</label>
+          <input id="lock-note-${pageNo}" name="note" maxlength="500" placeholder="${tx('lk.note_ph')}">
+          <button class="btn">${icon('key')} ${pick('lk.lock_page', 'lk.lock_app')}</button></form>`;
   return html`<div class="lock-panel">
-    ${opts.headings === false ? '' : html`<h3>Lock</h3>`}
+    ${opts.headings === false ? '' : html`<h3>${tx('lk.lock')}</h3>`}
     ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${lockText(appLock)}</div>` : ''}
     ${lockState}
-    <h3>Comments</h3>
+    <h3>${tx('lk.comments')}</h3>
     <form method="post" action="${BASE}/apps/${appId}/comments">${csrf(s)}${hidden}
-      <div class="field"><label class="label" for="comment-${pageNo}">Add a comment on ${what}</label>
+      <div class="field"><label class="label" for="comment-${pageNo}">${pick('lk.comment_on_page', 'lk.comment_on_app')}</label>
         <textarea id="comment-${pageNo}" name="body" rows="3" maxlength="4000" required></textarea></div>
-      <div class="buttons"><button class="btn">Add comment</button></div>
+      <div class="buttons"><button class="btn">${tx('lk.add_comment')}</button></div>
     </form>
     ${comments.rows.length
       ? html`<ul class="dev-comments">${comments.rows.map((c) => html`<li>
           <div class="dev-comment-head"><b>${c.author}</b> <span class="muted">${String(c.created_at).slice(0, 16)}</span>
             ${c.author === s.username || admin
-              ? html`<form method="post" action="${BASE}/apps/${appId}/comments/${c.id}/delete" class="u-inline">${csrf(s)}<button class="link-button" data-confirm="Delete this comment?">Delete</button></form>`
+              ? html`<form method="post" action="${BASE}/apps/${appId}/comments/${c.id}/delete" class="u-inline">${csrf(s)}<button class="link-button" data-confirm="${tx('lk.delete_comment_confirm')}">${tx('lk.delete')}</button></form>`
               : ''}
             ${issues.get(Number(c.id))
-              ? html`<a class="small" href="/builder/team/issues/${issues.get(Number(c.id))}">${icon('kanban')} Issue #${issues.get(Number(c.id))}</a>`
-              : html`<form method="post" action="/builder/team/from-comment" class="u-inline">${csrf(s)}<input type="hidden" name="comment" value="${c.id}"><button class="link-button">Make an issue</button></form>`}</div>
+              ? html`<a class="small" href="/builder/team/issues/${issues.get(Number(c.id))}">${icon('kanban')} ${tx('lk.issue', { n: issues.get(Number(c.id))! })}</a>`
+              : html`<form method="post" action="/builder/team/from-comment" class="u-inline">${csrf(s)}<input type="hidden" name="comment" value="${c.id}"><button class="link-button">${tx('lk.make_issue')}</button></form>`}</div>
           <p class="dev-comment-body">${c.body}</p></li>`)}</ul>`
-      : html`<p class="muted">No comments yet.</p>`}
+      : html`<p class="muted">${tx('lk.no_comments')}</p>`}
   </div>`;
 }
 
@@ -166,8 +167,8 @@ export async function lockRoutes(app: FastifyInstance) {
       `insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, $2, $3, $4) on conflict (app_id, page_no) do nothing`,
       [t.appId, t.pageNo, s.username, note],
     );
-    if (r.rowCount) flash(s, `${t.pageNo ? `Page ${t.pageNo}` : 'The application'} is locked: other developers can't change it until you unlock it.`);
-    else flash(s, 'It is already locked.', 'error');
+    if (r.rowCount) flash(s, tx(t.pageNo ? 'lk.locked_page' : 'lk.locked_app', { page: t.pageNo }));
+    else flash(s, tx('lk.already'), 'error');
     return back(reply, s, await backTo(t.appId, t.pageNo));
   });
 
@@ -178,14 +179,14 @@ export async function lockRoutes(app: FastifyInstance) {
     if (!t) return reply.code(404).send('Not found');
     const lock = await owner.one<Lock>('select app_id, page_no, locked_by, locked_at::text, note from meta.builder_lock where app_id = $1 and page_no = $2', [t.appId, t.pageNo]);
     if (!lock) {
-      flash(s, 'It is not locked.');
+      flash(s, tx('lk.not_locked'));
     } else if (lock.locked_by !== s.username && !(await isAdmin(s.username))) {
-      return reply.code(403).send('Only the developer who locked it or an administrator can unlock it.');
+      return reply.code(403).send(tx('lk.only_unlocker'));
     } else {
       await owner.query('delete from meta.builder_lock where app_id = $1 and page_no = $2', [t.appId, t.pageNo]);
       if (lock.locked_by !== s.username)
         await logActivity({ appId: t.appId, pageNo: t.pageNo || null, username: s.username, event: 'lock_broken', ip: clientIp(req), detail: `builder: lock of ${lock.locked_by}` });
-      flash(s, lock.locked_by === s.username ? 'Unlocked.' : `${lock.locked_by}'s lock was broken.`);
+      flash(s, lock.locked_by === s.username ? tx('lk.unlocked') : tx('lk.broken', { user: lock.locked_by }));
     }
     return back(reply, s, await backTo(t.appId, t.pageNo));
   });
@@ -196,10 +197,10 @@ export async function lockRoutes(app: FastifyInstance) {
     const t = await target(req);
     if (!t) return reply.code(404).send('Not found');
     const body = (req.body?.body ?? '').trim();
-    if (!body || body.length > 4000) flash(s, 'A comment has 1 to 4000 characters.', 'error');
+    if (!body || body.length > 4000) flash(s, tx('lk.comment_length'), 'error');
     else {
       await owner.query('insert into meta.dev_comment (app_id, page_no, author, body) values ($1, $2, $3, $4)', [t.appId, t.pageNo, s.username, body]);
-      flash(s, 'Comment added.');
+      flash(s, tx('lk.comment_added'));
     }
     return back(reply, s, await backTo(t.appId, t.pageNo));
   });
@@ -211,9 +212,9 @@ export async function lockRoutes(app: FastifyInstance) {
       ? await owner.one('select id, app_id, page_no, author from meta.dev_comment where id = $1 and app_id = $2', [req.params.cid, req.params.id])
       : undefined;
     if (!c) return reply.code(404).send('Not found');
-    if (c.author !== s.username && !(await isAdmin(s.username))) return reply.code(403).send('Only the author or an administrator can delete a comment.');
+    if (c.author !== s.username && !(await isAdmin(s.username))) return reply.code(403).send(tx('lk.only_author'));
     await owner.query('delete from meta.dev_comment where id = $1', [c.id]);
-    flash(s, 'Comment deleted.');
+    flash(s, tx('lk.comment_deleted'));
     return back(reply, s, await backTo(c.app_id, c.page_no));
   });
 }
