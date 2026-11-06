@@ -132,7 +132,7 @@ export async function datasetRoutes(app: FastifyInstance) {
     const apps = await reportingApps(ws);
     const main = html`<div class="title-row"><h1>${tx('dts.data_reporter')}</h1>
         <div class="buttons"><a class="btn btn-hot" href="${root}/datasets/new">${icon('plus')} ${tx('dts.new_dataset')}</a><a class="btn" href="${root}/import">${icon('upload')} ${tx('dts.import')}</a>${sets.length ? html`<a class="btn" href="${root}/export">${icon('download')} ${tx('dts.export_all')}</a>` : ''}</div></div>
-      <p class="muted u-mt0">Datasets are trusted views of ${s.workspace?.name ?? 'this workspace'}'s data for business users: tables and views of one schema, joined, with the columns they may see, labels, format masks and descriptions, and a row filter. A reporting application on one or more datasets lets its users build, save, publish and share reports; every report runs as the application's database role, so grants and row level security apply.</p>
+      <p class="muted u-mt0">${tx('dts.intro', { workspace: s.workspace?.name ?? tx('dts.this_workspace') })}</p>
       ${region(tx('dts.datasets'), html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th scope="col">${tx('dts.dataset')}</th><th scope="col">${tx('dts.schema')}</th><th scope="col">${tx('dts.tables_and_views')}</th><th scope="col" class="num">${tx('dts.columns')}</th><th scope="col">${tx('dts.updated_utc')}</th><th scope="col">${tx('dts.actions')}</th></tr></thead>
         <tbody>${sets.length ? sets.map((d) => html`<tr>

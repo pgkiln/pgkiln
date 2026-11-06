@@ -345,7 +345,7 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
     ${schema && !known && !message ? html`<div class="alert alert-error" role="alert">${tx('aw.choose_one_of_the_schemas')}</div>` : ''}
     ${region(tx('aw.data'), html`<form method="get" action="${BASE}/create" class="create-schema">
       <div class="form-grid">${select('schema', tx('aw.pages_on_the_tables_of'), schema, [['', tx('aw.a_new_empty_schema_home')], ...schemas.map((x): [string, string] => [x, x])],
-        'The application\'s parsing schema. Choose a schema to get a page per table and view; a new schema is named after the alias.')}</div>
+        tx('aw.schema_help'))}</div>
       <div class="buttons"><button class="btn">${icon('search')} ${tx('aw.show_its_tables')}</button></div></form>`)}
     <form method="post" action="${BASE}/apps" data-progress="Creating the application and its pages…">${csrf(s)}
       <input type="hidden" name="features" value="1">
@@ -386,7 +386,7 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
       ${!known && bp.length
         ? html`<details class="region region-standard aw-advanced"><summary class="region-header"><h2>${tx('aw.advanced')}</h2></summary><div class="region-body"><div class="form-grid">
             ${select('boilerplate', tx('aw.start_from'), v('boilerplate', ''), [['', tx('aw.a_blank_application')], ...bp.map((x): [string, string] => [String(x.id), tx('aw.bp_option', { name: x.name })])],
-              'A boilerplate application\'s pages, shared components and settings are copied; the new application keeps its own name, alias, role and authentication.')}
+              tx('aw.bp_help'))}
           </div></div></details>`
         : ''}
       <div class="buttons"><a class="btn" href="${BASE}">${tx('aw.cancel')}</a><button class="btn btn-hot">${tx('aw.create_application')}</button></div>

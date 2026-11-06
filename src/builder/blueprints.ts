@@ -90,8 +90,8 @@ async function editor(s: Session, reply: FastifyReply, o: { id?: number | null; 
           <input type="hidden" name="id" value="${o.id ?? ''}"><input type="hidden" name="name" value="${o.name}">
           <div class="field"><label class="label" for="f_description">${tx('bp.describe_the_application')}</label>
             <textarea id="f_description" name="description" rows="3" maxlength="4000" required placeholder="${tx('bp.e_g_track_projects_with')}">${o.description ?? ''}</textarea>
-            <small class="help">The AI service ${svc.name} writes a blueprint into the editor below (replacing what is there). Only your description is sent.</small></div>
-          <div class="buttons"><button class="btn" data-busy="Thinking…">${tx('bp.draft_a_blueprint')}</button></div>
+            <small class="help">${tx('bp.ai_help', { service: svc.name })}</small></div>
+          <div class="buttons"><button class="btn" data-busy="${tx('bp.thinking')}">${tx('bp.draft_a_blueprint')}</button></div>
         </form>`
       : html`<p class="muted">${tx.rich('bp.no_service', { link: html`<a href="${BASE}/sql/ai">${tx('bp.sql_workshop_ai')}</a>` })}</p>`)}
     ${region(tx('bp.blueprint'), html`<form method="post" action="${BASE}/blueprints/review">${csrf(s)}
@@ -99,7 +99,7 @@ async function editor(s: Session, reply: FastifyReply, o: { id?: number | null; 
       <div class="form-grid"><div class="field"><label class="label" for="f_name">${tx('bp.name')}</label><input id="f_name" name="name" maxlength="100" required value="${o.name}"></div></div>
       <div class="field"><label class="label" for="f_spec">JSON</label>
         <textarea id="f_spec" name="spec" class="code" rows="24" spellcheck="false" data-code="json">${o.spec}</textarea>
-        <small class="help">Column types: ${Object.keys(COLUMN_TYPES).join(', ')}; <code>"required"</code>, <code>"unique"</code>, <code>"values"</code> (allowed texts). Page types: ${WIZARD_KINDS.map(([k]) => k).join(', ')} and blank (<code>"text"</code>). Optional: <code>"dashboard": true</code>, <code>"navigation": [{"label", "page", "icon"}]</code>, <code>"sample_data": [{"table", "columns", "rows"}]</code>.</small></div>
+        <small class="help">${tx.rich('bp.spec_help', { types: Object.keys(COLUMN_TYPES).join(', '), required: html`<code>"required"</code>`, unique: html`<code>"unique"</code>`, values: html`<code>"values"</code>`, kinds: WIZARD_KINDS.map(([k]) => k).join(', '), text: html`<code>"text"</code>`, dashboard: html`<code>"dashboard": true</code>`, navigation: html`<code>"navigation": [{"label", "page", "icon"}]</code>`, sample: html`<code>"sample_data": [{"table", "columns", "rows"}]</code>` })}</small></div>
       <div class="buttons"><button class="btn btn-hot">${tx('bp.review')}</button><button class="btn" formaction="${BASE}/blueprints/save">${tx('bp.save')}</button></div>
     </form>`)}`);
 }
@@ -185,8 +185,8 @@ export async function blueprintRoutes(app: FastifyInstance) {
     await logActivity({ appId: a.id, username: s.username, event: 'blueprint', ip: clientIp(req), detail: `blueprint from the application${rows ? ', with sample rows' : ''}` });
     return editor(s, reply, {
       name: `${a.name} blueprint`.slice(0, 100), spec: JSON.stringify(spec, null, 2),
-      message: html`<div class="alert alert-info" role="status"><p>A blueprint of ${a.name}: review it, change the name, alias and schema, then <b>${tx('bp.review')}</b>.</p>
-        ${notes.length ? html`<details><summary>${notes.length} note${notes.length === 1 ? '' : 's'} on what didn't carry over</summary><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></details>` : ''}</div>`,
+      message: html`<div class="alert alert-info" role="status"><p>${tx.rich('bp.of_app', { app: a.name, review: html`<b>${tx('bp.review')}</b>` })}</p>
+        ${notes.length ? html`<details><summary>${notes.length === 1 ? tx('bp.notes_1') : tx('bp.notes', { n: notes.length })}</summary><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></details>` : ''}</div>`,
     });
   });
 

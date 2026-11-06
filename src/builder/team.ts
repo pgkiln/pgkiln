@@ -271,8 +271,8 @@ export async function teamRoutes(app: FastifyInstance) {
       <div class="team-layout">
         <div class="team-main">
           ${filterForm(f, lk, TEAM)}
-          ${f.app && f.page ? html`<p class="small muted">Issues of page ${f.page} of ${lk.apps.find((a) => String(a.id) === f.app)?.name ?? 'the application'}.</p>` : ''}
-          <p class="small muted" role="status">${rows.length} issue${rows.length === 1 ? '' : 's'}${rows.length === 500 ? ' (the first 500)' : ''}.</p>
+          ${f.app && f.page ? html`<p class="small muted">${tx('tm.issues_of_page', { page: f.page, app: lk.apps.find((a) => String(a.id) === f.app)?.name ?? tx('tm.the_application') })}</p>` : ''}
+          <p class="small muted" role="status">${rows.length === 1 ? tx('tm.n_issues_1') : rows.length === 500 ? tx('tm.n_issues_500', { n: rows.length }) : tx('tm.n_issues', { n: rows.length })}</p>
           ${rows.length ? html`<ul class="team-issues">${rows.map((i) => issueCard(i))}</ul>` : html`<p class="muted">No issues${current ? ' with these filters' : ' yet'}.</p>`}
         </div>
         <aside class="team-side">
@@ -327,7 +327,7 @@ export async function teamRoutes(app: FastifyInstance) {
       const others = cols.filter((c) => c.key !== from);
       return html`<form method="post" action="${TEAM}/issues/${i.id}/move" class="team-move">${csrf(s)}
         <input type="hidden" name="by" value="${by}"><input type="hidden" name="group" value="${group}"><input type="hidden" name="from" value="${from}"><input type="hidden" name="back" value="${back}">
-        <label class="sr-only" for="mv_${i.id}_${from}">Move #${i.id} to</label>
+        <label class="sr-only" for="mv_${i.id}_${from}">${tx('tm.move_to', { id: i.id })}</label>
         <select id="mv_${i.id}_${from}" name="to">${others.map((c) => html`<option value="${c.key}">${c.title}</option>`)}</select>
         <button class="btn btn-sm">${tx('tm.move')}</button></form>`;
     };
@@ -494,8 +494,8 @@ export async function teamRoutes(app: FastifyInstance) {
             <section><h2>${tx('tm.application')}</h2><p>${appRow
               ? html`<a href="${BASE}/apps/${appRow.id}">${appRow.name}</a>${i.page_no !== null ? html` · <a href="${designerUrl(appRow.id, i.page_no)}">page ${i.page_no}</a>` : ''}`
               : html`<span class="muted small">${tx('tm.none')}</span>`}</p></section>
-            ${source ? html`<section><h2>${tx('tm.from_feedback')}</h2><p><a href="${BASE}/apps/${source.app_id}/feedback#feedback-${source.id}">Feedback of ${source.username}</a> <span class="small muted">(${source.name})</span></p></section>` : ''}
-            ${comment ? html`<section><h2>${tx('tm.from_a_developer_comment')}</h2><p><a href="${comment.page_no ? designerUrl(comment.app_id, comment.page_no) : `${BASE}/apps/${comment.app_id}#app-lock`}">${comment.author}'s comment</a> <span class="small muted">(${comment.name}${comment.page_no ? `, page ${comment.page_no}` : ''})</span></p></section>` : ''}
+            ${source ? html`<section><h2>${tx('tm.from_feedback')}</h2><p><a href="${BASE}/apps/${source.app_id}/feedback#feedback-${source.id}">${tx('tm.feedback_of', { user: source.username })}</a> <span class="small muted">(${source.name})</span></p></section>` : ''}
+            ${comment ? html`<section><h2>${tx('tm.from_a_developer_comment')}</h2><p><a href="${comment.page_no ? designerUrl(comment.app_id, comment.page_no) : `${BASE}/apps/${comment.app_id}#app-lock`}">${tx('tm.comment_of', { author: comment.author })}</a> <span class="small muted">(${comment.name}${comment.page_no ? tx('tm.page_n', { n: comment.page_no }) : ''})</span></p></section>` : ''}
             ${i.created_by === s.username || admin ? html`<section><h2>${tx('tm.delete')}</h2><form method="post" action="${TEAM}/issues/${i.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('tm.delete_issue_confirm', { id: i.id })}">${icon('trash')} ${tx('tm.delete_issue')}</button></form></section>` : ''}
           </aside>
         </div>

@@ -129,7 +129,7 @@ function serviceForm(s: Session, action: string, v: Partial<CatalogService>, lab
       ${input('path', tx('rcat.path'), v.path ?? '', { required: true, placeholder: tx('rcat.pets_pet_id'), help: tx('rcat.after_the_catalog_s_base') })}
       ${input('row_selector', tx('rcat.row_selector'), v.row_selector ?? '', { placeholder: 'items', help: tx('rcat.where_the_rows_are_in') })}
       <div class="field" data-wide><label class="label" for="f_description">${tx('rcat.description')}</label><input id="f_description" name="description" value="${v.description ?? ''}"></div>
-      ${area('params', tx('rcat.parameters_json'), pretty(v.params ?? []), '[{"name": "page_size", "in": "query", "key": "pageSize", "default": "20"}] · in: path, query, header, body; "key": the service\'s name for it when it isn\'t lower case with _.')}
+      ${area('params', tx('rcat.parameters_json'), pretty(v.params ?? []), tx('rcat.params_help'))}
       ${area('columns', tx('rcat.columns_json'), pretty(v.columns ?? []), '[{"name": "id", "path": "id", "type": "integer"}] · types: text, number, integer, boolean, date, timestamp, json.', 6)}
       ${area('headers', tx('rcat.headers_json'), pretty(v.headers ?? {}), tx('rcat.headers_help'), 2)}
       ${area('body', tx('rcat.body_template'), v.body ?? '', '{"query": {q}} — empty: the body parameters as a JSON object.', 2)}
@@ -149,7 +149,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
               (select count(*)::int from meta.rest_catalog_service x where x.catalog_id = c.id) as services
          from meta.rest_catalog c where c.workspace_id = $1 order by lower(c.name)`, [currentWorkspace(s)])).rows;
     const main = html`<div class="title-row"><h1>${tx('rcat.rest_source_catalogs')}</h1></div>
-      <p class="muted u-mt0">Web services described once for ${s.workspace?.name ?? 'this workspace'}: their base URL and services. An application makes a REST data source from a service in Shared Components → REST data sources → New. The data source is a copy; credentials stay with the application.</p>
+      <p class="muted u-mt0">${tx('rcat.intro', { workspace: s.workspace?.name ?? tx('rcat.this_workspace') })}</p>
       ${notesHtml(s)}
       ${region(tx('rcat.catalogs'), html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>${tx('rcat.catalog')}</th><th>${tx('rcat.base_url')}</th><th class="num">${tx('rcat.services')}</th><th>${tx('rcat.from')}</th><th>${tx('rcat.updated_utc')}</th></tr></thead>
@@ -431,7 +431,7 @@ export async function catalogPicker(appId: number, s: Session): Promise<Raw | ''
     `select x.id, x.name, x.method, x.path, c.name as catalog from meta.rest_catalog_service x join meta.rest_catalog c on c.id = x.catalog_id
       where c.workspace_id = meta.app_workspace($1) order by lower(c.name), x.position, x.name`, [appId])).rows;
   if (!services.length)
-    return html`<p class="muted u-mt0 u-mb1">${icon('globe')} Services described once for the workspace: <a href="${root}">${tx('rcat.rest_source_catalogs')}</a>.</p>`;
+    return html`<p class="muted u-mt0 u-mb1">${icon('globe')} ${tx.rich('rcat.described_once', { link: html`<a href="${root}">${tx('rcat.rest_source_catalogs')}</a>` })}</p>`;
   const credentials = (await owner.query('select name from meta.web_credential where app_id = $1 union select name from meta.workspace_credential where workspace_id = meta.app_workspace($1) order by name', [appId])).rows;
   const groups = new Map<string, typeof services>();
   for (const x of services) groups.set(x.catalog, [...(groups.get(x.catalog) ?? []), x]);

@@ -209,7 +209,7 @@ export async function templateRegionForm(pageId: number, appId: number, r: { id:
           <small class="help">${tx.rich('tpl.builtin_help', { link: html`<a href="${BASE}/apps/${appId}/shared?new=template_component">${tx('tpl.shared_components_template_components')}</a>` })}</small></div>
         <div class="field"><label class="label" for="${id('display')}">${tx('tpl.display')}</label>
           <select id="${id('display')}" name="display">${opt('', tx('tpl.each_row_as_an_instance'), cfg.display)}${opt('multiple', tx('tpl.multiple_all_rows_in_the'), cfg.display)}</select>
-          ${c && !c.wrapper && cfg.display === 'multiple' ? html`<small class="help">${c.name} has no wrapper, so the rows show one after another.</small>` : ''}</div>
+          ${c && !c.wrapper && cfg.display === 'multiple' ? html`<small class="help">${tx('tpl.no_wrapper', { name: c.name })}</small>` : ''}</div>
         <div class="field"><label class="label" for="${id('max_rows')}">${tx('tpl.at_most_rows')}</label>
           <input id="${id('max_rows')}" name="max_rows" type="number" min="1" max="500" value="${cfg.max_rows ?? ''}" placeholder="500"></div>
         <div class="field" data-wide><label class="label" for="${id('empty')}">${tx('tpl.text_when_there_are_no')}</label>

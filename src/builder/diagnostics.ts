@@ -214,7 +214,7 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
       ${pending.length
         ? html`<div class="alert alert-error" role="alert">${tx.rich(pending.length === 1 ? 'diag.missing_1' : 'diag.missing', { n: pending.length, list: pending.join(', '), npm: html`<code>npm run db:migrate</code>`, cli: html`<code>pgkiln migrate</code>` })}</div>`
         : ''}
-      ${unknown.length ? html`<div class="alert alert-error" role="alert">The database has migrations this server does not know (${unknown.map((m) => m.name).join(', ')}): the server is older than the database.</div>` : ''}
+      ${unknown.length ? html`<div class="alert alert-error" role="alert">${tx('diag.unknown', { list: unknown.map((m) => m.name).join(', ') })}</div>` : ''}
       <div class="columns">
         ${region(tx('diag.install_and_upgrade_runs'), runs.length
           ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('diag.started')}</th><th>${tx('diag.kind')}</th><th>${tx('diag.version')}</th><th>${tx('diag.status')}</th><th class="num">${tx('diag.files')}</th><th>${tx('diag.applied')}</th><th>${tx('diag.by')}</th></tr></thead>

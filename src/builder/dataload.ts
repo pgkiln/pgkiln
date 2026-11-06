@@ -27,7 +27,7 @@ import type { Session } from '../session.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { appWorkspace, currentWorkspace, workshopDb } from './workspaces.ts';
-import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
+import { scopedTx, tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 
 // SQL Workshop → Load Data: upload a CSV/TSV/XLSX/JSON/XML file, preview it,
 // and load it into a new table (column types inferred) or an existing one
@@ -73,7 +73,7 @@ export const DATA_LOAD_DEF_SPEC: ComponentSpec = {
 
 /** "Load a file with it" on a definition's Shared Components page. */
 export const dataLoadDefExtras = (row: { id: number }) =>
-  html`<p class="u-mt1"><a class="btn" href="${BASE}/sql/load?definition=${row.id}">${icon('upload')} Load a file with this definition</a></p>`;
+  html`<p class="u-mt1"><a class="btn" href="${BASE}/sql/load?definition=${row.id}">${icon('upload')} ${scopedTx('dl.load_with_def')}</a></p>`;
 
 /** The data load definitions of the current workspace's applications. */
 async function definitions(s: Session) {

@@ -241,7 +241,7 @@ async function credentialsPage(c: Ctx, query: Record<string, string | undefined>
   const v: Partial<CredentialRow> = editing ?? { type: 'basic', grant_type: 'client_credentials' };
   const secret = (name: string, label: string, stored: boolean | undefined, help: string) =>
     html`${input(name, label, '', { type: 'password', auto: 'new-password', help: `${help} ${stored ? tx('wres.one_is_stored_encrypted_it') : tx('wres.write_only_never_shown_again')}` })}
-      ${stored ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_${name}" value="true"> Remove the stored ${label.toLowerCase()}</label></div>` : ''}`;
+      ${stored ? html`<div class="field"><label class="check"><input type="checkbox" name="remove_${name}" value="true"> ${tx('wres.remove_stored', { what: label.toLowerCase() })}</label></div>` : ''}`;
   const form = editing || creating
     ? region(editing ? tx('wres.credential_title', { name: editing.name }) : tx('wres.new_web_credential'), html`<form method="post" action="${CREDS}">${csrf(s)}
         ${editing ? html`<input type="hidden" name="id" value="${editing.id}">` : ''}

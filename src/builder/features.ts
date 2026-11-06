@@ -8,6 +8,7 @@ import { appOr404 } from './forms.ts';
 import { createLoginPage } from './login-page.ts';
 import { ABOUT_PAGE, ACTIVITY_PAGE, addAboutPage, addAccessSchemes, addActivityPage, ensureAdminScheme } from './newapp.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 137, AP-3) Add feature (APEX: Create a Page → Feature, and App home → Tasks → Add Feature Page):
 // the Create Application wizard's features (newapp.ts) and a few more, added to an existing application.
@@ -67,8 +68,8 @@ export const FEATURE_LIST: Feature[] = [
     icon: 'lock',
     help: 'Authorization schemes for the roles admin, contributor and reader, to put on pages, regions and buttons.',
     adds: () => [
-      'Authorization schemes CONTRIBUTOR (role admin or contributor) and READER (admin, contributor or reader), and ADMIN when the application has none',
-      'Give users their roles under Shared Components → Users (application access)',
+      tx('feat.a.access_1'),
+      tx('feat.a.access_2'),
     ],
     installed: async (c, a) => (await c.query(`select count(*)::int as n from meta.authz_scheme where app_id = $1 and name in ('CONTRIBUTOR', 'READER')`, [a.id])).rows[0].n === 2,
     install: async (c, a) => {
@@ -82,12 +83,12 @@ export const FEATURE_LIST: Feature[] = [
     icon: 'activity',
     help: 'A page for administrators with the page views per day and the latest activity.',
     adds: () => [
-      `Page ${ACTIVITY_PAGE} "Activity" (authorization ADMIN): a chart of the page views per day and a report of the latest activity, from meta.app_activity()`,
-      'A navigation entry Activity for administrators',
-      'Authorization scheme ADMIN (role admin) when the application has none',
+      tx('feat.a.activity_1', { page: ACTIVITY_PAGE }),
+      tx('feat.a.activity_2'),
+      tx('feat.a.activity_3'),
     ],
     installed: (c, a) => pageHas(c, a.id, ACTIVITY_PAGE, 'meta.app_activity'),
-    blocked: async (c, a) => ((await pageExists(c, a.id, ACTIVITY_PAGE)) ? `Page ${ACTIVITY_PAGE} is in use by another page.` : null),
+    blocked: async (c, a) => ((await pageExists(c, a.id, ACTIVITY_PAGE)) ? tx('feat.page_in_use', { page: ACTIVITY_PAGE }) : null),
     install: async (c, a) => {
       await addActivityPage(c, a.id);
       return pageId(c, a.id, ACTIVITY_PAGE);
@@ -99,19 +100,19 @@ export const FEATURE_LIST: Feature[] = [
     icon: 'sliders',
     help: 'A page where the application\'s administrators switch build options on and off while it runs.',
     adds: () => [
-      `Page ${CONFIG_PAGE} "Configuration" (authorization ADMIN): the configurable build options as switches, and Save`,
-      'The build options ticked below become configurable (Shared Components → Build options → Configurable)',
-      'A navigation entry Configuration for administrators',
+      tx('feat.a.config_1', { page: CONFIG_PAGE }),
+      tx('feat.a.config_2'),
+      tx('feat.a.config_3'),
     ],
     installed: (c, a) => pageHas(c, a.id, CONFIG_PAGE, 'meta.set_configurable_options'),
-    blocked: async (c, a) => ((await pageExists(c, a.id, CONFIG_PAGE)) ? `Page ${CONFIG_PAGE} is in use by another page.` : null),
+    blocked: async (c, a) => ((await pageExists(c, a.id, CONFIG_PAGE)) ? tx('feat.page_in_use', { page: CONFIG_PAGE }) : null),
     fields: async (a) => {
       const opts = (await owner.query<{ name: string; description: string | null; status: string; configurable: boolean }>(
         'select name, description, status, configurable from meta.build_option where app_id = $1 order by name', [a.id])).rows;
       return opts.length
-        ? html`<fieldset class="prop-group"><legend>Configurable build options</legend><div class="qb-pick">${opts.map((o) =>
+        ? html`<fieldset class="prop-group"><legend>${tx('feat.cbo')}</legend><div class="qb-pick">${opts.map((o) =>
             html`<label class="check"><input type="checkbox" name="options" value="${o.name}"${o.configurable ? raw(' checked') : ''}> ${o.name} <span class="muted small">${o.status}${o.description ? `, ${o.description}` : ''}</span></label>`)}</div></fieldset>`
-        : html`<p class="muted">The application has no build options yet: add them under Shared Components → Build options and tick <em>Configurable</em>; the page shows them as they come.</p>`;
+        : html`<p class="muted">${tx.rich('feat.no_build_options', { configurable: html`<em>${tx('feat.configurable')}</em>` })}</p>`;
     },
     install: async (c, a, b) => {
       const chosen = ([] as unknown[]).concat(b.options ?? []).map(String);
@@ -146,19 +147,19 @@ export const FEATURE_LIST: Feature[] = [
     icon: 'mail',
     help: 'A weekly e-mail to the administrators with the application\'s activity, the rows as a CSV file.',
     adds: () => [
-      'Application setting EMAIL_REPORT_TO: the addresses the report goes to (Shared Components → Application settings)',
-      'Automation EMAIL_REPORTING, every Monday at 07:00 UTC: meta.send_activity_report() with the last 7 days (Shared Components → Automations)',
-      'Mail goes out through the application\'s mail service (Workspace utilities → Mail services); without addresses nothing is sent',
+      tx('feat.a.email_1'),
+      tx('feat.a.email_2'),
+      tx('feat.a.email_3'),
     ],
     installed: async (c, a) => !!(await c.query(`select 1 from meta.automation where app_id = $1 and name = 'EMAIL_REPORTING'`, [a.id])).rowCount,
-    fields: async () => html`<div class="field"><label class="label" for="f_report_to">Send it to</label>
+    fields: async () => html`<div class="field"><label class="label" for="f_report_to">${tx('feat.send_to')}</label>
         <input id="f_report_to" name="report_to" type="text" placeholder="admin@example.com, boss@example.com" autocomplete="off">
-        <small class="help">Comma separated; may stay empty and be set later in Shared Components → Application settings (EMAIL_REPORT_TO).</small></div>`,
+        <small class="help">${tx('feat.send_to_help')}</small></div>`,
     install: async (c, a, b) => {
       const to = String(b.report_to ?? '').split(',').map((x) => x.trim()).filter(Boolean);
       const bad = to.find((x) => !EMAIL.test(x));
-      if (bad) throw new Error(`"${bad.slice(0, 100)}" is not an e-mail address.`);
-      if (to.join(', ').length > 4000) throw new Error('Too many addresses.');
+      if (bad) throw new Error(tx('feat.not_email', { address: bad.slice(0, 100) }));
+      if (to.join(', ').length > 4000) throw new Error(tx('feat.too_many'));
       await c.query(
         `insert into meta.app_setting (app_id, name, value, description) values ($1, 'EMAIL_REPORT_TO', $2, 'E-mail reporting: the addresses of the weekly activity report (comma separated)')
          on conflict (app_id, name) do nothing`,
@@ -177,7 +178,7 @@ export const FEATURE_LIST: Feature[] = [
     label: 'Feedback',
     icon: 'message-square',
     help: 'Users send feedback from the header; you read it under the application\'s Activity → Feedback.',
-    adds: () => ['A Feedback entry in the header for signed-in users (Settings → Feedback)', 'Their feedback, with the page, under Activity → Feedback in the builder'],
+    adds: () => [tx('feat.a.feedback_1'), tx('feat.a.feedback_2')],
     installed: async (_c, a) => a.feedback,
     install: async (c, a) => {
       await c.query('update meta.app set feedback = true, updated_at = now() where id = $1', [a.id]);
@@ -189,7 +190,7 @@ export const FEATURE_LIST: Feature[] = [
     label: 'About page',
     icon: 'info',
     help: 'An About page in a Help menu of the header.',
-    adds: () => [`Page ${ABOUT_PAGE} "About" with the application's name and the pages of its menu`, 'A Help menu with About in the navigation bar (list NAVBAR), unless the application has a navigation bar list already'],
+    adds: () => [tx('feat.a.about_1', { page: ABOUT_PAGE }), tx('feat.a.about_2')],
     installed: (c, a) => pageExists(c, a.id, ABOUT_PAGE),
     install: async (c, a) => {
       await addAboutPage(c, a.id);
@@ -201,9 +202,9 @@ export const FEATURE_LIST: Feature[] = [
     label: 'Login page',
     icon: 'log-in',
     help: 'The application\'s own login page instead of the built-in sign-in page, editable in the Page Designer.',
-    adds: () => ['Page 9999 (or the next free number) "Login": public, page template Minimal, with a Login region', 'It becomes the login page (Settings → Sign-in methods)'],
+    adds: () => [tx('feat.a.login_1'), tx('feat.a.login_2')],
     installed: async (_c, a) => a.login_page !== null,
-    blocked: async (_c, a) => (a.authentication === 'none' ? 'The application has no sign-in (authentication none).' : null),
+    blocked: async (_c, a) => (a.authentication === 'none' ? tx('feat.no_signin') : null),
     install: async (c, a) => (await createLoginPage(c, a)).page,
   },
   {
@@ -211,7 +212,7 @@ export const FEATURE_LIST: Feature[] = [
     label: 'Theme style selection',
     icon: 'palette',
     help: 'Users choose the light or the dark theme in their user menu (Appearance).',
-    adds: () => ['Appearance in the user menu: light, dark or the device\'s setting (Settings → Theme → Users may choose)'],
+    adds: () => [tx('feat.a.theme_1')],
     installed: async (_c, a) => a.theme?.user_choice !== false,
     install: async (c, a) => {
       await c.query(`update meta.app set theme = coalesce(theme, '{}') - 'user_choice', updated_at = now() where id = $1`, [a.id]);
@@ -223,9 +224,9 @@ export const FEATURE_LIST: Feature[] = [
     label: 'Push notifications',
     icon: 'bell',
     help: 'Notifications to the users\' devices, from processes and SQL (meta.send_push); the application becomes installable.',
-    adds: () => ['Install as an app (PWA): a manifest, a service worker and an Install button', 'Push notifications: users subscribe on My account; send with the send_push process or meta.send_push', 'The application\'s push key pair (kept encrypted)'],
+    adds: () => [tx('feat.a.push_1'), tx('feat.a.push_2'), tx('feat.a.push_3')],
     installed: async (_c, a) => a.pwa_push,
-    blocked: async () => (secretKeyConfigured() ? null : 'Push notifications need PGKILN_SECRET_KEY in the server\'s environment.'),
+    blocked: async () => (secretKeyConfigured() ? null : tx('feat.push_needs_key')),
     install: async (c, a) => {
       await c.query('update meta.app set pwa = true, pwa_push = true, updated_at = now() where id = $1', [a.id]);
       return null;
@@ -235,6 +236,9 @@ export const FEATURE_LIST: Feature[] = [
 
 const CODE_EMAIL = `select meta.send_activity_report(meta.get_app_setting('EMAIL_REPORT_TO'), 7)`;
 
+/** A feature's label and help in the builder language (FEATURE_LIST stays English). */
+export const featLabel = (f: Feature) => tx.dyn(`feat.f.${f.key}`, f.label);
+export const featHelp = (f: Feature) => tx.dyn(`feat.h.${f.key}`, f.help);
 const FEATURES_BY_KEY = new Map(FEATURE_LIST.map((f) => [f.key, f]));
 
 async function appRow(id: string | number, c?: Client): Promise<AppRow | null> {
@@ -269,20 +273,20 @@ export async function featureRoutes(app: FastifyInstance) {
       return { installed, blocked: installed ? null : ((await f.blocked?.(c, a)) ?? null) };
     });
     const main = html`${appHeader(a0, 'pages', s)}
-      ${region(f.label, html`
-        <p class="muted u-mt0">${icon(f.icon)} ${f.help}</p>
+      ${region(featLabel(f), html`
+        <p class="muted u-mt0">${icon(f.icon)} ${featHelp(f)}</p>
         ${installed
-          ? html`<p class="alert alert-info" role="status">${f.label} is installed in this application already.</p>`
+          ? html`<p class="alert alert-info" role="status">${tx('feat.installed_already', { feature: featLabel(f) })}</p>`
           : blocked ? html`<p class="alert alert-error" role="status">${blocked}</p>` : ''}
-        <h3>${installed ? 'It added' : 'It adds'}</h3>
+        <h3>${installed ? tx('feat.it_added') : tx('feat.it_adds')}</h3>
         <ul class="cp-adds">${f.adds(a).map((x) => html`<li>${x}</li>`)}</ul>
         ${installed || blocked
-          ? html`<div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page?tab=feature">Back to the features</a></div>`
+          ? html`<div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page?tab=feature">${tx('feat.back_to_the_features')}</a></div>`
           : html`<form method="post" action="${BASE}/apps/${a.id}/features/${f.key}">${csrf(s)}
               ${f.fields ? await f.fields(a) : ''}
-              <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page?tab=feature">Cancel</a><button class="btn btn-hot">Add ${f.label.toLowerCase()}</button></div>
+              <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page?tab=feature">${tx('feat.cancel')}</a><button class="btn btn-hot">${tx('feat.add', { feature: featLabel(f).toLowerCase() })}</button></div>
             </form>`}`)}`;
-    return send(reply, s, shell(s, `${f.label} · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create page', `${BASE}/apps/${a.id}/create-page?tab=feature`], [f.label]], main));
+    return send(reply, s, shell(s, tx('feat.title', { feature: featLabel(f), app: a.name }), [[tx('feat.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('feat.create_page'), `${BASE}/apps/${a.id}/create-page?tab=feature`], [featLabel(f)]], main));
   });
 
   app.post(`${BASE}/apps/:id/features/:key`, async (req: Req, reply) => {
@@ -296,14 +300,14 @@ export async function featureRoutes(app: FastifyInstance) {
         // one at a time per application, and never twice
         await c.query('select 1 from meta.app where id = $1 for update', [req.params.id]);
         const a = (await appRow(req.params.id, c))!;
-        if (await f.installed(c, a)) throw new Error(`${f.label} is installed in this application already.`);
+        if (await f.installed(c, a)) throw new Error(tx('feat.installed_already', { feature: featLabel(f) }));
         const blocked = await f.blocked?.(c, a);
         if (blocked) throw new Error(blocked);
         return f.install(c, a, b);
       });
       // the push key pair after the commit (as the Create Application wizard does)
       if (f.key === 'push') await appPublicKey(Number(req.params.id)).catch(() => undefined);
-      flash(s, `${f.label} added.`);
+      flash(s, tx('feat.added', { feature: featLabel(f) }));
       return back(reply, s, page ? `${BASE}/pages/${page}` : `${BASE}/apps/${req.params.id}/create-page?tab=feature`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');

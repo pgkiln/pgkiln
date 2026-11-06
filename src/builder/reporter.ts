@@ -195,8 +195,8 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
       const readable = obj ? objects.find((o) => o.oid === obj.oid)?.access : undefined;
       return html`<fieldset class="prop-group"><legend>${src.label || src.id} <span class="muted">(${src.schema}.${src.table})</span></legend>
         <input type="hidden" name="s${i}_key" value="${src.id}">
-        ${!obj ? html`<div class="alert alert-error" role="alert">The table or view ${src.schema}.${src.table} does not exist (any more).</div>` : ''}
-        ${obj && readable === false ? html`<div class="alert alert-error" role="alert">The application's database role may not read ${src.schema}.${src.table}: grant it SELECT.</div>` : ''}
+        ${!obj ? html`<div class="alert alert-error" role="alert">${tx('drep.no_object', { object: `${src.schema}.${src.table}` })}</div>` : ''}
+        ${obj && readable === false ? html`<div class="alert alert-error" role="alert">${tx('drep.no_select', { object: `${src.schema}.${src.table}` })}</div>` : ''}
         <div class="form-grid">
           <div class="field"><label class="label" for="${id(`s${i}_id`)}">${tx('drep.static_id')}</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
           <div class="field"><label class="label" for="${id(`s${i}_label`)}">${tx('drep.label')}</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${heading(src.table)}"></div>

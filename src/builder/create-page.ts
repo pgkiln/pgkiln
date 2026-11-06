@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { featureStates } from './features.ts';
+import { featHelp, featLabel, featureStates } from './features.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { kindHelp, kindLabel, NO_TABLE, PAGE_KINDS, wizardTables } from './wizards.ts';
@@ -128,7 +128,7 @@ export async function createPageRoutes(app: FastifyInstance) {
       const states = await featureStates(a.id);
       body = html`<p class="muted u-mt0">${tx('cpg.features_add_pages_and_settings')}</p>
         <ul class="cp-grid">${states.map(({ f, installed, blocked }) => html`<li><a class="cp-type${installed || blocked ? ' cp-done' : ''}" href="${BASE}/apps/${a.id}/features/${f.key}">
-            <span class="cp-feature-icon">${icon(f.icon)}</span><b>${f.label}</b><small>${f.help}</small>
+            <span class="cp-feature-icon">${icon(f.icon)}</span><b>${featLabel(f)}</b><small>${featHelp(f)}</small>
             ${installed ? html`<span class="tag">${tx('cpg.installed')}</span>` : blocked ? html`<span class="tag">${tx('cpg.not_available')}</span>` : ''}</a></li>`)}</ul>`;
     } else {
       body = await copyStep1(a, s.username!);

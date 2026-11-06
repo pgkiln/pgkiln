@@ -77,7 +77,7 @@ export async function remoteDatabaseRoutes(app: FastifyInstance) {
     const main = html`<h1 class="u-mb1">${TITLE()}</h1>
       <p class="muted u-mt0">${tx('rdb.another_postgresql_database_s_tables')}</p>
       ${st.installed
-        ? html`<p class="muted">${icon('check')} postgres_fdw is installed.</p>`
+        ? html`<p class="muted">${icon('check')} ${tx('rdb.fdw_installed')}</p>`
         : html`<div class="alert alert-info" role="status"><p><strong>${tx('rdb.postgres_fdw_is_not_installed')}</strong></p>
             ${st.available && st.canCreate
               ? html`<form method="post" action="${PAGE}/extension">${csrf(s)}<button class="btn">${tx('rdb.create_extension_postgres_fdw')}</button></form>`

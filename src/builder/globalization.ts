@@ -169,7 +169,7 @@ export async function globalizationRoutes(app: FastifyInstance) {
       ${lang
         ? region(tx('glob.translate_into', { lang: langName(lang) }), html`
             ${langs.length > 1 ? html`<nav class="chips" aria-label="${tx('glob.language')}">${langs.map((l) => html`<a class="chip" href="?lang=${l}"${l === lang ? raw(' aria-current="page"') : ''}>${langName(l)}</a> `)}</nav>` : ''}
-            <p class="muted u-mt0">${done} of ${texts.length} texts translated. Leave a translation empty to show the ${a.language} text.</p>
+            <p class="muted u-mt0">${tx('glob.progress', { done, total: texts.length, language: a.language })}</p>
             <form method="post" action="${BASE}/apps/${a.id}/globalization/save">${csrf(s)}
               <input type="hidden" name="lang" value="${lang}">
               <div class="table-wrap"><table class="report report-reflow translate-table">
