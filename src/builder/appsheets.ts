@@ -22,6 +22,7 @@ import { preview } from './dataload.ts';
 import { finishGeneratedApp, createApp, createAppError, type CheckedApp } from './newapp.ts';
 import { groupColumn } from './appfromfile.ts';
 import { region, type Body } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Create → From a file with several sheets or tables (APEX: Create App from a
 // File, several sheets). An Excel workbook with several sheets, or a JSON
@@ -66,7 +67,7 @@ export async function parseBook(filename: string, data: Buffer, { headers = true
     try {
       book = await readXlsxFile<string>(data, { parseNumber: (s) => s, trim: true });
     } catch (e) {
-      throw new LoadError(`This is not a readable Excel (.xlsx) file: ${(e as Error).message}`);
+      throw new LoadError(tx('ash.bad_xlsx', { error: (e as Error).message }));
     }
     const sheets: NamedSheet[] = [];
     let total = 0;
@@ -77,16 +78,16 @@ export async function parseBook(filename: string, data: Buffer, { headers = true
       try {
         sheet = tableSheet('xlsx', rows, headers);
       } catch (e) {
-        if (e instanceof LoadError) throw new LoadError(`Sheet ${s.sheet}: ${e.message}`);
+        if (e instanceof LoadError) throw new LoadError(tx('ash.sheet_error', { sheet: s.sheet, error: e.message }));
         throw e;
       }
       if (!sheet.rows.length) continue;
       total += sheet.rows.length;
       sheets.push({ ...sheet, name: s.sheet });
     }
-    if (sheets.length > MAX_SHEETS) throw new LoadError(`The workbook has ${sheets.length} sheets with rows; at most ${MAX_SHEETS} become tables at once.`);
-    if (total > MAX_ROWS) throw new LoadError(`The workbook has ${total} rows; at most ${MAX_ROWS} can be loaded at once.`);
-    if (!sheets.length) throw new LoadError('The file has column names but no rows.');
+    if (sheets.length > MAX_SHEETS) throw new LoadError(tx('ash.too_many_sheets', { n: sheets.length, max: MAX_SHEETS }));
+    if (total > MAX_ROWS) throw new LoadError(tx('ash.too_many_rows_wb', { n: total, max: MAX_ROWS }));
+    if (!sheets.length) throw new LoadError(tx('ash.the_file_has_column_names'));
     return sheets;
   }
   if (/\.json$/i.test(filename) || /^\s*\{/.test(data.subarray(0, 64).toString('utf8').replace(/^﻿/, ''))) {
@@ -101,9 +102,9 @@ export async function parseBook(filename: string, data: Buffer, { headers = true
         ([, v]) => Array.isArray(v) && v.length && v.every((r) => r && typeof r === 'object' && !Array.isArray(r)),
       ) as [string, unknown[]][];
       if (arrays.length > 1) {
-        if (arrays.length > MAX_SHEETS) throw new LoadError(`The JSON has ${arrays.length} arrays; at most ${MAX_SHEETS} become tables at once.`);
+        if (arrays.length > MAX_SHEETS) throw new LoadError(tx('ash.too_many_arrays', { n: arrays.length, max: MAX_SHEETS }));
         const total = arrays.reduce((n, [, v]) => n + v.length, 0);
-        if (total > MAX_ROWS) throw new LoadError(`The file has ${total} rows; at most ${MAX_ROWS} can be loaded at once.`);
+        if (total > MAX_ROWS) throw new LoadError(tx('ash.too_many_rows', { n: total, max: MAX_ROWS }));
         return arrays.map(([name, v]) => ({ ...parseJson(JSON.stringify(v)), name }));
       }
     }
@@ -235,18 +236,18 @@ export function fkChecked(f: ForeignKey, b: Body | null) {
 /** CREATE TABLE for a planned table: an integer key column becomes an identity primary key; another key is unique and not null next to a new identity id. */
 export function plannedTableSql(schema: string, p: TablePlan) {
   const valid = /^[a-z_][a-z0-9_]{0,62}$/;
-  const where = `Sheet ${p.sheet.name}`;
-  if (!valid.test(p.table)) throw new LoadError(`${where}: the table name must be lower-case (letters, digits and _) without a schema; the table goes into the application's schema.`);
-  if (!p.cols.length) throw new LoadError(`${where}: give at least one column a name.`);
+  const where = tx('ash.sheet', { name: p.sheet.name });
+  if (!valid.test(p.table)) throw new LoadError(tx('ash.bad_table_name', { where }));
+  if (!p.cols.length) throw new LoadError(tx('ash.no_columns', { where }));
   for (const c of p.cols) {
-    if (!valid.test(c.name)) throw new LoadError(`${where}: "${c.name}" is not a valid column name.`);
-    if (!COLUMN_TYPES.includes(c.type)) throw new LoadError(`${where}: unknown column type ${c.type}.`);
+    if (!valid.test(c.name)) throw new LoadError(tx('ash.bad_column', { where, col: c.name }));
+    if (!COLUMN_TYPES.includes(c.type)) throw new LoadError(tx('ash.bad_type', { where, type: c.type }));
   }
-  if (new Set(p.cols.map((c) => c.name)).size !== p.cols.length) throw new LoadError(`${where}: column names must be unique.`);
+  if (new Set(p.cols.map((c) => c.name)).size !== p.cols.length) throw new LoadError(tx('ash.dup_columns', { where }));
   const ident = pg.escapeIdentifier;
   const defs: string[] = [];
   if (!identityKey(p)) {
-    if (p.cols.some((c) => c.name === 'id')) throw new LoadError(`${where}: "id" is the name of the new key column; rename the file column or choose it as the primary key.`);
+    if (p.cols.some((c) => c.name === 'id')) throw new LoadError(tx('ash.id_taken', { where }));
     defs.push('id bigint generated by default as identity primary key');
   }
   for (const c of p.cols) {
@@ -366,9 +367,9 @@ export async function addDashboard(c: Client, alias: string, tables: string[], p
 export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet[], b: Body): Promise<BuiltBook> {
   const v = (name: string) => String(b[name] ?? '');
   const plans = planFrom(sheets, v).filter((p) => p.on);
-  if (!plans.length) throw new LoadError('Choose at least one sheet.');
+  if (!plans.length) throw new LoadError(tx('ash.choose_at_least_one_sheet'));
   const ddl = plans.map((p) => plannedTableSql(checked.schema, p));
-  if (new Set(plans.map((p) => p.table)).size !== plans.length) throw new LoadError('Each sheet needs a table name of its own.');
+  if (new Set(plans.map((p) => p.table)).size !== plans.length) throw new LoadError(tx('ash.each_sheet_needs_a_table'));
   // only proposed foreign keys can be chosen (recomputed from the posted names and types)
   const fks = proposeForeignKeys(plans).filter((f) => v(fkName(f)) === String(f.to));
   const headers = b.h !== '0';
@@ -381,7 +382,7 @@ export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet
     const tables: BuiltBook['tables'] = [];
     for (const [n, p] of plans.entries()) {
       await c.query(ddl[n]).catch((e) => {
-        throw new LoadError((e as { code?: string }).code === '42P07' ? `The table ${checked.schema}.${p.table} already exists: choose another name.` : (e as Error).message);
+        throw new LoadError((e as { code?: string }).code === '42P07' ? tx('ash.table_exists', { table: `${checked.schema}.${p.table}` }) : (e as Error).message);
       });
       const T = (await c.query('select $1::regclass::text as t', [`${pg.escapeIdentifier(checked.schema)}.${pg.escapeIdentifier(p.table)}`])).rows[0].t as string;
       qualified.set(p.k, T);
@@ -413,7 +414,7 @@ export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet
       const ident = pg.escapeIdentifier;
       await c.query(`create index on ${A} (${ident(col)})`);
       await c.query(`alter table ${A} add foreign key (${ident(col)}) references ${B} (${ident(key)})`).catch((e) => {
-        throw new LoadError(`Foreign key ${a.table}.${col} → ${to.table}.${key}: ${(e as { detail?: string }).detail ?? (e as Error).message} Untick it, or fix the data.`);
+        throw new LoadError(tx('ash.fk_failed', { fk: `${a.table}.${col} → ${to.table}.${key}`, error: (e as { detail?: string }).detail ?? (e as Error).message }));
       });
       foreignKeys.push(`${a.table}.${col} → ${to.table}.${key}`);
     }
@@ -432,7 +433,7 @@ export async function buildAppFromSheets(checked: CheckedApp, sheets: NamedSheet
     if (b.chart === 'true') {
       const dash = await addDashboard(c, checked.alias, [...qualified.values()], next);
       if (dash) pages.push(dash);
-      else notes.push('No dashboard: no table has a foreign key or a text, yes/no or date column with a few values that repeat, to count the rows by.');
+      else notes.push(tx('ash.no_dashboard'));
     }
     await finishGeneratedApp(c, app.id, { description: checked.description });
     return { app: { id: app.id, alias: checked.alias, existingAccount: app.existingAccount }, tables, foreignKeys, pages, notes };
@@ -462,22 +463,22 @@ export function sheetsForm(sheets: NamedSheet[], b: Body | null): Raw {
   const sections = sheets.map((sheet, k) => {
     const id = field(k, 'table');
     return region(
-      `Sheet ${sheet.name}`,
-      html`<div class="field">${checkbox(field(k, 'on'), 'true', v(field(k, 'on')) === 'true', `Create a table from this sheet (${sheet.rows.length} row(s), ${sheet.headers.length} column(s))`)}</div>
+      tx('ash.sheet', { name: sheet.name }),
+      html`<div class="field">${checkbox(field(k, 'on'), 'true', v(field(k, 'on')) === 'true', tx('ash.create_from_sheet', { rows: sheet.rows.length, cols: sheet.headers.length }))}</div>
         <div class="form-grid">
-          <div class="field"><label class="label" for="f_${id}">Table name</label><input id="f_${id}" name="${id}" value="${v(id)}"></div>
-          <div class="field"><label class="label" for="f_${field(k, 'key')}">Primary key</label>
-            <select id="f_${field(k, 'key')}" name="${field(k, 'key')}">${[['', '- a new column id (identity) -'], ...sheet.headers.map((h, i): [string, string] => [String(i), h])].map(
+          <div class="field"><label class="label" for="f_${id}">${tx('ash.table_name')}</label><input id="f_${id}" name="${id}" value="${v(id)}"></div>
+          <div class="field"><label class="label" for="f_${field(k, 'key')}">${tx('ash.primary_key')}</label>
+            <select id="f_${field(k, 'key')}" name="${field(k, 'key')}">${[['', tx('ash.a_new_column_id_identity')], ...sheet.headers.map((h, i): [string, string] => [String(i), h])].map(
               ([value, label]) => html`<option value="${value}"${v(field(k, 'key')) === value ? raw(' selected') : ''}>${label}</option>`,
             )}</select>
-            <small class="help">A whole-number key column becomes an identity key; another key column is unique, next to a new id.</small></div>
+            <small class="help">${tx('ash.a_whole_number_key_column')}</small></div>
         </div>
-        <div class="table-wrap"><table class="report ff-cols"><thead><tr><th scope="col">File column</th><th scope="col">Values</th><th scope="col">Column name (empty = skip)</th><th scope="col">Type</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="report ff-cols"><thead><tr><th scope="col">${tx('ash.file_column')}</th><th scope="col">${tx('ash.values')}</th><th scope="col">${tx('ash.col_name_head')}</th><th scope="col">${tx('ash.type')}</th></tr></thead><tbody>
           ${sheet.headers.map((h, i) => {
             const type = v(field(k, `type_${i}`));
             return html`<tr><td>${h}</td><td class="muted small ff-sample">${sample(sheet, i)}</td>
-              <td><input name="${field(k, `name_${i}`)}" value="${v(field(k, `name_${i}`))}" aria-label="Column name for ${h} (${sheet.name})"></td>
-              <td><select name="${field(k, `type_${i}`)}" aria-label="Type of ${h} (${sheet.name})">${COLUMN_TYPES.map((t) => html`<option value="${t}"${t === type ? raw(' selected') : ''}>${t}</option>`)}</select></td></tr>`;
+              <td><input name="${field(k, `name_${i}`)}" value="${v(field(k, `name_${i}`))}" aria-label="${tx('ash.col_name_for', { col: h, sheet: sheet.name })}"></td>
+              <td><select name="${field(k, `type_${i}`)}" aria-label="${tx('ash.type_of', { col: h, sheet: sheet.name })}">${COLUMN_TYPES.map((t) => html`<option value="${t}"${t === type ? raw(' selected') : ''}>${t}</option>`)}</select></td></tr>`;
           })}
         </tbody></table></div>
         <details class="ff-preview"><summary>Preview${sheet.rows.length > 10 ? ' (first 10 rows)' : ''}</summary>${preview(sheet)}</details>`,
@@ -491,11 +492,11 @@ export function sheetsForm(sheets: NamedSheet[], b: Body | null): Raw {
   const fkList = fks.length
     ? html`<ul class="ff-fks">${fks.map(
         (f) => html`<li><input type="hidden" name="fkp_${f.from}_${f.col}" value="${String(f.to)}">${checkbox(fkName(f), String(f.to), fkChecked(f, b), html`${name(f.from, f.col)} → ${keyName(f.to)}`)}
-          ${f.missing ? html`<small class="help">${f.missing} row(s) have a value that ${keyName(f.to)} doesn't have.</small>` : ''}</li>`,
+          ${f.missing ? html`<small class="help">${tx('ash.missing', { n: f.missing, key: keyName(f.to) })}</small>` : ''}</li>`,
       )}</ul>`
-    : html`<p class="muted">No column matches another table's key. A column matches when it is named like the key column (dept_id), or like the other table and its key (department_id, department_code), with the same type.</p>`;
+    : html`<p class="muted">${tx('ash.no_column_matches_another_table')}</p>`;
   return html`${sections.map((x) => html`${x}<div class="u-spacer"></div>`)}
-    ${region('Foreign keys', html`<p class="muted u-mt0">Proposed where a column matches another table's primary key; ticked when every value is found. Forms get a select list for each foreign key.</p>
+    ${region(tx('ash.foreign_keys'), html`<p class="muted u-mt0">${tx('ash.fk_intro')}</p>
       ${fkList}
-      <div class="buttons"><button class="btn" name="action" value="preview">Update the proposals</button></div>`)}`;
+      <div class="buttons"><button class="btn" name="action" value="preview">${tx('ash.update_the_proposals')}</button></div>`)}`;
 }
