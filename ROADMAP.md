@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.83.0 (November 2026): component events for dynamic actions (grids, calendars, maps, trees), the SQL Workshop tools and the region and report settings in the eleven builder languages, and tidier builder spacing and REST API page.
+- **Current release:** 0.84.0 (November 2026): in-app notifications with a notification bell, navigation menu badges from SQL, live-updating badges and a timer dynamic-action event.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

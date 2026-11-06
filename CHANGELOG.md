@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-11-06
+
 ### Added
 - **In-app notifications** (migration 154; APEX: a notification bell in the header): Settings → User Interface →
   *Notification bell* gives signed-in users a bell with their unread count and newest notifications; opening one marks
