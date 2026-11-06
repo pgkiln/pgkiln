@@ -401,6 +401,10 @@ body.ide {
 .ide-head-actions { margin-left: auto; }
 .ide-tabs { display: flex; gap: 4px; margin-top: 12px; overflow-x: auto; scrollbar-width: thin; }
 .ide-page > .ide-tabs { margin-top: 0; border-bottom: 1px solid var(--border); }
+/* (sprint 163) regions and two-column rows stacked on a page always have a gap between them (pages used to rely on
+   an explicit .u-spacer, and the ones without one let a region touch the one above); not the regions side by side in a
+   grid, which have the grid's gap; :where() keeps it weaker than any page's own margin rule */
+:where(.ide-page :is(.region, .columns, :has(> .region)) + :is(.region, .columns, :has(> .region)):not(:is(.columns, .qs-columns, .vec-columns, .ws-cols, .wh-top, [class*="grid"]) > *)) { margin-top: 1rem; }
 .ide-tab {
   position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 8px 11px 9px; color: var(--muted); text-decoration: none;
   border-bottom: 2px solid transparent; border-radius: var(--radius-sm) var(--radius-sm) 0 0; white-space: nowrap; font-weight: 550;
@@ -1340,7 +1344,7 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cron-field-grid input { width: 100%; font-family: var(--mono, monospace); }
 .cron-preview { border-left: 3px solid var(--accent); padding: 0.4rem 0.8rem; margin: 0.6rem 0; background: var(--accent-soft); border-radius: 0 4px 4px 0; }
 .cron-runs { margin: 0.25rem 0 0; padding-left: 1.4rem; font-variant-numeric: tabular-nums; }
-.cron-error { color: var(--danger, #b42318); }
+.cron-error { color: var(--danger); }
 .cron-sql { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* (sprint 102) SQL Monitor: refresh controls, session actions, bars in Top SQL */
 .sm-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
@@ -1526,7 +1530,7 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mail-queue-filters .field { min-width: 0; flex: 1 1 160px; max-width: 260px; }
 .mail-queue-stats { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 .mail-queue-stats .stat b { font-size: 1.3rem; }
-.stat.stat-bad b { color: var(--danger, #b42318); }
+.stat.stat-bad b { color: var(--danger); }
 .inline-form { display: inline; margin: 0; }
 .mail-failures .buttons { flex-wrap: wrap; gap: 6px; }
 .mail-answer { overflow-wrap: anywhere; font-family: var(--font-mono, monospace); font-size: 0.85em; }
@@ -1648,3 +1652,22 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 
 /* (sprint 139, AP-6) OpenTelemetry */
 .otel-problem { color: var(--danger); overflow-wrap: anywhere; }
+
+/* (sprint 163) an application's REST API page: status pills under the intro, the New client form behind a button */
+.api-intro { max-width: 80ch; margin: 0 0 0.6rem; }
+.api-status { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; }
+.api-status li { display: inline-block; border: 1px solid var(--border); border-radius: 14px; padding: 3px 12px; font-size: 0.875rem; overflow-wrap: anywhere; }
+.api-status li.is-ok > span:first-child { color: var(--success); }
+.api-status li.is-bad { border-color: var(--danger); }
+.api-status li.is-bad > span:first-child { color: var(--danger); font-weight: 700; }
+.api-top { align-items: start; }
+.api-top form > .field + .field { margin-top: 0.9rem; }
+.api-sub { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; }
+.api-new > summary { list-style: none; display: inline-flex; }
+.api-new > summary::-webkit-details-marker { display: none; }
+.api-new[open] > summary { margin-bottom: 0.75rem; }
+.api-new-body { border-top: 1px solid var(--border); padding-top: 0.75rem; }
+.api-client-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.api-client-actions select { width: auto; min-height: 0; padding-block: 0.2rem; font-size: 0.8125rem; }
+.api-client-actions .inline-form { display: flex; gap: 6px; align-items: center; }
+.api-clients td.actions { text-align: end; }

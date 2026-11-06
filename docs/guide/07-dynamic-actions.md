@@ -47,6 +47,13 @@ your own from a static application file.
 | `page_unload` | The page is left (APEX: Page Unload); only quick actions in the browser finish | – |
 | `before_refresh` | A region is about to be refreshed by a `refresh_region` action (APEX: Before Refresh); a `cancel_event` or declined `confirm` keeps it as it is | Region ids or static ids |
 | `facets_change` | A faceted search or smart filters region's facets were applied (APEX: Facets Change); runs on the page that comes back with the new filters | The facets region's id or static id |
+| `grid_row_init` | A row was added to an editable grid by Add row or Duplicate (APEX: Row Initialization [Interactive Grid]); the condition sees the row's number among the new rows | The grid's id or static id |
+| `grid_save` | A grid's changes were saved (APEX: Save [Interactive Grid]); runs on the page that comes back | The grid's id or static id |
+| `calendar_date_select` | An empty day or hour of a calendar was clicked (APEX: Date Select); the condition sees `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`; a `cancel_event` keeps the Create link closed | The calendar's id or static id |
+| `calendar_view_change` | A calendar showed another view or period (APEX: View Change); the condition sees `month`, `week`, `day` or `list` | The calendar's id or static id |
+| `map_object_click` | A marker or shape of a map was clicked (APEX: Map Object Clicked); the condition sees the row's `id` column, else its title | The map's id or static id |
+| `map_change` | A map was moved or zoomed by the user (APEX: Map Changed); the condition sees the zoom level | The map's id or static id |
+| `tree_selection_change` | A tree node was clicked (APEX: Selection Change [Tree]); the condition sees its `id`, the node is marked; a `cancel_event` keeps its link closed | The tree's id or static id |
 
 **The actions of one event and trigger run one after the other, in sequence order** (APEX: the true
 actions of a dynamic action), each waiting for the one before (a server action for its answer). A
@@ -57,6 +64,25 @@ actions of a dynamic action), each waiting for the one before (a server action f
 | 10 | `click` on `DELETE_ALL` | `confirm` | *Delete every selected row?* |
 | 20 | `click` on `DELETE_ALL` | `execute_sql` | `delete from sales.order_line where id = any(string_to_array(:P5_SELECTED, ':')::int[])` |
 | 30 | `click` on `DELETE_ALL` | `refresh_region` | the order lines |
+
+### Component events
+
+The last seven events above belong to a component region (sprint 161): the trigger is that region's
+id or static id. Their value (the date, view, node id, map object id or zoom level) is what the
+client-side condition compares, and an [Execute JavaScript](#execute-javascript) function gets it as
+`value`, with the component's element (the grid row, calendar cell, map or tree node) as `element`.
+Two of them can be cancelled: a `cancel_event` whose condition holds keeps the calendar's Create
+link or the tree node's link closed, wherever it stands in the sequence; like every `cancel_event`
+it also stops the actions after it, so put it last.
+
+A **`set_value` without SQL** on a component event puts the event's value into its affected
+items, in the browser. A tree of departments that filters an employee report, without JavaScript:
+
+| Sequence | Event | Action | Affected / items to submit |
+|---|---|---|---|
+| 10 | `tree_selection_change` on the departments tree | `set_value` (no SQL) | `P5_DEPTNO` |
+| 20 | `tree_selection_change` on the departments tree | `refresh_region` | the employees report; items to submit `P5_DEPTNO` |
+| 30 | `tree_selection_change` on the departments tree | `cancel_event` | – (last, as it stops the actions after it; the node's link stays closed) |
 
 ## Actions
 
@@ -185,6 +211,7 @@ The function gets one argument with the action's context:
 | `elements` | The affected items' fields and the affected region, as DOM elements |
 | `region` | The affected region's element, or `null` |
 | `message` | The action's message |
+| `element` | A [component event](#component-events)'s element (grid row, calendar cell, map, tree node), else `null` |
 
 It may return a promise; an exception is shown as an error message. Besides `actions.register`,
 `window.pgkiln` offers `getValue(item)`, `setValue(item, value)`, `showSuccess(message)`,

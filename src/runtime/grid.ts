@@ -831,5 +831,6 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
   if (errors.length) throw new Error(errors.join(' '));
   const t = ctx.locale.t;
   const parts = [inserted && t('grid.added', { n: inserted }), updated && t('grid.updated', { n: updated }), deleted && t('grid.deleted', { n: deleted })].filter(Boolean);
+  (ctx.savedGrids ??= []).push(r.id);
   return p.success_message ?? (parts.length ? t('grid.saved_parts', { parts: parts.join(', ') }) : t('grid.no_changes'));
 }

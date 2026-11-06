@@ -229,7 +229,8 @@ export async function renderCalendar(ctx: PageContext, r: Region): Promise<Raw> 
     return html`<a class="cal-add" ${linkAttrs(ctx, create.page, items)} aria-label="${label}" title="${label}">+</a>`;
   };
   const cellAttrs = (day: Date, hour: number | null) =>
-    raw(`${movable ? ` data-drop="${iso(day)}${hour === null ? '' : `T${pad(hour)}:00`}"` : ''}${createOk ? ' data-add' : ''}`);
+    // (161) data-date: what a calendar_date_select dynamic action's condition sees
+    raw(`${movable ? ` data-drop="${iso(day)}${hour === null ? '' : `T${pad(hour)}:00`}"` : ''}${createOk ? ' data-add' : ''} data-date="${iso(day)}${hour === null ? '' : `T${pad(hour)}:00`}"`);
   const on = (day: string) => events.filter((ev) => ev.start <= day && ev.end >= day);
   const go = (v: CalendarView, day: Date | null) =>
     regionUrl(ctx, r, (p) => {
@@ -342,7 +343,7 @@ export async function renderCalendar(ctx: PageContext, r: Region): Promise<Raw> 
         (v) => html`<a class="btn${v === view ? ' active' : ''}" href="${go(v, anchor)}"${v === view ? raw(' aria-current="page"') : ''}>${t(`calendar.view_${v}`)}</a>`,
       )}</nav>`
     : '';
-  return html`<div class="calendar cal-view-${view}"${movable ? raw(` data-calendar="${r.id}"`) : ''}>
+  return html`<div class="calendar cal-view-${view}" data-view="${view}"${movable ? raw(` data-calendar="${r.id}"`) : ''}>
     <div class="cal-toolbar">
       <div class="buttons">${nav('‹', prev, prevLabel)}${nav(t('calendar.today'), null)}${nav('›', next, nextLabel)}</div>
       <h3 class="cal-title" aria-live="polite">${title}</h3>

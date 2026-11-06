@@ -443,6 +443,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (flash) ctx.messages.push(flash);
     const flashError = takeFlash(ctx.session, '__FLASH_ERROR');
     if (flashError) ctx.errors.page.push(flashError);
+    const saved = takeFlash(ctx.session, '__GRID_SAVED');
+    if (typeof saved === 'string') ctx.savedGrids = saved.split(',').map(Number).filter(Number.isInteger);
     // Actions → Download CSV / Excel / PDF: r<region id>_csv=1, _xlsx=1 or _pdf=1
     const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|xlsx|pdf)$/.test(k));
     // a document template: ?doc=NAME (see documents.ts)
@@ -629,6 +631,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return reply.headers(downloadHeaders(ctx.download)).send(ctx.download.content);
     }
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
+    // (161) the page that comes back runs the saved grids' grid_save dynamic actions
+    if (ctx.savedGrids?.length && !ctx.dialog) ctx.session.state.__GRID_SAVED = ctx.savedGrids.join(',');
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx, ctx.closeDialog));
     // (sprint 54) a grid's Save comes back to the grid's search, page, sort and view
