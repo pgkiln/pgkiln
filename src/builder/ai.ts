@@ -10,6 +10,7 @@ import { encryptSecret, secretKeyConfigured } from '../secrets.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Workspace utilities → AI services (administrators): the AI services of
 // this installation (Claude, OpenAI, Gemini or an OpenAI-compatible endpoint,
@@ -18,8 +19,8 @@ import { back, BASE, csrf, developer, flash, input, region, select, send, shell,
 // usage log. Applications → Activity → AI usage (developers): what an application may use and what it used.
 // API keys are encrypted (src/secrets.ts) and never sent back to the browser.
 
-const PROVIDERS: [string, string][] = [['anthropic', 'Claude (Anthropic)'], ['openai', 'OpenAI'], ['gemini', 'Gemini (Google, OpenAI-compatible endpoint)'], ['openai_compatible', 'OpenAI-compatible (Ollama, vLLM, Azure OpenAI, a gateway)']];
-const EFFORTS: [string, string][] = [['', 'Model default'], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'], ['max', 'max']];
+const PROVIDERS = (): [string, string][] => [['anthropic', tx('aisv.claude_anthropic')], ['openai', tx('aisv.openai')], ['gemini', tx('aisv.gemini_google_openai_compatible_endpoint')], ['openai_compatible', tx('aisv.openai_compatible_ollama_vllm_azure')]];
+const EFFORTS = (): [string, string][] => [['', tx('aisv.model_default')], ['low', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'xhigh'], ['max', 'max']];
 const TEST_RESULT = '__AITEST';
 
 const check = (name: string, label: string, on: boolean, help?: string) =>
@@ -32,25 +33,25 @@ const KEY_TEXT = { stored: 'stored (encrypted)', env: 'server default', missing:
 function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnType<typeof csrf>, isNew: boolean) {
   const source = s.provider ? keySource(s as AiService) : null;
   return html`<form method="post" action="${action}">${csrfField}
-    <fieldset class="prop-group"><legend>Service</legend><div class="form-grid">
-      ${isNew ? input('name', 'Name', '', { required: true, placeholder: 'e.g. CLAUDE', help: 'Upper case letters, digits and _. Processes refer to the service by this name.' }) : ''}
-      ${input('description', 'Description', s.description)}
-      ${select('provider', 'Provider', s.provider ?? 'anthropic', PROVIDERS, 'Prompts, and the item values they contain, are sent to this provider. Gemini and OpenAI-compatible endpoints speak OpenAI\'s Chat Completions.')}
-      ${input('model', 'Model', s.model ?? (isNew ? DEFAULT_CLAUDE_MODEL : ''), { required: true, help: `Exactly as the provider names it, e.g. ${DEFAULT_CLAUDE_MODEL} (Claude) or the OpenAI model your account uses. pgkiln never changes it.` })}
-      ${select('effort', 'Effort (Claude)', isNew ? 'medium' : s.effort ?? '', EFFORTS, 'How deeply Claude thinks (thinking is always on for current Claude models): lower is faster and cheaper; high or more for hard tasks. Model default: medium for Claude Opus 5.5.')}
-      ${input('max_tokens', 'Maximum output tokens', s.max_tokens ?? 4000, { type: 'number', help: 'Per request (1 – 128000); a process may ask for fewer.' })}
-      ${input('timeout_s', 'Time limit (seconds)', s.timeout_s ?? 120, { type: 'number', help: '5 – 600. Pages wait for the answer.' })}
-      ${input('base_url', 'Base URL', s.base_url, { placeholder: 'empty: the provider\'s own API', help: `A gateway or proxy that speaks the provider's API. Administrators only. Gemini: empty is ${GEMINI_BASE_URL}. OpenAI-compatible: required, e.g. http://localhost:11434/v1 (Ollama), https://<resource>.openai.azure.com/openai/v1/ (Azure OpenAI).` })}
+    <fieldset class="prop-group"><legend>${tx('aisv.service')}</legend><div class="form-grid">
+      ${isNew ? input('name', tx('aisv.name'), '', { required: true, placeholder: tx('aisv.e_g_claude'), help: tx('aisv.upper_case_letters_digits_and') }) : ''}
+      ${input('description', tx('aisv.description'), s.description)}
+      ${select('provider', tx('aisv.provider'), s.provider ?? 'anthropic', PROVIDERS(), tx('aisv.prompts_and_the_item_values'))}
+      ${input('model', tx('aisv.model'), s.model ?? (isNew ? DEFAULT_CLAUDE_MODEL : ''), { required: true, help: tx('aisv.model_help', { model: DEFAULT_CLAUDE_MODEL }) })}
+      ${select('effort', tx('aisv.effort_claude'), isNew ? 'medium' : s.effort ?? '', EFFORTS(), tx('aisv.how_deeply_claude_thinks_thinking'))}
+      ${input('max_tokens', tx('aisv.maximum_output_tokens'), s.max_tokens ?? 4000, { type: 'number', help: tx('aisv.per_request_1_128000_a') })}
+      ${input('timeout_s', tx('aisv.time_limit_seconds'), s.timeout_s ?? 120, { type: 'number', help: tx('aisv.5_600_pages_wait_for') })}
+      ${input('base_url', tx('aisv.base_url'), s.base_url, { placeholder: tx('aisv.empty_the_provider_s_own'), help: `A gateway or proxy that speaks the provider's API. Administrators only. Gemini: empty is ${GEMINI_BASE_URL}. OpenAI-compatible: required, e.g. http://localhost:11434/v1 (Ollama), https://<resource>.openai.azure.com/openai/v1/ (Azure OpenAI).` })}
     </div>
-    ${check('refusal_fallback', 'Refusal fallbacks (Claude)', s.refusal_fallback !== false, 'When Claude declines a request for safety reasons, Anthropic re-runs it on its recommended fallback model. The usage log shows the model that answered.')}
-    ${check('enabled', 'Enabled', s.enabled !== false)}
+    ${check('refusal_fallback', tx('aisv.refusal_fallbacks_claude'), s.refusal_fallback !== false, tx('aisv.when_claude_declines_a_request'))}
+    ${check('enabled', tx('aisv.enabled'), s.enabled !== false)}
     </fieldset>
-    <fieldset class="prop-group"><legend>API key</legend>
-      ${input('api_key', 'API key', '', { type: 'password', auto: 'new-password', help: source === 'stored' ? 'A key is stored (encrypted). It is never shown; type a new one to replace it.' : `Empty: the server's ${envKeyName((s.provider as ProviderName) ?? 'anthropic')} is used (when set)${s.provider === 'openai_compatible' ? '; an endpoint without keys (Ollama) needs none' : ''}.` })}
-      ${source === 'stored' ? check('remove_key', 'Remove the stored key (use the server default)', false) : ''}
-      ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">The server has no <code>PGKILN_SECRET_KEY</code>: API keys can't be stored until it is set (the server's environment variables still work).</div>`}
+    <fieldset class="prop-group"><legend>${tx('aisv.api_key')}</legend>
+      ${input('api_key', tx('aisv.api_key'), '', { type: 'password', auto: 'new-password', help: source === 'stored' ? 'A key is stored (encrypted). It is never shown; type a new one to replace it.' : `Empty: the server's ${envKeyName((s.provider as ProviderName) ?? 'anthropic')} is used (when set)${s.provider === 'openai_compatible' ? '; an endpoint without keys (Ollama) needs none' : ''}.` })}
+      ${source === 'stored' ? check('remove_key', tx('aisv.remove_the_stored_key_use'), false) : ''}
+      ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">${tx.code('aisv.the_server_has_no_pgkiln')}</div>`}
     </fieldset>
-    <div class="buttons"><button class="btn btn-hot">${isNew ? 'Add service' : 'Save'}</button></div>
+    <div class="buttons"><button class="btn btn-hot">${isNew ? tx('aisv.add_service') : tx('aisv.save')}</button></div>
   </form>`;
 }
 
@@ -58,33 +59,33 @@ function serviceForm(s: Partial<AiService>, action: string, csrfField: ReturnTyp
 function formValues(b: Record<string, string | undefined>, hasServer = false) {
   const provider: ProviderName = (['openai', 'gemini', 'openai_compatible'] as const).find((p) => p === b.provider) ?? 'anthropic';
   const model = (b.model ?? '').trim();
-  if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(model)) throw new Error('The model is a name like claude-opus-5-5 (letters, digits and . _ : / @ -).');
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,199}$/.test(model)) throw new Error(tx('aisv.the_model_is_a_name'));
   const maxTokens = Number(b.max_tokens || 4000);
-  if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 128000) throw new Error('Maximum output tokens: 1 to 128000.');
+  if (!Number.isInteger(maxTokens) || maxTokens < 1 || maxTokens > 128000) throw new Error(tx('aisv.maximum_output_tokens_1_to'));
   const timeout = Number(b.timeout_s || 120);
-  if (!Number.isInteger(timeout) || timeout < 5 || timeout > 600) throw new Error('Time limit: 5 to 600 seconds.');
+  if (!Number.isInteger(timeout) || timeout < 5 || timeout > 600) throw new Error(tx('aisv.time_limit_5_to_600'));
   const baseUrl = (b.base_url ?? '').trim() || null;
-  if (baseUrl && (!/^https?:\/\/[^\s]+$/i.test(baseUrl) || baseUrl.length > 500)) throw new Error('The base URL starts with http:// or https://.');
-  if (!baseUrl && provider === 'openai_compatible' && !hasServer) throw new Error('An OpenAI-compatible service needs a base URL (e.g. http://localhost:11434/v1 for Ollama).');
+  if (baseUrl && (!/^https?:\/\/[^\s]+$/i.test(baseUrl) || baseUrl.length > 500)) throw new Error(tx('aisv.the_base_url_starts_with'));
+  if (!baseUrl && provider === 'openai_compatible' && !hasServer) throw new Error(tx('aisv.an_openai_compatible_service_needs_2'));
   const effort = ['low', 'medium', 'high', 'xhigh', 'max'].includes(b.effort ?? '') ? b.effort! : null;
   return [(b.description ?? '').trim() || null, provider, model, provider === 'anthropic' ? effort : null, b.refusal_fallback === 'true', maxTokens, timeout, baseUrl, b.enabled === 'true'];
 }
 const COLUMNS = 'description, provider, model, effort, refusal_fallback, max_tokens, timeout_s, base_url, enabled';
 
 const usageTable = (rows: any[], withApp: boolean) => html`<div class="table-wrap"><table class="report report-reflow">
-  <thead><tr><th>When (UTC)</th>${withApp ? html`<th>Application</th>` : ''}<th class="num">Page</th><th>User</th><th>Service</th><th>Model</th><th>Source</th><th class="num">Input</th><th class="num">Output</th><th class="num">ms</th><th>Status</th></tr></thead>
+  <thead><tr><th>${tx('aisv.when_utc')}</th>${withApp ? html`<th>${tx('aisv.application')}</th>` : ''}<th class="num">${tx('aisv.page')}</th><th>${tx('aisv.user')}</th><th>${tx('aisv.service')}</th><th>${tx('aisv.model')}</th><th>${tx('aisv.source')}</th><th class="num">${tx('aisv.input')}</th><th class="num">${tx('aisv.output')}</th><th class="num">ms</th><th>${tx('aisv.status')}</th></tr></thead>
   <tbody>${rows.length ? rows.map((u) => html`<tr>
-    <td data-label="When">${when(u.at)}</td>${withApp ? html`<td data-label="Application">${u.app ?? html`<span class="muted">builder</span>`}</td>` : ''}
-    <td class="num" data-label="Page">${u.page_no ?? ''}</td><td data-label="User">${u.username ?? ''}</td><td data-label="Service">${u.service}</td>
-    <td data-label="Model">${u.model}</td><td data-label="Source">${u.source}</td>
-    <td class="num" data-label="Input">${u.input_tokens}</td><td class="num" data-label="Output">${u.output_tokens}</td><td class="num" data-label="ms">${u.duration_ms}</td>
-    <td data-label="Status"><span class="tag${u.status === 'ok' ? ' tag-ok' : ' tag-error'}">${u.status}</span>${u.message ? html` <span class="muted">${u.message}</span>` : ''}</td></tr>`)
-    : html`<tr><td colspan="${withApp ? 11 : 10}" class="empty">No AI requests yet.</td></tr>`}</tbody></table></div>`;
+    <td data-label="${tx('aisv.when')}">${when(u.at)}</td>${withApp ? html`<td data-label="${tx('aisv.application')}">${u.app ?? html`<span class="muted">builder</span>`}</td>` : ''}
+    <td class="num" data-label="${tx('aisv.page')}">${u.page_no ?? ''}</td><td data-label="${tx('aisv.user')}">${u.username ?? ''}</td><td data-label="${tx('aisv.service')}">${u.service}</td>
+    <td data-label="${tx('aisv.model')}">${u.model}</td><td data-label="${tx('aisv.source')}">${u.source}</td>
+    <td class="num" data-label="${tx('aisv.input')}">${u.input_tokens}</td><td class="num" data-label="${tx('aisv.output')}">${u.output_tokens}</td><td class="num" data-label="ms">${u.duration_ms}</td>
+    <td data-label="${tx('aisv.status')}"><span class="tag${u.status === 'ok' ? ' tag-ok' : ' tag-error'}">${u.status}</span>${u.message ? html` <span class="muted">${u.message}</span>` : ''}</td></tr>`)
+    : html`<tr><td colspan="${withApp ? 11 : 10}" class="empty">${tx('aisv.no_ai_requests_yet')}</td></tr>`}</tbody></table></div>`;
 
 async function adminOnly(s: Session, reply: any, title: string) {
   if (await isAdmin(s.username)) return true;
-  const main = html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">Only administrators configure AI services.</div>`;
-  await send(reply.code(403), s, shell(s, title, [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], [title]], main));
+  const main = html`<h1 class="u-mb1">${title}</h1><div class="alert alert-error" role="alert">${tx('aisv.only_administrators_configure_ai_services')}</div>`;
+  await send(reply.code(403), s, shell(s, title, [[tx('aisv.app_builder'), BASE], [tx('aisv.workspace_utilities'), `${BASE}/utilities`], [title]], main));
   return false;
 }
 
@@ -100,27 +101,27 @@ export async function aiRoutes(app: FastifyInstance) {
       group by 1, 2 order by 1 nulls first, 2`)).rows;
     const recent = (await owner.query(`select u.*, a.alias as app from meta.ai_usage u left join meta.app a on a.id = u.app_id order by u.id desc limit 100`)).rows;
     const main = html`
-      <div class="title-row"><h1>AI services</h1></div>
-      <p class="muted u-mt0">Large language models the applications of this installation may use (processes and dynamic actions <b>Generate text with AI</b>, and <code>meta.ai_generate()</code> from SQL). Prompts, including the item values they contain, are sent to the chosen provider. Allow each application on the service's page.</p>
+      <div class="title-row"><h1>${tx('aisv.ai_services')}</h1></div>
+      <p class="muted u-mt0">${tx.rich('aisv.intro', { process: html`<b>${tx('aisv.generate_text_with_ai')}</b>`, fn: html`<code>meta.ai_generate()</code>` })}</p>
       <div class="columns wide-left">
-        ${region('Services', html`<div class="table-wrap"><table class="report report-reflow">
-          <thead><tr><th>Service</th><th>Provider</th><th>Model</th><th>API key</th><th>Applications</th><th>Status</th></tr></thead>
+        ${region(tx('aisv.services'), html`<div class="table-wrap"><table class="report report-reflow">
+          <thead><tr><th>${tx('aisv.service')}</th><th>${tx('aisv.provider')}</th><th>${tx('aisv.model')}</th><th>${tx('aisv.api_key')}</th><th>${tx('aisv.applications')}</th><th>${tx('aisv.status')}</th></tr></thead>
           <tbody>${services.length ? services.map((x) => html`<tr>
-            <td data-label="Service"><a href="${BASE}/ai/${x.id}">${x.name}</a>${x.description ? html` <span class="muted">${x.description}</span>` : ''}</td>
-            <td data-label="Provider">${providerLabel(x.provider)}</td>
-            <td data-label="Model">${x.model}${x.effort ? html` <span class="muted">(${x.effort})</span>` : ''}</td>
-            <td data-label="API key">${KEY_TEXT[keySource(x)]}</td>
-            <td data-label="Applications">${x.apps ?? html`<span class="muted">none</span>`}</td>
-            <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
-            : html`<tr><td colspan="6" class="empty">No AI services yet.</td></tr>`}</tbody></table></div>`)}
-        ${region('Add service', serviceForm({}, `${BASE}/ai`, csrf(s), true))}
+            <td data-label="${tx('aisv.service')}"><a href="${BASE}/ai/${x.id}">${x.name}</a>${x.description ? html` <span class="muted">${x.description}</span>` : ''}</td>
+            <td data-label="${tx('aisv.provider')}">${providerLabel(x.provider)}</td>
+            <td data-label="${tx('aisv.model')}">${x.model}${x.effort ? html` <span class="muted">(${x.effort})</span>` : ''}</td>
+            <td data-label="${tx('aisv.api_key')}">${KEY_TEXT[keySource(x)]}</td>
+            <td data-label="${tx('aisv.applications')}">${x.apps ?? html`<span class="muted">none</span>`}</td>
+            <td data-label="${tx('aisv.status')}">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
+            : html`<tr><td colspan="6" class="empty">${tx('aisv.no_ai_services_yet')}</td></tr>`}</tbody></table></div>`)}
+        ${region(tx('aisv.add_service'), serviceForm({}, `${BASE}/ai`, csrf(s), true))}
       </div>
-      ${region('Usage (30 days)', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Application</th><th>Service</th><th class="num">Requests</th><th class="num">Input tokens</th><th class="num">Output tokens</th><th class="num">Not ok</th></tr></thead>
-        <tbody>${summary.length ? summary.map((r) => html`<tr><td data-label="Application">${r.app ?? html`<span class="muted">builder tests</span>`}</td><td data-label="Service">${r.service}</td><td class="num" data-label="Requests">${r.requests}</td>
-          <td class="num" data-label="Input tokens">${r.input}</td><td class="num" data-label="Output tokens">${r.output}</td><td class="num" data-label="Not ok">${r.problems}</td></tr>`)
-          : html`<tr><td colspan="6" class="empty">No AI requests in the last 30 days.</td></tr>`}</tbody></table></div>`)}
-      ${region('Recent requests', html`<p class="muted u-mt0">Tokens, model, duration and status of each call. Prompts and answers are never logged (an application's debug messages at level 9 show them).</p>${usageTable(recent, true)}`)}`;
-    return send(reply, s, shell(s, 'AI services', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['AI services']], main));
+      ${region(tx('aisv.usage_30_days'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('aisv.application')}</th><th>${tx('aisv.service')}</th><th class="num">${tx('aisv.requests')}</th><th class="num">${tx('aisv.input_tokens')}</th><th class="num">${tx('aisv.output_tokens')}</th><th class="num">${tx('aisv.not_ok')}</th></tr></thead>
+        <tbody>${summary.length ? summary.map((r) => html`<tr><td data-label="${tx('aisv.application')}">${r.app ?? html`<span class="muted">${tx('aisv.builder_tests')}</span>`}</td><td data-label="${tx('aisv.service')}">${r.service}</td><td class="num" data-label="${tx('aisv.requests')}">${r.requests}</td>
+          <td class="num" data-label="${tx('aisv.input_tokens')}">${r.input}</td><td class="num" data-label="${tx('aisv.output_tokens')}">${r.output}</td><td class="num" data-label="${tx('aisv.not_ok')}">${r.problems}</td></tr>`)
+          : html`<tr><td colspan="6" class="empty">${tx('aisv.no_ai_requests_in_the')}</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('aisv.recent_requests'), html`<p class="muted u-mt0">${tx('aisv.tokens_model_duration_and_status')}</p>${usageTable(recent, true)}`)}`;
+    return send(reply, s, shell(s, tx('aisv.ai_services'), [[tx('aisv.app_builder'), BASE], [tx('aisv.workspace_utilities'), `${BASE}/utilities`], [tx('aisv.ai_services')]], main));
   });
 
   app.post(`${BASE}/ai`, async (req: Req, reply) => {
@@ -129,10 +130,10 @@ export async function aiRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       const name = (b.name ?? '').trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(name)) throw new Error('The name is upper case letters, digits and _ (e.g. CLAUDE).');
+      if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(name)) throw new Error(tx('aisv.the_name_is_upper_case'));
       const key = b.api_key ? encryptSecret(b.api_key) : null;
       const r = await owner.one(`insert into meta.ai_service (name, ${COLUMNS}, api_key_enc) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`, [name, ...formValues(b), key]);
-      flash(s, 'AI service added. Allow applications to use it below, and test it.');
+      flash(s, tx('aisv.ai_service_added_allow_applications'));
       return back(reply, s, `${BASE}/ai/${r.id}`);
     } catch (e) {
       flash(s, (e as Error).message.includes('ai_service_name_key') ? 'A service with this name exists already.' : (e as Error).message, 'error');
@@ -163,33 +164,33 @@ export async function aiRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1 class="ai-name">${x.name}</h1></div>
       <div class="columns wide-left">
-        ${region('Settings', html`${serviceForm(view, `${BASE}/ai/${x.id}`, csrf(s), false)}
+        ${region(tx('aisv.settings'), html`${serviceForm(view, `${BASE}/ai/${x.id}`, csrf(s), false)}
           <form method="post" action="${BASE}/ai/${x.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="Delete AI service ${x.name}? Processes that use it fail until another service gets its name.">Delete service</button></form>`)}
-        ${region('Remote server', html`<form method="post" action="${BASE}/ai/${x.id}/server">${csrf(s)}
-            <p class="muted u-mt0">Instead of the base URL: a remote server's URL (Workspace utilities → Remote servers) plus a path, so moving the endpoint changes one value. The API key is sent there: choose a server whose workspace administrators you trust with it.</p>
-            <div class="form-grid">${select('server_id', 'Remote server', x.server_id ? String(x.server_id) : '', [['', 'none: the base URL above'], ...servers.map((r): [string, string] => [String(r.id), `${r.static_id} (${r.workspace})`])])}
-              ${input('server_path', 'Path', x.server_path ?? '', { placeholder: '/v1', help: 'After the server\'s base URL, e.g. /v1; empty: the base URL itself.' })}</div>
-            <div class="buttons"><button class="btn">Save</button></div></form>`)}
-        ${region('Test', html`
-          <p class="muted u-mt0">Sends a prompt to the service (counted in the usage log as a builder test).</p>
+            <button class="btn btn-danger" data-confirm="${tx('aisv.delete_confirm', { name: x.name })}">${tx('aisv.delete_service')}</button></form>`)}
+        ${region(tx('aisv.remote_server'), html`<form method="post" action="${BASE}/ai/${x.id}/server">${csrf(s)}
+            <p class="muted u-mt0">${tx('aisv.instead_of_the_base_url')}</p>
+            <div class="form-grid">${select('server_id', tx('aisv.remote_server'), x.server_id ? String(x.server_id) : '', [['', tx('aisv.none_the_base_url_above')], ...servers.map((r): [string, string] => [String(r.id), `${r.static_id} (${r.workspace})`])])}
+              ${input('server_path', tx('aisv.path'), x.server_path ?? '', { placeholder: '/v1', help: tx('aisv.after_the_server_s_base') })}</div>
+            <div class="buttons"><button class="btn">${tx('aisv.save')}</button></div></form>`)}
+        ${region(tx('aisv.test'), html`
+          <p class="muted u-mt0">${tx('aisv.sends_a_prompt_to_the')}</p>
           <form method="post" action="${BASE}/ai/${x.id}/test">${csrf(s)}
-            <div class="field"><label class="label" for="ai_test_prompt">Prompt</label><textarea id="ai_test_prompt" name="prompt" rows="3" maxlength="4000">Reply with one short sentence to confirm you can read this.</textarea></div>
-            <div class="buttons"><button class="btn">${icon('play')} Test</button></div></form>
+            <div class="field"><label class="label" for="ai_test_prompt">${tx('aisv.prompt')}</label><textarea id="ai_test_prompt" name="prompt" rows="3" maxlength="4000">${tx('aisv.test_prompt')}</textarea></div>
+            <div class="buttons"><button class="btn">${icon('play')} ${tx('aisv.test')}</button></div></form>
           ${test ? html`<div class="alert ${test.ok ? 'alert-success' : 'alert-error'}" role="status">${test.meta ?? ''}</div><pre class="source">${test.text}</pre>` : ''}`)}
       </div>
-      ${region('Applications', html`<p class="muted u-mt0">Which applications may use this service, with optional limits per day (UTC). Empty limits: no limit. Requests over a limit fail with a message and are logged as <i>limited</i>.</p>
+      ${region(tx('aisv.applications'), html`<p class="muted u-mt0">${tx.rich('aisv.apps_intro', { limited: html`<i>${tx('aisv.limited')}</i>` })}</p>
         <form method="post" action="${BASE}/ai/${x.id}/apps">${csrf(s)}
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Application</th><th>May use</th><th>Requests per day</th><th>Tokens per day</th></tr></thead>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('aisv.application')}</th><th>${tx('aisv.may_use')}</th><th>${tx('aisv.requests_per_day')}</th><th>${tx('aisv.tokens_per_day')}</th></tr></thead>
         <tbody>${apps.length ? apps.map((a) => html`<tr>
-          <td data-label="Application">${a.name} <span class="muted">${a.alias}</span></td>
-          <td data-label="May use"><label class="check"><input type="checkbox" name="allow" value="${a.id}"${a.allowed ? raw(' checked') : ''}> allowed</label></td>
-          <td data-label="Requests per day"><input type="number" min="0" name="req_${a.id}" value="${a.max_requests ?? ''}" aria-label="Requests per day for ${a.alias}"></td>
-          <td data-label="Tokens per day"><input type="number" min="0" name="tok_${a.id}" value="${a.max_tokens ?? ''}" aria-label="Tokens per day for ${a.alias}"></td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No applications.</td></tr>`}</tbody></table></div>
-        <div class="buttons"><button class="btn btn-hot">Save access</button></div></form>`)}
-      ${region('Recent requests', usageTable(recent, true))}`;
-    return send(reply, s, shell(s, x.name, [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['AI services', `${BASE}/ai`], [x.name]], main));
+          <td data-label="${tx('aisv.application')}">${a.name} <span class="muted">${a.alias}</span></td>
+          <td data-label="${tx('aisv.may_use')}"><label class="check"><input type="checkbox" name="allow" value="${a.id}"${a.allowed ? raw(' checked') : ''}> allowed</label></td>
+          <td data-label="${tx('aisv.requests_per_day')}"><input type="number" min="0" name="req_${a.id}" value="${a.max_requests ?? ''}" aria-label="${tx('aisv.aria_req', { app: a.alias })}"></td>
+          <td data-label="${tx('aisv.tokens_per_day')}"><input type="number" min="0" name="tok_${a.id}" value="${a.max_tokens ?? ''}" aria-label="${tx('aisv.aria_tok', { app: a.alias })}"></td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('aisv.no_applications')}</td></tr>`}</tbody></table></div>
+        <div class="buttons"><button class="btn btn-hot">${tx('aisv.save_access')}</button></div></form>`)}
+      ${region(tx('aisv.recent_requests'), usageTable(recent, true))}`;
+    return send(reply, s, shell(s, x.name, [[tx('aisv.app_builder'), BASE], [tx('aisv.workspace_utilities'), `${BASE}/utilities`], [tx('aisv.ai_services'), `${BASE}/ai`], [x.name]], main));
   });
 
   app.post(`${BASE}/ai/:id(^\\d+$)`, async (req: Req, reply) => {
@@ -204,7 +205,7 @@ export async function aiRoutes(app: FastifyInstance) {
           where id = $1`,
         [req.params.id, ...formValues(b, !!(await owner.one('select 1 as ok from meta.ai_service where id = $1 and server_id is not null', [req.params.id]))), key, b.remove_key === 'true'],
       );
-      flash(s, r.rowCount ? 'AI service saved.' : 'Not found.', r.rowCount ? 'ok' : 'error');
+      flash(s, r.rowCount ? 'AI service saved.' : tx('aisv.not_found'), r.rowCount ? 'ok' : 'error');
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -219,12 +220,12 @@ export async function aiRoutes(app: FastifyInstance) {
     try {
       const serverId = /^\d{1,9}$/.test(String(b.server_id ?? '')) ? Number(b.server_id) : null;
       const path = String(b.server_path ?? '').trim() || null;
-      if (path && (!/^\/[^\s]*$/.test(path) || path.length > 500)) throw new Error('The path starts with /, without spaces, e.g. /v1.');
-      if (serverId && !(await owner.one('select 1 as ok from meta.remote_server where id = $1', [serverId]))) throw new Error('No such remote server.');
+      if (path && (!/^\/[^\s]*$/.test(path) || path.length > 500)) throw new Error(tx('aisv.the_path_starts_with_without'));
+      if (serverId && !(await owner.one('select 1 as ok from meta.remote_server where id = $1', [serverId]))) throw new Error(tx('aisv.no_such_remote_server'));
       const r = await owner.query('update meta.ai_service set server_id = $2, server_path = $3, updated_at = now() where id = $1', [req.params.id, serverId, serverId ? path : null]);
-      flash(s, r.rowCount ? (serverId ? 'The service now calls its remote server: test it.' : 'The service calls its base URL again.') : 'Not found.', r.rowCount ? 'ok' : 'error');
+      flash(s, r.rowCount ? (serverId ? tx('aisv.the_service_now_calls_its') : tx('aisv.the_service_calls_its_base')) : tx('aisv.not_found'), r.rowCount ? 'ok' : 'error');
     } catch (e) {
-      flash(s, (e as Error).message.includes('ai_service_compatible_url') ? 'An OpenAI-compatible service needs a base URL or a remote server.' : (e as Error).message, 'error');
+      flash(s, (e as Error).message.includes('ai_service_compatible_url') ? tx('aisv.an_openai_compatible_service_needs') : (e as Error).message, 'error');
     }
     return back(reply, s, `${BASE}/ai/${req.params.id}`);
   });
@@ -238,7 +239,7 @@ export async function aiRoutes(app: FastifyInstance) {
       const t = String(v ?? '').trim();
       if (!t) return null;
       const n = Number(t);
-      if (!Number.isInteger(n) || n < 0) throw new Error('Limits are whole numbers of 0 or more (empty: no limit).');
+      if (!Number.isInteger(n) || n < 0) throw new Error(tx('aisv.limits_are_whole_numbers_of'));
       return n;
     };
     try {
@@ -252,7 +253,7 @@ export async function aiRoutes(app: FastifyInstance) {
             [id, req.params.id, limit(b[`req_${id}`]), limit(b[`tok_${id}`])],
           );
       });
-      flash(s, 'Access saved.');
+      flash(s, tx('aisv.access_saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }
@@ -269,9 +270,9 @@ export async function aiRoutes(app: FastifyInstance) {
       const prompt = String(req.body?.prompt ?? '').slice(0, 4000) || 'Reply with one short sentence.';
       const r = await generate(x.name, { prompt, maxTokens: 1000 }, { appId: null, user: s.username, source: 'builder' });
       const text = r.text.length > 4000 ? `${r.text.slice(0, 4000)}…` : r.text;
-      result = { id: x.id, ok: true, text, meta: `Answered by ${r.model}: ${r.inputTokens} input and ${r.outputTokens} output tokens.` };
+      result = { id: x.id, ok: true, text, meta: tx('aisv.answered_by', { model: r.model, input: r.inputTokens, output: r.outputTokens }) };
     } catch (e) {
-      result = { id: x.id, ok: false, text: '', meta: e instanceof AiError ? e.message : 'The test failed.' };
+      result = { id: x.id, ok: false, text: '', meta: e instanceof AiError ? e.message : tx('aisv.the_test_failed') };
     }
     s.state[TEST_RESULT] = JSON.stringify(result);
     return back(reply, s, `${BASE}/ai/${x.id}`);
@@ -281,7 +282,7 @@ export async function aiRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, 'AI services'))) return;
     await owner.query('delete from meta.ai_service where id = $1', [req.params.id]);
-    flash(s, 'AI service deleted.');
+    flash(s, tx('aisv.ai_service_deleted'));
     return back(reply, s, `${BASE}/ai`);
   });
 
@@ -298,15 +299,15 @@ export async function aiRoutes(app: FastifyInstance) {
     const admin = await isAdmin(s.username);
     const main = html`
       <div class="title-row"><h1 class="ai-name">AI usage · ${a.name}</h1></div>
-      <p class="muted u-mt0">The AI services this application may use (an administrator allows them${admin ? html` under <a href="${BASE}/ai">AI services</a>` : ''}), today's use against their limits, and the recent requests.</p>
-      ${region('Services', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Service</th><th>Model</th><th class="num">Requests today</th><th class="num">Tokens today</th><th>Status</th></tr></thead>
-        <tbody>${allowed.length ? allowed.map((x, i) => html`<tr><td data-label="Service">${x.name}</td><td data-label="Model">${providerLabel(x.provider)} ${x.model}</td>
-          <td class="num" data-label="Requests today">${today[i].requests}${x.max_requests !== null ? ` / ${x.max_requests}` : ''}</td>
-          <td class="num" data-label="Tokens today">${today[i].tokens}${x.max_tokens !== null ? ` / ${x.max_tokens}` : ''}</td>
-          <td data-label="Status">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
-          : html`<tr><td colspan="5" class="empty">This application may not use any AI service yet.</td></tr>`}</tbody></table></div>`)}
-      ${region('Recent requests', usageTable(recent, false))}
+      <p class="muted u-mt0">The AI services this application may use (an administrator allows them${admin ? html` under <a href="${BASE}/ai">${tx('aisv.ai_services')}</a>` : ''}), today's use against their limits, and the recent requests.</p>
+      ${region(tx('aisv.services'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('aisv.service')}</th><th>${tx('aisv.model')}</th><th class="num">${tx('aisv.requests_today')}</th><th class="num">${tx('aisv.tokens_today')}</th><th>${tx('aisv.status')}</th></tr></thead>
+        <tbody>${allowed.length ? allowed.map((x, i) => html`<tr><td data-label="${tx('aisv.service')}">${x.name}</td><td data-label="${tx('aisv.model')}">${providerLabel(x.provider)} ${x.model}</td>
+          <td class="num" data-label="${tx('aisv.requests_today')}">${today[i].requests}${x.max_requests !== null ? ` / ${x.max_requests}` : ''}</td>
+          <td class="num" data-label="${tx('aisv.tokens_today')}">${today[i].tokens}${x.max_tokens !== null ? ` / ${x.max_tokens}` : ''}</td>
+          <td data-label="${tx('aisv.status')}">${x.enabled ? 'enabled' : html`<b>disabled</b>`}</td></tr>`)
+          : html`<tr><td colspan="5" class="empty">${tx('aisv.this_application_may_not_use')}</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('aisv.recent_requests'), usageTable(recent, false))}
       ${await toolCallTable(a.id)}`;
-    return send(reply, s, shell(s, `AI usage · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Activity', `${BASE}/apps/${a.id}/activity`], ['AI usage']], main));
+    return send(reply, s, shell(s, `AI usage · ${a.name}`, [[tx('aisv.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('aisv.activity'), `${BASE}/apps/${a.id}/activity`], [tx('aisv.ai_usage')]], main));
   });
 }

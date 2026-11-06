@@ -13,6 +13,7 @@ import { sourceProblems } from '../websources.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Body, type Req } from './ui.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { scopeForWorkspace } from '../network-acl.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Workspace utilities → REST Source Catalogs (migration 095; APEX: Workspace
 // Utilities → REST Source Catalogs): the current workspace's catalogs, a
@@ -25,7 +26,7 @@ import { scopeForWorkspace } from '../network-acl.ts';
 const NOTES = '__CATALOG_NOTES';
 const MAX_DOC_BYTES = 5 * 1024 * 1024;
 const root = `${BASE}/rest-catalogs`;
-const crumbs = (extra: [string, string?][] = []): [string, string?][] => [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['REST Source Catalogs', root], ...extra];
+const crumbs = (extra: [string, string?][] = []): [string, string?][] => [[tx('rcat.app_builder'), BASE], [tx('rcat.workspace_utilities'), `${BASE}/utilities`], ['REST Source Catalogs', root], ...extra];
 const when = (d: string | Date | null) => (d ? new Date(d).toISOString().slice(0, 16).replace('T', ' ') : '');
 const pretty = (v: unknown) => JSON.stringify(v ?? null, null, 2);
 
@@ -41,22 +42,22 @@ function notesHtml(s: Session): Raw | '' {
   delete s.state[NOTES];
   const notes = JSON.parse(v) as string[];
   return notes.length
-    ? html`<div class="alert alert-info" role="status"><b>What the document had that the catalog doesn't use:</b><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></div>`
+    ? html`<div class="alert alert-info" role="status"><b>${tx('rcat.what_the_document_had_that')}</b><ul>${notes.map((n) => html`<li>${n}</li>`)}</ul></div>`
     : '';
 }
 
 /** The import form: a file, pasted text or a URL; base URL and name optional. */
 function importForm(s: Session, action: string, replacing: boolean): Raw {
   return html`<form method="post" action="${action}" enctype="multipart/form-data">${csrf(s)}
-    <p class="muted u-mt0">An <b>OpenAPI 3</b> or <b>Swagger 2.0</b> document in JSON (e.g. <code>openapi.json</code>), or a catalog file downloaded from pgkiln.${replacing ? ' The catalog\'s services are replaced by the document\'s; data sources made from it earlier stay as they are.' : ''}</p>
+    <p class="muted u-mt0">${tx.rich('rcat.doc_intro', { openapi: html`<b>${tx('rcat.openapi_3')}</b>`, swagger: html`<b>${tx('rcat.swagger_2_0')}</b>`, file: html`<code>openapi.json</code>` })}${replacing ? ` ${tx('rcat.doc_replacing')}` : ''}</p>
     <div class="form-grid">
-      <div class="field"><label class="label" for="f_file">File</label><input id="f_file" type="file" name="file" accept=".json,application/json"></div>
-      ${input('url', 'Or read it from a URL', '', { placeholder: 'https://api.example.com/openapi.json', help: 'The server reads it; the host must be on its allow-list (PGKILN_REST_ALLOWED_HOSTS).' })}
-      <div class="field" data-wide><label class="label" for="f_text">Or paste it</label><textarea id="f_text" name="text" class="code" rows="4" spellcheck="false"></textarea></div>
-      ${input('base_url', 'Base URL', '', { placeholder: 'from the document', help: 'Instead of the document\'s server, e.g. https://test.api.example.com/v1.' })}
-      ${replacing ? '' : input('name', 'Name', '', { placeholder: 'the document\'s title' })}
+      <div class="field"><label class="label" for="f_file">${tx('rcat.file')}</label><input id="f_file" type="file" name="file" accept=".json,application/json"></div>
+      ${input('url', tx('rcat.or_read_it_from_a'), '', { placeholder: tx('rcat.https_api_example_com_openapi'), help: tx('rcat.the_server_reads_it_the') })}
+      <div class="field" data-wide><label class="label" for="f_text">${tx('rcat.or_paste_it')}</label><textarea id="f_text" name="text" class="code" rows="4" spellcheck="false"></textarea></div>
+      ${input('base_url', tx('rcat.base_url'), '', { placeholder: tx('rcat.from_the_document'), help: tx('rcat.instead_of_the_document_s') })}
+      ${replacing ? '' : input('name', tx('rcat.name'), '', { placeholder: tx('rcat.the_document_s_title') })}
     </div>
-    <div class="buttons"><button class="btn btn-hot">${icon('upload')} ${replacing ? 'Replace the services' : 'Import'}</button></div></form>`;
+    <div class="buttons"><button class="btn btn-hot">${icon('upload')} ${replacing ? tx('rcat.replace_the_services') : tx('rcat.import')}</button></div></form>`;
 }
 
 /** The text of an uploaded, pasted or fetched document (and where it came from). */
@@ -66,14 +67,14 @@ async function documentText(req: Req): Promise<{ text: string; from?: string; ur
     const parsed = await readMultipart(req, MAX_DOC_BYTES / 1024 / 1024);
     req.body = parsed.body as Body;
     const f = parsed.files.get('file');
-    if (f?.truncated) throw new Error('The file is larger than 5 MB.');
+    if (f?.truncated) throw new Error(tx('rcat.the_file_is_larger_than'));
     if (f) text = f.data.toString('utf8');
   }
   if (!text.trim()) text = String(req.body?.text ?? '');
   if (text.trim()) return { text };
   const url = String(req.body?.url ?? '').trim();
-  if (!url) throw new Error('Choose a file, paste a document or give its URL.');
-  if (!/^https?:\/\//i.test(url)) throw new Error('The URL starts with http:// or https://.');
+  if (!url) throw new Error(tx('rcat.choose_a_file_paste_a'));
+  if (!/^https?:\/\//i.test(url)) throw new Error(tx('rcat.the_url_starts_with_http'));
   return { text: '', url };
 }
 
@@ -87,7 +88,7 @@ async function documentOf(doc: { text: string; from?: string; url?: string }, s:
     headers: { accept: 'application/json' }, timeoutMs: 15_000, maxBytes: MAX_DOC_BYTES,
     scope: await scopeForWorkspace(currentWorkspace(s), 'REST source catalog (read from a URL)'),
   });
-  if (r.status !== 200) throw new Error(`The URL answered HTTP ${r.status}.`);
+  if (r.status !== 200) throw new Error(tx('rcat.url_answered', { status: r.status }));
   return { text: r.body.toString('utf8'), from: r.url };
 }
 
@@ -123,17 +124,17 @@ function serviceForm(s: Session, action: string, v: Partial<CatalogService>, lab
     html`<div class="field" data-wide><label class="label" for="f_${name}">${title}</label><textarea id="f_${name}" name="${name}" class="code" rows="${rows}" spellcheck="false">${value}</textarea><small class="help">${help}</small></div>`;
   return html`<form method="post" action="${action}">${csrf(s)}
     <div class="form-grid">
-      ${input('name', 'Name', v.name ?? '', { required: true, placeholder: 'GET_PETS', help: 'The data source\'s name when an application makes one from this service.' })}
-      <div class="field"><label class="label" for="f_method">Method</label><select id="f_method" name="method">${['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => html`<option${(v.method ?? 'GET') === m ? raw(' selected') : ''}>${m}</option>`)}</select></div>
-      ${input('path', 'Path', v.path ?? '', { required: true, placeholder: '/pets/{pet_id}', help: 'After the catalog\'s base URL; {name} is a path parameter.' })}
-      ${input('row_selector', 'Row selector', v.row_selector ?? '', { placeholder: 'items', help: 'Where the rows are in the response; empty: the response.' })}
-      <div class="field" data-wide><label class="label" for="f_description">Description</label><input id="f_description" name="description" value="${v.description ?? ''}"></div>
-      ${area('params', 'Parameters (JSON)', pretty(v.params ?? []), '[{"name": "page_size", "in": "query", "key": "pageSize", "default": "20"}] · in: path, query, header, body; "key": the service\'s name for it when it isn\'t lower case with _.')}
-      ${area('columns', 'Columns (JSON)', pretty(v.columns ?? []), '[{"name": "id", "path": "id", "type": "integer"}] · types: text, number, integer, boolean, date, timestamp, json.', 6)}
-      ${area('headers', 'Headers (JSON)', pretty(v.headers ?? {}), 'Extra request headers, not secrets: an application\'s web credential signs in.', 2)}
-      ${area('body', 'Body template', v.body ?? '', '{"query": {q}} — empty: the body parameters as a JSON object.', 2)}
-      ${input('key_columns', 'Key columns', (v.key_columns ?? []).join(', '), { placeholder: 'id' })}
-      ${area('operations', 'Operations (JSON)', pretty(v.operations ?? {}), '{"update": {"method": "PUT", "path": "/{id}"}, "delete": {"method": "DELETE", "path": "/{id}"}} · write-back for forms and grids.', 3)}
+      ${input('name', tx('rcat.name'), v.name ?? '', { required: true, placeholder: 'GET_PETS', help: tx('rcat.the_data_source_s_name') })}
+      <div class="field"><label class="label" for="f_method">${tx('rcat.method')}</label><select id="f_method" name="method">${['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => html`<option${(v.method ?? 'GET') === m ? raw(' selected') : ''}>${m}</option>`)}</select></div>
+      ${input('path', tx('rcat.path'), v.path ?? '', { required: true, placeholder: tx('rcat.pets_pet_id'), help: tx('rcat.after_the_catalog_s_base') })}
+      ${input('row_selector', tx('rcat.row_selector'), v.row_selector ?? '', { placeholder: 'items', help: tx('rcat.where_the_rows_are_in') })}
+      <div class="field" data-wide><label class="label" for="f_description">${tx('rcat.description')}</label><input id="f_description" name="description" value="${v.description ?? ''}"></div>
+      ${area('params', tx('rcat.parameters_json'), pretty(v.params ?? []), '[{"name": "page_size", "in": "query", "key": "pageSize", "default": "20"}] · in: path, query, header, body; "key": the service\'s name for it when it isn\'t lower case with _.')}
+      ${area('columns', tx('rcat.columns_json'), pretty(v.columns ?? []), '[{"name": "id", "path": "id", "type": "integer"}] · types: text, number, integer, boolean, date, timestamp, json.', 6)}
+      ${area('headers', tx('rcat.headers_json'), pretty(v.headers ?? {}), tx('rcat.headers_help'), 2)}
+      ${area('body', tx('rcat.body_template'), v.body ?? '', '{"query": {q}} — empty: the body parameters as a JSON object.', 2)}
+      ${input('key_columns', tx('rcat.key_columns'), (v.key_columns ?? []).join(', '), { placeholder: 'id' })}
+      ${area('operations', tx('rcat.operations_json'), pretty(v.operations ?? {}), '{"update": {"method": "PUT", "path": "/{id}"}, "delete": {"method": "DELETE", "path": "/{id}"}} · write-back for forms and grids.', 3)}
     </div>
     <div class="buttons"><button class="btn btn-hot">${icon('save')} ${label}</button></div></form>`;
 }
@@ -147,24 +148,24 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       `select c.id, c.name, c.description, c.base_url, c.server, c.source, c.api_version, c.updated_at,
               (select count(*)::int from meta.rest_catalog_service x where x.catalog_id = c.id) as services
          from meta.rest_catalog c where c.workspace_id = $1 order by lower(c.name)`, [currentWorkspace(s)])).rows;
-    const main = html`<div class="title-row"><h1>REST Source Catalogs</h1></div>
+    const main = html`<div class="title-row"><h1>${tx('rcat.rest_source_catalogs')}</h1></div>
       <p class="muted u-mt0">Web services described once for ${s.workspace?.name ?? 'this workspace'}: their base URL and services. An application makes a REST data source from a service in Shared Components → REST data sources → New. The data source is a copy; credentials stay with the application.</p>
       ${notesHtml(s)}
-      ${region('Catalogs', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Catalog</th><th>Base URL</th><th class="num">Services</th><th>From</th><th>Updated (UTC)</th></tr></thead>
+      ${region(tx('rcat.catalogs'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('rcat.catalog')}</th><th>${tx('rcat.base_url')}</th><th class="num">${tx('rcat.services')}</th><th>${tx('rcat.from')}</th><th>${tx('rcat.updated_utc')}</th></tr></thead>
         <tbody>${rows.length ? rows.map((c) => html`<tr>
-          <td data-label="Catalog"><a href="${root}/${c.id}">${c.name}</a>${c.description ? html`<br><span class="muted small">${String(c.description).slice(0, 160)}</span>` : ''}</td>
-          <td data-label="Base URL">${c.server ? html`<span class="tag">${icon('server')} ${c.server}</span> ` : ''}<code class="wrap-anywhere">${c.base_url ?? ''}</code></td>
-          <td class="num" data-label="Services">${c.services}</td>
-          <td data-label="From">${c.source === 'openapi' ? html`OpenAPI${c.api_version ? html` <span class="muted">${c.api_version}</span>` : ''}` : 'by hand'}</td>
-          <td data-label="Updated">${when(c.updated_at)}</td></tr>`)
-          : html`<tr><td colspan="5" class="empty">No catalogs yet: import an OpenAPI document or create one below.</td></tr>`}</tbody></table></div>`)}
-      ${region('Import a catalog', importForm(s, `${root}/import`, false))}
-      ${region('Create a catalog by hand', html`<form method="post" action="${root}">${csrf(s)}
-        <div class="form-grid">${input('name', 'Name', '', { required: true, placeholder: 'e.g. Weather service' })}${input('base_url', 'Base URL', '', { required: true, placeholder: 'https://api.example.com/v1' })}
-          <div class="field" data-wide><label class="label" for="f_cdescription">Description</label><input id="f_cdescription" name="description"></div></div>
-        <div class="buttons"><button class="btn">${icon('plus')} Create</button></div></form>`)}`;
-    return send(reply, s, shell(s, 'REST Source Catalogs', crumbs(), main));
+          <td data-label="${tx('rcat.catalog')}"><a href="${root}/${c.id}">${c.name}</a>${c.description ? html`<br><span class="muted small">${String(c.description).slice(0, 160)}</span>` : ''}</td>
+          <td data-label="${tx('rcat.base_url')}">${c.server ? html`<span class="tag">${icon('server')} ${c.server}</span> ` : ''}<code class="wrap-anywhere">${c.base_url ?? ''}</code></td>
+          <td class="num" data-label="${tx('rcat.services')}">${c.services}</td>
+          <td data-label="${tx('rcat.from')}">${c.source === 'openapi' ? html`OpenAPI${c.api_version ? html` <span class="muted">${c.api_version}</span>` : ''}` : 'by hand'}</td>
+          <td data-label="${tx('rcat.updated')}">${when(c.updated_at)}</td></tr>`)
+          : html`<tr><td colspan="5" class="empty">${tx('rcat.no_catalogs_yet_import_an')}</td></tr>`}</tbody></table></div>`)}
+      ${region(tx('rcat.import_a_catalog'), importForm(s, `${root}/import`, false))}
+      ${region(tx('rcat.create_a_catalog_by_hand'), html`<form method="post" action="${root}">${csrf(s)}
+        <div class="form-grid">${input('name', tx('rcat.name'), '', { required: true, placeholder: tx('rcat.e_g_weather_service') })}${input('base_url', tx('rcat.base_url'), '', { required: true, placeholder: tx('rcat.https_api_example_com_v1') })}
+          <div class="field" data-wide><label class="label" for="f_cdescription">${tx('rcat.description')}</label><input id="f_cdescription" name="description"></div></div>
+        <div class="buttons"><button class="btn">${icon('plus')} ${tx('rcat.create')}</button></div></form>`)}`;
+    return send(reply, s, shell(s, tx('rcat.rest_source_catalogs'), crumbs(), main));
   });
 
   app.post(root, async (req: Req, reply) => {
@@ -181,7 +182,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     }
     try {
       const id = await insertCatalog(owner, currentWorkspace(s), c, s.username);
-      flash(s, 'Catalog created: add its services.');
+      flash(s, tx('rcat.catalog_created_add_its_services'));
       return back(reply, s, `${root}/${id}`);
     } catch (e) {
       flash(s, uniqueError(e), 'error');
@@ -203,14 +204,14 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       doc = await documentOf(doc, s);
       const { catalog, notes } = readCatalogText(doc.text, { baseUrl: req.body?.base_url, from: doc.from, name: req.body?.name });
       const problems = wholeCatalogProblems(catalog);
-      if (problems.length) throw new Error(`The catalog can't be used as it is: ${problems.slice(0, 8).join(' ')}${problems.length > 8 ? ` (and ${problems.length - 8} more)` : ''}`);
+      if (problems.length) throw new Error(tx('rcat.unusable', { problems: `${problems.slice(0, 8).join(' ')}${problems.length > 8 ? ` ${tx('rcat.and_more', { n: problems.length - 8 })}` : ''}` }));
       const id = await owner.tx((c) => insertCatalog(c, currentWorkspace(s), catalog, s.username));
       s.state[NOTES] = JSON.stringify(notes);
       await logActivity({ appId: null, username: s.username, event: 'rest_catalog', ip: clientIp(req), detail: `imported catalog ${catalog.name} (${catalog.services.length} services)` });
-      flash(s, `Catalog ${catalog.name} imported with ${catalog.services.length} service(s).`);
+      flash(s, tx('rcat.imported', { name: catalog.name, n: catalog.services.length }));
       return back(reply, s, `${root}/${id}`);
     } catch (e) {
-      flash(s, `Import failed: ${uniqueError(e)}`, 'error');
+      flash(s, tx('rcat.import_failed', { error: uniqueError(e) }), 'error');
       return back(reply, s, root);
     }
   });
@@ -224,35 +225,35 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     const base = `${root}/${c.id}`;
     const sel = req.query.service ? c.services.find((x) => String(x.id) === req.query.service) : null;
     const main = html`<div class="title-row"><h1>${c.name}</h1>
-        <a class="btn" href="${base}/download">${icon('download')} Download</a></div>
-      <p class="muted u-mt0">${c.server ? html`On remote server <a href="${BASE}/remote-servers">${c.server}</a> · ` : ''}<code class="wrap-anywhere">${c.base_url ?? ''}</code>${c.source === 'openapi' ? html` · from an OpenAPI document${c.api_version ? html` (version ${c.api_version})` : ''}` : ''} · updated ${when(c.updated_at)} UTC</p>
+        <a class="btn" href="${base}/download">${icon('download')} ${tx('rcat.download')}</a></div>
+      <p class="muted u-mt0">${c.server ? html`${tx.rich('rcat.on_server', { server: html`<a href="${BASE}/remote-servers">${c.server}</a>` })} · ` : ''}<code class="wrap-anywhere">${c.base_url ?? ''}</code>${c.source === 'openapi' ? html` · ${c.api_version ? tx('rcat.from_openapi_version', { version: c.api_version }) : tx('rcat.from_openapi')}` : ''} · ${tx('rcat.updated_when', { when: when(c.updated_at) })}</p>
       ${notesHtml(s)}
-      ${region('Services', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Service</th><th>Method</th><th>Path</th><th class="num">Parameters</th><th class="num">Columns</th><th>Write back</th></tr></thead>
+      ${region(tx('rcat.services'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('rcat.service')}</th><th>${tx('rcat.method')}</th><th>${tx('rcat.path')}</th><th class="num">${tx('rcat.parameters')}</th><th class="num">${tx('rcat.columns')}</th><th>${tx('rcat.write_back')}</th></tr></thead>
         <tbody>${c.services.length ? c.services.map((x) => html`<tr${sel?.id === x.id ? raw(' aria-current="true"') : ''}>
-          <td data-label="Service"><a href="${base}?service=${x.id}#service">${x.name}</a>${x.description ? html`<br><span class="muted small">${x.description.slice(0, 140)}</span>` : ''}</td>
-          <td data-label="Method"><span class="tag">${x.method}</span></td>
-          <td data-label="Path"><code class="wrap-anywhere">${x.path}</code></td>
-          <td class="num" data-label="Parameters">${x.params.length}</td>
-          <td class="num" data-label="Columns">${x.columns.length}</td>
-          <td data-label="Write back">${Object.keys(x.operations).join(', ') || html`<span class="muted">—</span>`}</td></tr>`)
-          : html`<tr><td colspan="6" class="empty">No services yet.</td></tr>`}</tbody></table></div>
-        <p class="u-m0 u-mt1"><a class="btn" href="${base}?service=new#service">${icon('plus')} Add a service</a></p>`)}
+          <td data-label="${tx('rcat.service')}"><a href="${base}?service=${x.id}#service">${x.name}</a>${x.description ? html`<br><span class="muted small">${x.description.slice(0, 140)}</span>` : ''}</td>
+          <td data-label="${tx('rcat.method')}"><span class="tag">${x.method}</span></td>
+          <td data-label="${tx('rcat.path')}"><code class="wrap-anywhere">${x.path}</code></td>
+          <td class="num" data-label="${tx('rcat.parameters')}">${x.params.length}</td>
+          <td class="num" data-label="${tx('rcat.columns')}">${x.columns.length}</td>
+          <td data-label="${tx('rcat.write_back')}">${Object.keys(x.operations).join(', ') || html`<span class="muted">—</span>`}</td></tr>`)
+          : html`<tr><td colspan="6" class="empty">${tx('rcat.no_services_yet')}</td></tr>`}</tbody></table></div>
+        <p class="u-m0 u-mt1"><a class="btn" href="${base}?service=new#service">${icon('plus')} ${tx('rcat.add_a_service')}</a></p>`)}
       ${req.query.service === 'new'
-        ? region('New service', serviceForm(s, `${base}/services`, { method: 'GET', path: '/' }, 'Add'), '', 'service')
+        ? region(tx('rcat.new_service'), serviceForm(s, `${base}/services`, { method: 'GET', path: '/' }, tx('rcat.add')), '', 'service')
         : sel
-          ? region(`Service ${sel.name}`, html`<p class="muted u-mt0">URL: <code class="wrap-anywhere">${c.server ? `${c.server} + ${sel.path}` : serviceUrl(c.base_url ?? '', sel.path)}</code></p>
-              ${serviceForm(s, `${base}/services/${sel.id}`, sel, 'Save')}
-              <form method="post" action="${base}/services/${sel.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the service ${sel.name}?">Delete service</button></form>`, '', 'service')
+          ? region(tx('rcat.service_title', { name: sel.name }), html`<p class="muted u-mt0">${tx('rcat.url')} <code class="wrap-anywhere">${c.server ? `${c.server} + ${sel.path}` : serviceUrl(c.base_url ?? '', sel.path)}</code></p>
+              ${serviceForm(s, `${base}/services/${sel.id}`, sel, tx('rcat.save'))}
+              <form method="post" action="${base}/services/${sel.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="${tx('rcat.delete_service_confirm', { name: sel.name })}">${tx('rcat.delete_service')}</button></form>`, '', 'service')
           : ''}
-      ${region('Catalog', html`<form method="post" action="${base}">${csrf(s)}
-        <div class="form-grid">${input('name', 'Name', c.name, { required: true })}${input('base_url', 'Base URL', c.base_url ?? '', { help: 'e.g. a test system\'s URL (optional on a remote server). Data sources made earlier keep the URL they were made with.' })}
-          ${input('server', 'Remote server', c.server ?? '', { placeholder: 'e.g. CRM', help: 'The static id of a remote server of this workspace (Workspace utilities → Remote servers): data sources made from the catalog then name the server and the service\'s path, so they move with it.' })}
-          ${input('api_version', 'API version', c.api_version ?? '')}
-          <div class="field" data-wide><label class="label" for="f_cdescription">Description</label><textarea id="f_cdescription" name="description" rows="2">${c.description ?? ''}</textarea></div></div>
-        <div class="buttons"><button class="btn btn-hot">${icon('save')} Save</button></div></form>`)}
-      ${region('Replace from a document', importForm(s, `${base}/import`, true))}
-      <form method="post" action="${base}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete the catalog ${c.name} and its services? Data sources made from it stay.">Delete catalog</button></form>`;
+      ${region(tx('rcat.catalog'), html`<form method="post" action="${base}">${csrf(s)}
+        <div class="form-grid">${input('name', tx('rcat.name'), c.name, { required: true })}${input('base_url', tx('rcat.base_url'), c.base_url ?? '', { help: tx('rcat.e_g_a_test_system') })}
+          ${input('server', tx('rcat.remote_server'), c.server ?? '', { placeholder: tx('rcat.e_g_crm'), help: tx('rcat.the_static_id_of_a') })}
+          ${input('api_version', tx('rcat.api_version'), c.api_version ?? '')}
+          <div class="field" data-wide><label class="label" for="f_cdescription">${tx('rcat.description')}</label><textarea id="f_cdescription" name="description" rows="2">${c.description ?? ''}</textarea></div></div>
+        <div class="buttons"><button class="btn btn-hot">${icon('save')} ${tx('rcat.save')}</button></div></form>`)}
+      ${region(tx('rcat.replace_from_a_document'), importForm(s, `${base}/import`, true))}
+      <form method="post" action="${base}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="${tx('rcat.delete_catalog_confirm', { name: c.name })}">${tx('rcat.delete_catalog')}</button></form>`;
     return send(reply, s, shell(s, c.name, crumbs([[c.name]]), main));
   });
 
@@ -274,9 +275,9 @@ export async function restCatalogRoutes(app: FastifyInstance) {
         await owner.query('update meta.rest_catalog set name = $2, base_url = $3, description = $4, api_version = $5, server = $6, updated_at = now() where id = $1',
           [c.id, v.name, v.base_url || null, v.description, v.api_version, v.server]);
         if (v.server && !(await owner.one('select 1 as ok from meta.remote_server where workspace_id = $1 and static_id = $2', [c.workspace_id, v.server])))
-          flash(s, `Catalog saved. This workspace has no remote server ${v.server} yet: add it under Workspace utilities → Remote servers.`, 'error');
+          flash(s, tx('rcat.no_server', { server: v.server }), 'error');
         else
-        flash(s, 'Catalog saved.');
+        flash(s, tx('rcat.catalog_saved'));
       } catch (e) {
         flash(s, uniqueError(e), 'error');
       }
@@ -305,9 +306,9 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       await owner.tx((db) => replaceCatalog(db, c.id, catalog));
       s.state[NOTES] = JSON.stringify(notes);
       await logActivity({ appId: null, username: s.username, event: 'rest_catalog', ip: clientIp(req), detail: `replaced catalog ${c.name} (${catalog.services.length} services)` });
-      flash(s, `The services of ${c.name} were replaced: ${catalog.services.length} service(s).`);
+      flash(s, tx('rcat.replaced', { name: c.name, n: catalog.services.length }));
     } catch (e) {
-      flash(s, `Import failed: ${uniqueError(e)}`, 'error');
+      flash(s, tx('rcat.import_failed', { error: uniqueError(e) }), 'error');
     }
     return back(reply, s, `${root}/${c.id}`);
   });
@@ -330,7 +331,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     if (!c) return reply.code(404).send('Not found');
     await owner.query('delete from meta.rest_catalog where id = $1', [c.id]);
     await logActivity({ appId: null, username: s.username, event: 'rest_catalog', ip: clientIp(req), detail: `deleted catalog ${c.name}` });
-    flash(s, `Catalog ${c.name} deleted.`);
+    flash(s, tx('rcat.deleted', { name: c.name }));
     return back(reply, s, root);
   });
 
@@ -359,7 +360,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
           `insert into meta.rest_catalog_service (catalog_id, name, description, path, method, params, headers, body, row_selector, columns, key_columns, operations, position)
            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, (select coalesce(max(position), 0) + 10 from meta.rest_catalog_service where catalog_id = $1)) returning id`, [c.id, ...vals])).id;
       await owner.query('update meta.rest_catalog set updated_at = now() where id = $1', [c.id]);
-      flash(s, `Service ${v.name} saved.`);
+      flash(s, tx('rcat.service_saved', { name: v.name }));
       return back(reply, s, `${root}/${c.id}?service=${id}#service`);
     } catch (e) {
       flash(s, uniqueError(e), 'error');
@@ -376,7 +377,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
     if (!c) return reply.code(404).send('Not found');
     await owner.query('delete from meta.rest_catalog_service where id = $1 and catalog_id = $2', [req.params.sid, c.id]);
     await owner.query('update meta.rest_catalog set updated_at = now() where id = $1', [c.id]);
-    flash(s, 'Service deleted.');
+    flash(s, tx('rcat.service_deleted'));
     return back(reply, s, `${root}/${c.id}`);
   });
 
@@ -392,12 +393,12 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       const svc = await owner.one<{ id: number; catalog_id: number }>(
         `select x.id, x.catalog_id from meta.rest_catalog_service x join meta.rest_catalog c on c.id = x.catalog_id
           where x.id = $1 and c.workspace_id = meta.app_workspace($2)`, [/^\d{1,9}$/.test(String(req.body?.service)) ? req.body!.service : null, appId]);
-      if (!svc) throw new Error('Choose a service of one of this workspace\'s catalogs.');
+      if (!svc) throw new Error(tx('rcat.choose_a_service_of_one'));
       const c = (await loadCatalog(svc.catalog_id))!;
       const v = sourceFromService(c, c.services.find((x) => x.id === svc.id)!, { name: req.body?.name, credential: req.body?.credential });
-      if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name)) throw new Error('The name is upper case letters, digits and _, starting with a letter, e.g. COUNTRIES.');
+      if (!/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name)) throw new Error(tx('rcat.the_name_is_upper_case'));
       if (v.credential && !(await owner.one('select 1 as ok from meta.web_credential where app_id = $1 and name = $2 union all select 1 from meta.workspace_credential where workspace_id = meta.app_workspace($1) and name = $2', [appId, v.credential])))
-        throw new Error(`This application has no web credential ${v.credential} (nor does its workspace).`);
+        throw new Error(tx('rcat.no_credential', { name: v.credential }));
       const problems = sourceProblems(v);
       if (problems.length) throw new Error(problems.join(' '));
       const r = await owner.one<{ id: number }>(
@@ -408,7 +409,7 @@ export async function restCatalogRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/apps/${appId}/shared?c=rest_source-${r!.id}`);
     } catch (e) {
       const m = (e as Error).message;
-      flash(s, m.includes('rest_source_app_id_name_key') ? 'This application has a REST data source with that name already: choose another name.' : m, 'error');
+      flash(s, m.includes('rest_source_app_id_name_key') ? tx('rcat.this_application_has_a_rest') : m, 'error');
       return back(reply, s, retry);
     }
   });
@@ -430,18 +431,18 @@ export async function catalogPicker(appId: number, s: Session): Promise<Raw | ''
     `select x.id, x.name, x.method, x.path, c.name as catalog from meta.rest_catalog_service x join meta.rest_catalog c on c.id = x.catalog_id
       where c.workspace_id = meta.app_workspace($1) order by lower(c.name), x.position, x.name`, [appId])).rows;
   if (!services.length)
-    return html`<p class="muted u-mt0 u-mb1">${icon('globe')} Services described once for the workspace: <a href="${root}">REST Source Catalogs</a>.</p>`;
+    return html`<p class="muted u-mt0 u-mb1">${icon('globe')} Services described once for the workspace: <a href="${root}">${tx('rcat.rest_source_catalogs')}</a>.</p>`;
   const credentials = (await owner.query('select name from meta.web_credential where app_id = $1 union select name from meta.workspace_credential where workspace_id = meta.app_workspace($1) order by name', [appId])).rows;
   const groups = new Map<string, typeof services>();
   for (const x of services) groups.set(x.catalog, [...(groups.get(x.catalog) ?? []), x]);
-  return region('From a REST source catalog', html`<form method="post" action="${BASE}/apps/${appId}/rest-sources/from-catalog">${csrf(s)}
-    <p class="muted u-mt0">A copy of a service of this workspace's <a href="${root}">catalogs</a>: its URL, parameters, columns and write-back operations.</p>
+  return region(tx('rcat.from_a_rest_source_catalog'), html`<form method="post" action="${BASE}/apps/${appId}/rest-sources/from-catalog">${csrf(s)}
+    <p class="muted u-mt0">${tx.rich('rcat.copy_of', { link: html`<a href="${root}">${tx('rcat.catalogs_link')}</a>` })}</p>
     <div class="form-grid">
-      <div class="field" data-wide><label class="label" for="f_service">Service</label><select id="f_service" name="service" required>
+      <div class="field" data-wide><label class="label" for="f_service">${tx('rcat.service')}</label><select id="f_service" name="service" required>
         ${[...groups].map(([cat, xs]) => html`<optgroup label="${cat}">${xs.map((x) => html`<option value="${x.id}">${x.name} · ${x.method} ${x.path}</option>`)}</optgroup>`)}</select></div>
-      ${input('name', 'Name', '', { placeholder: 'the service\'s name' })}
-      <div class="field"><label class="label" for="f_credential">Web credential</label><select id="f_credential" name="credential"><option value="">none</option>${credentials.map((c) => html`<option>${c.name}</option>`)}</select></div>
+      ${input('name', tx('rcat.name'), '', { placeholder: tx('rcat.the_service_s_name') })}
+      <div class="field"><label class="label" for="f_credential">${tx('rcat.web_credential')}</label><select id="f_credential" name="credential"><option value="">none</option>${credentials.map((c) => html`<option>${c.name}</option>`)}</select></div>
     </div>
-    <div class="buttons"><button class="btn btn-hot">${icon('plus')} Create from the catalog</button></div></form>`);
+    <div class="buttons"><button class="btn btn-hot">${icon('plus')} ${tx('rcat.create_from_the_catalog')}</button></div></form>`);
 }
 
