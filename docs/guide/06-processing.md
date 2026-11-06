@@ -55,7 +55,9 @@ follows that button's condition and authorization instead.
 A **badge** is a short value shown on the button (a count of open items, "new", …). `badge` is
 text with `&ITEM.` substitutions (an empty result shows no badge); `badge_query` is a SELECT whose
 first column of the first row is shown, and wins when both are set. The query runs as the
-application's database role with bind variables, like any region source.
+application's database role with bind variables, like any region source. (sprint 165) With
+[live badges](04-pages-and-regions.md#notifications-and-live-badges) on, a badge query's value is
+refreshed while the page is open.
 
 ## What happens on submit
 
@@ -141,6 +143,7 @@ two combine well; see error handling below.
 | `chain` | An **execution chain**: run the processes that name it as their chain, in sequence, optionally in the background ([below](#execution-chains)) |
 | `workflow` | Start a [workflow](#workflows), or terminate or retry an instance ([below](#workflow-processes)) |
 | `send_push` | A [push notification](17-mobile.md#push-notifications) to a user's devices ([below](#send-push-notification)) |
+| `send_notification` | (sprint 165) An in-app notification: the user's [notification bell](04-pages-and-regions.md#notifications-and-live-badges) ([below](#send-notification)) |
 | `plugin` | A [process plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): calls its PL/pgSQL function with the attribute values (`config`: `{"plugin": "log_event", "attributes": {"DETAIL": "&P40_NOTE."}}`, `&ITEM.` filled in) as the application's role; the text it returns is the message |
 
 | Property | Meaning |
@@ -417,6 +420,24 @@ an older one; `urgency` is `very-low`, `low`, `normal` (default) or `high`. The 
 queued in the page's transaction and sent after the submit commits; a user without a device gets
 nothing (no error). The application needs push notifications on (Settings → Progressive Web App).
 From SQL the same is `meta.send_push(...)` ([chapter 9](09-reference.md#push-notifications-from-sql)).
+
+### Send notification
+
+Sprint 165. A `send_notification` process adds an in-app notification for one user: their
+[notification bell](04-pages-and-regions.md#notifications-and-live-badges) shows it and its page opens
+from there.
+
+```json
+{"to": "&P5_APPROVER.", "title": "Leave request from &APP_USER.", "body": "&P5_DAYS. days from &P5_START.",
+ "page": 5, "items": {"P5_ID": "&P5_ID."}, "icon": "calendar", "push": true}
+```
+
+`to`, `title` and `body` take `&ITEM.` substitutions; `page` and `items` are the page it opens
+(signed for the recipient); `icon` is an icon name (default `bell`); `push: true` also sends it to the
+user's devices when push notifications are on. It is added in the page's transaction (a later failing
+process leaves nothing) and can run in a background chain. The application needs notifications on
+(Settings → User Interface → Notifications). From SQL the same is `meta.notify(...)`
+([chapter 9](09-reference.md#in-app-notifications-from-sql)).
 
 ### Declarative process types
 

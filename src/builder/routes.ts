@@ -23,6 +23,7 @@ import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './works
 import { securityRoutes } from './security.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
+import { notificationSettings, saveNotificationSettings } from './notification-settings.ts';
 import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { createPageRoutes } from './create-page.ts';
 import { featureRoutes } from './features.ts';
@@ -881,6 +882,7 @@ export async function builderRoutes(app: FastifyInstance) {
               <small class="help">${tx('st.user_choice_help')}</small></div>
             <p><a class="btn" href="${BASE}/apps/${a.id}/theme">${icon('settings')} ${tx('st.roller')}</a>
               <span class="muted">${(() => { const n = appStyles(a.theme).length; return n ? tx(n === 1 ? 'st.styles_one' : 'st.styles', { n }) : tx('st.no_styles'); })()}</span></p>
+            ${notificationSettings(a, tx)}
             `)}${end}
             ${panel('globalization')}${region(tx('st.tab.globalization'), html`
             <div class="form-grid">
@@ -992,6 +994,7 @@ export async function builderRoutes(app: FastifyInstance) {
          (b.version ?? '').trim().slice(0, 40) || null],
       );
       await saveTimeZoneSettings(req.params.id, b);
+      await saveNotificationSettings(req.params.id, b, tr(s));
       await saveLoginSettings(req.params.id, b);
       flash(s, tr(s)('st.settings_saved'));
     } catch (e) {

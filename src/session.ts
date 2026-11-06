@@ -53,10 +53,11 @@ export const cookieName = (appId: number | null) => (appId === null ? 'pgkiln_de
 /** The idle and maximum session length (minutes, hours), for lookups outside this file. */
 export const sessionLimits = () => ({ idleMinutes: IDLE_MINUTES(), maxHours: MAX_HOURS() });
 
-async function find(token: string | undefined, appId: number | null) {
+/** A live session of the token; touch (the default): the request counts as activity (last_seen). */
+async function find(token: string | undefined, appId: number | null, touch = true) {
   if (!token || token.length > 100) return undefined;
   return runtime.one<Session>(
-    `update meta.session set last_seen = now()
+    `update meta.session set last_seen = ${touch ? 'now()' : 'last_seen'}
       where token_hash = $1 and app_id is not distinct from $2
         and last_seen > now() - make_interval(mins => $3)
         and created_at > now() - make_interval(hours => $4)
@@ -84,8 +85,16 @@ export async function createSession(reply: FastifyReply, appId: number | null, p
   return { ...s, isNew: true };
 }
 
-export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string) {
-  return (await find(req.cookies[cookieName(appId)], appId)) ?? createSession(reply, appId, path);
+/**
+ * The request's session, or a new one. (154) touch false: a request the browser makes by itself (live
+ * badges) doesn't keep an idle session alive, and makes no new session when there is none (null).
+ */
+export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string): Promise<Session>;
+export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string, opts: { touch: false }): Promise<Session | null>;
+export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string, opts?: { touch: false }) {
+  const found = await find(req.cookies[cookieName(appId)], appId, !opts);
+  if (found || opts) return found ?? null;
+  return createSession(reply, appId, path);
 }
 
 export async function saveState(s: Session) {

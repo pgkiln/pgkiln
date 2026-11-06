@@ -4049,4 +4049,12 @@ export const nl: BuilderMessages = {
   'docv.view': 'View',
   'docv.doc_column': 'Documentkolom',
   'docv.intro': 'Een documentview toont elke rij van {table} met zijn kindrijen als één JSON-document, zoals een Oracle JSON Relational Duality View. Rapporten, REST (AutoREST op de view) en MCP lezen hele documenten; een update van de documentkolom schrijft de rij en zijn kinderen in één opdracht terug. De row level security en rechten van de tabel gelden (de view is security_invoker en krijgt de rechten van de tabel).',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Meldingen',
+  'nfy.bell': 'Meldingenbel in de kop',
+  'nfy.bell_help': 'Aangemelde gebruikers zien hun ongelezen en nieuwste meldingen; een melding openen markeert haar als gelezen en gaat naar haar pagina. Voeg ze toe vanuit SQL met `meta.notify(user, title, body, page, items)` of met een proces van het type send_notification; `meta.unread_notifications()` is het aantal, bijv. voor een badge.',
+  'nfy.live': 'Live badges (seconden)',
+  'nfy.live_ph': 'bijv. 60 (leeg: uit)',
+  'nfy.live_help': 'Elke zoveel seconden (10 tot 3600) ververst een open pagina haar badges ter plekke: het navigatiemenu en de navigatiebalk, knoppen met een badge-query en de bel. Niet terwijl het tabblad verborgen is; het houdt geen sessie in leven.',
+  'nfy.live_invalid': 'Live badges: een geheel aantal seconden van 10 tot 3600, of leeg.',
 };

@@ -29,7 +29,7 @@ export function feedbackNode(ctx: PageContext): ListNode | null {
   if (!ctx.app.feedback || ctx.dialog) return null;
   return {
     label: ctx.locale.t('feedback.link'), href: `${ctx.base}/${ctx.page.page_no}/feedback`, modal: false, external: false,
-    icon: 'chat', badge: null, description: null, current: false, inTrail: false, children: [],
+    icon: 'chat', badge: null, key: '__feedback', description: null, current: false, inTrail: false, children: [],
   };
 }
 

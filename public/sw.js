@@ -210,7 +210,11 @@ self.addEventListener('push', (event) => {
     data: { url: appUrl(m.url) || appUrl(`${PGKILN.base}/`) },
   };
   if (typeof m.tag === 'string' && m.tag) Object.assign(options, { tag: m.tag, renotify: true });
-  event.waitUntil(self.registration.showNotification(typeof m.title === 'string' && m.title ? m.title : 'Notification', options));
+  event.waitUntil(Promise.all([
+    self.registration.showNotification(typeof m.title === 'string' && m.title ? m.title : 'Notification', options),
+    // (165) open pages refresh their badges and the bell now
+    self.clients.matchAll({ type: 'window' }).then((wins) => wins.forEach((w) => w.postMessage({ type: 'pgkiln:pushed' }))),
+  ]));
 });
 
 self.addEventListener('notificationclick', (event) => {

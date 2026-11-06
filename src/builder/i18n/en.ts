@@ -4053,4 +4053,12 @@ export const en = {
   'docv.view': 'View',
   'docv.doc_column': 'Document column',
   'docv.intro': 'A document view shows each row of {table} with its child rows as one JSON document, like an Oracle JSON Relational Duality View. Reports, REST (AutoREST on the view) and MCP read whole documents; an update of the document column writes the row and its children back in one statement. The table\'s row level security and grants apply (the view is security_invoker and gets the table\'s grants).',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Notifications',
+  'nfy.bell': 'Notification bell in the header',
+  'nfy.bell_help': 'Signed-in users see their unread notifications and the newest ones; opening one marks it read and goes to its page. Add them from SQL with `meta.notify(user, title, body, page, items)` or with a process of type send_notification; `meta.unread_notifications()` is the count, e.g. for a badge.',
+  'nfy.live': 'Live badges (seconds)',
+  'nfy.live_ph': 'e.g. 60 (empty: off)',
+  'nfy.live_help': 'Every so many seconds (10 to 3600) an open page refreshes its badges in place: the navigation menu and bar, buttons with a badge query and the bell. Not while the tab is hidden; it doesn\'t keep a session alive.',
+  'nfy.live_invalid': 'Live badges: a whole number of seconds from 10 to 3600, or empty.',
 } as const;

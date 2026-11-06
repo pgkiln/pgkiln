@@ -4049,4 +4049,12 @@ export const zhCN: BuilderMessages = {
   'docv.view': '视图',
   'docv.doc_column': '文档列',
   'docv.intro': '文档视图将 {table} 的每一行及其子行显示为一个 JSON 文档,类似 Oracle JSON Relational Duality View。报表、REST(视图上的 AutoREST)和 MCP 读取整个文档;更新文档列会在一条语句中写回该行及其子行。表的行级安全性和授权适用(视图为 security_invoker,并获得表的授权)。',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': '通知',
+  'nfy.bell': '页眉中的通知铃铛',
+  'nfy.bell_help': '已登录用户可看到未读通知和最新通知;打开一条通知会将其标为已读并转到其页面。在 SQL 中用 `meta.notify(user, title, body, page, items)` 或类型为 send_notification 的流程添加通知;`meta.unread_notifications()` 返回数量,例如用作徽章。',
+  'nfy.live': '实时徽章(秒)',
+  'nfy.live_ph': '例如 60(空:关闭)',
+  'nfy.live_help': '打开的页面每隔若干秒(10 到 3600)就地刷新其徽章:导航菜单和导航栏、带徽章查询的按钮以及铃铛。标签页隐藏时不刷新;不会让会话保持活动。',
+  'nfy.live_invalid': '实时徽章:10 到 3600 的整数秒,或留空。',
 };

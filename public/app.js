@@ -915,6 +915,16 @@ const pgkilnUnsaved = (() => {
       requestAnimationFrame(() => { queued = false; runChain(run); });
     }, { passive: true });
   }
+  // (165) timer: every so many seconds (the trigger), while the page is visible
+  {
+    const bySeconds = new Map();
+    for (const da of das.filter((d) => d.event === 'timer')) {
+      const seconds = Number(da.trigger[0]);
+      if (!(seconds >= 5 && seconds <= 3600)) continue;
+      bySeconds.set(seconds, [...(bySeconds.get(seconds) || []), da]);
+    }
+    for (const [seconds, run] of bySeconds) setInterval(() => { if (!document.hidden) runChain(run); }, seconds * 1000);
+  }
   // page_unload: the page is left (only quick, local actions finish)
   window.addEventListener('pagehide', () => runChain(das.filter((da) => da.event === 'page_unload')));
   // facets_change: a faceted search region's facets were applied (the page came back from its form)
@@ -2851,6 +2861,66 @@ document.addEventListener('DOMContentLoaded', () => {
   for (const form of document.querySelectorAll('form[data-autosubmit]')) form.submit();
 });
 
+// (165) Live badges and the notification bell (body data-live: seconds; GET <base>/<page>/live).
+const liveBadges = (() => {
+  let seconds = 0;
+  let timer = 0;
+  let last = 0;
+  let busy = false;
+  let stopped = false;
+  const apply = (state) => {
+    for (const el of document.querySelectorAll('[data-badge]')) {
+      const key = el.dataset.badge;
+      if (key === 'bell' || !(key in state.badges)) continue;
+      const v = state.badges[key];
+      el.textContent = v ?? '';
+      el.hidden = v === null || v === '';
+    }
+    const bell = state.bell && document.querySelector('[data-bell]');
+    if (!bell) return;
+    const count = bell.querySelector('[data-badge="bell"]');
+    if (count) {
+      count.textContent = state.bell.unread ? (state.bell.unread > 99 ? '99+' : String(state.bell.unread)) : '';
+      count.hidden = !state.bell.unread;
+    }
+    const summary = bell.querySelector('summary');
+    if (summary) {
+      summary.title = state.bell.label;
+      summary.setAttribute('aria-label', state.bell.label);
+    }
+    // the list is replaced while the menu is closed only (not under the user's pointer or focus)
+    const panel = bell.querySelector('[data-bell-panel]');
+    if (panel && !bell.open && panel.innerHTML !== state.bell.panel) panel.innerHTML = state.bell.panel;
+  };
+  const poll = () => {
+    const base = document.body.dataset.base;
+    const page = document.body.dataset.page;
+    if (stopped || busy || !base || !page) return;
+    busy = true;
+    last = Date.now();
+    fetch(`${base}/${page}/live`, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then((r) => {
+        if (r.status === 401 || r.status === 403 || r.status === 404) stopped = true;
+        return r.ok ? r.json() : null;
+      })
+      .then((state) => state && state.badges && apply(state))
+      .catch(() => {})
+      .finally(() => { busy = false; });
+  };
+  return {
+    start(s) {
+      if (!(s >= 10) || timer) return;
+      seconds = s;
+      timer = setInterval(() => { if (!document.hidden) poll(); }, seconds * 1000);
+      // back to a tab that was hidden longer than the interval: at once
+      document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - last > seconds * 1000) poll(); });
+    },
+    now() {
+      if (seconds) poll();
+    },
+  };
+})();
+
 // ------------------------------------------------------------------ Progressive Web App and field work
 (() => {
   const metaEl = document.getElementById('pgkiln-meta');
@@ -2879,9 +2949,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     navigator.serviceWorker.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'pgkiln:queue') showQueue(e.data.items, post);
+      // (165) a push notification arrived: the badges and the bell now, not at the next refresh
+      if (e.data && e.data.type === 'pgkiln:pushed') liveBadges.now();
     });
     if (new URLSearchParams(location.search).get('queued') === '1') note(t('pwa.queued'));
   }
+
+  // (165) live badges: every data-live seconds the page asks for its badges (navigation menu and bar,
+  // buttons with a badge query) and the bell, and updates them in place; not while the tab is hidden.
+  // A signed-out session (401) or a page without them (404, 403) stops it.
+  liveBadges.start(Number(body.dataset.live) || 0);
 
   // offline: say so (the page may come from the device)
   const banner = () => {
@@ -5241,3 +5318,4 @@ document.addEventListener('change', (e) => {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') send(); });
   window.addEventListener('pagehide', send);
 })();
+

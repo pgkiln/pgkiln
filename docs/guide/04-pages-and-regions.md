@@ -167,6 +167,44 @@ in `public/app.css`, and follow the app's [style variant](14-globalization.md#st
 In SQL: `update meta.region set template_options = '{to-accent,to-compact}' where id = 12;` The
 database only checks the shape (at most 12 names of lower case letters, digits and `-`).
 
+### Notifications and live badges
+
+Sprint 165 (APEX: a notification bell in the header, navigation menu badges, badges refreshed by
+dynamic actions). Two settings under **Settings → User Interface → Notifications**:
+
+- **Notification bell in the header.** Signed-in users get a bell next to their user menu: the number
+  of their unread notifications and the newest eight. Opening one marks it read and goes to its page;
+  *Mark all read* marks them all; *All notifications* is the page `/a/<alias>/notifications` (the
+  newest 100). Application code adds notifications with
+  [`meta.notify(user, title, body, page, items, icon, push)`](09-reference.md#in-app-notifications-from-sql)
+  or a [`send_notification`](06-processing.md#send-notification) process:
+
+  ```sql
+  -- in a process after an order is submitted for approval
+  select meta.notify(:P5_APPROVER, 'Order ' || :P5_ID || ' needs your approval',
+                     :P5_CUSTOMER || ', ' || :P5_TOTAL, 5, jsonb_build_object('P5_ID', :P5_ID), 'shopping-cart');
+  ```
+
+  The link is signed for the recipient, like a push notification's; `push => true` also sends it to
+  the user's devices when the application has [push notifications](17-mobile.md#push-notifications) on.
+  Titles and texts are escaped. A user keeps the newest 500 notifications; read ones go after 90 days.
+  Notifications are installation data: they are not part of the application's export.
+
+- **Live badges (seconds).** Every so many seconds (10 to 3600) an open page asks the server for its
+  badges again and updates them in place, without a reload: the
+  [list entries](#list-lists) of the navigation menu and bar (a badge, a badge query or a query
+  list's `badge` column), [buttons with a badge query](06-processing.md#menu-buttons-and-badges) and
+  the bell. Not while the tab is hidden (at once when it shows again, and at once when a push
+  notification arrives); these requests don't count as activity, so an idle session still ends; a
+  signed-out session or a page the user may no longer open stops them. Empty badges are hidden
+  placeholders the refresh can fill.
+
+A navigation bar entry with the unread count is a static list entry with the badge query
+`select nullif(meta.unread_notifications(), 0)`. To refresh a region (a report of open orders, say)
+on an interval, use a dynamic action with the [`timer`](07-dynamic-actions.md) event and
+`refresh_region`. For a list of your own, `meta.my_notifications` is the current user's notifications
+(`id, title, body, url, icon, created_at, read_at, unread`).
+
 ## Region types
 
 | Type | Purpose |
@@ -1234,6 +1272,10 @@ or **navigation bar** (**Settings → Theme**: *Navigation menu list*, *Navigati
 - **static**: its **entries** (Shared Components → Lists → a list → *Add entry*), each with a label,
   an icon, a target, a badge, a description, a parent entry (a sub menu, up to 6 levels), a
   sequence, a condition (SQL), an authorization scheme and a build option; or
+  (sprint 165) a **badge query** instead of a badge: a SELECT whose first value is the badge, run as
+  the application's role with the page's binds, e.g. `select nullif(count(*), 0) from sales.orders
+  where status = 'NEW'` (no row or an empty value: no badge; a failing query is a page error and no
+  badge); or
 - **sql**: the rows of a query, run as the application's database role with the usual binds:
 
 ```sql

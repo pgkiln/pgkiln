@@ -19,6 +19,7 @@ import { runtime, savepoint } from '../db.ts';
 import { renderItems } from './items.ts';
 import { buttonsFor, renderRegion } from './regions.ts';
 import { listTree, navbarMarkup, navMarkup } from './lists.ts';
+import { bellMarkup } from './notifications.ts';
 import { aiInputs, aiOutputs, aiProcessOf } from './ai.ts';
 import { frameOrigins } from './url-region.ts';
 import { breadcrumbLinks, hasBreadcrumbRegion } from './page-regions.ts';
@@ -108,7 +109,8 @@ async function navTree(ctx: PageContext, topNav = false) {
   // a list as the navigation menu (falls back to the navigation entries when the list is missing)
   if (ctx.app.nav_list) {
     const nodes = await listTree(ctx, ctx.app.nav_list);
-    if (nodes) return navMarkup(nodes, topNav);
+    // (154) with live badges, every entry's badge has a key the refresh finds it by
+    if (nodes) return navMarkup(nodes, topNav, ctx.app.live_badges_s ? 'n:' : undefined);
   }
   const current = new Set<number>();
   for (let p: number | null | undefined = ctx.page.page_no, guard = 0; p && guard < 10; guard++) {
@@ -267,7 +269,9 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   // (084) the Feedback entry, after the application's own navigation bar list
   const feedback = feedbackNode(ctx);
   const navbarNodes = listNodes || feedback ? [...(listNodes ?? []), ...(feedback ? [feedback] : [])] : null;
-  const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar')) : '';
+  const navbar = navbarNodes ? navbarMarkup(navbarNodes, t('list.navbar'), ctx.app.live_badges_s ? 'b:' : undefined) : '';
+  // (154) the notification bell
+  const bell = await bellMarkup(ctx);
   // (sprint 72) the account's display name in the user menu
   const shown = signedIn ? ((await displayName(ctx.user)) ?? ctx.user) : ctx.user;
   // (sprint 88, GEN-4; APEX: the page footer) under the content: the application's version and "Back to top" (to the header, #top)
@@ -280,6 +284,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
       <span class="t-spacer"></span>
       ${ctx.app.pwa ? html`<button type="button" class="icon-button t-install" data-pwa-install hidden title="${t('pwa.install')}" aria-label="${t('pwa.install')}">${icon('download')}</button>` : ''}
       ${navbar}
+      ${bell}
       ${ctx.app.authentication !== 'none'
         ? signedIn
           ? html`<details class="menu t-user">
@@ -314,7 +319,11 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     </div>
     ${devbarHtml(ctx)}`,
     `t-app${topNav ? ' nav-top' : ''}${appearance ? ` nav-pillar nav-${appearance === 'pillar_dark' ? 'pillar-dark' : 'pillar-light'}` : ''}`,
-    { 'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)) },
+    {
+      'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)),
+      // (154) live badges: the page asks for its badges again every so many seconds
+      ...(ctx.app.live_badges_s ? { 'data-live': String(ctx.app.live_badges_s) } : {}),
+    },
     html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
     root,
   );

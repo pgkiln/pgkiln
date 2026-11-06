@@ -60,6 +60,7 @@ import { assistantBuilderRoutes } from './builder/assistant.ts';
 import { aiBuilderRoutes } from './builder/ai-builder.ts';
 import { blueprintRoutes } from './builder/blueprints.ts';
 import { accountRoutes } from './runtime/account.ts';
+import { notificationRoutes } from './runtime/notifications.ts';
 import { taskRoutes } from './runtime/tasks.ts';
 import { dataReporterRoutes } from './runtime/data-reporter.ts';
 import { datasetRoutes } from './builder/datasets.ts';
@@ -210,6 +211,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   });
   await app.register(runtimeRoutes);
   await app.register(accountRoutes);
+  await app.register(notificationRoutes);
   await app.register(taskRoutes);
   await app.register(workflowRoutes);
   await app.register(pwaRoutes);
