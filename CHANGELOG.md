@@ -13,6 +13,13 @@ All notable changes to this project are documented here. The format follows
   id); a `cancel_event` keeps a calendar's Create link or a tree node's link closed. A `set_value` without SQL on a
   component event puts that value into its affected items; an Execute JavaScript function gets the component's
   element as `element`.
+- **The SQL Workshop tools and the region and report settings in the eleven builder languages** (CD-8; no
+  migration): SQL Monitor, Top SQL, Quick SQL (its syntax help too), SQL Scripts, Generate DDL, Schema Comparison,
+  Change Log, Charts, Unload Data, Load Data, Sample Data (the 29 generators and their options), Query Builder, the
+  object menu, Data Modeler, Utilities, Object Reports, About Database, the SQL Workshop's AI, Schema Export /
+  Import, Scheduling (a schedule in words too: "Every Monday at 08:00" in the developer's language), RESTful
+  Services (modules, templates, handlers, Try it, AutoREST), the Object Browser's data security and document view,
+  and every region's and report's settings form in the Page Designer. About 2,000 texts per language.
 ### Changed
 - **Builder spacing**: regions and two-column rows stacked on a page always have a gap between them (13 pages had a
   region touching the one above, e.g. an application's REST API page, a workspace, the mail queue, network access,
