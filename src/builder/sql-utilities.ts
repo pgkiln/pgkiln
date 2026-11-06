@@ -5,6 +5,8 @@ import { icon } from '../icons.ts';
 import { BASE, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { isAdmin } from './locks.ts';
 import { workshopDb, workshopRunsAs } from './workspaces.ts';
+import { tr, type BuilderTranslate } from './i18n.ts';
+import { SQL_TOOLS, toolDescription, toolLabel } from './sql-tools.ts';
 
 // SQL Workshop → Utilities (sprint 62; APEX: SQL Workshop → Utilities): one
 // page with the workshop's tools (Load and Unload Data, Sample Data, DDL,
@@ -134,30 +136,30 @@ async function readOnly<T>(db: Db, fn: (q: (sql: string, params?: unknown[]) => 
   });
 }
 
-const crumbs = (last: string): [string, string?][] => [['SQL Workshop', `${BASE}/sql`], ['Utilities', `${BASE}/sql/utilities`], [last]];
+const crumbs = (tx: BuilderTranslate, last: string): [string, string?][] => [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.utilities'), `${BASE}/sql/utilities`], [last]];
+/** (sprint 162) an Object Report's title, text and column labels in the builder's language (su.r.<key>.*, su.col.<column>) */
+const reportTitle = (tx: BuilderTranslate, key: string, r: Report) => tx.dyn(`su.r.${key.replace(/-/g, '_')}`, r.title);
+const reportAbout = (tx: BuilderTranslate, key: string, r: Report) => tx.dyn(`su.r.${key.replace(/-/g, '_')}.about`, r.about);
+const colLabel = (tx: BuilderTranslate, col: string, label: string) => tx.dyn(`su.col.${col}`, label);
 
 export async function sqlUtilityRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/utilities`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const admin = await isAdmin(s.username);
-    const tile = (href: string, ic: string, title: string, text: string) =>
-      html`<a class="ab-tile sw-tile" href="${BASE}${href}"><span class="ab-tile-icon sw-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities', s)}
+    const tx = tr(s);
+    // (sprint 162) the tools' names and descriptions from the SQL Workshop's tool list, in the builder's language
+    const tile = (key: string, ic: string) => {
+      const t = SQL_TOOLS.find((x) => x.key === key)!;
+      if (t.admin && !admin) return '';
+      return html`<a class="ab-tile sw-tile" href="${t.href}"><span class="ab-tile-icon sw-tile-icon">${icon(ic)}</span><strong>${toolLabel(tx, t)}</strong><span>${toolDescription(tx, t)}</span></a>`;
+    };
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('utilities', s)}
       <div class="ab-tiles ab-tiles-wrap">
-        ${tile('/sql/load', 'upload', 'Data Workshop: Load Data', 'Load CSV, Excel, JSON or XML into a new or existing table, with saved definitions.')}
-        ${tile('/sql/unload', 'download', 'Data Workshop: Unload Data', 'Download a table or a query as CSV, JSON, XML, Excel or SQL inserts.')}
-        ${tile('/sql/sample-data', 'layers', 'Sample Data', 'Generate realistic rows for your tables.')}
-        ${tile('/sql/query', 'filter', 'Query Builder', 'Build a query by drawing joins between tables.')}
-        ${tile('/sql/ddl', 'file', 'Generate DDL', 'The SQL that creates a schema\'s objects.')}
-        ${tile('/sql/compare', 'layers', 'Schema Comparison', 'The differences between two schemas, and the SQL to align them.')}
-        ${tile('/sql/utilities/reports', 'list', 'Object Reports', 'Tables without a primary key, foreign keys without an index, row-level security, grants, sizes.')}
-        ${tile('/sql/utilities/about', 'help', 'About Database', 'The PostgreSQL version, settings, extensions and sizes.')}
-        ${admin ? tile('/sql/data-pump', 'archive', 'Schema Export / Import', 'A schema to a file with pg_dump, a file into a schema with pg_restore (administrators).') : ''}
-        ${admin ? tile('/sql/scheduling', 'clock', 'Scheduling', 'pg_cron jobs: SQL on a schedule, next runs and run history (administrators).') : ''}
-        ${admin ? tile('/sql/monitor', 'activity', 'SQL Monitor', 'Sessions, running and blocked queries, wait events and Top SQL (administrators).') : ''}
+        ${tile('load', 'upload')}${tile('unload', 'download')}${tile('sample', 'layers')}${tile('query', 'filter')}${tile('ddl', 'file')}
+        ${tile('compare', 'layers')}${tile('reports', 'list')}${tile('about', 'help')}${tile('datapump', 'archive')}${tile('scheduling', 'clock')}${tile('monitor', 'activity')}
       </div>`;
-    return send(reply, s, shell(s, 'SQL Workshop utilities', [['SQL Workshop', `${BASE}/sql`], ['Utilities']], main, 'sql'));
+    return send(reply, s, shell(s, tx('su.title'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.utilities')]], main, 'sql'));
   });
 
   app.get(`${BASE}/sql/utilities/reports`, async (req: Req, reply) => {
@@ -174,20 +176,23 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
     } catch (e) {
       error = (e as Error).message;
     }
-    const nav = html`<nav aria-label="Object reports"><ul class="ab-links ab-tasks">${Object.entries(OBJECT_REPORTS).map(([k, x]) =>
-      html`<li><a href="${BASE}/sql/utilities/reports?r=${k}"${k === key ? raw(' aria-current="page"') : ''}>${x.title}${icon('chevron')}</a></li>`)}</ul></nav>`;
+    const tx = tr(s);
+    const reports = tx('sql.tool.reports');
+    const nav = html`<nav aria-label="${reports}"><ul class="ab-links ab-tasks">${Object.entries(OBJECT_REPORTS).map(([k, x]) =>
+      html`<li><a href="${BASE}/sql/utilities/reports?r=${k}"${k === key ? raw(' aria-current="page"') : ''}>${reportTitle(tx, k, x)}${icon('chevron')}</a></li>`)}</ul></nav>`;
     const table = html`<div class="table-wrap"><table class="report report-reflow">
-      <thead><tr><th>Object</th>${r.columns.map(([, l, c]) => html`<th${c ? raw(` class="${c}"`) : ''}>${l}</th>`)}</tr></thead>
+      <thead><tr><th>${tx('sm.col.object')}</th>${r.columns.map(([k, l, c]) => html`<th${c ? raw(` class="${c}"`) : ''}>${colLabel(tx, k, l)}</th>`)}</tr></thead>
       <tbody>${rows.length
-        ? rows.map((row) => html`<tr><td data-label="Object" class="u-break"><a href="${BASE}/sql/objects?o=${encodeURIComponent(String(row.object))}">${String(row.object)}</a></td>
-            ${r.columns.map(([k, l, c]) => html`<td data-label="${l}"${c ? raw(` class="${c}"`) : raw(' class="u-break"')}>${k === 'suggestion' ? html`<code>${String(row[k] ?? '')}</code>` : String(row[k] ?? '')}</td>`)}</tr>`)
-        : html`<tr><td colspan="${r.columns.length + 1}" class="empty">${error ? 'The report failed.' : 'Nothing found.'}</td></tr>`}</tbody></table></div>`;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities', s)}
+        ? rows.map((row) => html`<tr><td data-label="${tx('sm.col.object')}" class="u-break"><a href="${BASE}/sql/objects?o=${encodeURIComponent(String(row.object))}">${String(row.object)}</a></td>
+            ${r.columns.map(([k, l, c]) => html`<td data-label="${colLabel(tx, k, l)}"${c ? raw(` class="${c}"`) : raw(' class="u-break"')}>${k === 'suggestion' ? html`<code>${String(row[k] ?? '')}</code>` : String(row[k] ?? '')}</td>`)}</tr>`)
+        : html`<tr><td colspan="${r.columns.length + 1}" class="empty">${error ? tx('su.failed') : tx('su.nothing')}</td></tr>`}</tbody></table></div>`;
+    const title = reportTitle(tx, key, r);
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('utilities', s)}
       <div class="ab-home"><div class="ab-main">
-        ${region(r.title, html`<p class="muted u-mt0">${r.about} Over the schemas ${workshopRunsAs(db)} may use.</p>
+        ${region(title, html`<p class="muted u-mt0">${reportAbout(tx, key, r)} ${tx('su.over', { role: workshopRunsAs(db) })}</p>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}${table}`)}
-      </div><aside class="ab-side" aria-label="Object reports"><section><h2>Object Reports</h2>${nav}</section></aside></div>`;
-    return send(reply, s, shell(s, r.title, crumbs('Object Reports'), main, 'sql'));
+      </div><aside class="ab-side" aria-label="${reports}"><section><h2>${reports}</h2>${nav}</section></aside></div>`;
+    return send(reply, s, shell(s, title, crumbs(tx, reports), main, 'sql'));
   });
 
   app.get(`${BASE}/sql/utilities/about`, async (req: Req, reply) => {
@@ -214,26 +219,28 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
                          where ${USABLE} group by 1, 2 order by 1`),
     }));
     const sv = info.server as Record<string, string>;
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('utilities', s)}
+    const tx = tr(s);
+    const L = { schema: tx('sm.schema'), owner: tx('su.col.owner'), tables: tx('su.tables'), size: tx('scr.col.size'), setting: tx('su.setting'), value: tx('su.value'), ext: tx('su.extension'), version: tx('su.version') };
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('utilities', s)}
       <div class="stat-grid u-mb1">
-        ${[['PostgreSQL', sv.server_version], ['Database', sv.database], ['Size', sv.size], ['Running since', new Date(sv.started).toISOString().slice(0, 16).replace('T', ' ') + ' UTC']]
+        ${[['PostgreSQL', sv.server_version], [tx('su.database'), sv.database], [L.size, sv.size], [tx('su.running_since'), new Date(sv.started).toISOString().slice(0, 16).replace('T', ' ') + ' UTC']]
           .map(([l, v]) => html`<div class="stat"><b class="u-break">${v}</b><span>${l}</span></div>`)}
       </div>
-      <p class="muted">${sv.version}. The SQL Workshop runs as <code>${sv.user}</code> (signed in as <code>${sv.login}</code>).</p>
+      <p class="muted">${sv.version}. ${tx.rich('su.runs_as', { user: html`<code>${sv.user}</code>`, login: html`<code>${sv.login}</code>` })}</p>
       <div class="columns">
-        ${region('Settings', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Setting</th><th>Value</th></tr></thead>
-          <tbody>${info.settings.map((x) => html`<tr><td data-label="Setting" title="${String(x.short_desc ?? '')}"><code>${String(x.name)}</code></td>
-            <td data-label="Value" class="u-break">${String(x.setting ?? '')}${x.unit ? ` ${x.unit}` : ''}</td></tr>`)}</tbody></table></div>`)}
-        ${region('Extensions', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Extension</th><th>Version</th><th>Schema</th></tr></thead>
-          <tbody>${info.extensions.map((x) => html`<tr><td data-label="Extension" class="u-break"><strong>${String(x.name)}</strong>${x.comment ? html` <span class="muted">${String(x.comment)}</span>` : ''}</td>
-            <td data-label="Version">${String(x.version)}</td><td data-label="Schema">${String(x.schema)}</td></tr>`)}</tbody></table></div>`)}
+        ${region(tx('su.settings'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${L.setting}</th><th>${L.value}</th></tr></thead>
+          <tbody>${info.settings.map((x) => html`<tr><td data-label="${L.setting}" title="${String(x.short_desc ?? '')}"><code>${String(x.name)}</code></td>
+            <td data-label="${L.value}" class="u-break">${String(x.setting ?? '')}${x.unit ? ` ${x.unit}` : ''}</td></tr>`)}</tbody></table></div>`)}
+        ${region(tx('su.extensions'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${L.ext}</th><th>${L.version}</th><th>${L.schema}</th></tr></thead>
+          <tbody>${info.extensions.map((x) => html`<tr><td data-label="${L.ext}" class="u-break"><strong>${String(x.name)}</strong>${x.comment ? html` <span class="muted">${String(x.comment)}</span>` : ''}</td>
+            <td data-label="${L.version}">${String(x.version)}</td><td data-label="${L.schema}">${String(x.schema)}</td></tr>`)}</tbody></table></div>`)}
       </div>
       <div class="u-spacer"></div>
-      ${region('Schemas', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Schema</th><th>Owner</th><th class="num">Tables</th><th class="num">Size</th></tr></thead>
-        <tbody>${info.schemas.length ? info.schemas.map((x) => html`<tr><td data-label="Schema">${String(x.schema)}</td><td data-label="Owner"><code>${String(x.owner)}</code></td>
-          <td class="num" data-label="Tables">${String(x.tables)}</td><td class="num" data-label="Size">${String(x.size)}</td></tr>`)
-          : html`<tr><td colspan="4" class="empty">No schemas.</td></tr>`}</tbody></table></div>`)}`;
-    return send(reply, s, shell(s, 'About Database', crumbs('About Database'), main, 'sql'));
+      ${region(tx('cl.schemas'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${L.schema}</th><th>${L.owner}</th><th class="num">${L.tables}</th><th class="num">${L.size}</th></tr></thead>
+        <tbody>${info.schemas.length ? info.schemas.map((x) => html`<tr><td data-label="${L.schema}">${String(x.schema)}</td><td data-label="${L.owner}"><code>${String(x.owner)}</code></td>
+          <td class="num" data-label="${L.tables}">${String(x.tables)}</td><td class="num" data-label="${L.size}">${String(x.size)}</td></tr>`)
+          : html`<tr><td colspan="4" class="empty">${tx('su.no_schemas')}</td></tr>`}</tbody></table></div>`)}`;
+    return send(reply, s, shell(s, tx('sql.tool.about'), crumbs(tx, tx('sql.tool.about')), main, 'sql'));
   });
 
   // (sprint 102) the Database Monitor became SQL Workshop › SQL Monitor (sql-monitor.ts)
