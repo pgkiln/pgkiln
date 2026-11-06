@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.86.0 (November 2026): every feature in a sample app (two new samples, six extended), `meta.mail_available()`, and the fixes the samples found.
+- **Current release:** 0.87.0 (November 2026): hidden items the browser may set (Value Protected off), default values for a grid's new rows, items in any region type, and the sample apps' layout fixes.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

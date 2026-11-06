@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-11-06
+
 ### Added
 - **Hidden items the browser may set** (sprint 167; no migration): `{"value_protected": false}` on a `hidden` item
   (APEX: *Value Protected* = No) renders it as a hidden input that browser-side dynamic actions, `execute_javascript`
