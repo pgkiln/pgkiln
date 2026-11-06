@@ -91,7 +91,7 @@ items, in the browser. A tree of departments that filters an employee report, wi
 |---|---|---|
 | `show` / `hide` | browser | Show or hide the affected items/region. **With a condition, the opposite happens when the condition is false**, so one dynamic action gives "show commission only for salesmen". Also applied when the page loads (and already on the server, so there's no flicker) |
 | `enable` / `disable` | browser | Enable or disable the controls, reversed when the condition is false |
-| `set_value` | server | Runs `code` (a SELECT); its first row's columns set the affected items, in order. The affected items must be on the page: a `hidden` item isn't rendered (its value stays on the server, safe from tampering), so set a text or display item, or use a computation |
+| `set_value` | server | Runs `code` (a SELECT); its first row's columns set the affected items, in order. A protected `hidden` item (the default) gets the value in its session state only (the browser never sees it); (167) a hidden item with `{"value_protected": false}` is a hidden input that browser-side actions set too ([Hidden items](05-items.md#hidden-items)) |
 | `execute_sql` | server | Runs `code`; returned columns named like items set those items |
 | `refresh_region` | server | Re-renders `affected_region_id` with the current session state (e.g. a report filtered by the changed item) |
 | `refresh_item` | server | Re-renders the affected items (e.g. a list whose LOV depends on another item) |

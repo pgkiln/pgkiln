@@ -5,6 +5,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Hidden items the browser may set** (sprint 167; no migration): `{"value_protected": false}` on a `hidden` item
+  (APEX: *Value Protected* = No) renders it as a hidden input that browser-side dynamic actions, `execute_javascript`
+  functions and client-side conditions read and set, and whose value a submit or a dynamic action's *items to
+  submit* sends back as user input. Protected hidden items (the default) are unchanged; a server-side `set_value`
+  sets their session value, which the documentation now says.
+- **Default values for an interactive grid's new rows** (sprint 167): `columns.<col>.default` (text with `&ITEM.`)
+  or `default_sql` (a SELECT) fills *Add row* and the single row view's new row, without JavaScript. A new row left
+  at its defaults counts as blank and isn't inserted.
+- **Login region `{"autofocus": false}`** (sprint 167): the cursor is no longer always put in the user name field.
+
+### Changed
+- **Items in any region type** (sprint 167): items placed in a tree, chart, map, cards, calendar or other region are
+  shown under its content instead of not at all (reports, forms and static content place them as before; a login
+  region still leaves them out).
+- **Button positions** (sprint 167): a `region` (or empty) position button in a form or static region's bottom bar
+  now comes before the `next` button, which is always the last.
+- **Sample apps**: Sample Dynamic Actions' tree page sets a hidden item in the browser and shows an item in the tree
+  region; Sample Interactive Grids' new rows get their defaults from the columns instead of JavaScript; the UX
+  Pattern Catalog's sign-in region leaves the focus alone.
+
 ## [0.86.0] - 2026-11-06
 
 ### Added

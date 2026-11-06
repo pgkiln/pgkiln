@@ -104,9 +104,11 @@ export async function renderButton(ctx: PageContext, b: Button) {
   return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
 }
 
-export async function buttonsFor(ctx: PageContext, regionId: number | null, only: (b: Button) => boolean = () => true) {
+export async function buttonsFor(ctx: PageContext, regionId: number | null, only: (b: Button) => boolean = () => true, rank: (b: Button) => number = () => 0) {
   const out = [];
-  for (const b of ctx.vis!.buttons.values()) if (b.region_id === regionId && b.id > 0 && only(b)) out.push(await renderButton(ctx, b));
+  // in sequence, within their rank (a stable sort: the buttons come in sequence order)
+  const shown = [...ctx.vis!.buttons.values()].filter((b) => b.region_id === regionId && b.id > 0 && only(b)).sort((a, b) => rank(a) - rank(b));
+  for (const b of shown) out.push(await renderButton(ctx, b));
   return out.some(Boolean) ? html`<div class="buttons">${out}</div>` : '';
 }
 
@@ -314,6 +316,9 @@ async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>)
   return regionShell(ctx, r, hidden, body);
 }
 
+/** Region types that place their items themselves (and login, whose fields post to a form of their own). */
+const ITEMS_IN_BODY = new Set(['report', 'classic_report', 'form', 'static', 'login']);
+
 /** The region's content (what the region's type renders), without its frame and buttons. */
 async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Promise<Raw> {
   const items = ctx.page.items.filter((i) => i.region_id === r.id);
@@ -407,7 +412,7 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       body = await renderSearch(ctx, r);
       break;
     case 'login':
-      body = await renderLoginRegion(ctx);
+      body = await renderLoginRegion(ctx, r.config ?? {});
       break;
     case 'dynamic':
       // A SELECT returning HTML (like APEX "PL/SQL Dynamic Content"). The
@@ -424,6 +429,12 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       body = html`${raw(substitute(await expandShortcuts(ctx, r.source ?? '', 'html'), ctx, esc))}${itemsHtml.length ? html`<div class="form-grid">${itemsHtml}</div>` : ''}`;
       break;
     }
+  }
+  // (167) items placed in any other region (a tree, chart, map, cards …) are shown under its content, as in APEX;
+  // a login region's fields belong to a form of their own, so its items stay out
+  if (items.length && !ITEMS_IN_BODY.has(r.type) && !restFailed) {
+    const itemsHtml = await renderItems(ctx, items, hidden);
+    if (itemsHtml.length) body = html`${body!}<div class="form-grid region-items">${itemsHtml}</div>`;
   }
   return body!;
 }
@@ -511,7 +522,8 @@ async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, bo
   const plain = (b: Button) => !b.slot || b.slot === 'region';
   const top = await buttonsFor(ctx, r.id, (b) => TOP_SLOTS.has(b.slot ?? '') || (onTop && plain(b)));
   const left = await buttonsFor(ctx, r.id, (b) => LEFT_SLOTS.has(b.slot ?? ''));
-  const right = await buttonsFor(ctx, r.id, (b) => b.slot === 'next' || (!onTop && plain(b)));
+  // (167) Next is the last button of the bar, as in APEX: the region's own buttons come before it
+  const right = await buttonsFor(ctx, r.id, (b) => b.slot === 'next' || (!onTop && plain(b)), (b) => (b.slot === 'next' ? 1 : 0));
   const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
   const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';

@@ -1,13 +1,13 @@
 import { componentSetting } from './component-settings.ts';
 import pg from 'pg';
-import { literal } from '../binds.ts';
+import { applyBinds, literal } from '../binds.ts';
 import { savepoint, type Client } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import type { Button, Process, Region } from '../metadata.ts';
 import { checksumValid, urlChecksum } from '../security.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
-import { publicError, toState, type PageContext } from './context.ts';
+import { bindValues, publicError, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
 import { arrange, cleanLayout, currentLayout, defaultLayout, layoutJson, layoutParam, MAX_FROZEN, MAX_WIDTH, MIN_WIDTH, parseLayout, type GridLayout, type Placed } from './grid-layout.ts';
 import { appDateMask, dateField, lovContains, lovOptions, type LovOption } from './items.ts';
 import { parseDateMask } from './format.ts';
@@ -22,7 +22,8 @@ import { GRID_VIEWS, renderView, type View } from './report-views.ts';
 //
 //   config: {"page_size": 25,
 //            "allow": {"insert": true, "update": true, "delete": true},
-//            "columns": {"deptno": {"lov": "LOV:DEPARTMENTS"}, "sal": {"required": true}},
+//            "columns": {"deptno": {"lov": "LOV:DEPARTMENTS"}, "sal": {"required": true},
+//                        "hiredate": {"default_sql": "select current_date"}, "job": {"default": "&P3_JOB."}},
 //            "readonly": ["hiredate"],
 //            "aggregates": {"sal": ["sum", "avg"], "empno": "count"},
 //            "layout": {"order": ["ename", "sal"], "hidden": ["comm"], "widths": {"ename": 180}, "frozen": 1},
@@ -240,6 +241,14 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   const insertable = savable && allow(r, 'insert') && cols.some((x) => writable.has(x.name));
   const deletable = savable && allow(r, 'delete');
   const g = `g${r.id}`;
+  // (167) the values a new row starts with (APEX: a column's Default)
+  let defaults: Record<number, string> = {};
+  if (insertable)
+    try {
+      defaults = await newRowDefaults(ctx, r, cols, writable);
+    } catch (e) {
+      return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `grid "${r.title ?? r.id}" column defaults`)}</div>`;
+    }
   const posted = ctx.body && Object.keys(ctx.body).some((k) => k.startsWith(`${g}_`)) ? ctx.body : null;
   const postedByPk = new Map<string, number>();
   if (posted) for (const k of Object.keys(posted)) {
@@ -360,7 +369,10 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   });
 
   // New rows: re-show posted ones after a failed save, a duplicated row, plus a blank template.
-  const newRow = (j: number, values: Record<number, string> = {}) =>
+  // a new row posts the values it started with (_def): one left at them is blank, as an empty one (gridDml)
+  const defInput = (name: string, from: Record<number, string>) =>
+    Object.keys(from).length ? html`<input type="hidden" name="${name}" value="${JSON.stringify(from)}">` : '';
+  const newRow = (j: number, values: Record<number, string> = defaults, started: Record<number, string> = defaults) =>
     html`<tr class="grid-new" data-new-row="${j}">
       ${leads.map((k) => html`<td class="${leadCls(k)}" data-label="${k === 'sel' ? t('grid.new') : ''}">${k === 'sel' ? html`<span class="badge-pill">${t('grid.new')}</span>` : ''}</td>`)}
       ${placed.map((p, pIdx) => {
@@ -371,6 +383,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
           ? html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${control(ctx, { ...col, editable: true }, `${g}_n${j}_c${col.ci}`, values[col.ci] ?? '', `${lbl}, new row`)}</td>`
           : html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}></td>`;
       })}
+      ${Object.keys(started).length ? html`<td hidden>${defInput(`${g}_n${j}_def`, started)}</td>` : ''}
     </tr>`;
   const postedNew: Raw[] = [];
   const usedNew = posted ? newRowIndexes(posted, g) : [];
@@ -378,7 +391,8 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
     for (const j of usedNew) {
       const values: Record<number, string> = {};
       cols.forEach((col) => (values[col.ci] = pv(`${g}_n${j}_c${col.ci}`) ?? ''));
-      if (Object.values(values).some((v) => v !== '' && v !== 'false')) postedNew.push(newRow(j, values));
+      const started = postedDefaults(pv(`${g}_n${j}_def`));
+      if (!blankRow(values, started)) postedNew.push(newRow(j, values, started));
     }
   let nextNew = usedNew.length ? Math.max(...usedNew) + 1 : 0;
   // Duplicate without JavaScript (r<id>_dup=<key>): a row of this page as a new row
@@ -387,7 +401,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
   if (dupRow) {
     const values: Record<number, string> = {};
     for (const col of cols) if (writable.has(col.name)) values[col.ci] = toState(dupRow[col.idx]) ?? '';
-    postedNew.push(newRow(nextNew++, values));
+    postedNew.push(newRow(nextNew++, values, {}));
   }
 
   // The single row view: one row as a form, with the grid's field names (row 0, or new row 0)
@@ -440,9 +454,10 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       const col = p.col;
       if (masterCol && col.name === masterCol) return [field(p, masterValue, false)];
       if (!writable.has(col.name)) return [];
-      return [field(p, control(ctx, { ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? '', label(col.name)), true)];
+      return [field(p, control(ctx, { ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? defaults[col.ci] ?? '', label(col.name)), true)];
     });
-    return html`<div class="grid-record grid-new" data-new-row="0"><div class="form-grid">${fieldsHtml}</div></div>
+    const started = pv(`${g}_n0_def`) !== undefined ? postedDefaults(pv(`${g}_n0_def`)) : defaults;
+    return html`<div class="grid-record grid-new" data-new-row="0"><div class="form-grid">${fieldsHtml}</div>${defInput(`${g}_n0_def`, started)}</div>
     ${recordNav()}`;
   };
 
@@ -681,6 +696,48 @@ export function layoutFromForm(b: Record<string, string | undefined>): GridLayou
   });
 }
 
+/**
+ * (167) The values a new row starts with, by column position: config.columns.<col>.default (text with &ITEM.
+ * substitutions, e.g. "&P3_DEPTNO.") or .default_sql (a SELECT: its first column of the first row, with :BINDS),
+ * for the columns a new row may set.
+ */
+async function newRowDefaults(ctx: PageContext, r: Region, cols: { name: string; ci: number }[], writable: Set<string>) {
+  const cfg = (r.config.columns ?? {}) as Record<string, { default?: unknown; default_sql?: unknown }>;
+  const out: Record<number, string> = {};
+  for (const col of cols) {
+    const c = cfg[col.name];
+    if (!c || !writable.has(col.name)) continue;
+    if (typeof c.default_sql === 'string' && c.default_sql.trim()) {
+      const sql = stripSemicolon(applyBinds(c.default_sql, bindValues(ctx)));
+      const client = ctx.client!;
+      const res = await savepoint(client, () => client.query({ text: sql, rowMode: 'array' }));
+      const v = toState(res.rows[0]?.[0]);
+      if (v !== null && v !== '') out[col.ci] = v;
+    } else if (typeof c.default === 'string' || typeof c.default === 'number' || typeof c.default === 'boolean') {
+      const v = substitute(String(c.default), ctx, (x) => x);
+      if (v !== '') out[col.ci] = v;
+    }
+  }
+  return out;
+}
+
+/** A new row's posted _def field: the values it started with (only short strings by column position are kept). */
+function postedDefaults(raw: string | undefined): Record<number, string> {
+  if (!raw || raw.length > 20000) return {};
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    return Object.fromEntries(Object.entries(v).filter(([k, x]) => /^\d+$/.test(k) && typeof x === 'string'));
+  } catch {
+    return {};
+  }
+}
+
+/** A new row nobody filled in: every value empty (or an unticked checkbox) or still the value it started with. */
+function blankRow(values: Record<number, string>, started: Record<number, string>) {
+  return Object.entries(values).every(([ci, v]) => v === '' || v === 'false' || (started[Number(ci)] !== undefined && v === started[Number(ci)]));
+}
+
 function newRowIndexes(body: Record<string, unknown>, g: string) {
   const out = new Set<number>();
   for (const k of Object.keys(body)) {
@@ -797,12 +854,15 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
   if (allow(r, 'insert'))
     for (const j of newRowIndexes(body, g)) {
       const values: [string, string][] = [];
+      const posted: Record<number, string> = {};
       cols.forEach((col, ci) => {
         if (!writable.has(col.name)) return;
         const v = norm(ci, one(`${g}_n${j}_c${ci}`));
+        posted[ci] = v;
         if (v !== '' && !(col.dataTypeID === 16 && v === 'false')) values.push([col.name, v]);
       });
-      if (!values.length) continue; // blank template row
+      // a blank template row, or one left at its default values (167)
+      if (!values.length || blankRow(posted, postedDefaults(one(`${g}_n${j}_def`)))) continue;
       const notOffered = [];
       for (const [n, v] of values) if (!(await offered(n, v))) notOffered.push(n);
       if (notOffered.length) {

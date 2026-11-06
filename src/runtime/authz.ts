@@ -5,6 +5,7 @@ import { savepoint } from '../db.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext, type Visibility } from './context.ts';
 import { saveButton, saveRequest } from './grid.ts';
 import { selectionOf } from './report.ts';
+import { unprotectedHidden } from './items.ts';
 import { conditionHolds, conditionOf, serverConditionOf } from './logic.ts';
 
 export class Forbidden extends Error {}
@@ -99,6 +100,12 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
     if (!(await isAuthorized(ctx, i.authz))) continue;
     if (i.condition_type && !(await conditionHolds(ctx, i as Condition, `condition of item ${i.name}`))) continue;
     vis.items.add(i.name);
+    // (167) a hidden item with {"value_protected": false} is a field of the page (APEX: Value Protected = No):
+    // the browser may set it, and a submit or dynamic action takes its posted value, as any field's
+    if (i.type === 'hidden' && unprotectedHidden(i)) {
+      vis.editable.add(i.name);
+      continue;
+    }
     if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode' || i.type === 'image' || i.type === 'percent_graph' || i.type === 'display_map') continue;
     // fail closed: a broken read-only condition makes the item read-only
     if (i.readonly_condition && (await sqlTrue(ctx, i.readonly_condition, `read-only condition of ${i.name}`, true))) continue;

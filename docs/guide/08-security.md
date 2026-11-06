@@ -720,10 +720,14 @@ prefer policies on `meta.app_user()` / `meta.has_role()` on tables with a maskin
   page and **user**, so a link can't be edited (`?P3_EMPNO=7839` → `7902`) and one user's links
   don't work for another. Build links in SQL with `meta.page_url(3, '{"P3_EMPNO": 7839}')`.
 - **Submitted values**: only editable, visible items are taken from a submit. Hidden, display-only,
-  read-only and unauthorized items keep their server-side values.
+  read-only and unauthorized items keep their server-side values. (167) A hidden item with
+  `{"value_protected": false}` is the exception the developer chooses: a hidden input whose posted value is
+  user input, like a text field's.
+- **Grid defaults**: a new grid row posts the default values it started with (`_def`), only to tell an
+  untouched row from a filled-in one; it never sets a column.
 - **Grid rows**: every row's primary key is signed the same way.
 - **Master-detail selection**: a master grid's select links carry a signature bound to the
-  application, page, user, region and value; only then does the value go into the item (hidden
+  application, page, user, region and value; only then does the value go into the item (protected hidden
   items are never taken from a submit, and URL items need the page checksum). The detail
   endpoint `GET …/region/:id` serves only lazy regions and details of a visible master, after
   the page's and region's authorization and conditions. A detail grid's master column is filled
