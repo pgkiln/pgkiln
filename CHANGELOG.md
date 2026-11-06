@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.83.0] - 2026-11-06
+
 ### Added
 - **Component events for dynamic actions** (CD-3, part 2; migration 153): `grid_row_init` (Add row, Duplicate) and
   `grid_save` (on the page that comes back) for grids, `calendar_date_select` and `calendar_view_change` for
