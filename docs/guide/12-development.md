@@ -344,6 +344,7 @@ src/
     i18n.ts                (sprint 121) the builder's own texts: BUILDER_LANGUAGES, tr(s) / translatorFor(lang) → tx(key, params),
                            tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels),
                            (sprint 162) tx.code (`backticks` become <code>), withTranslator / scopedTx (a request-scoped translator)
+                           (sprint 164) inRequestScope / setRequestTranslator: scopedTx in every builder handler
     i18n/                  en.ts defines the builder's keys; de, es, fr, it, nl, pt, zh-cn, zh-tw, ja, ko (sprint 134) are Records of the same keys
     language.ts            (migration 127) the status bar's language menu (POST /builder/language), the sign-in page's
                            language links (?lang=, a cookie), meta.developer.language
@@ -719,7 +720,11 @@ tx.code('cr.schedule_help');                     // (sprint 162) `backticked` pa
 pass `tx` to each of them: its entry point runs inside `withTranslator(tr(s), () => …)`, and the helpers import
 `scopedTx as tx`, which takes the translator of the request being rendered from an `AsyncLocalStorage` (so two
 requests in different languages never mix; `test/builder-i18n.test.ts` renders German and French concurrently).
-Outside `withTranslator` it is English.
+(sprint 164) Every `/builder` route runs in a request scope (`inRequestScope` in `app.ts`), and `developer()` sets
+the developer's translator in it once the session is loaded (`setRequestTranslator`), so `scopedTx` works in any
+builder handler and the helpers it calls without `withTranslator`; before sign-in it follows the language cookie
+(`cookieLanguage`). Outside a request (the command line, MCP, background jobs) it is English. Plural counts that
+English writes differently get a separate `_1` key, so the English stays exactly as before.
 
 A missing text falls back to English, never to the raw key. Shared helpers that render chrome take the session as
 an optional last argument (`appHeader(a, 'pages', s)`, `workshopTabs('sql', s)`); `shell()` translates known English

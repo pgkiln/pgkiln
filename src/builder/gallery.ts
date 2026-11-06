@@ -12,6 +12,7 @@ import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, placeApp } from './workspaces.ts';
 import { workspacesChanged } from '../workspace-db.ts';
+import { scopedTx as tx, type BuilderKey } from './i18n.ts';
 
 // The App Gallery (sprint 61, sprint 120; APEX: App Gallery with Sample, Starter, Utility and
 // Custom Apps).
@@ -69,7 +70,7 @@ const SAMPLE_FILE = /^(samples\/)?[a-z0-9-]+\.sql$/;
 const galleryFile = (rel: string) => readFileSync(join(rel.includes('/') ? GALLERY : join(root, 'examples'), rel), 'utf8');
 
 type Tab = 'samples' | 'starters' | 'utilities' | 'custom';
-const TABS: readonly [Tab, string][] = [['samples', 'Sample Apps'], ['starters', 'Starter Apps'], ['utilities', 'Utility Apps'], ['custom', 'Custom Apps']];
+const TABS: readonly [Tab, BuilderKey][] = [['samples', 'gal.tab.samples'], ['starters', 'gal.tab.starters'], ['utilities', 'gal.tab.utilities'], ['custom', 'gal.tab.custom']];
 
 export async function galleryRoutes(app: FastifyInstance) {
   app.get(`${BASE}/gallery`, async (req: Req, reply) => {
@@ -100,50 +101,45 @@ export async function galleryRoutes(app: FastifyInstance) {
     const card = (ic: string, title: string, by: string, text: string, action: unknown) =>
       html`<article class="gal-card" data-filter-row><div class="gal-head"><span class="gal-icon">${icon(ic)}</span><div><h2>${title}</h2><span class="muted small">${by}</span></div></div>
         <p>${text}</p><div class="gal-foot">${action}</div></article>`;
-    const tabs = html`<nav class="gal-tabs segmented" aria-label="Kinds of applications">${TABS.map(([t, l]) =>
-      html`<a href="${BASE}/gallery?tab=${t}${q ? `&q=${encodeURIComponent(q)}` : ''}"${tab === t ? raw(' aria-current="page"') : ''}>${l} <span class="gal-count">${counts[t]}</span></a>`)}</nav>`;
+    const tabs = html`<nav class="gal-tabs segmented" aria-label="${tx('gal.kinds')}">${TABS.map(([t, l]) =>
+      html`<a href="${BASE}/gallery?tab=${t}${q ? `&q=${encodeURIComponent(q)}` : ''}"${tab === t ? raw(' aria-current="page"') : ''}>${tx(l)} <span class="gal-count">${counts[t]}</span></a>`)}</nav>`;
     const blueprintCard = (kind: 'starters' | 'utilities') => (x: Starter) => card(x.icon, x.title, 'pgkiln', x.description,
-      html`<form method="post" action="${BASE}/gallery/${kind}/${x.key}">${csrf(s)}<button class="btn btn-hot btn-sm">Install</button></form>`);
+      html`<form method="post" action="${BASE}/gallery/${kind}/${x.key}">${csrf(s)}<button class="btn btn-hot btn-sm">${tx('gal.install')}</button></form>`);
     const cards =
       tab === 'samples'
         ? samples.filter(matches).map((x) => {
             const it = installed.get(x.alias);
             return card(x.icon, x.title, 'pgkiln', x.description,
               it
-                ? html`<span class="tag tag-ok">Installed</span><a class="btn btn-sm" href="/a/${x.alias}" target="_blank" rel="noopener">Run</a>${it.here
-                    ? html`<a class="btn btn-sm" href="${BASE}/apps/${it.id}">Edit</a>`
-                    : html`<span class="muted small">in another workspace</span>`}`
+                ? html`<span class="tag tag-ok">${tx('gal.installed')}</span><a class="btn btn-sm" href="/a/${x.alias}" target="_blank" rel="noopener">${tx('common.run')}</a>${it.here
+                    ? html`<a class="btn btn-sm" href="${BASE}/apps/${it.id}">${tx('gal.edit')}</a>`
+                    : html`<span class="muted small">${tx('gal.other_workspace')}</span>`}`
                 : admin
-                  ? html`<form method="post" action="${BASE}/gallery/samples/${x.key}">${csrf(s)}<button class="btn btn-hot btn-sm" data-confirm="Install ${x.title}? It adds its own schema, data and demo accounts with known passwords: not for a production instance.">Install</button></form>`
-                  : html`<span class="muted small">An administrator installs it.</span>`);
+                  ? html`<form method="post" action="${BASE}/gallery/samples/${x.key}">${csrf(s)}<button class="btn btn-hot btn-sm" data-confirm="${tx('gal.confirm_install', { title: x.title })}">${tx('gal.install')}</button></form>`
+                  : html`<span class="muted small">${tx('gal.admin_installs')}</span>`);
           })
         : tab === 'starters' || tab === 'utilities'
           ? (tab === 'starters' ? starters : utilities).filter(matches).map(blueprintCard(tab))
-          : custom.filter(matches).map((x) => card('copy', x.name, 'This workspace', x.description ?? 'A boilerplate application: a new application starts with its pages, shared components and settings.',
-              html`<a class="btn btn-hot btn-sm" href="${BASE}/create?boilerplate=${x.id}">Create from it</a><a class="btn btn-sm" href="${BASE}/apps/${x.id}">Edit</a>`));
+          : custom.filter(matches).map((x) => card('copy', x.name, tx('gal.this_workspace'), x.description ?? tx('gal.boilerplate_desc'),
+              html`<a class="btn btn-hot btn-sm" href="${BASE}/create?boilerplate=${x.id}">${tx('gal.create_from')}</a><a class="btn btn-sm" href="${BASE}/apps/${x.id}">${tx('gal.edit')}</a>`));
     const empty = q && counts[tab]
-      ? html`<p class="muted">No app matches <strong>${q}</strong>. <a href="${BASE}/gallery?tab=${tab}">Show all</a></p>`
+      ? html`<p class="muted">${tx.rich('gal.no_match', { q: html`<strong>${q}</strong>` })} <a href="${BASE}/gallery?tab=${tab}">${tx('gal.show_all')}</a></p>`
       : tab === 'custom'
-        ? html`<p class="muted">No custom apps yet: make an application of type <em>Boilerplate</em> (Application settings → Application type) and it appears here.</p>`
-        : html`<p class="muted">The gallery is empty.</p>`;
-    const intro = {
-      samples: 'Applications that show what pgkiln can do, each with its own schema, data and demo account: the showcase, the tutorial, one app per feature area and the UX Pattern Catalog. An administrator installs them on a development or demo instance.',
-      starters: 'Small, ready-to-use applications. Install shows what will be created (tables, pages, sample data) before anything happens; the application gets its own role and schema in this workspace.',
-      utilities: 'Applications a workspace uses rather than learns from: shared lookup lists, release notes, announcements. Like starter apps, Install shows what will be created first, and the application gets its own role and schema in this workspace.',
-      custom: 'The boilerplate applications of this workspace: start a new application from one.',
-    }[tab];
+        ? html`<p class="muted">${tx.rich('gal.no_custom', { type: html`<em>${tx('gal.boilerplate')}</em>` })}</p>`
+        : html`<p class="muted">${tx('gal.empty')}</p>`;
+    const intro = tx(({ samples: 'gal.intro.samples', starters: 'gal.intro.starters', utilities: 'gal.intro.utilities', custom: 'gal.intro.custom' } as const)[tab]);
     const main = html`<div class="gal">
       <div class="gal-bar">
-        <form class="ab-search gal-search" role="search" method="get" action="${BASE}/gallery"><label class="sr-only" for="gal-q">Search apps</label>${icon('search')}
+        <form class="ab-search gal-search" role="search" method="get" action="${BASE}/gallery"><label class="sr-only" for="gal-q">${tx('gal.search')}</label>${icon('search')}
           <input type="hidden" name="tab" value="${tab}">
-          <input id="gal-q" name="q" type="search" placeholder="Search apps" autocomplete="off" value="${q}" data-filter-list=".gal [data-filter-row]"></form>
+          <input id="gal-q" name="q" type="search" placeholder="${tx('gal.search')}" autocomplete="off" value="${q}" data-filter-list=".gal [data-filter-row]"></form>
         ${tabs}
       </div>
-      <h1 class="sr-only">App Gallery</h1>
+      <h1 class="sr-only">${tx('rail.gallery')}</h1>
       <p class="muted">${intro}</p>
       ${cards.length ? html`<div class="gal-grid">${cards}</div>` : empty}
     </div>`;
-    return send(reply, s, shell(s, 'App Gallery', [['App Gallery']], main, 'gallery'));
+    return send(reply, s, shell(s, tx('rail.gallery'), [[tx('rail.gallery')]], main, 'gallery'));
   });
 
   // a sample app: an administrator installs it (shipped SQL, run as the owner)
@@ -154,12 +150,12 @@ export async function galleryRoutes(app: FastifyInstance) {
     const x = KEY.test(req.params.key) ? catalog().samples.find((c) => c.key === req.params.key) : undefined;
     if (!x) return reply.code(404).send('Not found');
     try {
-      if (await owner.one('select 1 as ok from meta.app where alias = $1', [x.alias])) throw new Error(`an application with the alias ${x.alias} exists already.`);
+      if (await owner.one('select 1 as ok from meta.app where alias = $1', [x.alias])) throw new Error(tx('gal.err_alias', { alias: x.alias }));
       const ws = currentWorkspace(s);
       // into the current workspace (an isolated one gets the application's role too)
       const place = async (c: Client) => {
         const made = (await c.query('select id, db_role from meta.app where alias = $1', [x.alias])).rows[0] as { id: number; db_role: string | null } | undefined;
-        if (!made) throw new Error(`the scripts ran, but there is no application ${x.alias}.`);
+        if (!made) throw new Error(tx('gal.err_no_app', { alias: x.alias }));
         if (ws > 1) {
           if (made.db_role && (await c.query('select 1 from meta.workspace where id = $1 and isolated', [ws])).rowCount)
             await c.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2) on conflict do nothing', [ws, made.db_role]);
@@ -178,13 +174,13 @@ export async function galleryRoutes(app: FastifyInstance) {
           await c.query(sql);
           return place(c);
         });
-      } else throw new Error('the gallery entry names nothing to install.');
+      } else throw new Error(tx('gal.err_nothing'));
       await workspacesChanged();
       await logActivity({ appId: made.id, username: s.username, event: 'gallery', ip: clientIp(req), detail: `installed sample app ${x.key}` });
-      flash(s, `${x.title} installed (/a/${x.alias}).`);
+      flash(s, tx('gal.installed_flash', { title: x.title, alias: x.alias }));
       return back(reply, s, `${BASE}/apps/${made.id}`);
     } catch (e) {
-      flash(s, `${x.title} was not installed: ${(e as Error).message}`, 'error');
+      flash(s, tx('gal.not_installed', { title: x.title, message: (e as Error).message }), 'error');
       return back(reply, s, `${BASE}/gallery`);
     }
   });

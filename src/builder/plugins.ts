@@ -9,6 +9,7 @@ import { clearCompletions } from './code-editor.ts';
 import { appOr404 } from './forms.ts';
 import { resultsHtml, runScripts, type RunResult } from './supporting.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, type Body, type Req } from './ui.ts';
+import { scopedTx as tx, type BuilderKey } from './i18n.ts';
 
 // Shared Components → Plug-ins (migration 069; APEX: plug-ins): import a
 // plug-in file (format pgkiln-plugin/2), look at what it brings, run its
@@ -20,25 +21,30 @@ import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, typ
 
 const MAX_FILE_MB = 10;
 
-const TYPE_LABEL: Record<string, string> = { region: 'Region', item: 'Item', dynamic_action: 'Dynamic action', process: 'Process' };
+const TYPE_KEY: Record<string, BuilderKey> = { region: 'plg.type.region', item: 'plg.type.item', dynamic_action: 'plg.type.dynamic_action', process: 'plg.type.process' };
+const HEADING_KEY: Record<string, BuilderKey> = { region: 'plg.heading.region', item: 'plg.heading.item', dynamic_action: 'plg.heading.dynamic_action', process: 'plg.heading.process' };
+const USE_KEY = { region: 'plg.use.region', item: 'plg.use.item', process: 'plg.use.process', dynamic_action: 'plg.use.dynamic_action' } as const satisfies Record<string, BuilderKey>;
+/** How to use a plug-in of a type in a component: a sentence with `code`. */
+const HOW_KEY: Record<string, BuilderKey> = { region: 'plg.how.region', item: 'plg.how.item', dynamic_action: 'plg.how.dynamic_action', process: 'plg.how.process' };
 
 /** Where an application uses each plug-in: "page 3: region Ratings", … */
 async function usages(appId: number) {
-  const rows = (await owner.query<{ plugin: string; where: string }>(
-    `select r.config->>'plugin' as plugin, 'page ' || p.page_no || ': region ' || coalesce(r.title, r.id::text) as where
+  const rows = (await owner.query<{ plugin: string; kind: 'region' | 'item' | 'process' | 'dynamic_action'; page_no: number; name: string }>(
+    `select r.config->>'plugin' as plugin, 'region' as kind, p.page_no, coalesce(r.title, r.id::text) as name,
+            'page ' || p.page_no || ': region ' || coalesce(r.title, r.id::text) as sort
        from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type = 'plugin'
      union all
-     select i.config->>'plugin', 'page ' || p.page_no || ': item ' || i.name
+     select i.config->>'plugin', 'item', p.page_no, i.name, 'page ' || p.page_no || ': item ' || i.name
        from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and i.type = 'plugin'
      union all
-     select x.config->>'plugin', 'page ' || p.page_no || ': process ' || x.name
+     select x.config->>'plugin', 'process', p.page_no, x.name, 'page ' || p.page_no || ': process ' || x.name
        from meta.process x join meta.page p on p.id = x.page_id where p.app_id = $1 and x.type = 'plugin'
      union all
-     select trim(d.code), 'page ' || p.page_no || ': dynamic action ' || d.name
+     select trim(d.code), 'dynamic_action', p.page_no, d.name, 'page ' || p.page_no || ': dynamic action ' || d.name
        from meta.dynamic_action d join meta.page p on p.id = d.page_id where p.app_id = $1 and d.action = 'plugin'
-     order by 2`, [appId])).rows;
+     order by 5`, [appId])).rows;
   const out = new Map<string, string[]>();
-  for (const r of rows) out.set(r.plugin, [...(out.get(r.plugin) ?? []), r.where]);
+  for (const r of rows) out.set(r.plugin, [...(out.get(r.plugin) ?? []), tx(USE_KEY[r.kind], { page: r.page_no, name: r.name })]);
   return out;
 }
 
@@ -55,55 +61,52 @@ async function page(s: Session, a: any, selected: string | undefined, result?: {
     : [];
 
   const detail = p
-    ? region(`${p.label} (${TYPE_LABEL[p.type]} plug-in)`, html`
+    ? region(tx(HEADING_KEY[p.type], { label: p.label }), html`
         <dl class="props">
-          <dt>Name</dt><dd><code>${p.name}</code>${p.version ? html` · version ${p.version}` : ''}</dd>
-          ${p.help ? html`<dt>Help</dt><dd>${p.help}</dd>` : ''}
-          <dt>Used by</dt><dd>${(used.get(p.name) ?? []).join('; ') || html`<span class="muted">nothing yet</span>`}</dd>
-          <dt>Files</dt><dd>${p.files.length ? p.files.map((f, i) => html`${i ? ', ' : ''}<a href="${BASE}/apps/${a.id}/static-files?edit=${encodeURIComponent(f)}">${f}</a>${missingFiles.includes(f) ? html` <span class="badge badge-warning">missing</span>` : ''}`) : html`<span class="muted">none</span>`}</dd>
-          ${p.template_component ? html`<dt>Template</dt><dd>${tc ? html`<a href="${BASE}/apps/${a.id}/shared?c=template_component-${tc.id}">${p.template_component}</a>` : html`${p.template_component} <span class="badge badge-warning">missing</span>`}</dd>` : ''}
-          ${p.sql_function ? html`<dt>Function</dt><dd><code>${p.sql_function}(attributes jsonb) returns text</code></dd>` : ''}
+          <dt>${tx('plg.name')}</dt><dd><code>${p.name}</code>${p.version ? html` · ${tx('plg.version_n', { version: p.version })}` : ''}</dd>
+          ${p.help ? html`<dt>${tx('plg.help')}</dt><dd>${p.help}</dd>` : ''}
+          <dt>${tx('plg.used_by')}</dt><dd>${(used.get(p.name) ?? []).join('; ') || html`<span class="muted">${tx('plg.nothing_yet')}</span>`}</dd>
+          <dt>${tx('plg.files')}</dt><dd>${p.files.length ? p.files.map((f, i) => html`${i ? ', ' : ''}<a href="${BASE}/apps/${a.id}/static-files?edit=${encodeURIComponent(f)}">${f}</a>${missingFiles.includes(f) ? html` <span class="badge badge-warning">${tx('plg.missing')}</span>` : ''}`) : html`<span class="muted">${tx('plg.none')}</span>`}</dd>
+          ${p.template_component ? html`<dt>${tx('plg.template')}</dt><dd>${tc ? html`<a href="${BASE}/apps/${a.id}/shared?c=template_component-${tc.id}">${p.template_component}</a>` : html`${p.template_component} <span class="badge badge-warning">${tx('plg.missing')}</span>`}</dd>` : ''}
+          ${p.sql_function ? html`<dt>${tx('plg.function')}</dt><dd><code>${p.sql_function}(attributes jsonb) returns text</code></dd>` : ''}
         </dl>
         ${p.attributes.length
-          ? html`<div class="table-wrap"><table class="report"><caption>Attributes</caption><thead><tr><th scope="col">Name</th><th scope="col">Label</th><th scope="col">Type</th><th scope="col">Default</th></tr></thead>
+          ? html`<div class="table-wrap"><table class="report"><caption>${tx('plg.attributes')}</caption><thead><tr><th scope="col">${tx('plg.name')}</th><th scope="col">${tx('plg.label')}</th><th scope="col">${tx('plg.type')}</th><th scope="col">${tx('plg.default')}</th></tr></thead>
               <tbody>${p.attributes.map((x) => html`<tr><td><code>${x.name}</code></td><td>${x.label ?? ''}</td><td>${x.type ?? 'text'}${x.options ? `: ${x.options.join(', ')}` : ''}</td><td>${x.default ?? ''}</td></tr>`)}</tbody></table></div>`
           : ''}
-        <p class="muted">Use it as ${p.type === 'dynamic_action'
-          ? html`a dynamic action with action <code>plugin</code>, Code <code>${p.name}</code> and Plug-in attributes <code>{"attributes": {…}}</code>`
-          : html`a ${p.type} of type <code>plugin</code> with configuration <code>{"plugin": "${p.name}", "attributes": {…}}</code>`}.</p>
+        <p class="muted">${tx.code(HOW_KEY[p.type], { name: p.name })}</p>
         ${p.install_sql
-          ? html`<h3>Install SQL</h3><p class="muted">Not run on import. Read it, then run it as the application's database role <code>${a.db_role ?? '(none: the runtime connection)'}</code>, in one transaction.</p>
+          ? html`<h3>${tx('plg.install_sql')}</h3><p class="muted">${tx.rich('plg.install_help', { role: html`<code>${a.db_role ?? tx('plg.role_none')}</code>` })}</p>
               <pre class="source">${p.install_sql}</pre>
               <form method="post" action="${base}/install" class="u-mt1">${csrf(s)}<input type="hidden" name="name" value="${p.name}">
-                <button class="btn" data-confirm="Run the install SQL of ${p.label} as ${a.db_role ?? 'the runtime connection'}?">${icon('play')} Run the install SQL</button></form>`
+                <button class="btn" data-confirm="${a.db_role ? tx('plg.confirm_install', { label: p.label, role: a.db_role }) : tx('plg.confirm_install_runtime', { label: p.label })}">${icon('play')} ${tx('plg.run_install')}</button></form>`
           : ''}
         <div class="buttons u-mt1">
-          <a class="btn" href="${base}/download?name=${encodeURIComponent(p.name)}">${icon('download')} Download plug-in file</a>
+          <a class="btn" href="${base}/download?name=${encodeURIComponent(p.name)}">${icon('download')} ${tx('plg.download')}</a>
           <form method="post" action="${base}/delete" class="inline">${csrf(s)}<input type="hidden" name="name" value="${p.name}">
-            <button class="btn btn-danger" data-confirm="Remove the plug-in ${p.label}? Its files and template component stay.">${icon('trash')} Remove</button></form>
+            <button class="btn btn-danger" data-confirm="${tx('plg.confirm_remove', { label: p.label })}">${icon('trash')} ${tx('plg.remove')}</button></form>
         </div>`)
     : '';
 
   return html`${appHeader(a, 'shared', s)}
-    ${result ? region(`Result: install SQL of ${result.name}`, resultsHtml('install', result.run)) : ''}
+    ${result ? region(tx('plg.result', { name: result.name }), resultsHtml('install', result.run)) : ''}
     ${detail}
-    ${region('Plug-ins', html`<p class="muted u-mt0">Region, item, dynamic action and process types that bring their own code: JavaScript and CSS as
-        <a href="${BASE}/apps/${a.id}/static-files">static application files</a> (registered with <code>pgkiln.plugins.register</code>), a template component, a PL/pgSQL function.
-        A plug-in's code runs with this application's rights: import only plug-ins you trust and read their files.</p>
+    ${region(tx('plg.title'), html`<p class="muted u-mt0">${tx.rich('plg.intro', { files: html`<a href="${BASE}/apps/${a.id}/static-files">${tx('plg.static_files')}</a>`, register: html`<code>pgkiln.plugins.register</code>` })}
+        ${tx('plg.intro_trust')}</p>
       ${list.length
-        ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">Plug-ins</caption>
-            <thead><tr><th scope="col">Plug-in</th><th scope="col">Type</th><th scope="col">Version</th><th scope="col">Used by</th></tr></thead>
+        ? html`<div class="table-wrap"><table class="report"><caption class="sr-only">${tx('plg.title')}</caption>
+            <thead><tr><th scope="col">${tx('plg.plugin')}</th><th scope="col">${tx('plg.type')}</th><th scope="col">${tx('plg.version')}</th><th scope="col">${tx('plg.used_by')}</th></tr></thead>
             <tbody>${list.map((x) => html`<tr><td><a href="${base}?p=${x.name}"${x.name === selected ? raw(' aria-current="page"') : ''}>${x.label}</a> <code class="muted">${x.name}</code></td>
-              <td>${TYPE_LABEL[x.type]}</td><td>${x.version ?? ''}</td><td>${(used.get(x.name) ?? []).length || ''}</td></tr>`)}</tbody></table></div>`
-        : html`<p class="muted">No plug-ins yet.</p>`}`)}
-    ${region('Import a plug-in', html`<form method="post" action="${base}/import" enctype="multipart/form-data">${csrf(s)}
-        <div class="field"><label class="label" for="f_plugin_file">Plug-in file (<code>pgkiln-plugin/2</code> JSON)</label>
+              <td>${tx(TYPE_KEY[x.type])}</td><td>${x.version ?? ''}</td><td>${(used.get(x.name) ?? []).length || ''}</td></tr>`)}</tbody></table></div>`
+        : html`<p class="muted">${tx('plg.no_plugins')}</p>`}`)}
+    ${region(tx('plg.import_title'), html`<form method="post" action="${base}/import" enctype="multipart/form-data">${csrf(s)}
+        <div class="field"><label class="label" for="f_plugin_file">${tx.code('plg.file_label')}</label>
           <input type="file" id="f_plugin_file" name="file" accept=".json,application/json"></div>
-        <div class="field" data-wide><label class="label" for="f_plugin_json">…or paste it</label>
+        <div class="field" data-wide><label class="label" for="f_plugin_json">${tx('plg.or_paste')}</label>
           <textarea id="f_plugin_json" name="plugin" class="code" rows="6" spellcheck="false" placeholder='{"format": "pgkiln-plugin/2", "type": "region", "name": …}'></textarea></div>
-        <div class="field"><label class="check"><input type="checkbox" name="replace" value="true"> Replace a plug-in, files and template component with the same names</label></div>
-        <div class="buttons"><button class="btn btn-hot">${icon('upload')} Import</button></div>
-        <small class="help">Template components for older plug-in files (<code>pgkiln-plugin/1</code>) are imported under Template components. <code>examples/plugins/</code> has examples.</small>
+        <div class="field"><label class="check"><input type="checkbox" name="replace" value="true"> ${tx('plg.replace')}</label></div>
+        <div class="buttons"><button class="btn btn-hot">${icon('upload')} ${tx('plg.import')}</button></div>
+        <small class="help">${tx.code('plg.import_help')}</small>
       </form>`)}`;
 }
 
@@ -132,7 +135,7 @@ export async function exportPlugin(appId: number, name: string) {
 }
 
 export async function pluginRoutes(app: FastifyInstance) {
-  const crumbs = (a: any) => [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`], ['Plug-ins']] as [string, string?][];
+  const crumbs = (a: any) => [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('app.tab.shared'), `${BASE}/apps/${a.id}/shared`], [tx('plg.title')]] as [string, string?][];
   const find = async (id: string) => (/^\d+$/.test(id) ? appOr404(id) : undefined);
 
   app.get(`${BASE}/apps/:id/plugins`, async (req: Req, reply) => {
@@ -140,7 +143,7 @@ export async function pluginRoutes(app: FastifyInstance) {
     if (!s) return;
     const a = await find(req.params.id);
     if (!a) return reply.code(404).send('Not found');
-    return send(reply, s, shell(s, 'Plug-ins', crumbs(a), await page(s, a, req.query?.p)));
+    return send(reply, s, shell(s, tx('plg.title'), crumbs(a), await page(s, a, req.query?.p)));
   });
 
   app.post(`${BASE}/apps/:id/plugins/import`, async (req: Req, reply) => {
@@ -161,16 +164,16 @@ export async function pluginRoutes(app: FastifyInstance) {
     try {
       doc = JSON.parse(text);
     } catch {
-      flash(s, text ? 'Import failed: the plug-in file is not valid JSON.' : 'Choose a plug-in file or paste one.', 'error');
+      flash(s, text ? tx('plg.not_json') : tx('plg.choose_file'), 'error');
       return back(reply, s, base);
     }
     try {
       const p = await installPlugin(a.id, doc, req.body?.replace === 'true');
       await logActivity({ appId: a.id, username: s.username, event: 'plugin', ip: clientIp(req), detail: `builder: imported plug-in ${p.name}` });
-      flash(s, `Plug-in ${p.label} imported.${p.install_sql ? ' Read its install SQL below before running it.' : ''}`);
+      flash(s, tx(p.install_sql ? 'plg.imported_install' : 'plg.imported', { label: p.label }));
       return back(reply, s, `${base}?p=${p.name}`);
     } catch (e) {
-      flash(s, `Import failed: ${(e as Error).message}`, 'error');
+      flash(s, tx('plg.import_failed', { message: (e as Error).message }), 'error');
       return back(reply, s, base);
     }
   });
@@ -193,7 +196,7 @@ export async function pluginRoutes(app: FastifyInstance) {
     const a = await find(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     const r = await owner.query('delete from meta.plugin where app_id = $1 and name = $2', [a.id, String(req.body?.name ?? '')]);
-    flash(s, r.rowCount ? 'Plug-in removed. Its files and template component stay (delete them on their own pages).' : 'No such plug-in.', r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? tx('plg.removed') : tx('plg.no_such'), r.rowCount ? 'ok' : 'error');
     return back(reply, s, `${BASE}/apps/${a.id}/plugins`);
   });
 
@@ -207,6 +210,6 @@ export async function pluginRoutes(app: FastifyInstance) {
     const run = await runScripts(a, [{ name: p.name, script: p.install_sql }], s.username!);
     clearCompletions();
     await logActivity({ appId: a.id, username: s.username, event: 'plugin', ip: clientIp(req), detail: `builder: install SQL of ${p.name} ${run.ok ? 'ran' : 'failed'} (${run.results.length} statement(s))` });
-    return send(reply, s, shell(s, 'Plug-ins', crumbs(a), await page(s, a, p.name, { name: p.label, run })));
+    return send(reply, s, shell(s, tx('plg.title'), crumbs(a), await page(s, a, p.name, { name: p.label, run })));
   });
 }

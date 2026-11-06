@@ -528,11 +528,20 @@ SQL Monitor, Top SQL, Quick SQL, SQL Scripts, Generate DDL, Schema Comparison, C
 Data, Sample Data, Query Builder, Data Modeler, Utilities, Object Reports, the SQL Workshop's AI, Schema Export /
 Import, Scheduling (schedules are described in your language), RESTful Services (modules and AutoREST) and the
 Object Browser's data security and document view, and the Page Designer's **region and report settings** (cards,
-charts, maps, calendars, facets, trees and the other region types, a report's columns). Messages that come from
-the database or from checks shared with the command line (a policy check, a REST handler's validation) stay
-English. Other builder pages are still in English (they move over screen by screen); so are the
-Page Designer's property names and their help (and, the same way, the field names and help of a shared component's
-form), the links to this guide, and any SQL the builder generates.
+charts, maps, calendars, facets, trees and the other region types, a report's columns), and (sprint 164) every
+other **App Builder screen**: Team Development, mail services, Data Reporter datasets, REST data sources and
+catalogs, workspace files, remote servers and web credentials, template components, vector providers, AI services,
+the AI assistant and AI agents, blueprints, JSON sources, the REST API page, globalization, remote databases, debug
+messages and the installation log, sign-in settings, the Create Application and create page wizards, Theme Roller,
+features, OpenTelemetry, the Page Designer's layout messages, the Form Designer, utilities, subscriptions, working
+copies, application groups, *Find my workspace* (its mail too, in the language of the page it was asked from),
+static application files, page and application locks with developer comments, automations, workflow versions and
+the migration of running instances, plug-ins, the App Gallery, PWA settings, the builder's search, backups and
+workspace backups, availability, feedback, cross-application reports, workspace export / import, upgrade
+application, page layouts, dependencies, UI defaults and supporting objects. Messages that come from the database
+or from checks shared with the command line (a policy check, the Advisor, a REST handler's validation) stay
+English, and so, by design, do the Page Designer's property names and their help (and, the same way, the field
+names and help of a shared component's form), the links to this guide, and any SQL the builder generates.
 
 ## Workspace home
 

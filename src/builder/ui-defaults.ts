@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
+import { scopedTx as tx } from './i18n.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, type Body, type Req } from './ui.ts';
 import { usableSchemas, workshopDb } from './workspaces.ts';
 
@@ -72,33 +73,33 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
     const t = schema ? await findTable(s, schema, q.table) : null;
     const counts = (await owner.query<{ schema_name: string; n: number }>('select schema_name, count(*)::int as n from meta.ui_default group by 1')).rows;
     const pick = html`<form method="get" class="util-filters">
-        <div class="field"><label class="label" for="f_schema">Schema</label><select id="f_schema" name="schema"><option value="">Choose a schema</option>
+        <div class="field"><label class="label" for="f_schema">${tx('uid.schema')}</label><select id="f_schema" name="schema"><option value="">${tx('uid.choose_schema')}</option>
           ${schemas.map((n) => html`<option value="${n}"${n === schema ? raw(' selected') : ''}>${n}${counts.find((c) => c.schema_name === n) ? ` (${counts.find((c) => c.schema_name === n)!.n})` : ''}</option>`)}</select></div>
-        ${schema ? html`<div class="field"><label class="label" for="f_table">Table or view</label><select id="f_table" name="table"><option value="">Choose a table</option>
+        ${schema ? html`<div class="field"><label class="label" for="f_table">${tx('uid.table_or_view')}</label><select id="f_table" name="table"><option value="">${tx('uid.choose_table')}</option>
           ${tables.map((x) => html`<option value="${x.name}"${x.name === t?.table ? raw(' selected') : ''}>${x.name}${x.n ? ` (${x.n})` : ''}</option>`)}</select></div>` : ''}
-        <div class="buttons"><button class="btn btn-sm">${icon('table')} Show</button></div></form>`;
+        <div class="buttons"><button class="btn btn-sm">${icon('table')} ${tx('common.show')}</button></div></form>`;
     let body = html`${pick}`;
     if (t) {
       const cols = await columnsOf(t.oid, t.schema, t.table);
       body = html`${pick}
         <form method="post" action="${BASE}/ui-defaults">${csrf(s)}<input type="hidden" name="schema" value="${t.schema}"><input type="hidden" name="table" value="${t.table}">
-          <div class="table-wrap"><table class="table ui-defaults report-reflow"><thead><tr><th scope="col">Column</th><th scope="col">Label</th><th scope="col">Format mask</th><th scope="col">Alignment</th><th scope="col">Help</th><th scope="col">List of values</th></tr></thead><tbody>
+          <div class="table-wrap"><table class="table ui-defaults report-reflow"><thead><tr><th scope="col">${tx('uid.col_column')}</th><th scope="col">${tx('uid.col_label')}</th><th scope="col">${tx('uid.col_mask')}</th><th scope="col">${tx('uid.col_alignment')}</th><th scope="col">${tx('uid.col_help')}</th><th scope="col">${tx('uid.col_lov')}</th></tr></thead><tbody>
           ${cols.map((c, i) => html`<tr>
-            <td data-label="Column"><code>${c.name}</code><br><span class="muted small">${c.type}</span><input type="hidden" name="c.${i}.name" value="${c.name}"></td>
-            <td data-label="Label"><input id="f_l${i}" aria-label="Label of ${c.name}" name="c.${i}.label" value="${c.d?.label ?? ''}" maxlength="200" placeholder="${c.wizard}"></td>
-            <td data-label="Format mask"><input id="f_m${i}" aria-label="Format mask of ${c.name}" name="c.${i}.format_mask" value="${c.d?.format_mask ?? ''}" maxlength="60" placeholder="${/numeric|integer|bigint|smallint|real|double/.test(c.type) ? '999G990D00' : /date|time/.test(c.type) ? 'DD.MM.YYYY' : ''}"></td>
-            <td data-label="Alignment"><select id="f_a${i}" aria-label="Alignment of ${c.name}" name="c.${i}.alignment">${ALIGNMENTS.map((x) => html`<option value="${x}"${(c.d?.alignment ?? '') === x ? raw(' selected') : ''}>${x || '–'}</option>`)}</select></td>
-            <td data-label="Help"><textarea id="f_h${i}" aria-label="Help of ${c.name}" name="c.${i}.help" rows="1" maxlength="4000">${c.d?.help ?? ''}</textarea></td>
-            <td data-label="List of values"><input id="f_v${i}" aria-label="List of values of ${c.name}" name="c.${i}.lov" value="${c.d?.lov ?? ''}" maxlength="4000" placeholder="LOV:NAME"></td>
+            <td data-label="${tx('uid.col_column')}"><code>${c.name}</code><br><span class="muted small">${c.type}</span><input type="hidden" name="c.${i}.name" value="${c.name}"></td>
+            <td data-label="${tx('uid.col_label')}"><input id="f_l${i}" aria-label="${tx('uid.label_of', { column: c.name })}" name="c.${i}.label" value="${c.d?.label ?? ''}" maxlength="200" placeholder="${c.wizard}"></td>
+            <td data-label="${tx('uid.col_mask')}"><input id="f_m${i}" aria-label="${tx('uid.mask_of', { column: c.name })}" name="c.${i}.format_mask" value="${c.d?.format_mask ?? ''}" maxlength="60" placeholder="${/numeric|integer|bigint|smallint|real|double/.test(c.type) ? '999G990D00' : /date|time/.test(c.type) ? 'DD.MM.YYYY' : ''}"></td>
+            <td data-label="${tx('uid.col_alignment')}"><select id="f_a${i}" aria-label="${tx('uid.alignment_of', { column: c.name })}" name="c.${i}.alignment">${ALIGNMENTS.map((x) => html`<option value="${x}"${(c.d?.alignment ?? '') === x ? raw(' selected') : ''}>${x || '–'}</option>`)}</select></td>
+            <td data-label="${tx('uid.col_help')}"><textarea id="f_h${i}" aria-label="${tx('uid.help_of', { column: c.name })}" name="c.${i}.help" rows="1" maxlength="4000">${c.d?.help ?? ''}</textarea></td>
+            <td data-label="${tx('uid.col_lov')}"><input id="f_v${i}" aria-label="${tx('uid.lov_of', { column: c.name })}" name="c.${i}.lov" value="${c.d?.lov ?? ''}" maxlength="4000" placeholder="LOV:NAME"></td>
           </tr>`)}</tbody></table></div>
-          <div class="buttons"><button class="btn btn-hot" name="mode" value="save">${icon('save')} Save</button>
-            <button class="btn" name="mode" value="seed">${icon('edit')} Seed from comments</button></div>
-          <p class="muted small">An empty row has no UI default. The placeholder of a label shows what the wizards use without one. Lists of values: <code>LOV:NAME</code> (a shared list of values of the application), <code>STATIC:Yes;Y,No;N</code> or a query (<code>select name d, id r from sales.status</code>).</p>
+          <div class="buttons"><button class="btn btn-hot" name="mode" value="save">${icon('save')} ${tx('common.save')}</button>
+            <button class="btn" name="mode" value="seed">${icon('edit')} ${tx('uid.seed')}</button></div>
+          <p class="muted small">${tx.code('uid.help')}</p>
         </form>`;
     }
-    const main = html`<h1 class="u-mb1">UI defaults</h1>
-      ${region('UI defaults per column', html`<p class="muted u-mt0">Label, format mask, help text, alignment and list of values per table column (APEX: Attribute Dictionary). The page wizards and the Create Application wizard use the label for every generated report heading and form item, and a generated form item also gets the format mask, help and list of values. They apply to pages generated after the change, in every application.</p>${body}`)}`;
-    return send(reply, s, shell(s, 'UI defaults', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['UI defaults']], main));
+    const main = html`<h1 class="u-mb1">${tx('util.c_ui_defaults')}</h1>
+      ${region(tx('uid.per_column'), html`<p class="muted u-mt0">${tx('uid.intro')}</p>${body}`)}`;
+    return send(reply, s, shell(s, tx('util.c_ui_defaults'), [[tx('rail.app_builder'), BASE], [tx('admin.utilities'), `${BASE}/utilities`], [tx('util.c_ui_defaults')]], main));
   });
 
   app.post(`${BASE}/ui-defaults`, async (req: Req, reply) => {
@@ -123,7 +124,7 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
             [t.schema, t.table, c.name, short ? text : null, short ? null : text.slice(0, 4000), s.username]);
           n++;
         }
-        flash(s, n ? `UI defaults of ${n} column${n === 1 ? '' : 's'} made from their comments.` : 'No column without a UI default has a comment.');
+        flash(s, n ? tx(n === 1 ? 'uid.seeded_one' : 'uid.seeded', { n }) : tx('uid.no_comments'));
         return back(reply, s, to);
       }
       const rows: { name: string; label: string | null; mask: string | null; help: string | null; align: string | null; lov: string | null }[] = [];
@@ -131,9 +132,9 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
         const name = b[`c.${i}.name`];
         if (typeof name !== 'string' || !known.has(name)) continue;
         const mask = trim(b[`c.${i}.format_mask`], 60);
-        if (mask && !MASK.test(mask)) throw new Error(`Format mask of ${name}: letters, digits and . , : / - only (e.g. 999G990D00 or DD.MM.YYYY).`);
+        if (mask && !MASK.test(mask)) throw new Error(tx('uid.bad_mask', { column: name }));
         const align = trim(b[`c.${i}.alignment`], 10);
-        if (align && !(ALIGNMENTS as readonly string[]).includes(align)) throw new Error(`Alignment of ${name}: start, center or end.`);
+        if (align && !(ALIGNMENTS as readonly string[]).includes(align)) throw new Error(tx('uid.bad_alignment', { column: name }));
         rows.push({ name, label: trim(b[`c.${i}.label`], 200), mask, help: trim(b[`c.${i}.help`], 4000), align, lov: trim(b[`c.${i}.lov`], 4000) });
       }
       await owner.tx(async (c) => {
@@ -152,7 +153,7 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
             [t.schema, t.table, r.name, r.label, r.mask, r.help, r.align, r.lov, s.username]);
         }
       });
-      flash(s, `UI defaults of ${t.schema}.${t.table} saved.`);
+      flash(s, tx('uid.saved', { table: `${t.schema}.${t.table}` }));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
     }

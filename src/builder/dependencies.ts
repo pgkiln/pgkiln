@@ -8,6 +8,7 @@ import { devDbForApp } from '../workspace-db.ts';
 import { EXPLAINABLE, sqlFields, type SqlShape } from './advisor.ts';
 import { COMPONENTS } from './components.ts';
 import { appEntries, type Entry } from './search.ts';
+import { scopedTx as tx } from './i18n.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
 
 // (sprint 138, AP-5) App Builder → Utilities → Database object dependencies
@@ -164,7 +165,7 @@ export async function appDependencies(appId: number): Promise<Dependencies> {
           continue;
         }
         const { statements, skipped } = bodyOf(f.sql, f.shape);
-        if (skipped.length) unscanned.push({ ...use, message: `Not scanned (only SELECT, INSERT, UPDATE, DELETE and MERGE are parsed): ${skipped.join(', ')}` });
+        if (skipped.length) unscanned.push({ ...use, message: tx('dep.not_parsed', { statements: skipped.join(', ') }) });
         if (!statements.length) continue;
         scanned++;
         // the extended protocol takes exactly one statement: SQL that ends the function early (…; end; drop …) is refused
@@ -262,7 +263,7 @@ export const objectUrl = (o: Pick<DepObject, 'kind' | 'schema' | 'ref'>) =>
 
 const useLink = (u: Use) =>
   u.entry
-    ? html`<li><a href="${u.entry.url}">${icon(u.entry.icon)}<span>${u.entry.kindLabel}: ${u.entry.label}</span></a>${u.entry.pageNo !== null && u.entry.kind !== 'page' ? html` <span class="tag">page ${u.entry.pageNo}</span>` : ''} <span class="muted small">${u.field}</span></li>`
+    ? html`<li><a href="${u.entry.url}">${icon(u.entry.icon)}<span>${u.entry.kindLabel}: ${u.entry.label}</span></a>${u.entry.pageNo !== null && u.entry.kind !== 'page' ? html` <span class="tag">${tx('dep.page_tag', { n: u.entry.pageNo })}</span>` : ''} <span class="muted small">${u.field}</span></li>`
     : html`<li><span class="muted small">${u.field}</span></li>`;
 
 export async function dependencyRoutes(app: FastifyInstance) {
@@ -279,33 +280,33 @@ export async function dependencyRoutes(app: FastifyInstance) {
     const grantsN = deps.objects.filter((o) => o.lacking.length).length;
     const pages = (o: DepObject) => [...new Set(o.usedBy.map((u) => u.entry?.pageNo).filter((p): p is number => p !== null && p !== undefined))].sort((x, y) => x - y);
     const rows: Raw = shown.length
-      ? html`<div class="table-wrap"><table class="table dep-table report-reflow"><thead><tr><th scope="col">Object</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Pages</th><th scope="col">Used by</th></tr></thead>
+      ? html`<div class="table-wrap"><table class="table dep-table report-reflow"><thead><tr><th scope="col">${tx('dep.col_object')}</th><th scope="col">${tx('dep.col_type')}</th><th scope="col">${tx('dep.col_status')}</th><th scope="col">${tx('dep.col_pages')}</th><th scope="col">${tx('dep.col_used_by')}</th></tr></thead>
         <tbody>${shown.map((o) => {
           const url = objectUrl(o);
           const status = o.missing
-            ? html`<span class="tag tag-error">Missing</span>`
+            ? html`<span class="tag tag-error">${tx('dep.missing')}</span>`
             : o.lacking.length
-              ? html`<span class="tag tag-error">No grant</span> <span class="small dep-missing">${deps.role} lacks ${o.lacking.join(', ')}</span>`
-              : html`<span class="tag tag-success">OK</span> <span class="muted small">${o.privileges.join(', ')}</span>`;
+              ? html`<span class="tag tag-error">${tx('dep.no_grant')}</span> <span class="small dep-missing">${tx('dep.lacks', { role: deps.role, privileges: o.lacking.join(', ') })}</span>`
+              : html`<span class="tag tag-success">${tx('dep.ok')}</span> <span class="muted small">${o.privileges.join(', ')}</span>`;
           return html`<tr${o.missing || o.lacking.length ? raw(' class="dep-problem"') : ''}>
-            <td data-label="Object">${icon(KIND_ICON[o.kind])} ${url ? html`<a href="${url}">${o.display}</a>` : html`<span class="dep-missing">${o.display}</span>`}</td>
-            <td data-label="Type">${o.kind === 'relation' ? 'table or view' : o.kind}</td>
-            <td data-label="Status">${status}</td>
-            <td data-label="Pages">${pages(o).join(', ')}</td>
-            <td data-label="Used by"><details class="dep-uses"><summary>${o.usedBy.length} component${o.usedBy.length === 1 ? '' : 's'}</summary><ul class="dep-list">${o.usedBy.map(useLink)}</ul></details></td>
+            <td data-label="${tx('dep.col_object')}">${icon(KIND_ICON[o.kind])} ${url ? html`<a href="${url}">${o.display}</a>` : html`<span class="dep-missing">${o.display}</span>`}</td>
+            <td data-label="${tx('dep.col_type')}">${o.kind === 'relation' ? 'table or view' : o.kind}</td>
+            <td data-label="${tx('dep.col_status')}">${status}</td>
+            <td data-label="${tx('dep.col_pages')}">${pages(o).join(', ')}</td>
+            <td data-label="${tx('dep.col_used_by')}"><details class="dep-uses"><summary>${tx(o.usedBy.length === 1 ? 'dep.n_component' : 'dep.n_components', { n: o.usedBy.length })}</summary><ul class="dep-list">${o.usedBy.map(useLink)}</ul></details></td>
           </tr>`;
         })}</tbody></table></div>`
-      : html`<p class="muted">No objects${filter || onlyProblems ? ' match' : ''}.</p>`;
+      : html`<p class="muted">${tx(filter || onlyProblems ? 'dep.no_match' : 'dep.no_objects')}</p>`;
     const main = html`${appHeader(a, 'utilities', s)}
-      ${region('Database object dependencies', html`<p class="muted u-mt0">The tables, views, sequences and functions the application's SQL uses (${deps.scanned} statements parsed as the role <code>${deps.role ?? '(the runtime connection)'}</code>; nothing is run), with the components that use them. Missing objects and privileges the role lacks are marked.</p>
-        <p><span class="tag">${deps.objects.length} objects</span> <span class="tag tag-error">${missingN} missing</span> <span class="tag tag-warning">${grantsN} without the grants they need</span></p>
+      ${region(tx('util.c_deps'), html`<p class="muted u-mt0">${tx.rich('dep.intro', { n: deps.scanned, role: html`<code>${deps.role ?? tx('dep.runtime_connection')}</code>` })}</p>
+        <p><span class="tag">${tx('dep.n_objects', { n: deps.objects.length })}</span> <span class="tag tag-error">${tx('dep.n_missing', { n: missingN })}</span> <span class="tag tag-warning">${tx('dep.n_without_grants', { n: grantsN })}</span></p>
         <form method="get" class="util-filters" role="search">
-          <div class="field"><label class="label" for="dep-q">Filter</label><input id="dep-q" name="q" type="search" value="${filter}" placeholder="e.g. sales.orders"></div>
-          <div class="field"><label class="label" for="dep-show">Show</label><select id="dep-show" name="show"><option value="">All objects</option><option value="problems"${onlyProblems ? raw(' selected') : ''}>Only problems</option></select></div>
-          <div class="buttons"><button class="btn">${icon('filter')} Filter</button></div>
+          <div class="field"><label class="label" for="dep-q">${tx('dep.filter')}</label><input id="dep-q" name="q" type="search" value="${filter}" placeholder="${tx('dep.filter_ph')}"></div>
+          <div class="field"><label class="label" for="dep-show">${tx('common.show')}</label><select id="dep-show" name="show"><option value="">${tx('dep.all_objects')}</option><option value="problems"${onlyProblems ? raw(' selected') : ''}>${tx('dep.only_problems')}</option></select></div>
+          <div class="buttons"><button class="btn">${icon('filter')} ${tx('dep.filter')}</button></div>
         </form>
         ${rows}`)}
-      ${deps.unscanned.length ? region('Not scanned', html`<ul class="hits findings">${deps.unscanned.map((u) => html`<li class="finding-info">${u.entry ? html`<a href="${u.entry.url}">${icon(u.entry.icon)}<span>${u.entry.kindLabel}: ${u.entry.label}</span></a>` : html`<span>${u.field}</span>`}<span></span><span class="tag tag-info">Note</span><span class="hit-snippet"><b>${u.field}:</b> ${u.message}</span></li>`)}</ul>`) : ''}`;
-    return send(reply, s, shell(s, `Object dependencies · ${a.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Utilities', `${BASE}/apps/${a.id}/utilities`], ['Object dependencies']], main));
+      ${deps.unscanned.length ? region(tx('dep.not_scanned'), html`<ul class="hits findings">${deps.unscanned.map((u) => html`<li class="finding-info">${u.entry ? html`<a href="${u.entry.url}">${icon(u.entry.icon)}<span>${u.entry.kindLabel}: ${u.entry.label}</span></a>` : html`<span>${u.field}</span>`}<span></span><span class="tag tag-info">${tx('dep.note')}</span><span class="hit-snippet"><b>${u.field}:</b> ${u.message}</span></li>`)}</ul>`) : ''}`;
+    return send(reply, s, shell(s, tx('dep.title', { name: a.name }), [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('app.tab.utilities'), `${BASE}/apps/${a.id}/utilities`], [tx('dep.crumb')]], main));
   });
 }

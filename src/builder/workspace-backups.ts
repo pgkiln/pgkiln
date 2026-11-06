@@ -5,6 +5,7 @@ import { icon } from '../icons.ts';
 import { clientIp, logActivity } from '../session.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 import { currentWorkspace } from './workspaces.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Workspace utilities → Manage backups (APEX: Workspace Utilities → Manage
 // Backups): the backups (082) of every application of the current workspace on
@@ -26,28 +27,28 @@ export async function workspaceBackupRoutes(app: FastifyInstance) {
         where meta.app_workspace(a.id) = $1
         group by a.id order by lower(a.name), a.id`, [currentWorkspace(s)])).rows;
     const total = rows.reduce((t, r) => t + Number(r.bytes), 0);
-    const main = html`<div class="title-row"><h1>Manage backups</h1></div>
-      <p class="muted u-mt0">The backups of the applications of ${s.workspace?.name ?? 'this workspace'}: one before every import that replaces an application, a merge or a restore, one a day when it changed, and the ones made by hand. Open an application's backups to download, restore or delete one.</p>
+    const main = html`<div class="title-row"><h1>${tx('wu.backups')}</h1></div>
+      <p class="muted u-mt0">${s.workspace?.name ? tx('wbk.intro', { name: s.workspace.name }) : tx('wbk.intro_this')}</p>
       <div class="stat-grid u-mb1">
-        ${[['Applications', rows.length], ['Backups', rows.reduce((t, r) => t + r.backups, 0)], ['Storage', size(total)], ['Changed since their newest backup', rows.filter((r) => r.changed && r.backups_keep > 0).length]]
+        ${[[tx('wbk.applications'), rows.length], [tx('wbk.backups'), rows.reduce((t, r) => t + r.backups, 0)], [tx('wbk.storage'), size(total)], [tx('wbk.changed_since_newest'), rows.filter((r) => r.changed && r.backups_keep > 0).length]]
           .map(([l, v]) => html`<div class="stat"><b>${String(v)}</b><span>${l}</span></div>`)}
       </div>
-      ${region('Applications', html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th>Application</th><th class="num">Backups</th><th class="num">Kept</th><th>Newest (UTC)</th><th class="num">Size</th><th></th></tr></thead>
+      ${region(tx('wbk.applications'), html`<div class="table-wrap"><table class="report report-reflow">
+        <thead><tr><th>${tx('wbk.application')}</th><th class="num">${tx('wbk.backups')}</th><th class="num">${tx('wbk.kept')}</th><th>${tx('wbk.newest_utc')}</th><th class="num">${tx('wbk.size')}</th><th></th></tr></thead>
         <tbody>${rows.length ? rows.map((a) => html`<tr>
-          <td data-label="Application"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
-          <td class="num" data-label="Backups">${a.backups}</td>
-          <td class="num" data-label="Kept">${a.backups_keep === 0 ? html`<span class="tag">none</span>` : a.backups_keep}</td>
-          <td data-label="Newest">${a.newest ? when(a.newest) : html`<span class="muted">never</span>`}${a.changed && a.backups_keep > 0 && a.newest ? html` <span class="tag">changed since</span>` : ''}</td>
-          <td class="num" data-label="Size">${size(Number(a.bytes))}</td>
-          <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} Backups</a></td></tr>`)
-          : html`<tr><td colspan="6" class="empty">No applications.</td></tr>`}</tbody></table></div>`)}
-      ${rows.length ? region('Back up all applications', html`<form method="post" action="${BASE}/backups">${csrf(s)}
-        <p class="muted u-mt0">Makes a backup of every application of this workspace that keeps backups.</p>
-        <div class="form-grid">${input('note', 'Note', '', { placeholder: 'e.g. before the upgrade' })}
-          <div class="field"><label class="check"><input type="checkbox" name="changed" value="true" checked> Only applications changed since their newest backup</label></div></div>
-        <div class="buttons"><button class="btn btn-hot">${icon('save')} Back up now</button></div></form>`) : ''}`;
-    return send(reply, s, shell(s, 'Manage backups', [['App Builder', BASE], ['Workspace utilities', `${BASE}/utilities`], ['Manage backups']], main));
+          <td data-label="${tx('wbk.application')}"><a href="${BASE}/apps/${a.id}">${a.name}</a> <span class="muted">/a/${a.alias}</span></td>
+          <td class="num" data-label="${tx('wbk.backups')}">${a.backups}</td>
+          <td class="num" data-label="${tx('wbk.kept')}">${a.backups_keep === 0 ? html`<span class="tag">${tx('wbk.none')}</span>` : a.backups_keep}</td>
+          <td data-label="${tx('wbk.newest')}">${a.newest ? when(a.newest) : html`<span class="muted">${tx('wbk.never')}</span>`}${a.changed && a.backups_keep > 0 && a.newest ? html` <span class="tag">${tx('wbk.changed_since')}</span>` : ''}</td>
+          <td class="num" data-label="${tx('wbk.size')}">${size(Number(a.bytes))}</td>
+          <td><a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} ${tx('wbk.backups')}</a></td></tr>`)
+          : html`<tr><td colspan="6" class="empty">${tx('wbk.no_apps')}</td></tr>`}</tbody></table></div>`)}
+      ${rows.length ? region(tx('wbk.back_up_all'), html`<form method="post" action="${BASE}/backups">${csrf(s)}
+        <p class="muted u-mt0">${tx('wbk.back_up_all_text')}</p>
+        <div class="form-grid">${input('note', tx('wbk.note'), '', { placeholder: tx('wbk.note_placeholder') })}
+          <div class="field"><label class="check"><input type="checkbox" name="changed" value="true" checked> ${tx('wbk.only_changed')}</label></div></div>
+        <div class="buttons"><button class="btn btn-hot">${icon('save')} ${tx('wbk.back_up_now')}</button></div></form>`) : ''}`;
+    return send(reply, s, shell(s, tx('wu.backups'), [[tx('rail.app_builder'), BASE], [tx('wu.title'), `${BASE}/utilities`], [tx('wu.backups')]], main));
   });
 
   app.post(`${BASE}/backups`, async (req: Req, reply) => {
@@ -71,8 +72,8 @@ export async function workspaceBackupRoutes(app: FastifyInstance) {
       }
     }
     await logActivity({ appId: null, username: s.username, event: 'backup', ip: clientIp(req), detail: `workspace ${currentWorkspace(s)}: ${made} backup(s)` });
-    if (failed.length) flash(s, `${made} backup(s) made; not backed up: application${failed.length > 1 ? 's' : ''} ${failed.join(', ')}.`, 'error');
-    else flash(s, made ? `${made} backup${made > 1 ? 's' : ''} made.` : 'Nothing to back up: every application is unchanged since its newest backup, or keeps none.');
+    if (failed.length) flash(s, tx(failed.length > 1 ? 'wbk.failed_many' : 'wbk.failed_one', { n: made, ids: failed.join(', ') }), 'error');
+    else flash(s, made ? tx(made > 1 ? 'wbk.made_many' : 'wbk.made_one', { n: made }) : tx('wbk.nothing'));
     return back(reply, s, `${BASE}/backups`);
   });
 }
