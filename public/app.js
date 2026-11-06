@@ -1596,6 +1596,8 @@ const pgkilnUnsaved = (() => {
       if (!row) return;
       e.preventDefault();
       closeMenus(dup);
+      // (167) a copy is not the template's default values: it is saved even when it matches them
+      row.querySelector('input[name$="_def"]')?.remove();
       for (const td of row.querySelectorAll('td[data-col]')) {
         const from = src.querySelector(`td[data-col="${td.dataset.col}"]`);
         if (from && control(td) && control(from)) setCell(td, control(from).tagName === 'SELECT' ? control(from).value : cellText(from));

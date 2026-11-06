@@ -27,7 +27,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `select_one` | (140) a search field over the list of values: typing filters a list under it ([Select One](#shuttle-select-one-and-select-many)); a select list without JavaScript | the chosen return value |
 | `select_many` | (140) as `select_one`, for several values shown as chips with a remove button; a multi-select list without JavaScript | **colon-separated** return values |
 | `display` | read-only text (shows the display value for list items) | whatever was set |
-| `hidden` | not rendered | set by URL (with checksum), fetch or processes |
+| `hidden` | not rendered: the value stays on the server; (167) `{"value_protected": false}` renders a hidden input the browser may set ([Hidden items](#hidden-items)) | set by URL (with checksum), fetch, processes or server-side dynamic actions; unprotected also by browser-side dynamic actions, JavaScript and a submit |
 | `file` | file upload ([chapter 16](16-files.md)); on phones the camera with `{"capture": "environment"}`, photos made smaller with `{"max_px": 1600}` ([chapter 17](17-mobile.md)) | the id of the uploaded temporary file (a uuid) |
 | `location` | a text field with *Use my location* ([chapter 17](17-mobile.md)) | `latitude,longitude`, e.g. `52.01160,4.35710` |
 | `richtext` | rich text editor (toolbar; a plain HTML textarea without JavaScript), full width | **sanitised HTML**, see [below](#rich-text-and-markdown) |
@@ -330,3 +330,22 @@ Items get their values from:
 - **application processes** (application items).
 
 Values persist in session state until changed. `?clear=1` in a URL clears the page's items.
+
+### Hidden items
+
+A `hidden` item is **value protected** by default: it isn't rendered, its value never leaves the server, and a
+submit can't change it, so it is safe for keys and other values the user must not tamper with. The server sets
+it: the URL (with checksum), a form's fetch, processes, computations and the server-side dynamic actions
+(`set_value` and `execute_sql` set its session value, though the browser never sees it).
+
+(167; APEX: *Value Protected* = No) `{"value_protected": false}` makes it a field of the page instead: a hidden
+input that browser-side dynamic actions (`clear`, `set_value` from a component event's value, `current_position`),
+`execute_javascript` functions and client-side conditions read and set, and whose value a submit (or a dynamic
+action's *items to submit*) sends back. A change event on it runs its `change` dynamic actions. Its posted value
+is **user input**, exactly like a text field's: check it in a validation before you trust it.
+
+```yaml
+name: P5_SELECTED_NODE
+type: hidden
+config: {value_protected: false}
+```

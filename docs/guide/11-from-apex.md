@@ -184,6 +184,9 @@ Tips:
   together.
 - **Errors are hidden by default**: unexpected errors show a reference number unless the app is in
   debug mode.
+- **Hidden items aren't in the page**: a `hidden` item is value protected and its value stays on the server (APEX
+  renders it with a checksum). For APEX's *Value Protected* = No, give it `{"value_protected": false}`: a hidden
+  input that dynamic actions and JavaScript set ([Hidden items](05-items.md#hidden-items)).
 - **Dates**: date items, date ranges, grid date cells and facet ranges are text in the application's date format
   (else ISO, `2026-10-01`) with pgkiln's date picker; format masks
   apply to report, grid and cards columns and to number and display items

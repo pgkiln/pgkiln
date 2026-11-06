@@ -260,8 +260,16 @@ function displayMap(ctx: PageContext, item: Item, value: string): Raw {
   </figure>`;
 }
 
+/** (167) A hidden item the browser may set ({"value_protected": false}): a hidden input, its posted value taken like a field's. */
+export const unprotectedHidden = (i: { type: string; config?: Record<string, any> | null }) => i.type === 'hidden' && i.config?.value_protected === false;
+
 export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = false): Promise<Raw | ''> {
-  if (item.type === 'hidden' || !ctx.vis!.items.has(item.name)) return '';
+  if (!ctx.vis!.items.has(item.name)) return '';
+  if (item.type === 'hidden') {
+    // (167) protected (the default): the value stays on the server; {"value_protected": false}: a hidden input
+    if (!unprotectedHidden(item)) return '';
+    return html`<input type="hidden" id="${item.name}" name="${item.name}" value="${ctx.session.state[item.name] ?? item.default_value ?? ''}" data-item="${item.name}">`;
+  }
   const value = ctx.session.state[item.name] ?? item.default_value ?? '';
   const id = item.name;
   const error = ctx.errors.items[item.name];

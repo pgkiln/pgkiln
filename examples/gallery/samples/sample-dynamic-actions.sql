@@ -15,7 +15,9 @@
 --           (page 10) closed or cancelled by a dynamic action;
 --   page 7  regions and the window: before / after refresh, resize, scroll,
 --           Close Region, Print, Share, Download, Push Subscribe;
---   page 8  a tree: Selection Change, Expand Tree, Collapse Tree;
+--   page 8  a tree: Selection Change, Expand Tree, Collapse Tree; an item in the
+--           tree region and a hidden item a dynamic action sets in the browser
+--           (value_protected false);
 --   page 9  faceted search: Facets Change and the report's dialogs;
 --   page 11 Show AI Assistant (asking needs an AI service set up by an
 --           administrator; the page works without one).
@@ -189,7 +191,7 @@ select pg_temp.page_id('sample-dynamic-actions', r.page), r.seq, r.title, r.type
 
   -- 8 A tree
   (8, 5, 'About this page', 'static', 12, 'plain',
-   '<p class="lead">Clicking a node of the tree runs <strong>Selection change [Tree]</strong>: a <em>Set value</em> without SQL puts the node''s id into an item, and <em>Refresh region</em> draws the report with it. <strong>Expand tree</strong> and <strong>Collapse tree</strong> open or close every node.</p>',
+   '<p class="lead">Clicking a node of the tree runs <strong>Selection change [Tree]</strong>: a <em>Set value</em> without SQL puts the node''s id into a hidden item (<code>{"value_protected": false}</code>: a hidden input the browser may set) and into the display item under the tree (items show in any region type), and <em>Refresh region</em> draws the report with it. <strong>Expand tree</strong> and <strong>Collapse tree</strong> open or close every node.</p>',
    '{}', null),
   (8, 10, 'Categories and products', 'tree', 5, 'standard',
    E'select ''c-'' || lower(category) as id, null::text as parent_id, category as label from sample_da.product group by category\nunion all\nselect id::text, ''c-'' || lower(category), name from sample_da.product',
@@ -261,7 +263,8 @@ select pg_temp.page_id('sample-dynamic-actions', i.page), pg_temp.region_id('sam
   (6, 'delivery', 40, 'P6_CUSTOMS', 'Customs number', 'text', null, null, 'Only outside the EU (shown with in list).', '{}'),
   (7, 'tools', 10, 'P7_REFRESHED', 'Last shuffled', 'display', null, 'not yet', null, '{}'),
   (7, 'tools', 20, 'P7_PICKED', 'Picked', 'text', null, null, 'Selection change: the rows checked in Pick products, colon separated.', '{"warn_unsaved": false}'),
-  (8, 'chosen', 10, 'P8_NODE', 'Chosen node', 'text', null, null, 'Set by the tree: a category (c-…) or a product id.', '{"warn_unsaved": false}')
+  (8, 'catalogue-tree', 10, 'P8_SHOWN', 'Chosen node', 'display', null, 'none yet', 'Set by the tree: a category (c-…) or a product id.', '{}'),
+  (8, 'chosen', 10, 'P8_NODE', null, 'hidden', null, null, null, '{"value_protected": false}')
   ) as i (page, region, seq, name, label, type, lov, def, help, config);
 
 insert into meta.button (page_id, region_id, seq, name, label, action, hot)
@@ -387,7 +390,7 @@ select pg_temp.page_id('sample-dynamic-actions', d.page), d.seq, d.name, d.event
   (7, 90, 'Turn on notifications', 'click', 'NOTIFY', null, null, 'push_subscribe', null, null, null, null,
    'Notifications are on for this device.', null, null),
   -- page 8 A tree
-  (8, 10, 'Remember the node', 'tree_selection_change', 'catalogue-tree', null, null, 'set_value', 'P8_NODE', null, null, null, null, null, null),
+  (8, 10, 'Remember the node', 'tree_selection_change', 'catalogue-tree', null, null, 'set_value', 'P8_NODE,P8_SHOWN', null, null, null, null, null, null),
   (8, 20, 'Show its products', 'tree_selection_change', 'catalogue-tree', null, null, 'refresh_region', null, 'chosen', null, 'P8_NODE', null, null, null),
   (8, 30, 'Open every node', 'click', 'EXPAND', null, null, 'expand_tree', null, 'catalogue-tree', null, null, null, null, null),
   (8, 40, 'Close every node', 'click', 'COLLAPSE', null, null, 'collapse_tree', null, 'catalogue-tree', null, null, null, null, null),

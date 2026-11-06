@@ -13737,3 +13737,34 @@ describe('sprint 166 &ITEM. in validation and success messages', () => {
     assert.doesNotMatch(page, /<img src=x/);
   });
 });
+
+describe('sprint 167 hidden items the browser may set', () => {
+  let pageId = 0;
+  const NO = 9167;
+  const EVIL = '"><img src=x onerror=alert(167)>';
+  before(async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no = $2', [appId, NO]);
+    pageId = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec167') returning id`, [appId, NO])).id;
+    const region = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Sec167', 'static', 'K=&P9167_KEY. N=&P9167_NEVER.') returning id`, [pageId])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, type, config, condition_type) values
+      ($1, $2, 10, 'P9167_OPEN', 'hidden', '{"value_protected": false}', null),
+      ($1, $2, 20, 'P9167_KEY', 'hidden', '{"value_protected": "no"}', null),
+      ($1, $2, 30, 'P9167_NEVER', 'hidden', '{"value_protected": false}', 'never')`, [pageId, region]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'SAVE', 'Save', 'submit')`, [pageId, region]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.page where id = $1', [pageId]);
+  });
+
+  test('only value_protected false (the boolean) opens a hidden item; its value is escaped in the page', async () => {
+    const king = await as('king');
+    await king.get(`/a/hr/${NO}`);
+    const res = await king.post(`/a/hr/${NO}`, { __csrf: king.lastCsrf, __request: 'SAVE', P9167_OPEN: EVIL, P9167_KEY: 'forged', P9167_NEVER: 'forged' });
+    assert.equal(res.statusCode, 303);
+    const page = (await king.get(`/a/hr/${NO}`)).body;
+    assert.match(page, /name="P9167_OPEN" value="&quot;&gt;&lt;img src=x onerror=alert\(167\)&gt;"/);
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.doesNotMatch(page, /forged/, 'a protected item and one its condition leaves out keep their server-side values');
+    assert.doesNotMatch(page, /name="P9167_KEY"|name="P9167_NEVER"/);
+  });
+});

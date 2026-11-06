@@ -34,7 +34,7 @@ export const LOGIN_USER = '__LOGIN_USER';
 
 export async function signInForm(
   app: App, locale: Locale, session: Session, next: string,
-  o: { error?: string; username?: string; formId?: string } = {},
+  o: { error?: string; username?: string; formId?: string; autofocus?: boolean } = {},
 ): Promise<Raw> {
   const t = locale.t;
   // database accounts and custom authentication: the user name and password form only
@@ -48,7 +48,7 @@ export async function signInForm(
   const fields = html`<input type="hidden" name="__csrf" value="${session.csrf_token}"${fa}>
     <input type="hidden" name="next" value="${next}"${fa}>
     ${app.time_zone_auto ? html`<input type="hidden" name="__tz" value=""${fa}>` : ''}
-    <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" value="${o.username ?? ''}" autocomplete="username" autofocus required maxlength="100"${fa}></div>
+    <div class="field"><label class="label" for="username">${t('login.username')}</label><input id="username" name="username" value="${o.username ?? ''}" autocomplete="username"${o.autofocus === false ? '' : raw(' autofocus')} required maxlength="100"${fa}></div>
     <div class="field"><label class="label" for="password">${t('login.password')}</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200"${fa}></div>
     ${remember ? html`<label class="check"><input type="checkbox" name="remember" value="true"${fa}> ${t('login.remember', { days: remember })}</label>` : ''}
     <button class="btn btn-hot"${fa}>${t('login.submit')}</button>
@@ -65,8 +65,8 @@ export async function signInForm(
       : providers.length ? '' : html`<p>${t('login.none')}</p>`}`;
 }
 
-/** The "login" region of an application's own login page. */
-export async function renderLoginRegion(ctx: PageContext): Promise<Raw> {
+/** The "login" region of an application's own login page; (167) {"autofocus": false} leaves the focus where the page puts it. */
+export async function renderLoginRegion(ctx: PageContext, config: { autofocus?: unknown } = {}): Promise<Raw> {
   const s = ctx.session.state;
   const error = s[LOGIN_ERROR] ?? undefined;
   const username = s[LOGIN_USER] ?? undefined;
@@ -76,6 +76,6 @@ export async function renderLoginRegion(ctx: PageContext): Promise<Raw> {
   ctx.detached.push(html`<form id="${formId}" method="post" action="/a/${ctx.app.alias}/login"></form>`);
   const next = safeNext(ctx.app, ctx.params.get('next') ?? undefined);
   const here = `${ctx.base}/${ctx.page.page_no}${ctx.params.get('next') ? `?next=${encodeURIComponent(next)}` : ''}`;
-  return html`<div class="login-region">${await signInForm(ctx.app, ctx.locale, ctx.session, next, { error, username, formId })}
+  return html`<div class="login-region">${await signInForm(ctx.app, ctx.locale, ctx.session, next, { error, username, formId, autofocus: config.autofocus !== false })}
     ${languagePicker(ctx.app, ctx.locale, here)}</div>`;
 }

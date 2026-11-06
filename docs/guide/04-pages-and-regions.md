@@ -70,8 +70,8 @@ Button Position):
 |---|---|
 | `create`, `edit`, `change`, `copy`, `help`, `up` | In the region's header, after the title |
 | `previous`, `close`, `delete` | At the left end of the region's bottom bar |
-| `next` | At the right end of the bottom bar |
-| `region` (or empty) | With the region's other buttons, as before: the header of reports and charts, the bottom of forms and static content |
+| `next` | At the right end of the bottom bar, after every other button there |
+| `region` (or empty) | With the region's other buttons, as before: the header of reports and charts, the bottom of forms and static content (in the bottom bar, before `next`) |
 
 Positions apply to the `standard`, `collapsible` and `plain` templates; the other templates place every
 button where they always do. Page-level buttons have no position.
@@ -229,11 +229,15 @@ on an interval, use a dynamic action with the [`timer`](07-dynamic-actions.md) e
 | [`workflows`](06-processing.md#workflows) | Workflow console: the workflows the user started or administers |
 | [`search`](#search-search-region) | One search field over several sources (search configurations), results grouped per source |
 | [`url`](#url-url-region) | Another site's page (or a page of this server) in a sandboxed frame |
-| `login` | The sign-in form of the application's own login page (no attributes): identity providers, user name and password, *Keep me signed in*, *Forgot password?*; see [chapter 8](08-security.md#the-login-page) |
+| `login` | The sign-in form of the application's own login page: identity providers, user name and password, *Keep me signed in*, *Forgot password?*; see [chapter 8](08-security.md#the-login-page). The cursor starts in the user name field; (167) `{"autofocus": false}` leaves it where the page puts it (a login region lower on a page that has other content) |
 | [`breadcrumb`](#breadcrumb-and-help_text) | (140) The page's breadcrumb trail, for the Breadcrumb bar position |
 | [`help_text`](#breadcrumb-and-help_text) | (140) The page's help text |
 | [`static`](#static-and-dynamic-content) | Fixed HTML with `&ITEM.` substitutions |
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
+
+(167) Items can be placed in any region. Reports, forms and static content place them themselves; in the other
+types (a tree, chart, map, cards, calendar …) they show under the region's content, as in APEX. A `login`
+region's fields post to a form of their own, so items placed in it are not shown: put them in a region next to it.
 
 Region-specific options go in the region's **attributes** (`config`, a JSON object).
 
@@ -556,7 +560,7 @@ Attributes:
 | `pagination`, `max_rows` | | As for reports |
 | `allow` | all `true` | `{"insert": false, "update": true, "delete": false}` |
 | `readonly` | `[]` | Columns that may not be edited |
-| `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)) |
+| `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)). (167) `default` and `default_sql` give a new row's starting value: see [New rows' default values](#new-rows-default-values) |
 | `headings`, `hidden`, `formats` | | As for reports |
 | `aggregates` | | Totals in the footer: `{"sal": ["sum", "avg"], "empno": "count"}` (`sum`, `avg`, `count`, `min`, `max`) |
 | `layout` | | The default column layout: `{"order": ["ename", "sal"], "hidden": ["comm"], "widths": {"ename": 180}, "frozen": 1}` |
@@ -570,6 +574,21 @@ Attributes:
 
 Cell editors follow the column type: number, date, date-time, checkbox (boolean), select list
 (with `lov`) or text.
+
+**New rows' default values.** (167; APEX: a column's *Default*) A column's `default` is text with `&ITEM.`
+substitutions; `default_sql` is a SELECT whose first column of the first row is the value (with `:BINDS`). Both
+are worked out when the grid is shown, and *Add row* (and the single row view's new row) starts with them:
+
+```json
+{"columns": {"deptno":   {"lov": "LOV:DEPARTMENTS", "default": "&P27_DEPTNO."},
+             "status":   {"default": "NEW"},
+             "hiredate": {"default_sql": "select current_date"}}}
+```
+
+A new row the user left at its default values counts as blank and isn't inserted, like an empty one; change
+any value and the whole row, defaults included, is inserted. A duplicated row is always inserted. Only columns
+a new row may set take a default (a detail grid's master column is filled from the master as before). For
+anything that needs a decision per row, the `grid_row_init` dynamic action event still runs on each new row.
 
 **Aggregates** are computed in the database over **every row of the search**, not only the rows
 on the page, and shown in a footer row under their columns. Besides the developer's

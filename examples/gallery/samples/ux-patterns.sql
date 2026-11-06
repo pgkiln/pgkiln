@@ -287,7 +287,7 @@ select pg_temp.page_id('ux-patterns', r.page), r.seq, r.title, r.type, r.cols, r
 
   -- 15 Button positions
   (15, 5, 'About this page', 'static', 12, 'plain', '{}',
-   '<p class="lead">A region''s button has a <strong>Button position</strong> (Page Designer → button → Layout; <code>slot</code> in the files), as APEX''s button positions. <em>Create, Edit, Change, Copy, Help</em> and <em>Up</em> go into the region''s header after the title; <em>Previous, Close</em> and <em>Delete</em> to the left end of the bottom bar and <em>Next</em> to the right end; <em>Region</em> (or none) with the region''s other buttons. Each button is labelled with its position. Previous and Next go to the neighbouring pages, Up and Close to the home page, Help opens an inline dialog; the others do nothing.</p>',
+   '<p class="lead">A region''s button has a <strong>Button position</strong> (Page Designer → button → Layout; <code>slot</code> in the files), as APEX''s button positions. <em>Create, Edit, Change, Copy, Help</em> and <em>Up</em> go into the region''s header after the title; <em>Previous, Close</em> and <em>Delete</em> to the left end of the bottom bar and <em>Next</em> to the right end; <em>Region</em> (or none) with the region''s other buttons (in the bottom bar of a static or form region, before Next). Each button is labelled with its position. Previous and Next go to the neighbouring pages, Up and Close to the home page, Help opens an inline dialog; the others do nothing.</p>',
    '{}', null, null),
   (15, 10, 'Every button position', 'static', 12, 'standard', '{}',
    '<p>The buttons of this region use every position. They apply to the <code>standard</code>, <code>collapsible</code> and <code>plain</code> templates; the other templates place every button where they always do.</p>',
@@ -301,9 +301,9 @@ select pg_temp.page_id('ux-patterns', r.page), r.seq, r.title, r.type, r.cols, r
 
   -- 16 Sign-in region (page template minimal)
   (16, 5, 'About this page', 'static', 12, 'plain', '{}',
-   '<p class="lead">This page has the page template <em>Minimal (no navigation)</em> (<code>minimal</code>): no header, navigation menu or navigation bar, the title and the regions only, centred. The region below is a <strong>Login</strong> region: the application''s sign-in form, as on an own login page (Application settings → Sign-in methods → Create a login page). It posts to the application''s sign-in, so throttling and every sign-in method work as on the built-in page. You are signed in already: signing in again as demo / demo starts a new session and opens the home page. A wrong password shows the built-in sign-in page with its message, because this page is not the application''s login page.</p>',
+   '<p class="lead">This page has the page template <em>Minimal (no navigation)</em> (<code>minimal</code>): no header, navigation menu or navigation bar, the title and the regions only, centred. The region below is a <strong>Login</strong> region: the application''s sign-in form, as on an own login page (Application settings → Sign-in methods → Create a login page). It posts to the application''s sign-in, so throttling and every sign-in method work as on the built-in page. You are signed in already: signing in again as demo / demo starts a new session and opens the home page. A wrong password shows the built-in sign-in page with its message, because this page is not the application''s login page. The region has <code>{"autofocus": false}</code>: you are signed in already, so the cursor isn''t put in the user name field (on a real login page leave it out).</p>',
    '{}', 'about-login', null),
-  (16, 10, 'Sign in', 'login', 12, 'standard', '{}', null, '{}', null, null)
+  (16, 10, 'Sign in', 'login', 12, 'standard', '{}', null, '{"autofocus": false}', null, null)
   ) as r (page, seq, title, type, cols, template, topts, source, config, sid, pos);
 
 -- buttons

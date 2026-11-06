@@ -454,6 +454,8 @@ dialog.region-inline_drawer:target { inset: 0 0 0 auto; }
 
 /* ---------- forms ---------- */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 1rem 1.25rem; }
+/* (167) the items of a region type that shows content of its own (a tree, chart, map …): under that content */
+.form-grid.region-items { margin-top: 1rem; }
 .page-items { margin-bottom: 1rem; }
 .field { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; margin: 0; padding: 0; border: 0; }
 .field[data-wide] { grid-column: 1 / -1; }

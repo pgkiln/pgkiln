@@ -147,6 +147,38 @@ describe('the sample apps of the App Gallery', () => {
     }
   });
 
+  test('Sample Dynamic Actions page 8 and Sample Interactive Grids page 3: a hidden item set in the browser, grid defaults (167)', async () => {
+    const c = await context(VIEWPORTS.desktop);
+    try {
+      const page = await signIn(c, 'sample-dynamic-actions');
+      await page.goto(`${base}/a/sample-dynamic-actions/8`);
+      assert.equal(await page.locator('input[type="hidden"][name="P8_NODE"]').count(), 1, 'value_protected false: a hidden input');
+      const leaf = page.locator('.tree-view li.tree-leaf', { hasText: 'Fountain pen' });
+      const id = (await leaf.getAttribute('data-node'))!;
+      await leaf.click();
+      // set_value without SQL fills the hidden input and the display item in the tree region; the refresh submits P8_NODE
+      await page.waitForFunction((v) => (document.querySelector('input[name="P8_NODE"]') as HTMLInputElement)?.value === v, id);
+      assert.equal((await page.locator('#P8_SHOWN').innerText()).trim(), id);
+      await page.locator('[data-static-id="chosen"]').getByText('Fountain pen').waitFor();
+      assert.doesNotMatch(await page.locator('[data-static-id="chosen"]').innerText(), /Stapler/);
+
+      const grids = await signIn(c, 'sample-grids');
+      await grids.goto(`${base}/a/sample-grids/3`);
+      await grids.locator('[data-grid-add]').click();
+      const row = grids.locator('table.grid-table > tbody:not(.grid-template) > tr.grid-new').last();
+      const cell = async (name: string) => {
+        const col = await grids.locator(`thead th[data-col-name="${name}"]`).getAttribute('data-col');
+        return row.locator(`td[data-col="${col}"] :is(input:not([type=hidden]), select)`).inputValue();
+      };
+      assert.equal(await cell('role'), 'Developer');
+      assert.equal(await cell('hours'), '40');
+      assert.match(await cell('starts'), /^\d{4}-\d{2}-\d{2}$/);
+      assert.equal(await cell('name'), '');
+    } finally {
+      await c.close();
+    }
+  });
+
   test('Sample Reporting on a phone: a phrase in the smart filters is understood and sets the facets', async () => {
     const c = await context(VIEWPORTS.phone);
     try {
