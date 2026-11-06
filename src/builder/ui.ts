@@ -10,7 +10,7 @@ import { getSession, saveState, takeFlash, type Session } from '../session.ts';
 import { SQL_TOOLS, TOOL_GROUPS, toolLabel } from './sql-tools.ts';
 import { ensureDevbar } from '../runtime/devbar.ts';
 import { noteChange } from './app-updates.ts';
-import { clientTexts, tr } from './i18n.ts';
+import { clientTexts, setRequestTranslator, tr } from './i18n.ts';
 import { languageMenu, loadLanguage } from './language.ts';
 import { enrolmentDue, requirement } from '../mfa.ts';
 
@@ -322,6 +322,7 @@ export async function developer(req: Req, reply: FastifyReply) {
   }
   // (sprint 121) a session from before the developer's language was kept in it: the stored choice (language.ts)
   if (s.state.__BLANG === undefined) await loadLanguage(s);
+  setRequestTranslator(tr(s)); // (sprint 164) scopedTx in this request's handler and helpers
   // (sprint 126, SEC-2) the two-factor policy: a banner during the grace period, then only the Security page until they enrol
   delete s.state.__MFA_DUE;
   const admin = await isAdmin(s.username);

@@ -8,7 +8,7 @@ import {
 } from '../team.ts';
 import { TEAM_LANGUAGES, TEAM_SAMPLES } from '../team-samples.ts';
 import { ago } from './home.ts';
-import { tr } from './i18n.ts';
+import { scopedTx as tx, tr } from './i18n.ts';
 import { back, BASE, csrf, designerUrl, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { appAllowed, appWorkspace, currentWorkspace, workspaceAdmin } from './workspaces.ts';
 
@@ -37,8 +37,8 @@ async function teamDev(req: Req, reply: FastifyReply): Promise<{ s: Session; ws:
   if (!s) return null;
   const ws = currentWorkspace(s);
   if (ws < 0) {
-    await send(reply.code(403), s, shell(s, 'Team Development', [['Team Development']],
-      html`<h1>Team Development</h1><div class="alert alert-info" role="status">You are not a developer of any workspace: Team Development belongs to a workspace.</div>`, 'team'));
+    await send(reply.code(403), s, shell(s, tx('tm.team_development'), [[tx('tm.team_development')]],
+      html`<h1>${tx('tm.team_development')}</h1><div class="alert alert-info" role="status">${tx('tm.you_are_not_a_developer')}</div>`, 'team'));
     return null;
   }
   return { s, ws };
@@ -68,16 +68,16 @@ const chip = (l: { name: string; color: string }) => html`<span class="team-labe
 function teamHeader(active: Tab, counts?: { open: number; mine: number; mentions: number }) {
   const tab = (key: Tab, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
-  return html`<div class="team-head"><h1>Team Development</h1>
-      ${counts ? html`<p class="muted small team-counts">${counts.open} open issue${counts.open === 1 ? '' : 's'} · <a href="${TEAM}?assignee=me">${counts.mine} assigned to you</a>${counts.mentions ? html` · <a href="${TEAM}#mentions">${counts.mentions} mention${counts.mentions === 1 ? '' : 's'} of you</a>` : ''}</p>` : ''}
-      <a class="btn btn-hot btn-sm" href="${TEAM}/issues/new">${icon('plus')} New issue</a></div>
-    <nav class="ide-tabs team-tabs u-mb1" aria-label="Team Development">
-      ${tab('issues', TEAM, 'list', 'Issues')}${tab('board', `${TEAM}/board`, 'kanban', 'Board')}${tab('labels', `${TEAM}/labels`, 'tag', 'Labels')}
-      ${tab('milestones', `${TEAM}/milestones`, 'flag', 'Milestones')}${tab('templates', `${TEAM}/templates`, 'note', 'Templates')}${tab('setup', `${TEAM}/setup`, 'settings', 'Set up')}
+  return html`<div class="team-head"><h1>${tx('tm.team_development')}</h1>
+      ${counts ? html`<p class="muted small team-counts">${counts.open === 1 ? tx('tm.counts_open_1') : tx('tm.counts_open', { n: counts.open })} · <a href="${TEAM}?assignee=me">${tx('tm.counts_mine', { n: counts.mine })}</a>${counts.mentions ? html` · <a href="${TEAM}#mentions">${counts.mentions === 1 ? tx('tm.counts_mentions_1') : tx('tm.counts_mentions', { n: counts.mentions })}</a>` : ''}</p>` : ''}
+      <a class="btn btn-hot btn-sm" href="${TEAM}/issues/new">${icon('plus')} ${tx('tm.new_issue')}</a></div>
+    <nav class="ide-tabs team-tabs u-mb1" aria-label="${tx('tm.team_development')}">
+      ${tab('issues', TEAM, 'list', tx('tm.tab.issues'))}${tab('board', `${TEAM}/board`, 'kanban', tx('tm.tab.board'))}${tab('labels', `${TEAM}/labels`, 'tag', tx('tm.tab.labels'))}
+      ${tab('milestones', `${TEAM}/milestones`, 'flag', tx('tm.tab.milestones'))}${tab('templates', `${TEAM}/templates`, 'note', tx('tm.tab.templates'))}${tab('setup', `${TEAM}/setup`, 'settings', tx('tm.tab.setup'))}
     </nav>`;
 }
 
-const page = (s: Session, title: string, crumbs: [string, string?][], main: Raw) => shell(s, title, [['Team Development', TEAM], ...crumbs], main, 'team');
+const page = (s: Session, title: string, crumbs: [string, string?][], main: Raw) => shell(s, title, [[tx('tm.team_development'), TEAM], ...crumbs], main, 'team');
 
 // ------------------------------------------------------------------ filters
 
@@ -141,16 +141,16 @@ function filterForm(f: Filters, lk: Lookups, action: string, hidden: Record<stri
   const opt = (v: string, label: string, cur: string) => html`<option value="${v}"${v === cur ? raw(' selected') : ''}>${label}</option>`;
   const sel = (name: string, label: string, cur: string, options: Raw[]) =>
     html`<div class="field"><label class="label" for="tf_${name}">${label}</label><select id="tf_${name}" name="${name}">${options}</select></div>`;
-  return html`<form method="get" action="${action}" class="team-filters" role="search" aria-label="Filter the issues">
+  return html`<form method="get" action="${action}" class="team-filters" role="search" aria-label="${tx('tm.filter_the_issues')}">
     ${Object.entries(hidden).map(([k, v]) => html`<input type="hidden" name="${k}" value="${v}">`)}
     ${f.page ? html`<input type="hidden" name="page" value="${f.page}">` : ''}
-    <div class="field team-q"><label class="label" for="tf_q">Search</label><input id="tf_q" name="q" type="search" value="${f.q}" maxlength="100" placeholder="Title, text or #number"></div>
+    <div class="field team-q"><label class="label" for="tf_q">${tx('tm.search')}</label><input id="tf_q" name="q" type="search" value="${f.q}" maxlength="100" placeholder="${tx('tm.title_text_or_number')}"></div>
     ${sel('status', 'Status', f.status, [opt('open', 'Open', f.status), opt('closed', 'Closed', f.status), opt('all', 'All', f.status)])}
     ${sel('label', 'Label', f.label, [opt('', 'Any', f.label), ...lk.labels.map((l) => opt(String(l.id), l.group_name ? `${l.group_name}: ${l.name}` : l.name, f.label))])}
     ${sel('milestone', 'Milestone', f.milestone, [opt('', 'Any', f.milestone), opt('none', 'None', f.milestone), ...lk.milestones.map((m) => opt(String(m.id), m.name, f.milestone))])}
     ${sel('assignee', 'Assignee', f.assignee, [opt('', 'Anyone', f.assignee), opt('me', 'Me', f.assignee), opt('none', 'Nobody', f.assignee), ...lk.devs.map((d) => opt(d, d, f.assignee))])}
     ${sel('app', 'Application', f.app, [opt('', 'Any', f.app), ...lk.apps.map((a) => opt(String(a.id), a.name, f.app))])}
-    <div class="buttons"><button class="btn btn-sm">${icon('filter')} Show</button>${filterQuery(f) ? html`<a class="btn btn-sm" href="${action}${Object.keys(hidden).length ? `?${new URLSearchParams(hidden)}` : ''}">Clear</a>` : ''}</div>
+    <div class="buttons"><button class="btn btn-sm">${icon('filter')} ${tx('tm.show')}</button>${filterQuery(f) ? html`<a class="btn btn-sm" href="${action}${Object.keys(hidden).length ? `?${new URLSearchParams(hidden)}` : ''}">${tx('tm.clear')}</a>` : ''}</div>
   </form>`;
 }
 
@@ -173,30 +173,30 @@ interface IssueInput { title: string; body: string; labels: string[]; milestone:
 async function readIssue(b: Record<string, unknown>, ws: number, lk: Lookups): Promise<{ v: IssueInput; errors: string[] }> {
   const errors: string[] = [];
   const title = text(b.title, 1000).replace(/\s+/g, ' ');
-  if (!title) errors.push('An issue needs a title.');
-  if (title.length > 200) errors.push('The title is at most 200 characters.');
+  if (!title) errors.push(tx('tm.an_issue_needs_a_title'));
+  if (title.length > 200) errors.push(tx('tm.the_title_is_at_most'));
   const body = String(b.body ?? '').replace(/\r\n?/g, '\n');
-  if (body.length > 20000) errors.push('The text is at most 20000 characters.');
+  if (body.length > 20000) errors.push(tx('tm.the_text_is_at_most'));
   const labelIds = new Set(lk.labels.map((l) => String(l.id)));
   const labels = many(b.labels);
-  if (labels.some((l) => !labelIds.has(l))) errors.push('Unknown label.');
+  if (labels.some((l) => !labelIds.has(l))) errors.push(tx('tm.unknown_label'));
   const milestone = String(b.milestone ?? '');
-  if (milestone && !lk.milestones.some((m) => String(m.id) === milestone)) errors.push('Unknown milestone.');
+  if (milestone && !lk.milestones.some((m) => String(m.id) === milestone)) errors.push(tx('tm.unknown_milestone'));
   const assignees = many(b.assignees);
   const devs = new Set(lk.devs);
-  if (assignees.some((a) => !devs.has(a))) errors.push('Assignees are developers of this workspace.');
+  if (assignees.some((a) => !devs.has(a))) errors.push(tx('tm.assignees_are_developers_of_this'));
   const appRaw = String(b.app ?? '');
   let app: number | null = null;
   if (appRaw) {
-    if (!/^\d{1,9}$/.test(appRaw) || !lk.apps.some((a) => String(a.id) === appRaw) || (await appWorkspace(appRaw)) !== ws) errors.push('The application is not one of this workspace.');
+    if (!/^\d{1,9}$/.test(appRaw) || !lk.apps.some((a) => String(a.id) === appRaw) || (await appWorkspace(appRaw)) !== ws) errors.push(tx('tm.the_application_is_not_one'));
     else app = Number(appRaw);
   }
   const pageRaw = String(b.page ?? '').trim();
   let pageNo: number | null = null;
   if (pageRaw) {
-    if (!/^\d{1,9}$/.test(pageRaw)) errors.push('The page is a page number.');
-    else if (!app) errors.push('Choose the application of the page.');
-    else if (!(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = $2', [app, pageRaw]))) errors.push(`The application has no page ${pageRaw}.`);
+    if (!/^\d{1,9}$/.test(pageRaw)) errors.push(tx('tm.the_page_is_a_page'));
+    else if (!app) errors.push(tx('tm.choose_the_application_of_the'));
+    else if (!(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = $2', [app, pageRaw]))) errors.push(tx('tm.no_page', { page: pageRaw }));
     else pageNo = Number(pageRaw);
   }
   return { v: { title: title.slice(0, 200), body: body.slice(0, 20000), labels: [...new Set(labels)], milestone: milestone || null, assignees: [...new Set(assignees)], app, page: pageNo }, errors };
@@ -205,25 +205,25 @@ async function readIssue(b: Record<string, unknown>, ws: number, lk: Lookups): P
 function issueFields(v: Partial<IssueInput>, lk: Lookups, idp = 'f') {
   const labelSet = new Set(v.labels ?? []);
   const groups = new Map<string, Label[]>();
-  for (const l of lk.labels) groups.set(l.group_name ?? 'Other labels', [...(groups.get(l.group_name ?? 'Other labels') ?? []), l]);
+  for (const l of lk.labels) groups.set(l.group_name ?? tx('tm.other_labels'), [...(groups.get(l.group_name ?? tx('tm.other_labels')) ?? []), l]);
   const asg = new Set(v.assignees ?? []);
   return html`
-    <div class="field"><label class="label" for="${idp}_title">Title</label><input id="${idp}_title" name="title" maxlength="200" required value="${v.title ?? ''}"></div>
-    <div class="field"><label class="label" for="${idp}_body">Description</label>
+    <div class="field"><label class="label" for="${idp}_title">${tx('tm.title')}</label><input id="${idp}_title" name="title" maxlength="200" required value="${v.title ?? ''}"></div>
+    <div class="field"><label class="label" for="${idp}_body">${tx('tm.description')}</label>
       <textarea id="${idp}_body" name="body" rows="10" maxlength="20000">${v.body ?? ''}</textarea>
-      <small class="help">Markdown: headings, lists, <code>code</code>, links. Mention a developer with @name: they see it under Team Development.</small></div>
+      <small class="help">${tx.code('tm.body_help')}</small></div>
     <div class="form-grid">
-      <div class="field"><label class="label" for="${idp}_milestone">Milestone</label><select id="${idp}_milestone" name="milestone">
+      <div class="field"><label class="label" for="${idp}_milestone">${tx('tm.milestone')}</label><select id="${idp}_milestone" name="milestone">
         <option value="">None</option>${lk.milestones.map((m) => html`<option value="${m.id}"${String(m.id) === String(v.milestone ?? '') ? raw(' selected') : ''}>${m.name}${m.status === 'closed' ? ' (closed)' : ''}</option>`)}</select></div>
-      <div class="field"><label class="label" for="${idp}_app">Application</label><select id="${idp}_app" name="app">
+      <div class="field"><label class="label" for="${idp}_app">${tx('tm.application')}</label><select id="${idp}_app" name="app">
         <option value="">None</option>${lk.apps.map((a) => html`<option value="${a.id}"${a.id === v.app ? raw(' selected') : ''}>${a.name}</option>`)}</select></div>
-      <div class="field"><label class="label" for="${idp}_page">Page number</label><input id="${idp}_page" name="page" type="number" min="0" step="1" inputmode="numeric" value="${v.page ?? ''}">
-        <small class="help">A page of the application.</small></div>
+      <div class="field"><label class="label" for="${idp}_page">${tx('tm.page_number')}</label><input id="${idp}_page" name="page" type="number" min="0" step="1" inputmode="numeric" value="${v.page ?? ''}">
+        <small class="help">${tx('tm.a_page_of_the_application')}</small></div>
     </div>
-    ${lk.labels.length ? html`<fieldset class="team-fieldset"><legend>Labels</legend>${[...groups].map(([g, ls]) => html`<div class="team-check-group"><span class="small muted">${g}</span>
+    ${lk.labels.length ? html`<fieldset class="team-fieldset"><legend>${tx('tm.labels')}</legend>${[...groups].map(([g, ls]) => html`<div class="team-check-group"><span class="small muted">${g}</span>
       ${ls.map((l) => html`<label class="check"><input type="checkbox" name="labels" value="${l.id}"${labelSet.has(String(l.id)) ? raw(' checked') : ''}> ${chip(l)}</label>`)}</div>`)}</fieldset>`
-      : html`<p class="muted small">No labels yet: <a href="${TEAM}/setup">set up Team Development</a> or <a href="${TEAM}/labels">add labels</a>.</p>`}
-    <fieldset class="team-fieldset"><legend>Assignees</legend><div class="team-check-group">
+      : html`<p class="muted small">${tx.rich('tm.no_labels_or', { setup: html`<a href="${TEAM}/setup">${tx('tm.set_up_team_development')}</a>`, add: html`<a href="${TEAM}/labels">${tx('tm.add_labels')}</a>` })}</p>`}
+    <fieldset class="team-fieldset"><legend>${tx('tm.assignees')}</legend><div class="team-check-group">
       ${lk.devs.map((d) => html`<label class="check"><input type="checkbox" name="assignees" value="${d}"${asg.has(d) ? raw(' checked') : ''}> ${d}</label>`)}</div></fieldset>`;
 }
 
@@ -267,7 +267,7 @@ export async function teamRoutes(app: FastifyInstance) {
     ]);
     const current = filterQuery(f);
     const main = html`${teamHeader('issues', counts)}
-      ${!counts.set_up ? html`<div class="alert alert-info" role="status">${icon('lightbulb')} <span>New here? <a href="${TEAM}/setup">Set up Team Development</a>: sample labels (Bug, Feature, Task; priorities), templates and milestones.</span></div>` : ''}
+      ${!counts.set_up ? html`<div class="alert alert-info" role="status">${icon('lightbulb')} <span>${tx.rich('tm.new_here', { setup: html`<a href="${TEAM}/setup">${tx('tm.set_up_team_development_2')}</a>` })}</span></div>` : ''}
       <div class="team-layout">
         <div class="team-main">
           ${filterForm(f, lk, TEAM)}
@@ -276,26 +276,26 @@ export async function teamRoutes(app: FastifyInstance) {
           ${rows.length ? html`<ul class="team-issues">${rows.map((i) => issueCard(i))}</ul>` : html`<p class="muted">No issues${current ? ' with these filters' : ' yet'}.</p>`}
         </div>
         <aside class="team-side">
-          <section id="mentions" aria-labelledby="team-mentions-h"><h2 id="team-mentions-h">Mentions of you</h2>
+          <section id="mentions" aria-labelledby="team-mentions-h"><h2 id="team-mentions-h">${tx('tm.mentions_of_you')}</h2>
             ${mentions.rows.length ? html`<ul class="team-mentions">${mentions.rows.map((m) => html`<li><a href="${TEAM}/issues/${m.issue_id}">${m.title}</a> <span class="small muted">${m.by_user ?? ''} · ${ago(m.created_at)}</span></li>`)}</ul>
-              <form method="post" action="${TEAM}/mentions/seen">${csrf(s)}<button class="btn btn-sm">${icon('check')} Mark all as seen</button></form>`
-              : html`<p class="muted small">Nobody mentioned you in an unseen comment.</p>`}</section>
-          <section aria-labelledby="team-views-h"><h2 id="team-views-h">Saved views</h2>
+              <form method="post" action="${TEAM}/mentions/seen">${csrf(s)}<button class="btn btn-sm">${icon('check')} ${tx('tm.mark_all_as_seen')}</button></form>`
+              : html`<p class="muted small">${tx('tm.nobody_mentioned_you_in_an')}</p>`}</section>
+          <section aria-labelledby="team-views-h"><h2 id="team-views-h">${tx('tm.saved_views')}</h2>
             ${views.rows.length ? html`<ul class="team-views">${views.rows.map((v) => html`<li><a href="${TEAM}${v.query ? `?${v.query}` : ''}"${v.query === current ? raw(' aria-current="true"') : ''}>${v.name}</a>
                 <form method="post" action="${TEAM}/views/${v.id}/delete" class="u-inline">${csrf(s)}<button class="link-button" title="Delete the view ${v.name}" data-confirm="Delete the view ${v.name}?">${icon('trash')}<span class="sr-only">Delete ${v.name}</span></button></form></li>`)}</ul>`
-              : html`<p class="muted small">Save the filters you use often.</p>`}
+              : html`<p class="muted small">${tx('tm.save_the_filters_you_use')}</p>`}
             <form method="post" action="${TEAM}/views" class="team-save-view">${csrf(s)}<input type="hidden" name="query" value="${current}">
-              <label class="sr-only" for="tv_name">Name of the view</label><input id="tv_name" name="name" maxlength="40" required placeholder="Name of this view">
-              <button class="btn btn-sm">${icon('bookmark')} Save view</button></form></section>
-          <section aria-labelledby="team-quick-h"><h2 id="team-quick-h">Quick filters</h2><ul class="ab-links ab-tasks">
-            <li><a href="${TEAM}?assignee=me">Assigned to me</a></li>
-            <li><a href="${TEAM}?assignee=none">Not assigned</a></li>
-            <li><a href="${TEAM}?status=closed">Closed</a></li>
-            <li><a href="${TEAM}/board">Board by label</a></li>
-            <li><a href="${TEAM}/board?by=milestone">Board by milestone</a></li></ul></section>
+              <label class="sr-only" for="tv_name">${tx('tm.name_of_the_view')}</label><input id="tv_name" name="name" maxlength="40" required placeholder="${tx('tm.name_of_this_view')}">
+              <button class="btn btn-sm">${icon('bookmark')} ${tx('tm.save_view')}</button></form></section>
+          <section aria-labelledby="team-quick-h"><h2 id="team-quick-h">${tx('tm.quick_filters')}</h2><ul class="ab-links ab-tasks">
+            <li><a href="${TEAM}?assignee=me">${tx('tm.assigned_to_me')}</a></li>
+            <li><a href="${TEAM}?assignee=none">${tx('tm.not_assigned')}</a></li>
+            <li><a href="${TEAM}?status=closed">${tx('tm.closed')}</a></li>
+            <li><a href="${TEAM}/board">${tx('tm.board_by_label')}</a></li>
+            <li><a href="${TEAM}/board?by=milestone">${tx('tm.board_by_milestone')}</a></li></ul></section>
         </aside>
       </div>`;
-    return send(reply, s, page(s, 'Team Development', [], main));
+    return send(reply, s, page(s, tx('tm.team_development'), [], main));
   });
 
   // ------------------------------------------------------------------ the board
@@ -314,13 +314,13 @@ export async function teamRoutes(app: FastifyInstance) {
     if (by === 'milestone') {
       const ms = lk.milestones.filter((m) => m.status === 'open' || rows.some((r) => String(r.milestone_id) === String(m.id)));
       cols = [...ms.map((m) => ({ key: String(m.id), title: m.name, items: rows.filter((r) => String(r.milestone_id) === String(m.id)) })),
-        { key: '', title: 'No milestone', items: rows.filter((r) => r.milestone_id === null) }];
+        { key: '', title: tx('tm.no_milestone'), items: rows.filter((r) => r.milestone_id === null) }];
     } else {
       const ls = lk.labels.filter((l) => String(l.group_id ?? 0) === group);
       // (ids: bigint columns come as strings, the json_agg ones as numbers)
       const ids = new Set(ls.map((l) => String(l.id)));
       cols = [...ls.map((l) => ({ key: String(l.id), title: l.name, chip: chip(l), items: rows.filter((r) => r.labels.some((x) => String(x.id) === String(l.id))) })),
-        { key: '', title: 'None of these', items: rows.filter((r) => !r.labels.some((x) => ids.has(String(x.id)))) }];
+        { key: '', title: tx('tm.none_of_these'), items: rows.filter((r) => !r.labels.some((x) => ids.has(String(x.id)))) }];
     }
     const back = `${TEAM}/board?${filterQuery(f, { by: by === 'milestone' ? 'milestone' : '', group: by === 'label' ? group : '' })}`;
     const move = (i: IssueRow, from: string) => {
@@ -329,22 +329,22 @@ export async function teamRoutes(app: FastifyInstance) {
         <input type="hidden" name="by" value="${by}"><input type="hidden" name="group" value="${group}"><input type="hidden" name="from" value="${from}"><input type="hidden" name="back" value="${back}">
         <label class="sr-only" for="mv_${i.id}_${from}">Move #${i.id} to</label>
         <select id="mv_${i.id}_${from}" name="to">${others.map((c) => html`<option value="${c.key}">${c.title}</option>`)}</select>
-        <button class="btn btn-sm">Move</button></form>`;
+        <button class="btn btn-sm">${tx('tm.move')}</button></form>`;
     };
     const groupNav = by === 'label' && groupIds.length > 1
-      ? html`<nav class="seg team-groups" aria-label="Label group">${groupIds.map((g) => html`<a href="${TEAM}/board?${filterQuery(f, { group: g })}"${g === group ? raw(' aria-current="true"') : ''}>${g === '0' ? 'Other labels' : lk.groups.find((x) => String(x.id) === g)?.name}</a>`)}</nav>` : '';
+      ? html`<nav class="seg team-groups" aria-label="${tx('tm.label_group')}">${groupIds.map((g) => html`<a href="${TEAM}/board?${filterQuery(f, { group: g })}"${g === group ? raw(' aria-current="true"') : ''}>${g === '0' ? tx('tm.other_labels') : lk.groups.find((x) => String(x.id) === g)?.name}</a>`)}</nav>` : '';
     const main = html`${teamHeader('board', counts)}
       <div class="team-board-bar">
-        <nav class="seg" aria-label="Group the board by"><a href="${TEAM}/board?${filterQuery(f)}"${by === 'label' ? raw(' aria-current="true"') : ''}>${icon('tag')} Label</a><a href="${TEAM}/board?${filterQuery(f, { by: 'milestone' })}"${by === 'milestone' ? raw(' aria-current="true"') : ''}>${icon('flag')} Milestone</a></nav>
+        <nav class="seg" aria-label="${tx('tm.group_the_board_by')}"><a href="${TEAM}/board?${filterQuery(f)}"${by === 'label' ? raw(' aria-current="true"') : ''}>${icon('tag')} ${tx('tm.label')}</a><a href="${TEAM}/board?${filterQuery(f, { by: 'milestone' })}"${by === 'milestone' ? raw(' aria-current="true"') : ''}>${icon('flag')} ${tx('tm.milestone')}</a></nav>
         ${groupNav}
       </div>
       <details class="team-board-filters"><summary>${icon('filter')} Filters${filterQuery(f) ? ' (on)' : ''}</summary>${filterForm(f, lk, `${TEAM}/board`, { ...(by === 'milestone' ? { by } : {}), ...(by === 'label' ? { group } : {}) })}</details>
-      ${by === 'label' && !lk.labels.length ? html`<p class="muted">No labels yet: <a href="${TEAM}/setup">set up Team Development</a>.</p>` : ''}
+      ${by === 'label' && !lk.labels.length ? html`<p class="muted">${tx.rich('tm.no_labels', { setup: html`<a href="${TEAM}/setup">${tx('tm.set_up_team_development')}</a>` })}</p>` : ''}
       <div class="team-board">${cols.map((c) => html`<section class="team-col" aria-label="${c.title}">
         <h2 class="team-col-head">${c.chip ?? c.title} <span class="muted small">${c.items.length}</span></h2>
-        ${c.items.length ? html`<ul class="team-issues">${c.items.map((i) => issueCard(i, move(i, c.key)))}</ul>` : html`<p class="muted small">No issues.</p>`}
+        ${c.items.length ? html`<ul class="team-issues">${c.items.map((i) => issueCard(i, move(i, c.key)))}</ul>` : html`<p class="muted small">${tx('tm.no_issues')}</p>`}
       </section>`)}</div>`;
-    return send(reply, s, page(s, 'Board', [['Board']], main));
+    return send(reply, s, page(s, tx('tm.board'), [[tx('tm.board')]], main));
   });
 
   // move a card: by milestone sets the milestone; by label replaces the issue's labels of that group with the target label
@@ -398,12 +398,12 @@ export async function teamRoutes(app: FastifyInstance) {
     };
     const main = html`${teamHeader('issues')}
       ${templates.length ? html`<form method="get" class="team-template-pick">${appQ ? html`<input type="hidden" name="app" value="${appQ.id}">` : ''}${v.page !== null && v.page !== undefined ? html`<input type="hidden" name="page" value="${v.page}">` : ''}
-        <div class="field"><label class="label" for="f_template">Start from a template</label><select id="f_template" name="template" data-autosubmit>
-          <option value="">Blank issue</option>${templates.map((x) => html`<option value="${x.id}"${x.id === tpl?.id ? raw(' selected') : ''}>${x.name}</option>`)}</select></div>
-        <button class="btn btn-sm">Use template</button></form>` : ''}
-      ${region('New issue', html`<form method="post" action="${TEAM}/issues">${csrf(s)}${issueFields(v, lk)}
-        <div class="buttons"><button class="btn btn-hot">Create issue</button><a class="btn" href="${TEAM}">Cancel</a></div></form>`)}`;
-    return send(reply, s, page(s, 'New issue', [['New issue']], main));
+        <div class="field"><label class="label" for="f_template">${tx('tm.start_from_a_template')}</label><select id="f_template" name="template" data-autosubmit>
+          <option value="">${tx('tm.blank_issue')}</option>${templates.map((x) => html`<option value="${x.id}"${x.id === tpl?.id ? raw(' selected') : ''}>${x.name}</option>`)}</select></div>
+        <button class="btn btn-sm">${tx('tm.use_template')}</button></form>` : ''}
+      ${region(tx('tm.new_issue'), html`<form method="post" action="${TEAM}/issues">${csrf(s)}${issueFields(v, lk)}
+        <div class="buttons"><button class="btn btn-hot">${tx('tm.create_issue')}</button><a class="btn" href="${TEAM}">${tx('tm.cancel')}</a></div></form>`)}`;
+    return send(reply, s, page(s, tx('tm.new_issue'), [[tx('tm.new_issue')]], main));
   });
 
   app.post(`${TEAM}/issues`, async (req: Req, reply) => {
@@ -424,7 +424,7 @@ export async function teamRoutes(app: FastifyInstance) {
       await recordMentions(c, ws, id, null, v.body, s.username);
       return id;
     });
-    flash(s, `Issue #${id} created.`);
+    flash(s, tx('tm.created', { id }));
     return back(reply, s, `${TEAM}/issues/${id}`);
   });
 
@@ -466,42 +466,42 @@ export async function teamRoutes(app: FastifyInstance) {
       <article class="team-issue-page">
         <header class="team-issue-header">
           <h2 class="team-issue-h">${i.title} <span class="muted">#${i.id}</span></h2>
-          <p><span class="team-status team-status-${i.status === 'closed' ? 'closed' : 'open'}">${i.status === 'closed' ? 'Closed' : 'Open'}</span>
+          <p><span class="team-status team-status-${i.status === 'closed' ? 'closed' : 'open'}">${i.status === 'closed' ? tx('tm.status_closed') : tx('tm.status_open')}</span>
             <span class="muted small">opened by ${i.created_by}, ${when(i.created_at)}${i.closed_at ? `; closed by ${i.closed_by ?? '?'}, ${when(i.closed_at)}` : ''}</span></p>
         </header>
         <div class="team-layout">
           <div class="team-main">
-            <div class="rich-text team-md team-body">${i.body.trim() ? raw(issueHtml(i.body, lk.devs)) : html`<p class="muted">No description.</p>`}</div>
-            <h3>Activity</h3>
+            <div class="rich-text team-md team-body">${i.body.trim() ? raw(issueHtml(i.body, lk.devs)) : html`<p class="muted">${tx('tm.no_description')}</p>`}</div>
+            <h3>${tx('tm.activity')}</h3>
             <ul class="team-timeline">${timeline.map((x) => x.r)}</ul>
             <form method="get" class="team-response-pick">${responses.rows.length ? html`
-              <div class="field"><label class="label" for="f_response">Canned response</label><select id="f_response" name="response" data-autosubmit>
+              <div class="field"><label class="label" for="f_response">${tx('tm.canned_response')}</label><select id="f_response" name="response" data-autosubmit>
                 <option value="">None</option>${responses.rows.map((r) => html`<option value="${r.id}"${r.id === response?.id ? raw(' selected') : ''}>${r.name}</option>`)}</select></div>
-              <button class="btn btn-sm">Insert</button>` : ''}</form>
+              <button class="btn btn-sm">${tx('tm.insert')}</button>` : ''}</form>
             <form method="post" action="${TEAM}/issues/${i.id}/comments" id="add-comment">${csrf(s)}
-              <div class="field"><label class="label" for="f_comment">Add a comment</label>
+              <div class="field"><label class="label" for="f_comment">${tx('tm.add_a_comment')}</label>
                 <textarea id="f_comment" name="body" rows="4" maxlength="20000" required>${response?.body ?? ''}</textarea>
-                <small class="help">Markdown; @name mentions a developer of this workspace.</small></div>
-              <div class="buttons"><button class="btn btn-hot">Comment</button>
-                <button class="btn" name="and" value="${i.status === 'closed' ? 'reopen' : 'close'}">${i.status === 'closed' ? 'Comment and reopen' : 'Comment and close'}</button></div></form>
+                <small class="help">${tx('tm.markdown_name_mentions_a_developer')}</small></div>
+              <div class="buttons"><button class="btn btn-hot">${tx('tm.comment')}</button>
+                <button class="btn" name="and" value="${i.status === 'closed' ? 'reopen' : 'close'}">${i.status === 'closed' ? tx('tm.comment_reopen') : tx('tm.comment_close')}</button></div></form>
           </div>
           <aside class="team-side">
-            <section><h2>Status</h2><form method="post" action="${TEAM}/issues/${i.id}/status">${csrf(s)}
-              <button class="btn btn-sm" name="status" value="${i.status === 'closed' ? 'open' : 'closed'}">${icon(i.status === 'closed' ? 'refresh' : 'check-circle')} ${i.status === 'closed' ? 'Reopen issue' : 'Close issue'}</button></form></section>
-            <section><h2>Labels</h2>${labels.rows.length ? html`<div class="team-labels">${labels.rows.map(chip)}</div>` : html`<p class="muted small">None</p>`}</section>
-            <section><h2>Milestone</h2><p>${i.milestone ? html`<a href="${TEAM}?milestone=${i.milestone_id}">${i.milestone}</a>` : html`<span class="muted small">None</span>`}</p></section>
-            <section><h2>Assignees</h2><p>${assignees.rows.length ? assignees.rows.map((a) => a.username).join(', ') : html`<span class="muted small">Nobody</span>`}</p></section>
-            <section><h2>Application</h2><p>${appRow
+            <section><h2>${tx('tm.status')}</h2><form method="post" action="${TEAM}/issues/${i.id}/status">${csrf(s)}
+              <button class="btn btn-sm" name="status" value="${i.status === 'closed' ? 'open' : 'closed'}">${icon(i.status === 'closed' ? 'refresh' : 'check-circle')} ${i.status === 'closed' ? tx('tm.reopen_issue') : tx('tm.close_issue')}</button></form></section>
+            <section><h2>${tx('tm.labels')}</h2>${labels.rows.length ? html`<div class="team-labels">${labels.rows.map(chip)}</div>` : html`<p class="muted small">${tx('tm.none')}</p>`}</section>
+            <section><h2>${tx('tm.milestone')}</h2><p>${i.milestone ? html`<a href="${TEAM}?milestone=${i.milestone_id}">${i.milestone}</a>` : html`<span class="muted small">${tx('tm.none')}</span>`}</p></section>
+            <section><h2>${tx('tm.assignees')}</h2><p>${assignees.rows.length ? assignees.rows.map((a) => a.username).join(', ') : html`<span class="muted small">${tx('tm.nobody')}</span>`}</p></section>
+            <section><h2>${tx('tm.application')}</h2><p>${appRow
               ? html`<a href="${BASE}/apps/${appRow.id}">${appRow.name}</a>${i.page_no !== null ? html` · <a href="${designerUrl(appRow.id, i.page_no)}">page ${i.page_no}</a>` : ''}`
-              : html`<span class="muted small">None</span>`}</p></section>
-            ${source ? html`<section><h2>From feedback</h2><p><a href="${BASE}/apps/${source.app_id}/feedback#feedback-${source.id}">Feedback of ${source.username}</a> <span class="small muted">(${source.name})</span></p></section>` : ''}
-            ${comment ? html`<section><h2>From a developer comment</h2><p><a href="${comment.page_no ? designerUrl(comment.app_id, comment.page_no) : `${BASE}/apps/${comment.app_id}#app-lock`}">${comment.author}'s comment</a> <span class="small muted">(${comment.name}${comment.page_no ? `, page ${comment.page_no}` : ''})</span></p></section>` : ''}
-            ${i.created_by === s.username || admin ? html`<section><h2>Delete</h2><form method="post" action="${TEAM}/issues/${i.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete issue #${i.id} with its comments and history?">${icon('trash')} Delete issue</button></form></section>` : ''}
+              : html`<span class="muted small">${tx('tm.none')}</span>`}</p></section>
+            ${source ? html`<section><h2>${tx('tm.from_feedback')}</h2><p><a href="${BASE}/apps/${source.app_id}/feedback#feedback-${source.id}">Feedback of ${source.username}</a> <span class="small muted">(${source.name})</span></p></section>` : ''}
+            ${comment ? html`<section><h2>${tx('tm.from_a_developer_comment')}</h2><p><a href="${comment.page_no ? designerUrl(comment.app_id, comment.page_no) : `${BASE}/apps/${comment.app_id}#app-lock`}">${comment.author}'s comment</a> <span class="small muted">(${comment.name}${comment.page_no ? `, page ${comment.page_no}` : ''})</span></p></section>` : ''}
+            ${i.created_by === s.username || admin ? html`<section><h2>${tx('tm.delete')}</h2><form method="post" action="${TEAM}/issues/${i.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete issue #${i.id} with its comments and history?">${icon('trash')} ${tx('tm.delete_issue')}</button></form></section>` : ''}
           </aside>
         </div>
-        <details class="team-edit" id="edit"><summary class="btn btn-sm">${icon('edit')} Edit the issue</summary>
+        <details class="team-edit" id="edit"><summary class="btn btn-sm">${icon('edit')} ${tx('tm.edit_the_issue')}</summary>
           <form method="post" action="${TEAM}/issues/${i.id}">${csrf(s)}${issueFields(v, lk, 'e')}
-            <div class="buttons"><button class="btn btn-hot">Save</button></div></form></details>
+            <div class="buttons"><button class="btn btn-hot">${tx('tm.save')}</button></div></form></details>
       </article>`;
     return send(reply, s, page(s, `#${i.id} ${i.title}`, [[`#${i.id}`]], main));
   });
@@ -533,7 +533,7 @@ export async function teamRoutes(app: FastifyInstance) {
       for (const [action, detail] of await setLinks((sql, p) => c.query(sql, p), i.id, v, lk, before)) await logIssue(c, i.id, s.username, action, detail);
       await recordMentions(c, ws, i.id, null, v.body, s.username);
     });
-    flash(s, 'Issue saved.');
+    flash(s, tx('tm.issue_saved'));
     return back(reply, s, `${TEAM}/issues/${i.id}`);
   });
 
@@ -551,7 +551,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const status = req.body?.status;
     if (status !== 'open' && status !== 'closed') return reply.code(400).send('Unknown status');
     if (status !== i.status) await owner.tx((c) => setStatus(c, i.id, status, s.username));
-    flash(s, status === 'closed' ? `Issue #${i.id} closed.` : `Issue #${i.id} reopened.`);
+    flash(s, status === 'closed' ? tx('tm.issue_closed', { id: i.id }) : tx('tm.reopened', { id: i.id }));
     return back(reply, s, `${TEAM}/issues/${i.id}`);
   });
 
@@ -563,7 +563,7 @@ export async function teamRoutes(app: FastifyInstance) {
     if (!i) return reply.code(404).send('Not found');
     const body = String(req.body?.body ?? '').replace(/\r\n?/g, '\n');
     if (!body.trim() || body.length > 20000) {
-      flash(s, 'A comment has 1 to 20000 characters.', 'error');
+      flash(s, tx('tm.a_comment_has_1_to'), 'error');
       return back(reply, s, `${TEAM}/issues/${i.id}#add-comment`);
     }
     const and = req.body?.and;
@@ -576,7 +576,7 @@ export async function teamRoutes(app: FastifyInstance) {
       if (and === 'reopen' && i.status === 'closed') await setStatus(c, i.id, 'open', s.username);
       return cid;
     });
-    flash(s, 'Comment added.');
+    flash(s, tx('tm.comment_added'));
     return back(reply, s, `${TEAM}/issues/${i.id}#comment-${cid}`);
   });
 
@@ -589,7 +589,7 @@ export async function teamRoutes(app: FastifyInstance) {
     if (i.created_by !== s.username && !(await workspaceAdmin(s.username, ws))) return reply.code(403).send('Only its author or a workspace administrator deletes an issue.');
     await owner.query('delete from meta.team_issue where id = $1', [i.id]);
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `team: issue ${i.id} deleted` });
-    flash(s, `Issue #${i.id} deleted.`);
+    flash(s, tx('tm.deleted', { id: i.id }));
     return back(reply, s, TEAM);
   });
 
@@ -600,14 +600,14 @@ export async function teamRoutes(app: FastifyInstance) {
     const { s, ws } = t;
     const name = text(req.body?.name, 100);
     if (!NAME40.test(name)) {
-      flash(s, 'A view has a name of 1 to 40 characters.', 'error');
+      flash(s, tx('tm.a_view_has_a_name'), 'error');
       return back(reply, s, TEAM);
     }
     // only the known filters, re-checked
     const query = filterQuery(parseFilters(Object.fromEntries(new URLSearchParams(String(req.body?.query ?? '').slice(0, 1000)))));
     await owner.query(`insert into meta.team_view (workspace_id, username, name, query) values ($1, $2, $3, $4)
                        on conflict (workspace_id, username, lower(name)) do update set query = excluded.query`, [ws, s.username, name, query]);
-    flash(s, `View ${name} saved.`);
+    flash(s, tx('tm.view_saved', { name }));
     return back(reply, s, `${TEAM}${query ? `?${query}` : ''}`);
   });
 
@@ -618,7 +618,7 @@ export async function teamRoutes(app: FastifyInstance) {
     if (!isId(req.params.id)) return reply.code(404).send('Not found');
     const r = await owner.query('delete from meta.team_view where id = $1 and workspace_id = $2 and username = $3', [req.params.id, ws, s.username]);
     if (!r.rowCount) return reply.code(404).send('Not found');
-    flash(s, 'View deleted.');
+    flash(s, tx('tm.view_deleted'));
     return back(reply, s, TEAM);
   });
 
@@ -628,7 +628,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { s, ws } = t;
     await owner.query(`update meta.team_mention m set seen_at = now() from meta.team_issue i
                         where i.id = m.issue_id and i.workspace_id = $1 and m.username = $2 and m.seen_at is null`, [ws, s.username]);
-    flash(s, 'Mentions marked as seen.');
+    flash(s, tx('tm.mentions_marked_as_seen'));
     return back(reply, s, TEAM);
   });
 
@@ -644,30 +644,30 @@ export async function teamRoutes(app: FastifyInstance) {
     const groupSel = (id: string, cur: number | null) => html`<select id="${id}" name="group"><option value="">No group</option>${lk.groups.map((g) => html`<option value="${g.id}"${g.id === cur ? raw(' selected') : ''}>${g.name}</option>`)}</select>`;
     const labelForm = (l: Partial<Label> & { id?: number }, p: string) => html`<form method="post" action="${TEAM}/labels${l.id ? `/${l.id}` : ''}">${csrf(s)}
       <div class="form-grid">
-        <div class="field"><label class="label" for="${p}_name">Name</label><input id="${p}_name" name="name" maxlength="40" required value="${l.name ?? ''}"></div>
-        <div class="field"><label class="label" for="${p}_color">Colour</label>${colorSel(`${p}_color`, l.color ?? 'gray')}</div>
-        <div class="field"><label class="label" for="${p}_group">Group</label>${groupSel(`${p}_group`, l.group_id ?? null)}</div>
-        <div class="field"><label class="label" for="${p}_desc">Description</label><input id="${p}_desc" name="description" maxlength="500" value="${l.description ?? ''}"></div>
-      </div><div class="buttons"><button class="btn btn-sm btn-hot">${l.id ? 'Save' : 'Add label'}</button></div></form>`;
+        <div class="field"><label class="label" for="${p}_name">${tx('tm.name')}</label><input id="${p}_name" name="name" maxlength="40" required value="${l.name ?? ''}"></div>
+        <div class="field"><label class="label" for="${p}_color">${tx('tm.colour')}</label>${colorSel(`${p}_color`, l.color ?? 'gray')}</div>
+        <div class="field"><label class="label" for="${p}_group">${tx('tm.group')}</label>${groupSel(`${p}_group`, l.group_id ?? null)}</div>
+        <div class="field"><label class="label" for="${p}_desc">${tx('tm.description')}</label><input id="${p}_desc" name="description" maxlength="500" value="${l.description ?? ''}"></div>
+      </div><div class="buttons"><button class="btn btn-sm btn-hot">${l.id ? tx('tm.save') : tx('tm.add_label')}</button></div></form>`;
     const byGroup = [...lk.groups.map((g) => ({ g, ls: lk.labels.filter((l) => String(l.group_id) === String(g.id)) })), { g: null, ls: lk.labels.filter((l) => l.group_id === null) }];
     const main = html`${teamHeader('labels')}
-      ${byGroup.filter((x) => x.g || x.ls.length).map(({ g, ls }) => region(g ? g.name : 'Labels without a group', html`
+      ${byGroup.filter((x) => x.g || x.ls.length).map(({ g, ls }) => region(g ? g.name : tx('tm.labels_no_group'), html`
         ${g?.description ? html`<p class="muted small u-mt0">${g.description}</p>` : ''}
         ${ls.length ? html`<ul class="team-label-list">${ls.map((l) => html`<li>${chip(l)} <span class="small muted">${l.description ?? ''}</span>
             <a class="small" href="${TEAM}?label=${l.id}">${n.get(Number(l.id)) ?? 0} open</a>
-            <details class="team-inline-edit"><summary class="link-button">Edit</summary>${labelForm(l, `l${l.id}`)}
-              ${admin ? html`<form method="post" action="${TEAM}/labels/${l.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the label ${l.name}? Issues lose it.">${icon('trash')} Delete label</button></form>` : ''}</details></li>`)}</ul>`
-          : html`<p class="muted small">No labels in this group.</p>`}
-        ${g && admin ? html`<form method="post" action="${TEAM}/groups/${g.id}/delete" class="u-mt1">${csrf(s)}<button class="btn btn-sm" data-confirm="Delete the group ${g.name}? Its labels stay, without a group.">Delete group</button></form>` : ''}`))}
+            <details class="team-inline-edit"><summary class="link-button">${tx('tm.edit')}</summary>${labelForm(l, `l${l.id}`)}
+              ${admin ? html`<form method="post" action="${TEAM}/labels/${l.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('tm.delete_label_confirm', { name: l.name })}">${icon('trash')} ${tx('tm.delete_label')}</button></form>` : ''}</details></li>`)}</ul>`
+          : html`<p class="muted small">${tx('tm.no_labels_in_this_group')}</p>`}
+        ${g && admin ? html`<form method="post" action="${TEAM}/groups/${g.id}/delete" class="u-mt1">${csrf(s)}<button class="btn btn-sm" data-confirm="${tx('tm.delete_group_confirm', { name: g.name })}">${tx('tm.delete_group')}</button></form>` : ''}`))}
       <div class="columns">
-        ${region('Add a label', labelForm({}, 'nl'))}
-        ${region('Add a label group', html`<form method="post" action="${TEAM}/groups">${csrf(s)}
-          <div class="field"><label class="label" for="ng_name">Name</label><input id="ng_name" name="name" maxlength="40" required placeholder="e.g. Area"></div>
-          <div class="field"><label class="label" for="ng_desc">Description</label><input id="ng_desc" name="description" maxlength="500"></div>
-          <div class="buttons"><button class="btn btn-sm btn-hot">Add group</button></div></form>
-          <p class="small muted">The board groups issues by the labels of one group. Only workspace administrators delete labels and groups.</p>`)}
+        ${region(tx('tm.add_a_label'), labelForm({}, 'nl'))}
+        ${region(tx('tm.add_a_label_group'), html`<form method="post" action="${TEAM}/groups">${csrf(s)}
+          <div class="field"><label class="label" for="ng_name">${tx('tm.name')}</label><input id="ng_name" name="name" maxlength="40" required placeholder="${tx('tm.e_g_area')}"></div>
+          <div class="field"><label class="label" for="ng_desc">${tx('tm.description')}</label><input id="ng_desc" name="description" maxlength="500"></div>
+          <div class="buttons"><button class="btn btn-sm btn-hot">${tx('tm.add_group')}</button></div></form>
+          <p class="small muted">${tx('tm.the_board_groups_issues_by')}</p>`)}
       </div>`;
-    return send(reply, s, page(s, 'Labels', [['Labels']], main));
+    return send(reply, s, page(s, tx('tm.labels'), [[tx('tm.labels')]], main));
   });
 
   const saveLabel = async (req: Req, reply: FastifyReply, id: string | null) => {
@@ -682,7 +682,7 @@ export async function teamRoutes(app: FastifyInstance) {
     if (!isLabelColor(color)) return reply.code(400).send('Unknown colour');
     if (group && !(await owner.one('select 1 as ok from meta.team_label_group where id = $1 and workspace_id = $2', [isId(group) ? group : 0, ws]))) return reply.code(400).send('Unknown group');
     if (!NAME40.test(name)) {
-      flash(s, 'A label has a name of 1 to 40 characters.', 'error');
+      flash(s, tx('tm.a_label_has_a_name'), 'error');
       return back(reply, s, `${TEAM}/labels`);
     }
     try {
@@ -691,7 +691,7 @@ export async function teamRoutes(app: FastifyInstance) {
         const r = await owner.query('update meta.team_label set name = $3, color = $4, group_id = $5, description = $6 where id = $1 and workspace_id = $2', [id, ws, name, color, group || null, desc]);
         if (!r.rowCount) return reply.code(404).send('Not found');
       } else await owner.query('insert into meta.team_label (workspace_id, name, color, group_id, description) values ($1, $2, $3, $4, $5)', [ws, name, color, group || null, desc]);
-      flash(s, `Label ${name} saved.`);
+      flash(s, tx('tm.label_saved', { name }));
     } catch (e) {
       flash(s, /team_label_name/.test((e as Error).message) ? `A label ${name} exists already.` : (e as Error).message, 'error');
     }
@@ -706,13 +706,13 @@ export async function teamRoutes(app: FastifyInstance) {
     const { s, ws } = t;
     const name = text(req.body?.name, 100);
     if (!NAME40.test(name)) {
-      flash(s, 'A group has a name of 1 to 40 characters.', 'error');
+      flash(s, tx('tm.a_group_has_a_name'), 'error');
       return back(reply, s, `${TEAM}/labels`);
     }
     const r = await owner.query(`insert into meta.team_label_group (workspace_id, name, description, seq)
       values ($1, $2, $3, (select coalesce(max(seq), 0) + 10 from meta.team_label_group where workspace_id = $1)) on conflict (workspace_id, lower(name)) do nothing`,
       [ws, name, text(req.body?.description, 500) || null]);
-    flash(s, r.rowCount ? `Group ${name} added.` : `A group ${name} exists already.`, r.rowCount ? 'ok' : 'error');
+    flash(s, r.rowCount ? tx('tm.group_added', { name }) : tx('tm.group_exists', { name }), r.rowCount ? 'ok' : 'error');
     return back(reply, s, `${TEAM}/labels`);
   });
 
@@ -725,7 +725,7 @@ export async function teamRoutes(app: FastifyInstance) {
       if (!(await workspaceAdmin(s.username, ws))) return reply.code(403).send(`Only the workspace's administrators delete ${what}s.`);
       const r = await owner.query(`delete from meta.${table} where id = $1 and workspace_id = $2`, [req.params.id, ws]);
       if (!r.rowCount) return reply.code(404).send('Not found');
-      flash(s, `The ${what} is deleted.`);
+      flash(s, tx(({ label: 'tm.label_deleted', 'label group': 'tm.group_deleted', milestone: 'tm.milestone_deleted', template: 'tm.template_deleted' } as const)[what as 'label'] ?? 'tm.label_deleted'));
       return back(reply, s, to);
     });
   adminDelete('labels', 'team_label', 'label', `${TEAM}/labels`);
@@ -740,14 +740,14 @@ export async function teamRoutes(app: FastifyInstance) {
     const [lk, admin] = await Promise.all([lookups(ws), workspaceAdmin(s.username, ws)]);
     const form = (m: Partial<Milestone>, p: string) => html`<form method="post" action="${TEAM}/milestones${m.id ? `/${m.id}` : ''}">${csrf(s)}
       <div class="form-grid">
-        <div class="field"><label class="label" for="${p}_name">Name</label><input id="${p}_name" name="name" maxlength="40" required value="${m.name ?? ''}"></div>
-        <div class="field"><label class="label" for="${p}_due">Due</label><input id="${p}_due" name="due_date" type="date" value="${m.due_date ?? ''}"></div>
-        <div class="field"><label class="label" for="${p}_status">Status</label><select id="${p}_status" name="status">
+        <div class="field"><label class="label" for="${p}_name">${tx('tm.name')}</label><input id="${p}_name" name="name" maxlength="40" required value="${m.name ?? ''}"></div>
+        <div class="field"><label class="label" for="${p}_due">${tx('tm.due')}</label><input id="${p}_due" name="due_date" type="date" value="${m.due_date ?? ''}"></div>
+        <div class="field"><label class="label" for="${p}_status">${tx('tm.status')}</label><select id="${p}_status" name="status">
           <option value="open"${m.status !== 'closed' ? raw(' selected') : ''}>Open</option><option value="closed"${m.status === 'closed' ? raw(' selected') : ''}>Closed</option></select></div>
-        <div class="field"><label class="label" for="${p}_desc">Description</label><input id="${p}_desc" name="description" maxlength="500" value="${m.description ?? ''}"></div>
-      </div><div class="buttons"><button class="btn btn-sm btn-hot">${m.id ? 'Save' : 'Add milestone'}</button></div></form>`;
+        <div class="field"><label class="label" for="${p}_desc">${tx('tm.description')}</label><input id="${p}_desc" name="description" maxlength="500" value="${m.description ?? ''}"></div>
+      </div><div class="buttons"><button class="btn btn-sm btn-hot">${m.id ? tx('tm.save') : tx('tm.add_milestone')}</button></div></form>`;
     const main = html`${teamHeader('milestones')}
-      ${region('Milestones', lk.milestones.length ? html`<ul class="team-milestones">${lk.milestones.map((m) => {
+      ${region(tx('tm.milestones'), lk.milestones.length ? html`<ul class="team-milestones">${lk.milestones.map((m) => {
         const total = m.open + m.closed;
         return html`<li class="team-milestone${m.status === 'closed' ? ' is-closed' : ''}">
           <div class="team-milestone-head"><b>${icon('flag')}${m.name}</b>${m.status === 'closed' ? html` <span class="tag">closed</span>` : ''}
@@ -755,12 +755,12 @@ export async function teamRoutes(app: FastifyInstance) {
           ${m.description ? html`<p class="small muted">${m.description}</p>` : ''}
           <progress class="team-progress" max="${total || 1}" value="${m.closed}" aria-label="${m.closed} of ${total} issues closed"></progress>
           <p class="small"><a href="${TEAM}?milestone=${m.id}">${m.open} open</a> · <a href="${TEAM}?milestone=${m.id}&amp;status=closed">${m.closed} closed</a></p>
-          <details class="team-inline-edit"><summary class="link-button">Edit</summary>${form(m, `m${m.id}`)}
-            ${admin ? html`<form method="post" action="${TEAM}/milestones/${m.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the milestone ${m.name}? Its issues keep no milestone.">${icon('trash')} Delete milestone</button></form>` : ''}</details>
+          <details class="team-inline-edit"><summary class="link-button">${tx('tm.edit')}</summary>${form(m, `m${m.id}`)}
+            ${admin ? html`<form method="post" action="${TEAM}/milestones/${m.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the milestone ${m.name}? Its issues keep no milestone.">${icon('trash')} ${tx('tm.delete_milestone')}</button></form>` : ''}</details>
         </li>`;
-      })}</ul>` : html`<p class="muted">No milestones yet.</p>`)}
-      ${region('Add a milestone', form({}, 'nm'))}`;
-    return send(reply, s, page(s, 'Milestones', [['Milestones']], main));
+      })}</ul>` : html`<p class="muted">${tx('tm.no_milestones_yet')}</p>`)}
+      ${region(tx('tm.add_a_milestone'), form({}, 'nm'))}`;
+    return send(reply, s, page(s, tx('tm.milestones'), [[tx('tm.milestones')]], main));
   });
 
   const saveMilestone = async (req: Req, reply: FastifyReply, id: string | null) => {
@@ -771,7 +771,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const name = text(b.name, 100);
     const due = String(b.due_date ?? '');
     if (!NAME40.test(name) || (due && (!/^\d{4}-\d{2}-\d{2}$/.test(due) || Number.isNaN(Date.parse(due))))) {
-      flash(s, 'A milestone has a name of 1 to 40 characters and an optional date.', 'error');
+      flash(s, tx('tm.a_milestone_has_a_name'), 'error');
       return back(reply, s, `${TEAM}/milestones`);
     }
     const vals = [name, text(b.description, 500) || null, due || null, b.status === 'closed' ? 'closed' : 'open'];
@@ -781,7 +781,7 @@ export async function teamRoutes(app: FastifyInstance) {
         const r = await owner.query('update meta.team_milestone set name = $3, description = $4, due_date = $5, status = $6 where id = $1 and workspace_id = $2', [id, ws, ...vals]);
         if (!r.rowCount) return reply.code(404).send('Not found');
       } else await owner.query('insert into meta.team_milestone (workspace_id, name, description, due_date, status) values ($1, $2, $3, $4, $5)', [ws, ...vals]);
-      flash(s, `Milestone ${name} saved.`);
+      flash(s, tx('tm.milestone_saved', { name }));
     } catch (e) {
       flash(s, /team_milestone_name/.test((e as Error).message) ? `A milestone ${name} exists already.` : (e as Error).message, 'error');
     }
@@ -798,26 +798,26 @@ export async function teamRoutes(app: FastifyInstance) {
     const rows = (await owner.query('select id, kind, name, title, body, labels from meta.team_template where workspace_id = $1 order by kind, seq, lower(name)', [ws])).rows;
     const form = (x: { id?: number; kind?: string; name?: string; title?: string | null; body?: string; labels?: string[] }, p: string) => html`<form method="post" action="${TEAM}/templates${x.id ? `/${x.id}` : ''}">${csrf(s)}
       <div class="form-grid">
-        <div class="field"><label class="label" for="${p}_name">Name</label><input id="${p}_name" name="name" maxlength="60" required value="${x.name ?? ''}"></div>
-        <div class="field"><label class="label" for="${p}_kind">Kind</label><select id="${p}_kind" name="kind">
-          <option value="issue"${x.kind !== 'response' ? raw(' selected') : ''}>Issue template</option><option value="response"${x.kind === 'response' ? raw(' selected') : ''}>Canned response</option></select></div>
-        <div class="field"><label class="label" for="${p}_title">Issue title</label><input id="${p}_title" name="title" maxlength="200" value="${x.title ?? ''}"><small class="help">Issue templates only.</small></div>
-        <div class="field"><label class="label" for="${p}_labels">Labels</label><input id="${p}_labels" name="labels" maxlength="500" value="${(x.labels ?? []).join(', ')}"><small class="help">Issue templates: label names, separated by commas.</small></div>
+        <div class="field"><label class="label" for="${p}_name">${tx('tm.name')}</label><input id="${p}_name" name="name" maxlength="60" required value="${x.name ?? ''}"></div>
+        <div class="field"><label class="label" for="${p}_kind">${tx('tm.kind')}</label><select id="${p}_kind" name="kind">
+          <option value="issue"${x.kind !== 'response' ? raw(' selected') : ''}>${tx('tm.kind_issue')}</option><option value="response"${x.kind === 'response' ? raw(' selected') : ''}>${tx('tm.kind_response')}</option></select></div>
+        <div class="field"><label class="label" for="${p}_title">${tx('tm.issue_title')}</label><input id="${p}_title" name="title" maxlength="200" value="${x.title ?? ''}"><small class="help">${tx('tm.issue_templates_only')}</small></div>
+        <div class="field"><label class="label" for="${p}_labels">${tx('tm.labels')}</label><input id="${p}_labels" name="labels" maxlength="500" value="${(x.labels ?? []).join(', ')}"><small class="help">${tx('tm.issue_templates_label_names_separated')}</small></div>
       </div>
-      <div class="field"><label class="label" for="${p}_body">Text</label><textarea id="${p}_body" name="body" rows="6" maxlength="20000">${x.body ?? ''}</textarea><small class="help">Markdown.</small></div>
-      <div class="buttons"><button class="btn btn-sm btn-hot">${x.id ? 'Save' : 'Add template'}</button></div></form>`;
+      <div class="field"><label class="label" for="${p}_body">${tx('tm.text')}</label><textarea id="${p}_body" name="body" rows="6" maxlength="20000">${x.body ?? ''}</textarea><small class="help">${tx('tm.markdown')}</small></div>
+      <div class="buttons"><button class="btn btn-sm btn-hot">${x.id ? tx('tm.save') : tx('tm.add_template')}</button></div></form>`;
     const list = (kind: string) => {
       const xs = rows.filter((r) => r.kind === kind);
       return xs.length ? html`<ul class="team-template-list">${xs.map((x) => html`<li><b>${x.name}</b>
-          ${kind === 'issue' ? html` <a class="small" href="${TEAM}/issues/new?template=${x.id}">Use</a>` : ''}
-          <details class="team-inline-edit"><summary class="link-button">Edit</summary>${form(x, `t${x.id}`)}
-            <form method="post" action="${TEAM}/templates/${x.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the template ${x.name}?">${icon('trash')} Delete template</button></form></details></li>`)}</ul>`
-        : html`<p class="muted small">None yet.</p>`;
+          ${kind === 'issue' ? html` <a class="small" href="${TEAM}/issues/new?template=${x.id}">${tx('tm.use')}</a>` : ''}
+          <details class="team-inline-edit"><summary class="link-button">${tx('tm.edit')}</summary>${form(x, `t${x.id}`)}
+            <form method="post" action="${TEAM}/templates/${x.id}/delete">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete the template ${x.name}?">${icon('trash')} ${tx('tm.delete_template')}</button></form></details></li>`)}</ul>`
+        : html`<p class="muted small">${tx('tm.none_yet')}</p>`;
     };
     const main = html`${teamHeader('templates')}
-      <div class="columns">${region('Issue templates', list('issue'))}${region('Canned responses', list('response'))}</div>
-      ${region('Add a template', form({}, 'nt'))}`;
-    return send(reply, s, page(s, 'Templates', [['Templates']], main));
+      <div class="columns">${region(tx('tm.issue_templates'), list('issue'))}${region(tx('tm.canned_responses'), list('response'))}</div>
+      ${region(tx('tm.add_a_template'), form({}, 'nt'))}`;
+    return send(reply, s, page(s, tx('tm.templates'), [[tx('tm.templates')]], main));
   });
 
   const saveTemplate = async (req: Req, reply: FastifyReply, id: string | null) => {
@@ -830,7 +830,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const body = String(b.body ?? '').replace(/\r\n?/g, '\n');
     const labels = String(b.labels ?? '').split(',').map((x) => x.trim()).filter((x) => NAME40.test(x)).slice(0, 20);
     if (!/^\S(.{0,58}\S)?$/.test(name) || body.length > 20000) {
-      flash(s, 'A template has a name of 1 to 60 characters and up to 20000 characters of text.', 'error');
+      flash(s, tx('tm.a_template_has_a_name'), 'error');
       return back(reply, s, `${TEAM}/templates`);
     }
     const vals = [kind, name, kind === 'issue' ? text(b.title, 200) || null : null, body, kind === 'issue' ? labels : []];
@@ -840,7 +840,7 @@ export async function teamRoutes(app: FastifyInstance) {
         const r = await owner.query('update meta.team_template set kind = $3, name = $4, title = $5, body = $6, labels = $7 where id = $1 and workspace_id = $2', [id, ws, ...vals]);
         if (!r.rowCount) return reply.code(404).send('Not found');
       } else await owner.query('insert into meta.team_template (workspace_id, kind, name, title, body, labels) values ($1, $2, $3, $4, $5, $6)', [ws, ...vals]);
-      flash(s, `Template ${name} saved.`);
+      flash(s, tx('tm.template_saved', { name }));
     } catch (e) {
       flash(s, /team_template_name/.test((e as Error).message) ? `A template ${name} exists already.` : (e as Error).message, 'error');
     }
@@ -855,7 +855,7 @@ export async function teamRoutes(app: FastifyInstance) {
     if (!isId(req.params.id)) return reply.code(404).send('Not found');
     const r = await owner.query('delete from meta.team_template where id = $1 and workspace_id = $2', [req.params.id, ws]);
     if (!r.rowCount) return reply.code(404).send('Not found');
-    flash(s, 'Template deleted.');
+    flash(s, tx('tm.template_deleted'));
     return back(reply, s, `${TEAM}/templates`);
   });
 
@@ -866,17 +866,17 @@ export async function teamRoutes(app: FastifyInstance) {
     const { s } = t;
     const en = TEAM_SAMPLES.en;
     const main = html`${teamHeader('setup')}
-      ${region('Set up Team Development', html`
-        <p class="u-mt0">Installs sample data for ${s.workspace?.name ?? 'this workspace'}; what exists already (by name) is kept, so you can run it again.</p>
+      ${region(tx('tm.set_up_team_development_2'), html`
+        <p class="u-mt0">${tx('tm.setup_intro', { workspace: s.workspace?.name ?? tx('tm.this_workspace') })}</p>
         <form method="post" action="${TEAM}/setup">${csrf(s)}
-          <div class="field"><label class="label" for="f_lang">Language</label><select id="f_lang" name="lang">${TEAM_LANGUAGES.map((l) => html`<option value="${l}">${TEAM_SAMPLES[l].language}</option>`)}</select></div>
-          <fieldset class="team-fieldset"><legend>Install</legend>
-            <label class="check"><input type="checkbox" name="labels" value="true" checked> Label groups and labels: ${en.groups.map((g) => `${g.name} (${g.labels.map((l) => l.name).join(', ')})`).join('; ')}</label>
-            <label class="check"><input type="checkbox" name="templates" value="true" checked> Templates: ${en.issueTemplates.map((x) => x.name).join(', ')}; canned responses (${en.responses.length})</label>
-            <label class="check"><input type="checkbox" name="milestones" value="true" checked> Milestones: ${en.milestones.map((m) => m.name).join(', ')}</label>
+          <div class="field"><label class="label" for="f_lang">${tx('tm.language')}</label><select id="f_lang" name="lang">${TEAM_LANGUAGES.map((l) => html`<option value="${l}">${TEAM_SAMPLES[l].language}</option>`)}</select></div>
+          <fieldset class="team-fieldset"><legend>${tx('tm.install')}</legend>
+            <label class="check"><input type="checkbox" name="labels" value="true" checked> ${tx('tm.setup_labels', { list: en.groups.map((g) => `${g.name} (${g.labels.map((l) => l.name).join(', ')})`).join('; ') })}</label>
+            <label class="check"><input type="checkbox" name="templates" value="true" checked> ${tx('tm.setup_templates', { list: en.issueTemplates.map((x) => x.name).join(', '), n: en.responses.length })}</label>
+            <label class="check"><input type="checkbox" name="milestones" value="true" checked> ${tx('tm.setup_milestones', { list: en.milestones.map((m) => m.name).join(', ') })}</label>
           </fieldset>
-          <div class="buttons"><button class="btn btn-hot">Set up</button></div></form>`)}`;
-    return send(reply, s, page(s, 'Set up', [['Set up']], main));
+          <div class="buttons"><button class="btn btn-hot">${tx('tm.set_up')}</button></div></form>`)}`;
+    return send(reply, s, page(s, tx('tm.set_up'), [[tx('tm.set_up')]], main));
   });
 
   app.post(`${TEAM}/setup`, async (req: Req, reply) => {
@@ -888,7 +888,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     const n = await owner.tx((c) => teamSetup(c, ws, lang, { labels: b.labels === 'true', templates: b.templates === 'true', milestones: b.milestones === 'true' }));
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `team: set up (${lang})` });
-    flash(s, `Set up: ${n.groups} label group(s), ${n.labels} label(s), ${n.templates} template(s) and ${n.milestones} milestone(s) added.`);
+    flash(s, tx('tm.setup_done', { groups: n.groups, labels: n.labels, templates: n.templates, milestones: n.milestones }));
     return back(reply, s, TEAM);
   });
 
@@ -914,7 +914,7 @@ export async function teamRoutes(app: FastifyInstance) {
       if (f.status === 'open') await c.query(`update meta.feedback set status = 'in_progress' where id = $1`, [f.id]);
       return id;
     });
-    flash(s, `Issue #${id} created from the feedback.`);
+    flash(s, tx('tm.created_feedback', { id }));
     return back(reply, s, `${TEAM}/issues/${id}`);
   });
 
@@ -935,7 +935,7 @@ export async function teamRoutes(app: FastifyInstance) {
       await recordMentions(c, ws, id, null, c0.body, s.username);
       return id;
     });
-    flash(s, `Issue #${id} created from the comment.`);
+    flash(s, tx('tm.created_comment', { id }));
     return back(reply, s, `${TEAM}/issues/${id}`);
   });
 }
@@ -954,9 +954,9 @@ export async function pageIssuesNote(appId: number, pageNo: number): Promise<Raw
   const rows = await pageIssues(appId, pageNo);
   if (!rows.length) return '';
   const all = `${TEAM}?app=${appId}&page=${pageNo}`;
-  return html`<div class="team-page-issues small" role="note">${icon('kanban')}<span>${rows.length} open issue${rows.length === 1 ? '' : 's'}:
-    ${rows.slice(0, 3).map((r, i) => html`${i ? ', ' : ''}<a href="${TEAM}/issues/${r.id}">${r.title}</a>`)}${rows.length > 3 ? html`, <a href="${all}">all ${rows.length}</a>` : ''}
-    · <a href="${TEAM}/issues/new?app=${appId}&amp;page=${pageNo}">New issue</a></span></div>`;
+  return html`<div class="team-page-issues small" role="note">${icon('kanban')}<span>${rows.length === 1 ? tx('tm.page_issues_1') : tx('tm.page_issues', { n: rows.length })}
+    ${rows.slice(0, 3).map((r, i) => html`${i ? ', ' : ''}<a href="${TEAM}/issues/${r.id}">${r.title}</a>`)}${rows.length > 3 ? html`, <a href="${all}">${tx('tm.all_n', { n: rows.length })}</a>` : ''}
+    · <a href="${TEAM}/issues/new?app=${appId}&amp;page=${pageNo}">${tx('tm.new_issue')}</a></span></div>`;
 }
 
 /** (App Home) open issues per page, and the Tasks entry. */
@@ -965,7 +965,7 @@ export async function appIssues(appId: number) {
   return {
     tag: (pageNo: number) => {
       const n = c.perPage.get(pageNo);
-      return n ? html` <a class="tag tag-warning" href="${TEAM}?app=${appId}&amp;page=${pageNo}" title="Open issues of this page">${n} issue${n === 1 ? '' : 's'}</a>` : '';
+      return n ? html` <a class="tag tag-warning" href="${TEAM}?app=${appId}&amp;page=${pageNo}" title="${tx('tm.open_issues_of_this_page')}">${n} issue${n === 1 ? '' : 's'}</a>` : '';
     },
     task: html`<li><a href="${TEAM}?app=${appId}">${icon('kanban')} Open issues (${c.total})</a></li>`,
   };
@@ -989,5 +989,5 @@ export async function teamHomeBlock(s: Session) {
 /** (Feedback, developer comments) a button that turns the entry into an issue, or the link to its issue. */
 export function toIssueButton(s: Session, kind: 'feedback' | 'comment', id: number, issue: number | undefined) {
   if (issue) return html`<a class="small team-issue-link" href="${TEAM}/issues/${issue}">${icon('kanban')} Issue #${issue}</a>`;
-  return html`<form method="post" action="${TEAM}/from-${kind}" class="u-inline">${csrf(s)}<input type="hidden" name="${kind}" value="${id}"><button class="link-button">Make an issue</button></form>`;
+  return html`<form method="post" action="${TEAM}/from-${kind}" class="u-inline">${csrf(s)}<input type="hidden" name="${kind}" value="${id}"><button class="link-button">${tx('tm.make_an_issue')}</button></form>`;
 }
