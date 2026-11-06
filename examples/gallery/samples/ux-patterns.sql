@@ -11,8 +11,16 @@
 --   page 6  content patterns: alerts, badges and tags, colour classes,
 --           text styles, lists, media lists, timelines, comments, avatars,
 --           metric cards and empty states;
---   page 7  page patterns: a modal dialog (page 8), a drawer (page 9) and a
---           page with a side column (page 10).
+--   page 7  page patterns: a modal dialog (page 8), a drawer (page 9), a
+--           page with a side column (page 10) and an embedded page (a URL
+--           region);
+--   page 11 more item types: autocomplete, multi-select, URL and percent
+--           graph, and people (pages 12 and 13) with a picture uploaded by
+--           an Image Upload item into the table;
+--   page 14 display positions: banner, body, right side column and footer
+--           (page template Right side column);
+--   page 15 button positions: every slot of a region's header and bottom bar;
+--   page 16 a sign-in region on a page with the template Minimal.
 -- Every page says which template, option or class it uses.
 --
 -- Installed by an administrator from the App Gallery, or with
@@ -34,15 +42,19 @@ create table ux_patterns.person (
   role   text not null,
   status text not null check (status in ('Active', 'Away', 'Left')),
   joined date not null,
-  note   text
+  note   text,
+  website    text check (website ~ '^https?://'),
+  photo      bytea check (octet_length(photo) <= 2 * 1024 * 1024),
+  photo_name text,
+  photo_mime text
 );
 
-insert into ux_patterns.person (name, role, status, joined, note) values
-  ('Alex Morgan', 'Product owner', 'Active', current_date - 400, 'Sets the priorities of the team.'),
-  ('Sam Lee', 'Developer', 'Active', current_date - 200, 'Builds the reports.'),
-  ('Robin Diaz', 'Designer', 'Away', current_date - 90, 'Back next week.'),
-  ('Kim Novak', 'Tester', 'Active', current_date - 30, 'Writes the browser tests.'),
-  ('Jo Park', 'Analyst', 'Left', current_date - 700, 'Moved to another team.');
+insert into ux_patterns.person (name, role, status, joined, note, website) values
+  ('Alex Morgan', 'Product owner', 'Active', current_date - 400, 'Sets the priorities of the team.', 'https://example.com/alex'),
+  ('Sam Lee', 'Developer', 'Active', current_date - 200, 'Builds the reports.', 'https://example.com/sam'),
+  ('Robin Diaz', 'Designer', 'Away', current_date - 90, 'Back next week.', null),
+  ('Kim Novak', 'Tester', 'Active', current_date - 30, 'Writes the browser tests.', null),
+  ('Jo Park', 'Analyst', 'Left', current_date - 700, 'Moved to another team.', null);
 
 -- 2. The application's database role ----------------------------------------
 do $$ begin
@@ -51,6 +63,8 @@ end $$;
 grant app_ux_patterns to pgkiln_runtime;
 grant usage on schema ux_patterns to app_ux_patterns;
 grant select on all tables in schema ux_patterns to app_ux_patterns;
+-- the people form of page 13 edits a person and uploads a picture
+grant insert, update, delete on ux_patterns.person to app_ux_patterns;
 
 -- 3. The application ----------------------------------------------------------
 insert into meta.app (alias, name, home_page, authentication, db_role)
@@ -71,7 +85,11 @@ select a.id, p.no, p.name, p.name, p.parent, p.mode, p.pos, p.size, p.tpl
   (7, 'Page patterns', 1, 'normal', 'center', 'medium', 'standard'),
   (8, 'A modal dialog', 7, 'modal', 'center', 'small', 'standard'),
   (9, 'A drawer', 7, 'modal', 'right', 'medium', 'standard'),
-  (10, 'A side column', 7, 'normal', 'center', 'medium', 'left_side_column')
+  (10, 'A side column', 7, 'normal', 'center', 'medium', 'left_side_column'),
+  (11, 'More item types', 1, 'normal', 'center', 'medium', 'standard'),
+  (14, 'Display positions', 1, 'normal', 'center', 'medium', 'right_side_column'),
+  (15, 'Button positions', 1, 'normal', 'center', 'medium', 'standard'),
+  (16, 'Sign-in region', 1, 'normal', 'center', 'medium', 'minimal')
   ) as p (no, name, parent, mode, pos, size, tpl)
  where a.alias = 'ux-patterns';
 
@@ -79,7 +97,9 @@ insert into meta.nav_entry (app_id, seq, label, icon, target_page)
 select a.id, n.seq, n.label, n.icon, n.page
   from meta.app a, (values
   (10, 'Home', 'home', 1), (20, 'Region templates', 'layers', 2), (30, 'Region options', 'sliders', 3), (40, 'Buttons', 'target', 4),
-  (50, 'Items and forms', 'edit', 5), (60, 'Content patterns', 'grid', 6), (70, 'Page patterns', 'file', 7)
+  (50, 'Items and forms', 'edit', 5), (60, 'Content patterns', 'grid', 6), (70, 'Page patterns', 'file', 7),
+  (80, 'More item types', 'list-plus', 11), (90, 'Display positions', 'layout-panel-left', 14),
+  (100, 'Button positions', 'mouse-pointer-click', 15), (110, 'Sign-in region', 'log-in', 16)
   ) as n (seq, label, icon, page)
  where a.alias = 'ux-patterns';
 
@@ -100,7 +120,11 @@ select a.id, e.list, e.seq, e.label, e.icon, e.page, e.badge, e.description
   ('UX_TOPICS', 30, 'Buttons', 'target', 4, null, 'Hot and normal, small and large, pill, outline, link, full width, success and danger, a menu and a badge.'),
   ('UX_TOPICS', 40, 'Items and forms', 'edit', 5, null, 'Every common item type in a form, and the item template options.'),
   ('UX_TOPICS', 50, 'Content patterns', 'grid', 6, null, 'Alerts, badges, colours, text, lists, media lists, timelines, comments, avatars, metrics and empty states.'),
-  ('UX_TOPICS', 60, 'Page patterns', 'file', 7, null, 'A modal dialog, a drawer and a page with a side column.'),
+  ('UX_TOPICS', 60, 'Page patterns', 'file', 7, null, 'A modal dialog, a drawer, a page with a side column and an embedded page.'),
+  ('UX_TOPICS', 70, 'More item types', 'list-plus', 11, null, 'Autocomplete, multi-select, URL, percent graph and a picture uploaded into a table.'),
+  ('UX_TOPICS', 80, 'Display positions', 'layout-panel-left', 14, null, 'Banner, body, right side column and footer.'),
+  ('UX_TOPICS', 90, 'Button positions', 'mouse-pointer-click', 15, null, 'Create, edit, help and up in the header; previous, close, delete and next in the bottom bar.'),
+  ('UX_TOPICS', 100, 'Sign-in region', 'log-in', 16, null, 'The Login region on a page without navigation, as on an own login page.'),
   ('UX_STEPS', 10, 'Choose', null, 2, null, null),
   ('UX_STEPS', 20, 'Details', null, 5, null, null),
   ('UX_STEPS', 30, 'Confirm', null, 7, null, null),
@@ -216,7 +240,7 @@ select pg_temp.page_id('ux-patterns', r.page), r.seq, r.title, r.type, r.cols, r
 
   -- 7 Page patterns
   (7, 5, 'About this page', 'static', 12, 'plain', '{}',
-   '<p class="lead">A page''s <strong>mode</strong> and <strong>dialog position</strong> make it a modal dialog or a drawer; its <strong>page template</strong> can add a side column. The buttons open examples of each.</p>',
+   '<p class="lead">A page''s <strong>mode</strong> and <strong>dialog position</strong> make it a modal dialog or a drawer; its <strong>page template</strong> can add a side column. The buttons open examples of each. Under them a <strong>URL region</strong> (type <code>url</code>) shows the modal dialog page in a sandboxed frame: its source is a URL, here a page of this server (<code>/a/ux-patterns/8</code>).</p>',
    '{}', null, null),
   (7, 10, 'Dialogs, drawers and columns', 'static', 12, 'buttons_container', '{}', null, '{}', 'p-buttons', null),
   (8, 10, 'A modal dialog', 'static', 12, 'plain', '{}',
@@ -230,7 +254,56 @@ select pg_temp.page_id('ux-patterns', r.page), r.seq, r.title, r.type, r.cols, r
    '{}', null, 'left'),
   (10, 20, 'The body', 'static', 12, 'standard', '{}',
    '<p>The regions of the body use the 12-column grid as usual. A faceted search beside its report is the typical use of a side column.</p>',
-   '{}', null, null)
+   '{}', null, null),
+  (7, 20, 'An embedded page (URL region)', 'url', 12, 'standard', '{}', '/a/ux-patterns/8',
+   '{"height": 240}', null, null),
+
+  -- 11 More item types
+  (11, 5, 'About this page', 'static', 12, 'plain', '{}',
+   '<p class="lead">More item types, each named in its label. <strong>Autocomplete</strong> is a text field with suggestions from its list of values (any text may be typed), a <strong>multi-select</strong> returns its values colon separated, a <strong>URL</strong> field opens the phone''s URL keyboard and a <strong>percent graph</strong> shows a number from 0 to 100 as a bar. The people of this catalog (page 12) have a picture: their form (page 13) uploads it with an <strong>Image Upload</strong> item into the table <code>ux_patterns.person</code>.</p>',
+   '{}', null, null),
+  (11, 10, 'Text with suggestions and choices', 'static', 12, 'standard', '{}', null, '{}', 'm-input', null),
+  (11, 20, 'Display only', 'static', 12, 'standard', '{}', null, '{}', 'm-display', null),
+
+  -- 14 Display positions (page template right_side_column)
+  (14, 1, 'Banner (position banner)', 'static', 12, 'standard', '{to-accent,to-compact}',
+   '<p>A region with the position <code>banner</code> shows at the top of the page content, above the body: a notice for everyone who opens the page.</p>',
+   '{}', null, 'banner'),
+  (14, 5, 'About this page', 'static', 12, 'plain', '{}',
+   '<p class="lead">A page has <strong>display positions</strong> and each region chooses one with its <strong>Position</strong> (Page Designer → region → Layout). This page has the page template <em>Right side column</em> (<code>right_side_column</code>), so the regions with the position <code>right</code> show in a column beside the body; on a narrow screen under it.</p>',
+   '{}', null, null),
+  (14, 10, 'The body (position body)', 'static', 12, 'standard', '{}',
+   '<p>Regions without a position, or with <code>body</code>, are the body: the 12-column grid of every page.</p>',
+   '{}', null, 'body'),
+  (14, 20, 'People (body)', 'report', 12, 'standard', '{}',
+   E'select name, role, status from ux_patterns.person order by name', '{"searchable": false}', null, null),
+  (14, 30, 'Right column (position right)', 'static', 12, 'standard', '{}',
+   '<p>This region has the position <code>right</code>: on this page it is the side column. On a page with another template it would show in the body, in sequence.</p>',
+   '{}', null, 'right'),
+  (14, 40, 'Topics (right)', 'list', 12, 'standard', '{}', null, '{"list": "UX_TOPICS", "template": "links"}', null, 'right'),
+  (14, 50, 'Footer (position footer)', 'static', 12, 'plain', '{}',
+   '<p class="muted">A region with the position <code>footer</code> comes after the body and the side column: small print, links, a last update.</p>',
+   '{}', null, 'footer'),
+
+  -- 15 Button positions
+  (15, 5, 'About this page', 'static', 12, 'plain', '{}',
+   '<p class="lead">A region''s button has a <strong>Button position</strong> (Page Designer → button → Layout; <code>slot</code> in the files), as APEX''s button positions. <em>Create, Edit, Change, Copy, Help</em> and <em>Up</em> go into the region''s header after the title; <em>Previous, Close</em> and <em>Delete</em> to the left end of the bottom bar and <em>Next</em> to the right end; <em>Region</em> (or none) with the region''s other buttons. Each button is labelled with its position. Previous and Next go to the neighbouring pages, Up and Close to the home page, Help opens an inline dialog; the others do nothing.</p>',
+   '{}', null, null),
+  (15, 10, 'Every button position', 'static', 12, 'standard', '{}',
+   '<p>The buttons of this region use every position. They apply to the <code>standard</code>, <code>collapsible</code> and <code>plain</code> templates; the other templates place every button where they always do.</p>',
+   '{}', 'slots', null),
+  (15, 20, 'In a collapsible region', 'static', 12, 'collapsible', '{}',
+   '<p>The same positions in a collapsible region: <em>Edit</em> in the header, <em>Previous</em> and <em>Next</em> in the bottom bar.</p>',
+   '{}', 'slots-collapsible', null),
+  (15, 30, 'Help', 'static', 12, 'inline_dialog', '{}',
+   '<p>A button with the position <code>help</code> sits in the header, like APEX''s Help button. This one opens an inline dialog with a dynamic action <em>Open region</em>.</p>',
+   '{}', 'slot-help', null),
+
+  -- 16 Sign-in region (page template minimal)
+  (16, 5, 'About this page', 'static', 12, 'plain', '{}',
+   '<p class="lead">This page has the page template <em>Minimal (no navigation)</em> (<code>minimal</code>): no header, navigation menu or navigation bar, the title and the regions only, centred. The region below is a <strong>Login</strong> region: the application''s sign-in form, as on an own login page (Application settings → Sign-in methods → Create a login page). It posts to the application''s sign-in, so throttling and every sign-in method work as on the built-in page. You are signed in already: signing in again as demo / demo starts a new session and opens the home page. A wrong password shows the built-in sign-in page with its message, because this page is not the application''s login page.</p>',
+   '{}', 'about-login', null),
+  (16, 10, 'Sign in', 'login', 12, 'standard', '{}', null, '{}', null, null)
   ) as r (page, seq, title, type, cols, template, topts, source, config, sid, pos);
 
 -- buttons
@@ -262,9 +335,35 @@ select pg_temp.page_id('ux-patterns', b.page), pg_temp.region_id('ux-patterns', 
   (7, 'p-buttons', 30, 'SIDE', 'A page with a side column', 'redirect', false, 10, '{}', null, null)
   ) as b (page, region, seq, name, label, action, hot, target, topts, menu, badge);
 
+-- button positions (page 15) and the other new pages' buttons: harmless (navigate, open the help, or nothing)
+insert into meta.button (page_id, region_id, seq, name, label, action, hot, target_page, template_options, slot)
+select pg_temp.page_id('ux-patterns', b.page), pg_temp.region_id('ux-patterns', b.page, b.region), b.seq, b.name, b.label, b.action, b.hot, b.target,
+       b.topts::text[], b.slot
+  from (values
+  (15, 'slots', 10, 'CREATE', 'Create (create)', 'da', true, null, '{}', 'create'),
+  (15, 'slots', 20, 'EDIT', 'Edit (edit)', 'da', false, null, '{}', 'edit'),
+  (15, 'slots', 30, 'CHANGE', 'Change (change)', 'da', false, null, '{}', 'change'),
+  (15, 'slots', 40, 'COPY', 'Copy (copy)', 'da', false, null, '{}', 'copy'),
+  (15, 'slots', 50, 'HELP', 'Help (help)', 'da', false, null, '{}', 'help'),
+  (15, 'slots', 60, 'UP', 'Up (up)', 'redirect', false, 1, '{}', 'up'),
+  (15, 'slots', 70, 'PREVIOUS', 'Previous (previous)', 'redirect', false, 14, '{}', 'previous'),
+  (15, 'slots', 80, 'CLOSE', 'Close (close)', 'redirect', false, 1, '{}', 'close'),
+  (15, 'slots', 90, 'DELETE', 'Delete (delete)', 'da', false, null, '{to-danger}', 'delete'),
+  (15, 'slots', 100, 'NEXT', 'Next (next)', 'redirect', true, 16, '{}', 'next'),
+  (15, 'slots', 110, 'IN_REGION', 'With the others (region)', 'da', false, null, '{}', 'region'),
+  (15, 'slots-collapsible', 10, 'C_EDIT', 'Edit (edit)', 'da', false, null, '{}', 'edit'),
+  (15, 'slots-collapsible', 20, 'C_PREVIOUS', 'Previous (previous)', 'redirect', false, 14, '{}', 'previous'),
+  (15, 'slots-collapsible', 30, 'C_NEXT', 'Next (next)', 'redirect', true, 16, '{}', 'next'),
+  (11, 'm-display', 10, 'PEOPLE', 'People and their pictures', 'redirect', true, 12, '{}', null),
+  (16, 'about-login', 10, 'HOME', 'Back to the catalog', 'redirect', false, 1, '{}', null)
+  ) as b (page, region, seq, name, label, action, hot, target, topts, slot);
+
 insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, affected_region_id)
 select pg_temp.page_id('ux-patterns', 2), d.seq, d.name, 'click', d.button, 'open_region', pg_temp.region_id('ux-patterns', 2, d.region)
   from (values (10, 'Open the inline dialog', 'OPEN_DIALOG', 'dialog'), (20, 'Open the inline drawer', 'OPEN_DRAWER', 'drawer')) as d (seq, name, button, region);
+
+insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, affected_region_id)
+select pg_temp.page_id('ux-patterns', 15), 10, 'Open the help', 'click', 'HELP', 'open_region', pg_temp.region_id('ux-patterns', 15, 'slot-help');
 
 -- items
 insert into meta.item (page_id, region_id, seq, name, label, type, lov, default_value, required, help, config, template_options)
@@ -293,3 +392,44 @@ select pg_temp.page_id('ux-patterns', 5), pg_temp.region_id('ux-patterns', 5, i.
   ('f-options', 40, 'P5_BOLD', 'Bold value (to-bold)', 'display', null, 'A bold value', false, null, '{}', '{to-bold}'),
   ('f-options', 50, 'P5_HIDDEN_LABEL', 'Hidden label (to-hide-label)', 'text', null, 'The label is only for screen readers', false, null, '{}', '{to-hide-label}')
   ) as i (region, seq, name, label, type, lov, def, req, help, config, topts);
+
+-- page 11: more item types
+insert into meta.item (page_id, region_id, seq, name, label, type, lov, default_value, help, config)
+select pg_temp.page_id('ux-patterns', 11), pg_temp.region_id('ux-patterns', 11, i.region), i.seq, i.name, i.label, i.type, i.lov, i.def, i.help, i.config::jsonb
+  from (values
+  ('m-input', 10, 'P11_ROLE', 'Role (autocomplete)', 'autocomplete', 'select distinct role from ux_patterns.person order by 1', null,
+   'Suggestions from the roles of the people; type anything else as well.', '{}'),
+  ('m-input', 20, 'P11_DAYS', 'Days (multiselect)', 'multiselect', 'STATIC:Monday;MON,Tuesday;TUE,Wednesday;WED,Thursday;THU,Friday;FRI', 'MON:WED',
+   'Several values: the item''s value is their return values, colon separated (MON:WED).', '{}'),
+  ('m-input', 30, 'P11_WEBSITE', 'Website (url)', 'url', null, 'https://example.com', 'A URL field: the phone shows its URL keyboard.', '{}'),
+  ('m-display', 10, 'P11_ACTIVE_PCT', 'People active (percent_graph)', 'percent_graph', null, null,
+   'A computation counts the active people; the bar reads out as the number.', '{}'),
+  ('m-display', 20, 'P11_DONE_PCT', 'A full bar (percent_graph, 100)', 'percent_graph', null, null, null, '{}')
+  ) as i (region, seq, name, label, type, lov, def, help, config);
+
+insert into meta.computation (page_id, seq, item_name, point, type, expression)
+values (pg_temp.page_id('ux-patterns', 11), 10, 'P11_ACTIVE_PCT', 'before_header', 'sql_query',
+        E'select round(100.0 * count(*) filter (where status = ''Active'') / greatest(count(*), 1)) from ux_patterns.person'),
+       (pg_temp.page_id('ux-patterns', 11), 20, 'P11_DONE_PCT', 'before_header', 'static', '100');
+
+-- pages 12 and 13: the people, with a picture (Report and form wizard)
+select meta.generate_page('ux-patterns', 'report_form', 'ux_patterns.person', 12, '{"label": "People", "form_page": 13, "nav": false}');
+update meta.page set parent_page = 11 where id = pg_temp.page_id('ux-patterns', 12);
+insert into meta.region (page_id, seq, title, type, columns, template, source)
+values (pg_temp.page_id('ux-patterns', 12), 1, 'About this page', 'static', 12, 'plain',
+        '<p class="lead">Made with the <em>Report and form</em> wizard (<code>meta.generate_page</code>) on <code>ux_patterns.person</code>. Open a person: the form has a <strong>Picture</strong> item of type <code>image_upload</code> that crops the picture to a square in the browser and saves it into the column <code>photo</code> (with its name and type in <code>photo_name</code> and <code>photo_mime</code>), a <strong>Role</strong> with <code>autocomplete</code> and a <strong>Website</strong> of type <code>url</code>.</p>');
+update meta.region set source = 'select id, name, role, status, website, photo_name from ux_patterns.person order by name',
+       config = config || '{"headings": {"photo_name": "Picture"}}'
+ where page_id = pg_temp.page_id('ux-patterns', 12) and type = 'report';
+delete from meta.item where page_id = pg_temp.page_id('ux-patterns', 13) and name in ('P13_PHOTO_NAME', 'P13_PHOTO_MIME');
+update meta.item set type = 'image_upload', label = 'Picture (image_upload)',
+       help = 'Image Upload: a picture only, cropped to a square and made smaller in the browser before it is saved into the column photo.',
+       config = '{"filename_column": "photo_name", "mime_column": "photo_mime", "accept": "image/png,image/jpeg,image/webp", "max_mb": 2,
+                  "crop": "1:1", "max_px": 600}'
+ where page_id = pg_temp.page_id('ux-patterns', 13) and name = 'P13_PHOTO';
+update meta.item set type = 'autocomplete', label = 'Role (autocomplete)', lov = 'select distinct role from ux_patterns.person order by 1'
+ where page_id = pg_temp.page_id('ux-patterns', 13) and name = 'P13_ROLE';
+update meta.item set type = 'select', lov = 'STATIC:Active,Away,Left'
+ where page_id = pg_temp.page_id('ux-patterns', 13) and name = 'P13_STATUS';
+update meta.item set type = 'url', label = 'Website (url)', help = 'Starts with https://.'
+ where page_id = pg_temp.page_id('ux-patterns', 13) and name = 'P13_WEBSITE';

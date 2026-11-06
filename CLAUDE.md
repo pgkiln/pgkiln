@@ -25,3 +25,6 @@ Use the `pgkiln` MCP server (`.mcp.json`; `node bin/pgkiln.js mcp`, see docs/gui
 - Input or authorization changes need a test in `test/security.test.ts`; UI changes must pass `npm run test:e2e`.
 - `npm test` needs the dev database (Docker container `pgkiln-db`, port 5434); the app runs on port 3100.
 - Docs are part of done: update the `docs/guide/*` chapter, `CHANGELOG.md` and `docs/apex-feature-parity.md`.
+- Every feature is shown in a sample app (HR in `examples/hr/` or an App Gallery sample in `examples/gallery/samples/`):
+  `test/sample-coverage.test.ts` fails for a component type, event, action or condition no sample uses; check a sample
+  with `npx tsx scripts/check-sample.ts <file>`.

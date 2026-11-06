@@ -301,9 +301,10 @@ export async function validate(ctx: PageContext) {
     };
     try {
       const outcome = await validationPasses(ctx, v, value);
-      if (outcome !== true) report(typeof outcome === 'string' ? outcome : v.message);
+      // (166) &ITEM. in the message, as in APEX (plain text: the message is escaped where it is shown)
+      if (outcome !== true) report(typeof outcome === 'string' ? outcome : substitute(v.message, ctx, (x) => x));
     } catch (e) {
-      report(`${v.message} (${await publicError(ctx, e, `validation ${v.name}`)})`);
+      report(`${substitute(v.message, ctx, (x) => x)} (${await publicError(ctx, e, `validation ${v.name}`)})`);
     }
   }
 
@@ -683,7 +684,9 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
       continue;
     }
     const msg = await runOne(ctx, p, names, 0);
-    if (msg) messages.push(msg);
+    // (166) &ITEM. in a success message, with the values after the process (a new row's key, say), as in APEX;
+    // once here, so a chain's messages (joined by runOne) are filled in once
+    if (msg) messages.push(substitute(msg, ctx, (x) => x));
   }
   return messages;
 }

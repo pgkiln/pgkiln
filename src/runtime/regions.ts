@@ -481,9 +481,12 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
     </dialog>`;
 
   const header = html`<h2 id="${titleId}">${r.title}</h2>${buttonsOnTop ? buttons : ''}`;
+  // (166) the header buttons sit beside the summary, not in it: a summary is the toggle, and a button inside it is
+  // nested interactive content (axe); they come first so they are reached before the region's body
   if (r.template === 'collapsible')
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
-      <details open><summary class="region-header">${header}</summary>
+    return html`<section class="${cls}${buttonsOnTop && buttons ? ' has-header-buttons' : ''}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+      ${buttonsOnTop && buttons ? html`<div class="region-header-buttons">${buttons}</div>` : ''}
+      <details open><summary class="region-header"><h2 id="${titleId}">${r.title}</h2></summary>
         <div class="region-body"${scrollable(r)}>${body}</div>
         ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
       </details></section>`;
@@ -518,9 +521,11 @@ async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, bo
     return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
       ${top ? html`<div class="region-toolbar">${top}</div>` : ''}${body}${footer}</section>`;
   const header = html`<h2 id="${titleId}">${r.title}</h2>${top}`;
+  // (166) as above: the header buttons beside the summary, not in it
   if (r.template === 'collapsible')
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
-      <details open><summary class="region-header">${header}</summary><div class="region-body"${scrollable(r)}>${body}</div>${footer}</details></section>`;
+    return html`<section class="${cls}${top ? ' has-header-buttons' : ''}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+      ${top ? html`<div class="region-header-buttons">${top}</div>` : ''}
+      <details open><summary class="region-header"><h2 id="${titleId}">${r.title}</h2></summary><div class="region-body"${scrollable(r)}>${body}</div>${footer}</details></section>`;
   return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
     ${r.title || top ? html`<header class="region-header">${header}</header>` : ''}
     <div class="region-body"${scrollable(r)}>${body}</div>${footer}

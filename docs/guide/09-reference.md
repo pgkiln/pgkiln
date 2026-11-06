@@ -111,6 +111,7 @@ service (an administrator chooses it under Workspace utilities → Mail services
 | `meta.send_mail_template(p_template, p_placeholders jsonb, p_to, p_cc, p_bcc, p_from, p_reply_to)` | The same with an [e-mail template](06-processing.md#e-mail-templates) and its placeholder values (APEX_MAIL.SEND with `p_template_static_id`) |
 | `meta.add_mail_attachment(p_mail_id, p_content bytea, p_filename, p_mime)` | Adds a file to a mail queued **in the same transaction** (APEX_MAIL.ADD_ATTACHMENT); at most 20 files and 20 MB per mail, 10 MB per file |
 | `meta.mail_status(p_mail_id)` | `queued`, `sending`, `sent`, `error` or `cancelled`; NULL for another application's mail |
+| `meta.mail_available()` | (155) Whether the application may send e-mail now: it has an enabled mail service with a From address. Without one, `meta.send_mail` and a Send E-Mail process raise an error (rolling back the submit), so use it as their condition when mail is optional |
 
 The mail is sent by the server **after the transaction commits**. Over the application's limit per
 day `meta.send_mail` raises an error. Application roles can't read the queue; the owner can:

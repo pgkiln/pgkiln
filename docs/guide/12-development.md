@@ -15,6 +15,7 @@ scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 website/                   the website pgkiln.vargar.eu (VitePress): landing page + this guide, synced from docs/ at build time;
                            cd website && npm install && npm run dev; scripts/deploy.sh publishes it (see website/deploy/)
 scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
+scripts/check-sample.ts    (sprint 166) one App Gallery sample: install, sign in as demo, render every page, report errors (--keep)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
 bin/pgkiln.js              the `pgkiln` command line (runs src/cli/main.ts with tsx)
@@ -651,6 +652,9 @@ test/
   gallery.test.ts          the App Gallery: every starter and utility created from its review and every sample app installed, with all
                            their pages rendering; sample apps (admins), the search, a failing script leaves nothing
   gallery-samples.ts       the gallery's shipped apps for the tests: SAMPLES (schema and role of each script), BLUEPRINTS, drop/install
+  sample-coverage.test.ts  (sprint 166) every feature in a sample app: each value of the components' catalogues (check constraints
+                           listed in sample-coverage.sql, and meta.condition_ok's condition types) is used by HR or a gallery
+                           sample, or exempted there with a reason
   builder-apex-screens.test.ts sprint 61: sign-in with a workspace, message and banner, utilization, SQL Workshop home, groups, reports
   workspace-isolation.test.ts isolated workspaces (090): logins, RLS on meta, app_id, roles, SQL Workshop, scripts, imports
   ai.test.ts               AI services: Generate text with AI (text, structured outputs, errors, limits, keys), its dynamic action,

@@ -113,7 +113,7 @@ Plus: every **required** editable item must have a value.
 | Property | Meaning |
 |---|---|
 | `item_name` | The message is shown next to this item (otherwise at the top of the page) |
-| `message` | The error message |
+| `message` | The error message; (sprint 166) `&ITEM.` substitutions are filled in with the submitted values (`The name &P3_NAME. is taken.`) |
 | `when_button` | Only validate for this request. A `DELETE` request runs only the validations with `when_button` `DELETE` (e.g. "approved requests can't be deleted"), not the item checks |
 | `condition_type`, `condition_expr`, `condition_value` | Only validate when the [server-side condition](#server-side-conditions) holds, e.g. `request_in` `SAVE,CREATE` (sprint 154) |
 | `authz` | Only validate for users the authorization scheme lets through (sprint 155) |
@@ -154,7 +154,7 @@ two combine well; see error handling below.
 | `parent_process` | The name of a `chain` process on the page: this process then runs only inside that chain |
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
 | `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain`, `workflow`, `send_push` or `plugin` process (JSON) |
-| `success_message` | Shown after the redirect; messages of several processes are joined |
+| `success_message` | Shown after the redirect; messages of several processes are joined. (sprint 166) `&ITEM.` substitutions are filled in with the values after the process (`Order &P3_ID. created.`) |
 | `authz` | Skipped when the user isn't authorized |
 | `seq` | Order |
 
@@ -398,6 +398,10 @@ or with an [e-mail template](#e-mail-templates):
 {"to": "&P5_EMAIL.", "template": "ORDER_SHIPPED", "placeholders": {"NAME": "&P5_NAME.", "ORDER_ID": "&P5_ID."}}
 ```
 
+Without a mail service the process raises an error and the submit is rolled back. When the mail is
+optional, give the process the condition `sql` `meta.mail_available()` (sprint 166): it runs only when
+the application has an enabled mail service with a From address.
+
 `to`, `cc`, `bcc` (several addresses separated by commas), `from`, `reply_to`, `subject` and `body`
 take `&ITEM.` substitutions as they are; in `body_html` the item values are HTML-escaped.
 `attachments` is a SELECT (binds allowed) with the columns `content` (bytea), `filename` and `mime`,
@@ -448,7 +452,7 @@ the process's attributes (`config`), checked when it is saved and again when it 
 |---|---|---|---|
 | `close_dialog` | Close Dialog | `{"items": ["P5_ID"]}` | Closes the modal page after the submit (a modal page closes after a submit anyway; this one also hands the items' values to the page below, where items of the same name take them before its [Dialog Closed](07-dynamic-actions.md#dialog-closed) actions run) |
 | `clear_session_state` | Clear Session State | `{"items": ["P3_NAME"], "pages": [3, 4], "all": false}` | Empties the items, every `P<n>_` item of the pages, or all page and application items |
-| `reset_pagination` | Reset Pagination | – | Reports and grids start on their first page after the submit |
+| `reset_pagination` | Reset Pagination | – | An interactive grid saved from a later page starts on its first page again (a report starts on its first page after any submit anyway: its page number is in the URL) |
 | `user_preferences` | User Preferences | `{"action": "set", "preference": "DEFAULT_DEPT", "item": "P1_DEPT"}`, or `"reset"` | Stores (or removes) a [user preference](#user-preferences); nothing for the public user |
 | `server_geocoding` | Server Side Geocoding | `{"address_item": "P3_ADDRESS", "coordinates_item": "P3_LOCATION", "country": "nl"}` | The installation's geocoder (`GEOCODER_URL`); the first place's `lat,lng` goes into the coordinates item |
 | `print_report` | Print Report | `{"document": "EMPLOYEE_SHEET"}` | A [document template](16-files.md#document-templates) or report query, sent as the answer to the submit |

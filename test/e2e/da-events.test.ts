@@ -77,6 +77,8 @@ describe('dynamic action events and actions (CD-3)', () => {
       await page.fill('#P1_N', '150');
       await page.dispatchEvent('#P1_N', 'change');
       assert.equal(await page.$eval('#P1_N', (el) => getComputedStyle(el).fontWeight), '700');
+      // (166) on the field itself, so a colour shows (it was set on the wrapper, which the field's own colour hides)
+      assert.equal(await page.$eval('#P1_N', (el) => getComputedStyle(el).color), 'rgb(180, 35, 24)');
       await page.fill('#P1_N', '50');
       await page.dispatchEvent('#P1_N', 'change');
       assert.equal(await page.locator('.never-on').count(), 0, 'a dynamic action whose server-side condition fails is not on the page');

@@ -231,9 +231,9 @@ export function navbarMarkup(nodes: ListNode[], label: string, live?: string): R
   if (!nodes.length) return raw('');
   return html`<nav class="t-navbar" aria-label="${label}"><ul>${nodes.map((n) =>
     n.children.length
-      ? html`<li><details class="menu"><summary${hasIcon(n) ? html` class="nb-icon" aria-label="${n.label}"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n, live)}</summary><div class="menu-panel align-right"><ul class="t-navbar-menu">${
+      ? html`<li><details class="menu"><summary${hasIcon(n) ? html` class="nb-icon"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n, live)}</summary><div class="menu-panel align-right"><ul class="t-navbar-menu">${
           [...(n.href ? [n] : []), ...n.children].map((c) => html`<li><a ${linkAttrs(c)}>${icon(c.icon)}<span>${c.label}</span>${badge(c, live)}</a></li>`)}</ul></div></details></li>`
-      : html`<li><a ${linkAttrs(n, hasIcon(n) ? 'nb-icon' : undefined)}${hasIcon(n) ? html` aria-label="${n.label}"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n, live)}</a></li>`)}</ul></nav>`;
+      : html`<li><a ${linkAttrs(n, hasIcon(n) ? 'nb-icon' : undefined)}>${icon(n.icon)}<span>${n.label}</span>${badge(n, live)}</a></li>`)}</ul></nav>`;
 }
 
 function linksMarkup(nodes: ListNode[]): Raw {

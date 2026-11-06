@@ -5,6 +5,42 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Every feature in a sample app** (sprint 166; no migration): `test/sample-coverage.test.ts` checks that each value
+  of the application components' catalogues (region, item, process, validation and computation types, dynamic action
+  events, actions and conditions, server-side condition types, button positions, page templates and more) is used by
+  HR or an App Gallery sample app, which `test/gallery.test.ts` installs and renders page by page; the few that need
+  an outside service are listed with the reason. `scripts/check-sample.ts` checks one sample while you write it.
+- **`meta.mail_available()`** (migration 155): whether the application may send e-mail now (an enabled mail service
+  with a From address). A Send E-Mail process or `meta.send_mail` without one raises an error and rolls back the
+  submit; this function, as the process's condition, makes the mail optional (found by Sample Processes).
+- **App Gallery: Sample Validations and Sample Processes**, and the other samples extended to cover the rest: Sample
+  Dynamic Actions (every event and action), Sample Interactive Grids, Calendar and Maps (their component events, the
+  Display Map item, geocoding), Sample Approvals (the workflow diagram, human task processes, the notification bell,
+  a navigation menu with badges from SQL, live badges, a `timer` dynamic action) and the UX Pattern Catalog (item and
+  region types, positions, page templates, button positions).
+- **HR example, part 80**: HR's notifications on the notification bell (opening a leave request), badges from SQL on
+  the navigation bar, a shortcut and a button, live badges every 30 seconds and a `timer` dynamic action; **part 81**:
+  the search type `vector` next to the hybrid search (with pgvector).
+
+### Fixed
+- **`&ITEM.` in validation messages and process success messages** is filled in, as in APEX (found by the new Sample
+  Validations): `The name &P3_NAME. is taken.`, `Order &P3_ID. created.` (the values after the process). The values
+  are escaped like the rest of the message.
+- **A Before Submit dynamic action no longer stops the submit** a user starts with a button or Enter: after the
+  actions (a confirm accepted, say) nothing happened; only a submit from JavaScript went ahead (found by Sample
+  Dynamic Actions; an e2e test now clicks a real button).
+- **Set Style on an item** styles its field, as in APEX: a colour set on the item's wrapper didn't show.
+- **Trigger Geocoding on the address item's own change** no longer looks the chosen address up again and reopens the
+  list (found by Sample Maps).
+- **Push notifications without `PGKILN_SECRET_KEY`**: the missing key is logged once, not on every page.
+- **Header buttons of a collapsible region** are no longer inside its toggle (`<summary>`), where screen readers heard
+  nested controls (axe: nested-interactive); they sit beside it and stay visible while the region is collapsed (found
+  by Sample UX Patterns).
+- **Navigation bar entries with an icon and a badge** keep the badge in their accessible name: on small screens the
+  label is hidden visually instead of being replaced by an `aria-label` (axe: label-content-name-mismatch).
+- **Docs: Reset Pagination** acts on interactive grids; a report starts on its first page after any submit anyway.
+
 ## [0.85.0] - 2026-11-06
 
 ### Added

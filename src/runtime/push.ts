@@ -12,6 +12,8 @@ import { loadContext, type Req } from './routes.ts';
 // action push_subscribe: both after a click, as browsers require) and posts
 // it here. The application's public key reaches the page as data-push.
 
+let pushKeyWarned = false;
+
 /** Whether the app offers notifications. */
 export const pushOn = (a: Pick<App, 'pwa' | 'pwa_push'>) => a.pwa && a.pwa_push;
 
@@ -22,7 +24,11 @@ export async function pushBody(a: Pick<App, 'id' | 'pwa' | 'pwa_push'>, username
     return { 'data-push': await appPublicKey(a.id), 'data-push-user': username.toLowerCase() };
   } catch (e) {
     // no key yet and no PGKILN_SECRET_KEY to store one: the page works, without notifications
-    console.error('push notifications:', (e as Error).message);
+    // (166) said once per server, not on every page
+    if (!pushKeyWarned) {
+      pushKeyWarned = true;
+      console.error('push notifications:', (e as Error).message);
+    }
     return {};
   }
 }

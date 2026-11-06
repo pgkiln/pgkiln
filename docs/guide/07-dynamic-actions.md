@@ -91,7 +91,7 @@ items, in the browser. A tree of departments that filters an employee report, wi
 |---|---|---|
 | `show` / `hide` | browser | Show or hide the affected items/region. **With a condition, the opposite happens when the condition is false**, so one dynamic action gives "show commission only for salesmen". Also applied when the page loads (and already on the server, so there's no flicker) |
 | `enable` / `disable` | browser | Enable or disable the controls, reversed when the condition is false |
-| `set_value` | server | Runs `code` (a SELECT); its first row's columns set the affected items, in order |
+| `set_value` | server | Runs `code` (a SELECT); its first row's columns set the affected items, in order. The affected items must be on the page: a `hidden` item isn't rendered (its value stays on the server, safe from tampering), so set a text or display item, or use a computation |
 | `execute_sql` | server | Runs `code`; returned columns named like items set those items |
 | `refresh_region` | server | Re-renders `affected_region_id` with the current session state (e.g. a report filtered by the changed item) |
 | `refresh_item` | server | Re-renders the affected items (e.g. a list whose LOV depends on another item) |
@@ -119,10 +119,10 @@ items, in the browser. A tree of departments that filters an employee report, wi
 | `wait_popup` | browser | Shows a modal "please wait" popup with `message` (default *Please wait…*) until `remove_wait_popup` or the next page (APEX: Show Wait Popup); [below](#wait-popup) |
 | `remove_wait_popup` | browser | Removes the wait popup (APEX: Remove Wait Popup) |
 | `cancel_event` | browser | Stops the actions after it, and the event's own effect: a button doesn't submit or follow its link, a typed key (`key_down`, `key_press`) stays out of the field, a refresh doesn't happen (APEX: Cancel Event). Sprint 156 |
-| `set_style` | browser | Sets CSS properties on the affected items or region: `{"styles": {"color": "#b42318", "font-weight": "bold"}}` in the attributes (APEX: Set Style). Properties from a fixed list (colours, font, text, border, opacity, visibility, padding, margin, width); values without `url()` or `var()`, checked when saved and again before they reach the page |
+| `set_style` | browser | Sets CSS properties on the affected items (their field: input, select list or text area; (sprint 166) before, the item's wrapper) or region: `{"styles": {"color": "#b42318", "font-weight": "bold"}}` in the attributes (APEX: Set Style). Properties from a fixed list (colours, font, text, border, opacity, visibility, padding, margin, width); values without `url()` or `var()`, checked when saved and again before they reach the page |
 | `collapse_tree` / `expand_tree` | browser | Closes / opens every node of the affected tree region (APEX: Collapse Tree, Expand Tree) |
 | `show_ai_assistant` | browser | Opens the affected AI assistant region (or the inline dialog it sits in) and puts the cursor in its question (APEX: Show AI Assistant) |
-| `trigger_geocoding` | browser | The affected geocoded address item looks its text up, as its *Check address* button does (APEX: Trigger Geocoding) |
+| `trigger_geocoding` | browser | The affected geocoded address item looks its text up, as its *Check address* button does (APEX: Trigger Geocoding); (sprint 166) not when its text is the address just chosen from the list, so a `change` action on the address item itself doesn't reopen it |
 | `open_report_dialog` | browser | Opens a dialog of the affected interactive report: `code` is `filter`, `columns`, `sort`, `highlight`, `compute`, `aggregate`, `chart`, `group`, `pivot`, `break`, `rows` or `saved` (APEX: Invoke Interactive Report Dialog) |
 
 Server-side actions first store `items_to_submit` in session state, run as the application's
