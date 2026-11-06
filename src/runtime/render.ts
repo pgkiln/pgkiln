@@ -30,6 +30,9 @@ import { sessionLimits } from '../session.ts';
 
 const list = (s: string | null) => (s ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
 
+/** (161) events of grid, calendar, map and tree regions (their value: see public/app.js, pgkiln:component) */
+export const COMPONENT_EVENTS = new Set(['grid_row_init', 'grid_save', 'calendar_date_select', 'calendar_view_change', 'map_object_click', 'map_change', 'tree_selection_change']);
+
 /** Client-side definition of the page's dynamic actions (never includes SQL). */
 function dynamicActionsJson(ctx: PageContext) {
   return ctx.page.dynamic_actions
@@ -53,6 +56,8 @@ function dynamicActionsJson(ctx: PageContext) {
       ...(d.action === 'plugin' ? pluginAction(ctx, d.code, d.config) : {}),
       // (156) set_style: checked properties and values; open_report_dialog: the dialog's key (checked by the database)
       ...(d.action === 'set_style' ? { styles: safeStyles(d.config) } : {}),
+      // (161) set_value without SQL on a component event: the event's value (a date, node id, …) into the affected items
+      ...(d.action === 'set_value' && !d.code?.trim() && COMPONENT_EVENTS.has(d.event) ? { eventValue: true } : {}),
       ...(d.action === 'open_report_dialog' ? { dialog: /^[a-z]{3,10}$/.test(d.code?.trim() ?? '') ? d.code!.trim() : null } : {}),
     }));
 
@@ -422,7 +427,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}
     </div>
     <script type="application/json" id="pgkiln-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, ...(ctx.savedGrids?.length ? { savedGrids: ctx.savedGrids } : {}), texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }

@@ -1068,7 +1068,8 @@ excludable job facet, salary ranges with from/to, a hire date range and a star r
 
 **Source**: a SELECT with one row per place. The position comes from `lat` and `lng` (or
 `latitude`/`longitude`), or from a `location` column holding `latitude,longitude` text (what a
-[`location` item](05-items.md) stores). Optional columns: `title` and `body` (the popup), and
+[`location` item](05-items.md) stores). Optional columns: `title` and `body` (the popup), `id` (what a
+[`map_object_click`](07-dynamic-actions.md#component-events) dynamic action sees), and
 `geojson` (a GeoJSON geometry or feature, e.g. PostGIS `st_asgeojson(geom)`) to draw lines and areas;
 a GeoJSON point is a place like a row with `lat`/`lng`. With [PostGIS](#postgis) installed, a
 `geometry` or `geography` column (in WGS 84, SRID 4326) is enough: the server turns it into GeoJSON.
