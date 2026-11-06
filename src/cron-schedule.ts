@@ -231,12 +231,12 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const sorted = (s: Set<number>) => [...s].sort((a, b) => a - b);
 const isAll = (s: Set<number>, min: number, max: number) => s.size === max - min + 1;
 /** a list of numbers with runs as ranges: 1-5, 7 */
-function compact(values: number[], name: (n: number) => string = String) {
+function compact(values: number[], name: (n: number) => string = String, t: CronWords = EN_WORDS) {
   const out: string[] = [];
   for (let i = 0; i < values.length; i++) {
     let j = i;
     while (j + 1 < values.length && values[j + 1] === values[j] + 1) j++;
-    out.push(j - i >= 2 ? `${name(values[i])} to ${name(values[j])}` : j > i ? `${name(values[i])}, ${name(values[j])}` : name(values[i]));
+    out.push(j - i >= 2 ? fillWords(t('cron.range'), { from: name(values[i]), to: name(values[j]) }) : j > i ? `${name(values[i])}, ${name(values[j])}` : name(values[i]));
     i = j;
   }
   return out.join(', ');
@@ -250,33 +250,63 @@ function stepOf(s: Set<number>, min: number, max: number) {
 }
 
 /** The schedule in words ("At 02:00, every day"). */
-export function describeSchedule(s: Schedule): string {
-  if (s.kind === 'reboot') return 'When the database server starts';
-  if (s.kind === 'seconds') return s.seconds === 1 ? 'Every second' : `Every ${s.seconds} seconds`;
+/**
+ * (sprint 162, CD-8) The phrases of a schedule in words, by key: English here; the builder passes its translator
+ * (the same keys, cron.*, in src/builder/i18n/*.ts) and the language for the day and month names.
+ */
+export const EN_WORDS_TEXT: Record<string, string> = {
+  'cron.reboot': 'When the database server starts', 'cron.every_second': 'Every second', 'cron.every_seconds': 'Every {n} seconds',
+  'cron.every_minute': 'Every minute', 'cron.every_minutes': 'Every {n} minutes', 'cron.every_hour': 'Every hour',
+  'cron.minute_of_hour': 'At minute {m} of every hour', 'cron.minutes_of_hour': 'At minutes {list} of every hour', 'cron.at': 'At {times}',
+  'cron.at_minute': 'At minute {m}', 'cron.at_minutes': 'At minutes {list}', 'cron.of_every_hours': '{mins} of every {n} hours',
+  'cron.past_hours': '{mins} past hours {list}', 'cron.day_and_last': 'on day {list} and the last day of the month',
+  'cron.last_day': 'on the last day of the month', 'cron.day_of_month': 'on day {list} of the month', 'cron.weekdays': 'on weekdays',
+  'cron.on_days': 'on {list}', 'cron.a_days': 'a {list}', 'cron.either': '{dom} or {dow}', 'cron.if': '{dom} if it is {dow}',
+  'cron.every_day': 'every day', 'cron.in_months': 'in {list}', 'cron.range': '{from} to {to}',
+};
+export type CronWords = (key: string) => string;
+const EN_WORDS: CronWords = (k) => EN_WORDS_TEXT[k] ?? k;
+const fillWords = (text: string, p: Record<string, string | number>) => text.replace(/\{(\w+)\}/g, (m, k: string) => (k in p ? String(p[k]) : m));
+
+/** Day (0 = Sunday) and month (1 = January) names in a language (English: as before). */
+const dayName = (lang: string, d: number) => (lang === 'en' ? DAY_NAMES[d] : new Intl.DateTimeFormat(lang, { weekday: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, 0, 1 + d))));
+const monthName = (lang: string, m: number) => (lang === 'en' ? MONTH_NAMES[m - 1] : new Intl.DateTimeFormat(lang, { month: 'long', timeZone: 'UTC' }).format(new Date(Date.UTC(2023, m - 1, 1))));
+
+export function describeSchedule(s: Schedule, t: CronWords = EN_WORDS, lang = 'en'): string {
+  const w = (key: string, p: Record<string, string | number> = {}) => fillWords(t(key), p);
+  const list = (v: number[], name?: (n: number) => string) => compact(v, name, t);
+  if (s.kind === 'reboot') return w('cron.reboot');
+  if (s.kind === 'seconds') return s.seconds === 1 ? w('cron.every_second') : w('cron.every_seconds', { n: s.seconds });
   const minutes = sorted(s.minutes);
   const hours = sorted(s.hours);
   let time: string;
-  if (isAll(s.minutes, 0, 59) && isAll(s.hours, 0, 23)) time = 'Every minute';
-  else if (isAll(s.hours, 0, 23)) {
+  // whether the time already says how often (then no "every day")
+  let often = false;
+  if (isAll(s.minutes, 0, 59) && isAll(s.hours, 0, 23)) {
+    time = w('cron.every_minute');
+    often = true;
+  } else if (isAll(s.hours, 0, 23)) {
     const step = stepOf(s.minutes, 0, 59);
-    time = step ? `Every ${step} minutes` : minutes.length === 1 ? (minutes[0] === 0 ? 'Every hour' : `At minute ${minutes[0]} of every hour`) : `At minutes ${compact(minutes)} of every hour`;
-  } else if (hours.length * minutes.length <= 6) time = `At ${hours.flatMap((h) => minutes.map((m) => `${pad(h)}:${pad(m)}`)).join(', ')}`;
+    often = true;
+    time = step ? w('cron.every_minutes', { n: step }) : minutes.length === 1 ? (minutes[0] === 0 ? w('cron.every_hour') : w('cron.minute_of_hour', { m: minutes[0] })) : w('cron.minutes_of_hour', { list: list(minutes) });
+  } else if (hours.length * minutes.length <= 6) time = w('cron.at', { times: hours.flatMap((h) => minutes.map((m) => `${pad(h)}:${pad(m)}`)).join(', ') });
   else {
     const step = stepOf(s.hours, 0, 23);
-    const mins = isAll(s.minutes, 0, 59) ? 'Every minute' : minutes.length === 1 ? `At minute ${minutes[0]}` : `At minutes ${compact(minutes)}`;
-    time = `${mins} ${step ? `of every ${step} hours` : `past hours ${compact(hours)}`}`;
+    const mins = isAll(s.minutes, 0, 59) ? w('cron.every_minute') : minutes.length === 1 ? w('cron.at_minute', { m: minutes[0] }) : w('cron.at_minutes', { list: list(minutes) });
+    time = step ? w('cron.of_every_hours', { mins, n: step }) : w('cron.past_hours', { mins, list: list(hours) });
   }
   const parts = [time];
   const domAll = isAll(s.days, 1, 31) && !s.lastDay;
   const dowAll = isAll(s.weekdays, 0, 6);
-  const dom = s.lastDay ? (s.days.size ? `on day ${compact(sorted(s.days))} and the last day of the month` : 'on the last day of the month') : `on day ${compact(sorted(s.days))} of the month`;
+  const dom = s.lastDay ? (s.days.size ? w('cron.day_and_last', { list: list(sorted(s.days)) }) : w('cron.last_day')) : w('cron.day_of_month', { list: list(sorted(s.days)) });
   const weekdays = sorted(s.weekdays);
-  const dow = weekdays.join() === '1,2,3,4,5' ? 'on weekdays' : `on ${compact(weekdays, (d) => DAY_NAMES[d])}`;
-  if (s.either) parts.push(`${dom} or ${dow}`);
-  else if (!domAll && !dowAll) parts.push(`${dom} if it is ${dow.replace(/^on /, 'a ')}`);
+  const days = list(weekdays, (d) => dayName(lang, d));
+  const dow = weekdays.join() === '1,2,3,4,5' ? w('cron.weekdays') : w('cron.on_days', { list: days });
+  if (s.either) parts.push(w('cron.either', { dom, dow }));
+  else if (!domAll && !dowAll) parts.push(w('cron.if', { dom, dow: weekdays.join() === '1,2,3,4,5' ? w('cron.weekdays') : w('cron.a_days', { list: days }) }));
   else if (!domAll) parts.push(dom);
   else if (!dowAll) parts.push(dow);
-  else if (time !== 'Every minute' && !/^Every \d+ minutes$|hour$/.test(time)) parts.push('every day');
-  if (!isAll(s.months, 1, 12)) parts.push(`in ${compact(sorted(s.months), (m) => MONTH_NAMES[m - 1])}`);
+  else if (!often) parts.push(w('cron.every_day'));
+  if (!isAll(s.months, 1, 12)) parts.push(w('cron.in_months', { list: list(sorted(s.months), (m) => monthName(lang, m)) }));
   return parts.join(', ');
 }
