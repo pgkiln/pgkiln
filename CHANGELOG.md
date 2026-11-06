@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-11-06
+
 ### Added
 - **Every feature in a sample app** (sprint 166; no migration): `test/sample-coverage.test.ts` checks that each value
   of the application components' catalogues (region, item, process, validation and computation types, dynamic action

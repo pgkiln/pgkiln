@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.85.0 (November 2026): every App Builder screen in the eleven builder languages.
+- **Current release:** 0.86.0 (November 2026): every feature in a sample app (two new samples, six extended), `meta.mail_available()`, and the fixes the samples found.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
