@@ -1605,6 +1605,8 @@ accounts or custom).
   look until 0.28; see [chapter 14](14-globalization.md#base-styles-iris-and-standard)), accent colour, header colour, *side* or *top* navigation (on tablets and phones the
   menu is always a drawer), a [list](04-pages-and-regions.md#list-lists) as the navigation menu
   (instead of the navigation entries) and as the navigation bar (links in the header), the theme style (automatic, light or dark) and whether users may choose light or dark.
+  (sprint 165) **Notifications**: the notification bell in the header and **live badges** (every so many seconds an
+  open page refreshes its badges); see [Notifications and live badges](04-pages-and-regions.md#notifications-and-live-badges).
   **Theme Roller** opens the [style variants](14-globalization.md#style-variants-theme-roller): several
   saved styles (colours, font, font size, corners), the default one, and whether users may choose.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.

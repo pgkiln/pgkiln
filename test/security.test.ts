@@ -13604,3 +13604,96 @@ describe('sprint 161 component events', () => {
     await owner.query(`insert into meta.dynamic_action (page_id, name, event, action) values ($1, 'x', 'map_object_click', 'alert')`, [page]);
   });
 });
+
+describe('sprint 165 notifications and live badges', () => {
+  let saved: { notifications: boolean; live_badges_s: number | null };
+  let entry = 0;
+  const notify = (user: string, title: string, page: number | null = null, items: Record<string, string> = {}) =>
+    owner.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
+      return (await c.query('select meta.notify($1, $2, null, $3, $4::jsonb) as id', [user, title, page, JSON.stringify(items)])).rows[0].id as string;
+    });
+  const sessionSeen = async () => Number((await owner.one(`select extract(epoch from max(last_seen))::float8 as at from meta.session where app_id = $1 and username = 'allen'`, [appId])).at);
+
+  before(async () => {
+    saved = (await owner.one('select notifications, live_badges_s from meta.app where id = $1', [appId]))!;
+    await owner.query('update meta.app set notifications = true, live_badges_s = 30 where id = $1', [appId]);
+    await owner.query('delete from meta.notification where app_id = $1', [appId]);
+    // a badge query that reads pgkiln's own tables: the application's role may not
+    entry = (await owner.one(
+      `insert into meta.list_entry (app_id, list_name, seq, label, target_page, badge_query)
+       select id, navbar_list, 98, 'Sec165', 1, 'select count(*) from meta.account' from meta.app where id = $1 returning id`, [appId])).id;
+  });
+  after(async () => {
+    await owner.query('update meta.app set notifications = $2, live_badges_s = $3 where id = $1', [appId, saved.notifications, saved.live_badges_s]);
+    await owner.query('delete from meta.notification where app_id = $1', [appId]);
+    await owner.query('delete from meta.list_entry where id = $1', [entry]);
+  });
+
+  test("another user's notification: not opened, not marked read, not shown", async () => {
+    const id = await notify('allen', 'For Allen', 1);
+    const blake = await as('blake');
+    await blake.get('/a/hr/notifications');
+    assert.doesNotMatch((await blake.get('/a/hr/notifications')).body, /For Allen/);
+    const res = await blake.post(`/a/hr/notifications/${id}/open`, { __csrf: blake.lastCsrf });
+    assert.equal(res.headers.location, '/a/hr/notifications', 'not its page');
+    assert.equal((await owner.one('select read_at from meta.notification where id = $1', [id])).read_at, null);
+    await blake.post('/a/hr/notifications/read', { __csrf: blake.lastCsrf });
+    assert.equal((await owner.one('select read_at from meta.notification where id = $1', [id])).read_at, null, "Mark all read: blake's own only");
+    for (const bad of ['0', '-1', '1e3', '99999999999999999999', 'abc']) {
+      const r = await blake.post(`/a/hr/notifications/${bad}/open`, { __csrf: blake.lastCsrf });
+      assert.equal(r.headers.location, '/a/hr/notifications', bad);
+    }
+  });
+
+  test('opening and Mark all read need the session\'s CSRF token', async () => {
+    const id = await notify('allen', 'CSRF', 1);
+    const allen = await as('allen');
+    await allen.get('/a/hr/1');
+    await allen.post(`/a/hr/notifications/${id}/open`, { __csrf: 'forged' });
+    await allen.post('/a/hr/notifications/read', {});
+    assert.equal((await owner.one('select read_at from meta.notification where id = $1', [id])).read_at, null);
+    // the bell's own forms carry the token
+    assert.match((await allen.get('/a/hr/1')).body, new RegExp(`action="/a/hr/notifications/${id}/open">\\s*<input type="hidden" name="__csrf" value="${allen.lastCsrf}">`));
+  });
+
+  test('Mark all read goes back inside the application only', async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/1');
+    for (const next of ['https://evil.example/', '//evil.example/x', '/a/other/1', '/a/hr/../../builder', '/a/hr/%2e%2e/%2E%2E/builder', '/a/hr/./../x']) {
+      const res = await allen.post('/a/hr/notifications/read', { __csrf: allen.lastCsrf, next });
+      assert.equal(res.headers.location, '/a/hr/1', next);
+    }
+  });
+
+  test('the live endpoint keeps no idle session alive and starts none', async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/1');
+    await owner.query(`update meta.session set last_seen = now() - interval '20 minutes' where app_id = $1 and username = 'allen'`, [appId]);
+    const before = await sessionSeen();
+    assert.equal((await allen.get('/a/hr/1/live')).statusCode, 200);
+    assert.equal(await sessionSeen(), before, 'live requests are not activity');
+    await allen.get('/a/hr/1');
+    assert.ok((await sessionSeen()) > before, 'a page request is');
+    // no session: 401, and no new session cookie
+    const stranger = new Browser();
+    const res = await stranger.get('/a/hr/1/live');
+    assert.equal(res.statusCode, 401);
+    assert.equal(stranger.cookies.size, 0);
+  });
+
+  test("the live endpoint keeps the page's authorization, and badge queries run as the application's role", async () => {
+    const allen = await as('allen');
+    assert.equal((await allen.get('/a/hr/3/live')).statusCode, 403, 'page 3 is for managers');
+    const state = (await allen.get('/a/hr/1/live')).json();
+    assert.equal(state.badges[`b:${entry}`], null, 'meta.account is not readable by the application');
+    assert.match((await allen.get('/a/hr/1')).body, new RegExp(`data-badge="b:${entry}" hidden`));
+  });
+
+  test('timer and send_notification are new values the database takes; nothing else', async () => {
+    const page = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 1`, [appId])).id;
+    await assert.rejects(owner.query(`insert into meta.dynamic_action (page_id, name, event, action) values ($1, 'x', 'interval', 'alert')`, [page]), /dynamic_action_event_check/);
+    await assert.rejects(owner.query(`insert into meta.process (page_id, name, type) values ($1, 'x', 'send_sms')`, [page]), /process_type_check/);
+    await assert.rejects(owner.query(`insert into meta.notification (app_id, username, title, url) values ($1, 'allen', 'x', 'https://evil.example/')`, [appId]), /notification_url_check/);
+  });
+});

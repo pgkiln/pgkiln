@@ -229,13 +229,21 @@ export const txContext = (ctx: PageContext) => ({
 });
 
 /** Load app, page, session and user; handles 404 and the login redirect. */
-export async function loadContext(req: Req, reply: FastifyReply, { json = false, pageNo: fixedPage }: { json?: boolean; pageNo?: 'home' } = {}): Promise<PageContext | null> {
+export async function loadContext(
+  req: Req,
+  reply: FastifyReply,
+  { json = false, pageNo: fixedPage, touch = true }: { json?: boolean; pageNo?: 'home'; touch?: boolean } = {},
+): Promise<PageContext | null> {
   const app = await loadApp(req.params.alias);
   if (!app) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias })), null;
   const base = `/a/${app.alias}`;
-  let session = await getSession(req, reply, app.id, base);
+  // (154) touch false: a request the page makes by itself (live badges) neither keeps an idle session
+  // alive nor starts one (no sign-in from a remembered browser either)
+  const existing = touch ? await getSession(req, reply, app.id, base) : await getSession(req, reply, app.id, base, { touch: false });
+  if (!existing) return reply.code(401).send({ error: english('error.session_ended') }), null;
+  let session = existing;
   // the session ended, but the browser was remembered: sign in again silently (a new token each time)
-  if (app.authentication === 'app_users' && !session.username) {
+  if (touch && app.authentication === 'app_users' && !session.username) {
     const remembered = await useRemember(req, reply, app);
     // (sprint 130) one made before the application asked this user for a second step doesn't stand in for it
     if (remembered && (await carriesSecondStep(app, remembered.username, remembered.roles, remembered.method)))
@@ -245,7 +253,7 @@ export async function loadContext(req: Req, reply: FastifyReply, { json = false,
       });
   }
   // (067) another application of the session sharing group was signed in to: sign in here too
-  if (!session.username && sharingGroup(app)) {
+  if (touch && !session.username && sharingGroup(app)) {
     const shared = await useShared(req, reply, app);
     if (shared && (await carriesSecondStep(app, shared.username, shared.roles, shared.method)))
       session = await signIn(req, reply, app, session, shared.username, {

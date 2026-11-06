@@ -133,6 +133,21 @@ queue; the owner can: `select id, username, status, devices, delivered, message 
 order by id desc` (`sent`: at least one device received it; `no_device`; `error`). Messages are kept
 7 days.
 
+### In-app notifications from SQL
+
+Sprint 165: the [notification bell](04-pages-and-regions.md#notifications-and-live-badges); the
+application needs notifications on (Settings → User Interface → Notifications).
+
+| Function | Returns |
+|---|---|
+| `meta.notify(p_user, p_title, p_body, p_page, p_items, p_icon, p_push)` | Adds a notification for `p_user` of the current application and returns its id. `p_title` (required, at most 200 characters), `p_body` (at most 1000), `p_page` + `p_items` (the page it opens with item values: the link, signed for the recipient), `p_icon` (an icon name), `p_push` (also to the user's devices when push notifications are on; default false) |
+| `meta.unread_notifications(p_user)` | The number of unread notifications of the user (default: the current one), e.g. as a badge query |
+| `meta.mark_notifications_read(p_id)` | Marks the current user's notification `p_id` read, or all of them (null); returns how many |
+| `meta.my_notifications` | A view: the current user's notifications (`id, title, body, url, icon, created_at, read_at, unread`) |
+
+A notification exists once the transaction commits. A user keeps the newest 500; read ones go after
+90 days. Application roles reach the table only through these functions and the view.
+
 ### AI requests from SQL
 
 `meta.ai_generate(service, prompt, system, schema)` queues a request to an

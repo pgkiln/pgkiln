@@ -6875,4 +6875,12 @@ export const ko: BuilderMessages = {
   'sf.no_such_file': '해당 파일이 없습니다.',
   'sf.saved_missing': '저장했습니다. 아직 업로드되지 않음(업로드될 때까지 제외): {names}.',
   'sf.saved': '저장했습니다.',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': '알림',
+  'nfy.bell': '헤더의 알림 벨',
+  'nfy.bell_help': '로그인한 사용자는 읽지 않은 알림과 최신 알림을 봅니다. 알림을 열면 읽음으로 표시되고 해당 페이지로 이동합니다. SQL에서 `meta.notify(user, title, body, page, items)` 또는 send_notification 유형의 프로세스로 추가하세요. `meta.unread_notifications()`는 개수로, 예를 들어 배지에 사용합니다.',
+  'nfy.live': '실시간 배지(초)',
+  'nfy.live_ph': '예: 60(비우면 끔)',
+  'nfy.live_help': '열린 페이지가 지정한 초(10~3600)마다 배지를 제자리에서 새로 고칩니다: 탐색 메뉴와 탐색 표시줄, 배지 쿼리가 있는 버튼, 벨. 탭이 숨겨져 있는 동안은 하지 않으며 세션을 연장하지 않습니다.',
+  'nfy.live_invalid': '실시간 배지: 10~3600 사이의 정수 초 또는 빈 값.',
 };

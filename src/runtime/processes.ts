@@ -176,7 +176,7 @@ export function chainProblems(conf: unknown): string[] {
 }
 
 /** Process types a background chain can run (nothing that needs the request: forms, grids, uploads, files). */
-export const BACKGROUND_TYPES = new Set<Process['type']>(['sql', 'invoke_api', 'workflow', 'chain', 'send_push', 'send_email']);
+export const BACKGROUND_TYPES = new Set<Process['type']>(['sql', 'invoke_api', 'workflow', 'chain', 'send_push', 'send_email', 'send_notification']);
 
 // ---------------------------------------------------------------- workflows
 
@@ -248,6 +248,7 @@ export function processProblems(type: string, conf: unknown): string[] {
   if (type === 'chain') return chainProblems(conf);
   if (type === 'workflow') return workflowProblems(conf);
   if (type === 'send_push') return sendPushProblems(conf);
+  if (type === 'send_notification') return sendNotificationProblems(conf);
   if (type === 'send_email') return sendEmailProblems(conf);
   if (DECLARATIVE_PROCESS_TYPES.has(type)) return declarativeProblems(type, conf);
   return [];
@@ -294,6 +295,49 @@ export async function sendPushProcess(ctx: PageContext, p: Process): Promise<str
   const tag = value(conf.tag)?.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 32) || null;
   await ctx.client!.query('select meta.send_push($1, $2, $3, $4, $5::jsonb, $6, $7)', [
     (value(conf.to) ?? '').trim(), value(conf.title), value(conf.body) || null, conf.page ?? null, JSON.stringify(items), tag, conf.urgency ?? 'normal',
+  ]);
+  return p.success_message ?? null;
+}
+
+// ---------------------------------------------------------------- send_notification (154)
+
+interface SendNotificationConfig {
+  to: string;
+  title: string;
+  body?: string;
+  page?: number;
+  items?: Record<string, string>;
+  icon?: string;
+  push?: boolean;
+}
+
+export function sendNotificationProblems(conf: unknown): string[] {
+  const c = (conf ?? {}) as Record<string, any>;
+  const out: string[] = [];
+  if (typeof c.to !== 'string' || !c.to.trim()) out.push('"to" is the user name, e.g. "&P5_OWNER." or "&APP_USER.".');
+  if (typeof c.title !== 'string' || !c.title.trim()) out.push('"title" is the notification\'s title.');
+  if (c.body !== undefined && typeof c.body !== 'string') out.push('"body" is text.');
+  if (c.page !== undefined && !(Number.isInteger(c.page) && c.page > 0)) out.push('"page" is a page number of this application.');
+  if (c.items !== undefined && (typeof c.items !== 'object' || Array.isArray(c.items) || c.items === null || Object.entries(c.items).some(([k, v]) => !ITEM.test(k.toUpperCase()) || typeof v !== 'string')))
+    out.push('"items" maps item names of the page to values, e.g. {"P5_ID": "&P5_ID."}.');
+  if (c.items !== undefined && c.page === undefined) out.push('"items" needs a "page".');
+  if (c.icon !== undefined && (typeof c.icon !== 'string' || !/^[a-z0-9-]{1,40}$/.test(c.icon))) out.push('"icon" is an icon name, e.g. "bell" or "check".');
+  if (c.push !== undefined && typeof c.push !== 'boolean') out.push('"push" is true or false (also to the user\'s devices when push notifications are on).');
+  return out;
+}
+
+/**
+ * send_notification: adds an in-app notification (the bell) for a user with meta.notify, in the page's
+ * transaction, so it exists only when the submit commits. Values take &ITEM. substitutions.
+ */
+export async function sendNotificationProcess(ctx: PageContext, p: Process): Promise<string | null> {
+  const conf = (p.config ?? {}) as unknown as SendNotificationConfig;
+  const problems = sendNotificationProblems(conf);
+  if (problems.length) throw new Error(`Process "${p.name}": ${problems.join(' ')}`);
+  const value = (s: string | undefined) => (s === undefined ? null : substitute(s, ctx, (x) => x));
+  const items = Object.fromEntries(Object.entries(conf.items ?? {}).map(([k, v]) => [k.toUpperCase(), value(v) ?? '']));
+  await ctx.client!.query('select meta.notify($1, $2, $3, $4, $5::jsonb, $6, $7)', [
+    (value(conf.to) ?? '').trim(), value(conf.title)?.slice(0, 200), value(conf.body)?.slice(0, 1000) || null, conf.page ?? null, JSON.stringify(items), conf.icon ?? null, conf.push === true,
   ]);
   return p.success_message ?? null;
 }

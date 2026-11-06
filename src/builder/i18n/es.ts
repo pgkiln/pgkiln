@@ -6875,4 +6875,12 @@ export const es: BuilderMessages = {
   'sf.no_such_file': 'No existe ese archivo.',
   'sf.saved_missing': 'Guardado. Aún no subidos (se omiten hasta que lo estén): {names}.',
   'sf.saved': 'Guardado.',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Notificaciones',
+  'nfy.bell': 'Campana de notificaciones en la cabecera',
+  'nfy.bell_help': 'Los usuarios con sesión ven sus notificaciones sin leer y las más recientes; abrir una la marca como leída y va a su página. Añádalas desde SQL con `meta.notify(user, title, body, page, items)` o con un proceso de tipo send_notification; `meta.unread_notifications()` es el número, p. ej. para una insignia.',
+  'nfy.live': 'Insignias en vivo (segundos)',
+  'nfy.live_ph': 'p. ej. 60 (vacío: desactivado)',
+  'nfy.live_help': 'Cada tantos segundos (10 a 3600) una página abierta actualiza sus insignias en su sitio: el menú y la barra de navegación, los botones con consulta de insignia y la campana. No mientras la pestaña está oculta; no mantiene viva la sesión.',
+  'nfy.live_invalid': 'Insignias en vivo: un número entero de segundos de 10 a 3600, o vacío.',
 };

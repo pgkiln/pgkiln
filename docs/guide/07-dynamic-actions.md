@@ -53,6 +53,7 @@ your own from a static application file.
 | `calendar_view_change` | A calendar showed another view or period (APEX: View Change); the condition sees `month`, `week`, `day` or `list` | The calendar's id or static id |
 | `map_object_click` | A marker or shape of a map was clicked (APEX: Map Object Clicked); the condition sees the row's `id` column, else its title | The map's id or static id |
 | `map_change` | A map was moved or zoomed by the user (APEX: Map Changed); the condition sees the zoom level | The map's id or static id |
+| `timer` | (sprint 165) Every so many seconds while the page is open and its tab is visible, e.g. `refresh_region` of a report of open orders | A number of seconds, 5 to 3600 |
 | `tree_selection_change` | A tree node was clicked (APEX: Selection Change [Tree]); the condition sees its `id`, the node is marked; a `cancel_event` keeps its link closed | The tree's id or static id |
 
 **The actions of one event and trigger run one after the other, in sequence order** (APEX: the true

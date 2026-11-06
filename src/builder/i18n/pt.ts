@@ -6875,4 +6875,12 @@ export const pt: BuilderMessages = {
   'sf.no_such_file': 'O ficheiro não existe.',
   'sf.saved_missing': 'Guardado. Ainda não carregados (omitidos até estarem): {names}.',
   'sf.saved': 'Guardado.',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Notificações',
+  'nfy.bell': 'Sino de notificações no cabeçalho',
+  'nfy.bell_help': 'Os utilizadores com sessão veem as notificações por ler e as mais recentes; abrir uma marca-a como lida e vai para a sua página. Adicione-as a partir de SQL com `meta.notify(user, title, body, page, items)` ou com um processo do tipo send_notification; `meta.unread_notifications()` é o número, p. ex. para um distintivo.',
+  'nfy.live': 'Distintivos em direto (segundos)',
+  'nfy.live_ph': 'p. ex. 60 (vazio: desligado)',
+  'nfy.live_help': 'A cada tantos segundos (10 a 3600) uma página aberta atualiza os seus distintivos no lugar: o menu e a barra de navegação, os botões com consulta de distintivo e o sino. Não enquanto o separador está oculto; não mantém a sessão viva.',
+  'nfy.live_invalid': 'Distintivos em direto: um número inteiro de segundos de 10 a 3600, ou vazio.',
 };

@@ -16,7 +16,7 @@ import { CHART_KINDS, renderChartBody, wallClockIn, type GaugeConfig } from './c
 import { databaseTimeZone } from './locale.ts';
 import { renderFacets } from './facets.ts';
 import { renderSmartFilters } from './smart-filters.ts';
-import { renderListRegion } from './lists.ts';
+import { queryBadge, renderListRegion } from './lists.ts';
 import { renderDisplaySelector } from './display-selector.ts';
 import { renderGrid } from './grid.ts';
 import { masterItemOf, mastersOf } from './master-detail.ts';
@@ -44,21 +44,17 @@ import { renderBreadcrumbRegion, renderHelpTextRegion } from './page-regions.ts'
 
 /** A button's badge: the badge query's first value, or the badge text with &ITEM. substitutions. */
 async function badgeOf(ctx: PageContext, b: Button): Promise<Raw | ''> {
-  let value: string | null = null;
-  if (b.badge_query?.trim()) {
-    const c = ctx.client!;
-    const sql = stripSemicolon(applyBinds(b.badge_query, bindValues(ctx)));
-    try {
-      const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
-      const v = res.rows[0]?.[0];
-      value = v === null || v === undefined ? null : String(v);
-    } catch (e) {
-      ctx.errors.page.push(await publicError(ctx, e, `badge of button ${b.name}`));
-    }
-  } else if (b.badge) value = substitute(b.badge, ctx, (x) => x);
-  value = value?.trim().slice(0, 100) || null;
-  return value ? html` <span class="btn-badge">${value}</span>` : '';
+  const value = b.badge_query?.trim()
+    ? await queryBadge(ctx, b.badge_query, `badge of button ${b.name}`)
+    : b.badge ? substitute(b.badge, ctx, (x) => x).trim().slice(0, 100) || null : null;
+  // (154) with live badges, a badge from a query keeps a place the refresh can fill
+  const live = ctx.app.live_badges_s && b.badge_query?.trim() ? html` data-badge="${buttonBadgeKey(b)}"` : '';
+  if (!value) return live ? html` <span class="btn-badge"${live} hidden></span>` : '';
+  return html` <span class="btn-badge"${live}>${value}</span>`;
 }
+
+/** (154) The data-badge key of a button's badge (live badges). */
+export const buttonBadgeKey = (b: { id: number }) => `btn:${b.id}`;
 
 /**
  * A menu button: a <details> dropdown (works without JavaScript) with links

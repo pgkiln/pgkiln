@@ -33,7 +33,7 @@ const CHECKS: Record<string, SqlShape> = {
   'process.code': 'statements', 'authz_scheme.value': 'boolean',
   'lov.query': 'select', 'app_process.code': 'statements', 'automation.query': 'select', 'automation_action.code': 'statements', 'automation_action.condition': 'boolean',
   'document_template.query': 'select', 'report_query.query': 'select', 'task_definition.action_code': 'statements', 'dynamic_action.code': 'statements',
-  'button.badge_query': 'select', 'list.query': 'select', 'list_entry.condition': 'boolean',
+  'button.badge_query': 'select', 'list.query': 'select', 'list_entry.condition': 'boolean', 'list_entry.badge_query': 'select',
 };
 /** (147) The expression fields of server-side conditions (their type select names how to read them). */
 const CONDITION_EXPRS = ['computation', 'app_computation', 'branch', 'process', 'item', 'validation'].map((k) => `${k}.condition_expr`).concat('dynamic_action.server_condition_expr');

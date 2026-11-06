@@ -280,6 +280,35 @@ h2 { font-size: 1rem; margin: 0; font-weight: 600; }
 .t-user > summary::-webkit-details-marker { display: none; }
 .t-user > summary:hover { background: rgb(255 255 255 / 10%); }
 
+/* (165) the notification bell: the unread count on the icon, the newest notifications in its menu */
+.t-bell > summary { position: relative; }
+.t-bell-count {
+  position: absolute; top: 1px; inset-inline-end: 0; min-width: 1.15rem; height: 1.15rem; padding: 0 0.3rem; border-radius: 99px;
+  background: #d92d20; color: #fff; font-size: 0.68rem; font-weight: 700; line-height: 1.15rem; text-align: center;
+  box-shadow: 0 0 0 2px var(--header, #1d1b31);
+}
+.t-bell-panel { width: min(380px, calc(100vw - 1rem)); }
+.t-bell-head { flex-direction: row; align-items: center; justify-content: space-between; }
+.t-bell-read { margin: 0; }
+.t-bell-read .link-button { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; }
+.t-bell-none { padding: 0.5rem 0.9rem; margin: 0; }
+.t-bell-list, .t-notification-list { list-style: none; margin: 0; padding: 0; }
+.t-bell-list form, .t-notification-list form { margin: 0; }
+.t-notification {
+  display: flex; gap: 0.6rem; align-items: flex-start; width: 100%; padding: 0.55rem 0.9rem; border: 0; background: none;
+  color: var(--text); font: inherit; text-align: start; cursor: pointer;
+}
+.t-notification:hover, .t-notification:focus-visible { background: var(--surface-2, rgb(0 0 0 / 4%)); }
+.t-notification > .icon { flex: none; margin-top: 0.15rem; color: var(--muted); }
+.t-notification-text { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.t-notification-title { font-weight: 500; }
+.t-notification-body { color: var(--muted); font-size: 0.88rem; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.t-notification-time { color: var(--muted); font-size: 0.78rem; }
+.is-unread > form > .t-notification { box-shadow: inset 3px 0 0 var(--accent); }
+.is-unread .t-notification-title { font-weight: 700; }
+.is-unread > form > .t-notification > .icon { color: var(--accent); }
+.t-notification-list > li + li { border-top: 1px solid var(--border); }
+
 /* ---------- menus (details dropdowns) ---------- */
 details.menu { position: relative; }
 details.menu > summary { list-style: none; }

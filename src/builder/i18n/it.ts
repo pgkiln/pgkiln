@@ -6875,4 +6875,12 @@ export const it: BuilderMessages = {
   'sf.no_such_file': 'Il file non esiste.',
   'sf.saved_missing': 'Salvato. Non ancora caricati (esclusi finché non lo sono): {names}.',
   'sf.saved': 'Salvato.',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Notifiche',
+  'nfy.bell': 'Campanella delle notifiche nell\'intestazione',
+  'nfy.bell_help': 'Gli utenti connessi vedono le notifiche da leggere e le più recenti; aprirne una la segna come letta e porta alla sua pagina. Aggiungile da SQL con `meta.notify(user, title, body, page, items)` o con un processo di tipo send_notification; `meta.unread_notifications()` è il numero, es. per un badge.',
+  'nfy.live': 'Badge in tempo reale (secondi)',
+  'nfy.live_ph': 'es. 60 (vuoto: disattivato)',
+  'nfy.live_help': 'Ogni tot secondi (da 10 a 3600) una pagina aperta aggiorna i suoi badge sul posto: menu e barra di navigazione, pulsanti con query del badge e campanella. Non mentre la scheda è nascosta; non tiene viva la sessione.',
+  'nfy.live_invalid': 'Badge in tempo reale: un numero intero di secondi da 10 a 3600, o vuoto.',
 };

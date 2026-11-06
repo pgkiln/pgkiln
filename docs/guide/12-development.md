@@ -328,6 +328,10 @@ src/
     availability.ts        availabilityRefusal(): who may use an application (migration 083); loadContext, the login page
                            and REST modules ask it (PostgREST: meta.api_check)
     feedback.ts            users' feedback page and the navigation bar entry (migration 084)
+    notifications.ts       (sprint 165, migration 154) the notification bell (bellMarkup: unread count, newest 8, Mark all read),
+                           /a/:alias/notifications, POST …/notifications/:id/open (the user's own only, marks read, its signed
+                           link under the current alias) and …/notifications/read; GET …/:page/live (liveState: list entry
+                           badges n:/b:<key>, buttons btn:<id>, the bell) with loadContext touch: false (no last_seen, no new session)
     data-items.ts          display image and address items (migration 086): imageUrl (https origins into the CSP's img-src),
                            GET …/image/:item (a BLOB from the item's query), POST …/geocode/:item, and items kept per user
                            (loadPreferences / savePreferences through meta.get_preference / set_preference)
@@ -611,6 +615,8 @@ test/
   fixtures/                test files (employees.xlsx)
   template-components.test.ts  template language, escaping, plug-ins, regions and column templates
   logic.test.ts            computations, branches, menu buttons and badges, new dynamic actions, build options, export
+  notifications.test.ts    (165) meta.notify and its checks, the bell, opening and Mark all read, list entry badge queries,
+                           the live endpoint, send_notification, the timer event, the settings (security cases in security.test.ts)
   page-logic.test.ts       download, chain (background jobs) and workflow processes, function/app branches, dialog_closed (HR page 28)
   code-editor.test.ts      code editor: completions scoped to the app's role, the check, marked fields
   builder-i18n.test.ts     (sprint 121) builder languages: the coverage check of src/builder against i18n/en.ts, the message
@@ -684,6 +690,7 @@ test/
   e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
   e2e/grid.test.ts         interactive grid in a browser: master-detail refresh, move/resize columns, row menu, copy/paste; without JavaScript
   e2e/page-logic.test.ts   dialog_closed refreshes a region without a reload, download process in a browser, dialog link without JavaScript
+  e2e/notifications.test.ts (165) a notification reaches the open page (bell and navigation bar badge), opened from the bell; a timer action
   e2e/ai-builder.test.ts   App Builder AI in a browser (mock Claude): SQL from a question, a drafted description, proposed pages,
                            a blueprint drafted and reviewed
   e2e/ai-assistant.test.ts the AI assistant and report questions on HR page 38 in a browser (mock Claude), with and without JavaScript

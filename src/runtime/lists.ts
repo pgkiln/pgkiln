@@ -28,6 +28,8 @@ export interface ListNode {
   external: boolean;
   icon: string | null;
   badge: string | null;
+  /** (154) the entry's id (a query's id column, else its label): finds its badge again for a live refresh */
+  key: string;
   description: string | null;
   /** the entry's page is the current page */
   current: boolean;
@@ -50,6 +52,8 @@ interface Entry {
   url: string | null;
   icon: string | null;
   badge: string | null;
+  /** (154) a SELECT whose first value is the badge (static entries; wins over badge) */
+  badge_query?: string | null;
   description: string | null;
   condition?: string | null;
   authz?: string | null;
@@ -105,7 +109,7 @@ async function entriesOf(ctx: PageContext, name: string): Promise<Entry[] | null
   }
   const rows = (
     await runtime.query(
-      `select id, parent_id, label, target_page, target_items, target_url, icon, badge, description, condition, authz
+      `select id, parent_id, label, target_page, target_items, target_url, icon, badge, badge_query, description, condition, authz
          from meta.list_entry where app_id = $1 and list_name = $2 and meta.build_option_on(app_id, build_option)
         order by seq, id`,
       [ctx.app.id, name.toUpperCase()],
@@ -113,8 +117,26 @@ async function entriesOf(ctx: PageContext, name: string): Promise<Entry[] | null
   ).rows;
   return rows.map((r) => ({
     id: r.id, parent_id: r.parent_id, label: ctx.locale.tr(r.label), page: r.target_page, items: r.target_items ?? {}, url: r.target_url,
-    icon: r.icon, badge: r.badge, description: r.description ? ctx.locale.tr(r.description) : null, condition: r.condition, authz: r.authz,
+    icon: r.icon, badge: r.badge, badge_query: r.badge_query, description: r.description ? ctx.locale.tr(r.description) : null, condition: r.condition, authz: r.authz,
   }));
+}
+
+/**
+ * (029, 154) A badge from SQL: the first value of the query's first row, run as the application's
+ * role with the page's binds; an error is a page error and no badge. Empty values give no badge.
+ */
+export async function queryBadge(ctx: PageContext, query: string, what: string): Promise<string | null> {
+  const c = ctx.client;
+  if (!c) return null;
+  try {
+    const sql = stripSemicolon(applyBinds(query, bindValues(ctx)));
+    const res = await savepoint(c, () => c.query({ text: sql, rowMode: 'array' }));
+    const v = res.rows[0]?.[0];
+    return v === null || v === undefined ? null : String(v).trim().slice(0, 100) || null;
+  } catch (e) {
+    ctx.errors.page.push(await publicError(ctx, e, what));
+    return null;
+  }
 }
 
 /** The current page and its parent pages (for "in trail"). */
@@ -156,7 +178,10 @@ export async function listTree(ctx: PageContext, name: string): Promise<ListNode
       modal: !!e.page && isModal(ctx, e.page),
       external,
       icon: e.icon,
-      badge: e.badge === null ? null : substitute(e.badge, ctx, (x) => x),
+      badge: e.badge_query?.trim()
+        ? await queryBadge(ctx, e.badge_query, `badge of list entry "${e.label}"`)
+        : e.badge === null ? null : substitute(e.badge, ctx, (x) => x),
+      key: String(e.id ?? e.label),
       description: e.description === null ? null : substitute(e.description, ctx, (x) => x),
       current: isCurrent,
       inTrail: isCurrent || (e.page !== null && current.has(e.page)) || children.some((c) => c.inTrail),
@@ -179,15 +204,22 @@ export async function listTree(ctx: PageContext, name: string): Promise<ListNode
 
 const linkAttrs = (n: ListNode, cls?: string) =>
   html`href="${n.href}"${cls ? html` class="${cls}"` : ''}${n.current ? raw(' aria-current="page"') : ''}${n.modal ? raw(' data-dialog') : ''}${n.external ? raw(' rel="noopener noreferrer"') : ''}`;
-const badge = (n: ListNode) => (n.badge !== null ? html` <span class="badge">${n.badge}</span>` : '');
+/**
+ * An entry's badge. live: the prefix of the badge's data-badge key when the application refreshes
+ * badges (154); an empty badge is then a hidden placeholder the refresh can fill.
+ */
+const badge = (n: ListNode, live?: string) =>
+  n.badge !== null
+    ? html` <span class="badge"${live ? html` data-badge="${live}${n.key}"` : ''}>${n.badge}</span>`
+    : live ? html` <span class="badge" data-badge="${live}${n.key}" hidden></span>` : '';
 
 /** Entries as the navigation menu (the same markup as navigation entries). */
-export function navMarkup(nodes: ListNode[], topNav: boolean): Raw[] {
+export function navMarkup(nodes: ListNode[], topNav: boolean, live?: string): Raw[] {
   return nodes.map((n) => {
-    const label = html`${icon(n.icon ?? 'chevron')}<span>${n.label}</span>${badge(n)}`;
+    const label = html`${icon(n.icon ?? 'chevron')}<span>${n.label}</span>${badge(n, live)}`;
     if (n.children.length)
       return html`<li><details${n.inTrail && !topNav ? raw(' open') : ''}><summary class="${n.inTrail ? 'in-trail' : null}">${label}</summary><ul>${
-        n.href ? html`<li><a ${linkAttrs(n)}>${label}</a></li>` : ''}${navMarkup(n.children, topNav)}</ul></details></li>`;
+        n.href ? html`<li><a ${linkAttrs(n)}>${label}</a></li>` : ''}${navMarkup(n.children, topNav, live)}</ul></details></li>`;
     return html`<li><a ${linkAttrs(n, !n.current && n.inTrail ? 'in-trail' : undefined)}>${label}</a></li>`;
   });
 }
@@ -195,13 +227,13 @@ export function navMarkup(nodes: ListNode[], topNav: boolean): Raw[] {
 const hasIcon = (n: ListNode) => isIcon(n.icon);
 
 /** Entries as the navigation bar in the header: links, with a menu for entries with children (labels of entries with an icon hide on small screens). */
-export function navbarMarkup(nodes: ListNode[], label: string): Raw {
+export function navbarMarkup(nodes: ListNode[], label: string, live?: string): Raw {
   if (!nodes.length) return raw('');
   return html`<nav class="t-navbar" aria-label="${label}"><ul>${nodes.map((n) =>
     n.children.length
-      ? html`<li><details class="menu"><summary${hasIcon(n) ? html` class="nb-icon" aria-label="${n.label}"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n)}</summary><div class="menu-panel align-right"><ul class="t-navbar-menu">${
-          [...(n.href ? [n] : []), ...n.children].map((c) => html`<li><a ${linkAttrs(c)}>${icon(c.icon)}<span>${c.label}</span>${badge(c)}</a></li>`)}</ul></div></details></li>`
-      : html`<li><a ${linkAttrs(n, hasIcon(n) ? 'nb-icon' : undefined)}${hasIcon(n) ? html` aria-label="${n.label}"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n)}</a></li>`)}</ul></nav>`;
+      ? html`<li><details class="menu"><summary${hasIcon(n) ? html` class="nb-icon" aria-label="${n.label}"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n, live)}</summary><div class="menu-panel align-right"><ul class="t-navbar-menu">${
+          [...(n.href ? [n] : []), ...n.children].map((c) => html`<li><a ${linkAttrs(c)}>${icon(c.icon)}<span>${c.label}</span>${badge(c, live)}</a></li>`)}</ul></div></details></li>`
+      : html`<li><a ${linkAttrs(n, hasIcon(n) ? 'nb-icon' : undefined)}${hasIcon(n) ? html` aria-label="${n.label}"` : ''}>${icon(n.icon)}<span>${n.label}</span>${badge(n, live)}</a></li>`)}</ul></nav>`;
 }
 
 function linksMarkup(nodes: ListNode[]): Raw {

@@ -6875,4 +6875,12 @@ export const zhCN: BuilderMessages = {
   'sf.no_such_file': '没有此文件。',
   'sf.saved_missing': '已保存。尚未上传（上传前会被忽略）：{names}。',
   'sf.saved': '已保存。',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': '通知',
+  'nfy.bell': '页眉中的通知铃铛',
+  'nfy.bell_help': '已登录用户可看到未读通知和最新通知;打开一条通知会将其标为已读并转到其页面。在 SQL 中用 `meta.notify(user, title, body, page, items)` 或类型为 send_notification 的流程添加通知;`meta.unread_notifications()` 返回数量,例如用作徽章。',
+  'nfy.live': '实时徽章(秒)',
+  'nfy.live_ph': '例如 60(空:关闭)',
+  'nfy.live_help': '打开的页面每隔若干秒(10 到 3600)就地刷新其徽章:导航菜单和导航栏、带徽章查询的按钮以及铃铛。标签页隐藏时不刷新;不会让会话保持活动。',
+  'nfy.live_invalid': '实时徽章:10 到 3600 的整数秒,或留空。',
 };

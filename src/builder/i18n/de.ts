@@ -6875,4 +6875,12 @@ export const de: BuilderMessages = {
   'sf.no_such_file': 'Diese Datei gibt es nicht.',
   'sf.saved_missing': 'Gespeichert. Noch nicht hochgeladen (bis dahin ausgelassen): {names}.',
   'sf.saved': 'Gespeichert.',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Benachrichtigungen',
+  'nfy.bell': 'Benachrichtigungsglocke in der Kopfzeile',
+  'nfy.bell_help': 'Angemeldete Benutzer sehen ihre ungelesenen und neuesten Benachrichtigungen; Öffnen markiert sie als gelesen und führt zu ihrer Seite. Hinzufügen aus SQL mit `meta.notify(user, title, body, page, items)` oder mit einem Prozess vom Typ send_notification; `meta.unread_notifications()` ist die Anzahl, etwa für ein Badge.',
+  'nfy.live': 'Live-Badges (Sekunden)',
+  'nfy.live_ph': 'z. B. 60 (leer: aus)',
+  'nfy.live_help': 'Alle so viele Sekunden (10 bis 3600) aktualisiert eine offene Seite ihre Badges an Ort und Stelle: Navigationsmenü und -leiste, Schaltflächen mit Badge-Abfrage und die Glocke. Nicht, solange der Tab verborgen ist; hält keine Sitzung am Leben.',
+  'nfy.live_invalid': 'Live-Badges: eine ganze Zahl von Sekunden von 10 bis 3600 oder leer.',
 };
