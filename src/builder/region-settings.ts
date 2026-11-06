@@ -18,6 +18,7 @@ import { MAX_EXTRA_LAYERS } from '../runtime/maps.ts';
 import { postgis } from '../runtime/spatial.ts';
 import { reporterSettingsForm } from './reporter.ts';
 import { formDesignerSettingsForm } from './form-designer.ts';
+import { scopedTx as tx, tr, withTranslator } from './i18n.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
 // for grid, chart, cards, calendar and faceted search regions (report
@@ -99,19 +100,19 @@ function columnsHint(cols: { columns: string[] } | { error: string }, expected?:
 
 function linkFieldset(
   id: (n: string) => string, link: { page?: number; items?: Record<string, string> } | undefined, pages: { page_no: number; name: string }[], what: string,
-  { prefix = 'link', legend = 'Link', placeholder = 'P3_ID=#id#', help = "ITEM=#column#, comma separated; #column# is replaced by the row's value." } = {},
+  { prefix = 'link', legend = tx('rs.link'), placeholder = 'P3_ID=#id#', help = tx('rs.link_help') }: { prefix?: string; legend?: string; placeholder?: string; help?: string } = {},
 ) {
   return html`<fieldset class="prop-group"><legend>${legend}</legend><div class="form-grid">
-    <div class="field"><label class="label" for="${id(`${prefix}_page`)}">${what} links to page</label>
-      <select id="${id(`${prefix}_page`)}" name="${prefix}_page">${opt('', '- no link -', link?.page)}${pages.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, link?.page))}</select></div>
-    <div class="field" data-wide><label class="label" for="${id(`${prefix}_items`)}">Set items</label>
+    <div class="field"><label class="label" for="${id(`${prefix}_page`)}">${tx('rs.links_to_page', { what })}</label>
+      <select id="${id(`${prefix}_page`)}" name="${prefix}_page">${opt('', tx('rs.no_link'), link?.page)}${pages.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, link?.page))}</select></div>
+    <div class="field" data-wide><label class="label" for="${id(`${prefix}_items`)}">${tx('rs.set_items')}</label>
       <input id="${id(`${prefix}_items`)}" name="${prefix}_items" value="${linkItemsText(link?.items)}" placeholder="${placeholder}">
       <small class="help">${help}</small></div>
   </div></fieldset>`;
 }
 
-const emptyField = (id: (n: string) => string, cfg: Config) => html`<div class="field" data-wide><label class="label" for="${id('empty')}">Text when there are no rows</label>
-  <input id="${id('empty')}" name="empty" value="${cfg.empty ?? ''}" placeholder="No data found"></div>`;
+const emptyField = (id: (n: string) => string, cfg: Config) => html`<div class="field" data-wide><label class="label" for="${id('empty')}">${tx('rs.text_when_there_are_no')}</label>
+  <input id="${id('empty')}" name="empty" value="${cfg.empty ?? ''}" placeholder="${tx('rs.no_data_found')}"></div>`;
 
 /** Columns in the settings that the query no longer returns stay listed (marked), so they can be cleared. */
 function withStale(names: string[], configured: string[]) {
@@ -119,7 +120,7 @@ function withStale(names: string[], configured: string[]) {
   return { all: [...names, ...[...new Set(configured)].filter((n) => !known.has(n))], known };
 }
 
-const staleTag = (known: Set<string>, n: string) => (known.has(n) ? '' : html` <span class="tag tag-error">not in the query</span>`);
+const staleTag = (known: Set<string>, n: string) => (known.has(n) ? '' : html` <span class="tag tag-error">${tx('rs.not_in_query')}</span>`);
 
 // ---------------------------------------------------------------- merges (pure, unit tested)
 
@@ -408,13 +409,13 @@ function mergeStyle(b: Body, p: string): Config | undefined {
 }
 function styleFields(id: (n: string) => string, p: string, st: Config | undefined) {
   const s = (st ?? {}) as Config;
-  return html`<div class="field"><label class="label" for="${id(`${p}_fill_color`)}">Fill colour (lines / polygons)</label>
+  return html`<div class="field"><label class="label" for="${id(`${p}_fill_color`)}">${tx('rs.fill_colour_lines_polygons')}</label>
       <input id="${id(`${p}_fill_color`)}" name="${p}_fill_color" value="${s.fill_color ?? ''}" placeholder="#2e5c8a" pattern="#[0-9a-fA-F]{6}"></div>
-    <div class="field"><label class="label" for="${id(`${p}_stroke_color`)}">Line colour</label>
+    <div class="field"><label class="label" for="${id(`${p}_stroke_color`)}">${tx('rs.line_colour')}</label>
       <input id="${id(`${p}_stroke_color`)}" name="${p}_stroke_color" value="${s.stroke_color ?? ''}" placeholder="#1b2230" pattern="#[0-9a-fA-F]{6}"></div>
-    <div class="field"><label class="label" for="${id(`${p}_stroke_width`)}">Line width</label>
+    <div class="field"><label class="label" for="${id(`${p}_stroke_width`)}">${tx('rs.line_width')}</label>
       <input id="${id(`${p}_stroke_width`)}" name="${p}_stroke_width" type="number" min="0" max="20" step="0.5" value="${s.stroke_width ?? ''}"></div>
-    <div class="field"><label class="label" for="${id(`${p}_opacity`)}">Opacity (0–1)</label>
+    <div class="field"><label class="label" for="${id(`${p}_opacity`)}">${tx('rs.opacity_0_1')}</label>
       <input id="${id(`${p}_opacity`)}" name="${p}_opacity" type="number" min="0" max="1" step="0.05" value="${s.opacity ?? ''}"></div>`;
 }
 
@@ -509,67 +510,67 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
   const lovSelect = (n: string, i: number) => {
     const cur = colCfg[n]?.lov as string | undefined;
     const custom = cur && !lovs.some((l) => `LOV:${l}` === cur.toUpperCase()) ? cur : null;
-    return html`<select name="lov_${i}" aria-label="List of values of ${n}">${opt('', '- text field -', cur)}${lovs.map((l) => opt(`LOV:${l}`, l, cur?.toUpperCase()))}${custom ? opt(custom, `custom: ${custom.length > 40 ? custom.slice(0, 40) + '…' : custom}`, cur) : ''}</select>`;
+    return html`<select name="lov_${i}" aria-label="${tx('rs.aria_list_of_values_of', { name: n })}">${opt('', tx('rs.text_field'), cur)}${lovs.map((l) => opt(`LOV:${l}`, l, cur?.toUpperCase()))}${custom ? opt(custom, `custom: ${custom.length > 40 ? custom.slice(0, 40) + '…' : custom}`, cur) : ''}</select>`;
   };
   const rows = all.map((n, i) => html`<tr>
-      <td data-label="Column"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
-      <td data-label="Heading"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="Heading of ${n}"></td>
-      <td data-label="Shown"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="Show ${n}"></td>
-      <td data-label="Read-only"><input type="checkbox" name="readonly_${i}" value="true"${readonly.has(n.toLowerCase()) ? raw(' checked') : ''} aria-label="${n} is read-only"></td>
-      <td data-label="Required"><input type="checkbox" name="required_${i}" value="true"${colCfg[n]?.required ? raw(' checked') : ''} aria-label="${n} is required"></td>
-      <td data-label="Edit as">${lovSelect(n, i)}</td>
+      <td data-label="${tx('rs.column')}"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
+      <td data-label="${tx('rs.heading')}"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="${tx('rs.aria_heading_of', { name: n })}"></td>
+      <td data-label="${tx('rs.shown')}"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="${tx('rs.aria_show', { name: n })}"></td>
+      <td data-label="${tx('rs.read_only')}"><input type="checkbox" name="readonly_${i}" value="true"${readonly.has(n.toLowerCase()) ? raw(' checked') : ''} aria-label="${n} is read-only"></td>
+      <td data-label="${tx('rs.required')}"><input type="checkbox" name="required_${i}" value="true"${colCfg[n]?.required ? raw(' checked') : ''} aria-label="${n} is required"></td>
+      <td data-label="${tx('rs.edit_as')}">${lovSelect(n, i)}</td>
     </tr>`);
 
   return html`${'error' in cols ? columnsHint(cols) : ''}
     <input type="hidden" name="n" value="${all.length}">
-    <fieldset class="prop-group"><legend>Behaviour</legend><div class="form-grid">
-      <div class="field"><label class="label" for="${id('page_size')}">Rows per page</label>
+    <fieldset class="prop-group"><legend>${tx('rs.behaviour')}</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('page_size')}">${tx('rs.rows_per_page')}</label>
         <select id="${id('page_size')}" name="page_size">${GRID_PAGE_SIZES.map((x) => opt(x, x, cfg.page_size ?? 25))}</select></div>
-      ${check('allow_insert', 'Users may add rows', allow.insert !== false)}
-      ${check('allow_update', 'Users may change rows', allow.update !== false)}
-      ${check('allow_delete', 'Users may delete rows', allow.delete !== false)}
+      ${check('allow_insert', tx('rs.users_may_add_rows'), allow.insert !== false)}
+      ${check('allow_update', tx('rs.users_may_change_rows'), allow.update !== false)}
+      ${check('allow_delete', tx('rs.users_may_delete_rows'), allow.delete !== false)}
     </div>
-    <small class="help">Saving needs a process of type "grid_dml" for this region; without one the grid is read-only.</small></fieldset>
+    <small class="help">${tx('rs.saving_needs_a_process_of')}</small></fieldset>
     <input type="hidden" name="grid_features" value="1">
-    <fieldset class="prop-group"><legend>Totals and columns</legend><div class="form-grid">
-      <div class="field" data-wide><label class="label" for="${id('aggregates')}">Aggregates in the footer</label>
+    <fieldset class="prop-group"><legend>${tx('rs.totals_and_columns')}</legend><div class="form-grid">
+      <div class="field" data-wide><label class="label" for="${id('aggregates')}">${tx('rs.aggregates_in_the_footer')}</label>
         <input id="${id('aggregates')}" name="aggregates" value="${aggregatesText(cfg.aggregates)}" placeholder="sal=sum,avg; empno=count">
-        <small class="help">column=sum, avg, count, min or max; separate columns with ";". Computed over all rows of the search, not only the page. Users can add their own (Actions → Aggregate).</small></div>
-      <div class="field"><label class="label" for="${id('frozen')}">Frozen columns</label>
+        <small class="help">${tx('rs.column_sum_avg_count_min')}</small></div>
+      <div class="field"><label class="label" for="${id('frozen')}">${tx('rs.frozen_columns')}</label>
         <select id="${id('frozen')}" name="frozen">${['0', '1', '2', '3', '4', '5'].map((x) => opt(x, x === '0' ? 'none' : `the first ${x}`, cfg.frozen ?? 0))}</select>
-        <small class="help">Stay in view while the grid scrolls sideways. Users can change it, move, resize and hide columns; "layout" in the JSON sets the default order and widths.</small></div>
-      ${check('actions', 'Actions menu (columns, aggregates, saved reports)', cfg.actions !== false)}
-      ${check('saved_reports', 'Users may save grid reports', cfg.saved_reports !== false)}
-      <div class="field"><label class="label" for="${id('public_reports')}">Public reports by</label>
-        <select id="${id('public_reports')}" name="public_reports">${opt('', '- nobody -', cfg.public_reports)}${authz.map((n) => opt(n, n, cfg.public_reports))}</select></div>
+        <small class="help">${tx('rs.stay_in_view_while_the')}</small></div>
+      ${check('actions', tx('rs.actions_menu_columns_aggregates_saved'), cfg.actions !== false)}
+      ${check('saved_reports', tx('rs.users_may_save_grid_reports'), cfg.saved_reports !== false)}
+      <div class="field"><label class="label" for="${id('public_reports')}">${tx('rs.public_reports_by')}</label>
+        <select id="${id('public_reports')}" name="public_reports">${opt('', tx('rs.nobody'), cfg.public_reports)}${authz.map((n) => opt(n, n, cfg.public_reports))}</select></div>
     </div></fieldset>
     <input type="hidden" name="grid_views" value="1">
-    <fieldset class="prop-group"><legend>Views</legend><div class="form-grid">
-      ${GRID_USER_VIEWS.map((v) => check(`view_${v}`, GRID_VIEW_LABELS[v], !Array.isArray(cfg.views) || cfg.views.includes(v)))}
+    <fieldset class="prop-group"><legend>${tx('rs.views')}</legend><div class="form-grid">
+      ${GRID_USER_VIEWS.map((v) => check(`view_${v}`, tx.dyn(`rs.gridview.${v}`, GRID_VIEW_LABELS[v]), !Array.isArray(cfg.views) || cfg.views.includes(v)))}
     </div>
-    <small class="help">Views users may switch to besides the grid. The single row view edits one row at a time (also from the row actions menu); group by and chart are set up in Actions.</small></fieldset>
-    <fieldset class="prop-group"><legend>Row actions</legend><div class="form-grid">
-      ${check('row_actions', 'Row actions menu', !!cfg.row_actions)}
-      ${check('row_duplicate', 'Duplicate', cfg.row_actions?.duplicate !== false)}
-      ${check('row_delete', 'Delete', cfg.row_actions?.delete !== false)}
+    <small class="help">${tx('rs.views_users_may_switch_to')}</small></fieldset>
+    <fieldset class="prop-group"><legend>${tx('rs.row_actions')}</legend><div class="form-grid">
+      ${check('row_actions', tx('rs.row_actions_menu'), !!cfg.row_actions)}
+      ${check('row_duplicate', tx('rs.duplicate'), cfg.row_actions?.duplicate !== false)}
+      ${check('row_delete', tx('rs.delete'), cfg.row_actions?.delete !== false)}
     </div></fieldset>
-    ${linkFieldset(id, cfg.row_actions?.edit, pages, 'Edit', { prefix: 'edit', legend: 'Row actions: edit', placeholder: 'P3_ID=#id#' })}
-    <fieldset class="prop-group"><legend>Master-detail</legend><div class="form-grid">
-      <div class="field"><label class="label" for="${id('select_column')}">As a master: column of the selected row</label>
-        <select id="${id('select_column')}" name="select_column">${opt('', '- not a master -', cfg.select_row?.column)}${all.map((n) => opt(n, n, cfg.select_row?.column))}</select></div>
-      <div class="field"><label class="label" for="${id('select_item')}">… goes into item</label>
+    ${linkFieldset(id, cfg.row_actions?.edit, pages, tx('rs.w.edit'), { prefix: 'edit', legend: tx('rs.row_actions_edit'), placeholder: 'P3_ID=#id#' })}
+    <fieldset class="prop-group"><legend>${tx('rs.master_detail')}</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('select_column')}">${tx('rs.as_a_master_column_of')}</label>
+        <select id="${id('select_column')}" name="select_column">${opt('', tx('rs.not_a_master'), cfg.select_row?.column)}${all.map((n) => opt(n, n, cfg.select_row?.column))}</select></div>
+      <div class="field"><label class="label" for="${id('select_item')}">${tx('rs.goes_into_item')}</label>
         <input id="${id('select_item')}" name="select_item" value="${cfg.select_row?.item ?? ''}" placeholder="P1_ID"></div>
-      <div class="field"><label class="label" for="${id('master_item')}">As a detail: follows item</label>
+      <div class="field"><label class="label" for="${id('master_item')}">${tx('rs.as_a_detail_follows_item')}</label>
         <input id="${id('master_item')}" name="master_item" value="${cfg.master?.item ?? ''}" placeholder="P1_ID"></div>
-      <div class="field"><label class="label" for="${id('master_column')}">… and new rows get it in column</label>
+      <div class="field"><label class="label" for="${id('master_column')}">${tx('rs.and_new_rows_get_it')}</label>
         <input id="${id('master_column')}" name="master_column" value="${cfg.master?.column ?? ''}" placeholder="dept_id"></div>
     </div>
-    <small class="help">A master grid's selected row puts its value into a page item; detail grids and reports use it in their query (:P1_ID) and are refreshed without reloading the page. Other region types follow with {"master": {"item": "P1_ID"}}.</small></fieldset>
-    <fieldset class="prop-group"><legend>Columns</legend>
+    <small class="help">${tx('rs.a_master_grid_s_selected')}</small></fieldset>
+    <fieldset class="prop-group"><legend>${tx('rs.columns')}</legend>
       ${all.length
-        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Shown</th><th>Read-only</th><th>Required</th><th>Edit as</th></tr></thead><tbody>${rows}</tbody></table></div>
-          <small class="help">"Edit as" picks a shared list of values (Shared Components → Lists of values) for a select list.</small>`
-        : html`<p class="muted">No columns yet.</p>`}
+        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rs.column')}</th><th>${tx('rs.heading')}</th><th>${tx('rs.shown')}</th><th>${tx('rs.read_only')}</th><th>${tx('rs.required')}</th><th>${tx('rs.edit_as')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+          <small class="help">${tx('rs.edit_as_picks_a_shared')}</small>`
+        : html`<p class="muted">${tx('rs.no_columns_yet')}</p>`}
     </fieldset>`;
 }
 
@@ -577,9 +578,9 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
 /** How a map layer's rows reach the browser: with the page, for the visible area, or as vector tiles. */
 function loadField(id: (n: string) => string, name: string, l: Config) {
   const load = l.tiles === true ? 'tiles' : l.visible_area === true ? 'area' : '';
-  return html`<div class="field"><label class="label" for="${id(name)}">Load</label>
-    <select id="${id(name)}" name="${name}">${opt('', 'All rows with the page', load)}${opt('area', 'Rows in the visible area', load)}${opt('tiles', 'Vector tiles (large data sets)', load)}</select>
-    <small class="help">The visible area and vector tiles need <code>lat</code>/<code>lng</code> (or a PostGIS geometry) and load again as the map moves. Vector tiles draw dots, lines and areas, without clustering or a list.</small></div>`;
+  return html`<div class="field"><label class="label" for="${id(name)}">${tx('rs.load')}</label>
+    <select id="${id(name)}" name="${name}">${opt('', tx('rs.all_rows_with_the_page'), load)}${opt('area', tx('rs.rows_in_the_visible_area'), load)}${opt('tiles', tx('rs.vector_tiles_large_data_sets'), load)}</select>
+    <small class="help">${tx.code('rs.the_visible_area_and_vector')}</small></div>`;
 }
 
 async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_no: number; name: string }[], id: (n: string) => string) {
@@ -589,23 +590,23 @@ async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_n
   for (const [i, l] of shown.entries()) {
     const p = `layer${i}`;
     const hint = l.source ? columnsHint(await reportColumns(appId, l.source)) : '';
-    parts.push(html`<fieldset class="prop-group"><legend>${l.source ? `Layer ${i + 2}: ${l.name ?? ''}` : 'Add a layer'}</legend>
+    parts.push(html`<fieldset class="prop-group"><legend>${l.source ? tx('rs.layer_n', { n: i + 2, name: l.name ?? '' }) : tx('rs.add_layer')}</legend>
       ${hint}
       <div class="form-grid">
-        <div class="field"><label class="label" for="${id(`${p}_name`)}">Name (legend)</label>
+        <div class="field"><label class="label" for="${id(`${p}_name`)}">${tx('rs.name_legend')}</label>
           <input id="${id(`${p}_name`)}" name="${p}_name" value="${l.name ?? ''}" maxlength="60"></div>
-        <div class="field"><label class="label" for="${id(`${p}_layer`)}">Show places as</label>
-          <select id="${id(`${p}_layer`)}" name="${p}_layer">${opt('', 'Markers', l.layer)}${opt('heat', 'Heat map', l.layer)}${opt('lines', 'Lines', l.layer)}${opt('polygons', 'Polygons', l.layer)}${opt('extruded', 'Extruded polygons (shaded by height)', l.layer)}</select></div>
+        <div class="field"><label class="label" for="${id(`${p}_layer`)}">${tx('rs.show_places_as')}</label>
+          <select id="${id(`${p}_layer`)}" name="${p}_layer">${opt('', tx('rs.markers'), l.layer)}${opt('heat', tx('rs.heat_map'), l.layer)}${opt('lines', tx('rs.lines'), l.layer)}${opt('polygons', tx('rs.polygons'), l.layer)}${opt('extruded', tx('rs.extruded_polygons_shaded_by_height'), l.layer)}</select></div>
         ${styleFields(id, p, l.style)}
         ${loadField(id, `${p}_load`, l)}
-        ${check(`${p}_cluster`, 'Group close markers', l.cluster === true)}
-        ${check(`${p}_hidden`, 'Off at first', l.hidden === true)}
-        <div class="field" data-wide><label class="label" for="${id(`${p}_source`)}">Query</label>
+        ${check(`${p}_cluster`, tx('rs.group_markers'), l.cluster === true)}
+        ${check(`${p}_hidden`, tx('rs.off_at_first'), l.hidden === true)}
+        <div class="field" data-wide><label class="label" for="${id(`${p}_source`)}">${tx('rs.query')}</label>
           <textarea id="${id(`${p}_source`)}" name="${p}_source" class="code" rows="5" spellcheck="false" data-code="sql" placeholder="select lat, lng, title from …">${l.source ?? ''}</textarea>
-          <small class="help">The same columns as the map's own query. Empty the query to remove the layer.</small></div>
-        <div class="field"><label class="label" for="${id(`${p}_link_page`)}">Each place links to page</label>
-          <select id="${id(`${p}_link_page`)}" name="${p}_link_page">${opt('', '- no link -', l.link?.page)}${allPages.map((x) => opt(String(x.page_no), `${x.page_no}. ${x.name}`, l.link?.page))}</select></div>
-        <div class="field"><label class="label" for="${id(`${p}_link_items`)}">Set items</label>
+          <small class="help">${tx('rs.the_same_columns_as_the')}</small></div>
+        <div class="field"><label class="label" for="${id(`${p}_link_page`)}">${tx('rs.each_place_links_to_page')}</label>
+          <select id="${id(`${p}_link_page`)}" name="${p}_link_page">${opt('', tx('rs.no_link'), l.link?.page)}${allPages.map((x) => opt(String(x.page_no), `${x.page_no}. ${x.name}`, l.link?.page))}</select></div>
+        <div class="field"><label class="label" for="${id(`${p}_link_items`)}">${tx('rs.set_items')}</label>
           <input id="${id(`${p}_link_items`)}" name="${p}_link_items" value="${linkItemsText(l.link?.items)}" placeholder="P3_ID=#id#"></div>
       </div></fieldset>`);
   }
@@ -620,15 +621,15 @@ async function mapReportFieldset(r: RegionRow, pageId: number, appId: number, id
   const cols = target ? await reportColumns(appId, await designSql(appId, target)) : null;
   // with PostGIS a geometry/geography column filters too (only the column names are known here)
   const noPosition = cols && 'columns' in cols && !positionColumns(cols.columns) && !(await postgis());
-  return html`<fieldset class="prop-group"><legend>Filter a report</legend><div class="form-grid">
-      <div class="field"><label class="label" for="${id('report')}">Report region</label>
-        <select id="${id('report')}" name="report">${opt('', '- none -', target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? '(untitled)'} (#${x.id})`, cfg.report))}</select>
-        <small class="help">${reports.length ? 'Users can show only the rows in the map\'s visible area ("Show this area in the list"), or near its centre. The report needs lat and lng (or location) columns, or a PostGIS geometry/geography column.' : 'Add a report region to this page to filter it by the map area.'}</small></div>
-      <div class="field"><label class="label" for="${id('filter')}">Filter by</label>
-        <select id="${id('filter')}" name="filter">${opt('', 'The visible area', cfg.filter)}${opt('distance', 'Distance from the centre', cfg.filter)}</select>
-        <small class="help">The condition runs on the server: with PostGIS installed on a geometry/geography column, else on latitude and longitude.</small></div>
+  return html`<fieldset class="prop-group"><legend>${tx('rs.filter_a_report')}</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('report')}">${tx('rs.report_region')}</label>
+        <select id="${id('report')}" name="report">${opt('', tx('rs.none'), target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? tx('rs.untitled')} (#${x.id})`, cfg.report))}</select>
+        <small class="help">${reports.length ? tx('rs.map_report_help') : tx('rs.map_report_none')}</small></div>
+      <div class="field"><label class="label" for="${id('filter')}">${tx('rs.filter_by')}</label>
+        <select id="${id('filter')}" name="filter">${opt('', tx('rs.the_visible_area'), cfg.filter)}${opt('distance', tx('rs.distance_from_the_centre'), cfg.filter)}</select>
+        <small class="help">${tx('rs.the_condition_runs_on_the')}</small></div>
     </div>
-    ${noPosition ? html`<div class="alert alert-error" role="alert">The report has no <code>lat</code>/<code>lng</code> or <code>location</code> columns, so the map area can't filter it.</div>` : ''}
+    ${noPosition ? html`<div class="alert alert-error" role="alert">${tx.code('rs.no_position_alert')}</div>` : ''}
     </fieldset>`;
 }
 
@@ -651,38 +652,38 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
     const type = f?.type === 'range' || f?.type === 'star' ? f.type : 'checkbox';
     const custom = type === 'range' && (f?.custom === true || (f?.custom !== false && !(Array.isArray(f?.ranges) && f.ranges.length)));
     return html`<tr>
-      <td data-label="Column"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
-      <td data-label="Facet"><input type="checkbox" name="on_${i}" value="true"${f ? raw(' checked') : ''} aria-label="Facet on ${n}"></td>
-      <td data-label="Label"><input name="label_${i}" value="${f?.label ?? ''}" placeholder="${heading(n)}" aria-label="Label of ${n}"></td>
-      <td data-label="Type"><select name="type_${i}" aria-label="Type of the facet on ${n}">${Object.entries(FACET_TYPE_LABELS).map(([k, l]) => opt(k, l, type))}</select></td>
-      <td data-label="Values shown"><input name="limit_${i}" type="number" min="1" max="50" value="${f?.limit ?? ''}" placeholder="${FACET_LIMIT}" aria-label="Values shown for ${n}" class="u-mw6"></td>
-      <td data-label="Exclude"><input type="checkbox" name="exclude_${i}" value="true"${f?.exclude === true ? raw(' checked') : ''} aria-label="Users may exclude values of ${n}"></td>
-      <td data-label="Ranges"><input name="ranges_${i}" value="${rangesText(f?.ranges)}" placeholder="..1000; 1000..3000 = Middle; 3000.." aria-label="Ranges of ${n}"></td>
-      <td data-label="From/to"><input type="checkbox" name="custom_${i}" value="true"${custom ? raw(' checked') : ''} aria-label="Users may type a range for ${n}"></td>
-      ${smart ? '' : html`<td data-label="Chart"><select name="chart_${i}" aria-label="Chart of the facet on ${n}">${opt('', 'None', f?.chart)}${opt('bar', 'Bar', f?.chart)}${opt('pie', 'Pie', f?.chart)}</select></td>`}
-      <td data-label="Order"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="Order of ${n}" class="u-mw6"></td>
+      <td data-label="${tx('rs.column')}"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
+      <td data-label="${tx('rs.facet')}"><input type="checkbox" name="on_${i}" value="true"${f ? raw(' checked') : ''} aria-label="${tx('rs.aria_facet_on', { name: n })}"></td>
+      <td data-label="${tx('rs.label')}"><input name="label_${i}" value="${f?.label ?? ''}" placeholder="${heading(n)}" aria-label="${tx('rs.aria_label_of', { name: n })}"></td>
+      <td data-label="${tx('rs.type')}"><select name="type_${i}" aria-label="${tx('rs.aria_type_of_the_facet_on', { name: n })}">${Object.entries(FACET_TYPE_LABELS).map(([k, l]) => opt(k, tx.dyn(`rs.facet.${k}`, l), type))}</select></td>
+      <td data-label="${tx('rs.values_shown')}"><input name="limit_${i}" type="number" min="1" max="50" value="${f?.limit ?? ''}" placeholder="${FACET_LIMIT}" aria-label="${tx('rs.aria_values_shown_for', { name: n })}" class="u-mw6"></td>
+      <td data-label="${tx('rs.exclude')}"><input type="checkbox" name="exclude_${i}" value="true"${f?.exclude === true ? raw(' checked') : ''} aria-label="${tx('rs.aria_users_may_exclude_values_of', { name: n })}"></td>
+      <td data-label="${tx('rs.ranges')}"><input name="ranges_${i}" value="${rangesText(f?.ranges)}" placeholder="..1000; 1000..3000 = Middle; 3000.." aria-label="${tx('rs.aria_ranges_of', { name: n })}"></td>
+      <td data-label="${tx('rs.from_to')}"><input type="checkbox" name="custom_${i}" value="true"${custom ? raw(' checked') : ''} aria-label="${tx('rs.aria_users_may_type_a_range', { name: n })}"></td>
+      ${smart ? '' : html`<td data-label="${tx('rs.chart')}"><select name="chart_${i}" aria-label="${tx('rs.aria_chart_of_the_facet_on', { name: n })}">${opt('', tx('rs.none_2'), f?.chart)}${opt('bar', tx('rs.bar'), f?.chart)}${opt('pie', tx('rs.pie'), f?.chart)}</select></td>`}
+      <td data-label="${tx('rs.order')}"><input name="seq_${i}" type="number" value="${(i + 1) * 10}" aria-label="${tx('rs.aria_order_of', { name: n })}" class="u-mw6"></td>
     </tr>`;
   });
   return html`<input type="hidden" name="n" value="${all.length}">
-    <fieldset class="prop-group"><legend>Filters</legend><div class="form-grid">
-      <div class="field"><label class="label" for="${id('report')}">Report region</label>
-        <select id="${id('report')}" name="report">${opt('', '- choose -', target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? '(untitled)'} (#${x.id})`, cfg.report))}</select>
-        <small class="help">${reports.length ? `The report on this page that the ${smart ? 'smart filters' : 'facets'} filter. Save to list its columns.` : 'Add a report region to this page first.'}</small></div>
+    <fieldset class="prop-group"><legend>${tx('rs.filters')}</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('report')}">${tx('rs.report_region')}</label>
+        <select id="${id('report')}" name="report">${opt('', tx('rs.choose'), target?.id)}${reports.map((x) => opt(String(x.id), `${x.title ?? tx('rs.untitled')} (#${x.id})`, cfg.report))}</select>
+        <small class="help">${reports.length ? tx(smart ? 'rs.report_smart_help' : 'rs.report_facets_help') : tx('rs.report_first')}</small></div>
       ${smart
-        ? html`<div class="field"><label class="label" for="${id('suggestions')}">Suggestions per facet (0–10)</label>
+        ? html`<div class="field"><label class="label" for="${id('suggestions')}">${tx('rs.suggestions_per_facet_0_10')}</label>
             <input id="${id('suggestions')}" name="suggestions" type="number" min="0" max="10" value="${cfg.suggestions ?? 3}"></div>
-          <div class="field" data-wide><label class="label" for="${id('placeholder')}">Placeholder of the search field</label>
-            <input id="${id('placeholder')}" name="placeholder" maxlength="100" value="${cfg.placeholder ?? ''}" placeholder="Search or filter…"></div>
-          ${check('ask', 'Read the search as a phrase ("clerks with salary between 1000 and 3000") and offer it as filters', cfg.ask === true)}`
-        : html`${check('search', 'A search field (searches all columns of the report)', cfg.search === true)}`}
+          <div class="field" data-wide><label class="label" for="${id('placeholder')}">${tx('rs.placeholder_of_the_search_field')}</label>
+            <input id="${id('placeholder')}" name="placeholder" maxlength="100" value="${cfg.placeholder ?? ''}" placeholder="${tx('rs.search_or_filter')}"></div>
+          ${check('ask', tx('rs.read_the_search_as_a'), cfg.ask === true)}`
+        : html`${check('search', tx('rs.a_search_field_searches_all'), cfg.search === true)}`}
     </div></fieldset>
     ${cols && 'error' in cols ? columnsHint(cols) : ''}
     ${target
-      ? html`<fieldset class="prop-group"><legend>Facets</legend>
+      ? html`<fieldset class="prop-group"><legend>${tx('rs.facets')}</legend>
           ${all.length
-            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Facet</th><th>Label</th><th>Type</th><th>Values shown</th><th>Exclude</th><th>Ranges</th><th>From/to</th>${smart ? '' : html`<th>Chart</th>`}<th>Order</th></tr></thead><tbody>${rows}</tbody></table></div>
-              <small class="help">Checkboxes list the most frequent values (Exclude lets users filter them out instead). Ranges and From/to need a number or date column: ranges are <code>from..to = label</code> separated by <code>;</code>, an open end left empty (<code>..1000</code>, <code>2020-01-01..</code>); a range includes its start, not its end. A star rating offers "4 stars and up" and so on (up to 5; <code>"max"</code> in the JSON changes it).${smart ? '' : ' Chart: a bar or pie chart of the counts under the facet (collapsed); a bar or slice filters on its value.'}</small>`
-            : html`<p class="muted">The report has no columns.</p>`}
+            ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rs.column')}</th><th>${tx('rs.facet')}</th><th>${tx('rs.label')}</th><th>${tx('rs.type')}</th><th>${tx('rs.values_shown')}</th><th>${tx('rs.exclude')}</th><th>${tx('rs.ranges')}</th><th>${tx('rs.from_to')}</th>${smart ? '' : html`<th>${tx('rs.chart')}</th>`}<th>${tx('rs.order')}</th></tr></thead><tbody>${rows}</tbody></table></div>
+              <small class="help">${tx.code('rs.facets_help')}${smart ? '' : html` ${tx('rs.facets_help_chart')}`}</small>`
+            : html`<p class="muted">${tx('rs.the_report_has_no_columns')}</p>`}
         </fieldset>`
       : ''}`;
 }
@@ -696,33 +697,33 @@ async function calendarFields(appId: number, r: RegionRow, id: (n: string) => st
   const views = calendarViews(cfg);
   const schemes = (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
   return html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['start_date', 'title'])}
-    <p class="muted u-mt0">The query returns <code>start_date</code>, <code>title</code> and optionally <code>end_date</code> (dates for all-day events, timestamps for events with a time).</p>
-    <fieldset class="prop-group"><legend>Views</legend>
+    <p class="muted u-mt0">${tx.code('rs.calendar_help')}</p>
+    <fieldset class="prop-group"><legend>${tx('rs.views')}</legend>
       <div class="form-grid">
-        ${CALENDAR_VIEWS.map((v) => check(`view_${v}`, VIEW_LABELS[v], views.includes(v)))}
-        <div class="field"><label class="label" for="${id('view')}">Shown first</label>
-          <select id="${id('view')}" name="view">${CALENDAR_VIEWS.map((v) => opt(v, VIEW_LABELS[v], cfg.view ?? views[0]))}</select></div>
-        <div class="field"><label class="label" for="${id('day_start')}">Week and day views from hour</label>
+        ${CALENDAR_VIEWS.map((v) => check(`view_${v}`, tx.dyn(`rs.view.${v}`, VIEW_LABELS[v]), views.includes(v)))}
+        <div class="field"><label class="label" for="${id('view')}">${tx('rs.shown_first')}</label>
+          <select id="${id('view')}" name="view">${CALENDAR_VIEWS.map((v) => opt(v, tx.dyn(`rs.view.${v}`, VIEW_LABELS[v]), cfg.view ?? views[0]))}</select></div>
+        <div class="field"><label class="label" for="${id('day_start')}">${tx('rs.week_and_day_views_from')}</label>
           <input id="${id('day_start')}" name="day_start" type="number" min="0" max="23" value="${cfg.day_start ?? ''}" placeholder="8"></div>
-        <div class="field"><label class="label" for="${id('day_end')}">Until hour</label>
+        <div class="field"><label class="label" for="${id('day_end')}">${tx('rs.until_hour')}</label>
           <input id="${id('day_end')}" name="day_end" type="number" min="1" max="24" value="${cfg.day_end ?? ''}" placeholder="18"></div>
       </div>
-      <small class="help">Users switch between the ticked views. Hours outside the range are added when an event needs them.</small></fieldset>
-    ${linkFieldset(id, cfg.link, pages, 'Each event', { legend: 'Edit link' })}
-    ${linkFieldset(id, cfg.create, pages, 'An empty day or hour slot', {
-      prefix: 'create', legend: 'Create on click', placeholder: 'P3_START=#start#,P3_END=#end#',
-      help: 'ITEM=#start#, #end# or #date#: the slot clicked (YYYY-MM-DD, or YYYY-MM-DD HH:MI for an hour slot).',
+      <small class="help">${tx('rs.users_switch_between_the_ticked')}</small></fieldset>
+    ${linkFieldset(id, cfg.link, pages, tx('rs.w.event'), { legend: tx('rs.edit_link') })}
+    ${linkFieldset(id, cfg.create, pages, tx('rs.w.slot'), {
+      prefix: 'create', legend: tx('rs.create_on_click'), placeholder: 'P3_START=#start#,P3_END=#end#',
+      help: tx('rs.create_help'),
     })}
-    <fieldset class="prop-group"><legend>Drag and drop</legend><div class="form-grid">
-      <div class="field" data-wide><label class="label" for="${id('move')}">SQL that moves an event</label>
+    <fieldset class="prop-group"><legend>${tx('rs.drag_and_drop')}</legend><div class="form-grid">
+      <div class="field" data-wide><label class="label" for="${id('move')}">${tx('rs.sql_that_moves_an_event')}</label>
         <textarea id="${id('move')}" name="move" rows="3" data-code="sql" placeholder="update my_schema.event set starts_at = :NEW_START::timestamp, ends_at = :NEW_END::timestamp where id = :EVENT_ID::int">${cfg.move ?? ''}</textarea>
-        <small class="help">Runs as the application's database role (row level security applies) with <code>:EVENT_ID</code> (the key column's value), <code>:NEW_START</code> and <code>:NEW_END</code> (same duration as before). Empty: events can't be dragged.</small></div>
-      <div class="field"><label class="label" for="${id('key')}">Key column</label>
+        <small class="help">${tx.code('rs.runs_as_the_application_s')}</small></div>
+      <div class="field"><label class="label" for="${id('key')}">${tx('rs.key_column')}</label>
         <input id="${id('key')}" name="key" value="${cfg.key ?? ''}" placeholder="id"></div>
-      <div class="field"><label class="label" for="${id('move_authz')}">Who may drag</label>
-        <select id="${id('move_authz')}" name="move_authz">${opt('', 'Everyone who sees the calendar', cfg.move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', 'Signed-in users', cfg.move_authz)}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.move_authz))}</select></div>
+      <div class="field"><label class="label" for="${id('move_authz')}">${tx('rs.who_may_drag')}</label>
+        <select id="${id('move_authz')}" name="move_authz">${opt('', tx('rs.everyone_who_sees_the_calendar'), cfg.move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', tx('rs.signed_in_users'), cfg.move_authz)}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.move_authz))}</select></div>
     </div>
-    <small class="help">Only events the user sees in this calendar can be moved; without a mouse, the edit link changes the dates.</small></fieldset>`;
+    <small class="help">${tx('rs.only_events_the_user_sees')}</small></fieldset>`;
 }
 
 /** The display selector's settings: style and options, and which regions of the page take part. */
@@ -730,31 +731,34 @@ async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: strin
   const cfg = r.config ?? {};
   const others = (await owner.query(`select id, title, type, config->'display_selector' as flag from meta.region
                                      where page_id = $1 and id <> $2 and type <> 'display_selector' order by seq, id`, [pageId, r.id])).rows;
-  return html`<fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
-      <div class="field"><label class="label" for="${id('style')}">Show as</label>
-        <select id="${id('style')}" name="style">${opt('', 'Tabs', cfg.style)}${opt('select', 'Select list', cfg.style)}${opt('carousel', 'Carousel (one at a time, Previous and Next)', cfg.style)}</select></div>
-      <div class="field"><label class="label" for="${id('interval')}">Carousel: next region every (seconds)</label>
+  return html`<fieldset class="prop-group"><legend>${tx('rs.appearance')}</legend><div class="form-grid">
+      <div class="field"><label class="label" for="${id('style')}">${tx('rs.show_as')}</label>
+        <select id="${id('style')}" name="style">${opt('', tx('rs.tabs'), cfg.style)}${opt('select', tx('rs.select_list'), cfg.style)}${opt('carousel', tx('rs.carousel_one_at_a_time'), cfg.style)}</select></div>
+      <div class="field"><label class="label" for="${id('interval')}">${tx('rs.carousel_next_region_every_seconds')}</label>
         <input id="${id('interval')}" name="interval" type="number" min="1" max="120" value="${cfg.interval ?? ''}" placeholder="empty: only by hand">
-        <small class="help">Not while the pointer or the focus is in the carousel, nor for users who prefer reduced motion. A carousel has no "Show all".</small></div>
+        <small class="help">${tx('rs.not_while_the_pointer_or')}</small></div>
     </div>
-    ${check('show_all', '"Show all" choice (shows every region)', cfg.show_all !== false)}
-    ${check('remember', 'Remember the choice during the session', cfg.remember !== false)}</fieldset>
-    <fieldset class="prop-group"><legend>Regions</legend>
+    ${check('show_all', tx('rs.show_all_choice_shows_every'), cfg.show_all !== false)}
+    ${check('remember', tx('rs.remember_the_choice_during_the'), cfg.remember !== false)}</fieldset>
+    <fieldset class="prop-group"><legend>${tx('rs.regions')}</legend>
       <input type="hidden" name="members" value="1">
       ${others.length
-        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Region</th><th>In a tab</th><th>Tab name</th></tr></thead><tbody>
+        ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rs.region')}</th><th>${tx('rs.in_a_tab')}</th><th>${tx('rs.tab_name')}</th></tr></thead><tbody>
             ${others.map((x) => html`<tr>
-              <td data-label="Region">${x.title || '(untitled)'} <span class="muted">(${x.type} #${x.id})</span></td>
-              <td data-label="In a tab"><input type="checkbox" name="member_${x.id}" value="true"${x.flag === true || (typeof x.flag === 'string' && x.flag.trim()) ? raw(' checked') : ''} aria-label="Show ${x.title || `region ${x.id}`} in the display selector"></td>
-              <td data-label="Tab name"><input name="tab_${x.id}" maxlength="60" value="${typeof x.flag === 'string' ? x.flag : ''}" placeholder="${x.title || ''}" aria-label="Tab name of ${x.title || `region ${x.id}`}"></td>
+              <td data-label="${tx('rs.region')}">${x.title || '(untitled)'} <span class="muted">(${x.type} #${x.id})</span></td>
+              <td data-label="${tx('rs.in_a_tab')}"><input type="checkbox" name="member_${x.id}" value="true"${x.flag === true || (typeof x.flag === 'string' && x.flag.trim()) ? raw(' checked') : ''} aria-label="${tx('rs.aria_show_in_the_display_selector', { name: x.title || `region ${x.id}` })}"></td>
+              <td data-label="${tx('rs.tab_name')}"><input name="tab_${x.id}" maxlength="60" value="${typeof x.flag === 'string' ? x.flag : ''}" placeholder="${x.title || ''}" aria-label="${tx('rs.aria_tab_name_of', { name: x.title || `region ${x.id}` })}"></td>
             </tr>`)}</tbody></table></div>`
-        : html`<p class="muted">There are no other regions on this page.</p>`}
-      <small class="help">A chosen region gets <code>"display_selector": true</code> in its settings (a tab named after it), or the tab name: regions with the same tab name share one tab (e.g. smart filters and their report). Without JavaScript every region shows, with links to each.</small>
+        : html`<p class="muted">${tx('rs.there_are_no_other_regions')}</p>`}
+      <small class="help">${tx.code('rs.a_chosen_region_gets_display')}</small>
     </fieldset>`;
 }
 
 /** The settings form under a region in the page designer, or '' for types without one. */
-export async function regionSettingsForm(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
+/** (sprint 162) in the developer's builder language: the helpers below use the request's scoped translator */
+export const regionSettingsForm = (pageId: number, appId: number, r: RegionRow, s: Session) => withTranslator(tr(s), () => regionSettingsFormInner(pageId, appId, r, s));
+
+async function regionSettingsFormInner(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
   if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}${await aiFilterSettingsForm(pageId, appId, r, s)}`;
   if (r.type === 'ai_assistant') return assistantSettingsForm(pageId, appId, r, s);
   if (r.type === 'template_component') return templateRegionForm(pageId, appId, r, s);
@@ -766,137 +770,135 @@ export async function regionSettingsForm(pageId: number, appId: number, r: Regio
   const pages = async () => (await owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId])).rows;
   const schemes = async () => (await owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
   let body: Raw;
-  let title = 'Settings';
+  let title = tx('rs.t.settings');
   switch (r.type as SettingsType) {
     case 'grid':
-      title = 'Grid settings';
+      title = tx('rs.t.grid');
       body = await gridFields(appId, r, id);
       break;
     case 'chart':
-      title = 'Chart settings';
+      title = tx('rs.t.chart');
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
-        <p class="muted u-mt0">The first column is the label; each following numeric column is a series (up to 8).
-          A Gantt chart reads <code>label, start, end</code> (dates or timestamps; an empty end is a milestone) and optional columns named
-          <code>progress</code> (0 to 100), <code>task_id</code> and <code>depends_on</code> (the ids a task waits for, e.g. <code>3,4</code>).</p>
-        <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('kind')}">Chart type</label>
-            <select id="${id('kind')}" name="kind">${CHART_KINDS.map((k) => opt(k, CHART_LABELS[k], cfg.kind ?? 'bar'))}</select></div>
+        <p class="muted u-mt0">${tx.code('rs.chart_help')}</p>
+        <fieldset class="prop-group"><legend>${tx('rs.appearance')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('kind')}">${tx('rs.chart_type')}</label>
+            <select id="${id('kind')}" name="kind">${CHART_KINDS.map((k) => opt(k, tx.dyn(`rs.chart.${k}`, CHART_LABELS[k]), cfg.kind ?? 'bar'))}</select></div>
           ${emptyField(id, cfg)}
         </div></fieldset>
-        <fieldset class="prop-group"><legend>Gauge</legend><div class="form-grid">
-          ${GAUGE_KEYS.map((k) => html`<div class="field"><label class="label" for="${id(`gauge_${k}`)}">${{ min: 'Minimum', max: 'Maximum', warning: 'Warning from', critical: 'Critical from' }[k]}</label>
+        <fieldset class="prop-group"><legend>${tx('rs.gauge')}</legend><div class="form-grid">
+          ${GAUGE_KEYS.map((k) => html`<div class="field"><label class="label" for="${id(`gauge_${k}`)}">${tx(`rs.gauge.${k}`)}</label>
             <input id="${id(`gauge_${k}`)}" name="gauge_${k}" type="number" step="any" value="${cfg.gauge?.[k] ?? ''}" placeholder="${k === 'min' ? '0' : k === 'max' ? 'automatic' : ''}"></div>`)}
         </div>
-        <small class="help">Gauge charts only. A warning threshold above the critical one means low values are bad (e.g. warning 50, critical 20).</small></fieldset>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each data point')}
-        <small class="help">Drill-down: <code>#column#</code> takes the value from the point's row, <code>#series#</code> the name of its series. Columns only the link refers to are not drawn.</small>
-        <fieldset class="prop-group"><legend>Gantt: drag and drop</legend><div class="form-grid">
-          <div class="field" data-wide><label class="label" for="${id('gantt_move')}">SQL that moves a task</label>
+        <small class="help">${tx('rs.gauge_charts_only_a_warning')}</small></fieldset>
+        ${linkFieldset(id, cfg.link, await pages(), tx('rs.w.point'))}
+        <small class="help">${tx.code('rs.drill_down_column_takes_the')}</small>
+        <fieldset class="prop-group"><legend>${tx('rs.gantt_drag_and_drop')}</legend><div class="form-grid">
+          <div class="field" data-wide><label class="label" for="${id('gantt_move')}">${tx('rs.sql_that_moves_a_task')}</label>
             <textarea id="${id('gantt_move')}" name="gantt_move" rows="3" data-code="sql" placeholder="update my_schema.task set starts = :NEW_START::date, ends = :NEW_END::date where id = :TASK_ID::int">${cfg.gantt_move ?? ''}</textarea>
-            <small class="help">Gantt charts with a <code>task_id</code> column. Runs as the application's database role (row level security applies) with <code>:TASK_ID</code>, <code>:NEW_START</code> and <code>:NEW_END</code> (<code>YYYY-MM-DD</code>, or <code>YYYY-MM-DDTHH:MM</code> by the hour; a milestone gets the same start and end). Empty: tasks can't be dragged.</small></div>
-          <div class="field"><label class="label" for="${id('gantt_move_authz')}">Who may drag</label>
-            <select id="${id('gantt_move_authz')}" name="gantt_move_authz">${opt('', 'Everyone who sees the chart', cfg.gantt_move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', 'Signed-in users', cfg.gantt_move_authz)}${(await schemes()).map((n) => opt(n, `Authorization: ${n}`, cfg.gantt_move_authz))}</select></div>
-          <div class="field"><label class="label" for="${id('gantt_snap')}">Steps</label>
-            <select id="${id('gantt_snap')}" name="gantt_snap">${opt('', 'Days, or hours when a task has a time', cfg.gantt_snap)}${opt('day', 'Days', cfg.gantt_snap)}${opt('hour', 'Hours', cfg.gantt_snap)}</select></div>
-        </div><small class="help">Only tasks the user sees in this chart can be moved; the chart is drawn again from its query afterwards.</small></fieldset>`;
+            <small class="help">${tx.code('rs.gantt_charts_with_a_task')}</small></div>
+          <div class="field"><label class="label" for="${id('gantt_move_authz')}">${tx('rs.who_may_drag')}</label>
+            <select id="${id('gantt_move_authz')}" name="gantt_move_authz">${opt('', tx('rs.everyone_who_sees_the_chart'), cfg.gantt_move_authz)}${opt('MUST_NOT_BE_PUBLIC_USER', tx('rs.signed_in_users'), cfg.gantt_move_authz)}${(await schemes()).map((n) => opt(n, `Authorization: ${n}`, cfg.gantt_move_authz))}</select></div>
+          <div class="field"><label class="label" for="${id('gantt_snap')}">${tx('rs.steps')}</label>
+            <select id="${id('gantt_snap')}" name="gantt_snap">${opt('', tx('rs.days_or_hours_when_a'), cfg.gantt_snap)}${opt('day', tx('rs.days'), cfg.gantt_snap)}${opt('hour', tx('rs.hours'), cfg.gantt_snap)}</select></div>
+        </div><small class="help">${tx('rs.only_tasks_the_user_sees')}</small></fieldset>`;
       break;
     case 'cards':
-      title = 'Cards settings';
+      title = tx('rs.t.cards');
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
         <p class="muted u-mt0">Cards show the columns ${CARD_COLUMNS.map((c, i) => html`${i ? ', ' : ''}<code>${c}</code>`)}; KPI tiles show title, badge (the value) and icon.</p>
-        <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('style')}">Style</label>
-            <select id="${id('style')}" name="style">${opt('', 'Cards', cfg.style)}${opt('metric', 'KPI tiles (metric)', cfg.style)}</select></div>
+        <fieldset class="prop-group"><legend>${tx('rs.appearance')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('style')}">${tx('rs.style')}</label>
+            <select id="${id('style')}" name="style">${opt('', tx('rs.cards'), cfg.style)}${opt('metric', tx('rs.kpi_tiles_metric'), cfg.style)}</select></div>
           ${emptyField(id, cfg)}
         </div></fieldset>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each card')}`;
+        ${linkFieldset(id, cfg.link, await pages(), tx('rs.w.card'))}`;
       break;
     case 'calendar':
-      title = 'Calendar settings';
+      title = tx('rs.t.calendar');
       body = await calendarFields(appId, r, id, await pages());
       break;
     case 'facets':
-      title = 'Faceted search settings';
+      title = tx('rs.t.facets');
       body = await facetsFields(r, pageId, appId, id, false);
       break;
     case 'smart_filters':
-      title = 'Smart filters settings';
+      title = tx('rs.t.smart');
       body = await facetsFields(r, pageId, appId, id, true);
       break;
     case 'display_selector':
-      title = 'Display selector settings';
+      title = tx('rs.t.selector');
       body = await displaySelectorFields(r, pageId, id);
       break;
     case 'list': {
-      title = 'List settings';
+      title = tx('rs.t.list');
       const lists = (await owner.query('select name, type from meta.list where app_id = $1 order by name', [appId])).rows;
-      body = html`<p class="muted u-mt0">Shows a list from Shared Components → Lists. Entries the user may not open are left out.</p>
-        <fieldset class="prop-group"><legend>List</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('list')}">List</label>
-            <select id="${id('list')}" name="list">${opt('', '- choose -', cfg.list)}${lists.map((l) => opt(l.name, `${l.name} (${l.type})`, cfg.list))}${cfg.list && !lists.some((l) => l.name === cfg.list) ? opt(cfg.list, `${cfg.list} (missing!)`, cfg.list) : ''}</select></div>
-          <div class="field"><label class="label" for="${id('template')}">Template</label>
-            <select id="${id('template')}" name="template">${opt('', 'Links (nested)', cfg.template)}${opt('badges', 'Badge list', cfg.template)}${opt('cards', 'Cards (menu)', cfg.template)}${opt('tabs', 'Tabs', cfg.template)}${opt('wizard_progress', 'Wizard progress (numbered steps)', cfg.template)}</select></div>
+      body = html`<p class="muted u-mt0">${tx('rs.shows_a_list_from_shared')}</p>
+        <fieldset class="prop-group"><legend>${tx('rs.list')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('list')}">${tx('rs.list')}</label>
+            <select id="${id('list')}" name="list">${opt('', tx('rs.choose'), cfg.list)}${lists.map((l) => opt(l.name, `${l.name} (${l.type})`, cfg.list))}${cfg.list && !lists.some((l) => l.name === cfg.list) ? opt(cfg.list, `${cfg.list} (missing!)`, cfg.list) : ''}</select></div>
+          <div class="field"><label class="label" for="${id('template')}">${tx('rs.template')}</label>
+            <select id="${id('template')}" name="template">${opt('', tx('rs.links_nested'), cfg.template)}${opt('badges', tx('rs.badge_list'), cfg.template)}${opt('cards', tx('rs.cards_menu'), cfg.template)}${opt('tabs', tx('rs.tabs'), cfg.template)}${opt('wizard_progress', tx('rs.wizard_progress_numbered_steps'), cfg.template)}</select></div>
         </div></fieldset>`;
       break;
     }
     case 'map': {
-      title = 'Map settings';
+      title = tx('rs.t.map');
       const allPages = await pages();
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)))}
-        <p class="muted u-mt0">Each row is a marker at <code>lat</code>, <code>lng</code> (or <code>location</code> as "lat,lng"), with <code>title</code> and <code>body</code> in its popup; a <code>geojson</code> column draws lines and areas (with PostGIS installed, a <code>geometry</code> or <code>geography</code> column in WGS 84 works too). A heat map weighs each place by a <code>weight</code> column.</p>
-        <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('layer')}">Show places as</label>
-            <select id="${id('layer')}" name="layer">${opt('', 'Markers', cfg.layer)}${opt('heat', 'Heat map', cfg.layer)}${opt('lines', 'Lines', cfg.layer)}${opt('polygons', 'Polygons', cfg.layer)}${opt('extruded', 'Extruded polygons (shaded by height)', cfg.layer)}</select></div>
+        <p class="muted u-mt0">${tx.code('rs.map_help')}</p>
+        <fieldset class="prop-group"><legend>${tx('rs.appearance')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('layer')}">${tx('rs.show_places_as')}</label>
+            <select id="${id('layer')}" name="layer">${opt('', tx('rs.markers'), cfg.layer)}${opt('heat', tx('rs.heat_map'), cfg.layer)}${opt('lines', tx('rs.lines'), cfg.layer)}${opt('polygons', tx('rs.polygons'), cfg.layer)}${opt('extruded', tx('rs.extruded_polygons_shaded_by_height'), cfg.layer)}</select></div>
           ${styleFields(id, 'style', cfg.style)}
-          <div class="field"><label class="label" for="${id('name')}">Layer name (legend)</label>
+          <div class="field"><label class="label" for="${id('name')}">${tx('rs.layer_name_legend')}</label>
             <input id="${id('name')}" name="name" value="${cfg.name ?? ''}" maxlength="60" placeholder="the region title"></div>
-          <div class="field"><label class="label" for="${id('height')}">Height</label>
-            <select id="${id('height')}" name="height">${opt('small', 'Small', cfg.height)}${opt('', 'Medium', cfg.height)}${opt('large', 'Large', cfg.height)}</select></div>
-          <div class="field"><label class="label" for="${id('zoom')}">Zoom for a single place (1–19)</label>
+          <div class="field"><label class="label" for="${id('height')}">${tx('rs.height')}</label>
+            <select id="${id('height')}" name="height">${opt('small', tx('rs.small'), cfg.height)}${opt('', tx('rs.medium'), cfg.height)}${opt('large', tx('rs.large'), cfg.height)}</select></div>
+          <div class="field"><label class="label" for="${id('zoom')}">${tx('rs.zoom_for_a_single_place')}</label>
             <input id="${id('zoom')}" name="zoom" type="number" min="1" max="19" value="${cfg.zoom ?? ''}" placeholder="14"></div>
           ${loadField(id, 'load', cfg)}
-          ${check('cluster', 'Group markers that are close together (clustering)', cfg.cluster === true)}
+          ${check('cluster', tx('rs.group_markers_that_are_close'), cfg.cluster === true)}
           ${emptyField(id, cfg)}
         </div></fieldset>
-        ${linkFieldset(id, cfg.link, allPages, 'Each place')}
+        ${linkFieldset(id, cfg.link, allPages, tx('rs.w.place'))}
         ${await mapLayersFieldsets(cfg, appId, allPages, id)}
         ${await mapReportFieldset(r, pageId, appId, id)}`;
       break;
     }
     case 'tree':
-      title = 'Tree settings';
+      title = tx('rs.t.tree');
       body = html`${columnsHint(await reportColumns(appId, await designSql(appId, r)), ['id', 'parent_id', 'label'])}
-        <p class="muted u-mt0">The query returns <code>id</code>, <code>parent_id</code> and <code>label</code> (and optionally <code>icon</code>); rows whose parent isn't in the result are the roots.</p>
-        <fieldset class="prop-group"><legend>Appearance</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('expanded')}">Levels open at first</label>
+        <p class="muted u-mt0">${tx.code('rs.tree_help')}</p>
+        <fieldset class="prop-group"><legend>${tx('rs.appearance')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('expanded')}">${tx('rs.levels_open_at_first')}</label>
             <input id="${id('expanded')}" name="expanded" type="number" min="0" max="20" value="${cfg.expanded ?? 1}"></div>
           ${emptyField(id, cfg)}
         </div></fieldset>
-        ${linkFieldset(id, cfg.link, await pages(), 'Each node')}`;
+        ${linkFieldset(id, cfg.link, await pages(), tx('rs.w.node'))}`;
       break;
     case 'workflows':
-      title = 'Workflow console settings';
-      body = html`<p class="muted u-mt0">Workflows come from workflow definitions (Shared Components); application SQL starts them with <code>meta.start_workflow(…)</code>.</p>
-        <fieldset class="prop-group"><legend>Workflows</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('context')}">Show</label>
-            <select id="${id('context')}" name="context">${opt('', 'Workflows I started', cfg.context)}${opt('admin', 'Workflows I administer', cfg.context)}</select></div>
+      title = tx('rs.t.workflows');
+      body = html`<p class="muted u-mt0">${tx.code('rs.workflow_help')}</p>
+        <fieldset class="prop-group"><legend>${tx('rs.workflows')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('context')}">${tx('rs.show')}</label>
+            <select id="${id('context')}" name="context">${opt('', tx('rs.workflows_i_started'), cfg.context)}${opt('admin', tx('rs.workflows_i_administer'), cfg.context)}</select></div>
           ${emptyField(id, cfg)}
         </div>
-        ${check('completed', 'Include completed and terminated workflows', cfg.completed === true)}</fieldset>`;
+        ${check('completed', tx('rs.include_completed_and_terminated_workflows'), cfg.completed === true)}</fieldset>`;
       break;
     case 'tasks':
-      title = 'Task list settings';
-      body = html`<p class="muted u-mt0">Tasks come from task definitions (Shared Components); application SQL creates them with <code>meta.create_task(…)</code>.</p>
-        <fieldset class="prop-group"><legend>Tasks</legend><div class="form-grid">
-          <div class="field"><label class="label" for="${id('context')}">Show</label>
-            <select id="${id('context')}" name="context">${opt('', 'My tasks: to act on, claim, or assigned to me', cfg.context)}${opt('initiated', 'Tasks I requested', cfg.context)}${opt('admin', 'Tasks I administer', cfg.context)}</select></div>
+      title = tx('rs.t.tasks');
+      body = html`<p class="muted u-mt0">${tx.code('rs.task_help')}</p>
+        <fieldset class="prop-group"><legend>${tx('rs.tasks')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="${id('context')}">${tx('rs.show')}</label>
+            <select id="${id('context')}" name="context">${opt('', tx('rs.my_tasks_to_act_on'), cfg.context)}${opt('initiated', tx('rs.tasks_i_requested'), cfg.context)}${opt('admin', tx('rs.tasks_i_administer'), cfg.context)}</select></div>
           ${emptyField(id, cfg)}
         </div>
-        ${check('completed', 'Include completed and cancelled tasks', cfg.completed === true)}</fieldset>`;
+        ${check('completed', tx('rs.include_completed_and_cancelled_tasks'), cfg.completed === true)}</fieldset>`;
       break;
   }
   return html`<h3 class="u-mt15">${title}</h3>
-    <p class="muted u-mt0">These fields write the region's settings JSON above (other keys are kept).</p>
+    <p class="muted u-mt0">${tx('rs.these_fields_write_the_region')}</p>
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/settings" class="component-form">${csrf(s)}
       ${body!}
       <div class="buttons"><button class="btn btn-hot">Save ${title.toLowerCase()}</button></div>
@@ -948,7 +950,7 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
         [pid, r.id, JSON.stringify(flags)],
       );
     }
-    flash(s, 'Settings saved.');
+    flash(s, tr(s)('rs.saved'));
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });
 }

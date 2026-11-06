@@ -11,6 +11,7 @@ import { heading } from '../runtime/items.ts';
 import { COLUMN_OPTIONS } from '../runtime/template-options.ts';
 import type { Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { scopedTx as tx, tr, withTranslator } from './i18n.ts';
 
 // Page designer → a report region → Report settings: the most used keys of
 // the region's "config" JSON as a form (columns, link, paging, PDF, saved
@@ -84,7 +85,10 @@ const columnOption = (cfg: ReportConfig, name: string) => {
 };
 
 /** The Report settings form of a report region. */
-export async function reportSettingsForm(pageId: number, appId: number, r: { id: number; source: string | null; config: ReportConfig }, s: Session) {
+/** (sprint 162) in the developer's builder language: the helpers below use the request's scoped translator */
+export const reportSettingsForm = (pageId: number, appId: number, r: { id: number; source: string | null; config: ReportConfig }, s: Session) => withTranslator(tr(s), () => reportSettingsFormInner(pageId, appId, r, s));
+
+async function reportSettingsFormInner(pageId: number, appId: number, r: { id: number; source: string | null; config: ReportConfig }, s: Session) {
   const cfg = r.config ?? {};
   const cols = await reportColumns(appId, await designSql(appId, r));
   const [layouts, schemes, pages, items] = await Promise.all([
@@ -107,85 +111,85 @@ export async function reportSettingsForm(pageId: number, appId: number, r: { id:
   const printed = cfg.pdf?.columns?.length ? new Set(cfg.pdf.columns.map((c) => c.toLowerCase())) : null;
 
   const columnRows = all.map((n, i) => html`<tr>
-      <td data-label="Column"><code>${n}</code>${known.has(n) ? '' : html` <span class="tag tag-error">not in the query</span>`}<input type="hidden" name="col_${i}" value="${n}"></td>
-      <td data-label="Heading"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="Heading of ${n}"></td>
-      <td data-label="Format mask"><input name="fmt_${i}" value="${cfg.formats?.[n] ?? ''}" placeholder="e.g. 999G990D00" aria-label="Format mask of ${n}" class="u-mw10"></td>
-      <td data-label="Display"><select name="opt_${i}" aria-label="Display of ${n}">${opt('', 'Normal', columnOption(cfg, n))}${COLUMN_OPTIONS.map((o) => opt(o.cls, o.label, columnOption(cfg, n)))}</select></td>
-      <td data-label="Shown"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="Show ${n}"></td>
-      <td data-label="In PDF"><input type="checkbox" name="print_${i}" value="true"${(printed ? printed.has(n.toLowerCase()) : !hidden.has(n.toLowerCase())) ? raw(' checked') : ''} aria-label="Print ${n}"></td>
-      <td data-label="PDF width (mm)"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="PDF width of ${n}" class="u-mw6"></td>
+      <td data-label="${tx('rpt.column')}"><code>${n}</code>${known.has(n) ? '' : html` <span class="tag tag-error">${tx('rs.not_in_query')}</span>`}<input type="hidden" name="col_${i}" value="${n}"></td>
+      <td data-label="${tx('rpt.heading')}"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="${tx('rpt.aria_heading_of', { name: n })}"></td>
+      <td data-label="${tx('rpt.format_mask')}"><input name="fmt_${i}" value="${cfg.formats?.[n] ?? ''}" placeholder="e.g. 999G990D00" aria-label="${tx('rpt.aria_format_mask_of', { name: n })}" class="u-mw10"></td>
+      <td data-label="${tx('rpt.display')}"><select name="opt_${i}" aria-label="${tx('rpt.aria_display_of', { name: n })}">${opt('', tx('rpt.normal'), columnOption(cfg, n))}${COLUMN_OPTIONS.map((o) => opt(o.cls, o.label, columnOption(cfg, n)))}</select></td>
+      <td data-label="${tx('rpt.shown')}"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="${tx('rpt.aria_show', { name: n })}"></td>
+      <td data-label="${tx('rpt.in_pdf')}"><input type="checkbox" name="print_${i}" value="true"${(printed ? printed.has(n.toLowerCase()) : !hidden.has(n.toLowerCase())) ? raw(' checked') : ''} aria-label="${tx('rpt.aria_print', { name: n })}"></td>
+      <td data-label="${tx('rpt.pdf_width_mm')}"><input name="width_${i}" type="number" min="0" max="500" value="${cfg.pdf?.widths?.[n] ?? ''}" aria-label="${tx('rpt.aria_pdf_width_of', { name: n })}" class="u-mw6"></td>
     </tr>`);
 
   const linkItems = linkItemsText(cfg.link?.items);
-  return html`<h3 class="u-mt15">Report settings</h3>
-    <p class="muted u-mt0">These fields write the region's settings JSON above (other keys are kept).</p>
+  return html`<h3 class="u-mt15">${tx('rpt.report_settings')}</h3>
+    <p class="muted u-mt0">${tx('rpt.these_fields_write_the_region')}</p>
     ${'error' in cols ? html`<div class="alert alert-error" role="alert">The columns could not be read: ${cols.error}</div>` : ''}
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/report-settings" class="component-form">${csrf(s)}
       <input type="hidden" name="n" value="${all.length}">
-      <fieldset class="prop-group"><legend>Behaviour</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('page_size')}">Rows per page</label>
+      <fieldset class="prop-group"><legend>${tx('rpt.behaviour')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('page_size')}">${tx('rpt.rows_per_page')}</label>
           <select id="${id('page_size')}" name="page_size">${PAGE_SIZES.map((n) => opt(n, n, cfg.page_size ?? 15))}</select></div>
-        <div class="field"><label class="label" for="${id('mobile')}">On phones</label>
-          <select id="${id('mobile')}" name="mobile">${opt('reflow', 'Cards (reflow)', cfg.mobile ?? 'reflow')}${opt('scroll', 'Scrolling table', cfg.mobile)}</select></div>
-        <div class="field" data-wide><label class="label" for="${id('empty')}">Text when there are no rows</label>
-          <input id="${id('empty')}" name="empty" value="${cfg.empty ?? ''}" placeholder="No data found"></div>
-        ${check('searchable', 'Search box', cfg.searchable !== false)}
-        ${check('interactive', 'Actions menu (filters, break, aggregates, downloads…)', cfg.interactive !== false)}
-        ${check('sortable', 'Sortable', cfg.sortable !== false)}
-        ${check('saved_reports', 'Users may save reports', cfg.saved_reports !== false)}
-        <div class="field"><label class="label" for="${id('public')}">Who may save public reports</label>
-          <select id="${id('public')}" name="public_reports">${opt('', '- nobody -', cfg.public_reports)}${schemes.rows.map((x) => opt(x.name, x.name, cfg.public_reports))}</select></div>
+        <div class="field"><label class="label" for="${id('mobile')}">${tx('rpt.on_phones')}</label>
+          <select id="${id('mobile')}" name="mobile">${opt('reflow', tx('rpt.cards_reflow'), cfg.mobile ?? 'reflow')}${opt('scroll', tx('rpt.scrolling_table'), cfg.mobile)}</select></div>
+        <div class="field" data-wide><label class="label" for="${id('empty')}">${tx('rpt.text_when_there_are_no')}</label>
+          <input id="${id('empty')}" name="empty" value="${cfg.empty ?? ''}" placeholder="${tx('rpt.no_data_found')}"></div>
+        ${check('searchable', tx('rpt.search_box'), cfg.searchable !== false)}
+        ${check('interactive', tx('rpt.actions_menu_filters_break_aggregates'), cfg.interactive !== false)}
+        ${check('sortable', tx('rpt.sortable'), cfg.sortable !== false)}
+        ${check('saved_reports', tx('rpt.users_may_save_reports'), cfg.saved_reports !== false)}
+        <div class="field"><label class="label" for="${id('public')}">${tx('rpt.who_may_save_public_reports')}</label>
+          <select id="${id('public')}" name="public_reports">${opt('', tx('rpt.nobody'), cfg.public_reports)}${schemes.rows.map((x) => opt(x.name, x.name, cfg.public_reports))}</select></div>
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Large tables</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('pagination')}">Pagination</label>
-          <select id="${id('pagination')}" name="pagination">${opt('', 'Rows X–Y of Z (counts the total)', cfg.pagination)}${opt('range', 'Row ranges X–Y (no total)', cfg.pagination)}</select>
-          <small class="help">Row ranges skip counting the rows: use them for large tables.</small></div>
-        <div class="field"><label class="label" for="${id('keyset')}">Keyset columns</label>
+      <fieldset class="prop-group"><legend>${tx('rpt.large_tables')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('pagination')}">${tx('rpt.pagination')}</label>
+          <select id="${id('pagination')}" name="pagination">${opt('', tx('rpt.rows_x_y_of_z'), cfg.pagination)}${opt('range', tx('rpt.row_ranges_x_y_no'), cfg.pagination)}</select>
+          <small class="help">${tx('rpt.row_ranges_skip_counting_the')}</small></div>
+        <div class="field"><label class="label" for="${id('keyset')}">${tx('rpt.keyset_columns')}</label>
           <input id="${id('keyset')}" name="keyset" value="${(cfg.keyset ?? []).join(', ')}" placeholder="e.g. id">
-          <small class="help">With row ranges: columns that make a row unique (comma separated, indexed). Next and Previous then continue after the last row instead of skipping rows (fast deep pages).</small></div>
-        <div class="field"><label class="label" for="${id('max_rows')}">Maximum row count</label>
+          <small class="help">${tx('rpt.with_row_ranges_columns_that')}</small></div>
+        <div class="field"><label class="label" for="${id('max_rows')}">${tx('rpt.maximum_row_count')}</label>
           <input id="${id('max_rows')}" name="max_rows" type="number" min="1" max="1000000" value="${cfg.max_rows ?? ''}" placeholder="no maximum">
-          <small class="help">The report (and its downloads) reads at most this many rows.</small></div>
-        ${check('lazy', 'Load after the page shows (lazy loading)', cfg.lazy === true)}
-        <div class="field"><label class="label" for="${id('cache_scope')}">Cache</label>
-          <select id="${id('cache_scope')}" name="cache_scope">${opt('', '- no cache -', cfg.cache?.scope)}${opt('user', 'Per user', cfg.cache?.scope)}${opt('session', 'Per session', cfg.cache?.scope)}${opt('all', 'For all users (with the same roles)', cfg.cache?.scope)}</select></div>
-        <div class="field"><label class="label" for="${id('cache_seconds')}">Cache for (seconds)</label>
+          <small class="help">${tx('rpt.the_report_and_its_downloads')}</small></div>
+        ${check('lazy', tx('rpt.load_after_the_page_shows'), cfg.lazy === true)}
+        <div class="field"><label class="label" for="${id('cache_scope')}">${tx('rpt.cache')}</label>
+          <select id="${id('cache_scope')}" name="cache_scope">${opt('', tx('rpt.no_cache'), cfg.cache?.scope)}${opt('user', tx('rpt.per_user'), cfg.cache?.scope)}${opt('session', tx('rpt.per_session'), cfg.cache?.scope)}${opt('all', tx('rpt.for_all_users_with_the'), cfg.cache?.scope)}</select></div>
+        <div class="field"><label class="label" for="${id('cache_seconds')}">${tx('rpt.cache_for_seconds')}</label>
           <input id="${id('cache_seconds')}" name="cache_seconds" type="number" min="1" max="86400" value="${cfg.cache?.seconds ?? ''}" placeholder="300">
-          <small class="help">A submit of the page empties its cache.</small></div>
+          <small class="help">${tx('rpt.a_submit_of_the_page')}</small></div>
       </div></fieldset>
-      <fieldset class="prop-group"><legend>JSON path columns</legend><div class="form-grid">
-        <div class="field" data-wide><label class="label" for="${id('json_columns')}">Columns read from a json or jsonb column</label>
+      <fieldset class="prop-group"><legend>${tx('rpt.json_path_columns')}</legend><div class="form-grid">
+        <div class="field" data-wide><label class="label" for="${id('json_columns')}">${tx('rpt.columns_read_from_a_json')}</label>
           <input id="${id('json_columns')}" name="json_columns" value="${jsonColumnsText(cfg.json_columns)}" placeholder="city=profile:address.city; first_skill=profile:skills.0.name; since=profile:since:date" class="code">
           <small class="help">name=column:path[:type]; separate them with ";". A path is keys separated by dots, a number picks an element of an array. Types: ${JSON_TYPES.join(', ')} (text when left out); a value that doesn't read as the type shows empty. They are columns like the others: search, filters, sorting, headings and downloads. To edit documents, use a JSON source (Shared Components).</small></div>
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Columns</legend>
+      <fieldset class="prop-group"><legend>${tx('rpt.columns')}</legend>
         ${all.length
-          ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Column</th><th>Heading</th><th>Format mask</th><th>Display</th><th>Shown</th><th>In PDF</th><th>PDF width (mm)</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
-          : html`<p class="muted">No columns yet.</p>`}
-        <small class="help">Format masks: numbers like 999G999G990D00, FML999G990D00 (currency), 990D0% or 0000 (G and D are the language's separators); dates like DD-MON-YYYY. Empty: the application's formats. Excel and CSV downloads keep the raw values.</small>
+          ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rpt.column')}</th><th>${tx('rpt.heading')}</th><th>${tx('rpt.format_mask')}</th><th>${tx('rpt.display')}</th><th>${tx('rpt.shown')}</th><th>${tx('rpt.in_pdf')}</th><th>${tx('rpt.pdf_width_mm')}</th></tr></thead><tbody>${columnRows}</tbody></table></div>`
+          : html`<p class="muted">${tx('rpt.no_columns_yet')}</p>`}
+        <small class="help">${tx('rpt.format_masks_numbers_like_999g999g990d00')}</small>
       </fieldset>
-      <fieldset class="prop-group"><legend>Link</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('link_column')}">Link column</label>
-          <select id="${id('link_column')}" name="link_column">${opt('', '- no link -', cfg.link?.column)}${all.map((n) => opt(n, n, cfg.link?.column))}</select></div>
-        <div class="field"><label class="label" for="${id('link_page')}">To page</label>
-          <select id="${id('link_page')}" name="link_page">${opt('', '- choose -', cfg.link?.page)}${pages.rows.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, cfg.link?.page))}</select></div>
-        <div class="field" data-wide><label class="label" for="${id('link_items')}">Set items</label>
+      <fieldset class="prop-group"><legend>${tx('rpt.link')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('link_column')}">${tx('rpt.link_column')}</label>
+          <select id="${id('link_column')}" name="link_column">${opt('', tx('rpt.no_link'), cfg.link?.column)}${all.map((n) => opt(n, n, cfg.link?.column))}</select></div>
+        <div class="field"><label class="label" for="${id('link_page')}">${tx('rpt.to_page')}</label>
+          <select id="${id('link_page')}" name="link_page">${opt('', tx('rpt.choose'), cfg.link?.page)}${pages.rows.map((p) => opt(String(p.page_no), `${p.page_no}. ${p.name}`, cfg.link?.page))}</select></div>
+        <div class="field" data-wide><label class="label" for="${id('link_items')}">${tx('rpt.set_items')}</label>
           <input id="${id('link_items')}" name="link_items" value="${linkItems}" placeholder="P3_ID=#id#">
-          <small class="help">ITEM=#column#, comma separated; #column# is replaced by the row's value.</small></div>
+          <small class="help">${tx('rpt.item_column_comma_separated_column')}</small></div>
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Row selection</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('sel_column')}">Value column</label>
-          <select id="${id('sel_column')}" name="sel_column">${opt('', '- no row selection -', cfg.selection?.column)}${all.map((n) => opt(n, n, cfg.selection?.column))}</select></div>
-        <div class="field"><label class="label" for="${id('sel_item')}">Into item</label>
-          <select id="${id('sel_item')}" name="sel_item">${opt('', '- choose -', cfg.selection?.item)}${items.rows.map((x) => opt(x.name, `${x.name} (${x.type})`, cfg.selection?.item))}</select>
-          <small class="help">A checkbox per row; on submit the checked rows' values reach the item, colon separated (e.g. 7839:7902). Usually a hidden item. Treat the values as user input in your process.</small></div>
+      <fieldset class="prop-group"><legend>${tx('rpt.row_selection')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('sel_column')}">${tx('rpt.value_column')}</label>
+          <select id="${id('sel_column')}" name="sel_column">${opt('', tx('rpt.no_row_selection'), cfg.selection?.column)}${all.map((n) => opt(n, n, cfg.selection?.column))}</select></div>
+        <div class="field"><label class="label" for="${id('sel_item')}">${tx('rpt.into_item')}</label>
+          <select id="${id('sel_item')}" name="sel_item">${opt('', tx('rpt.choose'), cfg.selection?.item)}${items.rows.map((x) => opt(x.name, `${x.name} (${x.type})`, cfg.selection?.item))}</select>
+          <small class="help">${tx('rpt.a_checkbox_per_row_on')}</small></div>
       </div></fieldset>
-      <fieldset class="prop-group"><legend>PDF</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('layout')}">Report layout</label>
+      <fieldset class="prop-group"><legend>${tx('rpt.pdf')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('layout')}">${tx('rpt.report_layout')}</label>
           <select id="${id('layout')}" name="pdf_layout">${opt('', layouts.rows.some((l) => l.is_default) ? '- the default layout -' : '- built-in -', cfg.pdf?.layout)}${layouts.rows.map((l) => opt(l.name, l.name + (l.is_default ? ' (default)' : ''), cfg.pdf?.layout))}</select>
-          <small class="help">Layouts are under Shared Components → Report layouts.</small></div>
+          <small class="help">${tx('rpt.layouts_are_under_shared_components')}</small></div>
       </div></fieldset>
-      <div class="buttons"><button class="btn btn-hot">Save report settings</button></div>
+      <div class="buttons"><button class="btn btn-hot">${tx('rpt.save_report_settings')}</button></div>
     </form>`;
 }
 
@@ -295,8 +299,8 @@ export async function reportSettingsRoutes(app: FastifyInstance) {
     );
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     const bad = formatProblems((req.body ?? {}) as Record<string, string | undefined>);
-    if (bad.length) flash(s, `Report settings saved, without these format masks: ${bad.join('; ')}.`, 'error');
-    else flash(s, 'Report settings saved.');
+    if (bad.length) flash(s, tr(s)('rpt.saved_without', { masks: bad.join('; ') }), 'error');
+    else flash(s, tr(s)('rpt.saved'));
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });
 }

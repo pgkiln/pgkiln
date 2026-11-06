@@ -13,6 +13,7 @@
 // The developer's choice: meta.developer.language (migration 127), copied into the session (__BLANG) at sign-in;
 // before signing in, the sign-in page's language links set a cookie (LANG_COOKIE). See language.ts.
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { FastifyRequest } from 'fastify';
 import { esc, raw, Raw } from '../html.ts';
 import type { Session } from '../session.ts';
@@ -138,3 +139,16 @@ export const tr = (s: Pick<Session, 'state'> | null | undefined) => translatorFo
 
 /** For tests and the coverage check: the message files. */
 export const builderMessages = (lang: BuilderLang): Readonly<Record<string, string>> => MESSAGES[lang];
+
+// (sprint 162, CD-8) Long form builders (region and report settings) take the translator of the request being rendered
+// from the async context instead of a parameter on every helper: withTranslator(tr(s), () => build()), and inside,
+// scopedTx('key') like tx. Outside withTranslator it is English.
+const SCOPE = new AsyncLocalStorage<BuilderTranslate>();
+const current = () => SCOPE.getStore() ?? translatorFor('en');
+export const withTranslator = <T>(t: BuilderTranslate, fn: () => T): T => SCOPE.run(t, fn);
+export const scopedTx = ((key: BuilderKey, params?: Params) => current()(key, params)) as BuilderTranslate;
+Object.defineProperty(scopedTx, 'lang', { get: () => current().lang });
+scopedTx.dyn = (key, fallback, params) => current().dyn(key, fallback, params);
+scopedTx.rich = (key, params) => current().rich(key, params);
+scopedTx.code = (key, params) => current().code(key, params);
+scopedTx.label = (label) => current().label(label);
