@@ -13,7 +13,7 @@ import { encodeTile, tileArea, type TileFeature } from '../mvt.ts';
 
 // Map region (APEX: Map region). The SELECT returns, per row, a position
 // (columns lat and lng, latitude and longitude, or location as "lat,lng")
-// and optionally title, body and geojson (a GeoJSON geometry or feature for
+// and optionally id (what a map_object_click dynamic action sees), title, body and geojson (a GeoJSON geometry or feature for
 // lines and areas; a GeoJSON point is a place), and weight (for a heat map).
 // With PostGIS installed, a geometry or geography column (WGS 84) is turned
 // into GeoJSON on the server (ST_AsGeoJSON), so no geojson column is needed.
@@ -59,6 +59,8 @@ interface Point {
   body: string;
   href: string | null;
   weight: number;
+  /** (161) the row's id column: what a map_object_click dynamic action's condition sees */
+  id?: string;
 }
 /** (159, CD-6) a shape layer's look: fixed in the layer's settings, or per row from columns of the same names */
 export interface ShapeStyle {
@@ -164,6 +166,7 @@ async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null, opt
     if ((Number.isNaN(lat) || Number.isNaN(lng)) && loc) [lat, lng] = [Number(loc[1]), Number(loc[2])];
     const title = toState(col(row, 'title')) ?? '';
     const body = toState(col(row, 'body')) ?? '';
+    const id = toState(col(row, 'id')) ?? undefined;
     let href: string | null = null;
     if (linkOk && link) {
       const items: Record<string, string> = {};
@@ -184,14 +187,14 @@ async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null, opt
           ? { ...def.style, ...shapeStyle({ fill_color: col(row, 'fill_color'), stroke_color: col(row, 'stroke_color'), stroke_width: col(row, 'stroke_width'), opacity: col(row, 'opacity') }) }
           : undefined;
         const h = num(col(row, 'height'));
-        shapes.push({ type: 'Feature', geometry, properties: { title, body, href, ...(style ? { style } : {}), ...(def.kind === 'extruded' && Number.isFinite(h) ? { height: h } : {}) } });
+        shapes.push({ type: 'Feature', geometry, properties: { title, body, href, ...(id !== undefined ? { id } : {}), ...(style ? { style } : {}), ...(def.kind === 'extruded' && Number.isFinite(h) ? { height: h } : {}) } });
       }
     }
     // a shape layer draws only shapes
     if (SHAPE_KINDS.has(def.kind)) continue;
     const w = num(col(row, 'weight'));
     const weight = Number.isFinite(w) && w > 0 ? w : Number.isNaN(w) ? 1 : 0;
-    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) points.push({ lat, lng, title, body, href, weight });
+    if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) points.push({ lat, lng, title, body, href, weight, ...(id !== undefined ? { id } : {}) });
   }
   // (159) extruded: each polygon shaded by its height (from light to strong; no 3D view)
   if (def.kind === 'extruded') {
@@ -296,7 +299,7 @@ export function parseTile(z: string, x: string, y: string) {
 export async function layerTile(ctx: PageContext, def: LayerDef, t: { z: number; x: number; y: number }) {
   const { points, shapes, truncated } = await loadLayer(ctx, def, await postgis(), { area: tileArea(t.z, t.x, t.y, 1 / 16), limit: MAX_TILE_ROWS });
   const features: TileFeature[] = [
-    ...points.map((p) => ({ geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { title: p.title, body: p.body, href: p.href, weight: p.weight } })),
+    ...points.map((p) => ({ geometry: { type: 'Point', coordinates: [p.lng, p.lat] }, properties: { title: p.title, body: p.body, href: p.href, weight: p.weight, ...(p.id !== undefined ? { id: p.id } : {}) } })),
     ...(shapes as { geometry: TileFeature['geometry']; properties: TileFeature['properties'] }[]).map((s) => ({ geometry: s.geometry, properties: s.properties })),
   ];
   return { tile: encodeTile('places', t.z, t.x, t.y, features), truncated };

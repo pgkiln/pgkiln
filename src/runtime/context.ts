@@ -38,6 +38,8 @@ export interface PageContext {
   ip: string;
   errors: Errors;
   messages: string[];
+  /** (161) grid regions whose changes this request saved (POST), or the request before it saved (GET): grid_save dynamic actions */
+  savedGrids?: number[];
   /** rendered inside a modal dialog (iframe) */
   dialog: boolean;
   client?: Client;

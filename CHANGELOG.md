@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Component events for dynamic actions** (CD-3, part 2; migration 153): `grid_row_init` (Add row, Duplicate) and
+  `grid_save` (on the page that comes back) for grids, `calendar_date_select` and `calendar_view_change` for
+  calendars, `map_object_click` and `map_change` for maps, `tree_selection_change` for trees; the trigger is the
+  region. The condition sees the event's value (a date, the view, a map row's new `id` column, the zoom level, a node
+  id); a `cancel_event` keeps a calendar's Create link or a tree node's link closed. A `set_value` without SQL on a
+  component event puts that value into its affected items; an Execute JavaScript function gets the component's
+  element as `element`.
 ### Changed
 - **Builder spacing**: regions and two-column rows stacked on a page always have a gap between them (13 pages had a
   region touching the one above, e.g. an application's REST API page, a workspace, the mail queue, network access,

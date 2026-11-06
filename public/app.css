@@ -1468,6 +1468,8 @@ path.map-near { stroke: #1f2733; stroke-dasharray: 6 4; fill: #1f2733; fill-opac
 .tree-view a, .tree-view summary > span, .tree-leaf > span { display: inline-flex; align-items: center; gap: 0.35rem; }
 .tree-leaf { padding-left: 1rem; }
 .tree-count { font-size: 0.75rem; color: var(--muted); }
+/* (161) the node a tree_selection_change dynamic action chose */
+.tree-view li.tree-selected > :is(a, span:not(.tree-count), .tree-row), .tree-view li.tree-selected > details > summary > span { background: var(--accent-soft); border-radius: 3px; outline: 1px solid var(--accent); outline-offset: 1px; }
 /* a linked branch: the disclosure triangle sits in front of the link's row */
 .tree-branch { position: relative; }
 .tree-branch > .tree-row { display: inline-flex; align-items: center; gap: 0.35rem; }

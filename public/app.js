@@ -507,6 +507,8 @@ const pgkilnUnsaved = (() => {
 
   /** (085) what runDa returns to stop the actions after it (a declined confirm) */
   const STOP = Symbol('stop');
+  /** (161) the element of a component event (a grid row, calendar cell, map, tree node): execute_javascript's `element` */
+  let componentElement = null;
   /** (156) does a Cancel Event in these actions hold its condition (decided at once, so the event's effect can be stopped)? */
   const cancels = (list) => list.some((da) => da.action === 'cancel_event' && conditionHolds(da));
   const text = (k) => (meta.texts && meta.texts[k]) || k;
@@ -634,6 +636,11 @@ const pgkilnUnsaved = (() => {
       case 'clear':
         for (const n of da.items) setItemValue(n, '');
         return;
+      // (161) set_value without SQL on a component event: the event's value, set in the browser
+      case 'set_value':
+        if (!da.eventValue) break;
+        for (const n of da.items) setItemValue(n, value == null ? '' : String(value));
+        return;
       case 'open_region':
       case 'close_region':
         for (const el of targets(da)) {
@@ -731,7 +738,7 @@ const pgkilnUnsaved = (() => {
         const fn = da.fn && actions.get(da.fn);
         if (!fn) return console.warn(`pgkiln: no function "${da.fn}" registered (pgkiln.actions.register) for dynamic action ${da.id}`);
         try {
-          await fn({ value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message });
+          await fn({ value, items: da.items, region: da.region ? document.getElementById(`R${da.region}`) : null, elements: targets(da), message: da.message, element: componentElement });
         } catch (e) {
           console.error(e);
           showError(e.message);
@@ -920,6 +927,58 @@ const pgkilnUnsaved = (() => {
       runChain(regionRun('facets_change', document.getElementById(`R${changed.replace(/\D/g, '')}`)));
     }
   }
+  // (161) component events of grid, calendar, map and tree regions (trigger: the region). The component
+  // raises pgkiln:component {event, element, value}; detail.cancelled tells it a cancel_event holds
+  // (the calendar's Create link, the tree node's link) and detail.ran how many actions run.
+  document.addEventListener('pgkiln:component', (e) => {
+    const d = e.detail || {};
+    const region = d.element && d.element.closest && d.element.closest('section[id^="R"], div[id^="R"], dialog[id^="R"]');
+    const run = regionRun(d.event, region);
+    d.ran = run.length;
+    if (!run.length) return;
+    const value = d.value == null ? '' : String(d.value);
+    if (run.some((da) => da.action === 'cancel_event' && conditionHolds(da, value))) d.cancelled = true;
+    componentElement = d.element;
+    runChain(run, value).finally(() => (componentElement = null));
+  });
+  // grid_save: the page that comes back after a grid's Save
+  for (const id of meta.savedGrids || []) {
+    const run = regionRun('grid_save', document.getElementById(`R${id}`));
+    if (run.length) runChain(run);
+  }
+  // calendar_view_change: the page that comes back from a calendar's view or period link (cal_changed=<region>)
+  {
+    const params = new URLSearchParams(location.search);
+    const changed = params.get('cal_changed');
+    if (changed) {
+      params.delete('cal_changed');
+      history.replaceState(history.state, '', `${location.pathname}${params.size ? `?${params}` : ''}${location.hash}`);
+      const region = document.getElementById(`R${changed.replace(/\D/g, '')}`);
+      const run = regionRun('calendar_view_change', region);
+      if (run.length) runChain(run, region.querySelector('.calendar')?.dataset.view || '');
+    }
+  }
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest?.('.calendar .cal-toolbar a[href]');
+    const region = a && a.closest('section[id^="R"], div[id^="R"]');
+    if (!region || !regionRun('calendar_view_change', region).length) return;
+    const url = new URL(a.href, location.href);
+    url.searchParams.set('cal_changed', region.id.slice(1));
+    a.href = url.pathname + url.search + url.hash;
+  }, true);
+  // tree_selection_change: a node's label chosen (not the disclosure of a linked branch); the node is marked
+  document.addEventListener('click', (e) => {
+    const node = e.target.closest?.('.tree-view li[data-node]');
+    if (!node) return;
+    const summary = e.target.closest('summary');
+    if (summary && !summary.querySelector(':scope > span:not(.sr-only), :scope > a')) return;
+    const d = { event: 'tree_selection_change', element: node, value: node.dataset.node };
+    document.dispatchEvent(new CustomEvent('pgkiln:component', { detail: d }));
+    if (!d.ran) return;
+    node.closest('.tree-view').querySelectorAll('li.tree-selected').forEach((li) => li.classList.remove('tree-selected'));
+    node.classList.add('tree-selected');
+    if (d.cancelled) e.preventDefault();
+  });
   // after_refresh: a region replaced by a refresh, a lazy load or a master row
   document.addEventListener('pgkiln:replaced', (e) => {
     const run = regionRun('after_refresh', e.detail);
@@ -1143,10 +1202,23 @@ const pgkilnUnsaved = (() => {
 
   // ------------------------------------------------------------ calendar
   // Create on click: a click on an empty day or hour slot follows its "+" link.
+  // (161) a day or hour chosen (a click on the cell or its "+"): calendar_date_select; its cancel_event keeps the link closed
+  let addClicked = false;
   document.addEventListener('click', (e) => {
-    const cell = e.target.closest?.('.calendar [data-add]');
-    if (!cell || e.target.closest('a, button')) return;
-    cell.querySelector(':scope > .cal-add')?.click();
+    if (addClicked) return void (addClicked = false);
+    const cell = e.target.closest?.('.calendar [data-date]');
+    if (!cell) return;
+    const add = e.target.closest('a.cal-add');
+    if (!add && e.target.closest('a, button')) return;
+    const d = { event: 'calendar_date_select', element: cell, value: cell.dataset.date };
+    document.dispatchEvent(new CustomEvent('pgkiln:component', { detail: d }));
+    if (d.cancelled) return void e.preventDefault();
+    const link = !add && cell.hasAttribute('data-add') && cell.querySelector(':scope > .cal-add');
+    if (link) {
+      addClicked = true;
+      link.click();
+      addClicked = false;
+    }
   });
   // Drag and drop (mouse): drop an event on a day or hour slot; the server moves it
   // and sends the calendar back. Without JS (and from the keyboard) the event's
@@ -1442,6 +1514,9 @@ const pgkilnUnsaved = (() => {
     return row;
   }
 
+  /** (161) grid_row_init: a new row (Add row, Duplicate); the condition sees the row's number among the new rows */
+  const rowInit = (row) => document.dispatchEvent(new CustomEvent('pgkiln:component', { detail: { event: 'grid_row_init', element: row, value: row.dataset.newRow } }));
+
   /** The editable control of a cell, if any. */
   const control = (td) => td?.querySelector('input:not([type=hidden]), select');
 
@@ -1482,6 +1557,7 @@ const pgkilnUnsaved = (() => {
     if (add) {
       const row = addRow(add.closest('[data-grid]'));
       row?.querySelector('input:not([type=hidden]), select')?.focus();
+      if (row) rowInit(row);
       return;
     }
     // Duplicate: the row's values in a new row (without JS a link does it on the server)
@@ -1498,6 +1574,7 @@ const pgkilnUnsaved = (() => {
         if (from && control(td) && control(from)) setCell(td, control(from).tagName === 'SELECT' ? control(from).value : cellText(from));
       }
       control(row.querySelector('td[data-col]:not([hidden])'))?.focus();
+      rowInit(row);
       return;
     }
     if (e.target.closest('[data-grid-del]')) {
@@ -3247,6 +3324,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // without a Referer: the tiles get the site's origin only (no paths or item values)
     window.L.tileLayer(data.tiles, { attribution: data.attribution, maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin' }).addTo(map);
     const popup = (p) => {
+      // (161) a marker or shape clicked (its popup opens): map_object_click sees its id, else its title
+      el.dispatchEvent(new CustomEvent('pgkiln:component', { bubbles: true, detail: { event: 'map_object_click', element: el, value: p.id ?? p.title ?? '' } }));
       // built with the DOM, not HTML strings: titles and texts are data
       const box = document.createElement('div');
       const b = document.createElement('strong');
@@ -3290,6 +3369,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (data.layers.some((l) => l.kind === 'heat')) heatLegend(map, data.legend);
     if (several) layerSwitch(map, group, built, data.layersLabel);
     if (f) areaFilter(map, f);
+    // (161) map_change: moved or zoomed by the user (after the first view); the condition sees the zoom level
+    map.on('moveend', () => el.dispatchEvent(new CustomEvent('pgkiln:component', { bubbles: true, detail: { event: 'map_change', element: el, value: map.getZoom() } })));
   }
 });
 
