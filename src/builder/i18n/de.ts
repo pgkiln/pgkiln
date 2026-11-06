@@ -4049,4 +4049,12 @@ export const de: BuilderMessages = {
   'docv.view': 'View',
   'docv.doc_column': 'Dokumentspalte',
   'docv.intro': 'Eine Dokument-View zeigt jede Zeile von {table} mit ihren Kindzeilen als ein JSON-Dokument, wie eine Oracle JSON Relational Duality View. Berichte, REST (AutoREST auf der View) und MCP lesen ganze Dokumente; ein Update der Dokumentspalte schreibt die Zeile und ihre Kinder in einer Anweisung zurück. Row Level Security und Berechtigungen der Tabelle gelten (die View ist security_invoker und erhält die Berechtigungen der Tabelle).',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Benachrichtigungen',
+  'nfy.bell': 'Benachrichtigungsglocke in der Kopfzeile',
+  'nfy.bell_help': 'Angemeldete Benutzer sehen ihre ungelesenen und neuesten Benachrichtigungen; Öffnen markiert sie als gelesen und führt zu ihrer Seite. Hinzufügen aus SQL mit `meta.notify(user, title, body, page, items)` oder mit einem Prozess vom Typ send_notification; `meta.unread_notifications()` ist die Anzahl, etwa für ein Badge.',
+  'nfy.live': 'Live-Badges (Sekunden)',
+  'nfy.live_ph': 'z. B. 60 (leer: aus)',
+  'nfy.live_help': 'Alle so viele Sekunden (10 bis 3600) aktualisiert eine offene Seite ihre Badges an Ort und Stelle: Navigationsmenü und -leiste, Schaltflächen mit Badge-Abfrage und die Glocke. Nicht, solange der Tab verborgen ist; hält keine Sitzung am Leben.',
+  'nfy.live_invalid': 'Live-Badges: eine ganze Zahl von Sekunden von 10 bis 3600 oder leer.',
 };

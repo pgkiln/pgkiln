@@ -4049,4 +4049,12 @@ export const zhTW: BuilderMessages = {
   'docv.view': '檢視',
   'docv.doc_column': '文件欄',
   'docv.intro': '文件檢視將 {table} 的每一列及其子列顯示為一個 JSON 文件,類似 Oracle JSON Relational Duality View。報表、REST(檢視上的 AutoREST)和 MCP 讀取整個文件;更新文件欄會在一個陳述式中寫回該列及其子列。資料表的列層級安全性和授權適用(檢視為 security_invoker,並獲得資料表的授權)。',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': '通知',
+  'nfy.bell': '頁首中的通知鈴鐺',
+  'nfy.bell_help': '已登入使用者可看到未讀通知和最新通知;開啟一則通知會將其標為已讀並前往其頁面。在 SQL 中用 `meta.notify(user, title, body, page, items)` 或類型為 send_notification 的流程新增通知;`meta.unread_notifications()` 傳回數量,例如用作徽章。',
+  'nfy.live': '即時徽章(秒)',
+  'nfy.live_ph': '例如 60(空:關閉)',
+  'nfy.live_help': '開啟的頁面每隔若干秒(10 到 3600)就地重新整理其徽章:導覽選單和導覽列、帶徽章查詢的按鈕以及鈴鐺。分頁隱藏時不重新整理;不會讓工作階段保持活動。',
+  'nfy.live_invalid': '即時徽章:10 到 3600 的整數秒,或留空。',
 };

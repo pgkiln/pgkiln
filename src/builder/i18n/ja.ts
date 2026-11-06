@@ -4049,4 +4049,12 @@ export const ja: BuilderMessages = {
   'docv.view': 'ビュー',
   'docv.doc_column': 'ドキュメント列',
   'docv.intro': 'ドキュメント・ビューは、{table} の各行を子行とともに 1 つの JSON ドキュメントとして表示します (Oracle の JSON Relational Duality View と同様)。レポート、REST (ビュー上の AutoREST)、MCP はドキュメント全体を読み取り、ドキュメント列を更新すると行と子が 1 文で書き戻されます。表の行レベル・セキュリティと権限が適用されます (ビューは security_invoker で、表の権限を受け取ります)。',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': '通知',
+  'nfy.bell': 'ヘッダーの通知ベル',
+  'nfy.bell_help': 'サインインしたユーザーには未読の通知と最新の通知が表示され、開くと既読になってそのページに移動します。SQL から `meta.notify(user, title, body, page, items)` または send_notification タイプのプロセスで追加します。`meta.unread_notifications()` は件数で、バッジなどに使えます。',
+  'nfy.live': 'ライブ・バッジ (秒)',
+  'nfy.live_ph': '例: 60 (空: オフ)',
+  'nfy.live_help': '開いているページは指定秒数 (10 から 3600) ごとにバッジをその場で更新します: ナビゲーション・メニューとバー、バッジ問合せのあるボタン、ベル。タブが非表示の間は更新せず、セッションを延長しません。',
+  'nfy.live_invalid': 'ライブ・バッジ: 10 から 3600 の整数秒、または空。',
 };

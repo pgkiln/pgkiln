@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **In-app notifications** (migration 154; APEX: a notification bell in the header): Settings → User Interface →
+  *Notification bell* gives signed-in users a bell with their unread count and newest notifications; opening one marks
+  it read and goes to its page (a link signed for the recipient), *Mark all read*, and the page
+  `/a/<alias>/notifications`. Application code adds them with `meta.notify(user, title, body, page, items, icon, push)`
+  or the new process type `send_notification`; `meta.unread_notifications()`, `meta.mark_notifications_read()` and
+  the view `meta.my_notifications`. `push => true` also sends a push notification. A user keeps the newest 500.
+- **Badge queries on list entries**: a static list entry's badge can come from a SELECT (`badge_query`), as a
+  button's can, in list regions, the navigation menu and the navigation bar.
+- **Live badges** (Settings → User Interface → *Live badges*, 10 to 3600 seconds): an open page refreshes the badges of
+  its navigation menu and bar, its buttons' badge queries and the bell in place, not while the tab is hidden, at once
+  when a push notification arrives. These requests don't keep an idle session alive.
+- **Dynamic action event `timer`**: actions every so many seconds (the trigger, 5 to 3600) while the page is visible,
+  e.g. `refresh_region`.
+
+### Fixed
+- A sign-in or *Mark all read* `next` address with dot segments (`/a/<alias>/../…`, also `%2e%2e`) goes to the
+  application's home page instead.
+
 ## [0.83.0] - 2026-11-06
 
 ### Added

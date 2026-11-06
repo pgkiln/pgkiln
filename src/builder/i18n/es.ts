@@ -4049,4 +4049,12 @@ export const es: BuilderMessages = {
   'docv.view': 'Vista',
   'docv.doc_column': 'Columna del documento',
   'docv.intro': 'Una vista de documentos muestra cada fila de {table} con sus filas hijas como un documento JSON, como una JSON Relational Duality View de Oracle. Los informes, REST (AutoREST sobre la vista) y MCP leen documentos enteros; un update de la columna del documento escribe la fila y sus hijas en una sentencia. Se aplican la seguridad a nivel de fila y los permisos de la tabla (la vista es security_invoker y recibe los permisos de la tabla).',
+  // ------------------------------------------------------------ Notifications and live badges (sprint 165)
+  'nfy.heading': 'Notificaciones',
+  'nfy.bell': 'Campana de notificaciones en la cabecera',
+  'nfy.bell_help': 'Los usuarios con sesión ven sus notificaciones sin leer y las más recientes; abrir una la marca como leída y va a su página. Añádalas desde SQL con `meta.notify(user, title, body, page, items)` o con un proceso de tipo send_notification; `meta.unread_notifications()` es el número, p. ej. para una insignia.',
+  'nfy.live': 'Insignias en vivo (segundos)',
+  'nfy.live_ph': 'p. ej. 60 (vacío: desactivado)',
+  'nfy.live_help': 'Cada tantos segundos (10 a 3600) una página abierta actualiza sus insignias en su sitio: el menú y la barra de navegación, los botones con consulta de insignia y la campana. No mientras la pestaña está oculta; no mantiene viva la sesión.',
+  'nfy.live_invalid': 'Insignias en vivo: un número entero de segundos de 10 a 3600, o vacío.',
 };

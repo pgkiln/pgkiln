@@ -78,6 +78,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'rest_object',
   // (121) the log of AI tool calls (the agents and tools themselves travel in meta.app)
   'ai_tool_call',
+  // (154) users' in-app notifications
+  'notification',
   // (122) Team Development issues of the workspace, linked to the application (workspace data: the workspace export)
   'team_issue',
   // (123) the log of running workflow instances migrated to a newer version (runtime data, like the instances)
