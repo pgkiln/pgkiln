@@ -7,6 +7,7 @@ import { agentProblems, aiToolProblems, definitionProblems, EFFORTS, type AiAgen
 import type { Session } from '../session.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Shared Components → Generative AI → AI Agents (migration 121): the
 // application's AI tools and AI agents, kept as two JSON lists in meta.app
@@ -18,13 +19,13 @@ type Body = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 const all = (v: string | string[] | undefined) => (v === undefined ? [] : [v].flat());
 
-const TOOL_TYPES: [string, string][] = [
-  ['sql', 'SQL query (read-only, as the application\'s role)'],
-  ['function', 'PL/pgSQL function (may change data)'],
-  ['rest', 'REST data source'],
-  ['javascript', 'JavaScript action in the browser'],
-  ['navigate', 'Navigate: a link to a page'],
-  ['retrieve', 'Retrieve (RAG): rows of a search configuration'],
+const TOOL_TYPES = (): [string, string][] => [
+  ['sql', tx('agt.type.sql')],
+  ['function', tx('agt.type.function')],
+  ['rest', tx('agt.type.rest')],
+  ['javascript', tx('agt.type.javascript')],
+  ['navigate', tx('agt.type.navigate')],
+  ['retrieve', tx('agt.type.retrieve')],
 ];
 
 const when = (d: Date | string) => new Date(d).toISOString().slice(0, 19).replace('T', ' ');
@@ -36,12 +37,12 @@ async function schemes(appId: number) {
 }
 
 const authzSelect = (names: string[], cur: unknown, help: string) =>
-  select('authz', 'Authorization scheme', cur ?? '', [['', '- none: everyone who may use the page -'], ['MUST_NOT_BE_PUBLIC_USER', 'Must not be the public user'], ...names.map((n): [string, string] => [n, n]),
+  select('authz', tx('agt.authorization_scheme'), cur ?? '', [['', tx('agt.none_everyone_who_may_use')], ['MUST_NOT_BE_PUBLIC_USER', tx('agt.must_not_be_the_public')], ...names.map((n): [string, string] => [n, n]),
     ...(typeof cur === 'string' && cur && cur !== 'MUST_NOT_BE_PUBLIC_USER' && !names.includes(cur) ? [[cur, `${cur} (does not exist)`] as [string, string]] : [])], help);
 
 const crumbs = (a: { id: number; name: string }, last?: string): [string, string?][] => [
-  ['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`],
-  ...(last ? [['AI Agents', `${BASE}/apps/${a.id}/ai-agents`], [last]] as [string, string?][] : [['AI Agents']] as [string, string?][]),
+  [tx('agt.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('agt.shared_components'), `${BASE}/apps/${a.id}/shared`],
+  ...(last ? [[tx('agt.ai_agents'), `${BASE}/apps/${a.id}/ai-agents`], [last]] as [string, string?][] : [[tx('agt.ai_agents')]] as [string, string?][]),
 ];
 
 // ---------------------------------------------------------------- forms
@@ -51,7 +52,7 @@ async function agentForm(a: any, s: Session, x: Partial<AiAgent>, original: stri
     `select s.name, s.provider, s.model from meta.ai_service s join meta.app_ai_service x on x.service_id = s.id and x.app_id = $1 where s.enabled order by s.name`, [a.id])).rows;
   const tools = (a.ai_tools ?? []) as AiTool[];
   const chosen = new Set(x.tools ?? []);
-  const svc: [string, string][] = [['', '- choose -'], ...services.map((v): [string, string] => [v.name, `${v.name} (${providerLabel(v.provider)}, ${v.model})`])];
+  const svc: [string, string][] = [['', tx('agt.choose')], ...services.map((v): [string, string] => [v.name, `${v.name} (${providerLabel(v.provider)}, ${v.model})`])];
   if (x.service && !services.some((v) => v.name === x.service)) svc.push([x.service, `${x.service} (not available to this application)`]);
   const usedBy = original
     ? (await owner.query<{ page_no: number; title: string | null; page_id: number; id: number }>(
@@ -59,31 +60,31 @@ async function agentForm(a: any, s: Session, x: Partial<AiAgent>, original: stri
           where p.app_id = $1 and r.type = 'ai_assistant' and upper(r.config->>'agent') = $2 order by p.page_no, r.seq`, [a.id, original])).rows
     : [];
   return html`${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
-    ${services.length ? '' : html`<p class="muted">This application may not use any AI service yet: an administrator adds one under Workspace utilities → AI services and allows this application to use it.</p>`}
+    ${services.length ? '' : html`<p class="muted">${tx('agt.this_application_may_not_use')}</p>`}
     <form method="post" action="${BASE}/apps/${a.id}/ai-agents/agent">${csrf(s)}<input type="hidden" name="original" value="${original}">
-      <fieldset class="prop-group"><legend>Agent</legend><div class="form-grid">
-        ${input('name', 'Name', x.name ?? '', { required: true, placeholder: 'e.g. SALES_AGENT', help: 'Upper case letters, digits and _. AI assistant regions name the agent.' })}
-        ${input('description', 'Description', x.description ?? '')}
-        ${select('service', 'AI service', x.service ?? '', svc, 'The conversation, the tools\' results and the system prompt go to this service\'s provider.')}
-        ${select('effort', 'Reasoning effort', x.effort ?? '', [['', 'The service\'s'], ...EFFORTS.map((e): [string, string] => [e, e])],
-          'Claude: the output effort (thinking depth). OpenAI, Gemini and OpenAI-compatible: reasoning_effort (leave empty for models without reasoning).')}
-        ${input('max_steps', 'Maximum steps', x.max_steps ?? '', { type: 'number', placeholder: '5', help: 'Rounds of tool calls per question (1 – 20); then the model must answer.' })}
-        ${input('max_tokens', 'Maximum output tokens', x.max_tokens ?? '', { type: 'number', placeholder: 'the service\'s', help: 'Per call to the model (never above the service\'s maximum).' })}
-        ${authzSelect(await schemes(a.id), x.authz, 'Only users who pass it may use the agent (regions show a message to the others).')}
-        ${area('system', 'System prompt', x.system ?? '', 6, 'Who the agent is, what it may answer and when to use which tool. &ITEM. is replaced by the item\'s value as delimited data.')}
+      <fieldset class="prop-group"><legend>${tx('agt.agent')}</legend><div class="form-grid">
+        ${input('name', tx('agt.name'), x.name ?? '', { required: true, placeholder: tx('agt.e_g_sales_agent'), help: tx('agt.upper_case_letters_digits_and') })}
+        ${input('description', tx('agt.description'), x.description ?? '')}
+        ${select('service', tx('agt.ai_service'), x.service ?? '', svc, tx('agt.the_conversation_the_tools_results'))}
+        ${select('effort', tx('agt.reasoning_effort'), x.effort ?? '', [['', tx('agt.the_service_s_2')], ...EFFORTS.map((e): [string, string] => [e, e])],
+          tx('agt.effort_help'))}
+        ${input('max_steps', tx('agt.maximum_steps'), x.max_steps ?? '', { type: 'number', placeholder: '5', help: tx('agt.rounds_of_tool_calls_per') })}
+        ${input('max_tokens', tx('agt.maximum_output_tokens'), x.max_tokens ?? '', { type: 'number', placeholder: tx('agt.the_service_s'), help: tx('agt.per_call_to_the_model') })}
+        ${authzSelect(await schemes(a.id), x.authz, tx('agt.only_users_who_pass_it'))}
+        ${area('system', tx('agt.system_prompt'), x.system ?? '', 6, tx('agt.system_help'))}
       </div></fieldset>
-      <fieldset class="prop-group"><legend>Tools</legend>
+      <fieldset class="prop-group"><legend>${tx('agt.tools')}</legend>
         ${tools.length
-          ? html`<p class="muted u-mt0">The agent acts only through the tools you tick.</p>${tools.map((t) => html`<div class="field"><label class="check"><input type="checkbox" name="tools" value="${t.name}"${chosen.has(t.name) ? raw(' checked') : ''}> <b>${t.name}</b> <span class="muted">(${t.type}) ${t.description}</span></label></div>`)}`
-          : html`<p class="muted u-mt0">No AI tools yet: <a href="${BASE}/apps/${a.id}/ai-agents/tool">add one</a>.</p>`}
+          ? html`<p class="muted u-mt0">${tx('agt.the_agent_acts_only_through')}</p>${tools.map((t) => html`<div class="field"><label class="check"><input type="checkbox" name="tools" value="${t.name}"${chosen.has(t.name) ? raw(' checked') : ''}> <b>${t.name}</b> <span class="muted">(${t.type}) ${t.description}</span></label></div>`)}`
+          : html`<p class="muted u-mt0">${tx.rich('agt.no_tools', { link: html`<a href="${BASE}/apps/${a.id}/ai-agents/tool">${tx('agt.add_one')}</a>` })}</p>`}
       </fieldset>
-      <div class="buttons"><button class="btn btn-hot">${original ? 'Save' : 'Add agent'}</button></div>
+      <div class="buttons"><button class="btn btn-hot">${original ? tx('agt.save') : tx('agt.add_agent')}</button></div>
     </form>
-    ${original ? html`<h3>Used by</h3>${usedBy.length
+    ${original ? html`<h3>${tx('agt.used_by')}</h3>${usedBy.length
       ? html`<ul>${usedBy.map((r) => html`<li><a href="${BASE}/pages/${r.page_id}?c=region-${r.id}">Page ${r.page_no}: ${r.title ?? 'AI assistant'}</a></li>`)}</ul>`
-      : html`<p class="muted">No AI assistant region uses this agent yet (Page Designer → an AI assistant region → AI agent).</p>`}
+      : html`<p class="muted">${tx('agt.no_ai_assistant_region_uses')}</p>`}
       <form method="post" action="${BASE}/apps/${a.id}/ai-agents/agent/delete" class="danger-zone">${csrf(s)}<input type="hidden" name="name" value="${original}">
-        <button class="btn btn-danger" data-confirm="Delete agent ${original}? Regions that use it show that the assistant is not set up.">Delete agent</button></form>` : ''}`;
+        <button class="btn btn-danger" data-confirm="${tx('agt.delete_agent_confirm', { name: original })}">${tx('agt.delete_agent')}</button></form>` : ''}`;
 }
 
 async function toolForm(a: any, s: Session, x: Partial<AiTool> & { parameters_text?: string }, original: string, problems: string[]): Promise<Raw> {
@@ -93,28 +94,28 @@ async function toolForm(a: any, s: Session, x: Partial<AiTool> & { parameters_te
   const usedBy = original ? ((a.ai_agents ?? []) as AiAgent[]).filter((g) => (g.tools ?? []).includes(original)).map((g) => g.name) : [];
   return html`${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
     <form method="post" action="${BASE}/apps/${a.id}/ai-agents/tool">${csrf(s)}<input type="hidden" name="original" value="${original}">
-      <fieldset class="prop-group"><legend>Tool</legend><div class="form-grid">
-        ${input('name', 'Name', x.name ?? '', { required: true, placeholder: 'e.g. top_earners', help: 'Letters, digits and _: the model calls the tool by this name.' })}
-        ${select('type', 'Type', x.type ?? 'sql', TOOL_TYPES, 'What the tool does; each type uses the fields below that name it.')}
-        ${area('description', 'Description', x.description ?? '', 2, 'Tells the model what the tool does and when to use it.')}
-        ${area('sql', 'SQL query (SQL)', x.sql ?? '', 6, 'One SELECT with the parameters as :NAME bind values (and :APP_USER, items). Runs as the application\'s database role (grants and row level security apply) in a read-only transaction.', true)}
-        ${input('function', 'Function (PL/pgSQL)', x.function ?? '', { placeholder: 'e.g. sales.give_discount', help: 'schema.name, called as the application\'s role with named arguments: each parameter name in lower case is an argument name (P_ORDER → p_order). It may change data.' })}
-        ${select('source', 'REST data source (REST)', x.source ?? '', [['', '-'], ...sources.map((n): [string, string] => [n, n])], 'The parameters become the source\'s parameters.')}
-        ${input('action', 'Action (JavaScript)', x.action ?? '', { placeholder: 'e.g. highlightOrder', help: 'After the answer the browser calls the function registered with pgkiln.actions.register(name) with {value: the arguments}, and the dynamic actions of the custom event of this name.' })}
-        ${input('pages', 'Pages (Navigate)', (x.pages ?? []).join(', '), { placeholder: 'e.g. 3, 7', help: 'The page numbers the agent may link to. pgkiln offers only those the user may open and builds the URL (item values with their checksum).' })}
-        ${select('search_config', 'Search configuration (Retrieve)', x.search_config ?? '', [['', '-'], ...configs.map((c): [string, string] => [c.name, `${c.name} (${c.search_type})`]),
+      <fieldset class="prop-group"><legend>${tx('agt.tool')}</legend><div class="form-grid">
+        ${input('name', tx('agt.name'), x.name ?? '', { required: true, placeholder: tx('agt.e_g_top_earners'), help: tx('agt.letters_digits_and_the_model') })}
+        ${select('type', tx('agt.type'), x.type ?? 'sql', TOOL_TYPES(), tx('agt.what_the_tool_does_each'))}
+        ${area('description', tx('agt.description'), x.description ?? '', 2, tx('agt.tells_the_model_what_the'))}
+        ${area('sql', tx('agt.sql_query_sql'), x.sql ?? '', 6, tx('agt.sql_help'), true)}
+        ${input('function', tx('agt.function_pl_pgsql'), x.function ?? '', { placeholder: tx('agt.e_g_sales_give_discount'), help: tx('agt.schema_name_called_as_the') })}
+        ${select('source', tx('agt.rest_data_source_rest'), x.source ?? '', [['', '-'], ...sources.map((n): [string, string] => [n, n])], tx('agt.the_parameters_become_the_source'))}
+        ${input('action', tx('agt.action_javascript'), x.action ?? '', { placeholder: tx('agt.e_g_highlightorder'), help: tx('agt.after_the_answer_the_browser') })}
+        ${input('pages', tx('agt.pages_navigate'), (x.pages ?? []).join(', '), { placeholder: 'e.g. 3, 7', help: tx('agt.the_page_numbers_the_agent') })}
+        ${select('search_config', tx('agt.search_configuration_retrieve'), x.search_config ?? '', [['', '-'], ...configs.map((c): [string, string] => [c.name, `${c.name} (${c.search_type})`]),
           ...(x.search_config && !configs.some((c) => c.name === x.search_config) ? [[x.search_config, `${x.search_config} (does not exist)`] as [string, string]] : [])],
           'The model gives a text; pgkiln runs this search configuration (best: vector or hybrid) as the application\'s role, so row level security applies, and returns the best rows\' title, text and score.')}
-        ${area('parameters', 'Parameters (JSON; not for Navigate or Retrieve)', params, 6, '{"DNAME": {"type": "string", "description": "A department name"}, "LIMIT": {"type": "integer", "optional": true}}. Types: string, integer, number, boolean, date; "enum" for a list of texts.', true)}
-        ${input('max_rows', 'Maximum rows', x.max_rows ?? '', { type: 'number', placeholder: '50', help: 'Rows the model gets back (1 – 500).' })}
-        ${input('timeout_s', 'Time limit (seconds)', x.timeout_s ?? '', { type: 'number', placeholder: '15', help: 'SQL and function tools (1 – 60).' })}
-        ${authzSelect(await schemes(a.id), x.authz, 'Only users who pass it are offered the tool.')}
+        ${area('parameters', tx('agt.parameters_json_not_for_navigate'), params, 6, '{"DNAME": {"type": "string", "description": "A department name"}, "LIMIT": {"type": "integer", "optional": true}}. Types: string, integer, number, boolean, date; "enum" for a list of texts.', true)}
+        ${input('max_rows', tx('agt.maximum_rows'), x.max_rows ?? '', { type: 'number', placeholder: '50', help: tx('agt.rows_the_model_gets_back') })}
+        ${input('timeout_s', tx('agt.time_limit_seconds'), x.timeout_s ?? '', { type: 'number', placeholder: '15', help: tx('agt.sql_and_function_tools_1') })}
+        ${authzSelect(await schemes(a.id), x.authz, tx('agt.only_users_who_pass_it_2'))}
       </div></fieldset>
-      <div class="buttons"><button class="btn btn-hot">${original ? 'Save' : 'Add tool'}</button></div>
+      <div class="buttons"><button class="btn btn-hot">${original ? tx('agt.save') : tx('agt.add_tool')}</button></div>
     </form>
-    ${original ? html`<h3>Used by</h3>${usedBy.length ? html`<p>${usedBy.join(', ')}</p>` : html`<p class="muted">No agent uses this tool yet.</p>`}
+    ${original ? html`<h3>${tx('agt.used_by')}</h3>${usedBy.length ? html`<p>${usedBy.join(', ')}</p>` : html`<p class="muted">${tx('agt.no_agent_uses_this_tool')}</p>`}
       <form method="post" action="${BASE}/apps/${a.id}/ai-agents/tool/delete" class="danger-zone">${csrf(s)}<input type="hidden" name="name" value="${original}">
-        <button class="btn btn-danger" data-confirm="Delete tool ${original}?">Delete tool</button></form>` : ''}`;
+        <button class="btn btn-danger" data-confirm="${tx('agt.delete_tool_confirm', { name: original })}">${tx('agt.delete_tool')}</button></form>` : ''}`;
 }
 
 // ---------------------------------------------------------------- reading the forms
@@ -123,7 +124,7 @@ const intOrUndef = (v: string, what: string, errors: string[]) => {
   const t = v.trim();
   if (!t) return undefined;
   const n = Number(t);
-  if (!Number.isInteger(n)) errors.push(`${what} is a whole number.`);
+  if (!Number.isInteger(n)) errors.push(tx('agt.whole_number', { what }));
   return n;
 };
 
@@ -139,9 +140,9 @@ function agentFrom(b: Body, errors: string[]): AiAgent {
   if (effort) x.effort = effort as AiAgent['effort'];
   const tools = all(b.tools).map((t) => t.trim()).filter(Boolean);
   if (tools.length) x.tools = [...new Set(tools)];
-  const steps = intOrUndef(one(b.max_steps), 'Maximum steps', errors);
+  const steps = intOrUndef(one(b.max_steps), tx('agt.f_steps'), errors);
   if (steps !== undefined) x.max_steps = steps;
-  const tokens = intOrUndef(one(b.max_tokens), 'Maximum output tokens', errors);
+  const tokens = intOrUndef(one(b.max_tokens), tx('agt.f_tokens'), errors);
   if (tokens !== undefined) x.max_tokens = tokens;
   const authz = one(b.authz).trim();
   if (authz) x.authz = authz;
@@ -162,16 +163,16 @@ function toolFrom(b: Body, errors: string[]): AiTool & { parameters_text?: strin
     try {
       x.parameters = JSON.parse(params);
     } catch {
-      errors.push('Parameters: not valid JSON.');
+      errors.push(tx('agt.parameters_not_valid_json'));
       x.parameters_text = params;
     }
   }
   if (type === 'sql' || type === 'function' || type === 'rest' || type === 'retrieve') {
-    const rows = intOrUndef(one(b.max_rows), 'Maximum rows', errors);
+    const rows = intOrUndef(one(b.max_rows), tx('agt.f_rows'), errors);
     if (rows !== undefined) x.max_rows = rows;
   }
   if (type === 'sql' || type === 'function' || type === 'retrieve') {
-    const t = intOrUndef(one(b.timeout_s), 'Time limit', errors);
+    const t = intOrUndef(one(b.timeout_s), tx('agt.f_timeout'), errors);
     if (t !== undefined) x.timeout_s = t;
   }
   const authz = one(b.authz).trim();
@@ -197,15 +198,15 @@ async function update(appId: number, change: (agents: AiAgent[], tools: AiTool[]
 /** The "Tool calls" region of Activity → AI usage: the latest calls with their arguments. */
 export async function toolCallTable(appId: number): Promise<Raw> {
   const rows = (await owner.query('select * from meta.ai_tool_call where app_id = $1 order by id desc limit 100', [appId])).rows;
-  return region('Tool calls', html`<p class="muted u-mt0">Every tool call of the application's AI assistants and agents, with the arguments the model gave (kept 30 days).</p>
+  return region(tx('agt.tool_calls'), html`<p class="muted u-mt0">${tx('agt.every_tool_call_of_the')}</p>
     <div class="table-wrap"><table class="report report-reflow">
-    <thead><tr><th>When (UTC)</th><th class="num">Page</th><th>User</th><th>Agent</th><th>Tool</th><th>Arguments</th><th class="num">ms</th><th>Status</th></tr></thead>
+    <thead><tr><th>${tx('agt.when_utc')}</th><th class="num">${tx('agt.page')}</th><th>${tx('agt.user')}</th><th>${tx('agt.agent')}</th><th>${tx('agt.tool')}</th><th>${tx('agt.arguments')}</th><th class="num">ms</th><th>${tx('agt.status')}</th></tr></thead>
     <tbody>${rows.length ? rows.map((r) => html`<tr>
-      <td data-label="When">${when(r.at)}</td><td class="num" data-label="Page">${r.page_no ?? ''}</td><td data-label="User">${r.username ?? ''}</td>
-      <td data-label="Agent">${r.agent ?? html`<span class="muted">region</span>`}</td><td data-label="Tool">${r.tool} <span class="muted">${r.type}</span></td>
-      <td data-label="Arguments"><code class="ai-args">${JSON.stringify(r.arguments)}</code></td><td class="num" data-label="ms">${r.duration_ms}</td>
-      <td data-label="Status"><span class="tag${r.status === 'ok' ? ' tag-ok' : ' tag-error'}">${r.status}</span>${r.message ? html` <span class="muted">${r.message}</span>` : ''}</td></tr>`)
-      : html`<tr><td colspan="8" class="empty">No tool calls yet.</td></tr>`}</tbody></table></div>`);
+      <td data-label="${tx('agt.when')}">${when(r.at)}</td><td class="num" data-label="${tx('agt.page')}">${r.page_no ?? ''}</td><td data-label="${tx('agt.user')}">${r.username ?? ''}</td>
+      <td data-label="${tx('agt.agent')}">${r.agent ?? html`<span class="muted">region</span>`}</td><td data-label="${tx('agt.tool')}">${r.tool} <span class="muted">${r.type}</span></td>
+      <td data-label="${tx('agt.arguments')}"><code class="ai-args">${JSON.stringify(r.arguments)}</code></td><td class="num" data-label="ms">${r.duration_ms}</td>
+      <td data-label="${tx('agt.status')}"><span class="tag${r.status === 'ok' ? ' tag-ok' : ' tag-error'}">${r.status}</span>${r.message ? html` <span class="muted">${r.message}</span>` : ''}</td></tr>`)
+      : html`<tr><td colspan="8" class="empty">${tx('agt.no_tool_calls_yet')}</td></tr>`}</tbody></table></div>`);
 }
 
 // ---------------------------------------------------------------- routes
@@ -230,22 +231,22 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const tools = (a.ai_tools ?? []) as AiTool[];
     const problems = definitionProblems(agents, tools);
     const main = html`${appHeader(a, 'shared', s)}
-      <div class="title-row"><h1>AI Agents</h1></div>
-      <p class="muted u-mt0">An agent answers in an AI assistant region and acts only through the tools you give it: SQL queries (read-only, as the application's database role, so row level security applies), PL/pgSQL functions, REST data sources, JavaScript actions in the browser, and links to pages (pgkiln builds the URL and its checksum, only for pages the user may open). A Retrieve tool gives the agent the rows of a search configuration that match a text by meaning (RAG), again as the application's role. What users type and the tools' results go to the agent's AI service. <a href="${BASE}/apps/${a.id}/ai">AI usage</a> lists every tool call.</p>
+      <div class="title-row"><h1>${tx('agt.ai_agents')}</h1></div>
+      <p class="muted u-mt0">${tx.rich('agt.intro', { usage: html`<a href="${BASE}/apps/${a.id}/ai">${tx('agt.ai_usage')}</a>` })}</p>
       ${problems.length ? html`<div class="alert alert-error" role="alert">${problems.join(' ')}</div>` : ''}
       <div class="columns">
-        ${region('Agents', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Agent</th><th>AI service</th><th>Tools</th><th>Authorization</th></tr></thead>
-          <tbody>${agents.length ? agents.map((g) => html`<tr><td data-label="Agent"><a href="${BASE}/apps/${a.id}/ai-agents/agent?name=${encodeURIComponent(g.name)}">${g.name}</a>${g.description ? html` <span class="muted">${g.description}</span>` : ''}</td>
-            <td data-label="AI service">${g.service}${g.effort ? html` <span class="muted">(${g.effort})</span>` : ''}</td><td data-label="Tools">${(g.tools ?? []).join(', ')}</td><td data-label="Authorization">${g.authz ?? ''}</td></tr>`)
-            : html`<tr><td colspan="4" class="empty">No AI agents yet.</td></tr>`}</tbody></table></div>
-          <p><a class="btn" href="${BASE}/apps/${a.id}/ai-agents/agent">${icon('plus')} Add agent</a></p>`)}
-        ${region('Tools', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Tool</th><th>Type</th><th>Authorization</th></tr></thead>
-          <tbody>${tools.length ? tools.map((t) => html`<tr><td data-label="Tool"><a href="${BASE}/apps/${a.id}/ai-agents/tool?name=${encodeURIComponent(t.name)}">${t.name}</a> <span class="muted">${t.description}</span></td>
-            <td data-label="Type">${t.type}</td><td data-label="Authorization">${t.authz ?? ''}</td></tr>`)
-            : html`<tr><td colspan="3" class="empty">No AI tools yet.</td></tr>`}</tbody></table></div>
-          <p><a class="btn" href="${BASE}/apps/${a.id}/ai-agents/tool">${icon('plus')} Add tool</a></p>`)}
+        ${region(tx('agt.agents'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('agt.agent')}</th><th>${tx('agt.ai_service')}</th><th>${tx('agt.tools')}</th><th>${tx('agt.authorization')}</th></tr></thead>
+          <tbody>${agents.length ? agents.map((g) => html`<tr><td data-label="${tx('agt.agent')}"><a href="${BASE}/apps/${a.id}/ai-agents/agent?name=${encodeURIComponent(g.name)}">${g.name}</a>${g.description ? html` <span class="muted">${g.description}</span>` : ''}</td>
+            <td data-label="${tx('agt.ai_service')}">${g.service}${g.effort ? html` <span class="muted">(${g.effort})</span>` : ''}</td><td data-label="${tx('agt.tools')}">${(g.tools ?? []).join(', ')}</td><td data-label="${tx('agt.authorization')}">${g.authz ?? ''}</td></tr>`)
+            : html`<tr><td colspan="4" class="empty">${tx('agt.no_ai_agents_yet')}</td></tr>`}</tbody></table></div>
+          <p><a class="btn" href="${BASE}/apps/${a.id}/ai-agents/agent">${icon('plus')} ${tx('agt.add_agent')}</a></p>`)}
+        ${region(tx('agt.tools'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('agt.tool')}</th><th>${tx('agt.type')}</th><th>${tx('agt.authorization')}</th></tr></thead>
+          <tbody>${tools.length ? tools.map((t) => html`<tr><td data-label="${tx('agt.tool')}"><a href="${BASE}/apps/${a.id}/ai-agents/tool?name=${encodeURIComponent(t.name)}">${t.name}</a> <span class="muted">${t.description}</span></td>
+            <td data-label="${tx('agt.type')}">${t.type}</td><td data-label="${tx('agt.authorization')}">${t.authz ?? ''}</td></tr>`)
+            : html`<tr><td colspan="3" class="empty">${tx('agt.no_ai_tools_yet')}</td></tr>`}</tbody></table></div>
+          <p><a class="btn" href="${BASE}/apps/${a.id}/ai-agents/tool">${icon('plus')} ${tx('agt.add_tool')}</a></p>`)}
       </div>`;
-    return send(reply, s, shell(s, 'AI Agents', crumbs(a), main));
+    return send(reply, s, shell(s, tx('agt.ai_agents'), crumbs(a), main));
   });
 
   app.get(`${BASE}/apps/:id(^\\d+$)/ai-agents/agent`, async (req: Req, reply) => {
@@ -256,7 +257,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const x = name ? ((a.ai_agents ?? []) as AiAgent[]).find((g) => g.name === name) : {};
     if (!x) return reply.code(404).send('Not found');
     const title = name || 'New agent';
-    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('AI agent', await agentForm(a, s, x, name, []))}`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region(tx('agt.ai_agent'), await agentForm(a, s, x, name, []))}`;
     return send(reply, s, shell(s, title, crumbs(a, title), main));
   });
 
@@ -271,21 +272,21 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const problems = errors.length ? errors : await update(a.id, (agents, tools) => {
       const out = agentProblems(x, new Set(tools.map((t) => t.name)));
       const at = original ? agents.findIndex((g) => g.name === original) : -1;
-      if (original && at < 0) out.push(`Agent ${original} no longer exists.`);
-      if (agents.some((g, i) => g.name === x.name && i !== at)) out.push(`An agent ${x.name} exists already.`);
+      if (original && at < 0) out.push(tx('agt.agent_gone', { name: original }));
+      if (agents.some((g, i) => g.name === x.name && i !== at)) out.push(tx('agt.agent_exists', { name: x.name }));
       if (out.length) return out;
       if (at >= 0) agents[at] = x;
       else agents.push(x);
       return [];
     });
     if (problems.length) {
-      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New agent'}</h1></div>${region('AI agent', await agentForm(a, s, x, original, problems))}`;
+      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New agent'}</h1></div>${region(tx('agt.ai_agent'), await agentForm(a, s, x, original, problems))}`;
       return send(reply.code(422), s, shell(s, original || 'New agent', crumbs(a, original || 'New agent'), main));
     }
     if (original && original !== x.name)
       await owner.query(`update meta.region r set config = jsonb_set(r.config, '{agent}', to_jsonb($3::text)) from meta.page p
                           where p.id = r.page_id and p.app_id = $1 and r.type = 'ai_assistant' and upper(r.config->>'agent') = $2`, [a.id, original, x.name]);
-    flash(s, 'AI agent saved.');
+    flash(s, tx('agt.ai_agent_saved'));
     return back(reply, s, `${BASE}/apps/${a.id}/ai-agents/agent?name=${encodeURIComponent(x.name)}`);
   });
 
@@ -311,7 +312,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const x = name ? ((a.ai_tools ?? []) as AiTool[]).find((t) => t.name === name) : {};
     if (!x) return reply.code(404).send('Not found');
     const title = name || 'New tool';
-    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region('AI tool', await toolForm(a, s, x, name, []))}`;
+    const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${title}</h1></div>${region(tx('agt.ai_tool'), await toolForm(a, s, x, name, []))}`;
     return send(reply, s, shell(s, title, crumbs(a, title), main));
   });
 
@@ -327,15 +328,15 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const problems = errors.length ? errors : await update(a.id, async (agents, tools) => {
       const out = aiToolProblems(tool);
       if (tool.type === 'rest' && tool.source && !(await owner.one('select 1 from meta.rest_source where app_id = $1 and name = $2', [a.id, tool.source])))
-        out.push(`There is no REST data source ${tool.source}.`);
+        out.push(tx('agt.no_rest_source', { name: tool.source }));
       if (tool.type === 'retrieve' && tool.search_config && !(await owner.one(`select 1 from meta.search_config where app_id = $1 and name = $2 and source_type <> 'list'`, [a.id, tool.search_config])))
-        out.push(`There is no search configuration ${tool.search_config} with a table or SQL source.`);
+        out.push(tx('agt.no_search_config', { name: tool.search_config }));
       if (tool.type === 'navigate') {
         const known = new Set((await owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1', [a.id])).rows.map((p) => p.page_no));
-        for (const p of tool.pages ?? []) if (!known.has(p)) out.push(`There is no page ${p}.`);
+        for (const p of tool.pages ?? []) if (!known.has(p)) out.push(tx('agt.no_page', { n: p }));
       }
       const at = original ? tools.findIndex((t) => t.name === original) : -1;
-      if (original && at < 0) out.push(`Tool ${original} no longer exists.`);
+      if (original && at < 0) out.push(tx('agt.tool_gone', { name: original }));
       if (tools.some((t, i) => t.name === tool.name && i !== at)) out.push(`A tool ${tool.name} exists already.`);
       if (out.length) return out;
       if (at >= 0) tools[at] = tool;
@@ -345,10 +346,10 @@ export async function aiAgentRoutes(app: FastifyInstance) {
       return [];
     });
     if (problems.length) {
-      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New tool'}</h1></div>${region('AI tool', await toolForm(a, s, x, original, problems))}`;
+      const main = html`${appHeader(a, 'shared', s)}<div class="title-row"><h1 class="ai-name">${original || 'New tool'}</h1></div>${region(tx('agt.ai_tool'), await toolForm(a, s, x, original, problems))}`;
       return send(reply.code(422), s, shell(s, original || 'New tool', crumbs(a, original || 'New tool'), main));
     }
-    flash(s, 'AI tool saved.');
+    flash(s, tx('agt.ai_tool_saved'));
     return back(reply, s, `${BASE}/apps/${a.id}/ai-agents/tool?name=${encodeURIComponent(tool.name)}`);
   });
 
@@ -359,7 +360,7 @@ export async function aiAgentRoutes(app: FastifyInstance) {
     const name = one((req.body as Body)?.name);
     const problems = await update(a.id, (agents, tools) => {
       const users = agents.filter((g) => (g.tools ?? []).includes(name)).map((g) => g.name);
-      if (users.length) return [`Tool ${name} is used by ${users.join(', ')}: take it out of those agents first.`];
+      if (users.length) return [tx('agt.tool_used', { name, agents: users.join(', ') })];
       const at = tools.findIndex((t) => t.name === name);
       if (at >= 0) tools.splice(at, 1);
       return [];

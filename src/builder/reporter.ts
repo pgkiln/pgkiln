@@ -5,6 +5,7 @@ import { heading } from '../runtime/items.ts';
 import { RESERVED_SCHEMAS, SOURCE_ID, sourcesOf, type Source, type SourceColumn } from '../runtime/data-reporter.ts';
 import type { Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // Page designer → a Data Reporter region → Settings: the data sources the
 // region offers (tables and views, which of their columns, labels and format
@@ -113,7 +114,7 @@ export async function mergeReporterSettings(
       const format = clip(b[`s${i}_fmt_${j}`], 40);
       columns.push({ name, ...(label ? { label } : {}), ...(format ? { format } : {}) });
     }
-    if (!columns.length) errors.push(`Data source ${s.id} offers no columns.`);
+    if (!columns.length) errors.push(tx('drep.no_columns', { id: s.id }));
     const label = clip(b[`s${i}_label`], 80);
     const description = clip(b[`s${i}_description`], 300);
     sources.push({ id: s.id, ...(label ? { label } : {}), ...(description ? { description } : {}), schema: s.schema, table: s.table, columns });
@@ -121,7 +122,7 @@ export async function mergeReporterSettings(
 
   if (b.new_object) {
     const obj = /^\d{1,10}$/.test(b.new_object) ? await lookup.byOid(Number(b.new_object)) : null;
-    if (!obj || RESERVED_SCHEMAS.test(obj.schema)) errors.push('Choose a table or view for the new data source.');
+    if (!obj || RESERVED_SCHEMAS.test(obj.schema)) errors.push(tx('drep.choose_a_table_or_view'));
     else if (sources.length >= MAX_SOURCES) errors.push(`A region offers at most ${MAX_SOURCES} data sources.`);
     else {
       let id = clip(b.new_id, 40).toLowerCase();
@@ -130,7 +131,7 @@ export async function mergeReporterSettings(
         id = '';
       }
       if (id && sources.some((s) => s.id === id)) {
-        errors.push(`There is already a data source ${id}.`);
+        errors.push(tx('drep.exists', { id }));
         id = '';
       }
       if (!id) {
@@ -146,7 +147,7 @@ export async function mergeReporterSettings(
   // (sprint 110) a dataset of the workspace as a new source
   if (b.new_dataset) {
     const name = b.new_dataset.trim().toLowerCase();
-    if (!a.datasets?.has(name)) errors.push('Choose one of the workspace\'s datasets.');
+    if (!a.datasets?.has(name)) errors.push(tx('drep.choose_one_of_the_workspace'));
     else if (sources.length >= MAX_SOURCES) errors.push(`A region offers at most ${MAX_SOURCES} data sources.`);
     else {
       let id = name.slice(0, 36);
@@ -179,12 +180,12 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
           <input type="hidden" name="s${i}_key" value="${src.id}">
           ${!d ? html`<div class="alert alert-error" role="alert">The workspace has no dataset ${src.dataset} (any more).</div>` : ''}
           <div class="form-grid">
-            <div class="field"><label class="label" for="${id(`s${i}_id`)}">Static id</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
-            <div class="field"><label class="label" for="${id(`s${i}_label`)}">Label</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${d?.label ?? ''}"></div>
-            <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">Description (shown to users)</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}" placeholder="the dataset's"></div>
+            <div class="field"><label class="label" for="${id(`s${i}_id`)}">${tx('drep.static_id')}</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
+            <div class="field"><label class="label" for="${id(`s${i}_label`)}">${tx('drep.label')}</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${d?.label ?? ''}"></div>
+            <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">${tx('drep.description_shown_to_users')}</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}" placeholder="${tx('drep.the_dataset_s')}"></div>
           </div>
-          <p class="muted">Its tables, columns, labels, masks and row filter are the dataset's: <a href="${BASE}/reporter">App Builder → Data Reporter</a>.</p>
-          <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> Remove this data source (users' reports on it stop working)</label></div>
+          <p class="muted">${tx.rich('drep.dataset_note', { link: html`<a href="${BASE}/reporter">${tx('drep.app_builder_data_reporter')}</a>` })}</p>
+          <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> ${tx('drep.remove_this_data_source_users')}</label></div>
         </fieldset>`;
       }
       const obj = await findObject(src.schema, src.table);
@@ -197,53 +198,53 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
         ${!obj ? html`<div class="alert alert-error" role="alert">The table or view ${src.schema}.${src.table} does not exist (any more).</div>` : ''}
         ${obj && readable === false ? html`<div class="alert alert-error" role="alert">The application's database role may not read ${src.schema}.${src.table}: grant it SELECT.</div>` : ''}
         <div class="form-grid">
-          <div class="field"><label class="label" for="${id(`s${i}_id`)}">Static id</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
-          <div class="field"><label class="label" for="${id(`s${i}_label`)}">Label</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${heading(src.table)}"></div>
-          <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">Description (shown to users)</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}"></div>
+          <div class="field"><label class="label" for="${id(`s${i}_id`)}">${tx('drep.static_id')}</label><input id="${id(`s${i}_id`)}" value="${src.id}" readonly></div>
+          <div class="field"><label class="label" for="${id(`s${i}_label`)}">${tx('drep.label')}</label><input id="${id(`s${i}_label`)}" name="s${i}_label" maxlength="80" value="${src.label ?? ''}" placeholder="${heading(src.table)}"></div>
+          <div class="field" data-wide><label class="label" for="${id(`s${i}_description`)}">${tx('drep.description_shown_to_users')}</label><input id="${id(`s${i}_description`)}" name="s${i}_description" maxlength="300" value="${src.description ?? ''}"></div>
         </div>
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Offer</th><th scope="col">Column</th><th scope="col">Label</th><th scope="col">Format mask</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('drep.offer')}</th><th scope="col">${tx('drep.column')}</th><th scope="col">${tx('drep.label')}</th><th scope="col">${tx('drep.format_mask')}</th></tr></thead><tbody>
           ${all.map((c, j) => {
             const o = offered.get(c.name);
             return html`<tr>
-              <td data-label="Offer"><input type="hidden" name="s${i}_col_${j}" value="${c.name}"><input type="checkbox" name="s${i}_on_${j}" value="true"${o ? raw(' checked') : ''} aria-label="Offer ${c.name}"></td>
-              <td data-label="Column"><code>${c.name}</code> <span class="muted">${c.type}</span>${c.missing ? html` <span class="tag tag-error">not in the table</span>` : ''}</td>
-              <td data-label="Label"><input name="s${i}_label_${j}" maxlength="80" value="${o?.label ?? ''}" placeholder="${heading(c.name)}" aria-label="Label of ${c.name}"></td>
-              <td data-label="Format mask"><input name="s${i}_fmt_${j}" maxlength="40" value="${o?.format ?? ''}" placeholder="FML999G990D00" aria-label="Format mask of ${c.name}"></td>
+              <td data-label="${tx('drep.offer')}"><input type="hidden" name="s${i}_col_${j}" value="${c.name}"><input type="checkbox" name="s${i}_on_${j}" value="true"${o ? raw(' checked') : ''} aria-label="${tx('drep.aria_offer', { column: c.name })}"></td>
+              <td data-label="${tx('drep.column')}"><code>${c.name}</code> <span class="muted">${c.type}</span>${c.missing ? html` <span class="tag tag-error">${tx('drep.not_in_the_table')}</span>` : ''}</td>
+              <td data-label="${tx('drep.label')}"><input name="s${i}_label_${j}" maxlength="80" value="${o?.label ?? ''}" placeholder="${heading(c.name)}" aria-label="${tx('drep.aria_label', { column: c.name })}"></td>
+              <td data-label="${tx('drep.format_mask')}"><input name="s${i}_fmt_${j}" maxlength="40" value="${o?.format ?? ''}" placeholder="FML999G990D00" aria-label="${tx('drep.aria_format', { column: c.name })}"></td>
             </tr>`;
           })}
         </tbody></table></div>
-        <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> Remove this data source (users' reports on it stop working)</label></div>
+        <div class="field"><label class="check"><input type="checkbox" name="s${i}_remove" value="true"> ${tx('drep.remove_this_data_source_users')}</label></div>
       </fieldset>`;
     }),
   );
-  return html`<h3 class="u-mt15">Data Reporter settings</h3>
-    <p class="muted u-mt0">Signed-in users build their own reports from the data sources below: they pick offered columns, filter, group with totals, sort and draw a chart, and save reports privately or shared. Reports run as the application's database role, so grants and row level security apply.</p>
+  return html`<h3 class="u-mt15">${tx('drep.data_reporter_settings')}</h3>
+    <p class="muted u-mt0">${tx('drep.signed_in_users_build_their')}</p>
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/reporter" class="component-form">${csrf(s)}
-      <fieldset class="prop-group"><legend>Reports</legend><div class="form-grid">
-        <div class="field"><label class="label" for="${id('sharing')}">Who may share reports</label>
-          <select id="${id('sharing')}" name="sharing">${opt('', 'Every signed-in user', sharing)}${opt('off', 'Nobody (private reports only)', sharing)}${schemes.map((n) => opt(`authz:${n}`, `Authorization: ${n}`, sharing))}</select></div>
-        <div class="field"><label class="label" for="${id('page_size')}">Rows per page</label>
+      <fieldset class="prop-group"><legend>${tx('drep.reports')}</legend><div class="form-grid">
+        <div class="field"><label class="label" for="${id('sharing')}">${tx('drep.who_may_share_reports')}</label>
+          <select id="${id('sharing')}" name="sharing">${opt('', tx('drep.every_signed_in_user'), sharing)}${opt('off', tx('drep.nobody_private_reports_only'), sharing)}${schemes.map((n) => opt(`authz:${n}`, `Authorization: ${n}`, sharing))}</select></div>
+        <div class="field"><label class="label" for="${id('page_size')}">${tx('drep.rows_per_page')}</label>
           <input id="${id('page_size')}" name="page_size" type="number" min="5" max="200" value="${cfg.page_size ?? ''}" placeholder="25"></div>
-        <div class="field"><label class="label" for="${id('edit_authz')}">Who may build and save reports</label>
-          <select id="${id('edit_authz')}" name="edit_authz">${opt('', 'Every user', cfg.edit_authz ?? '')}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.edit_authz ?? ''))}</select>
-          <small class="help">Others only run shared reports.</small></div>
-        <div class="field"><label class="label" for="${id('admin_authz')}">Who may unpublish and delete anyone's reports</label>
-          <select id="${id('admin_authz')}" name="admin_authz">${opt('', 'Nobody', cfg.admin_authz ?? '')}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.admin_authz ?? ''))}</select></div>
-        <div class="field"><label class="check"><input type="checkbox" name="publishing" value="true"${cfg.publishing === true ? raw(' checked') : ''}> Shared reports are published: a stable URL, pins</label></div>
-        <div class="field" data-wide><label class="label" for="${id('empty')}">Text when there are no rows</label>
-          <input id="${id('empty')}" name="empty" maxlength="200" value="${cfg.empty ?? ''}" placeholder="No data found"></div>
+        <div class="field"><label class="label" for="${id('edit_authz')}">${tx('drep.who_may_build_and_save')}</label>
+          <select id="${id('edit_authz')}" name="edit_authz">${opt('', tx('drep.every_user'), cfg.edit_authz ?? '')}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.edit_authz ?? ''))}</select>
+          <small class="help">${tx('drep.others_only_run_shared_reports')}</small></div>
+        <div class="field"><label class="label" for="${id('admin_authz')}">${tx('drep.who_may_unpublish_and_delete')}</label>
+          <select id="${id('admin_authz')}" name="admin_authz">${opt('', tx('drep.nobody'), cfg.admin_authz ?? '')}${schemes.map((n) => opt(n, `Authorization: ${n}`, cfg.admin_authz ?? ''))}</select></div>
+        <div class="field"><label class="check"><input type="checkbox" name="publishing" value="true"${cfg.publishing === true ? raw(' checked') : ''}> ${tx('drep.shared_reports_are_published_a')}</label></div>
+        <div class="field" data-wide><label class="label" for="${id('empty')}">${tx('drep.text_when_there_are_no')}</label>
+          <input id="${id('empty')}" name="empty" maxlength="200" value="${cfg.empty ?? ''}" placeholder="${tx('drep.no_data_found')}"></div>
       </div></fieldset>
       ${sourceSets}
-      <fieldset class="prop-group"><legend>Add a data source</legend><div class="form-grid">
-        <div class="field" data-wide><label class="label" for="${id('new_object')}">Table or view</label>
+      <fieldset class="prop-group"><legend>${tx('drep.add_a_data_source')}</legend><div class="form-grid">
+        <div class="field" data-wide><label class="label" for="${id('new_object')}">${tx('drep.table_or_view')}</label>
           <select id="${id('new_object')}" name="new_object"><option value="">- none -</option>${objects.map((o) => html`<option value="${o.oid}">${o.name}${o.access ? '' : ' (no access for the app role)'}</option>`)}</select></div>
-        <div class="field"><label class="label" for="${id('new_id')}">Static id</label><input id="${id('new_id')}" name="new_id" maxlength="40" pattern="[a-z][a-z0-9_]*" placeholder="from the name"></div>
-        <div class="field"><label class="label" for="${id('new_label')}">Label</label><input id="${id('new_label')}" name="new_label" maxlength="80"></div>
+        <div class="field"><label class="label" for="${id('new_id')}">${tx('drep.static_id')}</label><input id="${id('new_id')}" name="new_id" maxlength="40" pattern="[a-z][a-z0-9_]*" placeholder="${tx('drep.from_the_name')}"></div>
+        <div class="field"><label class="label" for="${id('new_label')}">${tx('drep.label')}</label><input id="${id('new_label')}" name="new_label" maxlength="80"></div>
       </div>
-      <small class="help">All columns are offered at first (except binary ones); untick those users should not see. Prefer a view that shows exactly what business users may report on.</small>
-      ${datasets.length ? html`<div class="form-grid"><div class="field" data-wide><label class="label" for="${id('new_dataset')}">Or a dataset of the workspace</label>
+      <small class="help">${tx('drep.all_columns_are_offered_at')}</small>
+      ${datasets.length ? html`<div class="form-grid"><div class="field" data-wide><label class="label" for="${id('new_dataset')}">${tx('drep.or_a_dataset_of_the')}</label>
         <select id="${id('new_dataset')}" name="new_dataset"><option value="">- none -</option>${datasets.map((d) => html`<option value="${d.name}">${d.label} (${d.name})</option>`)}</select></div></div>` : ''}</fieldset>
-      <div class="buttons"><button class="btn btn-hot">Save Data Reporter settings</button></div>
+      <div class="buttons"><button class="btn btn-hot">${tx('drep.save_data_reporter_settings')}</button></div>
     </form>`;
 }
 
@@ -262,7 +263,7 @@ export async function reporterBuilderRoutes(app: FastifyInstance) {
     const { config, errors } = await mergeReporterSettings(r.config ?? {}, (req.body ?? {}) as Body, { authz: new Set(schemes.map((x) => x.name.toUpperCase())), datasets: new Set(datasets.map((x) => x.name)) });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     if (errors.length) flash(s, errors.join(' '), 'error');
-    else flash(s, 'Settings saved.');
+    else flash(s, tx('drep.settings_saved'));
     return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
   });
 }
