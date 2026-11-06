@@ -10,8 +10,8 @@ import { appOr404 } from './forms.ts';
 import { isAdmin } from './locks.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, select, send, shell, workshopTabs, type Req } from './ui.ts';
 import { workshopDb } from './workspaces.ts';
-import { WIZARD_KINDS, wizardTables } from './wizards.ts';
-import { tr } from './i18n.ts';
+import { kindLabel, WIZARD_KINDS, wizardTables } from './wizards.ts';
+import { scopedTx as tx, tr } from './i18n.ts';
 
 // App Builder AI (migration 062), with the AI service an administrator
 // chooses for the builder (meta.builder_ai):
@@ -41,7 +41,7 @@ export async function builderService() {
 
 async function ask(s: Session, req: Parameters<typeof generate>[1]) {
   const svc = await builderService();
-  if (!svc) throw new AiError('config', 'The App Builder has no AI service yet (an administrator chooses one under SQL Workshop → AI).');
+  if (!svc) throw new AiError('config', tx('aib.the_app_builder_has_no'));
   return generate(svc.name, req, { appId: null, user: s.username, source: 'builder' });
 }
 
@@ -128,7 +128,7 @@ async function serviceBox(s: Session) {
     <div class="buttons"><button class="btn">${tx('scr.save')}</button></div></form>`;
 }
 
-const errorBox = (e: unknown) => html`<div class="alert alert-error" role="alert">${e instanceof AiError || e instanceof Error ? e.message : 'The AI request failed.'}</div>`;
+const errorBox = (e: unknown) => html`<div class="alert alert-error" role="alert">${e instanceof AiError || e instanceof Error ? e.message : tx('aib.the_ai_request_failed')}</div>`;
 
 // ---------------------------------------------------------------- SQL Workshop → AI
 
@@ -228,33 +228,33 @@ async function freePages(appId: number) {
 async function pagesPage(s: Session, reply: FastifyReply, a: any, description: string, proposals: Proposal[] | null, message?: Raw) {
   const tables = (await wizardTables(a.db_role)).filter((t) => t.access).map((t) => t.t);
   const svc = await builderService();
-  const kindOptions = WIZARD_KINDS.map(([k, label]): [string, string] => [k, label]);
+  const kindOptions = WIZARD_KINDS.map(([k, label]): [string, string] => [k, kindLabel(k, label)]);
   const main = html`${appHeader(a, 'pages', s)}
     ${message ?? ''}
-    ${region('Create pages with AI', html`
-      <p class="muted u-mt0">Describe the pages you want. The App Builder's AI service proposes pages of the create page wizards for tables and views the application's role (${a.db_role ?? 'the owner'}) can read; you check the proposals and create the ones you tick. Table and column names, types and <a href="${BASE}/sql/ai/describe">descriptions</a> are sent to the service, never rows.</p>
-      ${svc ? '' : html`<div class="alert alert-info">The App Builder has no AI service yet: an administrator chooses one under <a href="${BASE}/sql/ai">SQL Workshop → AI</a>.</div>`}
+    ${region(tx('aib.create_pages_with_ai'), html`
+      <p class="muted u-mt0">${tx.rich('aib.intro', { role: a.db_role ?? tx('aib.the_owner'), descriptions: html`<a href="${BASE}/sql/ai/describe">${tx('aib.descriptions')}</a>` })}</p>
+      ${svc ? '' : html`<div class="alert alert-info">${tx.rich('aib.no_service', { link: html`<a href="${BASE}/sql/ai">${tx('aib.sql_workshop_ai')}</a>` })}</div>`}
       <form method="post" action="${BASE}/apps/${a.id}/ai-pages">${csrf(s)}
-        <div class="field"><label class="label" for="f_description">Description</label>
-          <textarea id="f_description" name="description" rows="4" maxlength="4000" required placeholder="e.g. A page to manage employees, a calendar of leave, and a chart of salaries per department">${description}</textarea></div>
-        <div class="buttons"><button class="btn btn-hot" data-busy="Thinking…"${svc ? '' : raw(' disabled')}>Propose pages</button></div>
+        <div class="field"><label class="label" for="f_description">${tx('aib.description')}</label>
+          <textarea id="f_description" name="description" rows="4" maxlength="4000" required placeholder="${tx('aib.e_g_a_page_to')}">${description}</textarea></div>
+        <div class="buttons"><button class="btn btn-hot" data-busy="${tx('aib.thinking')}"${svc ? '' : raw(' disabled')}>${tx('aib.propose_pages')}</button></div>
       </form>`)}
-    ${proposals ? region('Proposed pages', proposals.length ? html`
+    ${proposals ? region(tx('aib.proposed_pages'), proposals.length ? html`
       <form method="post" action="${BASE}/apps/${a.id}/ai-pages/create">${csrf(s)}
         <input type="hidden" name="count" value="${proposals.length}">
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">Create</th><th scope="col">Page type</th><th scope="col">Table or view</th><th scope="col">Page</th><th scope="col">Form page</th><th scope="col">Label</th><th scope="col">Why</th></tr></thead><tbody>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th scope="col">${tx('aib.create')}</th><th scope="col">${tx('aib.page_type')}</th><th scope="col">${tx('aib.table_or_view')}</th><th scope="col">${tx('aib.page')}</th><th scope="col">${tx('aib.form_page')}</th><th scope="col">${tx('aib.label')}</th><th scope="col">${tx('aib.why')}</th></tr></thead><tbody>
           ${proposals.map((p, i) => html`<tr>
-            <td data-label="Create"><input type="checkbox" name="on_${i}" value="true" checked aria-label="Create proposal ${i + 1}"></td>
-            <td data-label="Page type"><select name="kind_${i}" aria-label="Page type of proposal ${i + 1}">${kindOptions.map(([k, l]) => opt(k, l, p.kind))}</select></td>
-            <td data-label="Table or view"><select name="table_${i}" aria-label="Table of proposal ${i + 1}">${tables.map((t) => opt(t, t, p.table))}</select></td>
-            <td data-label="Page"><input name="page_${i}" type="number" min="1" max="99999" value="${p.page}" aria-label="Page number of proposal ${i + 1}"></td>
-            <td data-label="Form page"><input name="form_${i}" type="number" min="1" max="99999" value="${p.form_page ?? ''}" aria-label="Form page of proposal ${i + 1} (report and form)"></td>
-            <td data-label="Label"><input name="label_${i}" maxlength="80" value="${p.label}" aria-label="Label of proposal ${i + 1}"></td>
-            <td data-label="Why" class="muted">${p.reason ?? ''}</td></tr>`)}
+            <td data-label="${tx('aib.create')}"><input type="checkbox" name="on_${i}" value="true" checked aria-label="${tx('aib.p_create', { n: i + 1 })}"></td>
+            <td data-label="${tx('aib.page_type')}"><select name="kind_${i}" aria-label="${tx('aib.p_kind', { n: i + 1 })}">${kindOptions.map(([k, l]) => opt(k, l, p.kind))}</select></td>
+            <td data-label="${tx('aib.table_or_view')}"><select name="table_${i}" aria-label="${tx('aib.p_table', { n: i + 1 })}">${tables.map((t) => opt(t, t, p.table))}</select></td>
+            <td data-label="${tx('aib.page')}"><input name="page_${i}" type="number" min="1" max="99999" value="${p.page}" aria-label="${tx('aib.p_page', { n: i + 1 })}"></td>
+            <td data-label="${tx('aib.form_page')}"><input name="form_${i}" type="number" min="1" max="99999" value="${p.form_page ?? ''}" aria-label="${tx('aib.p_form', { n: i + 1 })}"></td>
+            <td data-label="${tx('aib.label')}"><input name="label_${i}" maxlength="80" value="${p.label}" aria-label="${tx('aib.p_label', { n: i + 1 })}"></td>
+            <td data-label="${tx('aib.why')}" class="muted">${p.reason ?? ''}</td></tr>`)}
         </tbody></table></div>
-        <div class="buttons"><button class="btn btn-hot">Create the ticked pages</button></div>
-      </form>` : html`<p class="muted">No pages were proposed: describe them differently, or check that the application's role may read the tables.</p>`) : ''}`;
-  return send(reply, s, shell(s, a.name, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create pages with AI']], main));
+        <div class="buttons"><button class="btn btn-hot">${tx('aib.create_the_ticked_pages')}</button></div>
+      </form>` : html`<p class="muted">${tx('aib.no_pages_were_proposed_describe')}</p>`) : ''}`;
+  return send(reply, s, shell(s, a.name, [[tx('aib.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('aib.create_pages_with_ai')]], main));
 }
 
 /** The model's proposals checked: known page types and tables, free page numbers (others moved to the next free ones). */
@@ -293,7 +293,7 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
   app.post(`${BASE}/sql/ai/service`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators choose the App Builder\'s AI service.');
+    if (!(await isAdmin(s.username))) return reply.code(403).send(tx('aib.admins_only'));
     const name = String(req.body?.service ?? '').toUpperCase();
     const svc = name ? await owner.one<{ id: number }>('select id from meta.ai_service where name = $1', [name]) : null;
     if (name && !svc) {
@@ -452,9 +452,9 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const description = String(req.body?.description ?? '').trim().slice(0, 4000);
     try {
-      if (!description) throw new AiError('config', 'Describe the pages you want.');
+      if (!description) throw new AiError('config', tx('aib.describe_the_pages_you_want'));
       const tables = (await wizardTables(a.db_role)).filter((t) => t.access).map((t) => t.t).slice(0, 300);
-      if (!tables.length) throw new AiError('config', `The application's role ${a.db_role} can't read any table or view yet.`);
+      if (!tables.length) throw new AiError('config', tx('aib.no_tables', { role: a.db_role }));
       const used = await freePages(a.id);
       const firstFree = (() => {
         let n = 1;
@@ -517,13 +517,13 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
       const form = num(b[`form_${i}`]);
       const label = String(b[`label_${i}`] ?? '').trim().slice(0, 80);
       if (!KINDS.has(kind) || !tables.has(table) || page === null || (kind === 'report_form' && form === null)) {
-        errors.push(`Proposal ${i + 1}: choose a page type, a table the application can read and free page numbers.`);
+        errors.push(tx('aib.p_invalid', { n: i + 1 }));
         continue;
       }
       chosen.push({ kind, table, page, form_page: kind === 'report_form' ? form : null, label: label || table.split('.').pop()! });
     }
     if (errors.length || !chosen.length) {
-      flash(s, errors.length ? errors.join(' ') : 'Tick the pages to create.', 'error');
+      flash(s, errors.length ? errors.join(' ') : tx('aib.tick_the_pages_to_create'), 'error');
       return back(reply, s, `${BASE}/apps/${a.id}/ai-pages`);
     }
     try {
@@ -538,10 +538,10 @@ export async function aiBuilderRoutes(app: FastifyInstance) {
         }
         return out;
       });
-      flash(s, `Pages ${created.join(', ')} created. Make sure the application's database role has the privileges they need.`);
+      flash(s, tx('aib.created', { list: created.join(', ') }));
       return back(reply, s, `${BASE}/apps/${a.id}`);
     } catch (e) {
-      flash(s, `No pages were created: ${(e as Error).message}`, 'error');
+      flash(s, tx('aib.not_created', { error: (e as Error).message }), 'error');
       return back(reply, s, `${BASE}/apps/${a.id}/ai-pages`);
     }
   });

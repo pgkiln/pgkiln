@@ -23,7 +23,7 @@ import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './works
 import { securityRoutes } from './security.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
-import { WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
+import { kindLabel, WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { createPageRoutes } from './create-page.ts';
 import { featureRoutes } from './features.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
@@ -686,7 +686,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <p class="muted u-mt0">${tx('app.from_table_text')}</p>
           <form method="get" action="${BASE}/apps/${a.id}/wizard">
             <div class="form-grid">
-              ${select('kind', tx('app.page_type'), 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, label]))}
+              ${select('kind', tx('app.page_type'), 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, kindLabel(k, label)]))}
               ${select('table', tx('app.table_or_view'), '', tables.map((t): [string, string] => [t.t, t.access ? t.t : tx('app.no_access', { table: t.t, role: a.db_role })]))}
             </div>
             <div class="buttons"><button class="btn btn-hot">${tx('common.next')}</button></div>
