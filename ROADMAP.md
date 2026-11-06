@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.82.0 (November 2026): the component depth pass against APEX 26.2's Page Designer: server-side condition types for every component, APEX's validation types, more dynamic action events, conditions and actions, process types (Close Dialog, Clear Session State, Print Report, Human Task …), the items Image Upload, autocomplete, Percent Graph and Display Map, map layers Lines, Polygons and Extruded Polygons, and a Workflow Diagram region.
+- **Current release:** 0.83.0 (November 2026): component events for dynamic actions (grids, calendars, maps, trees), the SQL Workshop tools and the region and report settings in the eleven builder languages, and tidier builder spacing and REST API page.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
