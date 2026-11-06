@@ -91,7 +91,7 @@ async function listPage(s: Session, q: Record<string, unknown>) {
         <div class="field"><label class="label" for="f_app">${tx('cl.compare_with')}</label><select id="f_app" name="app">${exportsList.map((e) =>
           html`<option value="${e.id}"${e === exp ? raw(' selected') : ''}>${e.name} (${when(e.at)})</option>`)}</select></div>
         <button class="btn u-selfend">${tx('cl.show')}</button></form>
-        <p class="muted small u-mt0">${tx.rich('cl.export_note', { after: html`<em>${tx('cl.after_it')}</em>` })}</p>`
+        <p class="muted small u-mt0">${tx.rich('cl.export_note', { after: html`<em>${tx('cl.after_it_title')}</em>` })}</p>`
     : html`<p class="muted small">${tx('cl.no_exports')}</p>`;
   const downloads = list.length
     ? html`<form method="post" action="${CHANGES}/download" class="u-mt1">${csrf(s)}<input type="hidden" name="schema" value="${schema}">
