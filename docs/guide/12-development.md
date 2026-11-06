@@ -338,7 +338,8 @@ src/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
     i18n.ts                (sprint 121) the builder's own texts: BUILDER_LANGUAGES, tr(s) / translatorFor(lang) → tx(key, params),
-                           tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels)
+                           tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels),
+                           (sprint 162) tx.code (`backticks` become <code>), withTranslator / scopedTx (a request-scoped translator)
     i18n/                  en.ts defines the builder's keys; de, es, fr, it, nl, pt, zh-cn, zh-tw, ja, ko (sprint 134) are Records of the same keys
     language.ts            (migration 127) the status bar's language menu (POST /builder/language), the sign-in page's
                            language links (?lang=, a cookie), meta.developer.language
@@ -704,7 +705,14 @@ const tx = tr(s);                                  // the developer's language (
 html`<h2>${tx('wh.summary')}</h2><p>${tx('ab.count', { n: 3 })}</p>`;   // plain text: html`` escapes it
 tx.rich('ab.none_yet', { create: html`<a href="…">${tx('ab.create_one')}</a>` });   // markup inside a sentence
 tx.dyn(`gallery.region.${type}`, REGION_LABELS[type][0]);              // a key made at run time, with a fallback
+tx.code('cr.schedule_help');                     // (sprint 162) `backticked` parts become <code>: syntax help
 ```
+
+(sprint 162) A long form built by many helpers (the region and report settings, RESTful Services' pages) doesn't
+pass `tx` to each of them: its entry point runs inside `withTranslator(tr(s), () => …)`, and the helpers import
+`scopedTx as tx`, which takes the translator of the request being rendered from an `AsyncLocalStorage` (so two
+requests in different languages never mix; `test/builder-i18n.test.ts` renders German and French concurrently).
+Outside `withTranslator` it is English.
 
 A missing text falls back to English, never to the raw key. Shared helpers that render chrome take the session as
 an optional last argument (`appHeader(a, 'pages', s)`, `workshopTabs('sql', s)`); `shell()` translates known English

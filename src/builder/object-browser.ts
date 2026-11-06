@@ -140,7 +140,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         if (!list.length && filter) return '';
         return html`<details class="ob-folder"${list.length && (filter || list.length <= 50 || selected?.type === t) ? raw(' open') : ''}>
           <summary>${icon(ic)}<span>${tx.dyn(`ob.type.${t}`, label)}</span><span class="kind">${list.length}</span></summary>
-          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">${tx('ob.extension')}</span>` : ''}</a>${objectMenu(schema, o)}</li>`)}</ul>
+          <ul class="tree">${list.map((o) => html`<li class="ob-item"><a href="${link({ k: o.type, o: o.ref })}"${selected === o ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${o.name}</span>${o.rls ? html`<span class="tag">RLS</span>` : ''}${o.ext ? html`<span class="tag">${tx('ob.extension')}</span>` : ''}</a>${objectMenu(schema, o, tx)}</li>`)}</ul>
         </details>`;
       })}</div>`;
 
@@ -160,7 +160,7 @@ export async function objectBrowserRoutes(app: FastifyInstance) {
         <a class="create-source" href="${BASE}/sql/load">${icon('upload')}<span><b>${tx('ob.tile.load')}</b><small class="muted">${tx('ob.tile.load.desc')}</small></span></a></div>
         <p class="muted">${tx('ob.select_hint')}</p>`);
 
-    const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('objects', s)}
+    const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('objects', s)}
       <div class="ob-head">
         <form method="get" class="ob-schema">${filter ? html`<input type="hidden" name="q" value="${filter}">` : ''}
           <label class="label" for="ob-schema">${tx('ob.schema')}</label>

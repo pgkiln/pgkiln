@@ -67,7 +67,7 @@ describe('builder message files and their coverage', () => {
     for (const f of SOURCE) {
       const src = readFileSync(f, 'utf8');
       // tx('key'), tx.rich('key', …), tr(s)('key'), tx(cond ? 'a' : 'b')
-      for (const m of src.matchAll(/\b(?:tx(?:\.rich)?|tr\([^()]*\))\(\s*([^,)]*)/g)) {
+      for (const m of src.matchAll(/\b(?:tx(?:\.rich|\.code)?|tr\([^()]*\))\(\s*([^,)]*)/g)) {
         const arg = m[1];
         for (const k of arg.matchAll(/'([a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+)'/g)) {
           literal++;
@@ -369,6 +369,46 @@ describe('choosing the builder language', () => {
     await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
   });
 
+
+  test('region and report settings follow the language, also with concurrent requests in two languages (sprint 162)', async () => {
+    const region = async (type: string) => (await owner.one<{ id: number; page_id: number }>(
+      `select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.type = $2 order by r.id limit 1`, [appId, type]))!;
+    const chart = await region('chart');
+    const report = await region('report');
+    const url = (r: { id: number; page_id: number }) => `/builder/pages/${r.page_id}?c=region-${r.id}`;
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    await owner.query(`update meta.developer set language = 'fr' where username = $1`, [OTHER]);
+    const [bde, bfr] = await Promise.all([signIn(DEV), signIn(OTHER)]);
+    // concurrent: the async context keeps each request's language
+    const [cde, cfr, rde, rfr] = (await Promise.all([bde.get(url(chart)), bfr.get(url(chart)), bde.get(url(report)), bfr.get(url(report))])).map((r) => r.body);
+    for (const k of ['rs.t.chart', 'rs.appearance'] as BuilderKey[]) {
+      assert.ok(cde.includes(esc(de[k])), `de ${k}`);
+      assert.ok(cfr.includes(esc(fr[k])), `fr ${k}`);
+    }
+    assert.ok(cde.includes('<code>label, start, end</code>') && cde.includes('Gantt-Diagramm'), 'help text with code, in German');
+    for (const k of ['rpt.report_settings', 'rpt.rows_per_page', 'rpt.save_report_settings'] as BuilderKey[]) {
+      assert.ok(rde.includes(esc(de[k])), `de ${k}`);
+      assert.ok(rfr.includes(esc(fr[k])), `fr ${k}`);
+    }
+    assert.ok(!rde.includes('>Save report settings<') && !cfr.includes('Gantt chart reads'), 'not English');
+    for (const u of [DEV, OTHER]) await owner.query(`update meta.developer set language = null where username = $1`, [u]);
+    // English without a choice
+    assert.ok((await (await signIn(OTHER)).get(url(report))).body.includes('>Save report settings<'));
+  });
+
+  test('RESTful Services and Load Data follow the language (sprint 162)', async () => {
+    await owner.query(`update meta.developer set language = 'de' where username = $1`, [DEV]);
+    const b = await signIn(DEV);
+    const mods = (await b.get('/builder/sql/rest/modules')).body;
+    for (const k of ['rm.modules', 'rm.create_a_module', 'rm.create_module', 'rm.base_path'] as BuilderKey[]) assert.ok(mods.includes(esc(de[k])), k);
+    assert.ok(mods.includes('<code>meta.app_user()</code>'), 'the intro keeps its code');
+    const auto = (await b.get('/builder/sql/rest')).body;
+    for (const k of ['ar.published', 'ar.enable_a', 'ar.table_or_view', 'ar.m.post'] as BuilderKey[]) assert.ok(auto.includes(esc(de[k])), k);
+    const load = (await b.get('/builder/sql/load')).body;
+    for (const k of ['dl.from_file', 'dl.headers', 'dl.next'] as BuilderKey[]) assert.ok(load.includes(esc(de[k])), k);
+    for (const page of [mods, auto, load]) assert.ok(!/>(Create module|Published objects|Load data from a file)</.test(page), 'not English');
+    await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
+  });
   test('the builder error pages follow the device language', async () => {
     const b = new Browser(app, { accept: 'text/html' });
     await b.get('/builder/login?lang=de');

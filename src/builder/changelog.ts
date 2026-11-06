@@ -10,6 +10,7 @@ import { splitStatements } from '../binds.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { currentWorkspace, workshopDb } from './workspaces.ts';
+import { tr, type BuilderKey } from './i18n.ts';
 
 // (sprint 106, Database Actions DA-17; migration 118) SQL Workshop › Change Log: the change sets recorded from the
 // worksheet, Table Properties and Schema Comparison (src/changelog.ts), per schema of the developer's workspace:
@@ -51,9 +52,10 @@ async function latestExports(s: Session) {
 }
 
 const when = (t: string | null) => (t ? t.slice(0, 16).replace('T', ' ') : '');
-const SOURCE_LABELS: Record<string, string> = { worksheet: 'SQL Worksheet', table: 'Table Properties', compare: 'Schema Comparison' };
+const SOURCE_LABELS: Record<string, BuilderKey> = { worksheet: 'sql.tool.worksheet', table: 'cl.from.table', compare: 'sql.tool.compare' };
 
 async function listPage(s: Session, q: Record<string, unknown>) {
+  const tx = tr(s);
   const schemas = await schemasWithChanges(s);
   const schema = schemas.some((x) => x.schema_name === q.schema) ? String(q.schema) : (schemas[0]?.schema_name ?? '');
   const exportsList = await latestExports(s);
@@ -62,55 +64,55 @@ async function listPage(s: Session, q: Record<string, unknown>) {
   const inExport = (c: ChangeSet) => !!exp && c.created_at <= exp.at;
   const pending = list.filter((c) => !c.exported_at).length;
   const nav = schemas.length
-    ? html`<nav class="settings-tabs" aria-label="Schemas">${schemas.map((x) => html`<a href="${CHANGES}?${new URLSearchParams({ schema: x.schema_name, ...(exp ? { app: String(exp.id) } : {}) })}"${x.schema_name === schema ? raw(' aria-current="page"') : ''}>${x.schema_name} <span class="muted small">${x.n}</span></a>`)}</nav>`
+    ? html`<nav class="settings-tabs" aria-label="${tx('cl.schemas')}">${schemas.map((x) => html`<a href="${CHANGES}?${new URLSearchParams({ schema: x.schema_name, ...(exp ? { app: String(exp.id) } : {}) })}"${x.schema_name === schema ? raw(' aria-current="page"') : ''}>${x.schema_name} <span class="muted small">${x.n}</span></a>`)}</nav>`
     : '';
   const table = list.length
-    ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>#</th><th>Change set</th><th>Author</th><th>Recorded</th><th>From</th><th>Latest app export</th><th>Migration file</th></tr></thead><tbody>
+    ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>#</th><th>${tx('cl.col.change_set')}</th><th>${tx('cl.col.author')}</th><th>${tx('cl.col.recorded')}</th><th>${tx('cl.col.from')}</th><th>${tx('cl.col.latest_export')}</th><th>${tx('cl.col.migration_file')}</th></tr></thead><tbody>
       ${list.map((c) => html`<tr>
         <td data-label="#">${c.seq}</td>
-        <td data-label="Change set" class="wrap-anywhere"><details><summary><code>${flywayName(c)}</code>${c.object_name ? html` <span class="muted small">${c.object_name}</span>` : ''}</summary>
+        <td data-label="${tx('cl.col.change_set')}" class="wrap-anywhere"><details><summary><code>${flywayName(c)}</code>${c.object_name ? html` <span class="muted small">${c.object_name}</span>` : ''}</summary>
           <pre class="source wrap-pre" data-code-view="sql" tabindex="0" aria-label="SQL">${c.sql}</pre>
           <form method="post" action="${CHANGES}/${c.id}" class="search u-mwnone">${csrf(s)}
-            <div class="field"><label class="label" for="f_name_${c.id}">Name</label><input id="f_name_${c.id}" name="name" value="${c.name}" pattern="[a-z0-9][a-z0-9_]{0,59}" required></div>
-            <button class="btn btn-sm u-selfend">Rename</button></form>
+            <div class="field"><label class="label" for="f_name_${c.id}">${tx('scr.name')}</label><input id="f_name_${c.id}" name="name" value="${c.name}" pattern="[a-z0-9][a-z0-9_]{0,59}" required></div>
+            <button class="btn btn-sm u-selfend">${tx('cl.rename')}</button></form>
           <div class="buttons">
             <form method="post" action="${CHANGES}/${c.id}/download" class="u-inline">${csrf(s)}<button class="btn btn-sm">${icon('download')} ${flywayName(c)}</button></form>
-            <form method="post" action="${CHANGES}/${c.id}/delete" class="u-inline">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="Delete change set ${c.seq} from the log? The database is not changed, and its number is not given again.">${icon('trash')} Delete</button></form>
+            <form method="post" action="${CHANGES}/${c.id}/delete" class="u-inline">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('cl.delete_confirm', { n: c.seq })}">${icon('trash')} ${tx('scr.delete')}</button></form>
           </div></details></td>
-        <td data-label="Author">${c.author}</td>
-        <td data-label="Recorded">${when(c.created_at)}</td>
-        <td data-label="From">${SOURCE_LABELS[c.source] ?? c.source}</td>
-        <td data-label="Latest app export">${exp ? (inExport(c) ? html`<span class="tag">✓ in it</span>` : html`<span class="tag tag-warn">after it</span>`) : html`<span class="muted">—</span>`}</td>
-        <td data-label="Migration file">${c.exported_at ? `written ${when(c.exported_at)}` : html`<span class="muted">not yet</span>`}</td></tr>`)}
+        <td data-label="${tx('cl.col.author')}">${c.author}</td>
+        <td data-label="${tx('cl.col.recorded')}">${when(c.created_at)}</td>
+        <td data-label="${tx('cl.col.from')}">${SOURCE_LABELS[c.source] ? tx(SOURCE_LABELS[c.source]) : c.source}</td>
+        <td data-label="${tx('cl.col.latest_export')}">${exp ? (inExport(c) ? html`<span class="tag">✓ ${tx('cl.in_it')}</span>` : html`<span class="tag tag-warn">${tx('cl.after_it')}</span>`) : html`<span class="muted">—</span>`}</td>
+        <td data-label="${tx('cl.col.migration_file')}">${c.exported_at ? tx('cl.written', { time: when(c.exported_at) }) : html`<span class="muted">${tx('cl.not_yet')}</span>`}</td></tr>`)}
       </tbody></table></div>`
-    : html`<p class="muted">No change sets yet. DDL you run in the SQL Worksheet, apply in Table Properties or apply from Schema Comparison is recorded here.</p>`;
+    : html`<p class="muted">${tx('cl.none_yet')}</p>`;
   const exportPick = exportsList.length
     ? html`<form method="get" action="${CHANGES}" class="search u-mwnone u-mb1"><input type="hidden" name="schema" value="${schema}">
-        <div class="field"><label class="label" for="f_app">Compare with the latest export of</label><select id="f_app" name="app">${exportsList.map((e) =>
+        <div class="field"><label class="label" for="f_app">${tx('cl.compare_with')}</label><select id="f_app" name="app">${exportsList.map((e) =>
           html`<option value="${e.id}"${e === exp ? raw(' selected') : ''}>${e.name} (${when(e.at)})</option>`)}</select></div>
-        <button class="btn u-selfend">Show</button></form>
-        <p class="muted small u-mt0">✓ in it: recorded before the application was last exported, so a deployment of that export expects the change. <em>After it</em>: still to be shipped with the next export.</p>`
-    : html`<p class="muted small">No application of this workspace was exported from the builder yet (Application › Export): the change sets can't be compared with an export.</p>`;
+        <button class="btn u-selfend">${tx('cl.show')}</button></form>
+        <p class="muted small u-mt0">${tx.rich('cl.export_note', { after: html`<em>${tx('cl.after_it_title')}</em>` })}</p>`
+    : html`<p class="muted small">${tx('cl.no_exports')}</p>`;
   const downloads = list.length
     ? html`<form method="post" action="${CHANGES}/download" class="u-mt1">${csrf(s)}<input type="hidden" name="schema" value="${schema}">
         <div class="form-grid">
-          <div class="field"><label class="label" for="f_format">Format</label><select id="f_format" name="format">
-            <option value="flyway">Flyway: V0001__name.sql files (a zip for several)</option>
-            <option value="liquibase">Liquibase: formatted SQL changelog</option>
-            <option value="sql">Plain SQL script</option></select></div>
-          <div class="field"><label class="label" for="f_which">Change sets</label><select id="f_which" name="which">
-            <option value="pending">Not yet written to a file (${pending})</option>
-            <option value="all">All of ${schema} (${list.length})</option>
-            ${exp ? html`<option value="after_export">After the latest export of ${exp.name} (${list.filter((c) => !inExport(c)).length})</option>` : ''}</select></div>
+          <div class="field"><label class="label" for="f_format">${tx('cl.format')}</label><select id="f_format" name="format">
+            <option value="flyway">${tx('cl.format.flyway')}</option>
+            <option value="liquibase">${tx('cl.format.liquibase')}</option>
+            <option value="sql">${tx('cl.format.sql')}</option></select></div>
+          <div class="field"><label class="label" for="f_which">${tx('cl.change_sets')}</label><select id="f_which" name="which">
+            <option value="pending">${tx('cl.which.pending', { n: pending })}</option>
+            <option value="all">${tx('cl.which.all', { schema, n: list.length })}</option>
+            ${exp ? html`<option value="after_export">${tx('cl.which.after', { app: exp.name, n: list.filter((c) => !inExport(c)).length })}</option>` : ''}</select></div>
         </div>
         ${exp ? html`<input type="hidden" name="app" value="${exp.id}">` : ''}
-        <div class="buttons"><button class="btn btn-hot">${icon('download')} Download migration</button></div></form>`
+        <div class="buttons"><button class="btn btn-hot">${icon('download')} ${tx('cl.download')}</button></div></form>`
     : '';
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('changes', s)}
-    <p class="muted">The change log (Liquibase, Flyway): DDL run from the SQL Worksheet, Table Properties and Schema Comparison is kept as change sets per schema, with who ran it and when. Download them as a migration for another database: Flyway versioned files, a Liquibase formatted SQL changelog or a plain script. Only statements that succeeded are kept; data changes (INSERT, UPDATE, DELETE) are not.</p>
+  const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('changes', s)}
+    <p class="muted">${tx('cl.intro')}</p>
     ${nav}
-    ${schema ? region(`Change sets of ${schema}`, html`${exportPick}${table}${downloads}`) : region('Change sets', table)}`;
-  return shell(s, 'Change Log', [['SQL Workshop', `${BASE}/sql`], ['Change Log']], main, 'sql');
+    ${schema ? region(tx('cl.change_sets_of', { schema }), html`${exportPick}${table}${downloads}`) : region(tx('cl.change_sets'), table)}`;
+  return shell(s, tx('sql.tool.changes'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.changes')]], main, 'sql');
 }
 
 async function oneOr404(req: Req, reply: FastifyReply, s: Session) {
@@ -153,7 +155,7 @@ export async function changeLogRoutes(app: FastifyInstance) {
       if (exp) list = list.filter((c) => c.created_at > exp.at);
     }
     if (!list.length) {
-      flash(s, 'No change sets to write: every one is in an earlier file. Choose "All".', 'error');
+      flash(s, tr(s)('cl.nothing_to_write'), 'error');
       return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema })}`);
     }
     const format = asFormat(b.format);
@@ -178,10 +180,10 @@ export async function changeLogRoutes(app: FastifyInstance) {
     const c = await oneOr404(req, reply, s);
     if (!c) return;
     const name = String(req.body?.name ?? '').trim().toLowerCase();
-    if (!NAME.test(name)) flash(s, 'A name is lower case letters, digits and _ (at most 60), starting with a letter or digit.', 'error');
+    if (!NAME.test(name)) flash(s, tr(s)('cl.bad_name'), 'error');
     else {
       await owner.query('update meta.change_set set name = $2 where id = $1', [c.id, name]);
-      flash(s, `Change set ${c.seq} is now ${flywayName({ seq: c.seq, name })}.`);
+      flash(s, tr(s)('cl.renamed', { n: c.seq, file: flywayName({ seq: c.seq, name }) }));
     }
     return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema: c.schema_name })}`);
   });
@@ -193,7 +195,7 @@ export async function changeLogRoutes(app: FastifyInstance) {
     if (!c) return;
     await owner.query('delete from meta.change_set where id = $1', [c.id]);
     await logActivity({ username: s.username, event: 'change_log_delete', ip: clientIp(req), detail: `${c.schema_name} #${c.seq} ${c.name}` });
-    flash(s, `Change set ${c.seq} removed from the log; the database is unchanged.`);
+    flash(s, tr(s)('cl.deleted', { n: c.seq }));
     return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema: c.schema_name })}`);
   });
 
@@ -212,7 +214,7 @@ export async function changeLogRoutes(app: FastifyInstance) {
     const statements = splitStatements(script);
     const back2 = `${BASE}/sql/compare?${new URLSearchParams({ source, target })}`;
     if (!statements.length) {
-      flash(s, `${target} is already like ${source}: nothing to apply.`);
+      flash(s, tr(s)('cmp.nothing', { source, target }));
       return back(reply, s, back2);
     }
     const c = await db.pool.connect();
@@ -230,11 +232,11 @@ export async function changeLogRoutes(app: FastifyInstance) {
     }
     await logActivity({ username: s.username, event: 'sql_command', ip: clientIp(req), detail: `compare apply ${source} → ${target}: ${failed ? `failed: ${failed}` : `${statements.length} statement(s)`}`.slice(0, 2000) });
     if (failed) {
-      flash(s, `Nothing was changed: the change script ran in one transaction, which was rolled back. ${failed}`, 'error');
+      flash(s, tr(s)('cmp.failed', { error: failed }), 'error');
       return back(reply, s, back2);
     }
     await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'compare', statements, defaultSchema: target, name: `like_${source}`.toLowerCase().replace(/[^a-z0-9_]+/g, '_').slice(0, 60) });
-    flash(s, `${target} is now like ${source}: ${statements.length} statement(s), recorded in the change log.`);
+    flash(s, tr(s)('cmp.applied', { source, target, n: statements.length }));
     return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema: target })}`);
   });
 }

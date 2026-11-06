@@ -7,6 +7,9 @@
 // JavaScript the page's Refresh link reloads it.
 (() => {
   'use strict';
+  // (sprint 162) texts in the builder's language: #builder-texts (shell(), keys js.*), English in en.ts
+  const TEXTS = (() => { try { return JSON.parse(document.getElementById('builder-texts')?.dataset.texts || '{}'); } catch { return {}; } })();
+  const msg = (key, params = {}) => (TEXTS[key] ?? key).replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
   const live = document.querySelector('[data-sm-live]');
   const controls = document.querySelector('[data-sm-controls]');
   if (!live || !controls) return;
@@ -26,7 +29,7 @@
 
   const show = () => {
     pause.setAttribute('aria-pressed', paused ? 'true' : 'false');
-    pause.textContent = paused ? 'Resume' : 'Pause';
+    pause.textContent = paused ? msg('js.sm.resume') : msg('js.sm.pause');
     live.classList.toggle('is-paused', paused);
   };
   const schedule = () => {
@@ -52,7 +55,7 @@
       paused = true;
       show();
       const note = live.querySelector('[data-sm-updated]');
-      if (note) note.textContent = 'Refresh stopped: the monitor could not be reached (signed out?). Reload the page.';
+      if (note) note.textContent = msg('js.sm.stopped');
     }
   }
   select.addEventListener('change', () => {

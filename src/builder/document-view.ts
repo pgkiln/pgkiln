@@ -45,10 +45,10 @@ async function page(req: Req, reply: FastifyReply) {
 
   const errors: string[] = [];
   let ddl: string[] = [];
-  if (!key.length) errors.push(`${table} has no primary key: a document view finds its rows by it.`);
+  if (!key.length) errors.push(tx('docv.no_key', { table }));
   if (isPost && !errors.length) {
     for (const n of [view, document]) if (!NAME.test(n)) errors.push(tx('fts.bad_name', { name: n }));
-    if (key.includes(document)) errors.push(`The document column may not have the name of a key column (${document}).`);
+    if (key.includes(document)) errors.push(tx('docv.doc_is_key', { name: document }));
     if (NAME.test(view) && (await db.one('select 1 as x from pg_class where relnamespace = $1::regnamespace and relname = $2', [ident(t.schema), view]))) errors.push(tx('fts.exists', { name: view }));
     if (!errors.length) {
       const kids = [];
@@ -77,7 +77,7 @@ async function page(req: Req, reply: FastifyReply) {
       clearCompletions();
       if (!failed) {
         await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'table', defaultSchema: t.schema, statements: [joinStatements(ddl)] });
-        flash(s, `The document view ${t.schema}.${view} is made.`);
+        flash(s, tx('docv.made', { view: `${t.schema}.${view}` }));
         return back(reply, s, `${BASE}/sql/objects/table?${new URLSearchParams({ o: `${ident(t.schema)}.${ident(view)}` })}`);
       }
       errors.push(`${tx('te.nothing_changed')}: ${failed}`);
@@ -87,15 +87,15 @@ async function page(req: Req, reply: FastifyReply) {
   const title = `${tx('docv.add')}: ${table}`;
   const form: Raw = key.length ? html`<form method="post" action="${BASE}/sql/objects/document" class="fts-form">${csrf(s)}
       <input type="hidden" name="o" value="${table}">
-      <fieldset class="prop-group"><legend>Child tables in the document</legend>
-        ${children.length ? html`<div class="table-wrap"><table class="report"><thead><tr><th scope="col">${tx('fts.include')}</th><th scope="col">Table</th><th scope="col">List in the document</th><th scope="col">Foreign key</th></tr></thead><tbody>
+      <fieldset class="prop-group"><legend>${tx('docv.children')}</legend>
+        ${children.length ? html`<div class="table-wrap"><table class="report"><thead><tr><th scope="col">${tx('fts.include')}</th><th scope="col">${tx('dl.table')}</th><th scope="col">${tx('docv.list')}</th><th scope="col">${tx('docv.fk')}</th></tr></thead><tbody>
           ${children.map((c, i) => html`<tr><td class="te-c"><input type="hidden" name="c.${i}.name" value="${c.schema}.${c.table}"><input type="checkbox" id="dv-c${i}" name="c.${i}.use"${picked.has(i) ? raw(' checked') : ''}></td>
             <td><label for="dv-c${i}">${c.schema}.${c.table}</label></td><td><code>${c.name}</code></td><td><code>${c.fk.map(([col, p]) => `${col} → ${p}`).join(', ')}</code></td></tr>`)}
-          </tbody></table></div>` : html`<p class="muted">No other table references ${table}: the document is the row alone.</p>`}
-        <small class="help">Each child row is an object in its list, without the foreign key columns. Writing a document updates the children it lists by their key, inserts the ones without a key, and deletes the ones it leaves out; a document without the list leaves the children alone.</small></fieldset>
+          </tbody></table></div>` : html`<p class="muted">${tx('docv.no_children', { table })}</p>`}
+        <small class="help">${tx('docv.children_help')}</small></fieldset>
       <div class="form-grid u-mt1">
-        <div class="field"><label class="label" for="dv-view">View</label><input id="dv-view" name="view" value="${view}" required autocomplete="off" spellcheck="false" class="code"></div>
-        <div class="field"><label class="label" for="dv-doc">Document column</label><input id="dv-doc" name="document" value="${document}" required autocomplete="off" spellcheck="false" class="code"></div>
+        <div class="field"><label class="label" for="dv-view">${tx('docv.view')}</label><input id="dv-view" name="view" value="${view}" required autocomplete="off" spellcheck="false" class="code"></div>
+        <div class="field"><label class="label" for="dv-doc">${tx('docv.doc_column')}</label><input id="dv-doc" name="document" value="${document}" required autocomplete="off" spellcheck="false" class="code"></div>
       </div>
       ${ddl.length ? html`<h2>DDL</h2><pre class="source te-ddl" data-code-view="sql" tabindex="0" aria-label="DDL">${ddl.map((x) => `${x};`).join('\n\n')}</pre>` : ''}
       <div class="buttons te-buttons">
@@ -105,10 +105,10 @@ async function page(req: Req, reply: FastifyReply) {
         <a class="btn" href="${BASE}/sql/objects/table?${new URLSearchParams({ o: table })}">${tx('common.cancel')}</a>
       </div></form>` : html``;
   const main = html`<h1 class="u-mb1">${title}</h1>${workshopTabs('objects', s)}
-    <p class="muted">A document view shows each row of ${table} with its child rows as one JSON document, like an Oracle JSON Relational Duality View. Reports, REST (AutoREST on the view) and MCP read whole documents; an update of the document column writes the row and its children back in one statement. The table's row level security and grants apply (the view is security_invoker and gets the table's grants).</p>
+    <p class="muted">${tx('docv.intro', { table })}</p>
     ${errors.length ? html`<div class="alert alert-error" role="alert"><ul>${errors.map((e) => html`<li>${e}</li>`)}</ul></div>` : ''}
     ${form}`;
-  return send(reply, s, shell(s, title, [['SQL Workshop', `${BASE}/sql`], [tx('ob.title'), `${BASE}/sql/objects`], [tx('te.title_table', { table }), `${BASE}/sql/objects/table?${new URLSearchParams({ o: table })}`], [tx('docv.add')]], main, 'sql'));
+  return send(reply, s, shell(s, title, [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('ob.title'), `${BASE}/sql/objects`], [tx('te.title_table', { table }), `${BASE}/sql/objects/table?${new URLSearchParams({ o: table })}`], [tx('docv.add')]], main, 'sql'));
 }
 
 export async function documentViewRoutes(app: FastifyInstance) {

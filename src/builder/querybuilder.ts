@@ -4,6 +4,7 @@ import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { BASE, csrf, developer, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { tr } from './i18n.ts';
 
 // SQL Workshop → Query Builder: pick tables and views of a schema; joins
 // follow their foreign keys, or columns joined by the developer (drawn on
@@ -90,6 +91,8 @@ export interface BuiltQuery {
   /** whether the query groups (a column has a function) */
   grouped: boolean;
   notes: string[];
+  /** (sprint 162) the tables of `notes`: no foreign key connects them, so they are cross joined */
+  crossJoined: string[];
 }
 
 /** Build the SELECT for a spec, using only names that exist in `relations`. */
@@ -98,6 +101,7 @@ export function buildQuery(relations: CatalogRelation[], fks: CatalogFk[], spec:
   const tables = [...new Set(spec.tables)].filter((t) => byName.has(t));
   if (!tables.length) return null;
   const notes: string[] = [];
+  const crossJoined: string[] = [];
   const aliases = new Map(tables.map((t, k) => [t, `t${k + 1}`]));
   const q = (t: string) => `${ident(spec.schema)}.${ident(t)}`;
 
@@ -130,6 +134,7 @@ export function buildQuery(relations: CatalogRelation[], fks: CatalogFk[], spec:
     if (pick < 0) {
       pick = 0;
       notes.push(`No foreign key connects ${pending[0]} to the other tables: it is cross joined. Join two of their columns on the canvas, or under Joins.`);
+      crossJoined.push(pending[0]);
     }
     const t = pending.splice(pick, 1)[0];
     joins.push({ alias: aliases.get(t)!, table: t, fk: customFor(t).length ? null : fk, custom: customFor(t) });
@@ -196,7 +201,7 @@ export function buildQuery(relations: CatalogRelation[], fks: CatalogFk[], spec:
   if (groupBy.length) sql += `\n group by ${groupBy.join(', ')}`;
   if (order.length) sql += `\n order by ${order.join(', ')}`;
   if (spec.limit) sql += `\n limit ${spec.limit}`;
-  return { sql, aliases, joins, notes, grouped };
+  return { sql, aliases, joins, notes, crossJoined, grouped };
 }
 
 /** Tables and views of a schema, with their columns, and the foreign keys between its tables. */
@@ -272,6 +277,7 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
   app.get(`${BASE}/sql/query`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const schemas = (
       await owner.query(
         `select nspname as name from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema') order by nspname = 'meta', nspname`,
@@ -299,72 +305,72 @@ export async function queryBuilderRoutes(app: FastifyInstance) {
     const orders = [...spec.order.filter((o) => o.column), { column: '', dir: 'asc' as const }];
 
     const form = html`<form method="get" action="${BASE}/sql/query">${chosen.length ? html`<input type="hidden" name="o" value="${chosen.join(',')}">` : ''}
-      ${region('1. Tables and views', html`<div class="form-grid"><div class="field"><label class="label" for="f_schema">Schema</label>
+      ${region(`1. ${tx('qb.tables')}`, html`<div class="form-grid"><div class="field"><label class="label" for="f_schema">${tx('sm.schema')}</label>
           <select id="f_schema" name="schema">${schemas.map((x) => html`<option${sel(x === schema)}>${x}</option>`)}</select></div></div>
         ${rels.length
-          ? html`<fieldset class="field"><legend class="label">Tables and views of ${schema}</legend><div class="qb-pick">
-              ${rels.map((r) => html`<label class="check"><input type="checkbox" name="t" value="${r.name}"${check(chosen.includes(r.name))}> ${r.name}${r.kind === 'view' ? html` <span class="tag">view</span>` : ''}${chosen.includes(r.name) ? html` <span class="muted small">${built!.aliases.get(r.name)}</span>` : ''}</label>`)}
+          ? html`<fieldset class="field"><legend class="label">${tx('qb.tables_of', { schema })}</legend><div class="qb-pick">
+              ${rels.map((r) => html`<label class="check"><input type="checkbox" name="t" value="${r.name}"${check(chosen.includes(r.name))}> ${r.name}${r.kind === 'view' ? html` <span class="tag">${tx('qb.view')}</span>` : ''}${chosen.includes(r.name) ? html` <span class="muted small">${built!.aliases.get(r.name)}</span>` : ''}</label>`)}
             </div></fieldset>`
-          : html`<p class="muted">This schema has no tables or views.</p>`}
-        <div class="buttons"><button class="btn">${icon('check')} Apply</button></div>`)}
+          : html`<p class="muted">${tx('qb.no_tables')}</p>`}
+        <div class="buttons"><button class="btn">${icon('check')} ${tx('qb.apply')}</button></div>`)}
       ${built
         ? html`<div class="u-spacer"></div>
-        ${region('2. Columns', html`<p class="muted u-mt0">None ticked: all columns. A function (count, sum, …) groups the rows by the other chosen columns. Drag a table by its handle (or focus the handle and use the arrow keys); drag the dot next to a column onto a column of another table to join them.</p>
-          <label class="check u-mb1"><input type="checkbox" name="distinct" value="1"${check(spec.distinct)}> Distinct rows</label>
+        ${region(`2. ${tx('ul.columns')}`, html`<p class="muted u-mt0">${tx('qb.columns_help')}</p>
+          <label class="check u-mb1"><input type="checkbox" name="distinct" value="1"${check(spec.distinct)}> ${tx('qb.distinct')}</label>
           <div class="qb-canvas" data-joins="${JSON.stringify(lines)}">${chosen.map((t, k) => {
             const a = built!.aliases.get(t)!;
             const pos = spec.positions[t] ?? { x: 16 + k * 272, y: 16 };
             return html`<div class="qb-table" data-table="${t}" data-alias="${a}" data-x="${pos.x}" data-y="${pos.y}">
               ${spec.positions[t] ? html`<input type="hidden" name="p" value="${t}:${pos.x},${pos.y}">` : ''}
-              <div class="qb-table-head"><button type="button" class="qb-move" hidden aria-label="Move ${t} (arrow keys)" title="Drag to move">${icon('menu')}</button>
+              <div class="qb-table-head"><button type="button" class="qb-move" hidden aria-label="${tx('qb.move', { table: t })}" title="${tx('qb.drag_move')}">${icon('menu')}</button>
                 <strong>${t}</strong> <span class="muted small">${a}</span></div>
               <ul class="qb-cols">${rels.find((r) => r.name === t)!.columns.map((c) => {
                 const ref = `${a}.${c.name}`;
                 return html`<li class="qb-col" data-ref="${ref}">
                   <label class="check"><input type="checkbox" name="c" value="${ref}"${check(spec.columns.includes(ref))}> ${c.name}</label>
                   <span class="muted small qb-type">${c.type}</span>
-                  <select name="fn" aria-label="Function for ${ref}"><option value="">-</option>${Object.entries(FUNCTIONS).map(([fn, label]) => html`<option value="${ref}:${fn}"${sel(spec.fns[ref] === fn)}>${label}</option>`)}</select>
-                  ${chosen.length > 1 ? html`<button type="button" class="qb-link" hidden data-ref="${ref}" aria-label="Join ${ref} to a column of another table" title="Drag onto a column of another table to join them"></button>` : ''}
+                  <select name="fn" aria-label="${tx('qb.function_for', { column: ref })}"><option value="">-</option>${Object.entries(FUNCTIONS).map(([fn, label]) => html`<option value="${ref}:${fn}"${sel(spec.fns[ref] === fn)}>${tx.dyn(`qb.fn.${fn}`, label)}</option>`)}</select>
+                  ${chosen.length > 1 ? html`<button type="button" class="qb-link" hidden data-ref="${ref}" aria-label="${tx('qb.join_label', { column: ref })}" title="${tx('qb.join_title')}"></button>` : ''}
                 </li>`;
               })}</ul></div>`;
           })}</div>`)}
         ${built.joins.length
-          ? html`<div class="u-spacer"></div>${region('3. Joins', html`<p class="muted u-mt0">From the foreign keys between the chosen tables, or the columns you joined.</p>
-              ${built.notes.map((n) => html`<div class="alert alert-error" role="alert">${n}</div>`)}
+          ? html`<div class="u-spacer"></div>${region(`3. ${tx('qb.joins')}`, html`<p class="muted u-mt0">${tx('qb.joins_help')}</p>
+              ${built.crossJoined.map((t) => html`<div class="alert alert-error" role="alert">${tx('qb.cross_join', { table: t })}</div>`)}
               <ul class="qb-joins">${built.joins.map((j) => html`<li class="u-mb1">${j.table} <span class="muted">${j.alias}</span>
                 ${j.custom.length
-                  ? html` on ${j.custom.map((c, k) => html`${k ? ' and ' : ''}<label class="check qb-inline"><input type="checkbox" name="j" value="${c.a}=${c.b}" checked> ${c.a} = ${c.b}</label>`)}`
-                  : j.fk ? html` on ${j.fk.from}(${j.fk.fromCols.join(', ')}) → ${j.fk.to}(${j.fk.toCols.join(', ')})` : html` (cross join)`}
-                ${j.fk || j.custom.length ? html`<label class="sr-only" for="f_jt_${j.alias}">Join type for ${j.table}</label>
-                  <select id="f_jt_${j.alias}" name="jt_${j.alias}"><option value="inner">inner join</option><option value="left"${sel(spec.joinTypes[j.alias] === 'left')}>left join (keep rows without a match)</option></select>` : ''}</li>`)}</ul>
-              <fieldset class="field"><legend class="label">Join two columns</legend><div class="qb-cond">
-                <select name="ja" aria-label="Join: column">${colOptions('')}</select><span class="qb-eq">=</span>
-                <select name="jb" aria-label="Join: column of another table">${colOptions('')}</select></div></fieldset>
-              <div class="buttons"><button class="btn">${icon('check')} Apply</button></div>`)}`
+                  ? html` ${tx('qb.on')} ${j.custom.map((c, k) => html`${k ? ` ${tx('qb.and')} ` : ''}<label class="check qb-inline"><input type="checkbox" name="j" value="${c.a}=${c.b}" checked> ${c.a} = ${c.b}</label>`)}`
+                  : j.fk ? html` ${tx('qb.on')} ${j.fk.from}(${j.fk.fromCols.join(', ')}) → ${j.fk.to}(${j.fk.toCols.join(', ')})` : html` (${tx('qb.cross')})`}
+                ${j.fk || j.custom.length ? html`<label class="sr-only" for="f_jt_${j.alias}">${tx('qb.join_type', { table: j.table })}</label>
+                  <select id="f_jt_${j.alias}" name="jt_${j.alias}"><option value="inner">${tx('qb.inner')}</option><option value="left"${sel(spec.joinTypes[j.alias] === 'left')}>${tx('qb.left')}</option></select>` : ''}</li>`)}</ul>
+              <fieldset class="field"><legend class="label">${tx('qb.join_two')}</legend><div class="qb-cond">
+                <select name="ja" aria-label="${tx('qb.join_a')}">${colOptions('')}</select><span class="qb-eq">=</span>
+                <select name="jb" aria-label="${tx('qb.join_b')}">${colOptions('')}</select></div></fieldset>
+              <div class="buttons"><button class="btn">${icon('check')} ${tx('qb.apply')}</button></div>`)}`
           : ''}
         <div class="u-spacer"></div>
-        ${region(`${built.joins.length ? 4 : 3}. Conditions`, html`<fieldset class="field"><legend class="label">Rows must match</legend><div class="radio-group">
-            <label class="check"><input type="radio" name="any" value="and"${check(!spec.any)}> all conditions</label>
-            <label class="check"><input type="radio" name="any" value="or"${check(spec.any)}> any condition</label></div></fieldset>
+        ${region(`${built.joins.length ? 4 : 3}. ${tx('qb.conditions')}`, html`<fieldset class="field"><legend class="label">${tx('qb.rows_match')}</legend><div class="radio-group">
+            <label class="check"><input type="radio" name="any" value="and"${check(!spec.any)}> ${tx('qb.all')}</label>
+            <label class="check"><input type="radio" name="any" value="or"${check(spec.any)}> ${tx('qb.any')}</label></div></fieldset>
           ${wheres.map((w, k) => html`<div class="qb-cond">
-            <select name="wc" aria-label="Condition ${k + 1}: column">${colOptions(w.column)}</select>
-            <select name="wo" aria-label="Condition ${k + 1}: operator">${Object.entries(OPERATORS).map(([op, label]) => html`<option value="${op}"${sel(op === w.op)}>${op} · ${label}</option>`)}</select>
-            <input name="wv" value="${w.value}" aria-label="Condition ${k + 1}: value"></div>`)}
-          <div class="buttons"><button class="btn">${icon('plus')} Apply / add a condition</button></div>`)}
+            <select name="wc" aria-label="${tx('qb.cond_column', { n: k + 1 })}">${colOptions(w.column)}</select>
+            <select name="wo" aria-label="${tx('qb.cond_operator', { n: k + 1 })}">${Object.entries(OPERATORS).map(([op, label]) => html`<option value="${op}"${sel(op === w.op)}>${op} · ${tx.dyn(`qb.op.${op.replace(/[^a-z]+/g, '_') || { '=': 'eq', '<>': 'ne', '<': 'lt', '<=': 'le', '>': 'gt', '>=': 'ge' }[op]}`, label)}</option>`)}</select>
+            <input name="wv" value="${w.value}" aria-label="${tx('qb.cond_value', { n: k + 1 })}"></div>`)}
+          <div class="buttons"><button class="btn">${icon('plus')} ${tx('qb.add_condition')}</button></div>`)}
         <div class="u-spacer"></div>
-        ${region(`${built.joins.length ? 5 : 4}. Sort and limit`, html`${orders.map((o, k) => html`<div class="qb-cond">
-            <select name="oc" aria-label="Sort ${k + 1}: column">${colOptions(o.column)}</select>
-            <select name="od" aria-label="Sort ${k + 1}: direction"><option value="asc">ascending</option><option value="desc"${sel(o.dir === 'desc')}>descending</option></select><span></span></div>`)}
-          <div class="form-grid"><div class="field"><label class="label" for="f_limit">At most (rows)</label><input id="f_limit" name="limit" type="number" min="1" max="100000" value="${spec.limit ?? ''}"></div></div>
-          <div class="buttons"><button class="btn btn-hot">${icon('check')} Apply</button></div>`)}`
+        ${region(`${built.joins.length ? 5 : 4}. ${tx('qb.sort_limit')}`, html`${orders.map((o, k) => html`<div class="qb-cond">
+            <select name="oc" aria-label="${tx('qb.sort_column', { n: k + 1 })}">${colOptions(o.column)}</select>
+            <select name="od" aria-label="${tx('qb.sort_dir', { n: k + 1 })}"><option value="asc">${tx('qb.asc')}</option><option value="desc"${sel(o.dir === 'desc')}>${tx('qb.desc')}</option></select><span></span></div>`)}
+          <div class="form-grid"><div class="field"><label class="label" for="f_limit">${tx('qb.limit')}</label><input id="f_limit" name="limit" type="number" min="1" max="100000" value="${spec.limit ?? ''}"></div></div>
+          <div class="buttons"><button class="btn btn-hot">${icon('check')} ${tx('qb.apply')}</button></div>`)}`
         : ''}
     </form>`;
 
     const output = built
-      ? html`<div class="u-spacer"></div>${region('SQL', html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="Generated SQL">${built.sql}</pre>
+      ? html`<div class="u-spacer"></div>${region('SQL', html`<pre class="source" data-code-view="sql" tabindex="0" aria-label="${tx('qs.generated')}">${built.sql}</pre>
           <form method="post" action="${BASE}/sql">${csrf(s)}<input type="hidden" name="sql" value="${built.sql}">
-            <div class="buttons"><button class="btn btn-hot">${icon('play')} Run in the SQL Worksheet</button></div></form>`)}`
+            <div class="buttons"><button class="btn btn-hot">${icon('play')} ${tx('qb.run')}</button></div></form>`)}`
       : '';
-    return send(reply, s, shell(s, 'Query Builder', [['SQL Workshop', `${BASE}/sql`], ['Query Builder']], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('query', s)}${form}${output}`, 'sql'));
+    return send(reply, s, shell(s, tx('sql.tool.query'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.query')]], html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('query', s)}${form}${output}`, 'sql'));
   });
 }

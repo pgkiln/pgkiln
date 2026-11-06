@@ -6,6 +6,7 @@ import { readSchema } from '../ddl.ts';
 import { back, BASE, developer, flash, type Req } from './ui.ts';
 import { listObjects, objectDetail, OB_TYPES, SYSTEM_SCHEMAS, type Obj } from './object-browser.ts';
 import { usableSchemas, workshopDb } from './workspaces.ts';
+import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 
 // (sprint 94, Database Actions DA-8) An object's menu in the SQL Worksheet's navigator and the Object Browser's
 // tree (Database Actions: the navigator's right-click menu): Open (the Object Browser's detail, in a panel beside
@@ -20,26 +21,26 @@ export type MenuObj = Pick<Obj, 'name' | 'ref'> & { type: Obj['type'] | 'policy'
 const RELATIONS = new Set(['table', 'view', 'matview']);
 
 /** The ⋯ menu of an object (works without JavaScript: a details menu of links). */
-export function objectMenu(schema: string, o: MenuObj): Raw {
+export function objectMenu(schema: string, o: MenuObj, tx: BuilderTranslate = translatorFor('en')): Raw {
   const q = (act: string) => `${BASE}/sql/objects/action?${new URLSearchParams({ schema, k: o.type, o: o.ref, ...(o.type === 'policy' || o.type === 'trigger' ? { n: o.name } : {}), do: act })}`;
   const open = `${BASE}/sql/objects?${new URLSearchParams(o.type === 'policy' ? { schema, k: 'table', o: o.ref, tab: 'rls' } : { schema, k: o.type, o: o.ref })}`;
   const item = (href: string, ic: string, label: string, extra = '') => html`<a href="${href}"${extra ? html` ${extra}` : ''}>${icon(ic)} ${label}</a>`;
   const table = o.type === 'table';
-  return html`<details class="menu obj-menu"><summary title="Actions for ${o.name}" aria-label="Actions for ${o.name}">⋯</summary>
+  return html`<details class="menu obj-menu"><summary title="${tx('oa.actions_for', { name: o.name })}" aria-label="${tx('oa.actions_for', { name: o.name })}">⋯</summary>
     <div class="menu-panel"><div class="menu-section menu-links">
-      ${o.type === 'policy' ? '' : html`<a href="${open}" data-obj-open="${`${BASE}/sql/objects/panel?${new URLSearchParams({ schema, k: o.type, o: o.ref })}`}">${icon('eye')} Open</a>`}
-      ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}`, 'edit', 'Edit…') : ''}
-      ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, template: o.ref })}`, 'copy', 'Use as template') : ''}
-      ${table ? item(`${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}`, 'shield', 'Security…') : ''}
-      ${table ? item(`${BASE}/sql/load`, 'upload', 'Load data') : ''}
-      ${table ? item(`${BASE}/sql/objects/fulltext?${new URLSearchParams({ o: o.ref })}`, 'search', 'Add full-text search…') : ''}
-      ${table ? item(`${BASE}/sql/objects/vector?${new URLSearchParams({ o: o.ref })}`, 'search', 'Add vector column…') : ''}
-      ${table ? item(`${BASE}/sql/objects/document?${new URLSearchParams({ o: o.ref })}`, 'file', 'Document view…') : ''}
-      ${table ? html`${item(q('index'), 'list', 'Add index')}${item(q('trigger'), 'bolt', 'Add trigger')}${item(q('policy'), 'shield', 'Add policy')}` : ''}
-      ${RELATIONS.has(o.type) ? item(`${BASE}/sql/rest/object?${new URLSearchParams({ schema, name: o.name })}`, 'globe', 'REST › Enable / Disable') : ''}
-      ${item(q('ddl'), 'code', 'Quick DDL to the worksheet')}
-      ${item(q('download'), 'download', 'Quick DDL as a file')}
-      ${item(q('drop'), 'trash', 'Drop…')}
+      ${o.type === 'policy' ? '' : html`<a href="${open}" data-obj-open="${`${BASE}/sql/objects/panel?${new URLSearchParams({ schema, k: o.type, o: o.ref })}`}">${icon('eye')} ${tx('oa.open')}</a>`}
+      ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, o: o.ref })}`, 'edit', tx('oa.edit')) : ''}
+      ${table ? item(`${BASE}/sql/objects/table?${new URLSearchParams({ schema, template: o.ref })}`, 'copy', tx('oa.template')) : ''}
+      ${table ? item(`${BASE}/sql/objects/security?${new URLSearchParams({ o: o.ref })}`, 'shield', tx('oa.security')) : ''}
+      ${table ? item(`${BASE}/sql/load`, 'upload', tx('oa.load')) : ''}
+      ${table ? item(`${BASE}/sql/objects/fulltext?${new URLSearchParams({ o: o.ref })}`, 'search', tx('oa.fulltext')) : ''}
+      ${table ? item(`${BASE}/sql/objects/vector?${new URLSearchParams({ o: o.ref })}`, 'search', tx('oa.vector')) : ''}
+      ${table ? item(`${BASE}/sql/objects/document?${new URLSearchParams({ o: o.ref })}`, 'file', tx('oa.document')) : ''}
+      ${table ? html`${item(q('index'), 'list', tx('oa.index'))}${item(q('trigger'), 'bolt', tx('oa.trigger'))}${item(q('policy'), 'shield', tx('oa.policy'))}` : ''}
+      ${RELATIONS.has(o.type) ? item(`${BASE}/sql/rest/object?${new URLSearchParams({ schema, name: o.name })}`, 'globe', tx('oa.rest')) : ''}
+      ${item(q('ddl'), 'code', tx('oa.ddl'))}
+      ${item(q('download'), 'download', tx('oa.ddl_file'))}
+      ${item(q('drop'), 'trash', tx('oa.drop'))}
     </div></div></details>`;
 }
 
@@ -149,7 +150,8 @@ export async function objectActionRoutes(app: FastifyInstance) {
     }
     const sql = await draft(db, String(q.schema), o, act);
     s.state.__SQLDRAFT = sql ?? '';
-    flash(s, act === 'ddl' ? `The DDL of ${o.ref}.` : act === 'drop' ? 'Review the DROP statement and run it yourself: nothing has been dropped yet.' : 'Fill in the statement and run it: nothing has been changed yet.');
+    const tx = tr(s);
+    flash(s, act === 'ddl' ? tx('oa.flash.ddl', { name: o.ref }) : act === 'drop' ? tx('oa.flash.drop') : tx('oa.flash.fill'));
     return back(reply, s, `${BASE}/sql/worksheet`);
   });
 

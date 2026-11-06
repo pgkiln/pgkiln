@@ -32,6 +32,7 @@ import {
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { currentWorkspace, workshopDb } from './workspaces.ts';
+import { tr, type BuilderTranslate } from './i18n.ts';
 
 // SQL Workshop → Sample Data (APEX 26.1: Data Generator): generate realistic
 // rows for one or more tables of a schema (src/sampledata.ts). Step 1 picks a
@@ -92,28 +93,31 @@ function notes(c: ColumnInfo) {
   return n.join(' · ');
 }
 
-const generatorHelp = html`<details class="sd-help u-mt1"><summary>Generators and their options</summary>
+/** (sprint 162) a generator's name and its options' help in the builder's language (sd.gen.<kind>, sd.opt.<kind>) */
+const genLabel = (tx: BuilderTranslate, k: string, label: string) => tx.dyn(`sd.gen.${k}`, label);
+const generatorHelp = (tx: BuilderTranslate) => html`<details class="sd-help u-mt1"><summary>${tx('sd.help')}</summary>
   <dl class="sd-help-list">${Object.entries(GENERATORS).map(
-    ([k, label]) => html`<dt>${label}</dt><dd>${OPTION_HELP[k as keyof typeof GENERATORS] ?? (k === 'foreign_key' ? 'a random existing parent row; parents generated in the same run are inserted first' : k === 'skip' ? 'not inserted: the column default, identity or null' : 'no options')}</dd>`,
+    ([k, label]) => html`<dt>${genLabel(tx, k, label)}</dt><dd>${tx.dyn(`sd.opt.${k}`, OPTION_HELP[k as keyof typeof GENERATORS] ?? (k === 'foreign_key' ? 'a random existing parent row; parents generated in the same run are inserted first' : k === 'skip' ? 'not inserted: the column default, identity or null' : 'no options'))}</dd>`,
   )}</dl></details>`;
 
 export async function sampleDataRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, title: string, main: Raw, code = 200) => {
     reply.code(code);
+    const tx = tr(s);
+    const home = tx('sql.tool.sample');
     return send(
       reply,
       s,
-      shell(s, title, [['SQL Workshop', `${BASE}/sql`], ['Sample Data', title === 'Sample Data' ? undefined : sdUrl], ...(title === 'Sample Data' ? [] : ([[title]] as [string][]))], html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('sample', s)}${main}`, 'sql'),
+      shell(s, title, [[tx('rail.sql_workshop'), `${BASE}/sql`], [home, title === home ? undefined : sdUrl], ...(title === home ? [] : ([[title]] as [string][]))], html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('sample', s)}${main}`, 'sql'),
     );
   };
 
-  const intro = html`<p class="muted">Generate realistic rows for the tables of a schema: names, e-mail addresses, dates and numbers in a range, values from a list,
-    foreign keys that pick existing parent rows. Preview them, insert them in one transaction (parents first) or download them as SQL or CSV.
-    Runs as the builder's owner connection (an isolated workspace's developer login for its developers), like the <a href="${BASE}/sql/worksheet">SQL Worksheet</a>.</p>`;
+  const introOf = (tx: BuilderTranslate) => html`<p class="muted">${tx.rich('sd.intro', { worksheet: html`<a href="${BASE}/sql/worksheet">${tx('sql.tool.worksheet')}</a>` })}</p>`;
 
   // ------------------------------------------------------------ step 1 and 2: schema and tables
   const start = async (s: Session, reply: FastifyReply, schema: string | undefined) => {
     const db = await workshopDb(s);
+    const tx = tr(s);
     const all = (await schemas(db.pool)).filter((x) => db === owner || x.usable);
     const gens = (await owner.query<Saved & { updated_at: string; updated_by: string }>('select id, name, description, schema_name, tables, updated_at, updated_by from meta.data_generator where workspace_id = $1 order by lower(name)', [currentWorkspace(s)])).rows;
     const savedList = gens.length
@@ -121,28 +125,28 @@ export async function sampleDataRoutes(app: FastifyInstance) {
           (g) => html`<li><a href="${sdUrl}/${g.id}">${g.name}</a> <span class="muted small">${g.schema_name}: ${g.tables.map((t) => `${t.table} (${t.rows})`).join(', ')}</span>
             ${g.description ? html`<br><span class="muted small">${g.description}</span>` : ''}</li>`,
         )}</ul>`
-      : html`<p class="muted">No saved generators yet: generate rows below, then save the definition to run it again.</p>`;
+      : html`<p class="muted">${tx('sd.none_saved')}</p>`;
     const chosen = schema && allowedSchema(schema) && all.some((x) => x.name === schema) ? schema : '';
     const schemaForm = html`<form method="get" action="${sdUrl}" class="unload-pick">
-        <label class="label" for="f_schema">Schema</label>
-        <select id="f_schema" name="schema" required><option value="">- choose a schema -</option>${all.map(
-          (x) => html`<option value="${x.name}"${x.name === chosen ? raw(' selected') : ''}>${x.name} (${x.tables} table${x.tables === 1 ? '' : 's'})</option>`,
+        <label class="label" for="f_schema">${tx('sm.schema')}</label>
+        <select id="f_schema" name="schema" required><option value="">${tx('ddl.choose_schema')}</option>${all.map(
+          (x) => html`<option value="${x.name}"${x.name === chosen ? raw(' selected') : ''}>${x.name} (${x.tables === 1 ? tx('sd.table_one') : tx('sd.tables_n', { n: x.tables })})</option>`,
         )}</select>
-        <button class="btn">Choose</button></form>`;
+        <button class="btn">${tx('ul.choose')}</button></form>`;
     let tablesForm: Raw | '' = '';
     if (chosen) {
       const tables = await schemaTables(db.pool, chosen);
       tablesForm = html`<form method="get" action="${sdUrl}" class="u-mt1"><input type="hidden" name="schema" value="${chosen}">
-        <fieldset class="prop-group"><legend>Tables of ${chosen}</legend><div class="qb-pick">${tables.map(
-          (t) => html`<label class="check"><input type="checkbox" name="t" value="${t.name}"> ${t.name} <span class="muted small">${t.estimate >= 0 ? `~${t.estimate.toLocaleString('en')} rows` : ''}</span></label>`,
+        <fieldset class="prop-group"><legend>${tx('sd.tables_of', { schema: chosen })}</legend><div class="qb-pick">${tables.map(
+          (t) => html`<label class="check"><input type="checkbox" name="t" value="${t.name}"> ${t.name} <span class="muted small">${t.estimate >= 0 ? tx('sd.about_rows', { n: t.estimate.toLocaleString('en') }) : ''}</span></label>`,
         )}</div></fieldset>
-        <div class="buttons"><button class="btn btn-hot">${icon('layers')} Propose generators</button></div></form>`;
-    } else if (schema) tablesForm = html`<div class="alert alert-error" role="alert">Choose a schema of your own: not meta, information_schema or pg_*.</div>`;
+        <div class="buttons"><button class="btn btn-hot">${icon('layers')} ${tx('sd.propose')}</button></div></form>`;
+    } else if (schema) tablesForm = html`<div class="alert alert-error" role="alert">${tx('sd.own_schema')}</div>`;
     return page(
       s,
       reply,
-      'Sample Data',
-      html`${intro}${region('New generator', html`${schemaForm}${tablesForm}`)}<div class="u-spacer"></div>${region('Saved generators', savedList, html`<span class="count">${gens.length}</span>`)}`,
+      tx('sql.tool.sample'),
+      html`${introOf(tx)}${region(tx('sd.new'), html`${schemaForm}${tablesForm}`)}<div class="u-spacer"></div>${region(tx('sd.saved_title'), savedList, html`<span class="count">${gens.length}</span>`)}`,
     );
   };
 
@@ -175,23 +179,24 @@ export async function sampleDataRoutes(app: FastifyInstance) {
 
   const editor = async (s: Session, reply: FastifyReply, st: FormState, code = 200) => {
     const { tables, missing } = await describeAll(s, st.def);
-    const title = st.id ? (st.name ?? 'Generator') : 'New generator';
+    const tx = tr(s);
+    const title = st.id ? (st.name ?? tx('sd.generator')) : tx('sd.new');
     const columnRow = (i: number, j: number, c: ColumnInfo, spec: TableSpec) => {
       const cs = spec.columns.find((x) => x.column === c.name)!;
       const id = `${i}_${j}`;
       return html`<div class="sd-col">
         <div class="sd-col-name"><strong>${c.name}</strong><span class="muted small">${notes(c)}</span><input type="hidden" name="c_${id}" value="${c.name}"></div>
-        <div class="sd-col-gen"><select name="g_${id}" aria-label="${c.name}: generator">${Object.entries(GENERATORS).map(
-          ([k, label]) => html`<option value="${k}"${cs.generator === k ? raw(' selected') : ''}>${label}</option>`,
+        <div class="sd-col-gen"><select name="g_${id}" aria-label="${tx('sd.col_generator', { column: c.name })}">${Object.entries(GENERATORS).map(
+          ([k, label]) => html`<option value="${k}"${cs.generator === k ? raw(' selected') : ''}>${genLabel(tx, k, label)}</option>`,
         )}</select></div>
-        <div class="sd-col-opt"><input name="o_${id}" value="${cs.options}" maxlength="4000" aria-label="${c.name}: options" placeholder="options" spellcheck="false"></div>
-        <div class="sd-col-nulls"><input type="number" name="n_${id}" value="${cs.nulls}" min="0" max="100" step="1" aria-label="${c.name}: % nulls"><span class="muted small" aria-hidden="true">% null</span></div>
+        <div class="sd-col-opt"><input name="o_${id}" value="${cs.options}" maxlength="4000" aria-label="${tx('sd.col_options', { column: c.name })}" placeholder="${tx('sd.options')}" spellcheck="false"></div>
+        <div class="sd-col-nulls"><input type="number" name="n_${id}" value="${cs.nulls}" min="0" max="100" step="1" aria-label="${tx('sd.col_nulls', { column: c.name })}"><span class="muted small" aria-hidden="true">${tx('sd.pct_null')}</span></div>
       </div>`;
     };
     const tableRegions = tables.map(
       ({ info, spec }, i) => html`<fieldset class="prop-group sd-table"><legend>${info.schema}.${info.name}</legend>
         <input type="hidden" name="t" value="${info.name}">
-        <div class="field sd-rows"><label class="label" for="f_rows_${i}">Rows</label>
+        <div class="field sd-rows"><label class="label" for="f_rows_${i}">${tx('sm.col.rows')}</label>
           <input type="number" id="f_rows_${i}" name="rows_${i}" value="${spec.rows}" min="0" max="${MAX_ROWS()}" step="1" required></div>
         <div class="sd-cols">${info.columns.map((c, j) => columnRow(i, j, c, spec))}</div></fieldset>`,
     );
@@ -199,42 +204,44 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     const form = html`<form method="post" action="${sdUrl}">${csrf(s)}
         <input type="hidden" name="schema" value="${st.def.schema}">${st.id ? html`<input type="hidden" name="id" value="${st.id}">` : ''}
         ${st.error ? html`<div class="alert alert-error" role="alert">${st.error}</div>` : ''}
-        ${missing.length ? html`<div class="alert alert-note">Not found any more, left out: ${missing.join(', ')}.</div>` : ''}
+        ${missing.length ? html`<div class="alert alert-note">${tx('sd.missing', { tables: missing.join(', ') })}</div>` : ''}
         <div class="form-grid">
-          <div class="field"><label class="label" for="f_seed">Seed</label>
+          <div class="field"><label class="label" for="f_seed">${tx('sd.seed')}</label>
             <input type="number" id="f_seed" name="seed" value="${st.def.seed ?? ''}" min="0" max="4294967295" step="1">
-            <small class="help">The same seed gives the same rows (for the same tables and parent rows). Empty: a new seed each run; a preview fills it in, so Insert then adds the rows you saw.</small></div>
-          <div class="field"><span class="label">Schema</span><p>${st.def.schema} <a class="small" href="${tablesLink}">change tables</a></p></div>
+            <small class="help">${tx('sd.seed_help')}</small></div>
+          <div class="field"><span class="label">${tx('sm.schema')}</span><p>${st.def.schema} <a class="small" href="${tablesLink}">${tx('sd.change_tables')}</a></p></div>
         </div>
         ${tableRegions}
-        ${generatorHelp}
+        ${generatorHelp(tx)}
         <div class="buttons u-mt1">
-          <button class="btn" name="action" value="preview">${icon('search')} Preview</button>
-          <button class="btn btn-hot" name="action" value="insert">${icon('play')} Insert rows</button>
-          <button class="btn" name="action" value="sql">${icon('download')} Download SQL</button>
-          <button class="btn" name="action" value="csv">${icon('download')} Download CSV</button></div>
-        <fieldset class="prop-group u-mt1"><legend>Save the definition</legend><div class="form-grid">
-          <div class="field"><label class="label" for="f_name">Name</label><input id="f_name" name="name" value="${st.name ?? ''}" maxlength="100"></div>
-          <div class="field"><label class="label" for="f_description">Description</label><input id="f_description" name="description" value="${st.description ?? ''}" maxlength="1000"></div>
-        </div><div class="buttons"><button class="btn" name="action" value="save">${icon('check')} ${st.id ? 'Save' : 'Save as new generator'}</button></div></fieldset>
+          <button class="btn" name="action" value="preview">${icon('search')} ${tx('sd.preview')}</button>
+          <button class="btn btn-hot" name="action" value="insert">${icon('play')} ${tx('sd.insert')}</button>
+          <button class="btn" name="action" value="sql">${icon('download')} ${tx('sd.download_sql')}</button>
+          <button class="btn" name="action" value="csv">${icon('download')} ${tx('sd.download_csv')}</button></div>
+        <fieldset class="prop-group u-mt1"><legend>${tx('sd.save_def')}</legend><div class="form-grid">
+          <div class="field"><label class="label" for="f_name">${tx('scr.name')}</label><input id="f_name" name="name" value="${st.name ?? ''}" maxlength="100"></div>
+          <div class="field"><label class="label" for="f_description">${tx('scr.description')}</label><input id="f_description" name="description" value="${st.description ?? ''}" maxlength="1000"></div>
+        </div><div class="buttons"><button class="btn" name="action" value="save">${icon('check')} ${st.id ? tx('scr.save') : tx('sd.save_new')}</button></div></fieldset>
       </form>`;
     const del = st.id
-      ? html`<form method="post" action="${sdUrl}/${st.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="Delete this generator definition? Rows already inserted stay.">Delete generator</button></form>`
+      ? html`<form method="post" action="${sdUrl}/${st.id}/delete" class="danger-zone">${csrf(s)}<button class="btn btn-danger" data-confirm="${tx('sd.delete_confirm')}">${tx('sd.delete')}</button></form>`
       : '';
-    return page(s, reply, title, html`${intro}${st.result ? html`${st.result}<div class="u-spacer"></div>` : ''}${region(title, html`${form}${del}`)}`, code);
+    return page(s, reply, title, html`${introOf(tx)}${st.result ? html`${st.result}<div class="u-spacer"></div>` : ''}${region(title, html`${form}${del}`)}`, code);
   };
 
   const sampleTable = (columns: string[], rows: (string | null)[][]) =>
     html`<div class="table-wrap"><table class="report"><thead><tr>${columns.map((c) => html`<th>${c}</th>`)}</tr></thead>
       <tbody>${rows.map((r) => html`<tr>${r.map((v) => html`<td>${v === null ? html`<span class="null">null</span>` : v.length > 200 ? `${v.slice(0, 200)}…` : v}</td>`)}</tr>`)}</tbody></table></div>`;
 
-  const resultHtml = (r: RunResult, committed: boolean) =>
-    region(
-      committed ? 'Inserted' : 'Preview',
+  const resultHtml = (tx: BuilderTranslate, r: RunResult, committed: boolean) => {
+    const counts = r.tables.map((t) => `${t.table}: ${tx('scr.rows', { n: t.rows })}`).join(', ');
+    return region(
+      committed ? tx('sd.inserted') : tx('sd.preview'),
       html`<div class="alert ${committed ? 'alert-success' : 'alert-note'}" role="status">
-          ${r.tables.map((t) => `${t.table}: ${t.rows} row(s)`).join(', ')}${committed ? ' inserted' : html`. <strong>Rolled back: nothing was saved.</strong>`} (seed ${r.seed}).</div>
-        ${r.tables.map((t) => html`<h3 class="u-mt1">${t.table} <span class="muted small">${t.rows > PREVIEW_ROWS ? `first ${PREVIEW_ROWS} of ${t.rows}` : ''}</span></h3>${t.rows ? sampleTable(t.columns, t.sample) : html`<p class="muted">No rows.</p>`}`)}`,
+          ${committed ? tx('sd.inserted_counts', { counts, seed: r.seed }) : html`${counts}. <strong>${tx('sd.rolled_back')}</strong> (${tx('sd.seed_is', { seed: r.seed })}).`}</div>
+        ${r.tables.map((t) => html`<h3 class="u-mt1">${t.table} <span class="muted small">${t.rows > PREVIEW_ROWS ? tx('sd.first_of', { shown: PREVIEW_ROWS, n: t.rows }) : ''}</span></h3>${t.rows ? sampleTable(t.columns, t.sample) : html`<p class="muted">${tx('sd.no_rows')}</p>`}`)}`,
     );
+  };
 
   // ------------------------------------------------------------ routes
   app.get(sdUrl, async (req: Req, reply) => {
@@ -266,24 +273,24 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     const action = b.action ?? 'preview';
 
     if (action === 'save') {
-      if (!st.name) return refuse('Give the generator a name to save it.');
-      if (st.name.length > 100 || (st.description ?? '').length > 1000) return refuse('The name is at most 100 characters, the description 1000.');
-      if (!allowedSchema(def.schema)) return refuse('Choose a schema of your own: not meta, information_schema or pg_*.');
+      if (!st.name) return refuse(tr(s)('sd.err.name'));
+      if (st.name.length > 100 || (st.description ?? '').length > 1000) return refuse(tr(s)('sd.err.length'));
+      if (!allowedSchema(def.schema)) return refuse(tr(s)('sd.own_schema'));
       const { tables } = await describeAll(s, def);
-      if (!tables.length) return refuse('Choose at least one table.');
+      if (!tables.length) return refuse(tr(s)('sd.err.table'));
       const json = JSON.stringify(tables.map(({ spec }) => spec));
       try {
         const id = g
           ? (await owner.one('update meta.data_generator set name = $2, description = $3, schema_name = $4, seed = $5, tables = $6, updated_by = $7, updated_at = now() where id = $1 returning id', [g.id, st.name, st.description || null, def.schema, def.seed, json, s.username])).id
           : (await owner.one('insert into meta.data_generator (name, description, schema_name, seed, tables, created_by, updated_by, workspace_id) values ($1, $2, $3, $4, $5, $6, $6, $7) returning id', [st.name, st.description || null, def.schema, def.seed, json, s.username, currentWorkspace(s)])).id;
-        flash(s, `Generator ${st.name} saved.`);
+        flash(s, tr(s)('sd.saved', { name: st.name }));
         return back(reply, s, `${sdUrl}/${id}`);
       } catch (e) {
         if ((e as { code?: string }).code === '23505') return refuse(`A generator named ${st.name} exists already.`);
         throw e;
       }
     }
-    if (!['preview', 'insert', 'sql', 'csv'].includes(action)) return refuse('Unknown action.');
+    if (!['preview', 'insert', 'sql', 'csv'].includes(action)) return refuse(tr(s)('sd.err.action'));
 
     const db = await workshopDb(s);
     const p = await plan(db.pool, def);
@@ -324,7 +331,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
       await c.query('rollback').catch(() => {});
       const err = e as { message: string; detail?: string; table?: string };
       return refuse(
-        `${action === 'insert' ? 'Nothing was inserted: the transaction was rolled back. ' : ''}${err.table ? `${err.table}: ` : ''}${err.message}${err.detail ? ` (${err.detail})` : ''}`,
+        `${action === 'insert' ? `${tr(s)('sd.nothing_inserted')} ` : ''}${err.table ? `${err.table}: ` : ''}${err.message}${err.detail ? ` (${err.detail})` : ''}`,
       );
     } finally {
       // a connection of its own, closed: triggers may have changed settings
@@ -338,7 +345,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
         elapsedMs: Math.round(performance.now() - started),
         detail: `${def.schema}, seed ${seed}: ${result.tables.map((t) => `${t.table} ${t.rows}`).join(', ')}`.slice(0, 2000),
       });
-    return editor(s, reply, { ...st, result: resultHtml(result, action === 'insert') });
+    return editor(s, reply, { ...st, result: resultHtml(tr(s), result, action === 'insert') });
   });
 
   app.post(`${sdUrl}/:id/delete`, async (req: Req, reply) => {
@@ -347,7 +354,7 @@ export async function sampleDataRoutes(app: FastifyInstance) {
     const g = await saved(s, req.params.id);
     if (!g) return reply.code(404).send('Not found');
     await owner.query('delete from meta.data_generator where id = $1', [g.id]);
-    flash(s, `Generator ${g.name} deleted.`);
+    flash(s, tr(s)('sd.deleted', { name: g.name }));
     return back(reply, s, sdUrl);
   });
 }
