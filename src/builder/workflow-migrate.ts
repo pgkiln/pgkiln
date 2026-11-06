@@ -5,6 +5,7 @@ import { clientIp, logActivity } from '../session.ts';
 import { workflowDiagram, type Step } from '../workflow.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, region, send, shell, type Req } from './ui.ts';
+import { scopedTx as tx } from './i18n.ts';
 
 // (123) Workflows in the builder: migrating running instances to a newer
 // version (APEX 26.2: in-flight workflow migration) and the diagram as a file.
@@ -80,7 +81,7 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
     const pick = v ? versions.find((x) => x.version === v) : versions[versions.length - 1];
     if (!pick) return reply.code(404).send('No such version');
     const svg = workflowDiagram(pick.steps, { id: 'export', standalone: { title: `${d.name} version ${pick.version}` } }).toString();
-    if (!svg) return reply.code(404).send('This version has no steps to draw.');
+    if (!svg) return reply.code(404).send(tx('wfm.no_steps'));
     const file = `${d.name.toLowerCase()}-v${pick.version}.svg`.replace(/[^a-z0-9._-]/gi, '_');
     return reply
       .header('content-type', 'image/svg+xml; charset=utf-8')
@@ -126,7 +127,7 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
     let preview: { workflow_id: string; branch: string | null; from_version: string | null; from_step: string | null; to_step: string | null; problem: string | null }[] | null = null;
     let previewError: string | null = null;
     if (q.preview && to) {
-      if (!chosen.length) previewError = 'Choose the instances to migrate.';
+      if (!chosen.length) previewError = tx('wfm.choose_instances');
       else {
         try {
           preview = (await owner.query('select workflow_id::text, branch, from_version, from_step, to_step, problem from meta.migrate_workflows($1, $2, $3::bigint[], $4, false, $5)',
@@ -141,52 +142,50 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
     const self = `${url(d)}/migrate`;
     const hidden = html`<input type="hidden" name="to" value="${to ?? ''}">${chosen.map((w) => html`<input type="hidden" name="wf" value="${w.id}">`)}${Object.entries(mapping).map(([k, v]) => html`<input type="hidden" name="${`m.${k}`}" value="${v}">`)}`;
     const body = !running.length
-      ? region('Migrate running instances', html`<p class="muted u-mt0">${d.name} has no running instances.</p><p><a class="btn" href="${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}">Back to ${d.name}</a></p>`)
+      ? region(tx('wfm.title'), html`<p class="muted u-mt0">${tx('wfm.none_running', { name: d.name })}</p><p><a class="btn" href="${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}">${tx('wfm.back_to', { name: d.name })}</a></p>`)
       : !targets.length
-        ? region('Migrate running instances', html`<p class="muted u-mt0">Every running instance of ${d.name} runs the active version ${d.version}: there is no newer version to move them to.</p>
-            <p><a class="btn" href="${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}">Back to ${d.name}</a></p>`)
-        : html`${region('Migrate running instances', html`<form method="get" action="${self}">
+        ? region(tx('wfm.title'), html`<p class="muted u-mt0">${tx('wfm.all_current', { name: d.name, version: d.version })}</p>
+            <p><a class="btn" href="${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}">${tx('wfm.back_to', { name: d.name })}</a></p>`)
+        : html`${region(tx('wfm.title'), html`<form method="get" action="${self}">
             <input type="hidden" name="preview" value="1">
-            <p class="muted u-mt0">Move running instances to a newer version: each goes on at the step of the new version its current step is mapped to,
-              keeping its variables and the task it waits for. An instance inside parallel branches moves as a whole: its main path at its join and each open
-              branch at its own step, each mapped (a join stays a join). Every position must have a mapping, or nothing moves.</p>
+            <p class="muted u-mt0">${tx('wfm.intro')}</p>
             <div class="form-grid">
-              <div class="field"><label class="label" for="wf-to">To version</label>
-                <select id="wf-to" name="to">${targets.map((v) => html`<option value="${v}"${v === to ? raw(' selected') : ''}>${v}${v === d.version ? ' (active)' : ' (inactive)'}</option>`)}</select>
-                <small class="help">Changing it: preview again to see its steps.</small></div>
+              <div class="field"><label class="label" for="wf-to">${tx('wfm.to_version')}</label>
+                <select id="wf-to" name="to">${targets.map((v) => html`<option value="${v}"${v === to ? raw(' selected') : ''}>${v} (${tx(v === d.version ? 'wfv.state.active' : 'wfv.state.inactive')})</option>`)}</select>
+                <small class="help">${tx('wfm.to_help')}</small></div>
             </div>
-            <fieldset class="prop-group u-mt1"><legend>Instances on an older version</legend>
+            <fieldset class="prop-group u-mt1"><legend>${tx('wfm.older')}</legend>
               ${older.length
-                ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Migrate</th><th class="num">Id</th><th>Title</th><th>Version</th><th>State</th><th>At</th></tr></thead><tbody>
-                    ${older.map((w) => html`<tr><td data-label="Migrate"><input type="checkbox" name="wf" value="${w.id}" id="${`wf-${w.id}`}"${picked.includes(w.id) ? raw(' checked') : ''} aria-label="${`Migrate instance ${w.id}`}"></td>
-                      <td class="num" data-label="Id"><label for="${`wf-${w.id}`}">${w.id}</label></td><td data-label="Title">${w.title}</td><td data-label="Version">${w.version}</td>
-                      <td data-label="State">${w.state}</td><td data-label="At">${w.current_step ?? '—'}${w.branch_steps.length ? html`<br><small class="muted">branches at ${w.branch_steps.join(', ')}</small>` : ''}</td></tr>`)}
+                ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('wfm.migrate')}</th><th class="num">${tx('wfv.id')}</th><th>${tx('wfv.title')}</th><th>${tx('wfv.version')}</th><th>${tx('wfv.state')}</th><th>${tx('wfv.at')}</th></tr></thead><tbody>
+                    ${older.map((w) => html`<tr><td data-label="${tx('wfm.migrate')}"><input type="checkbox" name="wf" value="${w.id}" id="${`wf-${w.id}`}"${picked.includes(w.id) ? raw(' checked') : ''} aria-label="${tx('wfm.migrate_instance', { id: w.id })}"></td>
+                      <td class="num" data-label="${tx('wfv.id')}"><label for="${`wf-${w.id}`}">${w.id}</label></td><td data-label="${tx('wfv.title')}">${w.title}</td><td data-label="${tx('wfv.version')}">${w.version}</td>
+                      <td data-label="${tx('wfv.state')}">${w.state}</td><td data-label="${tx('wfv.at')}">${w.current_step ?? '—'}${w.branch_steps.length ? html`<br><small class="muted">${tx('wfm.branches_at', { steps: w.branch_steps.join(', ') })}</small>` : ''}</td></tr>`)}
                   </tbody></table></div>`
-                : html`<p class="muted">No running instance is older than version ${to}.</p>`}
+                : html`<p class="muted">${tx('wfm.none_older', { version: to ?? '' })}</p>`}
             </fieldset>
             ${current.length
-              ? html`<fieldset class="prop-group u-mt1"><legend>Map the current steps to steps of version ${to}</legend>
+              ? html`<fieldset class="prop-group u-mt1"><legend>${tx('wfm.map', { version: to ?? '' })}</legend>
                   <div class="wf-migrate-map">${current.map((st) => html`<label>${st}
-                    <select name="${`m.${st}`}"><option value="">— no mapping —</option>${targetSteps.map((x) => html`<option value="${x.name}"${mapping[st] === x.name ? raw(' selected') : ''}>${x.name} (${x.type})</option>`)}</select></label>`)}</div>
+                    <select name="${`m.${st}`}"><option value="">${tx('wfm.no_mapping')}</option>${targetSteps.map((x) => html`<option value="${x.name}"${mapping[st] === x.name ? raw(' selected') : ''}>${x.name} (${x.type})</option>`)}</select></label>`)}</div>
                 </fieldset>`
               : ''}
-            <div class="buttons u-mt1"><button class="btn">Preview</button> <a class="btn" href="${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}">Cancel</a></div>
+            <div class="buttons u-mt1"><button class="btn">${tx('wfm.preview')}</button> <a class="btn" href="${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}">${tx('common.cancel')}</a></div>
           </form>`)}
           ${previewError ? html`<div class="alert alert-error u-mt1" role="alert">${previewError}</div>` : ''}
           ${preview
-            ? region('Preview', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">Id</th><th>Path</th><th>From</th><th>To</th><th>Result</th></tr></thead><tbody>
-                  ${preview.map((r) => html`<tr><td class="num" data-label="Id">${r.workflow_id}</td><td data-label="Path">${r.branch ? `branch ${r.branch}` : 'main'}</td><td data-label="From">${r.from_version ? `${r.from_version}: ${r.from_step ?? '—'}` : '—'}</td>
-                    <td data-label="To">${r.to_step ? `${to}: ${r.to_step}` : '—'}</td><td data-label="Result">${r.problem ? html`<span class="wf-problem">${r.problem}</span>` : html`<span class="tag tag-info">ready</span>`}</td></tr>`)}
+            ? region(tx('wfm.preview'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th class="num">${tx('wfv.id')}</th><th>${tx('wfm.path')}</th><th>${tx('wfm.from')}</th><th>${tx('wfm.to')}</th><th>${tx('wfm.result')}</th></tr></thead><tbody>
+                  ${preview.map((r) => html`<tr><td class="num" data-label="${tx('wfv.id')}">${r.workflow_id}</td><td data-label="${tx('wfm.path')}">${r.branch ? tx('wfm.branch', { name: r.branch }) : tx('wfm.main')}</td><td data-label="${tx('wfm.from')}">${r.from_version ? `${r.from_version}: ${r.from_step ?? '—'}` : '—'}</td>
+                    <td data-label="${tx('wfm.to')}">${r.to_step ? `${to}: ${r.to_step}` : '—'}</td><td data-label="${tx('wfm.result')}">${r.problem ? html`<span class="wf-problem">${r.problem}</span>` : html`<span class="tag tag-info">${tx('wfm.ready')}</span>`}</td></tr>`)}
                 </tbody></table></div>
                 ${ready
                   ? html`<form method="post" action="${self}" class="u-mt1">${csrf(s)}${hidden}
-                      <button class="btn btn-hot" data-confirm="${`Migrate ${instances} instance(s) to version ${to}?`}">Migrate ${instances} instance(s)</button></form>`
-                  : html`<p class="wf-problem">Map a step for every instance and branch (or leave the instances out) and preview again: nothing is migrated while one can't move.</p>`}`)
+                      <button class="btn btn-hot" data-confirm="${tx('wfm.confirm', { n: instances, version: to ?? '' })}">${tx('wfm.do', { n: instances })}</button></form>`
+                  : html`<p class="wf-problem">${tx('wfm.not_ready')}</p>`}`)
             : ''}
-          ${target ? region(`Version ${to}`, html`<div class="wf-wrap">${workflowDiagram(target.steps, { id: 'target' })}</div>`) : ''}`;
+          ${target ? region(tx('wfm.version', { version: to ?? '' }), html`<div class="wf-wrap">${workflowDiagram(target.steps, { id: 'target' })}</div>`) : ''}`;
     const main = html`${appHeader(a, 'shared', s)}<div class="ide-body">${body}</div>`;
-    return send(reply, s, shell(s, `Migrate ${d.name}`, [['App Builder', BASE], [a.name, `${BASE}/apps/${a.id}`], ['Shared Components', `${BASE}/apps/${a.id}/shared`],
-      [d.name, `${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}`], ['Migrate instances']], main));
+    return send(reply, s, shell(s, tx('wfm.page_title', { name: d.name }), [[tx('rail.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('app.tab.shared'), `${BASE}/apps/${a.id}/shared`],
+      [d.name, `${BASE}/apps/${a.id}/shared?c=workflow_definition-${d.id}`], [tx('wfm.crumb')]], main));
   });
 
   app.post(`${BASE}/apps/:id/shared/workflow_definition/:cid/migrate`, async (req: Req, reply) => {
@@ -200,12 +199,12 @@ export async function workflowMigrateRoutes(app: FastifyInstance) {
     const mapping = mappingOf(b);
     const self = `${url(d)}/migrate`;
     try {
-      if (!to) throw new Error('Choose the version to migrate to.');
+      if (!to) throw new Error(tx('wfm.choose_version'));
       const rows = await owner.tx(async (c) =>
         (await c.query('select workflow_id::text, from_step, to_step from meta.migrate_workflows($1, $2, $3::bigint[], $4, true, $5)', [d.id, to, ids, mapping, s.username])).rows);
       const moved = new Set(rows.map((r) => r.workflow_id)).size;
       logActivity({ appId: d.app_id, username: s.username, event: 'workflow', ip: clientIp(req), detail: `${d.name}: ${moved} instance(s) migrated to version ${to}` });
-      flash(s, `${moved} instance(s) of ${d.name} migrated to version ${to}.`);
+      flash(s, tx('wfm.done', { n: moved, name: d.name, version: to }));
       return back(reply, s, `${BASE}/apps/${d.app_id}/shared?c=workflow_definition-${d.id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
