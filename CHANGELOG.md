@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Builder spacing**: regions and two-column rows stacked on a page always have a gap between them (13 pages had a
+  region touching the one above, e.g. an application's REST API page, a workspace, the mail queue, network access,
+  globalization, AI services, team templates, database users).
+- **An application's REST API page, reorganised**: one introduction with the status (PostgREST reachable, a dedicated
+  role, pgkiln_authenticator's grant) as pills at the top; Setup and Issue a token side by side as compact forms;
+  Endpoints with the curl examples under them; OAuth clients with their actions in one row and the New client form
+  behind a button once a client exists.
+
 ## [0.82.0] - 2026-11-05
 
 ### Added
