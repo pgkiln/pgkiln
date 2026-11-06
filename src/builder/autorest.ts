@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { apiRoleProblem } from '../api.ts';
 import { owner } from '../db.ts';
-import { html, raw, type Raw } from '../html.ts';
+import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { AUTOREST_METHODS, describeColumns, keyColumns, MAX_PAGE, qualified, RELKINDS, type RestObject } from '../runtime/autorest.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
@@ -11,6 +11,7 @@ import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, 
 import { splitRoles } from './users.ts';
 import { restNav } from './rest-modules.ts';
 import { currentWorkspace, usableSchemas, workshopDb } from './workspaces.ts';
+import { scopedTx as tx, tr, withTranslator, type BuilderTranslate } from './i18n.ts';
 
 // (sprint 100, Database Actions DA-11 part 1) SQL Workshop › RESTful Services: AutoREST. A developer publishes a
 // table or view of a schema the SQL Workshop may use through an application of the workspace (meta.rest_object,
@@ -36,7 +37,9 @@ interface WsApp {
 type Row = RestObject & { app_alias: string; app_name: string; db_role: string | null };
 
 const many = (v: unknown) => ([] as string[]).concat((v as string | string[] | undefined) ?? []);
-const kindLabel = (k: string) => RELKINDS[k] ?? k;
+const KINDS = { r: 'table', p: 'table', v: 'view', m: 'mview', f: 'foreign' } as const;
+const kindLabel = (k: string) => (Object.hasOwn(KINDS, k) ? tx(`ar.kind.${KINDS[k as keyof typeof KINDS]}`) : RELKINDS[k] ?? k);
+const anyOf = (roles: string[]) => roles.join(` ${tx('rm.or')} `);
 const autoUrl = (alias: string, o?: string) => `${publicUrl()}/a/${alias}/autorest/${o ? `${o}/` : ''}`;
 
 /** The applications of the developer's current workspace. */
@@ -72,14 +75,14 @@ async function findRel(s: Session, schema: unknown, name: unknown): Promise<Rel 
 }
 
 /** Why `role` may not serve the relation; null when it may. */
-async function roleProblem(role: string | null, rel: Pick<Rel, 'schema' | 'name'>): Promise<string | null> {
-  if (!role) return 'The application has no database role. AutoREST runs as the application\'s role: set one in its settings.';
+async function roleProblem(t: BuilderTranslate, role: string | null, rel: Pick<Rel, 'schema' | 'name'>): Promise<string | null> {
+  if (!role) return t('ar.e.no_role');
   const problem = await apiRoleProblem(role);
-  if (problem) return `The application's database role: ${problem}`;
+  if (problem) return t('ar.e.role_problem', { problem });
   const r = await owner.one<{ owns: boolean }>(
     `select pg_has_role($1, c.relowner, 'MEMBER') as owns from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = $2 and c.relname = $3`,
     [role, rel.schema, rel.name]);
-  if (r?.owns) return `"${role}" owns ${rel.schema}.${rel.name} (or is a member of its owner): grants and row level security would not apply. Publish it through an application whose role does not own it.`;
+  if (r?.owns) return t('ar.e.owner', { role, object: `${rel.schema}.${rel.name}` });
   return null;
 }
 
@@ -92,38 +95,39 @@ interface Input {
 }
 
 /** The form's settings, or the problems with them. */
-async function readInput(b: Record<string, unknown>, rel: Pick<Rel, 'schema' | 'name' | 'kind'>, role: string | null): Promise<{ input: Input; problems: string[] }> {
+async function readInput(t: BuilderTranslate, b: Record<string, unknown>, rel: Pick<Rel, 'schema' | 'name' | 'kind'>, role: string | null): Promise<{ input: Input; problems: string[] }> {
   const problems: string[] = [];
   const methods = AUTOREST_METHODS.filter((m) => many(b.methods).includes(m));
-  if (!methods.length) problems.push('Choose at least one method.');
+  if (!methods.length) problems.push(t('ar.e.method'));
   const auth = b.auth === 'public' ? 'public' : b.auth === 'token' ? 'token' : null;
-  if (!auth) problems.push('Choose who may call it: a token of the application, or public.');
+  if (!auth) problems.push(t('rm.e.auth'));
   const size = Number(b.page_size ?? 25);
-  if (!Number.isInteger(size) || size < 1 || size > MAX_PAGE) problems.push(`The page size is 1 to ${MAX_PAGE}.`);
+  if (!Number.isInteger(size) || size < 1 || size > MAX_PAGE) problems.push(t('ar.e.page_size', { max: MAX_PAGE }));
   const cols = role ? await describeColumns(owner, rel.schema, rel.name, role) : [];
-  if (rel.kind === 'm' && methods.some((m) => m !== 'GET')) problems.push('A materialized view answers GET only.');
-  if (!keyColumns(cols).length && methods.some((m) => m === 'PUT' || m === 'DELETE')) problems.push('PUT and DELETE need a primary key; this object has none.');
+  if (rel.kind === 'm' && methods.some((m) => m !== 'GET')) problems.push(t('ar.e.mview'));
+  if (!keyColumns(cols).length && methods.some((m) => m === 'PUT' || m === 'DELETE')) problems.push(t('ar.e.no_key'));
   const roles = splitRoles(String(b.roles ?? ''));
-  if (roles.some((r) => r.length > 100)) problems.push('Role names are at most 100 characters.');
+  if (roles.some((r) => r.length > 100)) problems.push(t('rm.e.role_length'));
   return { input: { methods, auth: auth ?? 'token', roles, page_size: size, enabled: b.enabled === undefined ? true : b.enabled === '1' }, problems };
 }
 
 const methodChecks = (selected: string[]) =>
-  html`<fieldset class="prop-group"><legend>Methods</legend><div class="form-grid">${AUTOREST_METHODS.map((m) =>
+  html`<fieldset class="prop-group"><legend>${tx('ar.methods')}</legend><div class="form-grid">${AUTOREST_METHODS.map((m) =>
     html`<label class="check"><input type="checkbox" name="methods" value="${m}"${selected.includes(m) ? raw(' checked') : ''}> ${m} <small class="help">${
-      { GET: 'rows and one row', POST: 'insert a row', PUT: 'change a row', DELETE: 'delete a row' }[m]}</small></label>`)}</div></fieldset>`;
+      tx(`ar.m.${m.toLowerCase() as 'get' | 'post' | 'put' | 'delete'}`)}</small></label>`)}</div></fieldset>`;
 
 const authChoice = (auth: string) =>
-  html`<fieldset class="prop-group"><legend>Who may call it</legend>
-    <label class="check"><input type="radio" name="auth" value="token"${auth !== 'public' ? raw(' checked') : ''}> A bearer token of the application <small class="help">(an account's token or an OAuth client, App › REST API)</small></label>
-    <label class="check"><input type="radio" name="auth" value="public"${auth === 'public' ? raw(' checked') : ''}> Public: anyone, without a token <small class="help">(runs as <code>nobody</code>; grants and row level security still apply)</small></label>
+  html`<fieldset class="prop-group"><legend>${tx('rm.who')}</legend>
+    <label class="check"><input type="radio" name="auth" value="token"${auth !== 'public' ? raw(' checked') : ''}> ${tx('rm.auth_token')} <small class="help">${tx('ar.auth_token_help')}</small></label>
+    <label class="check"><input type="radio" name="auth" value="public"${auth === 'public' ? raw(' checked') : ''}> ${tx('ar.auth_public')} <small class="help">${tx.code('ar.auth_public_help')}</small></label>
   </fieldset>`;
 
 const errorList = (problems: string[]) =>
   problems.length ? html`<div class="alert alert-error" role="alert"><ul class="u-m0">${problems.map((p) => html`<li>${p}</li>`)}</ul></div>` : '';
 
 /** The list and the Enable form. */
-async function listPage(s: Session, q: Record<string, unknown>, problems: string[] = []) {
+const listPage = (s: Session, q: Record<string, unknown>, problems: string[] = []) => withTranslator(tr(s), () => listPageInner(s, q, problems));
+async function listPageInner(s: Session, q: Record<string, unknown>, problems: string[]) {
   const [list, apps, rels] = await Promise.all([rows(s), workspaceApps(s), relations(s)]);
   const usable = apps.filter((a) => a.db_role);
   const wantedRel = typeof q.schema === 'string' && typeof q.name === 'string' ? `${q.schema}.${q.name}` : '';
@@ -131,51 +135,52 @@ async function listPage(s: Session, q: Record<string, unknown>, problems: string
   const bySchema = new Map<string, Rel[]>();
   for (const r of rels) bySchema.set(r.schema, [...(bySchema.get(r.schema) ?? []), r]);
   const table = list.length
-    ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Object</th><th>URL</th><th>Application</th><th>Methods</th><th>Access</th></tr></thead><tbody>
+    ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('ar.object')}</th><th>URL</th><th>${tx('rm.application')}</th><th>${tx('ar.methods')}</th><th>${tx('rm.access')}</th></tr></thead><tbody>
         ${list.map((o) => html`<tr${o.enabled ? '' : raw(' class="muted"')}>
-          <td data-label="Object"><a href="${PAGE}/${o.id}">${o.schema_name}.${o.object_name}</a>${o.enabled ? '' : html` <span class="tag">off</span>`}</td>
+          <td data-label="${tx('ar.object')}"><a href="${PAGE}/${o.id}">${o.schema_name}.${o.object_name}</a>${o.enabled ? '' : html` <span class="tag">${tx('rm.off')}</span>`}</td>
           <td data-label="URL" class="wrap-anywhere"><code>/a/${o.app_alias}/autorest/${o.alias}/</code></td>
-          <td data-label="Application">${o.app_name}</td>
-          <td data-label="Methods">${o.methods.join(', ')}</td>
-          <td data-label="Access">${o.auth === 'public' ? html`<strong>public</strong>` : 'token'}${o.roles.length ? `, role ${o.roles.join(' or ')}` : ''}</td></tr>`)}
+          <td data-label="${tx('rm.application')}">${o.app_name}</td>
+          <td data-label="${tx('ar.methods')}">${o.methods.join(', ')}</td>
+          <td data-label="${tx('rm.access')}">${o.auth === 'public' ? html`<strong>${tx('rm.public')}</strong>` : tx('rm.token')}${o.roles.length ? `, ${tx('rm.role', { roles: anyOf(o.roles) })}` : ''}</td></tr>`)}
       </tbody></table></div>`
-    : html`<p class="muted">No tables or views are published yet. Enable one below, or with <em>REST › Enable</em> in an object's ⋯ menu.</p>`;
+    : html`<p class="muted">${tx.rich('ar.none_yet', { menu: raw(`<em>${esc(tx('ar.menu_enable'))}</em>`) })}</p>`;
   const form = html`<form method="post" action="${PAGE}" id="enable">${csrf(s)}
       ${errorList(problems)}
       <div class="form-grid">
-        <div class="field"><label class="label" for="f_object">Table or view</label>
-          <select id="f_object" name="object" required><option value="">- choose -</option>${[...bySchema].map(([schema, rs]) =>
+        <div class="field"><label class="label" for="f_object">${tx('ar.table_or_view')}</label>
+          <select id="f_object" name="object" required><option value="">${tx('ar.choose')}</option>${[...bySchema].map(([schema, rs]) =>
             html`<optgroup label="${schema}">${rs.map((r) => {
               const v = JSON.stringify([r.schema, r.name]);
               return html`<option value="${v}"${v === wantedRelKey ? raw(' selected') : ''}>${r.schema}.${r.name}${r.kind === 'r' || r.kind === 'p' ? '' : ` (${kindLabel(r.kind)})`}</option>`;
             })}</optgroup>`)}</select></div>
-        <div class="field"><label class="label" for="f_app">Application</label>
-          <select id="f_app" name="app_id" required>${usable.map((a) => html`<option value="${a.id}"${String(q.app_id ?? '') === String(a.id) ? raw(' selected') : ''}>${a.name} (${a.alias}, runs as ${a.db_role})</option>`)}</select>
-          <small class="help">Its database role runs the statements, its tokens and roles decide who may call it.</small></div>
-        <div class="field"><label class="label" for="f_alias">URL name</label>
-          <input id="f_alias" name="alias" value="${String(q.alias ?? '')}" placeholder="the object's name">
-          <small class="help">/a/&lt;app&gt;/autorest/<b>name</b>/ — lower case letters, digits, _ and -</small></div>
-        <div class="field"><label class="label" for="f_roles">Roles</label>
-          <input id="f_roles" name="roles" value="${String(q.roles ?? '')}" placeholder="any caller">
-          <small class="help">Comma separated: the caller needs one of these application roles.</small></div>
-        <div class="field"><label class="label" for="f_page_size">Page size</label>
+        <div class="field"><label class="label" for="f_app">${tx('rm.application')}</label>
+          <select id="f_app" name="app_id" required>${usable.map((a) => html`<option value="${a.id}"${String(q.app_id ?? '') === String(a.id) ? raw(' selected') : ''}>${a.name} (${a.alias}, ${tx('ar.runs_as', { role: a.db_role })})</option>`)}</select>
+          <small class="help">${tx('ar.app_help')}</small></div>
+        <div class="field"><label class="label" for="f_alias">${tx('ar.url_name')}</label>
+          <input id="f_alias" name="alias" value="${String(q.alias ?? '')}" placeholder="${tx('ar.object_name_ph')}">
+          <small class="help">/a/&lt;app&gt;/autorest/<b>name</b>/ — ${tx('ar.url_name_rule')}</small></div>
+        <div class="field"><label class="label" for="f_roles">${tx('rm.roles')}</label>
+          <input id="f_roles" name="roles" value="${String(q.roles ?? '')}" placeholder="${tx('ar.any_caller')}">
+          <small class="help">${tx('ar.roles_help')}</small></div>
+        <div class="field"><label class="label" for="f_page_size">${tx('rm.page_size')}</label>
           <input id="f_page_size" name="page_size" type="number" min="1" max="${MAX_PAGE}" value="${String(q.page_size ?? 25)}">
-          <small class="help">Rows per page without ?limit= (at most ${MAX_PAGE}).</small></div>
+          <small class="help">${tx('ar.page_size_help', { max: MAX_PAGE })}</small></div>
       </div>
       ${methodChecks(many(q.methods).length ? many(q.methods) : ['GET'])}
       ${authChoice(String(q.auth ?? 'token'))}
-      <div class="buttons"><button class="btn btn-hot"${usable.length ? '' : raw(' disabled')}>${icon('bolt')} Enable</button></div>
-      ${usable.length ? '' : html`<p class="muted">No application of this workspace has a database role to run as.</p>`}
+      <div class="buttons"><button class="btn btn-hot"${usable.length ? '' : raw(' disabled')}>${icon('bolt')} ${tx('ar.enable')}</button></div>
+      ${usable.length ? '' : html`<p class="muted">${tx('ar.no_usable_app')}</p>`}
     </form>`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest', s)}${restNav('autorest')}
-    <p class="muted">RESTful Services: publish a table or view as REST endpoints (AutoREST). Rows come paged as JSON, with filters; a primary key gives single-row GET, PUT and DELETE. Requests run as the publishing application's database role with the caller as <code>meta.app_user()</code>, so its grants and row level security apply. For tailored endpoints with your own SQL or PL/pgSQL, create a <a href="${BASE}/sql/rest/modules">module</a>.</p>
-    ${region('Published objects', table)}
-    ${region('Enable a table or view', form)}`;
-  return shell(s, 'RESTful Services', [['SQL Workshop', `${BASE}/sql`], ['RESTful Services']], main, 'sql');
+  const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('rest', s)}${restNav('autorest')}
+    <p class="muted">${tx.code('ar.intro')} ${tx.rich('ar.intro_module', { module: raw(`<a href="${BASE}/sql/rest/modules">${esc(tx('ar.module_link'))}</a>`) })}</p>
+    ${region(tx('ar.published'), table)}
+    ${region(tx('ar.enable_a'), form)}`;
+  return shell(s, tx('sql.tool.rest'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.rest')]], main, 'sql');
 }
 
 /** One published object: checks, endpoints, examples, settings. */
-async function detailPage(s: Session, o: Row, problems: string[] = []) {
+const detailPage = (s: Session, o: Row, problems: string[] = []) => withTranslator(tr(s), () => detailPageInner(s, o, problems));
+async function detailPageInner(s: Session, o: Row, problems: string[]) {
   const rel = { schema: o.schema_name, name: o.object_name };
   const info = await owner.one<{ kind: string; rls: boolean; force: boolean; policies: number; invoker: boolean; oid: number }>(
     `select c.relkind::text as kind, c.relrowsecurity as rls, c.relforcerowsecurity as force, c.oid::int as oid,
@@ -183,7 +188,7 @@ async function detailPage(s: Session, o: Row, problems: string[] = []) {
             coalesce(c.reloptions && array['security_invoker=true', 'security_invoker=on', 'security_invoker=1'], false) as invoker
        from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = $1 and c.relname = $2`, [o.schema_name, o.object_name]);
   const role = o.db_role;
-  const problem = info ? await roleProblem(role, rel) : 'The object no longer exists: its endpoints answer 404.';
+  const problem = info ? await roleProblem(tx, role, rel) : tx('ar.gone');
   const cols = info && role ? await describeColumns(owner, o.schema_name, o.object_name, role) : [];
   const key = keyColumns(cols);
   const privs = info && role && !problem
@@ -195,24 +200,24 @@ async function detailPage(s: Session, o: Row, problems: string[] = []) {
   const check = (ok: boolean | null, text: Raw | string) => html`<li>${ok === null ? 'ℹ' : ok ? '✓' : '✗'} ${text}</li>`;
   const priv = { GET: 'select', POST: 'insert', PUT: 'update', DELETE: 'delete' } as Record<string, string>;
   const checks = html`<ul class="checklist">
-    ${check(!problem, problem ?? html`Runs as <code>${role}</code>: not the owner, no superuser, no row level security bypass`)}
+    ${check(!problem, problem ?? tx.code('ar.chk.runs_as', { role: role ?? '' }))}
     ${privs ? o.methods.map((m) => check(m === 'GET' ? privs.GET || privs.sel : privs[m], privs[m] || (m === 'GET' && privs.sel)
-      ? html`${m}: <code>${role}</code> may ${priv[m]}`
-      : html`${m}: <code>${role}</code> may not ${priv[m]} — <code>grant ${priv[m]} on ${qualified(o)} to ${role};</code>`)) : ''}
-    ${info && (info.kind === 'r' || info.kind === 'p') ? check(info.rls ? true : null, info.rls ? `Row level security is on (${info.policies} polic${info.policies === 1 ? 'y' : 'ies'})` : 'Row level security is off: callers see every row the role may select') : ''}
-    ${info && info.kind === 'v' ? check(info.invoker, info.invoker ? 'The view is security_invoker: the tables\' row level security applies to the caller' : html`The view runs with its owner's rights, so the row level security of the tables beneath does not apply: <code>alter view ${qualified(o)} set (security_invoker = true);</code>`) : ''}
-    ${info ? check(key.length ? true : null, key.length ? html`Primary key ${key.map((k) => k.name).join(', ')}: single rows at <code>…/${o.alias}/&lt;${key.map((k) => k.name).join(',')}&gt;</code>` : 'No primary key: the collection only (GET and POST)') : ''}
-    ${cols.some((c) => !c.readable) ? check(null, `Columns the role may not select are left out: ${cols.filter((c) => !c.readable).map((c) => c.name).join(', ')}`) : ''}
+      ? html`${m}: ${tx.code('ar.chk.may', { role: role ?? '', priv: priv[m] })}`
+      : html`${m}: ${tx.code('ar.chk.may_not', { role: role ?? '', priv: priv[m] })} — <code>grant ${priv[m]} on ${qualified(o)} to ${role};</code>`)) : ''}
+    ${info && (info.kind === 'r' || info.kind === 'p') ? check(info.rls ? true : null, info.rls ? (info.policies === 1 ? tx('ar.chk.rls_on_1') : tx('ar.chk.rls_on', { n: info.policies })) : tx('ar.chk.rls_off')) : ''}
+    ${info && info.kind === 'v' ? check(info.invoker, info.invoker ? tx('ar.chk.invoker') : html`${tx('ar.chk.definer')} <code>alter view ${qualified(o)} set (security_invoker = true);</code>`) : ''}
+    ${info ? check(key.length ? true : null, key.length ? html`${tx('ar.chk.key', { columns: key.map((k) => k.name).join(', ') })} <code>…/${o.alias}/&lt;${key.map((k) => k.name).join(',')}&gt;</code>` : tx('ar.chk.no_key')) : ''}
+    ${cols.some((c) => !c.readable) ? check(null, tx('ar.chk.hidden_columns', { columns: cols.filter((c) => !c.readable).map((c) => c.name).join(', ') })) : ''}
   </ul>`;
   const base = autoUrl(o.app_alias, o.alias);
   const keyEx = key.map((k) => `<${k.name}>`).join(',');
   const endpoints: [string, string, string][] = [];
-  if (o.methods.includes('GET')) endpoints.push(['GET', base, `Rows, paged: ?limit= (1–${MAX_PAGE}, default ${o.page_size}) &offset= ; ?<column>=<value> ; ?q=<text> ; ?order=<column>.desc`]);
-  if (o.methods.includes('POST')) endpoints.push(['POST', base, 'A JSON object of column values: the new row (201)']);
+  if (o.methods.includes('GET')) endpoints.push(['GET', base, tx('ar.ep.rows', { max: MAX_PAGE, size: o.page_size })]);
+  if (o.methods.includes('POST')) endpoints.push(['POST', base, tx('ar.ep.post')]);
   if (key.length) {
-    if (o.methods.includes('GET')) endpoints.push(['GET', `${base}${keyEx}`, 'One row (404 when there is none)']);
-    if (o.methods.includes('PUT')) endpoints.push(['PUT', `${base}${keyEx}`, 'Change the columns the JSON object names']);
-    if (o.methods.includes('DELETE')) endpoints.push(['DELETE', `${base}${keyEx}`, 'Delete the row (204)']);
+    if (o.methods.includes('GET')) endpoints.push(['GET', `${base}${keyEx}`, tx('ar.ep.one')]);
+    if (o.methods.includes('PUT')) endpoints.push(['PUT', `${base}${keyEx}`, tx('ar.ep.put')]);
+    if (o.methods.includes('DELETE')) endpoints.push(['DELETE', `${base}${keyEx}`, tx('ar.ep.delete')]);
   }
   const auth = o.auth === 'public' ? '' : ' -H "Authorization: Bearer $TOKEN"';
   const sample = cols.filter((c) => c.readable && c.pk === null).slice(0, 2);
@@ -227,36 +232,36 @@ async function detailPage(s: Session, o: Row, problems: string[] = []) {
   ].filter(Boolean).join('\n');
   const fetchEx = `const res = await fetch('${base}?limit=10'${o.auth === 'public' ? '' : `, {\n  headers: { Authorization: \`Bearer \${token}\` },\n}`});\nconst { items, has_more } = await res.json();`;
   const openapi = `${publicUrl()}/a/${o.app_alias}/autorest/openapi.json`;
-  const main = html`<h1 class="u-mb1">SQL Workshop</h1>${workshopTabs('rest', s)}
-    <h2 class="u-mb1 wrap-anywhere">${o.schema_name}.${o.object_name} <span class="muted small">${info ? kindLabel(info.kind) : ''} · ${o.enabled ? 'enabled' : 'disabled'}</span></h2>
+  const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('rest', s)}
+    <h2 class="u-mb1 wrap-anywhere">${o.schema_name}.${o.object_name} <span class="muted small">${info ? kindLabel(info.kind) : ''} · ${o.enabled ? tx('ar.enabled_l') : tx('rm.disabled_suffix')}</span></h2>
     ${errorList(problems)}
-    ${!o.enabled ? html`<div class="alert alert-info" role="status">Disabled: the endpoints answer 404.</div>` : ''}
+    ${!o.enabled ? html`<div class="alert alert-info" role="status">${tx('ar.disabled_alert')}</div>` : ''}
     <div class="columns">
-      ${region('Checks', checks)}
-      ${region('Endpoints', html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>Method</th><th>URL</th><th>Does</th></tr></thead><tbody>
-        ${endpoints.map(([m, u, d]) => html`<tr><td data-label="Method"><code>${m}</code></td><td data-label="URL" class="wrap-anywhere"><code>${u}</code></td><td data-label="Does">${d}</td></tr>`)}</tbody></table></div>
-        <p class="wrap-anywhere">OpenAPI: <a href="${openapi}" target="_blank" rel="noopener"><code>${openapi}</code></a> <span class="muted small">(the public objects; send a token for all of them)</span></p>`)}
+      ${region(tx('rm.checks'), checks)}
+      ${region(tx('ar.endpoints'), html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rm.method')}</th><th>URL</th><th>${tx('ar.does')}</th></tr></thead><tbody>
+        ${endpoints.map(([m, u, d]) => html`<tr><td data-label="${tx('rm.method')}"><code>${m}</code></td><td data-label="URL" class="wrap-anywhere"><code>${u}</code></td><td data-label="${tx('ar.does')}">${d}</td></tr>`)}</tbody></table></div>
+        <p class="wrap-anywhere">OpenAPI: <a href="${openapi}" target="_blank" rel="noopener"><code>${openapi}</code></a> <span class="muted small">${tx('ar.openapi_note')}</span></p>`)}
     </div>
-    ${region('Try it', html`${o.auth === 'public'
-      ? html`<p class="muted u-mt0">Public: no token needed.</p>`
-      : html`<p class="muted u-mt0">Get <code>$TOKEN</code> from <a href="${BASE}/apps/${o.app_id}/api">${o.app_name} › REST API</a>: issue a token for an account, or use an OAuth client's access token.${o.roles.length ? ` The caller needs the role ${o.roles.join(' or ')}.` : ''} Without a valid token the endpoints answer 401; without the role or a grant, 403.</p>`}
+    ${region(tx('rm.try_it'), html`${o.auth === 'public'
+      ? html`<p class="muted u-mt0">${tx('ar.public_no_token')}</p>`
+      : html`<p class="muted u-mt0">${tx.rich('ar.get_token', { token: raw('<code>$TOKEN</code>'), link: raw(`<a href="${BASE}/apps/${o.app_id}/api">${esc(o.app_name)} › REST API</a>`) })}${o.roles.length ? ` ${tx('ar.caller_needs', { roles: anyOf(o.roles) })}` : ''} ${tx('ar.status_codes')}</p>`}
       <h3 class="small">cURL</h3><pre class="source wrap-pre">${curl}</pre>
       <h3 class="small">JavaScript (fetch)</h3><pre class="source wrap-pre">${fetchEx}</pre>`)}
-    ${region('Settings', html`<form method="post" action="${PAGE}/${o.id}">${csrf(s)}
-        <p class="muted u-mt0 wrap-anywhere">Published by <a href="${BASE}/apps/${o.app_id}">${o.app_name}</a> (runs as <code>${role ?? '—'}</code>) at <code>/a/${o.app_alias}/autorest/${o.alias}/</code>.</p>
+    ${region(tx('ar.settings'), html`<form method="post" action="${PAGE}/${o.id}">${csrf(s)}
+        <p class="muted u-mt0 wrap-anywhere">${tx.rich('ar.published_by', { app: raw(`<a href="${BASE}/apps/${o.app_id}">${esc(o.app_name)}</a>`), role: raw(`<code>${esc(role ?? '—')}</code>`), path: raw(`<code>/a/${esc(o.app_alias)}/autorest/${esc(o.alias)}/</code>`) })}</p>
         <div class="form-grid">
-          <div class="field"><label class="label" for="f_roles">Roles</label><input id="f_roles" name="roles" value="${o.roles.join(', ')}" placeholder="any caller"><small class="help">Comma separated: the caller needs one of these application roles.</small></div>
-          <div class="field"><label class="label" for="f_page_size">Page size</label><input id="f_page_size" name="page_size" type="number" min="1" max="${MAX_PAGE}" value="${o.page_size}"></div>
-          <div class="field"><label class="label" for="f_enabled">Status</label><select id="f_enabled" name="enabled"><option value="1"${o.enabled ? raw(' selected') : ''}>Enabled</option><option value="0"${o.enabled ? '' : raw(' selected')}>Disabled (404)</option></select></div>
+          <div class="field"><label class="label" for="f_roles">${tx('rm.roles')}</label><input id="f_roles" name="roles" value="${o.roles.join(', ')}" placeholder="${tx('ar.any_caller')}"><small class="help">${tx('ar.roles_help')}</small></div>
+          <div class="field"><label class="label" for="f_page_size">${tx('rm.page_size')}</label><input id="f_page_size" name="page_size" type="number" min="1" max="${MAX_PAGE}" value="${o.page_size}"></div>
+          <div class="field"><label class="label" for="f_enabled">${tx('rm.status')}</label><select id="f_enabled" name="enabled"><option value="1"${o.enabled ? raw(' selected') : ''}>${tx('rm.enabled')}</option><option value="0"${o.enabled ? '' : raw(' selected')}>${tx('rm.disabled_404')}</option></select></div>
         </div>
         ${methodChecks(o.methods)}
         ${authChoice(o.auth)}
-        <div class="buttons"><button class="btn btn-hot">Save</button></div>
+        <div class="buttons"><button class="btn btn-hot">${tx('rm.save')}</button></div>
       </form>
       <form method="post" action="${PAGE}/${o.id}/delete" class="u-mt1">${csrf(s)}
-        <button class="btn btn-danger">${icon('trash')} Disable REST (remove)</button> <span class="muted small">The endpoints answer 404 at once; the table itself is not changed.</span>
+        <button class="btn btn-danger">${icon('trash')} ${tx('ar.remove')}</button> <span class="muted small">${tx('ar.remove_help')}</span>
       </form>`)}`;
-  return shell(s, `REST ${o.schema_name}.${o.object_name}`, [['SQL Workshop', `${BASE}/sql`], ['RESTful Services', PAGE], [`${o.schema_name}.${o.object_name}`]], main, 'sql');
+  return shell(s, `REST ${o.schema_name}.${o.object_name}`, [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.rest'), PAGE], [`${o.schema_name}.${o.object_name}`]], main, 'sql');
 }
 
 const parseObject = (v: unknown): [string, string] | null => {
@@ -301,15 +306,15 @@ export async function autoRestBuilderRoutes(app: FastifyInstance) {
     const rel = pick ? await findRel(s, pick[0], pick[1]) : undefined;
     const again = async (problems: string[]) =>
       send(reply.code(200), s, await listPage(s, { ...b, ...(rel ? { schema: rel.schema, name: rel.name } : {}) }, problems));
-    if (!rel) return again(['Choose a table or view of a schema the SQL Workshop may use.']);
+    if (!rel) return again([tr(s)('ar.e.choose_object')]);
     const a = (await workspaceApps(s)).find((x) => String(x.id) === String(b.app_id ?? ''));
-    if (!a) return again(['Choose an application of this workspace.']);
+    if (!a) return again([tr(s)('rm.e.choose_app')]);
     const alias = String(b.alias ?? '').trim() || rel.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^[^a-z]+/, '').slice(0, 63);
     const problems: string[] = [];
-    if (!ALIAS.test(alias)) problems.push('The URL name starts with a lower case letter: letters, digits, _ and - (at most 63).');
-    const rp = await roleProblem(a.db_role, rel);
+    if (!ALIAS.test(alias)) problems.push(tr(s)('ar.e.url_name'));
+    const rp = await roleProblem(tr(s), a.db_role, rel);
     if (rp) problems.push(rp);
-    const { input, problems: more } = await readInput(b, rel, a.db_role);
+    const { input, problems: more } = await readInput(tr(s), b, rel, a.db_role);
     problems.push(...more);
     if (problems.length) return again(problems);
     try {
@@ -318,12 +323,12 @@ export async function autoRestBuilderRoutes(app: FastifyInstance) {
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id`,
         [a.id, rel.schema, rel.name, alias, input.methods, input.auth, input.roles, input.page_size, s.username]);
       await logActivity({ appId: a.id, username: s.username, event: 'autorest', ip: clientIp(req), detail: `enabled ${rel.schema}.${rel.name} as ${alias} (${input.methods.join(', ')}, ${input.auth})` });
-      flash(s, `${rel.schema}.${rel.name} is published at /a/${a.alias}/autorest/${alias}/.`);
+      flash(s, tr(s)('ar.published_at', { object: `${rel.schema}.${rel.name}`, path: `/a/${a.alias}/autorest/${alias}/` }));
       return back(reply, s, `${PAGE}/${r!.id}`);
     } catch (e) {
       const err = e as { code?: string; constraint?: string; message: string };
       if (err.code !== '23505') throw e;
-      return again([/alias/.test(err.constraint ?? '') ? `${a.name} already publishes something as ${alias}: choose another URL name.` : `${a.name} already publishes ${rel.schema}.${rel.name}.`]);
+      return again([/alias/.test(err.constraint ?? '') ? tr(s)('ar.e.alias_taken', { app: a.name, alias }) : tr(s)('ar.e.already', { app: a.name, object: `${rel.schema}.${rel.name}` })]);
     }
   });
 
@@ -341,12 +346,12 @@ export async function autoRestBuilderRoutes(app: FastifyInstance) {
     const o = await rowOr404(req, reply, s);
     if (!o) return;
     const kind = (await owner.one<{ k: string }>(`select c.relkind::text as k from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = $1 and c.relname = $2`, [o.schema_name, o.object_name]))?.k ?? 'r';
-    const { input, problems } = await readInput((req.body ?? {}) as Record<string, unknown>, { schema: o.schema_name, name: o.object_name, kind }, o.db_role);
+    const { input, problems } = await readInput(tr(s), (req.body ?? {}) as Record<string, unknown>, { schema: o.schema_name, name: o.object_name, kind }, o.db_role);
     if (problems.length) return send(reply, s, await detailPage(s, o, problems));
     await owner.query(`update meta.rest_object set methods = $2, auth = $3, roles = $4, page_size = $5, enabled = $6, updated_at = now() where id = $1`,
       [o.id, input.methods, input.auth, input.roles, input.page_size, input.enabled]);
     await logActivity({ appId: o.app_id, username: s.username, event: 'autorest', ip: clientIp(req), detail: `changed ${o.schema_name}.${o.object_name} (${input.methods.join(', ')}, ${input.auth}${input.enabled ? '' : ', disabled'})` });
-    flash(s, 'Saved.');
+    flash(s, tr(s)('rm.saved'));
     return back(reply, s, `${PAGE}/${o.id}`);
   });
 
@@ -357,7 +362,7 @@ export async function autoRestBuilderRoutes(app: FastifyInstance) {
     if (!o) return;
     await owner.query('delete from meta.rest_object where id = $1', [o.id]);
     await logActivity({ appId: o.app_id, username: s.username, event: 'autorest', ip: clientIp(req), detail: `disabled ${o.schema_name}.${o.object_name}` });
-    flash(s, `${o.schema_name}.${o.object_name} is no longer published.`);
+    flash(s, tr(s)('ar.unpublished', { object: `${o.schema_name}.${o.object_name}` }));
     return back(reply, s, PAGE);
   });
 }
