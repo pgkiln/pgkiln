@@ -110,6 +110,8 @@ describe('Progressive Web App', () => {
   });
 
   test('offline: visited pages from the device with a notice, others get the offline page', async () => {
+    // (168) without every page fetched ahead: only the pages opened here are on the device
+    await owner.query(`update meta.app set pwa_prefetch_hours = null where alias = 'hr'`);
     const context = await browser.newContext();
     const page = await signedIn(context);
     await controlled(page);
@@ -128,6 +130,29 @@ describe('Progressive Web App', () => {
     await Promise.all([page.waitForNavigation(), page.locator('.t-user summary').click().then(() => page.click('text=Sign out'))]);
     const kept = await page.evaluate(async () => (await (await caches.open('pgkiln-pages-/a/hr')).keys()).length);
     assert.equal(kept, 0);
+    await context.close();
+    await owner.query(`update meta.app set pwa_prefetch_hours = 12 where alias = 'hr'`);
+  });
+
+  test('every page of the navigation offline after sign-in, never opened ones too; pages with load processes left out (168)', async () => {
+    const context = await browser.newContext();
+    const page = await signedIn(context);
+    // the service worker fetches the menu's pages one by one after the first page, and stamps the cache when done
+    const keptNow = () => page.evaluate(async () => (await (await caches.open('pgkiln-pages-/a/hr')).keys()).map((k) => new URL(k.url).pathname));
+    for (let i = 0; i < 180 && !(await keptNow()).includes('/a/hr/__prefetched'); i++) await page.waitForTimeout(500);
+    const kept = await keptNow();
+    assert.ok(kept.includes('/a/hr/4') && kept.includes('/a/hr/50'), kept.join(' '));
+    assert.ok(!kept.includes('/a/hr/20'), 'page 20 runs a process when it opens');
+    await controlled(page);
+    await context.setOffline(true);
+    await page.goto(`${base}/a/hr/4`); // never opened on this device
+    assert.doesNotMatch(await page.locator('h1').innerText(), /You're offline/);
+    await page.locator('.offline-banner').waitFor();
+    // the offline page lists the kept pages, not the stamp
+    await page.goto(`${base}/a/hr/20`);
+    await page.locator('[data-offline-pages] a').first().waitFor();
+    assert.ok(!(await page.locator('[data-offline-pages] a').allInnerTexts()).some((t) => t.includes('__prefetched')));
+    await context.setOffline(false);
     await context.close();
   });
 

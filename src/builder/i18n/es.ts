@@ -7510,4 +7510,10 @@ export const es: BuilderMessages = {
   'pjb.steps': 'Pasos',
   'pjb.message': 'Mensaje',
   'pjb.no_runs': 'Aún no hay ejecuciones.',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': 'Hacer que todas las páginas de la navegación estén disponibles sin conexión después de iniciar sesión',
+  'pwa.prefetch_help': 'Requiere Guardar las páginas visitadas. Después de iniciar sesión, y en la primera página abierta en un dispositivo, el dispositivo obtiene una por una todas las páginas del menú y de la barra de navegación que el usuario puede abrir. El servidor las muestra en solo lectura: las páginas que ejecutan procesos al abrirse se omiten y solo se guardan cuando el usuario las abre.',
+  'pwa.prefetch_hours': 'Volver a obtenerlas después de (horas)',
+  'pwa.prefetch_hours_help': 'De 1 a 168. Las páginas se vuelven a obtener en la primera página abierta después de este tiempo, mientras haya conexión.',
+  'pwa.prefetch_hours_range': 'Volver a obtenerlas después de: un número entero de horas entre 1 y 168.',
 };

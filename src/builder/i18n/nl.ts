@@ -7510,4 +7510,10 @@ export const nl: BuilderMessages = {
   'pjb.steps': 'Stappen',
   'pjb.message': 'Melding',
   'pjb.no_runs': 'Nog geen uitvoeringen.',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': 'Alle pagina\'s van de navigatie na het aanmelden offline beschikbaar maken',
+  'pwa.prefetch_help': 'Vereist Bezochte pagina\'s bewaren. Na het aanmelden, en op de eerste pagina die op een apparaat wordt geopend, haalt het apparaat één voor één alle pagina\'s van het navigatiemenu en de navigatiebalk op die de gebruiker mag openen. De server toont ze alleen-lezen: pagina\'s die bij het openen processen uitvoeren worden overgeslagen en pas bewaard als de gebruiker ze opent.',
+  'pwa.prefetch_hours': 'Opnieuw ophalen na (uren)',
+  'pwa.prefetch_hours_help': '1 tot 168. De pagina\'s worden opnieuw opgehaald bij de eerste pagina die na deze tijd wordt geopend, als er verbinding is.',
+  'pwa.prefetch_hours_range': 'Opnieuw ophalen na: een geheel aantal uren van 1 tot 168.',
 };

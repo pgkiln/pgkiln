@@ -13,6 +13,7 @@ the home screen with its own icon, full screen, and working on when the network 
 | Installable | Adds a web app manifest and a service worker to the application. Phones offer "Add to home screen" / "Install"; the app then opens full screen, without the browser bar. (0.42) Where the browser offers the installation (Chrome, Edge), the header shows an **Install app** button (APEX: the navigation bar's Install App entry) |
 | Name under the icon | The short name on the home screen (the application's name when empty) |
 | Keep visited pages on the device | Pages a user opened are shown again when there is no connection (with a notice that they may be out of date) |
+| Make every page of the navigation available offline | (168) With *Keep visited pages* on: after signing in, the device also fetches every page of the navigation menu and navigation bar the user may open, so the whole app works offline from the first visit; fetched again after *Fetch them again after* hours (1–168, default 12). [Below](#every-page-offline) |
 | Keep forms sent without a connection | Forms submitted offline are kept on the device and sent when the connection is back |
 | Push notifications | Users may turn on notifications per device; application code sends them ([below](#push-notifications)) |
 | Icon | A square PNG of at least 512 × 512 pixels. Without one, the app gets a tile with its initial in the theme's accent colour |
@@ -35,8 +36,37 @@ Everything is per application, under its own address: `/a/<alias>/manifest.webma
   listing the pages that are on the device.
 - Kept pages contain the user's data. They stay on the device only while the user is signed in:
   signing in or out removes them, so the next person on a shared device doesn't see them.
-- Live data (reports, charts) is as fresh as the last visit. Actions that need the server (searching,
+- Live data (reports, charts) is as fresh as the last visit (or the last fetch, below). Actions that need the server (searching,
   downloads, dynamic actions) wait for the connection.
+
+## Every page offline
+
+(168) With *Make every page of the navigation available offline*, a user doesn't have to open every page
+once before going out of range:
+
+1. On the first page after signing in (and on the first page opened on a device), the page hands the
+   links of its **navigation menu and navigation bar** to the service worker. Those are exactly the pages
+   the server showed this user: authorization schemes, conditions and page access already applied. Dialog
+   pages, other sites and the sign-in and sign-out pages are left out; at most 60 pages are fetched.
+2. The service worker fetches them **one at a time** in the background, with a short pause between
+   them, and keeps each page that comes back. It skips the whole thing when the browser asks to save
+   data (*Data Saver*), and stops at the first network error, to try again on the next page.
+3. When it is done it notes the time; after *Fetch them again after* hours (default 12) the next page
+   opened online starts a new round. Signing in or out empties the kept pages, so the next person
+   starts over.
+
+The server shows a fetched page **read-only** (the request carries `X-Pgkiln-Prefetch: 1`):
+
+- the page's transaction is read-only: an application process or a region query that writes fails
+  (the region shows its error in the kept copy) and nothing is changed;
+- the session's state is not kept, and a message waiting for the next page stays there;
+- a page with a process that runs when it opens (point *On load*) is not fetched at all: it is kept
+  only when the user opens it, as before. So are dialogs, documents and downloads;
+- each fetch is logged as `page_prefetch`, apart from `page_view`, so activity reports count real visits.
+
+Only the pages of the menus are fetched, with their first page of rows: a form for one record
+(`?P3_ID=…`) or a report's other pages are kept only once the user opens them. The kept copies hold
+the user's data, like visited pages: turn it on for apps used on devices that belong to one person.
 
 ## Forms sent offline
 
@@ -127,9 +157,10 @@ results, and a *Send test* button.
 
 ## Example
 
-The HR example application is a PWA: install it from the browser menu on a phone, open a few pages,
-switch on airplane mode, and file a leave request; it is sent when the connection is back. Its
-employee form records a work location and takes the photo with the camera (`examples/hr/hr_12_pwa.sql`).
+The HR example application is a PWA: install it from the browser menu on a phone, sign in, wait a few
+seconds, switch on airplane mode, and every page of the menu still opens (`examples/hr/hr_82_pwa_prefetch.sql`);
+file a leave request, and it is sent when the connection is back. Its employee form records a work location
+and takes the photo with the camera (`examples/hr/hr_12_pwa.sql`).
 
 ## Not included
 

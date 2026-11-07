@@ -7514,4 +7514,10 @@ export const en = {
   'pjb.steps': 'Steps',
   'pjb.message': 'Message',
   'pjb.no_runs': 'No runs yet.',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': 'Make every page of the navigation available offline after sign-in',
+  'pwa.prefetch_help': 'Needs Keep visited pages. After a sign-in, and on the first page opened on a device, the device fetches every page of the navigation menu and navigation bar the user may open, one at a time. The server shows them read-only: pages that run processes when they open are left out and kept only when the user opens them.',
+  'pwa.prefetch_hours': 'Fetch them again after (hours)',
+  'pwa.prefetch_hours_help': '1 to 168. The pages are fetched again on the first page opened after this time, while there is a connection.',
+  'pwa.prefetch_hours_range': 'Fetch them again after: a whole number of hours from 1 to 168.',
 } as const;

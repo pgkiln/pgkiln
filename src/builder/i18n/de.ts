@@ -7510,4 +7510,10 @@ export const de: BuilderMessages = {
   'pjb.steps': 'Schritte',
   'pjb.message': 'Meldung',
   'pjb.no_runs': 'Noch keine Ausführungen.',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': 'Alle Seiten der Navigation nach der Anmeldung offline verfügbar machen',
+  'pwa.prefetch_help': 'Erfordert „Besuchte Seiten behalten“. Nach einer Anmeldung und auf der ersten auf einem Gerät geöffneten Seite lädt das Gerät nacheinander alle Seiten des Navigationsmenüs und der Navigationsleiste, die der Benutzer öffnen darf. Der Server zeigt sie schreibgeschützt: Seiten, die beim Öffnen Prozesse ausführen, werden ausgelassen und erst gespeichert, wenn der Benutzer sie öffnet.',
+  'pwa.prefetch_hours': 'Erneut laden nach (Stunden)',
+  'pwa.prefetch_hours_help': '1 bis 168. Die Seiten werden nach dieser Zeit beim ersten Seitenaufruf erneut geladen, sofern eine Verbindung besteht.',
+  'pwa.prefetch_hours_range': 'Erneut laden nach: eine ganze Zahl von Stunden zwischen 1 und 168.',
 };

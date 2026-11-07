@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Every page offline from the first visit** (sprint 168; migration 156 `meta.app.pwa_prefetch_hours`): Settings →
+  Progressive Web App → *Make every page of the navigation available offline*. With *Keep visited pages* on, the
+  service worker fetches the navigation menu's and navigation bar's pages the user may open, one at a time, after
+  signing in, and again after a number of hours (default 12). The server renders such a fetch read-only (no data
+  or session changes; pages with on-load processes, dialogs, documents and downloads are refused) and logs it as
+  `page_prefetch`. HR example part 82 turns it on.
+
 ## [0.87.0] - 2026-11-06
 
 ### Added

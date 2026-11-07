@@ -4,6 +4,8 @@
 //   (offline, the cached copy of another version)
 //   pages (navigations): network first; offline, the cached copy (only when the app keeps pages) or the offline page
 //   signing in or out empties the page cache, so the next person on the device doesn't see them
+//   (168) with prefetchHours: the pages app.js hands over (the navigation's) are fetched one by one and kept, again
+//   when the copies are older than prefetchHours (a stamp in the page cache, so a sign-in starts over)
 //   push notifications (migration 074): shown as they arrive, a click opens their page of the app;
 //   signing out turns them off on this device
 /* global PGKILN */
@@ -77,9 +79,57 @@ self.addEventListener('message', (event) => {
     caches
       .open(PAGES)
       .then((c) => c.keys())
-      .then((keys) => event.source.postMessage({ type: 'pgkiln:pages', pages: keys.map((k) => k.url) }));
+      .then((keys) => event.source.postMessage({ type: 'pgkiln:pages', pages: keys.map((k) => k.url).filter((u) => new URL(u).pathname !== STAMP) }));
   }
+  if (event.data && event.data.type === 'pgkiln:prefetch' && Array.isArray(event.data.urls)) event.waitUntil(prefetchPages(event.data.urls));
 });
+
+// ------------------------------------------------------------------ every page offline (168, PGKILN.prefetchHours)
+// The server answers a request with X-Pgkiln-Prefetch read-only, keeps no session state, and refuses (409) pages
+// that run processes when they open; only 200 pages are kept. One page at a time, a short pause between them;
+// the stamp is written when the list is done, so a list cut short by the network is tried again next time.
+const STAMP = `${PGKILN.base}/__prefetched`;
+const MAX_PREFETCH = 60;
+let prefetching = false;
+async function prefetchPages(urls) {
+  if (!PGKILN.offlinePages || !PGKILN.prefetchHours || prefetching) return;
+  prefetching = true;
+  try {
+    const cache = await caches.open(PAGES);
+    const stamp = await cache.match(STAMP);
+    if (stamp && Date.now() - Number(await stamp.text()) < PGKILN.prefetchHours * 3600 * 1000) return;
+    const seen = new Set();
+    let kept = 0;
+    for (const u of urls) {
+      if (seen.size >= MAX_PREFETCH) break;
+      let url;
+      try {
+        url = new URL(u, self.location.origin);
+      } catch {
+        continue;
+      }
+      url.hash = '';
+      if (url.origin !== self.location.origin || !url.pathname.startsWith(`${PGKILN.base}/`) || signInOrOut(url) || seen.has(url.href)) continue;
+      seen.add(url.href);
+      let res;
+      try {
+        res = await fetch(url.href, { credentials: 'same-origin', redirect: 'manual', headers: { 'X-Pgkiln-Prefetch': '1' } });
+      } catch {
+        return; // offline: again on the next page
+      }
+      if (res.status === 200 && (res.headers.get('content-type') || '').startsWith('text/html')) {
+        await cache.put(new Request(url.href), res);
+        kept++;
+      }
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (!seen.size) return;
+    await cache.put(STAMP, new Response(String(Date.now())));
+    for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'pgkiln:prefetched', kept });
+  } finally {
+    prefetching = false;
+  }
+}
 
 // ------------------------------------------------------------------ offline form queue (PGKILN.offlineSubmit)
 // A form posted while the network is down is kept on the device (IndexedDB, files included) and the
