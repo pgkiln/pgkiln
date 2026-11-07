@@ -7516,4 +7516,12 @@ export const ko: BuilderMessages = {
   'pwa.prefetch_hours': '다시 가져오기까지의 시간(시간)',
   'pwa.prefetch_hours_help': '1~168. 이 시간이 지난 뒤 연결되어 있을 때 처음 페이지를 열면 다시 가져옵니다.',
   'pwa.prefetch_hours_range': '다시 가져오기까지의 시간: 1~168 사이의 정수 시간입니다.',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': '추가 작업',
+  'ws.suggest': '제안',
+  'ws.suggest_title': '커서 위치의 제안 (Ctrl+Space)',
+  'ws.check': '검사',
+  'ws.check_title': 'Advisor처럼 실행하지 않고 SQL을 계획합니다',
+  'ws.key.indent': '들여쓰기 (Esc 후 Tab: 다음 필드)',
+  'ws.search_path_plain': '검색 경로의 첫 번째는 {schema}',
 };

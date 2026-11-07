@@ -444,7 +444,9 @@ body.ide {
   .pd > .tab-panel > .pd-pane-title { display: none; }
   /* with script the designer fills the window and each pane scrolls on its own */
   .js .ide-full .ide-main { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
-  .js .ide-full .ide-work { flex: 1 1 auto; min-height: 0; }
+  /* (UX-2) the work area is the containing block and clips: nothing inside (a screen-reader heading placed
+     absolutely, a pane's overflow) can make the page itself scroll */
+  .js .ide-full .ide-work { flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
   .js .ide-full .pd { height: 100%; min-height: 0; }
   .js .pd-pane { min-height: 0; overflow: auto; }
   .js .pd-center { display: flex; flex-direction: column; overflow: hidden; }
@@ -484,8 +486,9 @@ body.ide {
 }
 .pd-node .icon { width: 16px; height: 16px; color: var(--muted); }
 a.pd-node:hover { background: var(--surface-3); }
-.pd-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.pd-note { margin-left: auto; padding-left: 8px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11.5px; }
+/* (UX-12) the name keeps its room: the type gives way first (the icon tells it, the tooltip names it) */
+.pd-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.pd-note { margin-left: auto; padding-left: 8px; max-width: 45%; min-width: 0; flex: 0 1000 auto; overflow: hidden; text-overflow: clip; white-space: nowrap; color: var(--muted); font-size: 11.5px; }
 .pd-folder { color: var(--muted); font-weight: 600; cursor: default; }
 .pd-tag { display: inline-flex; }
 .pd-tag .icon { width: 13px; height: 13px; color: var(--warn); }
@@ -1671,3 +1674,13 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .api-client-actions select { width: auto; min-height: 0; padding-block: 0.2rem; font-size: 0.8125rem; }
 .api-client-actions .inline-form { display: flex; gap: 6px; align-items: center; }
 .api-clients td.actions { text-align: end; }
+
+/* (UX-2) Page Designer on a short window: the gallery folded to its tabs (builder.js), Save at hand */
+@media (min-width: 1024px) {
+  .js .pd-gallery.is-folded { height: auto; min-height: 0; overflow: hidden; }
+  .js .pd-gallery.is-folded .tab-panel { display: none; }
+}
+.tb-save.is-dirty { position: relative; }
+.tb-save.is-dirty::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--hot); }
+#pd-p-props .component-form > .buttons { position: sticky; bottom: 0; z-index: 1; margin: 0; padding: 8px 0; background: var(--surface); border-top: 1px solid var(--border); }
+.pd-note.is-cut { display: none; }

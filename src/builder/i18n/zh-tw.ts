@@ -7516,4 +7516,12 @@ export const zhTW: BuilderMessages = {
   'pwa.prefetch_hours': '多少小時後重新取得',
   'pwa.prefetch_hours_help': '1 到 168。超過此時間後，在有網路連線時開啟第一個頁面時會重新取得這些頁面。',
   'pwa.prefetch_hours_range': '重新取得時間：1 到 168 之間的整數小時。',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': '更多動作',
+  'ws.suggest': '建議',
+  'ws.suggest_title': '游標處的建議 (Ctrl+Space)',
+  'ws.check': '檢查',
+  'ws.check_title': '像 Advisor 一樣規劃 SQL 而不執行',
+  'ws.key.indent': '縮排（先按 Esc 再按 Tab：下一個欄位）',
+  'ws.search_path_plain': '{schema} 位於搜尋路徑首位',
 };

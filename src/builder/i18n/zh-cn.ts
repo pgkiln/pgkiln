@@ -7516,4 +7516,12 @@ export const zhCN: BuilderMessages = {
   'pwa.prefetch_hours': '多少小时后重新获取',
   'pwa.prefetch_hours_help': '1 到 168。超过此时间后，在有网络连接时打开第一个页面时会重新获取这些页面。',
   'pwa.prefetch_hours_range': '重新获取时间：1 到 168 之间的整数小时。',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': '更多操作',
+  'ws.suggest': '建议',
+  'ws.suggest_title': '光标处的建议 (Ctrl+Space)',
+  'ws.check': '检查',
+  'ws.check_title': '像 Advisor 一样规划 SQL 而不运行',
+  'ws.key.indent': '缩进（先按 Esc 再按 Tab：下一个字段）',
+  'ws.search_path_plain': '{schema} 位于搜索路径首位',
 };

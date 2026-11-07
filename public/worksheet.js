@@ -104,11 +104,15 @@
     out.dataset.active = key;
   };
   show(out.dataset.active || 'result');
+  // (UX-1) before a run the output is only its tab strip; choosing a tab opens it
   out.querySelector('[role=tablist]').addEventListener('click', (e) => {
     const t = e.target.closest('[role=tab]');
-    if (t) show(t.dataset.wsTab);
+    if (!t) return;
+    delete out.dataset.empty;
+    show(t.dataset.wsTab);
   });
   out.querySelector('[role=tablist]').addEventListener('keydown', (e) => {
+    delete out.dataset.empty;
     const k = tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true');
     const next = { ArrowRight: k + 1, ArrowLeft: k - 1, Home: 0, End: tabs.length - 1 }[e.key];
     if (next === undefined) return;
@@ -552,6 +556,16 @@
     (k === 'h' ? fr : k === 'g' ? bar.querySelector('[data-ws-goto]') : fq).focus();
   };
   form.querySelector('[data-ws-find]').addEventListener('click', () => openFind('f'));
+  // (UX-1) Suggest and Check in the toolbar: the code editor's own buttons (its bar below the editor stays hidden
+  // until it has a message, such as Check's result)
+  const ceButton = (cls) => form.querySelector(`.ws-editor .${cls}`);
+  for (const [attr, cls] of [['data-ws-suggest', 'ce-suggest'], ['data-ws-check', 'ce-check']]) {
+    const btn = form.querySelector(`[${attr}]`);
+    btn?.addEventListener('click', () => ceButton(cls)?.click());
+    const sync = () => { if (btn) btn.hidden = !ceButton(cls) || ceButton(cls).hidden; };
+    sync();
+    window.addEventListener('load', sync);
+  }
   form.querySelector('[data-ws-format]').addEventListener('click', format);
   form.querySelector('[data-ws-case]').addEventListener('click', convertCase);
   bar.addEventListener('keydown', (e) => {

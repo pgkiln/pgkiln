@@ -1072,6 +1072,13 @@ The page designer has three panes, as in APEX's Page Designer. From 1024 pixels 
 side by side; on phones and portrait tablets they are tabs (**Tree**, **Layout**, **Properties**):
 choosing a component opens the Properties tab.
 
+(UX-2) From 1024 pixels wide the designer is fixed to the window: only the panes scroll, so the toolbar
+with **Save**, Undo / Redo and the page navigator stays in view, and the property editor's own save button
+stays at the bottom of its pane. **Ctrl+S** (Cmd+S) saves. A change not saved yet puts a dot on Save, and
+leaving the page with one asks first. On a window under 800 pixels high the gallery under the layout is only
+its tabs (*Regions*, *Items*, *Buttons*): choose one to open it, choose the open one to fold it again; the
+designer remembers which you prefer.
+
 - **Left: the component tree**, with four tabs:
   - **Rendering**: the page, *Pre-Rendering* (branches, computations and processes that run
     before the page is shown), the regions by
@@ -1087,7 +1094,8 @@ choosing a component opens the Properties tab.
     application items), linking to Shared Components.
 
   Icons show which components have an authorization scheme, a condition or a build option; type icons are coloured
-  by kind (regions, items, buttons, dynamic actions, processes). Folders open and close
+  by kind (regions, items, buttons, dynamic actions, processes). (UX-12) A component's name comes first: when the
+  pane is narrow its type text is left out (the icon shows the type; hover a component for its name and type). Folders open and close
   with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
   folder), Enter opens a component.
 
@@ -2133,6 +2141,12 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
 - **SQL Worksheet** (`/builder/sql/worksheet`, sprint 91; Database Actions: SQL; was SQL Commands, whose address
   `/builder/sql/commands` opens the same page): one screen with a **navigator** on the left, the **editor** with a
   toolbar, **output tabs** below and a **status bar**.
+  - (UX-1) The **toolbar is one row**: the worksheet's file menu, **Run Statement**, **Run Script**, **Explain Plan**
+    and **Autotrace** (icons with their name as a tooltip when the window is narrow), **Suggest** and **Check**, the
+    commit mode, fullscreen and a **⋯ menu** with *Continue on error*, Format, Convert case, Find, Load data, Clear
+    and the keyboard shortcuts. **Run as** is in the status bar (its tooltip says who the statements run as).
+    The editor takes about half of the window and the output the other half (drag the splitter; the size is
+    remembered); before the first run the output is only its row of tabs, and choosing a tab opens it.
   - The navigator has a schema (the same one as the Object Browser), an object type (*All Objects*, tables, views,
     materialized views, indexes, sequences, types, functions, procedures, triggers, policies) and a search field.
     A table or view opens to its columns with their types (a key marks the primary key); drag it into the editor
@@ -2217,11 +2231,11 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     remembered for the session; the history and the log keep the statement as written.
   - **Format** (**Ctrl + F7**) lays out the selection or the whole worksheet: a clause per line, the columns of a select
     list and the conditions of a WHERE one per line, joins and subqueries indented, keywords in lower or UPPER case
-    (chosen in the **?** menu). Strings, comments and `$$` bodies stay as they are. **Convert case** (**Ctrl + B**)
+    (chosen in the **⋯** menu). Strings, comments and `$$` bodies stay as they are. **Convert case** (**Ctrl + B**)
     cycles the selection (or the word at the cursor) through UPPER, lower and Initial caps. **Find and replace**
     (**Ctrl + F**, **Ctrl + H**) with a regular expression or exact case, **Go to line** (**Ctrl + G**), and
-    **Ctrl + /** comments the selected lines out or in. The **?** menu lists every key; **F1** opens this help. The
-    upload button opens Load Data for the navigator's schema.
+    **Ctrl + /** comments the selected lines out or in. The **⋯** menu lists every key; **F1** opens this help.
+    *Load data* in the same menu opens Load Data for the navigator's schema.
   - Each statement commits on its own (**Autocommit**, like Database Actions). Statements run as the **owner connection** (an isolated workspace's
     developer login for its developers), on a connection of their own that is closed afterwards, so `SET ROLE` or
     `SET search_path` doesn't leak. **Run as** picks an application of your workspace instead: the statements then

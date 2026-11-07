@@ -561,6 +561,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
 
   const toolBtn = (m: RunMode, ic: string, label: string, key: string, hot = false) =>
     html`<button class="btn btn-sm${hot ? ' btn-hot' : ''}" name="mode" value="${m}" title="${label} (${key})" data-ws-key="${key}">${icon(ic)}<span>${label}</span></button>`;
+  const runsAsText = `${tx('ws.runs_as', { who: String(runsAs) })}${searchSchema ? `; ${tx('ws.search_path_plain', { schema: searchSchema })}` : ''}`;
   const main = html`${chartCss ? html`<style nonce="${req.cspNonce}">${raw(chartCss.replace(/</g, ''))}</style>` : ''}<div class="ws-page">
     <h1 class="sr-only">${tx('ws.title')}</h1>
     ${workshopTabs('sql', s)}
@@ -615,20 +616,9 @@ async function worksheet(req: Req, reply: FastifyReply) {
           ${toolBtn('script', 'file', tx('ws.run_script'), 'F5')}
           ${toolBtn('explain', 'route', tx('ws.tab.explain'), 'F10')}
           ${toolBtn('autotrace', 'activity', tx('ws.tab.autotrace'), 'F6')}
-          <label class="ws-check"><input type="checkbox" name="continue_on_error"${continueOnError ? raw(' checked') : ''}> ${tx('ws.continue')}</label>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-suggest title="${tx('ws.suggest_title')}" hidden>${icon('list')}<span class="sr-only">${tx('ws.suggest')}</span></button>
+          <button type="button" class="btn btn-sm btn-icon" data-ws-check title="${tx('ws.check_title')}" hidden>${icon('check-circle')}<span class="sr-only">${tx('ws.check')}</span></button>
           <span class="ws-spacer"></span>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-format title="${tx('ws.format_title')}" hidden>${icon('sliders')}<span class="sr-only">${tx('ws.format')}</span></button>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-case title="${tx('ws.case_title')}" hidden><span aria-hidden="true" class="ws-aa">Aa</span><span class="sr-only">${tx('ws.case')}</span></button>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-find title="${tx('ws.find_title')}" hidden>${icon('search')}<span class="sr-only">${tx('ws.find')}</span></button>
-          <a class="btn btn-sm btn-icon" href="${BASE}/sql/load?schema=${encodeURIComponent(navSchema)}" title="${tx('ws.load_title')}">${icon('upload')}<span class="sr-only">${tx('ws.load')}</span></a>
-          <details class="menu ws-keys"><summary class="btn btn-sm btn-icon" title="${tx('ws.keys')}">?<span class="sr-only">${tx('ws.keys')}</span></summary>
-            <div class="menu-panel align-right"><div class="menu-section"><dl class="ws-keylist">
-              <dt>Ctrl+Enter</dt><dd>${tx('ws.run_statement')}</dd><dt>F5</dt><dd>${tx('ws.run_script')}</dd><dt>F10</dt><dd>${tx('ws.tab.explain')}</dd><dt>F6</dt><dd>${tx('ws.tab.autotrace')}</dd>
-              <dt>Ctrl+S</dt><dd>${tx('ws.key.save')}</dd><dt>Ctrl+F7</dt><dd>${tx('ws.format')}</dd><dt>Ctrl+B</dt><dd>${tx('ws.case')}</dd><dt>Ctrl+F / Ctrl+H</dt><dd>${tx('ws.key.find')}</dd>
-              <dt>Ctrl+G</dt><dd>${tx('ws.key.goto')}</dd><dt>Ctrl+/</dt><dd>${tx('ws.key.comment')}</dd><dt>Ctrl+Space</dt><dd>${tx('ws.key.suggest')}</dd><dt>F1</dt><dd>${tx('ws.key.help')}</dd><dt>Escape</dt><dd>${tx('ws.key.fullscreen')}</dd>
-            </dl>
-            <label class="ws-kwcase" hidden>${tx('ws.kwcase')} <select data-ws-kwcase><option value="lower">${tx('ws.lower')}</option><option value="upper">${tx('ws.upper')}</option></select></label>
-            <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>${tx('ws.help')}</a></div></div></details>
           <span class="ws-txn" data-ws-txn data-state="${tState}" data-statements="${txn?.statements ?? 0}" data-started="${txn?.startedMs ?? ''}" data-last="${txn?.lastMs ?? ''}" data-idle="${txnIdleSeconds()}" data-note="${tNote ?? ''}" data-now="${Date.now()}" hidden>
             <label class="ws-runas"><span>${tx('ws.commit_label')}</span><select name="txn" data-ws-txn-mode title="${tx('ws.txn.mode_title')}">
               <option value="">${tx('ws.autocommit')}</option><option value="on"${txnOn ? raw(' selected') : ''}>${tx('ws.transaction')}</option></select></label>
@@ -636,17 +626,25 @@ async function worksheet(req: Req, reply: FastifyReply) {
             <button class="btn btn-sm" name="mode" value="commit" data-ws-txn-commit title="${tx('ws.txn.commit_title')}"${txn ? '' : raw(' disabled')}>${icon('check')}<span>${tx('ws.commit_label')}</span></button>
             <button class="btn btn-sm" name="mode" value="rollback" data-ws-txn-rollback title="${tx('ws.txn.rollback_title')}"${txn ? '' : raw(' disabled')}>${icon('undo')}<span>${tx('ws.rollback')}</span></button>
           </span>
-          <label class="ws-runas"><span>${tx('ws.run_as')}</span>
-            <select name="as_app" title="${tx('ws.run_as_title')}">
-              <option value="">${db === owner ? tx('ws.owner_conn') : tx('ws.ws_login')}</option>
-              ${apps.map((a) => html`<option value="${a.id}"${asApp?.id === a.id ? raw(' selected') : ''}>${a.name} (${a.db_role})</option>`)}
-            </select></label>
-          <button type="button" class="btn btn-sm btn-icon" data-ws-clear title="${tx('ws.clear_title')}" hidden>${icon('trash')}<span class="sr-only">${tx('ws.clear')}</span></button>
           <button type="button" class="btn btn-sm btn-icon" data-ws-fullscreen title="${tx('ws.fullscreen_title')}" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">${tx('ws.fullscreen')}</span></button>
+          <!-- (UX-1) the rest of the tools in one menu, so the toolbar is one row and the editor keeps its height -->
+          <details class="menu ws-more"><summary class="btn btn-sm btn-icon" title="${tx('ws.more')}"><span aria-hidden="true" class="ws-dots">⋯</span><span class="sr-only">${tx('ws.more')}</span></summary>
+            <div class="menu-panel align-right"><div class="menu-section ws-more-tools">
+              <label class="ws-check"><input type="checkbox" name="continue_on_error"${continueOnError ? raw(' checked') : ''}> ${tx('ws.continue')}</label>
+              <button type="button" class="ws-menu-item" data-ws-format title="${tx('ws.format_title')}" hidden>${icon('sliders')} ${tx('ws.format')} <kbd>Ctrl+F7</kbd></button>
+              <button type="button" class="ws-menu-item" data-ws-case title="${tx('ws.case_title')}" hidden><span aria-hidden="true" class="ws-aa">Aa</span> ${tx('ws.case')} <kbd>Ctrl+B</kbd></button>
+              <button type="button" class="ws-menu-item" data-ws-find title="${tx('ws.find_title')}" hidden>${icon('search')} ${tx('ws.find')} <kbd>Ctrl+F</kbd></button>
+              <a class="ws-menu-item" href="${BASE}/sql/load?schema=${encodeURIComponent(navSchema)}" title="${tx('ws.load_title')}">${icon('upload')} ${tx('ws.load')}</a>
+              <button type="button" class="ws-menu-item" data-ws-clear title="${tx('ws.clear_title')}" hidden>${icon('trash')} ${tx('ws.clear')}</button>
+            </div>
+            <div class="menu-section"><strong class="ws-more-head">${tx('ws.keys')}</strong><dl class="ws-keylist">
+              <dt>Ctrl+Enter</dt><dd>${tx('ws.run_statement')}</dd><dt>F5</dt><dd>${tx('ws.run_script')}</dd><dt>F10</dt><dd>${tx('ws.tab.explain')}</dd><dt>F6</dt><dd>${tx('ws.tab.autotrace')}</dd>
+              <dt>Ctrl+S</dt><dd>${tx('ws.key.save')}</dd><dt>Ctrl+F7</dt><dd>${tx('ws.format')}</dd><dt>Ctrl+B</dt><dd>${tx('ws.case')}</dd><dt>Ctrl+F / Ctrl+H</dt><dd>${tx('ws.key.find')}</dd>
+              <dt>Ctrl+G</dt><dd>${tx('ws.key.goto')}</dd><dt>Ctrl+/</dt><dd>${tx('ws.key.comment')}</dd><dt>Ctrl+Space</dt><dd>${tx('ws.key.suggest')}</dd><dt>Tab</dt><dd>${tx('ws.key.indent')}</dd><dt>F1</dt><dd>${tx('ws.key.help')}</dd><dt>Escape</dt><dd>${tx('ws.key.fullscreen')}</dd>
+            </dl>
+            <label class="ws-kwcase" hidden>${tx('ws.kwcase')} <select data-ws-kwcase><option value="lower">${tx('ws.lower')}</option><option value="upper">${tx('ws.upper')}</option></select></label>
+            <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener" data-ws-help>${tx('ws.help')}</a></div></div></details>
         </div>
-        <p class="ws-runs-as muted small">${tx('ws.runs_as', { who: runsAs })}${searchSchema ? html`; ${tx.rich('ws.search_path', { schema: html`<code>${searchSchema}</code>`, change: html`<a href="${BASE}/sql">${tx('ws.change')}</a>` })}` : ''}. <span data-ws-commit-note>${txnOn
-          ? tx('ws.commit.txn', { idle: idleLabel(tx) })
-          : tx('ws.commit.auto')}</span></p>
         ${fileError ? html`<p class="alert alert-error ws-file-error" role="alert">${fileError}</p>` : ''}
         ${txnError ? html`<p class="alert alert-error ws-txn-alert" role="alert">${txnError}</p>` : txnInfo ? html`<p class="alert alert-info ws-txn-alert" role="status">${txnInfo}</p>` : ''}
         <div class="ws-wtabs" role="group" aria-label="${tx('ws.worksheets')}" hidden></div>
@@ -666,12 +664,23 @@ async function worksheet(req: Req, reply: FastifyReply) {
           <textarea id="ws-sql" name="sql" aria-label="SQL" class="code sql-editor" rows="14" spellcheck="false" data-code="plpgsql">${text || (isPost ? '' : 'select current_user, version();')}</textarea>
         </div>
         <div class="ws-split ws-split-h" role="separator" aria-orientation="horizontal" aria-label="${tx('ws.resize_out')}" tabindex="0" data-ws-split="out" hidden></div>
-        <div class="ws-output" data-active="${active}">
+        <div class="ws-output" data-active="${active}"${!run && !req.query?.tab ? raw(' data-empty') : ''}>
           <div class="ws-tabs" role="tablist" aria-label="${tx('ws.output')}">${TABS.map(([k]) => html`<button type="button" role="tab" id="ws-tab-${k}" aria-controls="ws-pane-${k}" aria-selected="${k === active ? 'true' : 'false'}" data-ws-tab="${k}">${tx(`ws.tab.${k}`)}</button>`)}</div>
           ${TABS.map(([k]) => html`<section class="ws-pane" id="ws-pane-${k}" role="tabpanel" aria-labelledby="ws-tab-${k}" data-pane="${k}"><h2 class="ws-pane-title">${tx(`ws.tab.${k}`)}</h2>${panes[k]}</section>`)}
         </div>
       </section>
-      <footer class="ws-status" role="status" aria-live="polite">${status}</footer>
+      <footer class="ws-status">
+        <span class="ws-status-run" role="status" aria-live="polite">${status}</span>
+        <!-- (UX-1) who the statements run as: a chip in the status bar; the explanation is its description -->
+        <label class="ws-runas ws-runas-chip" title="${runsAsText}"><span>${tx('ws.run_as')}</span>
+          <select name="as_app" aria-describedby="ws-runs-as">
+            <option value="">${db === owner ? tx('ws.owner_conn') : tx('ws.ws_login')}</option>
+            ${apps.map((a) => html`<option value="${a.id}"${asApp?.id === a.id ? raw(' selected') : ''}>${a.name} (${a.db_role})</option>`)}
+          </select></label>
+        <span class="sr-only" id="ws-runs-as">${tx('ws.runs_as', { who: runsAs })}${searchSchema ? html`; ${tx('ws.search_path_plain', { schema: searchSchema })}` : ''}. <span data-ws-commit-note>${txnOn
+          ? tx('ws.commit.txn', { idle: idleLabel(tx) })
+          : tx('ws.commit.auto')}</span></span>
+      </footer>
     </form>
     ${downloadable ? html`<form method="post" action="${BASE}/sql/unload" id="ws-dl" class="ws-dl-form">${csrf(s)}<input type="hidden" name="source" value="query"><input type="hidden" name="query" value="${downloadable}"><input type="hidden" name="header" value="1"><input type="hidden" name="bom" value="1"></form>` : ''}
   </div>`;

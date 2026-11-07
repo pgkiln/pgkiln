@@ -7516,4 +7516,12 @@ export const ja: BuilderMessages = {
   'pwa.prefetch_hours': '再取得までの時間（時間）',
   'pwa.prefetch_hours_help': '1～168。この時間が過ぎた後、接続があるときに最初にページを開くと再取得されます。',
   'pwa.prefetch_hours_range': '再取得までの時間: 1～168 の整数の時間を指定してください。',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': 'その他の操作',
+  'ws.suggest': '候補',
+  'ws.suggest_title': 'カーソル位置の候補 (Ctrl+Space)',
+  'ws.check': 'チェック',
+  'ws.check_title': 'Advisor と同様に、実行せずに SQL を計画します',
+  'ws.key.indent': 'インデント（Esc の後 Tab: 次のフィールド）',
+  'ws.search_path_plain': '検索パスの先頭は {schema}',
 };
