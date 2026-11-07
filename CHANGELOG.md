@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **SQL Worksheet on a laptop screen** (sprint 169, UX-1): the editor had one line left at 1118 × 679; it now gets
+  about half of the window (12 lines and the result rows at 1280 × 720). The toolbar is one row (the run buttons,
+  Suggest and Check, commit mode, fullscreen and a ⋯ menu with the other tools and the keyboard shortcuts), *Run
+  as* moved to the status bar with its explanation as a tooltip, the code editor's hint bar shows only Check's
+  messages, and the output pane is only its tabs until the first run.
+- **Page Designer on a laptop screen** (sprint 169, UX-2, UX-12): the page no longer scrolls as a whole (a
+  screen-reader heading placed outside the panes made it 200 pixels too tall), so Save and the toolbar stay in view;
+  the property editor's save button stays at the bottom of its pane; Ctrl+S saves, unsaved changes show a dot on
+  Save and leaving asks first; the gallery is only its tabs on windows under 800 pixels high; item names in the tree
+  are no longer cut short by their type text.
+
 ## [0.88.0] - 2026-11-07
 
 ### Added

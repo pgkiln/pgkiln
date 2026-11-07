@@ -7516,4 +7516,12 @@ export const nl: BuilderMessages = {
   'pwa.prefetch_hours': 'Opnieuw ophalen na (uren)',
   'pwa.prefetch_hours_help': '1 tot 168. De pagina\'s worden opnieuw opgehaald bij de eerste pagina die na deze tijd wordt geopend, als er verbinding is.',
   'pwa.prefetch_hours_range': 'Opnieuw ophalen na: een geheel aantal uren van 1 tot 168.',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': 'Meer acties',
+  'ws.suggest': 'Suggesties',
+  'ws.suggest_title': 'Suggesties bij de cursor (Ctrl+Spatie)',
+  'ws.check': 'Controleren',
+  'ws.check_title': 'De SQL plannen zonder hem uit te voeren, zoals de Advisor',
+  'ws.key.indent': 'Inspringen (Esc, dan Tab: volgend veld)',
+  'ws.search_path_plain': '{schema} eerst in het zoekpad',
 };

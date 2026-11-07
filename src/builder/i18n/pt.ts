@@ -7516,4 +7516,12 @@ export const pt: BuilderMessages = {
   'pwa.prefetch_hours': 'Buscá-las novamente após (horas)',
   'pwa.prefetch_hours_help': 'De 1 a 168. As páginas são buscadas novamente na primeira página aberta após esse tempo, quando houver conexão.',
   'pwa.prefetch_hours_range': 'Buscá-las novamente após: um número inteiro de horas de 1 a 168.',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': 'Mais ações',
+  'ws.suggest': 'Sugerir',
+  'ws.suggest_title': 'Sugestões no cursor (Ctrl+Espaço)',
+  'ws.check': 'Verificar',
+  'ws.check_title': 'Planejar o SQL sem executá-lo, como o Advisor',
+  'ws.key.indent': 'Recuar (Esc e depois Tab: próximo campo)',
+  'ws.search_path_plain': '{schema} primeiro no caminho de pesquisa',
 };

@@ -88,6 +88,32 @@ describe('SQL Worksheet', () => {
     await context.close();
   });
 
+  test('(UX-1) a laptop window: one toolbar row, a tall editor, an empty output folded; after a run 12 lines and the rows', async () => {
+    const { context, page } = await builder({ width: 1280, height: 720 });
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    const lines = () => page.evaluate(() => {
+      const ed = document.querySelector('.ws-editor')!.getBoundingClientRect();
+      return Math.floor(ed.height / (parseFloat(getComputedStyle(document.querySelector('.ws-editor textarea')!).lineHeight) || 20));
+    });
+    const toolbar = await page.locator('.ws-toolbar').boundingBox();
+    assert.ok(toolbar!.height < 60, `one toolbar row (${toolbar!.height}px)`);
+    assert.ok((await lines()) >= 15, 'before a run the output is only its tabs');
+    assert.equal(await page.locator('.ws-output[data-empty] .ws-pane').first().isVisible(), false);
+    // the tools that left the toolbar are in the ⋯ menu, Run as is in the status bar
+    await page.click('.ws-more summary');
+    await page.locator('.ws-more [data-ws-format]').waitFor();
+    assert.ok(await page.locator('.ws-more input[name=continue_on_error]').isVisible());
+    await page.keyboard.press('Escape');
+    assert.ok(await page.locator('.ws-status select[name=as_app]').isVisible());
+    await setEditor(page, 'select empno, ename from hr.emp order by 1', 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.ok((await lines()) >= 12, 'at least 12 lines of SQL');
+    const row = await page.locator('.ws-grid tbody tr').first().boundingBox();
+    assert.ok(row && row.y + row.height <= 720, 'the first row of the result is in view');
+    assert.equal(await page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight), 0, 'the page does not scroll');
+    await context.close();
+  });
+
   test('the navigator: another type without a reload, search, columns, a table dragged in gives a SELECT', async () => {
     const { context, page } = await builder();
     await page.goto(`${base}/builder/sql/worksheet?schema=${S}`);

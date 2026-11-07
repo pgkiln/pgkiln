@@ -3,7 +3,7 @@
    screens: navigator | editor over output tabs, filling the window, with a status bar at the bottom. */
 .ws-page { display: flex; flex-direction: column; padding: 8px 10px 0; background: var(--bg); }
 .ws-page > .sw-tabs { margin-bottom: 6px; }
-.ws { --ws-nav: 280px; --ws-out: 42vh; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--surface);
+.ws { --ws-nav: 280px; --ws-out: 45%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
 .ws-default { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); border: 0; padding: 0; }
 .ws-nav { display: flex; flex-direction: column; min-width: 0; border-bottom: 1px solid var(--border); background: var(--surface-2); }
@@ -32,7 +32,7 @@
 .ws-obj-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 10px 8px 34px; }
 .ws-obj-actions .btn { font-size: 11px; padding: 1px 6px; }
 
-.ws-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ws-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; container-type: inline-size; }
 .ws-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .ws-toolbar .btn { display: inline-flex; align-items: center; gap: 4px; }
 .ws-toolbar .icon { width: 15px; height: 15px; }
@@ -99,12 +99,16 @@
   .js .ide-full .ws-editor .ce { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; border: 0; border-radius: 0; }
   .js .ide-full .ws-editor .ce-main { min-height: 0; }
   .js .ide-full .ws-editor .ce textarea.ce-input { height: 100%; min-height: 0; resize: none; }
-  .js .ide-full .ws-output { flex: 0 0 var(--ws-out); }
+  .js .ide-full .ws-output { flex: 0 1 var(--ws-out); }
+  /* (UX-1) the editor keeps at least ten lines; an empty output is only its tab strip until a run */
+  .js .ide-full .ws-editor { min-height: 13.5rem; }
+  .js .ide-full .ws-output[data-empty] { flex: 0 0 auto; }
+  .js .ide-full .ws-output[data-empty] .ws-pane { display: none; }
   .js .ide-full .ws-pane { flex: 1 1 auto; }
   .js .ide-full .ws-nav { overflow: hidden; }
 }
 @media (max-width: 899px) {
-  .ws-toolbar .btn span:not(.sr-only) { display: none; }
+  .ws-toolbar .btn span:not(.sr-only):not(.ws-dots) { display: none; }
   .ws-toolbar .btn-hot span:not(.sr-only) { display: inline; }
 }
 /* fullscreen: only the editor and its toolbar */
@@ -299,3 +303,34 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 .ws-txn-badge[data-state="open"] { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); background: color-mix(in srgb, var(--warn) 10%, transparent); font-weight: 600; }
 .ws-txn-badge[data-state="aborted"] { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); font-weight: 600; }
 .ws-txn-alert { margin: 6px 8px; }
+
+/* (UX-1) one toolbar row: the run buttons, Suggest / Check, Commit mode, fullscreen and a ⋯ menu with the rest */
+/* it fits on one row; an open transaction (badge, Commit, Rollback) may take a second one */
+.ws-toolbar > * { flex: none; }
+/* the commit mode's options name it (Autocommit / Transaction): no label beside the select */
+.ws-toolbar .ws-txn .ws-runas > span { display: none; }
+@container (max-width: 950px) {
+  .ws-toolbar .btn:not(.btn-hot) > span:not(.sr-only):not(.ws-dots) { display: none; }
+}
+@container (max-width: 640px) {
+  .ws-toolbar > * { flex: 0 1 auto; min-width: 0; }
+  .ws-toolbar .ws-txn { flex-wrap: wrap; }
+}
+.ws-more .menu-panel { min-width: 18rem; max-height: calc(100dvh - 190px); overflow: auto; }
+/* with script the worksheet tabs name the file: the file menu is its icon */
+.js .ws-toolbar .ws-file-name { display: none; }
+.ws-more-tools { display: flex; flex-direction: column; gap: 2px; }
+.ws-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: 0; border-radius: 6px; background: none;
+  color: var(--text); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.ws-menu-item:hover, .ws-menu-item:focus-visible { background: var(--surface-2); }
+.ws-menu-item .icon { width: 15px; height: 15px; }
+.ws-menu-item kbd { margin-left: auto; font-size: 11.5px; color: var(--muted); }
+.ws-more-tools .ws-check { padding: 6px 8px; }
+.ws-more-head { display: block; margin-bottom: 4px; }
+/* the code editor's hint bar under the editor: only while it has something to say (Check's result) */
+.ws-editor .ce-bar:not(:has(.ce-msg:not(:empty))) { display: none; }
+.ws-editor .ce-bar :is(.ce-hint, .ce-suggest, .ce-check) { display: none; }
+/* (UX-1) who the statements run as: a chip at the right of the status bar */
+.ws-status-run { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; }
+.ws-runas-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; }
+.ws-runas-chip select { padding: 1px 22px 1px 6px; min-height: 0; font-size: 12.5px; }

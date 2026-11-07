@@ -508,6 +508,38 @@
       const dirty = () => save.classList.add('is-dirty');
       form.addEventListener('input', dirty);
       form.addEventListener('change', dirty);
+      // (UX-2) Ctrl+S saves; leaving with unsaved changes asks first (saving doesn't)
+      let submitting = false;
+      form.addEventListener('submit', () => (submitting = true));
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 's' && !e.target.closest?.('.ws, dialog')) {
+          e.preventDefault();
+          form.requestSubmit();
+        }
+      });
+      window.addEventListener('beforeunload', (e) => {
+        if (!submitting && save.classList.contains('is-dirty')) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+    }
+    // (UX-2) on a short window the gallery is only its tabs: choosing a tab opens it, choosing the open one folds it
+    const gallery = document.querySelector('.pd-gallery');
+    if (gallery) {
+      const short = window.matchMedia('(max-height: 800px)');
+      const apply = () => gallery.classList.toggle('is-folded', short.matches && store.get('gallery') !== 'open');
+      apply();
+      short.addEventListener('change', apply);
+      gallery.addEventListener('click', (e) => {
+        const t = e.target.closest('[role=tab]');
+        if (!t || !short.matches) return;
+        const folded = gallery.classList.contains('is-folded');
+        const wasActive = t.getAttribute('aria-selected') === 'true';
+        const open = folded || !wasActive;
+        store.set('gallery', open ? 'open' : null);
+        gallery.classList.toggle('is-folded', !open);
+      }, true); // before the tabs switch, so the tab that was open is known
     }
   }
 
@@ -1012,6 +1044,18 @@
     setupThemePreview();
     setupTabs();
     for (const tree of document.querySelectorAll('.pd-tree')) setupTree(tree);
+    // (UX-12) a node's type text only when it fits whole: the name comes first (the icon and tooltip tell the type)
+    const fitNotes = () => {
+      for (const n of document.querySelectorAll('.pd-tree .pd-note')) {
+        n.classList.remove('is-cut');
+        if (n.scrollWidth > n.clientWidth + 1) n.classList.add('is-cut');
+      }
+    };
+    fitNotes();
+    if ('ResizeObserver' in window) {
+      const pane = document.querySelector('.pd-tree')?.closest('.pd-pane');
+      if (pane) new ResizeObserver(() => requestAnimationFrame(fitNotes)).observe(pane);
+    }
     for (const tree of document.querySelectorAll('.pd-tree[data-tree-menu]')) setupTreeMenu(tree);
     setupProperties();
     setupCanvas();

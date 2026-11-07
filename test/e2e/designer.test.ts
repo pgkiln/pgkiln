@@ -145,6 +145,42 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
   });
 }
 
+describe('page designer on a laptop window (UX-2, UX-12)', () => {
+  test('fixed to the window: Save stays in view, the gallery folds, Ctrl+S saves, leaving with changes asks', async () => {
+    const { page, errors } = await signIn({ width: 1366, height: 680 });
+    await page.goto(`${base}/builder/apps/${appId}/pages/3`);
+    assert.equal(await page.evaluate(() => document.scrollingElement!.scrollHeight - innerHeight), 0, 'the page itself does not scroll');
+    // scrolling a pane leaves the toolbar where it is
+    await page.locator('#pd-p-props').evaluate((e) => (e.scrollTop = e.scrollHeight));
+    const save = await page.locator('.tb-save').boundingBox();
+    assert.ok(save && save.y >= 0 && save.y + save.height <= 680, 'Save is visible');
+    // the gallery is only its tabs on a short window; a tab opens it, the open tab folds it again
+    const gallery = page.locator('.pd-gallery');
+    assert.match((await gallery.getAttribute('class'))!, /is-folded/);
+    await gallery.locator('[role=tab]').first().click();
+    assert.doesNotMatch((await gallery.getAttribute('class'))!, /is-folded/);
+    await gallery.locator('[role=tab]').first().click();
+    assert.match((await gallery.getAttribute('class'))!, /is-folded/);
+    // every item name of page 3 is readable in full (the type text gives way)
+    const cut = await page.evaluate(() => [...document.querySelectorAll('.pd-node[data-kind=item] .pd-label')].filter((l) => l.scrollWidth > l.clientWidth).map((l) => l.textContent));
+    assert.deepEqual(cut, []);
+    // a change marks Save; leaving asks; Ctrl+S saves without asking
+    const title = page.locator('#pd-p-props input[name=title]');
+    const was = await title.inputValue();
+    await title.fill(`${was} `);
+    assert.match((await page.locator('.tb-save').getAttribute('class'))!, /is-dirty/);
+    const asked: string[] = [];
+    page.on('dialog', (d) => (asked.push(d.type()), d.dismiss()));
+    await page.goto(`${base}/builder/apps/${appId}`).catch(() => {});
+    assert.deepEqual(asked, ['beforeunload']);
+    await title.fill(was);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+s')]);
+    assert.doesNotMatch((await page.locator('.tb-save').getAttribute('class'))!, /is-dirty/);
+    assert.deepEqual(errors, []);
+    await page.context().close();
+  });
+});
+
 describe('page designer interaction (desktop)', () => {
   const size = VIEWPORTS.desktop;
 

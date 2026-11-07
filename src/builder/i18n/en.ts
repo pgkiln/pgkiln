@@ -7520,4 +7520,12 @@ export const en = {
   'pwa.prefetch_hours': 'Fetch them again after (hours)',
   'pwa.prefetch_hours_help': '1 to 168. The pages are fetched again on the first page opened after this time, while there is a connection.',
   'pwa.prefetch_hours_range': 'Fetch them again after: a whole number of hours from 1 to 168.',
+  // ------------------------------------------------------------ SQL Worksheet: one toolbar row (UX-1)
+  'ws.more': 'More actions',
+  'ws.suggest': 'Suggest',
+  'ws.suggest_title': 'Suggestions at the cursor (Ctrl+Space)',
+  'ws.check': 'Check',
+  'ws.check_title': 'Plan the SQL without running it, as the Advisor does',
+  'ws.key.indent': 'Indent (Esc, then Tab: next field)',
+  'ws.search_path_plain': '{schema} first in the search path',
 } as const;
