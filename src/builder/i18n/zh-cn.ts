@@ -7536,4 +7536,6 @@ export const zhCN: BuilderMessages = {
   'wu.sec.operations': '运维',
   'wu.sec.workspace': '工作区 {name}',
   'wu.sec.instance': '实例',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': '需要注意',
 };

@@ -7536,4 +7536,6 @@ export const nl: BuilderMessages = {
   'wu.sec.operations': 'Beheer',
   'wu.sec.workspace': 'Werkruimte {name}',
   'wu.sec.instance': 'Instantie',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': 'Vraagt aandacht',
 };

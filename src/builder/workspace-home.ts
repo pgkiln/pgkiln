@@ -121,6 +121,22 @@ async function systemMessage(s: Session, admin: boolean) {
   return region(tx('wh.system'), html`${checks}${body}${admins}`, '', 'system-message');
 }
 
+/** (UX-13) What an administrator must see first: lockout risks and a newer pgkiln, above the tools (details: System message). */
+async function attention(s: Session, admin: boolean) {
+  if (!admin) return '';
+  const tx = tr(s);
+  const lockout = await attentionCount();
+  const check = await releaseCheckEnabled();
+  const r = check.on ? cachedRelease()?.release : null;
+  const newer = r && newerVersion(r.version, VERSION) ? r : null;
+  const items = [
+    lockout ? html`<li>${icon('alert')} ${tx('wh.lockout', { count: lockout })} <a href="${BASE}/instance#lockout-checks">${tx('wh.lockout_open')}</a></li>` : '',
+    newer ? html`<li>${icon('bell')} ${tx('wh.available', { version: newer.version })} <a href="#system-message">${tx('wh.release_notes')}</a></li>` : '',
+  ].filter(Boolean);
+  return items.length ? html`<section class="alert alert-warning wh-attention" role="status" aria-labelledby="wh-attention-h">
+    <h2 id="wh-attention-h">${tx('wh.attention')}</h2><ul>${items}</ul></section>` : '';
+}
+
 /** (Instance settings page) the release check: on, off, or as the environment says. */
 export async function releaseCheckRegion(s: Session) {
   const check = await releaseCheckEnabled();
@@ -194,6 +210,7 @@ export async function workspaceHomeRoutes(app: FastifyInstance) {
     const main = html`<div class="ab-home wh-home">
       <div class="ab-main">
         <h1 class="wh-title">${s.workspace ? tx('wh.title_ws', { name: s.workspace.name }) : tx('wh.title')}</h1>
+        ${await attention(s, admin)}
         <nav class="ab-tiles ab-tiles-wrap wh-tools" aria-label="${tx('wh.tools')}">
           ${card(`${BASE}/apps`, 'grid', tx('rail.app_builder'), tx('wh.card.apps'))}
           ${sql ? card(`${BASE}/sql`, 'database', tx('rail.sql_workshop'), tx('wh.card.sql')) : ''}

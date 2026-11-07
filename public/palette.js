@@ -18,15 +18,22 @@
   if (/^\/builder\/sql\/./.test(path) && !/\/(panel|navigator|action)$/.test(path)) {
     const title = document.title.replace(/ · Builder$/, '');
     const href = path + location.search;
-    const list = (store.get('sw.recent') || []).filter((r) => r && r.href !== href);
+    // (UX-14) one entry per page (its path): opened again with other parameters, the newest wins
+    const list = (store.get('sw.recent') || []).filter((r) => r && typeof r.href === 'string' && r.href.split('?')[0] !== path);
     list.unshift({ href, title });
     store.set('sw.recent', list.slice(0, 8));
   }
   const recent = document.querySelector('[data-lp-recent]');
   if (recent) {
     const list = store.get('sw.recent') || [];
+    // (UX-14) not the page you are on, not what is pinned already, each path once
+    const pinned = new Set([...document.querySelectorAll('.lp-pins .lp-chips:not([data-lp-recent]) a[href]')].map((a) => a.getAttribute('href').split('?')[0]));
+    const seen = new Set([path]);
     for (const r of list) {
       if (typeof r?.href !== 'string' || !r.href.startsWith('/builder/')) continue;
+      const p = r.href.split('?')[0];
+      if (seen.has(p) || pinned.has(p)) continue;
+      seen.add(p);
       const li = document.createElement('li');
       const a = document.createElement('a');
       a.href = r.href;

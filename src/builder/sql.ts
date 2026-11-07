@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import pg from 'pg';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
+import { back, BASE, csrf, developer, flash, pageHeader, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { owner } from '../db.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { clearCompletions } from './code-editor.ts';
@@ -70,7 +70,7 @@ async function workshopHome(req: Req, reply: FastifyReply) {
     html`<section class="sw-recent"><h2>${title}</h2>${rows.length ? html`<ul>${rows}</ul>` : html`<p class="muted">${empty}</p>`}</section>`;
   const main = html`<div class="ab-home">
     <div class="ab-main">
-      <h1 class="sr-only">${tx('rail.sql_workshop')}</h1>
+      ${pageHeader(tx('rail.sql_workshop'))}
       ${workshopTabs('home', s)}
       ${await launchpad(s, await isAdmin(s.username))}
       <div class="sw-recents">

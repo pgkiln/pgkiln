@@ -7540,4 +7540,6 @@ export const en = {
   'wu.sec.operations': 'Operations',
   'wu.sec.workspace': 'Workspace {name}',
   'wu.sec.instance': 'Instance',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': 'Needs attention',
 } as const;

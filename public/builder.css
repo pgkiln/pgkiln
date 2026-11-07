@@ -1712,3 +1712,16 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .adm-tile-head .icon { width: 16px; height: 16px; color: var(--hot); flex: none; }
 .adm-tile-text { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
 .adm-reports { columns: 2 260px; }
+
+/* (UX-5) a builder page's header: one heading, one primary (accent) action, secondary actions and a ⋯ menu */
+.page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 16px; }
+.page-head h1 { margin: 0; font-size: 22px; }
+.page-head-sub { margin: 2px 0 0; }
+.page-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page-head-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.page-head-actions .icon { width: 15px; height: 15px; }
+/* (UX-13) the Workspace home's "Needs attention" list for administrators, above the tools */
+.wh-attention { display: block; margin: 0 0 16px; }
+.wh-attention h2 { margin: 0 0 4px; font-size: 14px; }
+.wh-attention ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.wh-attention .icon { width: 15px; height: 15px; vertical-align: -2px; }

@@ -219,6 +219,23 @@ export const BANNER_COLORS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue'
 
 export const csrf = (s: Session) => html`<input type="hidden" name="__csrf" value="${s.csrf_token}">`;
 
+/**
+ * (UX-5) A builder page's header: its one heading, its one primary action (accent), a few secondary actions and a ⋯ menu
+ * for the rest. Every builder page should have exactly one H1 and one primary button.
+ */
+export function pageHeader(title: string | Raw, o: { sub?: Raw | string; primary?: [href: string, label: string, ic?: string]; secondary?: [href: string, label: string, ic?: string][]; more?: [href: string, label: string, ic?: string][]; moreLabel?: string } = {}) {
+  const link = ([href, label, ic]: [string, string, string?], cls: string) => html`<a class="${cls}" href="${href}">${ic ? icon(ic) : ''}<span>${label}</span></a>`;
+  return html`<div class="page-head">
+    <div class="page-head-title"><h1>${title}</h1>${o.sub ? html`<p class="page-head-sub muted">${o.sub}</p>` : ''}</div>
+    <div class="page-head-actions">
+      ${(o.secondary ?? []).map((a) => link(a, 'btn'))}
+      ${o.more?.length ? html`<details class="menu page-head-more"><summary class="btn btn-icon" title="${o.moreLabel ?? ''}"><span aria-hidden="true">⋯</span><span class="sr-only">${o.moreLabel ?? ''}</span></summary>
+        <div class="menu-panel align-right"><div class="menu-section menu-links">${o.more.map(([href, label, ic]) => html`<a href="${href}">${ic ? icon(ic) : ''} ${label}</a>`)}</div></div></details>` : ''}
+      ${o.primary ? link(o.primary, 'btn btn-hot') : ''}
+    </div>
+  </div>`;
+}
+
 export function input(name: string, label: string, value: unknown, opts: { type?: string; help?: string; required?: boolean; placeholder?: string; auto?: string } = {}) {
   return html`<div class="field"><label class="label" for="f_${name}">${label}</label>
     <input id="f_${name}" name="${name}" type="${opts.type ?? 'text'}" value="${value ?? ''}"${opts.required ? raw(' required') : ''} placeholder="${opts.placeholder}"${opts.auto ? raw(` autocomplete="${opts.auto}"`) : ''}>
@@ -237,7 +254,7 @@ export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '', i
   html`<section class="region region-standard"${id ? raw(` id="${id.replace(/[^a-z0-9-]/g, '')}"`) : ''}><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
 /** Title and tabs of an application's builder pages (Pages, Shared Components, …), in the session's builder language. */
-export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor' | 'utilities', s?: Pick<Session, 'state'>) => {
+export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor' | 'utilities', s?: Pick<Session, 'state'>, primary?: [href: string, label: string, ic: string]) => {
   const tx = tr(s);
   const tab = (key: typeof active, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${bicon(ic)}<span>${label}</span></a>`;
@@ -250,7 +267,9 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} ${tx('app.head.backups')}</a>
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/availability">${icon('power')} ${tx('app.head.availability')}</a>
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/export">${icon('download')} ${tx('app.head.export')}</a>
-          <a class="btn btn-sm btn-run" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('common.run')}</a>
+          <!-- (UX-5) one primary action: the page's own (Create page on the Pages tab), else Run -->
+          <a class="btn btn-sm${primary ? '' : ' btn-run'}" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('common.run')}</a>
+          ${primary ? html`<a class="btn btn-sm btn-hot" href="${primary[0]}">${icon(primary[2])} ${primary[1]}</a>` : ''}
         </div></div>
       <nav class="ide-tabs" aria-label="${tx('app.head.tabs')}">
         ${tab('pages', `${BASE}/apps/${a.id}`, 'pages', tx('app.tab.pages'))}

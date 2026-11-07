@@ -558,6 +558,8 @@ names and help of a shared component's form), the links to this guide, and any S
 (sprint 109; APEX: the workspace home page) The page the builder opens after signing in, `/builder/home`, above the
 App Builder and the SQL Workshop. Everything on it is of the current [workspace](#workspaces), and it works without
 JavaScript. The [default-password banner](#signing-in-and-developer-accounts) stays on top until the password is changed.
+(UX-13) For administrators, **Needs attention** under the heading lists what must not wait: failing
+[lockout checks](#lockout-checks) and, with the release check on, a newer pgkiln (details in the System message).
 
 - **Tool cards**: App Builder (`/builder/apps`), SQL Workshop (not when the workspace's preferences turn it off),
   **Data Reporter** (when the server has the Data Reporter tool at `/builder/reporter`) and the [App Gallery](#app-gallery).
@@ -592,12 +594,13 @@ that may not reach the internet. Under the test runner the server never asks Git
 The App Builder's home page, `/builder/apps` (`/builder` shows it too, unless the workspace's
 [preferences](#workspace-preferences) send `/builder` to the Workspace home), is laid out like APEX's App Builder:
 
-- **Four tiles**: **Create** and **Import** (each on its own page), the workspace **Dashboard**
-  (applications, pages, active accounts; page views, users, failed sign-ins and errors of the last
-  24 hours, and per application the last 7 days with a link to its Activity page) and
-  **Workspace Utilities** (users, identity providers, LDAP directories, password policy,
-  developers, the SQL Workshop, and for administrators [workspaces](#workspaces), AI services and the
-  [installation log](#installation)). The list, the dashboard and Recent show the current workspace.
+- **The header** (UX-5): the heading *App Builder*, **Create** (the page's one primary action), **Import** and a
+  **⋯** menu with the workspace **Dashboard** (applications, pages, active accounts; page views, users, failed
+  sign-ins and errors of the last 24 hours, and per application the last 7 days with a link to its Activity page)
+  and **Administration** (the [workspace utilities](#workspaces)). The list, the dashboard and Recent show the
+  current workspace. Every builder page follows the same pattern: one heading, one primary (accent) button,
+  the other actions beside it or in a ⋯ menu; an application's Pages tab has **Create page** as its primary action
+  in the application's header (other tabs: **Run**), and its Tasks list only what the page doesn't offer already.
 - **The applications**, as a report (application id, name, alias, pages, page views of the last 24
   hours, sign-in, last updated, **updated by**, **working copies**, and Edit / Run) or as cards. **Search** filters the list as you type
   (by name, alias or id; without JavaScript, press Enter). Click a column heading, or use
@@ -2139,7 +2142,8 @@ others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compar
 
 (sprint 96; Database Actions: the Launchpad) The home page starts with **Pinned & recently visited**: the pages you
 pinned (a tool, a database object from the Object Browser, a saved worksheet from its file menu; at most 24, per
-workspace) and the SQL Workshop pages you opened last in this browser. Below, the tools are in three tabs,
+workspace) and the SQL Workshop pages you opened last in this browser (UX-14: each page once, the latest visit
+first, without the Launchpad itself or a page that is pinned already). Below, the tools are in three tabs,
 **Development**, **Administration** and **Monitoring**, each with a line about what it does and a pin; the **More**
 menu uses the same headings.
 

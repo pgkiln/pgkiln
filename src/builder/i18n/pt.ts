@@ -7536,4 +7536,6 @@ export const pt: BuilderMessages = {
   'wu.sec.operations': 'Operações',
   'wu.sec.workspace': 'Espaço de trabalho {name}',
   'wu.sec.instance': 'Instância',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': 'Requer atenção',
 };

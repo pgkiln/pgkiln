@@ -73,3 +73,37 @@ describe('Administration (UX-4)', () => {
     assert.match(body, /data-adm-filter/);
   });
 });
+
+describe('one heading and one primary action per page (UX-5), what needs attention first (UX-13)', () => {
+  const visibleH1 = (body: string) => [...body.matchAll(/<h1(?![^>]*class="[^"]*sr-only)[^>]*>([\s\S]*?)<\/h1>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').trim());
+  // in the page's main area (the shell's own chrome is not a page action)
+  const primaries = (body: string) => {
+    const main = body.slice(body.indexOf('<main'), body.indexOf('</main>'));
+    return [...main.matchAll(/class="btn[^"]*\b(btn-hot|btn-run)\b[^"]*"/g)].length;
+  };
+  test('App Builder, an application, SQL Workshop, the gallery and Administration', async () => {
+    const b = await admin();
+    for (const [path, h1] of [['/builder/apps', 'App Builder'], ['/builder/apps/1', 'HR Demo'], ['/builder/sql', 'SQL Workshop'],
+      ['/builder/gallery', 'App Gallery'], ['/builder/utilities', 'Administration']] as const) {
+      const body = (await b.get(path)).body;
+      assert.deepEqual(visibleH1(body), [h1], `${path}: one visible heading`);
+      assert.ok(primaries(body) <= 1, `${path}: at most one primary action (${primaries(body)})`);
+    }
+    // App Builder: Create once, in the header; the old cards and the duplicate tasks are gone
+    const ab = (await b.get('/builder/apps')).body;
+    assert.equal((ab.match(/href="\/builder\/create"/g) ?? []).length, 1);
+    assert.doesNotMatch(ab, /class="ab-tile"/);
+    // an application's Pages tab: Create page is the header's primary action, not repeated in Tasks
+    const home = (await b.get('/builder/apps/1')).body;
+    assert.match(home, /class="btn btn-sm btn-hot" href="\/builder\/apps\/1\/create-page"/);
+    assert.doesNotMatch(home.slice(home.indexOf('app-tasks')), /href="\/builder\/apps\/1\/create-page"/);
+    assert.doesNotMatch(home.slice(home.indexOf('app-tasks')), /settings\?tab=definition/, 'Delete the application is not a task');
+  });
+
+  test('the Workspace home lists lockout risks above the tools for administrators', async () => {
+    const { attentionCount } = await import('../src/instance-checks.ts');
+    const body = (await (await admin()).get('/builder/home')).body;
+    if ((await attentionCount()) > 0) assert.ok(body.indexOf('wh-attention') > 0 && body.indexOf('wh-attention') < body.indexOf('wh-tools'), 'above the tools');
+    else assert.doesNotMatch(body, /wh-attention/);
+  });
+});

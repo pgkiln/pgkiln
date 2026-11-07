@@ -7536,4 +7536,6 @@ export const ja: BuilderMessages = {
   'wu.sec.operations': '運用',
   'wu.sec.workspace': 'ワークスペース {name}',
   'wu.sec.instance': 'インスタンス',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': '要対応',
 };

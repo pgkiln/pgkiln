@@ -18,6 +18,12 @@ All notable changes to this project are documented here. The format follows
   compact tiles, without the cards for tools the rail already has. *Show labels* at the bottom of the rail puts the
   names next to the icons (kept for the session). The rail's application search is gone: the header's search is on
   every page and an application's search is its Search tab.
+- **One heading and one primary action per page** (sprint 170, UX-5, UX-13, UX-14): App Builder has a header with
+  Create, Import and a ⋯ menu instead of four cards and three Create links; an application's Pages tab has Create page
+  as its one primary action in the header (Run is the primary on the other tabs) and its Tasks no longer repeat the
+  header or list *Delete the application*; SQL Workshop and the App Gallery have a visible heading (Install buttons
+  are no longer accent-coloured); the Workspace home shows administrators **Needs attention** (lockout checks, a newer
+  version) above the tools; the SQL Workshop's recent pages list each page once, without the Launchpad or a pinned page.
 - **Page Designer on a laptop screen** (sprint 169, UX-2, UX-12): the page no longer scrolls as a whole (a
   screen-reader heading placed outside the panes made it 200 pixels too tall), so Save and the toolbar stay in view;
   the property editor's save button stays at the bottom of its pane; Ctrl+S saves, unsaved changes show a dot on

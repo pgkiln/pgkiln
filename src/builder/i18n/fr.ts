@@ -7536,4 +7536,6 @@ export const fr: BuilderMessages = {
   'wu.sec.operations': 'Exploitation',
   'wu.sec.workspace': 'Espace de travail {name}',
   'wu.sec.instance': 'Instance',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': 'À traiter',
 };

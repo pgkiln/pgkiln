@@ -7536,4 +7536,6 @@ export const ko: BuilderMessages = {
   'wu.sec.operations': '운영',
   'wu.sec.workspace': '작업 공간 {name}',
   'wu.sec.instance': '인스턴스',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': '주의 필요',
 };

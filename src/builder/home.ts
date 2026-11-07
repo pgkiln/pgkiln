@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { APP_COLORS, BASE, csrf, developer, input, region, send, shell, type Req } from './ui.ts';
+import { APP_COLORS, BASE, csrf, developer, input, pageHeader, region, send, shell, type Req } from './ui.ts';
 import { crossAppLinks } from './cross-app.ts';
 import type { Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
@@ -53,16 +53,6 @@ const lockedText = (tx: BuilderTranslate, by: string) => tx('ab.locked_by', { us
 const appIcon = (a: { id: number; name: string }, cls = '') =>
   html`<span class="app-icon app-color-${a.id % APP_COLORS}${cls ? ` ${cls}` : ''}" aria-hidden="true">${a.name.slice(0, 1).toUpperCase()}</span>`;
 
-/** The four tiles at the top of the App Builder. */
-const tiles = (tx: BuilderTranslate) => html`<nav class="ab-tiles" aria-label="${tx('rail.app_builder')}">
-  ${([
-    ['create', 'plus', tx('ab.tile.create'), tx('ab.tile.create_text')],
-    ['import', 'upload', tx('ab.tile.import'), tx('ab.tile.import_text')],
-    ['dashboard', 'activity', tx('ab.tile.dashboard'), tx('ab.tile.dashboard_text')],
-    ['utilities', 'settings', tx('ab.tile.utilities'), tx('ab.tile.utilities_text')],
-  ] as const).map(([path, ic, title, text]) => html`<a class="ab-tile" href="${BASE}/${path}"><span class="ab-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`)}
-</nav>`;
-
 /** The side column: About, Recent, Tasks. */
 function aside(tx: BuilderTranslate, recent: { id: number; name: string }[], about: string, tasks: [string, string][]) {
   return html`<aside class="ab-side" aria-label="${tx('ab.aside')}">
@@ -73,10 +63,9 @@ function aside(tx: BuilderTranslate, recent: { id: number; name: string }[], abo
   </aside>`;
 }
 
+// (UX-5) what the header doesn't offer already (Create and Import are there)
 const TASKS: [BuilderKey, string][] = [
-  ['ab.task.create', `${BASE}/create`],
   ['ab.task.create_file', `${BASE}/create/file`],
-  ['ab.task.import', `${BASE}/import`],
   ['ab.task.users', `${BASE}/users`],
   ['ab.task.providers', `${BASE}/users/providers`],
   ['rail.sql_workshop', `${BASE}/sql`],
@@ -174,9 +163,13 @@ export async function homeRoutes(app: FastifyInstance) {
       html`<a class="tb-btn" href="${link({ view: v })}" title="${label}"${view === v ? raw(' aria-current="true"') : ''}>${icon(ic)}<span class="sr-only">${label}</span></a>`;
     const main = html`<div class="ab-home">
       <div class="ab-main">
-        <h1 class="sr-only">${tx('rail.app_builder')}</h1>
+        ${pageHeader(tx('rail.app_builder'), {
+          primary: [`${BASE}/create`, tx('ab.tile.create'), 'plus'],
+          secondary: [[`${BASE}/import`, tx('ab.tile.import'), 'upload']],
+          more: [[`${BASE}/dashboard`, tx('ab.tile.dashboard'), 'activity'], [`${BASE}/utilities`, tx('rail.admin'), 'settings']],
+          moreLabel: tx('ws.more'),
+        })}
         ${s.workspace?.message ? html`<div class="alert alert-info ab-message" role="status">${icon('bell')}<div><strong>${s.workspace.name}</strong><p>${s.workspace.message}</p></div></div>` : ''}
-        ${tiles(tx)}
         <div class="ab-toolbar">
           <form class="ab-search" method="get" action="${BASE}/apps" role="search">
             <label class="sr-only" for="ab-q">${tx('ab.search_label')}</label>${icon('search')}
@@ -190,13 +183,8 @@ export async function homeRoutes(app: FastifyInstance) {
             <div class="menu-panel" role="menu">
               <div class="menu-section"><span class="small muted">${tx('ab.sort_by')}</span>
                 ${(Object.keys(SORTS) as Sort[]).map((k) => html`<a role="menuitem" href="${link({ sort: k })}"${sort === k ? raw(' aria-current="true"') : ''}>${tx(`ab.sort.${k}`)}</a>`)}</div>
-              <div class="menu-section menu-links">
-                <a role="menuitem" href="${BASE}/import">${icon('upload')} ${tx('ab.task.import')}</a>
-                <a role="menuitem" href="${BASE}/dashboard">${icon('activity')} ${tx('ab.ws_dashboard')}</a>
-              </div>
             </div></details>
           <span class="ab-count muted" aria-live="polite">${rows.length === total.n ? tx(total.n === 1 ? 'ab.count_one' : 'ab.count', { n: total.n }) : tx('ab.count_of', { n: rows.length, total: total.n })}</span>
-          <a class="btn btn-hot ab-create" href="${BASE}/create">${tx('ab.tile.create')}</a>
         </div>
         ${list}
       </div>
