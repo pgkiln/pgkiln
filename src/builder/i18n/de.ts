@@ -7538,4 +7538,11 @@ export const de: BuilderMessages = {
   'wu.sec.instance': 'Instanz',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': 'Erfordert Aufmerksamkeit',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': 'Gefahrenzone',
+  'st.delete_text': 'Beim Löschen von {app} werden seine Seiten, gemeinsamen Komponenten, Arbeitskopien und auch seine Sicherungen entfernt; das lässt sich nicht rückgängig machen. Exportieren Sie die Anwendung vorher, wenn Sie sie noch brauchen könnten.',
+  'st.delete_type': 'Geben Sie zur Bestätigung den Alias {alias} ein',
+  'st.delete_mismatch': 'Geben Sie den Alias der Anwendung, {alias}, ein, um sie zu löschen.',
+  'pd.delete_type': 'Geben Sie zur Bestätigung die Seitennummer {n} ein',
+  'pd.delete_mismatch': 'Geben Sie die Seitennummer {n} ein, um die Seite zu löschen.',
 };

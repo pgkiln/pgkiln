@@ -7538,4 +7538,11 @@ export const ja: BuilderMessages = {
   'wu.sec.instance': 'インスタンス',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '要対応',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '危険な操作',
+  'st.delete_text': '{app} を削除すると、ページ、共有コンポーネント、作業コピー、バックアップも削除され、元に戻せません。再び必要になる可能性がある場合は、先にエクスポートしてください。',
+  'st.delete_type': '確認のため別名 {alias} を入力してください',
+  'st.delete_mismatch': '削除するには、アプリケーションの別名 {alias} を入力してください。',
+  'pd.delete_type': '確認のためページ番号 {n} を入力してください',
+  'pd.delete_mismatch': 'ページを削除するには、ページ番号 {n} を入力してください。',
 };

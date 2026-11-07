@@ -906,9 +906,13 @@ export async function builderRoutes(app: FastifyInstance) {
             ${await timeZoneSettings(a)}`)}${end}
             <div class="buttons settings-save"${['errors', 'pwa'].includes(tab) ? raw(' hidden') : ''}><button class="btn btn-hot">${tx('st.save_settings')}</button></div>
           </form>
-          ${panel('definition')}<form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-zone">${csrf(s)}
-            <button class="btn btn-danger" data-confirm="${tx('st.delete_confirm', { app: a.name })}">${tx('st.delete')}</button>
-          </form>${end}
+          ${panel('definition')}<section class="danger-zone danger-box" aria-labelledby="st-danger"><h2 id="st-danger">${tx('st.danger_zone')}</h2>
+            <p>${tx('st.delete_text', { app: a.name })} <a href="${BASE}/apps/${a.id}/export">${tx('app.head.export')}</a></p>
+            <!-- (UX-6) the alias typed to confirm, checked on the server too -->
+            <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-form">${csrf(s)}
+              <label class="field"><span class="label">${tx('st.delete_type', { alias: a.alias })}</span><input name="confirm" autocomplete="off" required spellcheck="false" pattern="${a.alias.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&')}"></label>
+              <button class="btn btn-danger">${icon('trash')} ${tx('st.delete')}</button>
+            </form></section>${end}
         ${panel('errors')}${region(tx('st.tab.errors'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
           <div class="form-grid">
             ${input('error_function', tx('st.error_fn'), a.error_function ?? '', { placeholder: tx('st.error_fn_ph'),
@@ -1019,6 +1023,13 @@ export async function builderRoutes(app: FastifyInstance) {
   app.post(`${BASE}/apps/:id/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // (UX-6) only with the application's alias typed
+    const target = await owner.one<{ alias: string }>('select alias from meta.app where id = $1', [Number(req.params.id) || 0]);
+    if (!target) return reply.code(404).send('Not found');
+    if (String(req.body?.confirm ?? '').trim() !== target.alias) {
+      flash(s, tr(s)('st.delete_mismatch', { alias: target.alias }), 'error');
+      return back(reply, s, `${BASE}/apps/${req.params.id}/settings?tab=definition`);
+    }
     await owner.query('delete from meta.app where id = $1', [req.params.id]);
     flash(s, tr(s)('st.app_deleted'));
     return back(reply, s, BASE);

@@ -7538,4 +7538,11 @@ export const es: BuilderMessages = {
   'wu.sec.instance': 'Instancia',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': 'Requiere atención',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': 'Zona de peligro',
+  'st.delete_text': 'Eliminar {app} borra sus páginas, componentes compartidos, copias de trabajo y también sus copias de seguridad; no se puede deshacer. Expórtela antes si puede volver a necesitarla.',
+  'st.delete_type': 'Escriba el alias {alias} para confirmar',
+  'st.delete_mismatch': 'Escriba el alias de la aplicación, {alias}, para eliminarla.',
+  'pd.delete_type': 'Escriba el número de página {n} para confirmar',
+  'pd.delete_mismatch': 'Escriba el número de página, {n}, para eliminar la página.',
 };

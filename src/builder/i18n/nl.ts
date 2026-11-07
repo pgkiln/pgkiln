@@ -7538,4 +7538,11 @@ export const nl: BuilderMessages = {
   'wu.sec.instance': 'Instantie',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': 'Vraagt aandacht',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': 'Gevarenzone',
+  'st.delete_text': 'Verwijderen van {app} verwijdert de pagina\'s, gedeelde componenten, werkkopieën en ook de back-ups; dat kan niet ongedaan worden gemaakt. Exporteer de applicatie eerst als u haar nog nodig kunt hebben.',
+  'st.delete_type': 'Typ de alias {alias} ter bevestiging',
+  'st.delete_mismatch': 'Typ de alias van de applicatie, {alias}, om haar te verwijderen.',
+  'pd.delete_type': 'Typ het paginanummer {n} ter bevestiging',
+  'pd.delete_mismatch': 'Typ het paginanummer, {n}, om de pagina te verwijderen.',
 };

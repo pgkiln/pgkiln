@@ -7538,4 +7538,11 @@ export const zhCN: BuilderMessages = {
   'wu.sec.instance': '实例',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '需要注意',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '危险区域',
+  'st.delete_text': '删除 {app} 会移除其页面、共享组件、工作副本以及备份；此操作无法撤销。如果以后可能还需要，请先导出。',
+  'st.delete_type': '输入别名 {alias} 以确认',
+  'st.delete_mismatch': '输入应用程序的别名 {alias} 才能删除它。',
+  'pd.delete_type': '输入页码 {n} 以确认',
+  'pd.delete_mismatch': '输入页码 {n} 才能删除该页面。',
 };

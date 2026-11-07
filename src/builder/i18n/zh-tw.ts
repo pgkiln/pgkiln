@@ -7538,4 +7538,11 @@ export const zhTW: BuilderMessages = {
   'wu.sec.instance': '執行個體',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '需要注意',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '危險區域',
+  'st.delete_text': '刪除 {app} 會移除其頁面、共用元件、工作副本以及備份；此動作無法復原。如果日後可能還需要，請先匯出。',
+  'st.delete_type': '輸入別名 {alias} 以確認',
+  'st.delete_mismatch': '輸入應用程式的別名 {alias} 才能刪除它。',
+  'pd.delete_type': '輸入頁碼 {n} 以確認',
+  'pd.delete_mismatch': '輸入頁碼 {n} 才能刪除該頁面。',
 };

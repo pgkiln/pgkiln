@@ -7538,4 +7538,11 @@ export const ko: BuilderMessages = {
   'wu.sec.instance': '인스턴스',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '주의 필요',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '위험 구역',
+  'st.delete_text': '{app}을(를) 삭제하면 페이지, 공유 구성 요소, 작업 사본과 백업도 함께 삭제되며 되돌릴 수 없습니다. 다시 필요할 수 있다면 먼저 내보내십시오.',
+  'st.delete_type': '확인하려면 별칭 {alias}을(를) 입력하십시오',
+  'st.delete_mismatch': '삭제하려면 애플리케이션의 별칭 {alias}을(를) 입력하십시오.',
+  'pd.delete_type': '확인하려면 페이지 번호 {n}을(를) 입력하십시오',
+  'pd.delete_mismatch': '페이지를 삭제하려면 페이지 번호 {n}을(를) 입력하십시오.',
 };

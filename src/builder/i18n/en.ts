@@ -7542,4 +7542,11 @@ export const en = {
   'wu.sec.instance': 'Instance',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': 'Needs attention',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': 'Danger zone',
+  'st.delete_text': 'Deleting {app} removes its pages, shared components, working copies and its backups too; it can\'t be undone. Export it first if you may need it again.',
+  'st.delete_type': 'Type the alias {alias} to confirm',
+  'st.delete_mismatch': 'Type the application\'s alias, {alias}, to delete it.',
+  'pd.delete_type': 'Type the page number {n} to confirm',
+  'pd.delete_mismatch': 'Type the page number, {n}, to delete the page.',
 } as const;

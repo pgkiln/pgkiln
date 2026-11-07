@@ -419,9 +419,7 @@ export async function designerRoutes(app: FastifyInstance) {
           </div></fieldset>
           <div class="buttons"><button class="btn btn-hot">${tx('pd.save_page')}</button></div>
         </form>`, true)])}
-        ${await usedInPanel(p.app_id, 'page', p)}
-        <form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-zone">${csrf(s)}
-          <button class="btn btn-sm btn-danger" data-confirm="${tx('pd.delete_page_confirm', { n: p.page_no })}">${tx('pd.delete_page')}</button></form>`;
+        ${await usedInPanel(p.app_id, 'page', p)}`;
     }
     // (sprint 59) the help pane: the guide section of the selected component's type
     const guide = (() => {
@@ -465,7 +463,11 @@ export async function designerRoutes(app: FastifyInstance) {
           <a href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')} ${tx('pd.tab.shared')}</a>
           <a href="${BASE}/apps/${p.app_id}">${bicon('pages')} ${tx('pd.menu.all_pages')}</a>
           <a href="${BASE}/apps/${p.app_id}/export">${icon('download')} ${tx('pd.menu.export')}</a>
-        </div></div></details>`;
+        </div>
+        <!-- (UX-6) away from Save: deleting the page takes its number typed -->
+        <div class="menu-section"><form method="post" action="${BASE}/pages/${p.id}/delete" class="danger-form">${csrf(s)}
+          <label class="field"><span class="label">${tx('pd.delete_type', { n: p.page_no })}</span><input name="confirm" inputmode="numeric" autocomplete="off" required pattern="${p.page_no}"></label>
+          <button class="btn btn-sm btn-danger">${icon('trash')} ${tx('pd.delete_page')}</button></form></div></div></details>`;
     const toolbar = html`
       <div class="tb-group pd-pagenav" role="group" aria-label="${tx('pd.copy.page')}">
         ${prev ? html`<a class="tb-btn" href="${designerUrl(p.app_id, prev.page_no)}" title="${tx('pd.prev_title', { n: prev.page_no, name: prev.name })}">${bicon('left')}<span class="sr-only">${tx('pd.prev')}</span></a>` : html`<span class="tb-btn" aria-disabled="true">${bicon('left')}</span>`}
@@ -537,6 +539,13 @@ export async function designerRoutes(app: FastifyInstance) {
   app.post(`${BASE}/pages/:pid/delete`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    // (UX-6) only with the page number typed
+    const target = await owner.one<{ page_no: number }>('select page_no from meta.page where id = $1', [Number(req.params.pid) || 0]);
+    if (!target) return reply.code(404).send('Not found');
+    if (String(req.body?.confirm ?? '').trim() !== String(target.page_no)) {
+      flash(s, tr(s)('pd.delete_mismatch', { n: target.page_no }), 'error');
+      return back(reply, s, `${BASE}/pages/${req.params.pid}`);
+    }
     const p = await owner.one('delete from meta.page where id = $1 returning app_id, page_no', [req.params.pid]);
     if (p) for (const t of ['builder_lock', 'dev_comment']) await owner.query(`delete from meta.${t} where app_id = $1 and page_no = $2`, [p.app_id, p.page_no]);
     flash(s, tr(s)('pd.page_deleted'));
