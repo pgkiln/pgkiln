@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-11-07
+
 ### Added
 - **Every page offline from the first visit** (sprint 168; migration 156 `meta.app.pwa_prefetch_hours`): Settings →
   Progressive Web App → *Make every page of the navigation available offline*. With *Keep visited pages* on, the
