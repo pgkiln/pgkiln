@@ -7510,4 +7510,10 @@ export const zhTW: BuilderMessages = {
   'pjb.steps': '步驟',
   'pjb.message': '訊息',
   'pjb.no_runs': '尚無執行記錄。',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': '登入後使導覽中的所有頁面可離線使用',
+  'pwa.prefetch_help': '需要「將造訪過的頁面保留在裝置上」。登入後，以及在裝置上開啟第一個頁面時，裝置會逐一取得使用者可以開啟的導覽選單和導覽列中的所有頁面。伺服器以唯讀方式顯示它們：開啟時執行處理程序的頁面會被略過，只有在使用者開啟時才會保留。',
+  'pwa.prefetch_hours': '多少小時後重新取得',
+  'pwa.prefetch_hours_help': '1 到 168。超過此時間後，在有網路連線時開啟第一個頁面時會重新取得這些頁面。',
+  'pwa.prefetch_hours_range': '重新取得時間：1 到 168 之間的整數小時。',
 };

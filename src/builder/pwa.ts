@@ -32,7 +32,7 @@ async function pushStats(appId: number) {
   ))!;
 }
 
-export async function pwaSection(a: { id: number; alias: string; pwa: boolean; pwa_short_name: string | null; pwa_offline_pages: boolean; pwa_offline_submit: boolean; pwa_push: boolean; has_icon: boolean }, s: Session) {
+export async function pwaSection(a: { id: number; alias: string; pwa: boolean; pwa_short_name: string | null; pwa_offline_pages: boolean; pwa_prefetch_hours: number | null; pwa_offline_submit: boolean; pwa_push: boolean; has_icon: boolean }, s: Session) {
   const check = (name: string, label: string, on: boolean, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
   const stats = a.pwa && a.pwa_push ? await pushStats(a.id) : null;
@@ -42,6 +42,10 @@ export async function pwaSection(a: { id: number; alias: string; pwa: boolean; p
       ${input('pwa_short_name', tx('pwa.short_name'), a.pwa_short_name ?? '', { placeholder: tx('pwa.short_name_ph') })}
     </div>
     ${check('pwa_offline_pages', tx('pwa.offline_pages'), a.pwa_offline_pages, tx('pwa.offline_pages_help'))}
+    ${check('pwa_prefetch', tx('pwa.prefetch'), a.pwa_prefetch_hours !== null, tx('pwa.prefetch_help'))}
+    <div class="form-grid">
+      ${input('pwa_prefetch_hours', tx('pwa.prefetch_hours'), a.pwa_prefetch_hours ?? 12, { type: 'number', help: tx('pwa.prefetch_hours_help') })}
+    </div>
     ${check('pwa_offline_submit', tx('pwa.offline_submit'), a.pwa_offline_submit, tx('pwa.offline_submit_help'))}
     ${check('pwa_push', tx('pwa.push'), a.pwa_push, tx('pwa.push_help'))}
     <div class="field" data-wide><label class="label" for="f_pwa_icon">${tx('pwa.icon')}</label>
@@ -98,10 +102,17 @@ export async function pwaBuilderRoutes(app: FastifyInstance) {
       flash(s, tx('pwa.push_needs_key'), 'error');
       return back(reply, s, target);
     }
+    // (168) every navigation page offline: only with visited pages kept, every 1 to 168 hours
+    const hours = Number(b.pwa_prefetch_hours ?? 12);
+    if (b.pwa_prefetch === 'true' && (!Number.isInteger(hours) || hours < 1 || hours > 168)) {
+      flash(s, tx('pwa.prefetch_hours_range'), 'error');
+      return back(reply, s, target);
+    }
+    const prefetch = b.pwa_prefetch === 'true' && b.pwa_offline_pages === 'true' ? hours : null;
     await owner.query(
       `update meta.app set pwa = $2, pwa_short_name = $3, pwa_offline_pages = $4, pwa_offline_submit = $5,
-              pwa_icon = case when $7 then $6 else pwa_icon end, pwa_push = $8, updated_at = now() where id = $1`,
-      [id, b.pwa === 'true', (b.pwa_short_name ?? '').trim().slice(0, 30) || null, b.pwa_offline_pages === 'true', b.pwa_offline_submit === 'true', icon ?? null, icon !== undefined, push],
+              pwa_icon = case when $7 then $6 else pwa_icon end, pwa_push = $8, pwa_prefetch_hours = $9, updated_at = now() where id = $1`,
+      [id, b.pwa === 'true', (b.pwa_short_name ?? '').trim().slice(0, 30) || null, b.pwa_offline_pages === 'true', b.pwa_offline_submit === 'true', icon ?? null, icon !== undefined, push, prefetch],
     );
     if (push) await appPublicKey(Number(id));
     flash(s, push && b.pwa !== 'true' ? tx('pwa.saved_not_installable') : tx('pwa.saved'));

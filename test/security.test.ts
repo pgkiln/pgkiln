@@ -721,7 +721,7 @@ describe('sprint 18: Progressive Web App', () => {
       assert.equal((await new Browser().get(url)).statusCode, 404, url);
     // the service worker carries settings only, no session or user data
     const settings = (await new Browser().get('/a/hr/sw.js')).body.split('\n')[0];
-    assert.deepEqual(Object.keys(JSON.parse(settings.replace(/^const PGKILN = |;$/g, ''))), ['base', 'offlinePages', 'offlineSubmit', 'version']);
+    assert.deepEqual(Object.keys(JSON.parse(settings.replace(/^const PGKILN = |;$/g, ''))), ['base', 'offlinePages', 'prefetchHours', 'offlineSubmit', 'version']);
   });
 });
 
@@ -13766,5 +13766,53 @@ describe('sprint 167 hidden items the browser may set', () => {
     assert.doesNotMatch(page, /<img src=x/);
     assert.doesNotMatch(page, /forged/, 'a protected item and one its condition leaves out keep their server-side values');
     assert.doesNotMatch(page, /name="P9167_KEY"|name="P9167_NEVER"/);
+  });
+});
+
+describe('sprint 168 every page offline: prefetched pages', () => {
+  let pageId = 0;
+  const NO = 9168;
+  const prefetch = (b: Browser, url: string) =>
+    app.inject({ method: 'GET', url, headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'x-pgkiln-prefetch': '1' } });
+  before(async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no = $2', [appId, NO]);
+    await owner.query(`drop schema if exists s168sec cascade; create schema s168sec;
+      create table s168sec.hit (at timestamptz default now());
+      create function s168sec.hit() returns text language sql as $$ insert into s168sec.hit default values returning '' $$;
+      grant usage on schema s168sec to hr_app; grant insert, select on s168sec.hit to hr_app; grant execute on function s168sec.hit() to hr_app;`);
+    pageId = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec168') returning id`, [appId, NO])).id;
+    const region = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Sec168', 'dynamic', 'select s168sec.hit()') returning id`, [pageId])).id;
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'SAVE', 'Save', 'submit')`, [pageId, region]);
+    await owner.query(`insert into meta.process (page_id, seq, name, type, code, when_button, success_message) values ($1, 10, 'Save', 'sql', 'select 1', 'SAVE', 'Saved one-six-eight.')`, [pageId]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.page where id = $1', [pageId]);
+    await owner.query('drop schema if exists s168sec cascade');
+  });
+
+  test('a prefetch writes nothing: a region that writes fails in the read-only transaction', async () => {
+    const king = await as('king');
+    const count = async () => Number((await owner.one('select count(*) n from s168sec.hit')).n);
+    await king.get(`/a/hr/${NO}`);
+    assert.equal(await count(), 1, 'a real visit runs the page as before');
+    const res = await prefetch(king, `/a/hr/${NO}`);
+    assert.equal(res.statusCode, 200);
+    assert.equal(await count(), 1, 'the prefetch wrote nothing');
+  });
+
+  test('a prefetch leaves the session alone: the message waiting for the next page stays there', async () => {
+    const king = await as('king');
+    await king.get(`/a/hr/${NO}`);
+    assert.equal((await king.post(`/a/hr/${NO}`, { __csrf: king.lastCsrf, __request: 'SAVE' })).statusCode, 303);
+    assert.doesNotMatch((await prefetch(king, `/a/hr/${NO}`)).body, /Saved one-six-eight/);
+    assert.match((await king.get(`/a/hr/${NO}`)).body, /Saved one-six-eight/);
+  });
+
+  test('the header opens nothing: page authorization and sign-in apply as always', async () => {
+    const allen = await as('allen');
+    assert.equal((await prefetch(allen, '/a/hr/10')).statusCode, 403, 'a page allen may not open');
+    const nobody = new Browser();
+    const res = await prefetch(nobody, '/a/hr/2');
+    assert.notEqual(res.statusCode, 200, 'signed out: no page to keep');
   });
 });

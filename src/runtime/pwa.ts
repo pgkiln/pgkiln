@@ -38,9 +38,14 @@ export function pwaHead(a: Pick<App, 'alias' | 'pwa' | 'theme'>): Raw | '' {
 }
 
 /** <body> data attributes app.js uses: register the service worker, queue offline submissions. */
-export function pwaBody(a: Pick<App, 'alias' | 'pwa' | 'pwa_offline_submit'>, user: string): Record<string, string> {
+export function pwaBody(a: Pick<App, 'alias' | 'pwa' | 'pwa_offline_submit' | 'pwa_offline_pages' | 'pwa_prefetch_hours'>, user: string): Record<string, string> {
   if (!a.pwa) return {};
-  return { 'data-sw': `/a/${a.alias}/sw.js`, ...(a.pwa_offline_submit ? { 'data-offline-queue': '1', 'data-user': user } : {}) };
+  return {
+    'data-sw': `/a/${a.alias}/sw.js`,
+    ...(a.pwa_offline_submit ? { 'data-offline-queue': '1', 'data-user': user } : {}),
+    // (168) app.js hands the navigation's pages to the service worker, which keeps them for offline use
+    ...(a.pwa_offline_pages && a.pwa_prefetch_hours ? { 'data-prefetch': String(a.pwa_prefetch_hours) } : {}),
+  };
 }
 
 // ------------------------------------------------------------------ icons (PNG, no image library)
@@ -175,7 +180,7 @@ export async function pwaRoutes(app: FastifyInstance) {
     const base = `/a/${a.alias}`;
     // the settings the worker needs, as a JSON literal (no user input in it)
     const version = staticVersion();
-    const config = JSON.stringify({ base, offlinePages: a.pwa_offline_pages, offlineSubmit: a.pwa_offline_submit, version });
+    const config = JSON.stringify({ base, offlinePages: a.pwa_offline_pages, prefetchHours: a.pwa_offline_pages ? a.pwa_prefetch_hours : null, offlineSubmit: a.pwa_offline_submit, version });
     return reply
       .type('text/javascript; charset=utf-8')
       .header('cache-control', 'no-cache')

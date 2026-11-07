@@ -444,24 +444,37 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const normalised = normaliseReportParams(ctx.params);
     if (normalised !== null) return reply.redirect(`${ctx.base}/${ctx.page.page_no}${normalised ? `?${normalised}` : ''}`);
 
+    // (168) the service worker fetching the page for offline use (pwa_prefetch_hours): the page runs read-only,
+    // its session state isn't kept and nothing waiting for the next page (a message) is taken; a page that runs
+    // processes when it opens is refused (kept only when the user opens it)
+    const prefetch = req.headers['x-pgkiln-prefetch'] === '1';
+    if (prefetch && (ctx.dialog || ctx.page.processes.some((p) => p.point === 'load')))
+      return reply.code(409).header('cache-control', 'no-store').send('Not kept for offline use: this page runs processes when it opens.');
+
     if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     // a master grid's selected row (signed link) into its item
     applyRowSelection(ctx);
-    const flash = takeFlash(ctx.session);
-    if (flash) ctx.messages.push(flash);
-    const flashError = takeFlash(ctx.session, '__FLASH_ERROR');
-    if (flashError) ctx.errors.page.push(flashError);
-    const saved = takeFlash(ctx.session, '__GRID_SAVED');
-    if (typeof saved === 'string') ctx.savedGrids = saved.split(',').map(Number).filter(Number.isInteger);
+    if (!prefetch) {
+      const flash = takeFlash(ctx.session);
+      if (flash) ctx.messages.push(flash);
+      const flashError = takeFlash(ctx.session, '__FLASH_ERROR');
+      if (flashError) ctx.errors.page.push(flashError);
+      const saved = takeFlash(ctx.session, '__GRID_SAVED');
+      if (typeof saved === 'string') ctx.savedGrids = saved.split(',').map(Number).filter(Number.isInteger);
+    }
     // Actions → Download CSV / Excel / PDF: r<region id>_csv=1, _xlsx=1 or _pdf=1
     const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|xlsx|pdf)$/.test(k));
     // a document template: ?doc=NAME (see documents.ts)
     const docName = ctx.params.get('doc');
 
+    if (prefetch && (docName || downloadKey)) return reply.code(409).header('cache-control', 'no-store').send('Not kept for offline use.');
+
     let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string; download?: Download };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
+        // (168) a prefetch writes nothing: an application process or region that tries fails
+        if (prefetch) await c.query('set local transaction_read_only = on');
         await timed(ctx, 4, 'page', 'page authorization', () => checkPageAccess(ctx));
         await timed(ctx, 4, 'page', 'application processes (before page)', () => runAppProcesses(ctx, 'before_page'));
         // (086) items kept per user: their values from the user's preferences
@@ -515,6 +528,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
       if (e instanceof StepUp) return stepUp(ctx, reply, req.url);
       if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `page ${ctx.page.page_no}`);
       throw e;
+    }
+    if (prefetch) {
+      // a redirect (a branch, a sign-in) or anything but the page itself is not kept on the device
+      logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_prefetch', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
+      if (result.html === undefined) return reply.code(409).header('cache-control', 'no-store').send('Not kept for offline use.');
+      return reply.type('text/html').header('cache-control', 'private, no-store').send(result.html);
     }
     await saveState(ctx.session);
     if (result.redirect) return reply.redirect(result.redirect, 303);

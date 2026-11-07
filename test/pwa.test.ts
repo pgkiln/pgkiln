@@ -22,7 +22,7 @@ before(async () => {
 });
 
 after(async () => {
-  await owner.query(`update meta.app set pwa = true, pwa_short_name = 'HR', pwa_icon = null, pwa_offline_pages = true, pwa_offline_submit = true where id = $1`, [appId]);
+  await owner.query(`update meta.app set pwa = true, pwa_short_name = 'HR', pwa_icon = null, pwa_offline_pages = true, pwa_offline_submit = true, pwa_prefetch_hours = 12 where id = $1`, [appId]);
   const ids = (await owner.query('select id from hr.leave_request where reason like $1', [`${REASON}%`])).rows.map((r) => String(r.id));
   await owner.query('delete from meta.task where app_id = $1 and detail_pk = any($2::text[])', [appId, ids]);
   await owner.query('delete from hr.leave_request where reason like $1', [`${REASON}%`]);
@@ -51,7 +51,7 @@ describe('installable app', () => {
     assert.deepEqual(m.icons.map((i: any) => `${i.sizes}/${i.purpose}`), ['192x192/any', '512x512/any', '512x512/maskable']);
     const sw = await b.get('/a/hr/sw.js');
     assert.equal(sw.headers['service-worker-allowed'], '/a/hr/');
-    assert.match(sw.body, /^const PGKILN = \{"base":"\/a\/hr","offlinePages":true,"offlineSubmit":true,"version":"[a-z0-9]+"\};/);
+    assert.match(sw.body, /^const PGKILN = \{"base":"\/a\/hr","offlinePages":true,"prefetchHours":12,"offlineSubmit":true,"version":"[a-z0-9]+"\};/);
     const icon = (await b.get('/a/hr/icon-512.png')).rawPayload;
     const [w, h, centre] = decode(icon);
     assert.deepEqual([w, h], [512, 512]);
@@ -85,7 +85,7 @@ describe('installable app', () => {
     assert.match((await dev.get(`/builder/apps/${appId}/settings`)).body, /Progressive Web App/);
     const upload = async (data: Buffer, extra: Record<string, string> = {}) => {
       await dev.get(`/builder/apps/${appId}/settings`);
-      await dev.upload(`/builder/apps/${appId}/pwa`, { pwa: 'true', pwa_short_name: 'HR', pwa_offline_pages: 'true', pwa_offline_submit: 'true', ...extra }, { icon: { name: 'i.png', type: 'image/png', data } });
+      await dev.upload(`/builder/apps/${appId}/pwa`, { pwa: 'true', pwa_short_name: 'HR', pwa_offline_pages: 'true', pwa_offline_submit: 'true', pwa_prefetch: 'true', pwa_prefetch_hours: '12', ...extra }, { icon: { name: 'i.png', type: 'image/png', data } });
       return (await dev.get(`/builder/apps/${appId}/settings`)).body;
     };
     assert.match(await upload(Buffer.from('not a png')), /must be a PNG/);
@@ -96,6 +96,58 @@ describe('installable app', () => {
     assert.deepEqual((await new Browser(app).get('/a/hr/icon-192.png')).rawPayload, good, 'the uploaded icon is served');
     const m = JSON.parse((await new Browser(app).get('/a/hr/manifest.webmanifest')).body);
     assert.ok(!m.icons.some((i: any) => i.purpose === 'maskable'), 'an uploaded icon is not declared maskable');
+  });
+});
+
+describe('every page offline (168)', () => {
+  const prefetch = (b: Browser, url: string) => b.app.inject({ method: 'GET', url, headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'x-pgkiln-prefetch': '1' } });
+
+  test('the page hands its navigation to the service worker; the worker gets the hours', async () => {
+    const king = new Browser(app);
+    await king.login('king');
+    const page = (await king.get('/a/hr/1')).body;
+    assert.match(page, /data-prefetch="12"/);
+    assert.match((await king.get('/a/hr/sw.js')).body, /"prefetchHours":12/);
+    await owner.query('update meta.app set pwa_offline_pages = false where id = $1', [appId]);
+    assert.doesNotMatch((await king.get('/a/hr/1')).body, /data-prefetch/, 'only with visited pages kept');
+    assert.match((await king.get('/a/hr/sw.js')).body, /"prefetchHours":null/);
+    await owner.query('update meta.app set pwa_offline_pages = true where id = $1', [appId]);
+  });
+
+  test('a prefetch renders the page without keeping session state, logged apart from page views', async () => {
+    const king = new Browser(app);
+    await king.login('king');
+    await king.get('/a/hr/1');
+    const views = async (event: string) => Number((await owner.one(`select count(*) n from meta.activity_log where app_id = $1 and page_no = 2 and lower(username) = 'king' and event = $2`, [appId, event])).n);
+    const before = [await views('page_view'), await views('page_prefetch')];
+    const res = await prefetch(king, '/a/hr/2');
+    assert.equal(res.statusCode, 200);
+    assert.match(res.headers['content-type'] as string, /^text\/html/);
+    assert.match(res.body, /<h1>Employees<\/h1>/);
+    await new Promise((r) => setTimeout(r, 300)); // the log is written after the answer
+    assert.deepEqual([await views('page_view'), await views('page_prefetch')], [before[0], before[1] + 1]);
+  });
+
+  test('pages that run processes when they open, dialogs, documents and downloads are not prefetched', async () => {
+    const king = new Browser(app);
+    await king.login('king');
+    for (const url of ['/a/hr/20', '/a/hr/2?dialog=1', '/a/hr/2?doc=X', '/a/hr/2?r1_csv=1']) assert.equal((await prefetch(king, url)).statusCode, 409, url);
+  });
+
+  test('the builder keeps the hours only with visited pages kept, from 1 to 168', async () => {
+    const dev = new Browser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const save = async (extra: Record<string, string>) => {
+      await dev.get(`/builder/apps/${appId}/settings`);
+      await dev.upload(`/builder/apps/${appId}/pwa`, { pwa: 'true', pwa_short_name: 'HR', pwa_offline_submit: 'true', ...extra }, {});
+      return (await owner.one('select pwa_prefetch_hours from meta.app where id = $1', [appId])).pwa_prefetch_hours;
+    };
+    assert.equal(await save({ pwa_offline_pages: 'true', pwa_prefetch: 'true', pwa_prefetch_hours: '24' }), 24);
+    assert.equal(await save({ pwa_prefetch: 'true', pwa_prefetch_hours: '24' }), null, 'without visited pages kept');
+    assert.equal(await save({ pwa_offline_pages: 'true', pwa_prefetch: 'true', pwa_prefetch_hours: '500' }), null, 'refused: unchanged');
+    assert.match((await dev.get(`/builder/apps/${appId}/settings`)).body, /a whole number of hours from 1 to 168/);
+    assert.equal(await save({ pwa_offline_pages: 'true', pwa_prefetch: 'true', pwa_prefetch_hours: '12' }), 12);
   });
 });
 

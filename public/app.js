@@ -2972,6 +2972,17 @@ const liveBadges = (() => {
       if (e.data && e.data.type === 'pgkiln:pushed') liveBadges.now();
     });
     if (new URLSearchParams(location.search).get('queued') === '1') note(t('pwa.queued'));
+    // (168) every page of the navigation offline: this page and the menu's and navigation bar's pages of the app
+    // (the server already left out the ones this user may not open; dialogs and other sites are not pages to keep)
+    if (body.dataset.prefetch && navigator.onLine && !(navigator.connection && navigator.connection.saveData)) {
+      const links = [...document.querySelectorAll('#t-nav a[href], .t-navbar a[href]')].filter((a) => !a.hasAttribute('data-dialog'));
+      const urls = [location.href, ...links.map((a) => a.href)].filter((h) => {
+        const u = new URL(h, location.href);
+        return u.origin === location.origin && u.pathname.startsWith(`${body.dataset.base}/`) && !/\/(login|logout)$/.test(u.pathname);
+      });
+      // a page without the navigation (the sign-in page, a dialog) has nothing to hand over
+      if (links.length) post({ type: 'pgkiln:prefetch', urls: [...new Set(urls)] });
+    }
   }
 
   // (165) live badges: every data-live seconds the page asks for its badges (navigation menu and bar,

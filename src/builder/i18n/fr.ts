@@ -7510,4 +7510,10 @@ export const fr: BuilderMessages = {
   'pjb.steps': 'Étapes',
   'pjb.message': 'Message',
   'pjb.no_runs': 'Aucune exécution pour l’instant.',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': 'Rendre toutes les pages de la navigation disponibles hors ligne après la connexion',
+  'pwa.prefetch_help': 'Nécessite Conserver les pages visitées. Après une connexion, et sur la première page ouverte sur un appareil, l’appareil récupère une à une toutes les pages du menu et de la barre de navigation que l’utilisateur peut ouvrir. Le serveur les affiche en lecture seule : les pages qui exécutent des processus à l’ouverture sont ignorées et conservées seulement quand l’utilisateur les ouvre.',
+  'pwa.prefetch_hours': 'Les récupérer à nouveau après (heures)',
+  'pwa.prefetch_hours_help': 'De 1 à 168. Les pages sont récupérées à nouveau à la première page ouverte après ce délai, s’il y a une connexion.',
+  'pwa.prefetch_hours_range': 'Les récupérer à nouveau après : un nombre entier d’heures entre 1 et 168.',
 };

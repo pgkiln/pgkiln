@@ -7510,4 +7510,10 @@ export const zhCN: BuilderMessages = {
   'pjb.steps': '步骤',
   'pjb.message': '消息',
   'pjb.no_runs': '尚无运行记录。',
+  // ------------------------------------------------------------ PWA: every page offline (sprint 168)
+  'pwa.prefetch': '登录后使导航中的所有页面可离线使用',
+  'pwa.prefetch_help': '需要“将访问过的页面保留在设备上”。登录后，以及在设备上打开第一个页面时，设备会逐个获取用户可以打开的导航菜单和导航栏中的所有页面。服务器以只读方式显示它们：打开时运行进程的页面会被跳过，只有在用户打开时才会保留。',
+  'pwa.prefetch_hours': '多少小时后重新获取',
+  'pwa.prefetch_hours_help': '1 到 168。超过此时间后，在有网络连接时打开第一个页面时会重新获取这些页面。',
+  'pwa.prefetch_hours_range': '重新获取时间：1 到 168 之间的整数小时。',
 };

@@ -1,0 +1,11 @@
+-- =====================================================================
+-- HR example, part 82: the whole app offline from the first visit
+-- (docs/guide/17-mobile.md, sprint 168)
+--
+-- After signing in on a phone, every page of the navigation menu the
+-- user may open is fetched in the background and kept on the device, so
+-- the app works on the train even for pages never opened before; the
+-- copies are fetched again after 12 hours. Pages that run processes when
+-- they open (20, 35, 43) are kept only when the user opens them.
+-- =====================================================================
+update meta.app set pwa_prefetch_hours = 12 where alias = 'hr';
