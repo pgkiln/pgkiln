@@ -7524,4 +7524,16 @@ export const nl: BuilderMessages = {
   'ws.check_title': 'De SQL plannen zonder hem uit te voeren, zoals de Advisor',
   'ws.key.indent': 'Inspringen (Esc, dan Tab: volgend veld)',
   'ws.search_path_plain': '{schema} eerst in het zoekpad',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': 'Labels tonen',
+  'rail.labels_hide': 'Labels verbergen',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': 'Hulpmiddelen filteren',
+  'wu.filter_none': 'Niets voldoet aan het filter.',
+  'wu.sec.people': 'Mensen en aanmelden',
+  'wu.sec.connections': 'Verbindingen',
+  'wu.sec.data': 'Gegevens en AI',
+  'wu.sec.operations': 'Beheer',
+  'wu.sec.workspace': 'Werkruimte {name}',
+  'wu.sec.instance': 'Instantie',
 };

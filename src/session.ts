@@ -36,6 +36,8 @@ export interface Session {
   /** Builder only: the developer's workspaces and the current one (src/builder/workspaces.ts). */
   workspaces?: BuilderWorkspace[];
   workspace?: BuilderWorkspace | null;
+  /** Builder only (UX-3): this request's path, so the rail marks the right section */
+  path?: string;
   /** Builder only (sprint 99): an administrator of the installation (the Administration menu's Database users) */
   instanceAdmin?: boolean;
   /** Builder only (079): sha256 of the developer toolbar token (src/runtime/devbar.ts). */

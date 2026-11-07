@@ -59,12 +59,26 @@ async function fits(p: Page, name: string) {
 }
 
 describe('sprint 118: administration pages without JavaScript at 390 px', () => {
-  test('the Administration menu has Mail queue and Network access', async () => {
+  test('(UX-4) the Administration page filters its utilities; nothing scrolls sideways at 390 px', async () => {
     const p = await page(true);
-    await p.goto(`${base}/builder/home`);
-    await p.click('.rail-admin > summary');
-    assert.ok(await p.locator('.rail-admin a[href="/builder/mail-queue"]').isVisible());
-    assert.ok(await p.locator('.rail-admin a[href="/builder/network"]').isVisible());
+    await p.goto(`${base}/builder/utilities`);
+    await p.fill('[data-adm-filter]', 'mail');
+    const shown = await p.locator('.adm-tile:visible strong').allInnerTexts();
+    assert.ok(shown.includes('Mail services') && shown.includes('Mail queue'), shown.join(', '));
+    assert.ok(!shown.includes('Users'));
+    await p.fill('[data-adm-filter]', 'no such utility');
+    await p.locator('.adm-none').waitFor();
+    await p.fill('[data-adm-filter]', '');
+    assert.ok((await p.locator('.adm-tile:visible').count()) > 15);
+    await fits(p, 'administration');
+    await p.context().close();
+  });
+
+  test('the Administration page has Mail queue and Network access', async () => {
+    const p = await page(true);
+    await p.goto(`${base}/builder/utilities`);
+    assert.ok(await p.locator('.adm-tile[href="/builder/mail-queue"]').isVisible());
+    assert.ok(await p.locator('.adm-tile[href="/builder/network"]').isVisible());
     await fits(p, 'menu');
     await p.context().close();
   });

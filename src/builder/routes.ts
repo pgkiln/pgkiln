@@ -540,6 +540,24 @@ export async function builderRoutes(app: FastifyInstance) {
     return reply.redirect(`${BASE}/login`, 303);
   });
 
+  // (UX-3) the icon rail with labels next to the icons, or icons only (kept in the developer's session)
+  app.post(`${BASE}/rail`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    if (req.body?.labels === 'labels') s.state.__RAIL = 'labels';
+    else delete s.state.__RAIL;
+    const ref = String(req.headers.referer ?? '');
+    let to = `${BASE}/home`;
+    try {
+      const u = new URL(ref);
+      if (u.host === req.headers.host && u.pathname.startsWith(BASE)) to = u.pathname + u.search;
+    } catch {
+      /* no referer: the home page */
+    }
+    await saveState(s);
+    return reply.redirect(to, 303);
+  });
+
   // The builder's light/dark theme (the developer's menu in the icon rail).
   app.post(`${BASE}/theme`, async (req: Req, reply) => {
     const s = await developer(req, reply);

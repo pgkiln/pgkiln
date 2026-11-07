@@ -11,6 +11,13 @@ All notable changes to this project are documented here. The format follows
   Suggest and Check, commit mode, fullscreen and a ⋯ menu with the other tools and the keyboard shortcuts), *Run
   as* moved to the status bar with its explanation as a tooltip, the code editor's hint bar shows only Check's
   messages, and the output pane is only its tabs until the first run.
+- **The builder's rail and Administration** (sprint 170, UX-3, UX-4): the rail marks the page's section by its address
+  (Workspace utilities and users no longer light up App Builder); **Administration** is a rail entry instead of the
+  settings menu at the bottom, and its page groups the workspace utilities into sections (people and sign-in,
+  connections, data and AI, operations, the workspace, the instance, cross-application reports) with a filter and
+  compact tiles, without the cards for tools the rail already has. *Show labels* at the bottom of the rail puts the
+  names next to the icons (kept for the session). The rail's application search is gone: the header's search is on
+  every page and an application's search is its Search tab.
 - **Page Designer on a laptop screen** (sprint 169, UX-2, UX-12): the page no longer scrolls as a whole (a
   screen-reader heading placed outside the panes made it 200 pixels too tall), so Save and the toolbar stay in view;
   the property editor's save button stays at the bottom of its pane; Ctrl+S saves, unsaved changes show a dot on

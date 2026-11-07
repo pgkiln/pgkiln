@@ -225,9 +225,16 @@ department. Every installation has the **Default** workspace, which holds the ap
 - **New applications** (Create, from a file, pasted data, existing tables, a blueprint) and **imports** go into the
   current workspace; a working copy stays in its main application's workspace. Imports made with the command line
   (`pgkiln import`) go into Default. Exports don't carry the workspace.
-- **Workspace utilities**: tiles for users and sign-in, application groups, the App Gallery, developers, the SQL
-  Workshop, the dashboard, [static workspace files, remote servers and web credentials](#static-workspace-files-remote-servers-and-web-credentials) (and, for administrators, instance settings, workspaces, AI and mail services and the
-  installation), with **Cross Application Reports** in the side column (APEX: Cross Application Reports), each over
+- **Workspace utilities** (the rail's **Administration**, `/builder/utilities`; UX-4): the utilities in sections with a
+  **filter** field at the top: *People and sign-in* (users, developers, identity providers, LDAP directories, password
+  policy), *Connections* ([remote servers, web credentials](#static-workspace-files-remote-servers-and-web-credentials),
+  remote databases, REST source catalogs, mail services; for workspace administrators the mail queue and network
+  access), *Data and AI* (AI services, vector providers, UI defaults, static workspace files, icons), *Operations*
+  (application groups, backups, export and import, the dashboard, OpenTelemetry), the current **workspace** (for its
+  administrators: its page, [workspace message and environment banner](#workspace-message-and-environment-banner),
+  preferences, extension links, [workspace utilization](#workspace-utilization)) and the **instance** (for
+  administrators: instance settings, workspaces, [Database users](#database-users), the installation), then
+  **Cross Application Reports** (APEX: Cross Application Reports), each over
   every application of the current workspace: *Application attributes* (type, sign-in, availability, build status,
   debug level, language, database role), *Build options*, *Developer comments*, *Authentication* (sign-in methods,
   identity providers, LDAP, access, the login page, Forgot password), *Authorization schemes*, *Password items* and
@@ -247,7 +254,7 @@ its developers must not reach other teams' applications or data.
 ### Workspace message and environment banner
 
 Administrators and the workspace's administrators set them on the workspace's page (*Manage service*, or the
-Administration menu → *Workspace message and environment banner*; APEX: Define Workspace Message, Define Environment
+Administration → *Workspace message and environment banner*; APEX: Define Workspace Message, Define Environment
 Banner): a **message** (plain text, up to 2000 characters) shown to the workspace's developers on the
 [Workspace home](#workspace-home) (where they can also edit it in place) and the App Builder home,
 and an **environment banner**: a label of up to 40 characters in one of eight colours, shown at the top of every
@@ -255,7 +262,7 @@ builder page while the workspace is current.
 
 ### Workspace preferences
 
-Administrators and the workspace's administrators set them on the workspace's page (Administration menu →
+Administrators and the workspace's administrators set them on the workspace's page (Administration →
 *Workspace preferences*; APEX: Set Workspace Preferences):
 
 - **Enable the SQL Workshop**: off, every SQL Workshop page (the SQL Worksheet, the Object Browser, SQL scripts, Load and
@@ -349,7 +356,7 @@ says what was added, kept and replaced.
 
 ### Workspace utilization
 
-Administration menu → **Workspace utilization** (`/builder/workspaces/<id>/utilization`; APEX: Workspace
+Administration → **Workspace utilization** (`/builder/workspaces/<id>/utilization`; APEX: Workspace
 Utilization), for administrators and the workspace's administrators: the number of applications, pages, developers,
 page views of the last 30 days and SQL scripts; per application its pages, regions, items, page views, users and the
 size of its static files; and the schemas the workspace's database roles use with their tables and storage.
@@ -462,11 +469,14 @@ longer sign in. Delete a workspace only when it is shared and empty; its logins 
 Every builder page has the same frame, modelled on an IDE:
 
 - **The icon rail** on the left: Home (the [Workspace home](#workspace-home); the logo leads there too), App Builder,
-  SQL Workshop, [App Gallery](#app-gallery), [Data Reporter](#data-reporter-datasets-and-reporting-applications), **Search** (on the
-  pages of an application); at the bottom the **Administration** menu (Workspace utilities; for administrators of the
-  current workspace *Manage service*: [workspace message and environment banner](#workspace-message-and-environment-banner),
-  [workspace utilization](#workspace-utilization) and the workspace's page; Manage users and groups, Developers,
-  Monitor activity, [Database users](#database-users) for administrators, Change my password), Help, and your account menu (the circle with your initials) with the
+  SQL Workshop, [App Gallery](#app-gallery), [Data Reporter](#data-reporter-datasets-and-reporting-applications),
+  Team Development and **Administration** (the workspace utilities, below); at the bottom Help, **Show labels** and your
+  account menu (the circle with your initials). (UX-3) The entry of the page you are on is marked, by the page's
+  address (an application's pages under App Builder; users, developers, workspaces, instance settings and the other
+  utilities under Administration). *Show labels* puts each entry's name next to its icon (*Hide labels* takes them
+  away; kept for your session); without them the name shows when you point at an icon or move to it with the
+  keyboard. The search is the field at the top of every page (**Ctrl+K**); an application's own search is its
+  **Search** tab. Your account menu has the
   **builder theme** (*Dark*, the default; *Light*; or *System*, which follows the operating system),
   Change password and Sign out. The theme is remembered on this device, also after signing out;
   it only changes the builder, not your applications.
@@ -1798,7 +1808,7 @@ sending mailboxes (an application access policy or RBAC for Applications).
 
 ### Mail queue
 
-Administration menu → **Mail queue** (`/builder/mail-queue`; APEX 26.2: Administration → Mail queue): the delivery
+Administration → **Mail queue** (`/builder/mail-queue`; APEX 26.2: Administration → Mail queue): the delivery
 health of the mail queue, for administrators (every workspace, or one) and a workspace's administrators (the current
 workspace's applications only; other developers get 403). Filter by period (24 hours, 48 hours, 7 days), workspace and
 application:
@@ -1843,7 +1853,7 @@ applications off or send them to a collector of their own as well (through the a
 
 ### Network access
 
-Administration menu → **Network access** (`/builder/network`; APEX 26.2: workspace network ACLs), for administrators
+Administration → **Network access** (`/builder/network`; APEX 26.2: workspace network ACLs), for administrators
 (any workspace, `?ws=`) and a workspace's administrators (their workspaces): which web services a workspace's
 applications may call. The installation's list (`PGKILN_REST_ALLOWED_HOSTS`, set in the server's environment, shown
 read-only; the private hosts to administrators only) applies to every workspace. A workspace can choose **Only the
@@ -2428,7 +2438,7 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     connections, memory, row security), the installed extensions and the schemas with their size.
   - **SQL Monitor** (administrators only): see [SQL Monitor](#sql-monitor) below (it replaced the Database Monitor;
     the old address `/builder/sql/utilities/monitor` redirects).
-  - **Database Users** (administrators only; Administration menu → *Database users*, `/builder/db-users`; sprint 99,
+  - **Database Users** (administrators only; Administration → *Database users*, `/builder/db-users`; sprint 99,
     Database Actions: Database Users): see [Database users](#database-users).
   - **Schema Export / Import** (administrators only; `/builder/sql/data-pump`; sprint 103, Database Actions: Data
     Pump): see [Schema export and import](#schema-export-and-import).

@@ -7524,4 +7524,16 @@ export const pt: BuilderMessages = {
   'ws.check_title': 'Planejar o SQL sem executá-lo, como o Advisor',
   'ws.key.indent': 'Recuar (Esc e depois Tab: próximo campo)',
   'ws.search_path_plain': '{schema} primeiro no caminho de pesquisa',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': 'Mostrar rótulos',
+  'rail.labels_hide': 'Ocultar rótulos',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': 'Filtrar os utilitários',
+  'wu.filter_none': 'Nada corresponde ao filtro.',
+  'wu.sec.people': 'Pessoas e login',
+  'wu.sec.connections': 'Conexões',
+  'wu.sec.data': 'Dados e IA',
+  'wu.sec.operations': 'Operações',
+  'wu.sec.workspace': 'Espaço de trabalho {name}',
+  'wu.sec.instance': 'Instância',
 };

@@ -7524,4 +7524,16 @@ export const ja: BuilderMessages = {
   'ws.check_title': 'Advisor と同様に、実行せずに SQL を計画します',
   'ws.key.indent': 'インデント（Esc の後 Tab: 次のフィールド）',
   'ws.search_path_plain': '検索パスの先頭は {schema}',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': 'ラベルを表示',
+  'rail.labels_hide': 'ラベルを非表示',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': 'ユーティリティを絞り込む',
+  'wu.filter_none': 'フィルターに一致するものはありません。',
+  'wu.sec.people': 'ユーザーとサインイン',
+  'wu.sec.connections': '接続',
+  'wu.sec.data': 'データと AI',
+  'wu.sec.operations': '運用',
+  'wu.sec.workspace': 'ワークスペース {name}',
+  'wu.sec.instance': 'インスタンス',
 };

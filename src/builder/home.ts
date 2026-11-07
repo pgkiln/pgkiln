@@ -271,49 +271,72 @@ export async function homeRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- workspace utilities
+  // (UX-4) Administration: the workspace utilities in sections, with a filter; the rail's Administration entry (UX-3)
   app.get(`${BASE}/utilities`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const tx = tr(s);
-    const card = (href: string, ic: Raw | '', title: string, text: string | Raw) =>
-      html`<a class="ab-tile" href="${href}"><span class="ab-tile-icon">${ic}</span><strong>${title}</strong><span>${text}</span></a>`;
-    const main = html`<div class="ab-home"><div class="ab-main"><h1 class="u-mb1">${tx('wu.title')}</h1>
-      <div class="ab-tiles ab-tiles-wrap">
-        ${card(`${BASE}/users`, icon('user'), tx('wu.users'), tx('wu.users_text'))}
-        ${card(`${BASE}/app-groups`, icon('folder'), tx('wu.app_groups'), tx('wu.app_groups_text'))}
-        ${card(`${BASE}/gallery`, icon('package'), tx('wu.gallery'), tx('wu.gallery_text'))}
-        ${card(`${BASE}/users/providers`, icon('key'), tx('wu.providers'), tx('wu.providers_text'))}
-        ${card(`${BASE}/users/directories`, icon('org'), tx('wu.ldap'), tx('wu.ldap_text'))}
-        ${card(`${BASE}/users#account-settings`, icon('shield'), tx('wu.password_policy'), tx('wu.password_policy_text'))}
-        ${card(`${BASE}/developers`, icon('users'), tx('wu.developers'), tx('wu.developers_text'))}
-        ${s.workspace?.sql_workshop === false ? '' : card(`${BASE}/sql`, icon('database'), tx('wu.sql'), tx('wu.sql_text'))}
-        ${card(`${BASE}/backups`, icon('archive'), tx('wu.backups'), tx('wu.backups_text'))}
-        ${card(`${BASE}/workspace-files`, icon('file'), tx('wu.files'), tx('wu.files_text', { tag: '#WORKSPACE_FILES#' }))}
-        ${card(`${BASE}/remote-servers`, icon('server'), tx('wu.servers'), tx('wu.servers_text'))}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/remote-databases`, icon('database'), tx('wu.remote_dbs'), tx('wu.remote_dbs_text')) : ''}
-        ${card(`${BASE}/workspace-credentials`, icon('key'), tx('wu.credentials'), tx('wu.credentials_text'))}
-        ${card(`${BASE}/rest-catalogs`, icon('globe'), tx('wu.catalogs'), tx('wu.catalogs_text'))}
-        ${s.workspace?.admin ? card(`${BASE}/workspace-export`, icon('download'), tx('wu.export'), tx('wu.export_text')) : ''}
-        ${card(`${BASE}/dashboard`, icon('activity'), tx('wu.dashboard'), tx('wu.dashboard_text'))}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/instance`, icon('settings'), tx('wu.instance'), tx('wu.instance_text')) : ''}
-        ${(await isAdmin(s.username))
-          ? card(`${BASE}/workspaces`, icon('layers'), tx('wu.workspaces'), tx('wu.workspaces_text'))
-          : s.workspace && (await workspaceAdmin(s.username, s.workspace.id))
-            ? card(`${BASE}/workspaces/${s.workspace.id}`, icon('layers'), tx('wu.workspace', { name: s.workspace.name }), tx('wu.workspace_text'))
-            : ''}
-        ${card(`${BASE}/ui-defaults`, icon('sliders-horizontal'), tx('wu.ui_defaults'), tx('wu.ui_defaults_text'))}
-        ${card(`${BASE}/icons`, icon('image'), tx('wu.icons'), tx('wu.icons_text'))}
-        ${card(`${BASE}/vector-providers`, icon('search'), tx('wu.vectors'), tx('wu.vectors_text'))}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/ai`, icon('bolt'), tx('wu.ai'), tx('wu.ai_text')) : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/mail`, icon('send'), tx('wu.mail'), tx('wu.mail_text')) : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/telemetry`, icon('activity'), tx('wu.otel'), tx('wu.otel_text')) : ''}
-        ${(await isAdmin(s.username)) ? card(`${BASE}/installation`, icon('history'), tx('wu.installation'), tx('wu.installation_text')) : ''}
-      </div></div>
-      <aside class="ab-side" aria-label="${tx('wu.side')}">
-        <section><h2>${tx('wu.about')}</h2><p>${tx('wu.about_text')}</p>
-          <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${tx('wu.learn_more')}</a></section>
-        <section><h2>${tx('wu.cross_app')}</h2><ul class="ab-links ab-tasks">${crossAppLinks()}</ul></section>
-      </aside></div>`;
-    return send(reply, s, shell(s, tx('wu.title'), [[tx('rail.app_builder'), BASE], [tx('wu.title')]], main));
+    const admin = await isAdmin(s.username);
+    const wsAdmin = !!s.workspace?.admin || (!!s.workspace && (await workspaceAdmin(s.username, s.workspace.id)));
+    const ws = s.workspace;
+    type Tile = [href: string, ic: string, title: string, text: string | Raw] | null;
+    const tile = (t: Tile) =>
+      t ? html`<li><a class="adm-tile" href="${t[0]}"><span class="adm-tile-head">${icon(t[1])}<strong>${t[2]}</strong></span>${t[3] ? html`<span class="adm-tile-text">${t[3]}</span>` : ''}</a></li>` : '';
+    const section = (id: string, title: string, tiles: Tile[]) => {
+      const shown = tiles.filter(Boolean);
+      return shown.length ? html`<section class="adm-section" aria-labelledby="adm-${id}"><h2 id="adm-${id}">${title}</h2><ul class="adm-tiles">${shown.map(tile)}</ul></section>` : '';
+    };
+    const main = html`<div class="adm">
+      <div class="title-row"><h1>${tx('rail.admin')}</h1>
+        <div class="adm-filter" hidden><label class="sr-only" for="adm-q">${tx('wu.filter')}</label>
+          <input id="adm-q" type="search" placeholder="${tx('wu.filter')}" autocomplete="off" data-adm-filter></div></div>
+      <p class="u-mt0 adm-lede"><a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#workspaces" target="_blank" rel="noopener">${tx('wu.learn_more')}</a></p>
+      ${section('people', tx('wu.sec.people'), [
+        [`${BASE}/users`, 'user', tx('wu.users'), tx('wu.users_text')],
+        [`${BASE}/developers`, 'users', tx('wu.developers'), tx('wu.developers_text')],
+        [`${BASE}/users/providers`, 'key', tx('wu.providers'), tx('wu.providers_text')],
+        [`${BASE}/users/directories`, 'org', tx('wu.ldap'), tx('wu.ldap_text')],
+        [`${BASE}/users#account-settings`, 'shield', tx('wu.password_policy'), tx('wu.password_policy_text')],
+      ])}
+      ${section('connections', tx('wu.sec.connections'), [
+        [`${BASE}/remote-servers`, 'server', tx('wu.servers'), tx('wu.servers_text')],
+        admin ? [`${BASE}/remote-databases`, 'database', tx('wu.remote_dbs'), tx('wu.remote_dbs_text')] : null,
+        [`${BASE}/workspace-credentials`, 'key', tx('wu.credentials'), tx('wu.credentials_text')],
+        [`${BASE}/rest-catalogs`, 'globe', tx('wu.catalogs'), tx('wu.catalogs_text')],
+        admin ? [`${BASE}/mail`, 'send', tx('wu.mail'), tx('wu.mail_text')] : null,
+        wsAdmin ? [`${BASE}/mail-queue`, 'inbox', tx('admin.mail_queue'), ''] : null,
+        wsAdmin ? [`${BASE}/network`, 'globe', tx('admin.network'), ''] : null,
+      ])}
+      ${section('data', tx('wu.sec.data'), [
+        admin ? [`${BASE}/ai`, 'bolt', tx('wu.ai'), tx('wu.ai_text')] : null,
+        [`${BASE}/vector-providers`, 'search', tx('wu.vectors'), tx('wu.vectors_text')],
+        [`${BASE}/ui-defaults`, 'sliders-horizontal', tx('wu.ui_defaults'), tx('wu.ui_defaults_text')],
+        [`${BASE}/workspace-files`, 'file', tx('wu.files'), tx('wu.files_text', { tag: '#WORKSPACE_FILES#' })],
+        [`${BASE}/icons`, 'image', tx('wu.icons'), tx('wu.icons_text')],
+      ])}
+      ${section('operations', tx('wu.sec.operations'), [
+        [`${BASE}/app-groups`, 'folder', tx('wu.app_groups'), tx('wu.app_groups_text')],
+        [`${BASE}/backups`, 'archive', tx('wu.backups'), tx('wu.backups_text')],
+        wsAdmin ? [`${BASE}/workspace-export`, 'download', tx('wu.export'), tx('wu.export_text')] : null,
+        [`${BASE}/dashboard`, 'activity', tx('wu.dashboard'), tx('wu.dashboard_text')],
+        admin ? [`${BASE}/telemetry`, 'activity', tx('wu.otel'), tx('wu.otel_text')] : null,
+      ])}
+      ${ws && wsAdmin ? section('workspace', tx('wu.sec.workspace', { name: ws.name }), [
+        [`${BASE}/workspaces/${ws.id}`, 'layers', tx('admin.ws_devs'), tx('wu.workspace_text')],
+        [`${BASE}/workspaces/${ws.id}#service`, 'bell', tx('admin.ws_message'), ''],
+        [`${BASE}/workspaces/${ws.id}#preferences`, 'sliders-horizontal', tx('admin.ws_prefs'), ''],
+        [`${BASE}/workspaces/${ws.id}#links`, 'external-link', tx('admin.ext_links'), ''],
+        [`${BASE}/workspaces/${ws.id}/utilization`, 'chart', tx('admin.utilization'), ''],
+      ]) : ''}
+      ${admin ? section('instance', tx('wu.sec.instance'), [
+        [`${BASE}/instance`, 'settings', tx('wu.instance'), tx('wu.instance_text')],
+        [`${BASE}/workspaces`, 'layers', tx('wu.workspaces'), tx('wu.workspaces_text')],
+        s.instanceAdmin ? [`${BASE}/db-users`, 'key', tx('admin.db_users'), ''] : null,
+        [`${BASE}/installation`, 'history', tx('wu.installation'), tx('wu.installation_text')],
+      ]) : ''}
+      <section class="adm-section" aria-labelledby="adm-reports"><h2 id="adm-reports">${tx('wu.cross_app')}</h2><ul class="ab-links ab-tasks adm-reports">${crossAppLinks()}</ul></section>
+      <p class="adm-none muted" hidden>${tx('wu.filter_none')}</p>
+    </div>`;
+    return send(reply, s, shell(s, tx('rail.admin'), [[tx('rail.admin')]], main));
   });
 }

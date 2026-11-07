@@ -230,13 +230,13 @@ describe('network access lists', () => {
     assert.match(page.body, /S118 Net<\/a>/);
   });
 
-  test('the Administration menu has Mail queue and Network access', async () => {
+  test('the Administration page has Mail queue and Network access, for workspace administrators', async () => {
     const wa = await builder(WSADMIN);
     await wa.submit('/builder/workspace', { workspace: String(wsId) });
-    const body = (await wa.get('/builder/home')).body;
-    assert.match(body, /href="\/builder\/mail-queue"[^>]*>.*Mail queue/);
-    assert.match(body, /href="\/builder\/network"[^>]*>.*Network access/);
-    assert.doesNotMatch((await (await builder(DEV)).get('/builder/home')).body, /Mail queue/);
+    const body = (await wa.get('/builder/utilities')).body;
+    assert.match(body, /href="\/builder\/mail-queue"[\s\S]{0,200}Mail queue/);
+    assert.match(body, /href="\/builder\/network"[\s\S]{0,200}Network access/);
+    assert.doesNotMatch((await (await builder(DEV)).get('/builder/utilities')).body, /Mail queue/);
   });
 });
 

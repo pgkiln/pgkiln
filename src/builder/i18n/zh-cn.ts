@@ -7524,4 +7524,16 @@ export const zhCN: BuilderMessages = {
   'ws.check_title': '像 Advisor 一样规划 SQL 而不运行',
   'ws.key.indent': '缩进（先按 Esc 再按 Tab：下一个字段）',
   'ws.search_path_plain': '{schema} 位于搜索路径首位',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': '显示标签',
+  'rail.labels_hide': '隐藏标签',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': '筛选实用工具',
+  'wu.filter_none': '没有符合筛选条件的项目。',
+  'wu.sec.people': '人员与登录',
+  'wu.sec.connections': '连接',
+  'wu.sec.data': '数据与 AI',
+  'wu.sec.operations': '运维',
+  'wu.sec.workspace': '工作区 {name}',
+  'wu.sec.instance': '实例',
 };

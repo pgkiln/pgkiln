@@ -1043,6 +1043,28 @@
     setupQueryCanvas();
     setupThemePreview();
     setupTabs();
+    // (UX-4) Administration: filter the utilities by their text; sections without a match hide
+    const admQ = document.querySelector('[data-adm-filter]');
+    if (admQ) {
+      admQ.closest('.adm-filter').hidden = false;
+      const page = admQ.closest('.adm');
+      const none = page.querySelector('.adm-none');
+      admQ.addEventListener('input', () => {
+        const q = admQ.value.trim().toLowerCase();
+        let any = false;
+        for (const sec of page.querySelectorAll('.adm-section')) {
+          let shown = 0;
+          for (const li of sec.querySelectorAll('li')) {
+            const hit = !q || li.textContent.toLowerCase().includes(q);
+            li.hidden = !hit;
+            if (hit) shown++;
+          }
+          sec.hidden = !shown;
+          if (shown) any = true;
+        }
+        none.hidden = any;
+      });
+    }
     for (const tree of document.querySelectorAll('.pd-tree')) setupTree(tree);
     // (UX-12) a node's type text only when it fits whole: the name comes first (the icon and tooltip tell the type)
     const fitNotes = () => {

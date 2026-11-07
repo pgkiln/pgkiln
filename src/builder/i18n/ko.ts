@@ -7524,4 +7524,16 @@ export const ko: BuilderMessages = {
   'ws.check_title': 'Advisor처럼 실행하지 않고 SQL을 계획합니다',
   'ws.key.indent': '들여쓰기 (Esc 후 Tab: 다음 필드)',
   'ws.search_path_plain': '검색 경로의 첫 번째는 {schema}',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': '레이블 표시',
+  'rail.labels_hide': '레이블 숨기기',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': '유틸리티 필터',
+  'wu.filter_none': '필터와 일치하는 항목이 없습니다.',
+  'wu.sec.people': '사용자 및 로그인',
+  'wu.sec.connections': '연결',
+  'wu.sec.data': '데이터 및 AI',
+  'wu.sec.operations': '운영',
+  'wu.sec.workspace': '작업 공간 {name}',
+  'wu.sec.instance': '인스턴스',
 };
