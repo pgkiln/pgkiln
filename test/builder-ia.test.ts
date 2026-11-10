@@ -92,7 +92,7 @@ describe('the application home', () => {
     const b = await builder();
     const home = (await b.get(`/builder/apps/${hr}`)).body;
     // (137) Create page opens the grid of page types (create-page.ts)
-    assert.match(home, /<a class="btn btn-hot" href="\/builder\/apps\/\d+\/create-page">/);
+    assert.match(home, /<a class="btn btn-sm btn-hot" href="\/builder\/apps\/\d+\/create-page">/);
     assert.match(home, /<aside class="app-tasks/);
     const rows = (body: string) => [...body.matchAll(/<tr>\s*<td class="num">(\d+)<\/td>/g)].map((m) => Number(m[1]));
     const p = await owner.one(`select page_no, name from meta.page where app_id = $1 order by page_no offset 3 limit 1`, [hr]);

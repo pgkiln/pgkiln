@@ -78,9 +78,9 @@ describe('the Workspace home', () => {
     for (const [href, title] of [['/builder/apps', 'App Builder'], ['/builder/sql', 'SQL Workshop'], ['/builder/gallery', 'App Gallery']])
       assert.match(home.body, new RegExp(`<a class="ab-tile" href="${href}">.*?<strong>${title}</strong>`, 's'));
     assert.match(home.body, /You signed in with the default password/, 'the default-password banner stays on top');
-    assert.match((await b.get('/builder')).body, /<h1 class="sr-only">App Builder<\/h1>/);
+    assert.match((await b.get('/builder')).body, /<h1>App Builder<\/h1>/);
     const apps = (await b.get('/builder/apps')).body;
-    assert.match(apps, /<h1 class="sr-only">App Builder<\/h1>/);
+    assert.match(apps, /<h1>App Builder<\/h1>/);
     assert.match(apps, /<a href="\/builder\/apps" class="rail-link" title="App Builder" aria-current="page">/);
     assert.match(home.body, /href="https:\/\/github\.com\/pgkiln\/pgkiln\/discussions"/);
     assert.match(home.body, /10-tutorial\.md/);
