@@ -29,7 +29,14 @@ after(async () => {
 describe('App Builder home', () => {
   test('tiles, the applications as a report, the side column and the status bar', async () => {
     const body = (await dev.get('/builder?view=report&sort=name')).body;
-    for (const href of ['/builder/create', '/builder/import', '/builder/dashboard', '/builder/utilities']) assert.ok(body.includes(`class="ab-tile" href="${href}"`), href);
+    // (UX-5) one heading, Create as the primary action, Import beside it, the rest in the ⋯ menu
+    const at = body.indexOf('<div class="page-head">');
+    assert.ok(at > 0);
+    const head = body.slice(at, body.indexOf('</h1>', at) + 3000);
+    assert.ok(head.includes('class="btn btn-hot" href="/builder/create"'), 'Create');
+    assert.ok(head.includes('class="btn" href="/builder/import"'), 'Import');
+    for (const href of ['/builder/dashboard', '/builder/utilities']) assert.ok(head.includes(`<a href="${href}"`), href);
+    assert.ok(!body.includes('class="ab-tile"'), 'no tiles');
     assert.match(body, /<table class="report ab-apps">/);
     assert.ok(body.includes(`href="/builder/apps/${appId}"`));
     assert.ok(body.includes('href="/a/hr"'), 'run link');
