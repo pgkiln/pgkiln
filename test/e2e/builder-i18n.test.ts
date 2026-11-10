@@ -65,7 +65,7 @@ describe('builder language in a browser', () => {
     await Promise.all([page.waitForNavigation(), page.click('.signin-submit')]);
     assert.equal(await page.getAttribute('html', 'lang'), 'de');
     await page.goto(`${base}/builder/apps`);
-    assert.ok(((await page.locator('.ab-tiles').textContent()) ?? '').includes(de['ab.tile.import_text']));
+    assert.ok(((await page.locator('.page-head').textContent()) ?? '').includes(de['ab.tile.import']));
     await fits(page, 'App Builder (Deutsch)');
     // the other translated screens fit a phone in German too (long compound words)
     const hr = (await owner.one<{ id: number; page_no: number }>(`select a.id, min(p.page_no) as page_no from meta.app a join meta.page p on p.app_id = a.id where a.alias = 'hr' group by a.id`))!;
