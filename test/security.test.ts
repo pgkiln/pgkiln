@@ -8087,6 +8087,8 @@ describe('sprint 86 builder addresses and error pages', () => {
     assert.equal(res.statusCode, 404);
     assert.doesNotMatch(res.body, /<img src=x/);
     assert.match(String(res.headers['content-security-policy'] ?? ''), /script-src/, 'the page keeps the CSP');
+    // (UX-10) the search field filled from the address holds words only
+    assert.match(res.body, /<input id="nf-q" type="search" name="q" value="x img src x onerror alert 1"/);
     // signed out: the same page, nothing about the builder's applications
     const anon = new Browser();
     anon.headers.accept = 'text/html';

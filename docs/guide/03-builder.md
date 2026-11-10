@@ -504,7 +504,9 @@ other sites.
 (sprint 86) An address under `/builder` that leads nowhere (a deleted application or page, a typo, an
 application of a workspace you are not a member of) shows a **Page not found** page in the builder's
 theme with a link to the App Builder home; a server error shows **Something went wrong** (the error
-is in the server log, not on the page). Scripts get the plain answers they always got.
+is in the server log, not on the page). Scripts get the plain answers they always got. (UX-10) Signed in, the
+page stays inside the builder (rail, header search, status bar), with a search field filled with the words of the
+address and your recent applications. `/builder/apps/new` and `/builder/apps/create` lead to Create application.
 
 ### Choosing the builder language
 
@@ -727,19 +729,22 @@ you like. `meta.reporting_app_count(workspace_id)` counts a workspace's reportin
 
 ### Creating an application
 
-**Create** (a tile, or `/builder/create`) is one page, like APEX's Create Application wizard. Links at the top
-start from a file, pasted data, a blueprint or the App Gallery instead. Then:
+**Create** (the App Builder's primary button, or `/builder/create`) is one page, like APEX's Create Application
+wizard. Links at the top start from a file, pasted data, a blueprint or the App Gallery instead. (UX-7) The name
+comes first, then the data and its pages, features, appearance and sign-in; **Create application** and Cancel stay
+in a footer at the bottom of the window, next to a one-line summary (*12 pages on hr · App users (login page) ·
+English*) that follows your choices. The sections:
 
 | Section | Field | Meaning |
 |---|---|---|
-| Data | Pages on the tables of | The parsing schema: an existing schema, or a new, empty one named after the alias. (sprint 87) Choosing a schema lists its tables under Pages at once, with the name and alias proposed for it (unless you already typed them); without JavaScript, *Show its tables* does it |
 | Application | Name | Display name, shown in the header. Proposed from the schema and selected when you click it, so typing replaces it |
-| | Description, Icon | Shown on the home page's hero and the About page |
-| Appearance | Theme style, Navigation, Accent colour | Iris, Lavender or Standard; a side or top menu; an own accent colour |
-| Pages | a page type per table | *Interactive report with form*, *Faceted search*, *Cards*, *Calendar* (a table with a date column), *Master detail* (a table another table refers to), *Interactive grid*, *Report* or *No page*. Tables with a single-column primary key get a modal form with their report, faceted search, cards and calendar; views and tables without such a key can't have a form or a grid. Proposed: a report with form, an interactive grid for a table of more than 100,000 rows, a report for a view. (sprint 87) A table with [row level security](08-security.md) shows *RLS · n* (its number of policies), or *RLS, no policies* in red: the application's role would see no rows. *Dashboard*: a chart per table |
+| | Alias | Lowercase URL name: `inventory` gives `/a/inventory`. (sprint 87) It follows the name as you type it (*Café Orders* → `cafe-orders`) until you change it yourself |
+| | Icon, Description | Shown on the home page's hero and the About page |
+| Data and pages | Pages on the tables of | The parsing schema: an existing schema, or a new, empty one named after the alias. (sprint 87) Choosing a schema lists its tables at once, with the name and alias proposed for it (unless you already typed them); without JavaScript, *Show its tables* does it (it reloads the page, so choose the schema before typing) |
+| | a page type per table | *Interactive report with form*, *Faceted search*, *Cards*, *Calendar* (a table with a date column), *Master detail* (a table another table refers to), *Interactive grid*, *Report* or *No page*. Tables with a single-column primary key get a modal form with their report, faceted search, cards and calendar; views and tables without such a key can't have a form or a grid. Proposed: a report with form, an interactive grid for a table of more than 100,000 rows, a report for a view. (sprint 87) A table with [row level security](08-security.md) shows *RLS · n* (its number of policies), or *RLS, no policies* in red: the application's role would see no rows. *Dashboard*: a chart per table |
 | Features | | *About page* (in a Help menu), *Access control* (authorization schemes `CONTRIBUTOR` and `READER` next to `ADMIN`, for the roles admin, contributor and reader), *Activity reporting* (page 9010 for administrators: page views per day and the latest activity, from `meta.app_activity`), *Feedback*, *Theme style selection* (users may choose light or dark), *Install as an app* (PWA) and *Push notifications* (needs `PGKILN_SECRET_KEY`) |
-| Settings | Alias | Lowercase URL name: `inventory` gives `/a/inventory`. (sprint 87) It follows the name as you type it (*Café Orders* → `cafe-orders`) until you change it yourself |
-| | Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
+| Appearance | Theme style, Navigation, Accent colour | Iris, Lavender or Standard; a side or top menu; an own accent colour |
+| Sign-in | Authentication | *App users* (a login page and a user list), *HTTP header* (a trusted reverse proxy names the user, see [chapter 8](08-security.md#http-header-authentication-reverse-proxy)), *Database accounts* (PostgreSQL login roles and their passwords, see [chapter 8](08-security.md#database-accounts-postgresql-roles)), *Custom* (your own PL/pgSQL function, see [chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) or *None* (a public app) |
 | | First user / Password | The first user; they get the `admin` role. An existing account is reused (its password isn't changed). (sprint 87) Hidden while Authentication is *None* |
 | | Language | The application's primary language |
 | Advanced | Start from | Shown when there are **boilerplate** applications (Settings → Application type): their pages, shared components and settings are copied into the new application, which keeps its own name, alias, role and authentication ([application types](#application-types-and-subscriptions)) |
@@ -953,7 +958,11 @@ they are **not** run until you choose to.
 (sprint 74) Above the pages: a **search** by page name or number (the rows filter while you type),
 **Report** and **Icons** views, and **Create page** (the page wizards below). **Tasks** on the right: run the
 application, create pages (also with AI), (sprint 137) **Add feature page** and **Create page as copy**, Shared
-Components, page groups, export, backups, supporting objects, lock or delete the application.
+Components, page groups, export, backups, supporting objects and lock the application. (UX-9) The report shows a
+page's mode in the property editor's words (*Normal*, *Modal dialog*), and Group stays empty for a page without one.
+(UX-6) Deleting the application is not a task: it is the **Danger zone** at the bottom of Settings → Definition,
+where you type the application's alias to confirm (the server checks it too). Its pages, shared components,
+working copies and backups go with it, so export it first if you may need it again.
 
 The **default-password** warning shows on the App Builder home (and Developers) only; dismiss it with × until the
 next sign-in. The avatar keeps a red dot until the password is changed.
@@ -1091,6 +1100,9 @@ stays at the bottom of its pane. **Ctrl+S** (Cmd+S) saves. A change not saved ye
 leaving the page with one asks first. On a window under 800 pixels high the gallery under the layout is only
 its tabs (*Regions*, *Items*, *Buttons*): choose one to open it, choose the open one to fold it again; the
 designer remembers which you prefer.
+
+(UX-6) **Delete page** is in the toolbar's page menu (the wrench), away from Save: type the page number to
+confirm. Its regions, items, buttons, dynamic actions and processes go with it, as do its lock and comments.
 
 - **Left: the component tree**, with four tabs:
   - **Rendering**: the page, *Pre-Rendering* (branches, computations and processes that run
@@ -1602,7 +1614,8 @@ on import), downloads it again and removes it. See
 ## Users (the user directory)
 
 **Builder → Users** lists every account with the applications (and roles) it can use. Create
-accounts here (a password is optional for single sign-on-only accounts). Open an account to edit
+accounts here (a password is optional for single sign-on-only accounts): (UX-8) **Create account** in the header
+opens a side panel, so the list keeps the page's width. Open an account to edit
 its name and e-mail, set or remove its password, deactivate or delete it, and grant, change or
 revoke access per application. Password changes, deactivation and access changes end the
 affected sessions. See [chapter 8](08-security.md#the-user-directory).

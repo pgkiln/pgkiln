@@ -7543,4 +7543,12 @@ export const ko: BuilderMessages = {
   'st.delete_mismatch': '삭제하려면 애플리케이션의 별칭 {alias}을(를) 입력하십시오.',
   'pd.delete_type': '확인하려면 페이지 번호 {n}을(를) 입력하십시오',
   'pd.delete_mismatch': '페이지를 삭제하려면 페이지 번호 {n}을(를) 입력하십시오.',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': '데이터와 페이지',
+  'aw.sign_in': '로그인',
+  'aw.sum_on': '{schema}의 페이지 {n}개',
+  'aw.sum_on_1': '{schema}의 페이지 {n}개',
+  'aw.sum_new': '자체 스키마를 가진 새 애플리케이션',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '닫기',
 };

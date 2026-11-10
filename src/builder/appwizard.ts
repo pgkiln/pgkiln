@@ -233,6 +233,9 @@ export async function appWizardRoutes(app: FastifyInstance) {
     return createPage(s, reply, schema, null);
   });
 
+  // (UX-7) the addresses a developer guesses
+  for (const path of ['apps/new', 'apps/create']) app.get(`${BASE}/${path}`, (_req: Req, reply) => reply.redirect(`${BASE}/create`, 302));
+
   // the earlier address of "From existing tables"
   app.get(`${BASE}/create/tables`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -325,6 +328,11 @@ const rlsBadge = (r: Relation) =>
     ? html` <span class="tag aw-rls" title="${r.policies === 1 ? tx('aw.rls_on_1') : tx('aw.rls_on', { n: r.policies })}">${icon('shield')} RLS · ${r.policies}</span>`
     : html` <span class="tag tag-error aw-rls" title="${tx('aw.row_level_security_is_on')}">${icon('shield')} ${tx('aw.rls_no_policies')}</span>`;
 
+/** A select that belongs to another form (the form attribute), with its label and help. */
+const selectFor = (form: string, name: string, label: string, value: string, options: [string, string][], help?: string) =>
+  html`<div class="field"><label class="label" for="f_${name}">${label}</label>
+    <select id="f_${name}" name="${name}" form="${form}">${options.map(([v, l]) => html`<option value="${v}"${value === v ? raw(' selected') : ''}>${l}</option>`)}</select>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
+
 async function createPage(s: Session, reply: FastifyReply, schema: string, b: Body | null, message: Raw | '' = '') {
   const schemas = await appSchemas();
   const known = schemas.includes(schema);
@@ -336,6 +344,19 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
   const suggested = known ? schema.replace(/_/g, ' ').replace(/^./, (x) => x.toUpperCase()) : '';
   const kindOf = (r: Relation, i: number) => (b ? (b[`t_${i}`] === r.relname ? (b[`k_${i}`] === undefined ? defaultKind(r) : String(b[`k_${i}`])) : '') : defaultKind(r));
   const rows = (r: Relation) => (r.rows === null ? tx('aw.not_analyzed') : tx('aw.about_rows', { n: Number(r.rows).toLocaleString('en') }));
+  // (UX-7) how many pages each page type makes for a relation: a report and a form, or one page
+  const pagesOf = (r: Relation, k: string) => (!k ? 0 : (k === 'report_form' || (r.kind === 'table' && !!r.pk && ['facets', 'cards', 'calendar'].includes(k)) ? 2 : 1));
+  const plannedPages = 1 + relations.reduce((n, r, i) => n + pagesOf(r, kindOf(r, i)), 0)
+    + (relations.some((r, i) => kindOf(r, i)) && (b ? b.chart === 'true' : true) ? 1 : 0);
+  const authValue = v('authentication', 'app_users');
+  const langValue = v('language', 'en');
+  const summary = [
+    known ? tx(plannedPages === 1 ? 'aw.sum_on_1' : 'aw.sum_on', { n: plannedPages, schema }) : tx('aw.sum_new'),
+    authValue === 'none' ? tx('aw.none_public') : tx('aw.app_users_login_page'),
+    LANGUAGE_NAMES[langValue as keyof typeof LANGUAGE_NAMES] ?? langValue,
+  ].join(' · ');
+  // (UX-7) name first, then the data and its pages, features, appearance and sign-in; Create in a sticky footer.
+  // The schema picker belongs to a GET form of its own (form="aw-schema-get"), placed inside the create form.
   const main = html`<div class="ab-narrow create-app">
     <h1>${tx('aw.create_an_application')}</h1>
     <nav class="create-sources" aria-label="${tx('aw.other_ways_to_start')}">${SOURCES.map(
@@ -343,45 +364,46 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
     )}</nav>
     ${message}
     ${schema && !known && !message ? html`<div class="alert alert-error" role="alert">${tx('aw.choose_one_of_the_schemas')}</div>` : ''}
-    ${region(tx('aw.data'), html`<form method="get" action="${BASE}/create" class="create-schema">
-      <div class="form-grid">${select('schema', tx('aw.pages_on_the_tables_of'), schema, [['', tx('aw.a_new_empty_schema_home')], ...schemas.map((x): [string, string] => [x, x])],
-        tx('aw.schema_help'))}</div>
-      <div class="buttons"><button class="btn">${icon('search')} ${tx('aw.show_its_tables')}</button></div></form>`)}
-    <form method="post" action="${BASE}/apps" data-progress="Creating the application and its pages…">${csrf(s)}
+    <form method="get" action="${BASE}/create" class="create-schema" id="aw-schema-get"></form>
+    <form method="post" action="${BASE}/apps" class="aw-form" data-progress="Creating the application and its pages…">${csrf(s)}
       <input type="hidden" name="features" value="1">
       <div id="aw-schema-fields"><input type="hidden" name="schema" value="${known ? schema : ''}">${known ? html`<input type="hidden" name="tables" value="1">` : ''}</div>
       ${region(tx('aw.application'), html`<div class="form-grid">
         <div class="field"><label class="label" for="f_name">${tx('aw.name')}</label>
-          <input id="f_name" name="name" value="${v('name', suggested)}" required data-select-once></div>
-        ${input('description', tx('aw.description'), v('description', ''), { placeholder: tx('aw.one_line_for_the_home') })}
+          <input id="f_name" name="name" value="${v('name', suggested)}" required data-select-once autofocus></div>
+        <div class="field"><label class="label" for="f_alias">${tx('aw.alias_url')}</label>
+          <input id="f_alias" name="alias" value="${v('alias', known ? await aliasFor(schema) : '')}" required pattern="[a-z][a-z0-9_\-]*" maxlength="50" data-derive-from="f_name"${b && b.alias ? raw(' data-edited') : ''}>
+          <small class="help">${tx('aw.lowercase_e_g_inventory_a')}</small></div>
         ${iconPicker('f_icon', 'icon', tx('aw.icon'), v('icon', DEFAULT_APP_ICON))}
+        ${input('description', tx('aw.description'), v('description', ''), { placeholder: tx('aw.one_line_for_the_home') })}
       </div>`)}
-      ${region(tx('aw.appearance'), html`<div class="form-grid">
-        ${select('base', tx('aw.theme_style'), v('base', 'iris'), [['iris', tx('aw.iris_light_body_dark_header')], ['lavender', tx('aw.lavender_rounded_indigo')], ['standard', tx('aw.standard_blue_navy_header')]])}
-        ${select('nav', tx('aw.navigation'), v('nav', 'side'), [['side', tx('aw.side_menu')], ['top', tx('aw.top_menu')]])}
-        ${input('accent', tx('aw.accent_colour'), v('accent', BASE_STYLES.iris.accent), { type: 'color', help: tx('aw.of_the_theme_style_the') })}
-      </div>`)}
-      ${region(tx('aw.pages'), html`<ul class="aw-pages">
+      ${region(tx('aw.data_and_pages'), html`<div class="form-grid aw-schema-row">${selectFor('aw-schema-get', 'schema', tx('aw.pages_on_the_tables_of'), schema,
+          [['', tx('aw.a_new_empty_schema_home')], ...schemas.map((x): [string, string] => [x, x])], tx('aw.schema_help'))}
+        <div class="buttons"><button class="btn" form="aw-schema-get">${icon('search')} ${tx('aw.show_its_tables')}</button></div></div>
+        <div id="aw-pages"><ul class="aw-pages">
         <li><span class="aw-page-kind">${icon('home')} ${tx('aw.home')}</span><span class="muted">${tx('aw.a_hero_with_the_name')}</span></li>
         ${known
           ? relations.length
             ? relations.map((r, i) => html`<li><input type="hidden" name="t_${i}" value="${r.relname}">
                 <label class="aw-page-kind" for="f_k_${i}">${icon(r.kind === 'view' ? 'eye' : 'table')} ${r.label}</label>
-                <select id="f_k_${i}" name="k_${i}">${kindsFor(r).map((k) => html`<option value="${k}"${k === kindOf(r, i) ? raw(' selected') : ''}>${tx.dyn(`aw.k.${k || 'none'}`, PAGE_KINDS[k])}</option>`)}</select>
+                <select id="f_k_${i}" name="k_${i}">${kindsFor(r).map((k) => html`<option value="${k}" data-pages="${pagesOf(r, k)}"${k === kindOf(r, i) ? raw(' selected') : ''}>${tx.dyn(`aw.k.${k || 'none'}`, PAGE_KINDS[k])}</option>`)}</select>
                 <small class="muted"><code>${r.relname}</code> · ${r.kind === 'view' ? tx('aw.view') : rows(r)}${r.kind === 'table' && !r.pk ? tx('aw.no_key') : ''}${Number(r.rows ?? 0) > LARGE_TABLE ? tx('aw.paged_grid') : ''}</small>${rlsBadge(r)}</li>`)
             : html`<li class="muted">${tx('aw.no_relations', { schema })}</li>`
           : html`<li class="muted">${tx('aw.choose_a_schema_under_data')}</li>`}
       </ul>
-      ${known ? check('chart', tx('aw.dashboard_a_chart_per_table'), b ? b.chart === 'true' : true) : ''}`, '', 'aw-pages')}
+      ${known ? check('chart', tx('aw.dashboard_a_chart_per_table'), b ? b.chart === 'true' : true) : ''}
+      <template id="aw-summary-pages" data-schema="${known ? schema : ''}" data-one="${tx('aw.sum_on_1', { n: 1, schema: known ? schema : '' })}" data-many="${tx('aw.sum_on', { n: '{n}', schema: known ? schema : '' })}" data-new="${tx('aw.sum_new')}"></template></div>`)}
       ${region(tx('aw.features'), html`<div class="aw-features">${FEATURES.map(([k, label, help]) => { const [l, h] = featureText(k, label, help); return check(`f_${k}`, l, features[k], h); })}</div>`)}
-      ${region(tx('aw.settings'), html`<div class="form-grid">
-        <div class="field"><label class="label" for="f_alias">${tx('aw.alias_url')}</label>
-          <input id="f_alias" name="alias" value="${v('alias', known ? await aliasFor(schema) : '')}" required pattern="[a-z][a-z0-9_\-]*" maxlength="50" data-derive-from="f_name"${b && b.alias ? raw(' data-edited') : ''}>
-          <small class="help">${tx('aw.lowercase_e_g_inventory_a')}</small></div>
-        ${select('authentication', tx('aw.authentication'), v('authentication', 'app_users'), [['app_users', tx('aw.app_users_login_page')], ['none', tx('aw.none_public')]])}
+      ${region(tx('aw.appearance'), html`<div class="form-grid">
+        ${select('base', tx('aw.theme_style'), v('base', 'iris'), [['iris', tx('aw.iris_light_body_dark_header')], ['lavender', tx('aw.lavender_rounded_indigo')], ['standard', tx('aw.standard_blue_navy_header')]])}
+        ${select('nav', tx('aw.navigation'), v('nav', 'side'), [['side', tx('aw.side_menu')], ['top', tx('aw.top_menu')]])}
+        ${input('accent', tx('aw.accent_colour'), v('accent', BASE_STYLES.iris.accent), { type: 'color', help: tx('aw.of_the_theme_style_the') })}
+      </div>`)}
+      ${region(tx('aw.sign_in'), html`<div class="form-grid">
+        ${select('authentication', tx('aw.authentication'), authValue, [['app_users', tx('aw.app_users_login_page')], ['none', tx('aw.none_public')]])}
         ${input('admin_user', tx('aw.first_user'), v('admin_user', ''), { placeholder: tx('aw.e_g_your_name'), help: tx('aw.gets_the_admin_role_an') })}
         ${input('admin_password', tx('aw.password'), '', { type: 'password', auto: 'new-password', help: tx('aw.for_a_new_account_at') })}
-        ${select('language', tx('aw.language'), v('language', 'en'), Object.entries(LANGUAGE_NAMES).map(([code, name]): [string, string] => [code, `${name} (${code})`]))}
+        ${select('language', tx('aw.language'), langValue, Object.entries(LANGUAGE_NAMES).map(([code, name]): [string, string] => [code, `${name} (${code})`]))}
       </div>`)}
       ${!known && bp.length
         ? html`<details class="region region-standard aw-advanced"><summary class="region-header"><h2>${tx('aw.advanced')}</h2></summary><div class="region-body"><div class="form-grid">
@@ -389,7 +411,8 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
               tx('aw.bp_help'))}
           </div></div></details>`
         : ''}
-      <div class="buttons"><a class="btn" href="${BASE}">${tx('aw.cancel')}</a><button class="btn btn-hot">${tx('aw.create_application')}</button></div>
+      <div class="aw-footer"><p class="aw-summary muted" id="aw-summary" aria-live="polite">${summary}</p>
+        <div class="buttons"><a class="btn" href="${BASE}">${tx('aw.cancel')}</a><button class="btn btn-hot">${tx('aw.create_application')}</button></div></div>
     </form>
   </div>`;
   return send(reply, s, shell(s, tx('aw.create_application'), [[tx('aw.app_builder'), BASE], [tx('aw.create')]], main));

@@ -7543,4 +7543,12 @@ export const ja: BuilderMessages = {
   'st.delete_mismatch': '削除するには、アプリケーションの別名 {alias} を入力してください。',
   'pd.delete_type': '確認のためページ番号 {n} を入力してください',
   'pd.delete_mismatch': 'ページを削除するには、ページ番号 {n} を入力してください。',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': 'データとページ',
+  'aw.sign_in': 'サインイン',
+  'aw.sum_on': '{schema} の {n} ページ',
+  'aw.sum_on_1': '{schema} の {n} ページ',
+  'aw.sum_new': '独自のスキーマを持つ新しいアプリケーション',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '閉じる',
 };

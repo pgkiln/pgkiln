@@ -1473,7 +1473,7 @@ export const de: BuilderMessages = {
   'us.status': 'Status',
   'us.none': 'keine',
   'us.password': 'Passwort',
-  'us.no_password': 'kein Passwort',
+  'us.no_password': 'Kein Passwort',
   'us.active': 'aktiv',
   'us.inactive': 'inaktiv',
   'us.last': 'zuletzt {at}',
@@ -1843,8 +1843,8 @@ export const de: BuilderMessages = {
   'mfa.locked_out': 'Telefon, Schlüssel und Codes verloren? Bitten Sie einen Administrator, Ihre Zwei-Faktor-Anmeldung zurückzusetzen.',
   'mfa.wrong': 'Dieser Code ist falsch oder wurde schon verwendet.',
   'mfa.column': 'Zwei-Faktor',
-  'mfa.on': 'an',
-  'mfa.off': 'aus',
+  'mfa.on': 'An',
+  'mfa.off': 'Aus',
   'mfa.reset': 'Zurücksetzen',
   'mfa.reason': 'Grund',
   'mfa.reset_help': 'Entfernt die Apps und Wiederherstellungscodes von {user} und meldet die Person ab. Protokolliert; die Administratoren erhalten eine E-Mail.',
@@ -7543,4 +7543,12 @@ export const de: BuilderMessages = {
   'st.delete_mismatch': 'Geben Sie den Alias der Anwendung, {alias}, ein, um sie zu löschen.',
   'pd.delete_type': 'Geben Sie zur Bestätigung die Seitennummer {n} ein',
   'pd.delete_mismatch': 'Geben Sie die Seitennummer {n} ein, um die Seite zu löschen.',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': 'Daten und Seiten',
+  'aw.sign_in': 'Anmeldung',
+  'aw.sum_on': '{n} Seiten auf {schema}',
+  'aw.sum_on_1': '{n} Seite auf {schema}',
+  'aw.sum_new': 'Eine neue Anwendung mit eigenem Schema',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': 'Schließen',
 };

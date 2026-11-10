@@ -73,7 +73,7 @@ describe('the Create Application wizard', () => {
     try {
       const big = (await b.get(`/builder/create?schema=${SRC}`)).body;
       const i = /name="t_(\d+)" value="emp"/.exec(big)![1];
-      assert.match(big, new RegExp(`name="k_${i}">[\\s\\S]*?<option value="grid" selected>`));
+      assert.match(big, new RegExp(`name="k_${i}">[\\s\\S]*?<option value="grid" data-pages="1" selected>`));
       assert.match(big, /about 250,000 row\(s\): a paged grid/);
     } finally {
       await owner.query(`analyze ${SRC}.emp`);
@@ -132,6 +132,15 @@ describe('the Create Application wizard', () => {
 });
 
 describe('the Create Application wizard (sprint 87, WIZ-4)', () => {
+  test('(UX-7) the addresses a developer guesses lead to Create application', async () => {
+    const b = await builder();
+    for (const url of ['/builder/apps/new', '/builder/apps/create']) {
+      const res = await b.get(url);
+      assert.equal(res.statusCode, 302, url);
+      assert.equal(res.headers.location, '/builder/create');
+    }
+  });
+
   test('row level security is shown per table before Create; the alias says it follows the name', async () => {
     await owner.query(`
       alter table ${SRC}.emp enable row level security;
@@ -145,7 +154,13 @@ describe('the Create Application wizard (sprint 87, WIZ-4)', () => {
       assert.match(row('note'), /<span class="tag tag-error aw-rls" title="Row level security is on without policies[^"]*">[\s\S]*?RLS, no policies<\/span>/);
       assert.doesNotMatch(row('dept'), /aw-rls/);
       // the page list and the schema's hidden fields can be swapped by the script
-      assert.match(page, /<section class="region region-standard" id="aw-pages">/);
+      assert.match(page, /<div id="aw-pages"><ul class="aw-pages">/);
+      // (UX-7) name and alias first, then the schema, sign-in last; Create and the summary in the footer
+      const at = (re: RegExp) => page.search(re);
+      assert.ok(at(/id="f_name"/) < at(/id="f_alias"/) && at(/id="f_alias"/) < at(/id="f_schema"/) && at(/id="f_schema"/) < at(/id="f_authentication"/), 'order');
+      assert.match(page, /<select id="f_schema" name="schema" form="aw-schema-get">/);
+      assert.match(page, /<div class="aw-footer"><p class="aw-summary muted" id="aw-summary" aria-live="polite">\d+ pages on cw73_src · App users[^<]*· English<\/p>/);
+      assert.match(page, /data-pages="2"/, 'a report and form makes two pages');
       assert.match(page, new RegExp(`<div id="aw-schema-fields"><input type="hidden" name="schema" value="${SRC}"><input type="hidden" name="tables" value="1"></div>`));
       assert.match(page, /<input id="f_alias" name="alias" value="cw73-src" required pattern="[^"]+" maxlength="50" data-derive-from="f_name">/);
       // after a refused submit the alias the developer typed stays theirs

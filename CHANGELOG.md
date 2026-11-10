@@ -24,6 +24,21 @@ All notable changes to this project are documented here. The format follows
   header or list *Delete the application*; SQL Workshop and the App Gallery have a visible heading (Install buttons
   are no longer accent-coloured); the Workspace home shows administrators **Needs attention** (lockout checks, a newer
   version) above the tools; the SQL Workshop's recent pages list each page once, without the Launchpad or a pinned page.
+- **Deleting an application or a page asks for its name** (sprint 171, UX-6): *Delete the application* moved from
+  the Tasks to a **Danger zone** at the bottom of Settings → Definition, where the alias must be typed; *Delete page*
+  moved from beside *Save page* into the Page Designer's page menu, where the page number must be typed. The server
+  refuses either without it.
+- **Create application, name first** (sprint 171, UX-7): Name, alias, icon and description come first, then the data
+  and its pages, features, appearance and sign-in; *Create application* and Cancel stay in a footer at the bottom
+  of the window with a one-line summary (pages, sign-in, language). `/builder/apps/new` and `/builder/apps/create`
+  lead to it.
+- **Reports at laptop width** (sprint 171, UX-8, UX-9): Users opens *Create account* in a side panel from the header,
+  so the accounts list has the page's width; Data Reporter's lists use the full width; in App Builder, Users and Data
+  Reporter less important columns (views, updated by, working copies, schema, updated) give way on narrow screens and
+  the Actions column stays visible. Reports use the property editor's words: a page's mode is *Normal* or *Modal
+  dialog*, an empty page group stays empty, sign-in and two-factor values are capitalised.
+- **Page not found inside the builder** (sprint 171, UX-10): for a signed-in developer the page keeps the rail, the
+  header search and the status bar, with a search field filled from the address and the recent applications.
 - **Page Designer on a laptop screen** (sprint 169, UX-2, UX-12): the page no longer scrolls as a whole (a
   screen-reader heading placed outside the panes made it 200 pixels too tall), so Save and the toolbar stay in view;
   the property editor's save button stays at the bottom of its pane; Ctrl+S saves, unsaved changes show a dot on

@@ -1272,7 +1272,30 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
     sync();
   });
 
-  const picker = document.querySelector('form.create-schema select[name="schema"]');
+  // (UX-7) the footer's summary follows the page types, the sign-in and the language
+  const awForm = document.querySelector('form.aw-form');
+  const summary = document.getElementById('aw-summary');
+  const sum = () => {
+    const tpl = document.getElementById('aw-summary-pages');
+    if (!awForm || !summary || !tpl) return;
+    let parts;
+    if (tpl.dataset.schema) {
+      let n = 1;
+      awForm.querySelectorAll('#aw-pages select').forEach((sel) => (n += Number(sel.selectedOptions[0]?.dataset.pages ?? 0)));
+      const chart = awForm.querySelector('#aw-pages input[name="chart"]');
+      if (chart?.checked && n > 1) n += 1;
+      parts = [n === 1 ? tpl.dataset.one : tpl.dataset.many.replace('{n}', String(n))];
+    } else parts = [tpl.dataset.new];
+    for (const name of ['authentication', 'language']) {
+      const sel = awForm.elements.namedItem(name);
+      const text = sel?.selectedOptions?.[0]?.textContent?.replace(/\s*\([a-z-]+\)$/i, '');
+      if (text) parts.push(text);
+    }
+    summary.textContent = parts.join(' · ');
+  };
+  awForm?.addEventListener('change', sum);
+
+  const picker = document.querySelector('select[name="schema"][form="aw-schema-get"]');
   const pages = document.getElementById('aw-pages');
   const hidden = document.getElementById('aw-schema-fields');
   if (!picker || !pages || !hidden) return;
@@ -1297,12 +1320,13 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
       if (alias && !alias.hasAttribute('data-edited')) alias.value = doc.getElementById('f_alias')?.value ?? alias.value;
       history.replaceState(null, '', url);
       document.getElementById('aw-pages')?.removeAttribute('aria-busy');
+      sum();
     } catch {
       picker.form.submit();
     }
   });
   // the button is for pages without JavaScript
-  picker.form.querySelector('button')?.setAttribute('hidden', '');
+  document.querySelector('button[form="aw-schema-get"]')?.setAttribute('hidden', '');
 })();
 
 // (sprint 101, DA-12) SQL Workshop › Scheduling: the schedule builder's five fields and the common schedules fill the
@@ -1401,3 +1425,12 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
 })();
 
 // (sprint 127) Passkeys: the [data-passkey] buttons are handled by app.js (sprint 131), which every builder page loads too.
+
+// (UX-8) a side drawer (details.drawer): Close, Escape and a click outside close it; the first field gets the focus
+document.querySelectorAll('details.drawer').forEach((d) => {
+  const close = () => { d.open = false; d.querySelector('summary')?.focus(); };
+  d.querySelector('[data-drawer-close]')?.addEventListener('click', close);
+  d.addEventListener('toggle', () => { if (d.open) d.querySelector('.drawer-panel input:not([type=hidden]), .drawer-panel select, .drawer-panel textarea')?.focus(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && d.open) close(); });
+  document.addEventListener('click', (e) => { if (d.open && !d.contains(e.target)) d.open = false; });
+});

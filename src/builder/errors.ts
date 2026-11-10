@@ -1,8 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
-import { BASE, THEME_COOKIE, validTheme } from './ui.ts';
-import { cookieLanguage, translatorFor } from './i18n.ts';
+import { BASE, shell, THEME_COOKIE, validTheme } from './ui.ts';
+import { cookieLanguage, setRequestTranslator, tr, translatorFor } from './i18n.ts';
+import { getSession } from '../session.ts';
+import { loadLanguage } from './language.ts';
+import { loadWorkspaces } from './workspaces.ts';
+import { recentApps } from './home.ts';
 
 // (sprint 86) The builder's error pages: a browser that opens an address under /builder that
 // doesn't exist (or an application or page that doesn't, or not for this developer), or that
@@ -33,8 +37,42 @@ export function builderErrorPage(req: FastifyRequest, status: number) {
   );
 }
 
-const sendPage = (req: FastifyRequest, reply: FastifyReply, status: number) =>
-  reply.code(status).type('text/html; charset=utf-8').header('cache-control', 'no-store').send(builderErrorPage(req, status));
+/** "/builder/apps/new?x" → "apps new": the words of an address, for the search field of the page */
+export const searchFromPath = (url: string) =>
+  url.split(/[?#]/)[0].slice(BASE.length).split('/').map((w) => { try { return decodeURIComponent(w); } catch { return w; } })
+    .filter((w) => w && !/^\d+$/.test(w)).join(' ').replace(/[^\p{L}\p{N} _.-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80);
+
+/**
+ * (UX-10) "Page not found" for a signed-in developer: inside the builder's frame (rail, header search, status bar),
+ * with a search field filled from the address and the recent applications. The session is only read: nothing is
+ * saved, so a waiting message stays for the next page. Null: not signed in (the standalone page then).
+ */
+export async function framedNotFound(req: FastifyRequest, reply: FastifyReply) {
+  const s = await getSession(req, reply, null, BASE, { touch: false }).catch(() => null);
+  if (!s?.username) return null;
+  if (s.state.__BLANG === undefined) await loadLanguage(s);
+  const tx = tr(s);
+  setRequestTranslator(tx);
+  await loadWorkspaces(s);
+  s.path = req.url;
+  const title = tx('error.not_found_title');
+  const recent = await recentApps(s).catch(() => []);
+  const main = html`<div class="ab-narrow nf-page">
+    <h1>${title}</h1>
+    <p>${tx('error.not_found_text')}</p>
+    <p class="muted">${tx('error.label_not_found')}: <code>${req.url.split('?')[0].slice(0, 200)}</code></p>
+    <form method="get" action="${BASE}/palette" class="search nf-search" role="search">
+      <label class="sr-only" for="nf-q">${tx('bar.search_label')}</label>
+      <input id="nf-q" type="search" name="q" value="${searchFromPath(req.url)}" autofocus><button class="btn">${tx('common.search')}</button></form>
+    ${recent.length ? html`<h2>${tx('ab.recent')}</h2><ul class="ab-links">${recent.map((a) => html`<li><a href="${BASE}/apps/${a.id}">${a.name}</a></li>`)}</ul>` : ''}
+    <p><a class="btn btn-hot" href="${BASE}">${tx('error.home')}</a></p>
+  </div>`;
+  return shell(s, title, [[title]], main);
+}
+
+const sendPage = async (req: FastifyRequest, reply: FastifyReply, status: number) =>
+  reply.code(status).type('text/html; charset=utf-8').header('cache-control', 'no-store')
+    .send((status === 404 && (await framedNotFound(req, reply))) || builderErrorPage(req, status));
 
 /**
  * The hooks (registered on the root instance): unknown builder addresses, the builder's own
@@ -50,7 +88,7 @@ export function builderErrorPages(app: FastifyInstance) {
     if (reply.statusCode !== 404 || !isBuilder(req.url) || !wantsHtml(req)) return payload;
     if (!/^text\/plain\b/.test(String(reply.getHeader('content-type') ?? ''))) return payload;
     reply.type('text/html; charset=utf-8');
-    return builderErrorPage(req, 404);
+    return (await framedNotFound(req, reply)) || builderErrorPage(req, 404);
   });
 }
 
@@ -58,6 +96,6 @@ export function builderErrorPages(app: FastifyInstance) {
 export function builderServerError(req: FastifyRequest, reply: FastifyReply, err: Error & { statusCode?: number }) {
   if (!isBuilder(req.url) || !wantsHtml(req) || (err.statusCode !== undefined && err.statusCode < 500)) return false;
   req.log.error(err);
-  sendPage(req, reply, 500);
+  reply.code(500).type('text/html; charset=utf-8').header('cache-control', 'no-store').send(builderErrorPage(req, 500));
   return true;
 }

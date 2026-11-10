@@ -72,7 +72,7 @@ describe('App Builder home', () => {
   });
 
   test('Create and Import have their own pages; their errors come back to them', async () => {
-    assert.match((await dev.get('/builder/create')).body, /<form method="post" action="\/builder\/apps" data-progress=/);
+    assert.match((await dev.get('/builder/create')).body, /<form method="post" action="\/builder\/apps" class="aw-form" data-progress=/);
     assert.match((await dev.get('/builder/import')).body, /<form method="post" action="\/builder\/import">/);
     await dev.get('/builder/create');
     // (sprint 73) the wizard comes back with the message and the values

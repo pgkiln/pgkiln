@@ -133,27 +133,28 @@ export async function datasetRoutes(app: FastifyInstance) {
     const main = html`<div class="title-row"><h1>${tx('dts.data_reporter')}</h1>
         <div class="buttons"><a class="btn btn-hot" href="${root}/datasets/new">${icon('plus')} ${tx('dts.new_dataset')}</a><a class="btn" href="${root}/import">${icon('upload')} ${tx('dts.import')}</a>${sets.length ? html`<a class="btn" href="${root}/export">${icon('download')} ${tx('dts.export_all')}</a>` : ''}</div></div>
       <p class="muted u-mt0">${tx('dts.intro', { workspace: s.workspace?.name ?? tx('dts.this_workspace') })}</p>
-      ${region(tx('dts.datasets'), html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">${tx('dts.dataset')}</th><th scope="col">${tx('dts.schema')}</th><th scope="col">${tx('dts.tables_and_views')}</th><th scope="col" class="num">${tx('dts.columns')}</th><th scope="col">${tx('dts.updated_utc')}</th><th scope="col">${tx('dts.actions')}</th></tr></thead>
+      ${region(tx('dts.datasets'), html`<div class="table-wrap rep-fit"><table class="report report-reflow">
+        <thead><tr><th scope="col">${tx('dts.dataset')}</th><th scope="col" class="col-low">${tx('dts.schema')}</th><th scope="col">${tx('dts.tables_and_views')}</th><th scope="col" class="num">${tx('dts.columns')}</th><th scope="col" class="col-low">${tx('dts.updated_utc')}</th><th scope="col" class="col-actions">${tx('dts.actions')}</th></tr></thead>
         <tbody>${sets.length ? sets.map((d) => html`<tr>
-          <td data-label="${tx('dts.dataset')}"><a href="${root}/datasets/${d.id}">${d.label}</a> <code>${d.name}</code>${d.description ? html`<br><span class="muted small">${d.description.slice(0, 160)}</span>` : ''}</td>
-          <td data-label="${tx('dts.schema')}"><code>${d.schema_name}</code></td>
-          <td data-label="${tx('dts.tables_and_views')}">${d.tables.map((t) => t.table).join(', ')}</td>
+          <td class="col-wrap" data-label="${tx('dts.dataset')}"><a href="${root}/datasets/${d.id}">${d.label}</a> <code>${d.name}</code>${d.description ? html`<br><span class="muted small">${d.description.slice(0, 160)}</span>` : ''}</td>
+          <td class="col-low" data-label="${tx('dts.schema')}"><code>${d.schema_name}</code></td>
+          <td class="col-wrap" data-label="${tx('dts.tables_and_views')}">${d.tables.map((t) => t.table).join(', ')}</td>
           <td class="num" data-label="${tx('dts.columns')}">${d.columns.length}</td>
-          <td data-label="${tx('dts.updated_utc')}">${when(d.updated_at)}${d.updated_by ? html` <span class="muted">${d.updated_by}</span>` : ''}</td>
-          <td data-label=""><a class="btn" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} ${tx('dts.create_reporting_application')}</a></td>
+          <td class="col-low" data-label="${tx('dts.updated_utc')}">${when(d.updated_at)}${d.updated_by ? html` <span class="muted">${d.updated_by}</span>` : ''}</td>
+          <td class="col-actions" data-label=""><a class="btn" href="${root}/apps/new?dataset=${encodeURIComponent(d.name)}">${icon('plus')} ${tx('dts.create_reporting_application')}</a></td>
         </tr>`) : html`<tr><td colspan="6" class="empty">${tx('dts.no_datasets_yet_create_one')}</td></tr>`}</tbody></table></div>`)}
-      ${region(tx('dts.reporting_applications'), html`<div class="table-wrap"><table class="report report-reflow">
-        <thead><tr><th scope="col">${tx('dts.application')}</th><th scope="col">${tx('dts.datasets')}</th><th scope="col" class="num">${tx('dts.users')}</th><th scope="col" class="num">${tx('dts.published_reports')}</th><th scope="col">${tx('dts.actions')}</th></tr></thead>
+      ${region(tx('dts.reporting_applications'), html`<div class="table-wrap rep-fit"><table class="report report-reflow">
+        <thead><tr><th scope="col">${tx('dts.application')}</th><th scope="col">${tx('dts.datasets')}</th><th scope="col" class="num">${tx('dts.users')}</th><th scope="col" class="num">${tx('dts.published_reports')}</th><th scope="col" class="col-actions">${tx('dts.actions')}</th></tr></thead>
         <tbody>${apps.length ? apps.map((a) => html`<tr>
           <td data-label="${tx('dts.application')}"><a href="${BASE}/apps/${a.id}">${a.name}</a> <code>${a.alias}</code></td>
           <td data-label="${tx('dts.datasets')}">${a.datasets.join(', ')}</td>
           <td class="num" data-label="${tx('dts.users')}">${a.users}</td>
           <td class="num" data-label="${tx('dts.published_reports')}">${a.reports}</td>
-          <td data-label=""><a class="btn" href="/a/${a.alias}/">${icon('play')} ${tx('dts.run')}</a> <a class="btn" href="${BASE}/apps/${a.id}/shared">${icon('users')} ${tx('dts.users_and_roles')}</a></td>
+          <td class="col-actions" data-label=""><a class="btn" href="/a/${a.alias}/">${icon('play')} ${tx('dts.run')}</a> <a class="btn" href="${BASE}/apps/${a.id}/shared">${icon('users')} ${tx('dts.users_and_roles')}</a></td>
         </tr>`) : html`<tr><td colspan="5" class="empty">${tx('dts.no_reporting_applications_yet_choose')}</td></tr>`}</tbody></table></div>
         <p class="muted small">${tx.rich('dts.roles_help', { viewer: html`<b>viewer</b>`, editor: html`<b>editor</b>`, administrator: html`<b>administrator</b>` })}</p>`)}`;
-    return page(s, reply, tx('dts.data_reporter'), [], main);
+    // (UX-8) the lists take the page's width
+    return send(reply, s, shell(s, tx('dts.data_reporter'), crumbs([]), html`<div class="dataset-page">${main}</div>`, 'reporter'));
   });
 
   // ---------------------------------------------------------------- a new dataset: schema, then tables and views

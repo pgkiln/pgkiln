@@ -7543,4 +7543,12 @@ export const zhTW: BuilderMessages = {
   'st.delete_mismatch': '輸入應用程式的別名 {alias} 才能刪除它。',
   'pd.delete_type': '輸入頁碼 {n} 以確認',
   'pd.delete_mismatch': '輸入頁碼 {n} 才能刪除該頁面。',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': '資料和頁面',
+  'aw.sign_in': '登入',
+  'aw.sum_on': '{schema} 上的 {n} 個頁面',
+  'aw.sum_on_1': '{schema} 上的 {n} 個頁面',
+  'aw.sum_new': '一個擁有自己結構描述的新應用程式',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '關閉',
 };

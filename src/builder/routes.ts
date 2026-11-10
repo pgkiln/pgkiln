@@ -658,6 +658,8 @@ export async function builderRoutes(app: FastifyInstance) {
     // (089) page groups: a column and a filter (?group=name, or "-" for pages without one)
     const groups = (await owner.query<{ name: string }>('select name from meta.page_group where app_id = $1 order by name', [a.id])).rows.map((g) => g.name);
     const grouped = groups.length > 0 || pages.rows.some((p) => p.page_group);
+    // (UX-9) the property editor's words for a page's mode
+    const modeLabel = (m: string) => (m === 'modal' ? tx('pdz.modal_dialog') : tx('pdz.normal'));
     const groupFilter = typeof req.query?.group === 'string' ? req.query.group : '';
     // (sprint 74) search by name or number, and a report or icon view (APEX: the application home)
     const q = typeof req.query?.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
@@ -688,11 +690,11 @@ export async function builderRoutes(app: FastifyInstance) {
               <select id="f_group" name="group">${[['', tx('app.all_pages')], ...groups.map((g) => [g, g]), ['-', tx('app.no_group')]].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
               <button class="btn u-selfend">${tx('common.show')}</button></form>`
           : ''}${icons
-          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${p.mode}, ${tx(p.regions === 1 ? 'app.regions_one' : 'app.regions', { n: p.regions })}</small></a></li>`)}</ul>`
+          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${modeLabel(p.mode)}, ${tx(p.regions === 1 ? 'app.regions_one' : 'app.regions', { n: p.regions })}</small></a></li>`)}</ul>`
           : html`<div class="table-wrap"><table class="report">
           <thead><tr><th class="num">${tx('app.col.page')}</th><th>${tx('ab.col.name')}</th>${grouped ? html`<th>${tx('app.col.group')}</th>` : ''}<th>${tx('app.col.mode')}</th><th class="num">${tx('app.col.regions')}</th><th class="num">${tx('app.col.items')}</th><th class="num">${tx('app.col.das')}</th><th class="num">${tx('app.col.processes')}</th><th>${tx('app.col.authz')}</th><th>${tx('app.col.protection')}</th><th>${tx('app.col.lock')}</th><th></th></tr></thead>
           <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="${tx('app.dev_comments')}">${tx(commentsPerPage.get(p.page_no) === 1 ? 'app.comments_one' : 'app.comments', { n: commentsPerPage.get(p.page_no) })}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? '—'}</td>` : ''}<td>${p.mode}</td>
+            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="${tx('app.dev_comments')}">${tx(commentsPerPage.get(p.page_no) === 1 ? 'app.comments_one' : 'app.comments', { n: commentsPerPage.get(p.page_no) })}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? ''}</td>` : ''}<td>${modeLabel(p.mode)}</td>
             <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : tx('app.public')}</td><td>${p.protection}</td>
             <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? tx('app.you') : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
@@ -716,7 +718,7 @@ export async function builderRoutes(app: FastifyInstance) {
             <div class="form-grid">
               ${input('page_no', tx('app.page_number'), nextPage, { type: 'number', required: true })}
               ${input('name', tx('ab.col.name'), '', { required: true })}
-              ${select('mode', tx('app.col.mode'), 'normal', ['normal', 'modal'])}
+              ${select('mode', tx('app.col.mode'), 'normal', [['normal', tx('pdz.normal')], ['modal', tx('pdz.modal_dialog')]])}
               ${input('parent_page', tx('app.parent'), a.home_page, { type: 'number' })}
             </div>
             <div class="buttons"><button class="btn">${tx('app.create_page')}</button></div>

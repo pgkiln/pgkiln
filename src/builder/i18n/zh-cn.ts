@@ -7543,4 +7543,12 @@ export const zhCN: BuilderMessages = {
   'st.delete_mismatch': '输入应用程序的别名 {alias} 才能删除它。',
   'pd.delete_type': '输入页码 {n} 以确认',
   'pd.delete_mismatch': '输入页码 {n} 才能删除该页面。',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': '数据和页面',
+  'aw.sign_in': '登录',
+  'aw.sum_on': '{schema} 上的 {n} 个页面',
+  'aw.sum_on_1': '{schema} 上的 {n} 个页面',
+  'aw.sum_new': '一个拥有自己模式的新应用程序',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '关闭',
 };
