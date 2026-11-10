@@ -910,7 +910,7 @@ export async function builderRoutes(app: FastifyInstance) {
             <p>${tx('st.delete_text', { app: a.name })} <a href="${BASE}/apps/${a.id}/export">${tx('app.head.export')}</a></p>
             <!-- (UX-6) the alias typed to confirm, checked on the server too -->
             <form method="post" action="${BASE}/apps/${a.id}/delete" class="danger-form">${csrf(s)}
-              <label class="field"><span class="label">${tx('st.delete_type', { alias: a.alias })}</span><input name="confirm" autocomplete="off" required spellcheck="false" pattern="${a.alias.replace(/[.*+?^${}()|[\]\\/-]/g, '\\$&')}"></label>
+              <label class="field"><span class="label">${tx('st.delete_type', { alias: a.alias })}</span><input name="confirm" autocomplete="off" required spellcheck="false" pattern="${a.alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"></label>
               <button class="btn btn-danger">${icon('trash')} ${tx('st.delete')}</button>
             </form></section>${end}
         ${panel('errors')}${region(tx('st.tab.errors'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/behaviour">${csrf(s)}
