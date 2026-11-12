@@ -171,7 +171,9 @@ describe('popup LOV', () => {
     await dlg.locator('.popup-lov-pick', { hasText: 'Scott' }).click();
     assert.equal(await page.inputValue('[data-item="P26_EMPNO"] .popup-lov-display'), 'Scott');
     await Promise.all([page.waitForNavigation(), page.locator('button', { hasText: 'Show' }).click()]);
-    assert.equal(await page.inputValue('#P26_EMPNO'), '7788');
+    // fails now and then in CI with an empty value (cause unknown): the address says whether the service worker
+    // queued the submit (?queued=1) or the page came back as usual
+    assert.equal(await page.inputValue('#P26_EMPNO'), '7788', `P26_EMPNO after Show, at ${page.url()}`);
     assert.deepEqual(await violations(page), []);
     await page.context().close();
   });
