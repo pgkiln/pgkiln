@@ -18,6 +18,14 @@ All notable changes to this project are documented here. The format follows
 - **The Workflow Console draws instances with the Workflow Diagram** (sprint 172, CD-7 leftover): the steps an
   instance went through, where it is and a failed step, with each step's history as a tooltip, for finished
   instances too (before: only the current step of running instances).
+
+### Fixed
+- **Workspace files list the applications that use a file in alphabetical order** (sprint 172): the order was
+  whatever the database returned, which also made a test fail now and then.
+
+## [0.90.0] - 2026-11-12
+
+### Changed
 - **Deleting an application or a page asks for its name** (sprint 171, UX-6): *Delete the application* moved from
   the Tasks to a **Danger zone** at the bottom of Settings → Definition, where the alias must be typed; *Delete page*
   moved from beside *Save page* into the Page Designer's page menu, where the page number must be typed. The server
@@ -33,10 +41,6 @@ All notable changes to this project are documented here. The format follows
   dialog*, an empty page group stays empty, sign-in and two-factor values are capitalised.
 - **Page not found inside the builder** (sprint 171, UX-10): for a signed-in developer the page keeps the rail, the
   header search and the status bar, with a search field filled from the address and the recent applications.
-
-### Fixed
-- **Workspace files list the applications that use a file in alphabetical order** (sprint 172): the order was
-  whatever the database returned, which also made a test fail now and then.
 
 ## [0.89.0] - 2026-11-12
 
