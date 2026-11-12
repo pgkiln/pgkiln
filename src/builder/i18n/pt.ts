@@ -7555,4 +7555,7 @@ export const pt: BuilderMessages = {
   'ws.notice.keep': 'Manter os avisos de execuções anteriores',
   'ws.notice.earlier': 'Execuções anteriores',
   'ws.notice.clear': 'Limpar avisos',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'Versão {version}',
+  'gal.installed_version': 'Instalada: v{version}',
 };

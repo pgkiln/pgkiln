@@ -7555,4 +7555,7 @@ export const ja: BuilderMessages = {
   'ws.notice.keep': '以前の実行の通知を保持',
   'ws.notice.earlier': '以前の実行',
   'ws.notice.clear': '通知をクリア',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'バージョン {version}',
+  'gal.installed_version': 'インストール済み: v{version}',
 };

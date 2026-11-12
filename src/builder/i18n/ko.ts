@@ -7555,4 +7555,7 @@ export const ko: BuilderMessages = {
   'ws.notice.keep': '이전 실행의 알림 유지',
   'ws.notice.earlier': '이전 실행',
   'ws.notice.clear': '알림 지우기',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': '버전 {version}',
+  'gal.installed_version': '설치됨: v{version}',
 };

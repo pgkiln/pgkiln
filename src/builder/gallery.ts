@@ -38,6 +38,8 @@ interface Sample {
   description: string;
   example?: string;
   file?: string;
+  /** (sprint 172, WS-8) the sample's version: a badge on its card, and the installed application's Version */
+  version?: string;
 }
 interface Starter {
   key: string;
@@ -45,12 +47,15 @@ interface Starter {
   icon: string;
   description: string;
   file: string;
+  version?: string;
 }
 
 const GALLERY = join(root, 'examples', 'gallery');
 const KEY = /^[a-z][a-z0-9-]{0,40}$/;
 
 const list = <T>(v: unknown): T[] => (Array.isArray(v) ? v : []);
+/** A catalogue entry's version as shown ("1.0", "2.1-beta"), or '' when it has none or it isn't one. */
+const versionOf = (x: { version?: unknown }) => (typeof x.version === 'string' && /^[0-9A-Za-z][0-9A-Za-z.+-]{0,19}$/.test(x.version) ? x.version : '');
 
 function catalog(): { samples: Sample[]; starters: Starter[]; utilities: Starter[] } {
   try {
@@ -83,7 +88,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     const { samples, starters, utilities } = catalog();
     // an installed sample: Edit only in its own workspace
     const installed = new Map(
-      (await owner.query<{ alias: string; id: number; here: boolean }>(`select a.alias, a.id, ${inWorkspaceSql('a', 2)} as here from meta.app a where a.alias = any($1)`,
+      (await owner.query<{ alias: string; id: number; here: boolean; version: string | null }>(`select a.alias, a.id, a.version, ${inWorkspaceSql('a', 2)} as here from meta.app a where a.alias = any($1)`,
         [samples.map((x) => x.alias), ws])).rows.map((r) => [r.alias, r]),
     );
     const custom = (await owner.query<{ id: number; name: string; description: string | null }>(
@@ -98,25 +103,26 @@ export async function galleryRoutes(app: FastifyInstance) {
       return words.every((w) => text.includes(w));
     };
     const counts: Record<Tab, number> = { samples: samples.length, starters: starters.length, utilities: utilities.length, custom: custom.length };
-    const card = (ic: string, title: string, by: string, text: string, action: unknown) =>
-      html`<article class="gal-card" data-filter-row><div class="gal-head"><span class="gal-icon">${icon(ic)}</span><div><h2>${title}</h2><span class="muted small">${by}</span></div></div>
+    // (sprint 172, WS-8) a version badge per gallery app
+    const card = (ic: string, title: string, by: string, text: string, action: unknown, version = '') =>
+      html`<article class="gal-card" data-filter-row><div class="gal-head"><span class="gal-icon">${icon(ic)}</span><div><h2>${title}</h2><span class="muted small">${by}</span>${version ? html` <span class="tag gal-version" title="${tx('gal.version', { version })}">v${version}</span>` : ''}</div></div>
         <p>${text}</p><div class="gal-foot">${action}</div></article>`;
     const tabs = html`<nav class="gal-tabs segmented" aria-label="${tx('gal.kinds')}">${TABS.map(([t, l]) =>
       html`<a href="${BASE}/gallery?tab=${t}${q ? `&q=${encodeURIComponent(q)}` : ''}"${tab === t ? raw(' aria-current="page"') : ''}>${tx(l)} <span class="gal-count">${counts[t]}</span></a>`)}</nav>`;
     const blueprintCard = (kind: 'starters' | 'utilities') => (x: Starter) => card(x.icon, x.title, 'pgkiln', x.description,
-      html`<form method="post" action="${BASE}/gallery/${kind}/${x.key}">${csrf(s)}<button class="btn btn-sm">${tx('gal.install')}</button></form>`);
+      html`<form method="post" action="${BASE}/gallery/${kind}/${x.key}">${csrf(s)}<button class="btn btn-sm">${tx('gal.install')}</button></form>`, versionOf(x));
     const cards =
       tab === 'samples'
         ? samples.filter(matches).map((x) => {
             const it = installed.get(x.alias);
             return card(x.icon, x.title, 'pgkiln', x.description,
               it
-                ? html`<span class="tag tag-ok">${tx('gal.installed')}</span><a class="btn btn-sm" href="/a/${x.alias}" target="_blank" rel="noopener">${tx('common.run')}</a>${it.here
+                ? html`<span class="tag tag-ok">${it.version && it.version !== versionOf(x) ? tx('gal.installed_version', { version: it.version }) : tx('gal.installed')}</span><a class="btn btn-sm" href="/a/${x.alias}" target="_blank" rel="noopener">${tx('common.run')}</a>${it.here
                     ? html`<a class="btn btn-sm" href="${BASE}/apps/${it.id}">${tx('gal.edit')}</a>`
                     : html`<span class="muted small">${tx('gal.other_workspace')}</span>`}`
                 : admin
                   ? html`<form method="post" action="${BASE}/gallery/samples/${x.key}">${csrf(s)}<button class="btn btn-sm" data-confirm="${tx('gal.confirm_install', { title: x.title })}">${tx('gal.install')}</button></form>`
-                  : html`<span class="muted small">${tx('gal.admin_installs')}</span>`);
+                  : html`<span class="muted small">${tx('gal.admin_installs')}</span>`, versionOf(x));
           })
         : tab === 'starters' || tab === 'utilities'
           ? (tab === 'starters' ? starters : utilities).filter(matches).map(blueprintCard(tab))
@@ -156,6 +162,8 @@ export async function galleryRoutes(app: FastifyInstance) {
       const place = async (c: Client) => {
         const made = (await c.query('select id, db_role from meta.app where alias = $1', [x.alias])).rows[0] as { id: number; db_role: string | null } | undefined;
         if (!made) throw new Error(tx('gal.err_no_app', { alias: x.alias }));
+        // (sprint 172, WS-8) the catalogue's version becomes the application's, unless the sample set one itself
+        if (versionOf(x)) await c.query('update meta.app set version = $2 where id = $1 and version is null', [made.id, versionOf(x)]);
         if (ws > 1) {
           if (made.db_role && (await c.query('select 1 from meta.workspace where id = $1 and isolated', [ws])).rowCount)
             await c.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2) on conflict do nothing', [ws, made.db_role]);

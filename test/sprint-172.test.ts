@@ -120,6 +120,27 @@ describe('Workflow Console draws its instances with the Workflow Diagram (CD-7)'
   });
 });
 
+describe('App Gallery: a version badge per app (WS-8)', () => {
+  test('every sample, starter and utility card shows its version; an installed sample of another version says which', async () => {
+    const b = await builder();
+    for (const tab of ['samples', 'starters', 'utilities']) {
+      const body = (await b.get(`/builder/gallery?tab=${tab}`)).body;
+      const cards = body.split('<article class="gal-card"').slice(1);
+      assert.ok(cards.length > 0, tab);
+      for (const c of cards) assert.match(c, /<span class="tag gal-version" title="Version 1\.0">v1\.0<\/span>/, `${tab}: ${/<h2>([^<]*)/.exec(c)?.[1]}`);
+    }
+    const hr = (body: string) => body.split('<article class="gal-card"').find((c) => c.includes('<h2>HR Demo</h2>')) ?? '';
+    assert.match(hr((await b.get('/builder/gallery')).body), /<span class="tag tag-ok">Installed<\/span>/);
+    await owner.query(`update meta.app set version = '0.9 <b>' where alias = 'hr'`);
+    try {
+      const card = hr((await b.get('/builder/gallery')).body);
+      assert.match(card, /<span class="tag tag-ok">Installed: v0\.9 &lt;b&gt;<\/span>/);
+    } finally {
+      await owner.query(`update meta.app set version = null where alias = 'hr'`);
+    }
+  });
+});
+
 describe('code editor: plv8 bodies as JavaScript (DA-18)', () => {
   const lex = (() => {
     const window: any = {};

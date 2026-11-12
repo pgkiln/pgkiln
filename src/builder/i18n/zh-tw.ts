@@ -7555,4 +7555,7 @@ export const zhTW: BuilderMessages = {
   'ws.notice.keep': '保留先前執行的通知',
   'ws.notice.earlier': '先前的執行',
   'ws.notice.clear': '清除通知',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': '版本 {version}',
+  'gal.installed_version': '已安裝：v{version}',
 };

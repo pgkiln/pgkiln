@@ -7559,4 +7559,7 @@ export const en = {
   'ws.notice.keep': 'Keep notices of earlier runs',
   'ws.notice.earlier': 'Earlier runs',
   'ws.notice.clear': 'Clear notices',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'Version {version}',
+  'gal.installed_version': 'Installed: v{version}',
 } as const;

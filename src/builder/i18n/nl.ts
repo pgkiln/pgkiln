@@ -7555,4 +7555,7 @@ export const nl: BuilderMessages = {
   'ws.notice.keep': 'Meldingen van eerdere runs bewaren',
   'ws.notice.earlier': 'Eerdere runs',
   'ws.notice.clear': 'Meldingen wissen',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'Versie {version}',
+  'gal.installed_version': 'Geïnstalleerd: v{version}',
 };
