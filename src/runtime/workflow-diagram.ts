@@ -9,6 +9,30 @@ import { workflowDiagram, type Step } from '../workflow.ts';
 import { publicError, type PageContext } from './context.ts';
 import { cell } from './report.ts';
 
+/**
+ * One instance drawn: the steps it went through (done), where it is now (active) or failed, and each step's history
+ * as its tooltip. (sprint 172, CD-7) The Workflow Console draws its instances with it too.
+ */
+export function instanceDiagram(
+  ctx: PageContext,
+  w: { state: string; current_step: string | null; active_steps: string[] },
+  events: { at: string; step: string | null; event: string; detail: string | null }[],
+  steps: Step[],
+  id: string,
+): Raw {
+  const reached = new Set(events.filter((e) => e.step).map((e) => e.step!));
+  const active = w.state === 'completed' || w.state === 'terminated' ? [] : w.active_steps.length ? w.active_steps : w.current_step ? [w.current_step] : [];
+  const failed = w.state === 'faulted' ? active : [];
+  const done = [...reached].filter((s) => !active.includes(s));
+  const notes = new Map<string, string>();
+  // events without a step (started, terminated) belong to the first step's history
+  for (const e of events) {
+    const step = e.step ?? steps[0]?.name;
+    if (step) notes.set(step, [notes.get(step), `${cell(e.at, 1184, ctx.locale.format)}: ${e.event}${e.detail ? ` (${e.detail})` : ''}`].filter(Boolean).join('\n'));
+  }
+  return workflowDiagram(steps, { active: failed.length ? [] : active, failed, done, notes, id });
+}
+
 export async function renderWorkflowDiagram(ctx: PageContext, r: Region): Promise<Raw> {
   const t = ctx.locale.t;
   const itemName = typeof r.config.instance_item === 'string' ? r.config.instance_item.toUpperCase() : '';
@@ -27,19 +51,9 @@ export async function renderWorkflowDiagram(ctx: PageContext, r: Region): Promis
   if (!w) return html`<p class="empty">${r.config.empty ?? t('workflows.none')}</p>`;
   // the steps of its version: only after the view let this user see the instance (the steps hold SQL)
   const steps = (await owner.query<{ steps: Step[] }>('select steps from meta.workflow where id = $1::bigint and app_id = $2', [id, ctx.app.id])).rows[0]?.steps ?? [];
-  const reached = new Set(events.filter((e) => e.step).map((e) => e.step!));
-  const active = w.state === 'completed' || w.state === 'terminated' ? [] : w.active_steps.length ? w.active_steps : w.current_step ? [w.current_step] : [];
-  const failed = w.state === 'faulted' ? active : [];
-  const done = [...reached].filter((s) => !active.includes(s));
-  const notes = new Map<string, string>();
-  // events without a step (started, terminated) belong to the first step's history
-  for (const e of events) {
-    const step = e.step ?? steps[0]?.name;
-    if (step) notes.set(step, [notes.get(step), `${cell(e.at, 1184, ctx.locale.format)}: ${e.event}${e.detail ? ` (${e.detail})` : ''}`].filter(Boolean).join('\n'));
-  }
   return html`<div class="wf-wrap wf-instance" data-state="${w.state}">
     <p class="muted u-mt0">${w.title} · ${t(`workflows.state.${w.state}`)}</p>
     ${w.error ? html`<div class="alert alert-error" role="alert">${w.error}</div>` : ''}
-    ${workflowDiagram(steps, { active: failed.length ? [] : active, failed, done, notes, id: `r${r.id}` })}
+    ${instanceDiagram(ctx, w, events, steps, `r${r.id}`)}
   </div>`;
 }

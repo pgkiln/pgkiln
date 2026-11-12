@@ -7551,4 +7551,11 @@ export const ko: BuilderMessages = {
   'aw.sum_new': '자체 스키마를 가진 새 애플리케이션',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '닫기',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': '이전 실행의 알림 유지',
+  'ws.notice.earlier': '이전 실행',
+  'ws.notice.clear': '알림 지우기',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': '버전 {version}',
+  'gal.installed_version': '설치됨: v{version}',
 };

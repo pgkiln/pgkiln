@@ -1759,3 +1759,4 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .drawer-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
 .drawer-head h2 { margin: 0; font-size: 16px; }
 .drawer-panel .buttons { justify-content: flex-end; }
+.gal-version { margin-left: 4px; font-variant-numeric: tabular-nums; }

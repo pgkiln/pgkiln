@@ -134,8 +134,20 @@ async function navigatorTree(db: Awaited<ReturnType<typeof workshopDb>>, schema:
   })}</ul>${objects.length > rels.length && rels.length === MAX_COLUMN_OBJECTS ? html`<p class="muted small ws-nav-empty">${tx('ws.nav.cols_limit', { n: MAX_COLUMN_OBJECTS })}</p>` : ''}`;
 }
 
+/** (sprint 172, DA-5) A notice of an earlier run, kept in the session while "Keep notices" is ticked. */
+type KeptNotice = { level: string; message: string; n: number; at: string };
+const KEPT_NOTICES = 200;
+function keptNotices(s: { state: Record<string, any> }): KeptNotice[] {
+  try {
+    const v = JSON.parse(s.state.__WSNOTICES ?? '[]');
+    return Array.isArray(v) ? v.filter((n) => n && typeof n.message === 'string').slice(-KEPT_NOTICES) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** The output panes of a run (empty: the page as opened). */
-function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
+function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate, kept: { on: boolean; earlier: KeptNotice[] } = { on: false, earlier: [] }): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
   const results = run?.results ?? [];
   const ran = results.filter((r) => r.status !== 'not_run');
   const query = [...ran].reverse().find((r) => r.columns);
@@ -185,9 +197,12 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
       })}<span class="muted">${tx(ran.length === 1 ? 'ws.log.summary_one' : 'ws.log.summary', { n: ran.length, failed: errors.length, ms: run.ms })}</span></pre>`
     : html`<p class="muted">${tx('ws.log.empty')}</p>`;
 
-  const notices = run?.notices.length
-    ? html`<ul class="ws-notices">${run.notices.map((n) => html`<li><span class="tag${n.level === 'WARNING' ? ' tag-warn' : ''}">${n.level}</span> <span>${n.message}</span> <small class="muted">${tx('ws.notice.meta', { n: n.n, at: n.at })}</small></li>`)}</ul>`
-    : html`<p class="muted">${tx('ws.notice.empty')}</p>`;
+  // (sprint 172, DA-5) Keep notices: the earlier runs' notices stay under the last run's, until cleared
+  const noticeItem = (n: KeptNotice) => html`<li><span class="tag${n.level === 'WARNING' ? ' tag-warn' : ''}">${n.level}</span> <span>${n.message}</span> <small class="muted">${tx('ws.notice.meta', { n: n.n, at: n.at })}</small></li>`;
+  const notices = html`<div class="ws-notice-bar"><label class="ws-check"><input type="checkbox" name="keep_notices"${kept.on ? raw(' checked') : ''}> ${tx('ws.notice.keep')}</label>${kept.earlier.length
+      ? html`<button class="btn btn-sm" name="mode" value="clear_notices">${icon('trash')} ${tx('ws.notice.clear')}</button>` : ''}</div>
+    ${run?.notices.length ? html`<ul class="ws-notices">${run.notices.map(noticeItem)}</ul>` : kept.earlier.length ? '' : html`<p class="muted">${tx('ws.notice.empty')}</p>`}
+    ${kept.earlier.length ? html`<h3 class="ws-notice-earlier">${tx('ws.notice.earlier')}</h3><ul class="ws-notices" data-ws-kept>${[...kept.earlier].reverse().map(noticeItem)}</ul>` : ''}`;
 
   const planOf = (m: RunMode, empty: string) => mode === m && run
     ? (run.tree ? planView(run.tree, run.plan ?? '') : html`<p class="alert alert-error">${run.results[0]?.error ?? tx('ws.no_plan')}</p>`)
@@ -376,6 +391,14 @@ async function worksheet(req: Req, reply: FastifyReply) {
   let mode: RunMode | null = null;
   let ran: { start: number; end: number } | null = null;
   const continueOnError = body.continue_on_error === 'on';
+  // (sprint 172, DA-5) Keep notices: ticked in the Notices tab, remembered for the session; unticking or Clear forgets them
+  const keepNotices = isPost ? body.keep_notices === 'on' : s.state.__WSKEEP === '1';
+  if (isPost) {
+    if (keepNotices) s.state.__WSKEEP = '1';
+    else delete s.state.__WSKEEP;
+    if (!keepNotices || body.mode === 'clear_notices') delete s.state.__WSNOTICES;
+  }
+  const earlierNotices = keepNotices ? keptNotices(s) : [];
   // (sprint 93, DA-9) bind variables (:NAME) and substitution variables (&NAME.) asked for before a run
   let askValues: { binds: string[]; subs: string[]; mode: string } | null = null;
   let chartAsked = false;
@@ -402,7 +425,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
     if (done.ok) txnInfo = done.message;
     else txnError = done.message;
   }
-  if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download', 'commit', 'rollback'].includes(String(body.mode ?? ''))) {
+  if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download', 'commit', 'rollback', 'clear_notices'].includes(String(body.mode ?? ''))) {
     const m: RunMode = MODES.find((x) => x === body.mode) ?? 'statement';
     const allRows = body.mode === 'statement_all';
     chartAsked = body.mode === 'chart';
@@ -533,7 +556,9 @@ async function worksheet(req: Req, reply: FastifyReply) {
         <div class="ch-view">${d.body}</div>`;
     }
   }
-  const { panes, active, status } = outputPanes(run, mode, history, String(req.query?.tab ?? ''), chartPane, tx);
+  if (keepNotices && run?.notices.length)
+    s.state.__WSNOTICES = JSON.stringify([...earlierNotices, ...run.notices.map((n) => ({ level: n.level, message: String(n.message).slice(0, 2000), n: n.n, at: n.at }))].slice(-KEPT_NOTICES));
+  const { panes, active, status } = outputPanes(run, mode, history, isPost && body.mode === 'clear_notices' ? 'notices' : String(req.query?.tab ?? ''), chartPane, tx, { on: keepNotices, earlier: earlierNotices });
   const downloadable = (() => {
     try {
       return lastQuery ? unloadStatement(lastQuery.sql) : null;
@@ -664,7 +689,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
           <textarea id="ws-sql" name="sql" aria-label="SQL" class="code sql-editor" rows="14" spellcheck="false" data-code="plpgsql">${text || (isPost ? '' : 'select current_user, version();')}</textarea>
         </div>
         <div class="ws-split ws-split-h" role="separator" aria-orientation="horizontal" aria-label="${tx('ws.resize_out')}" tabindex="0" data-ws-split="out" hidden></div>
-        <div class="ws-output" data-active="${active}"${!run && !req.query?.tab ? raw(' data-empty') : ''}>
+        <div class="ws-output" data-active="${active}"${!run && !req.query?.tab && !(isPost && body.mode === 'clear_notices') ? raw(' data-empty') : ''}>
           <div class="ws-tabs" role="tablist" aria-label="${tx('ws.output')}">${TABS.map(([k]) => html`<button type="button" role="tab" id="ws-tab-${k}" aria-controls="ws-pane-${k}" aria-selected="${k === active ? 'true' : 'false'}" data-ws-tab="${k}">${tx(`ws.tab.${k}`)}</button>`)}</div>
           ${TABS.map(([k]) => html`<section class="ws-pane" id="ws-pane-${k}" role="tabpanel" aria-labelledby="ws-tab-${k}" data-pane="${k}"><h2 class="ws-pane-title">${tx(`ws.tab.${k}`)}</h2>${panes[k]}</section>`)}
         </div>

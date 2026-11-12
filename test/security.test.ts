@@ -13875,3 +13875,41 @@ describe('sprint 171 UX-6 deleting an application or a page needs its alias or n
     assert.ok(pd.lastIndexOf('<details', form) > pd.lastIndexOf('</details>', form), 'inside a menu');
   });
 });
+
+describe('sprint 172 worksheet notices kept per session; the gallery\'s version is text', () => {
+  const signIn = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/worksheet');
+    return dev;
+  };
+  const note = "do $$ begin raise notice '<img src=x onerror=alert(172)> secret-172'; end $$";
+
+  test('kept notices are escaped, stay in the session that ran them, and need the CSRF token to clear', async () => {
+    const dev = await signIn();
+    await dev.post('/builder/sql/worksheet', { __csrf: dev.lastCsrf, sql: note, mode: 'script', keep_notices: 'on' });
+    const mine = (await dev.get('/builder/sql/worksheet?tab=notices')).body;
+    assert.match(mine, /data-ws-kept>[\s\S]*&lt;img src=x onerror=alert\(172\)&gt; secret-172/);
+    assert.doesNotMatch(mine, /<img src=x/);
+    // the same developer in another session, and a signed-out visitor: nothing
+    const other = await signIn();
+    assert.doesNotMatch((await other.get('/builder/sql/worksheet?tab=notices')).body, /data-ws-kept/);
+    assert.doesNotMatch((await new Browser().get('/builder/sql/worksheet?tab=notices')).body, /secret-172/);
+    // Clear without the token is refused and keeps them
+    assert.equal((await dev.post('/builder/sql/worksheet', { sql: 'select 1', mode: 'clear_notices', keep_notices: 'on' })).statusCode, 403);
+    assert.match((await dev.get('/builder/sql/worksheet?tab=notices')).body, /data-ws-kept/);
+    // a forged session value is not trusted as a list of notices
+    const sid = (await owner.one(`select id from meta.session where state->>'__WSNOTICES' like '%secret-172%' limit 1`))?.id;
+    assert.ok(sid);
+    await owner.query(`update meta.session set state = state || '{"__WSNOTICES": "{\\"x\\": 1}"}'::jsonb where id = $1`, [sid]);
+    assert.equal((await dev.get('/builder/sql/worksheet?tab=notices')).statusCode, 200);
+  });
+
+  test('a catalogue version that is not a version is not shown', async () => {
+    const dev = await signIn();
+    const body = (await dev.get('/builder/gallery')).body;
+    assert.match(body, /class="tag gal-version" title="Version 1\.0">v1\.0</);
+    for (const m of body.matchAll(/gal-version"[^>]*>([^<]*)</g)) assert.match(m[1], /^v[0-9A-Za-z][0-9A-Za-z.+-]{0,19}$/);
+  });
+});

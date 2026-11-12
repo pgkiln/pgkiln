@@ -1,11 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 import { appTx, owner, savepoint } from '../db.ts';
-import { workflowDiagram, type Step } from '../workflow.ts';
+import type { Step } from '../workflow.ts';
 import { html, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { logActivity, saveState } from '../session.ts';
 import { publicError, type PageContext } from './context.ts';
 import { cell } from './report.ts';
+import { instanceDiagram } from './workflow-diagram.ts';
 import { loadContext, safeNext, txContext, type Req } from './routes.ts';
 
 // Workflow console region (APEX: Workflow Console): the workflows the user
@@ -46,9 +47,10 @@ export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw>
   } catch (e) {
     return html`<div class="alert alert-error" role="alert">${await publicError(ctx, e, `workflows "${r.title ?? r.id}"`)}</div>`;
   }
-  // diagrams of the running instances, with the steps of their version (only names and types are
-  // drawn). Only for instances the view above let this user see: the steps hold SQL, so they aren't in the view.
-  const running = rows.filter((x) => ['active', 'waiting', 'faulted'].includes(x.state)).map((x) => x.id);
+  // (sprint 172, CD-7) the Workflow Diagram of every listed instance (finished ones too), with the steps of its
+  // version (only names and types are drawn): the steps it went through, where it is and a failed step. Only for
+  // instances the view above let this user see: the steps hold SQL, so they aren't in the view.
+  const running = rows.map((x) => x.id);
   const stepsOf = new Map<string, Step[]>(
     running.length ? (await owner.query('select id::text, steps from meta.workflow where id = any($1::bigint[]) and app_id = $2', [running, ctx.app.id])).rows.map((x) => [x.id, x.steps]) : [],
   );
@@ -70,7 +72,7 @@ export async function renderWorkflows(ctx: PageContext, r: Region): Promise<Raw>
             ${w.may_terminate ? html`<button class="btn btn-danger" form="${f}" name="action" value="terminate" data-confirm="${t('workflows.terminate_confirm')}">${t('workflows.terminate')}</button>` : ''}
           </div>`
         : ''}
-      ${stepsOf.get(w.id)?.length ? html`<details class="task-history wf-console-diagram"><summary>${t('workflows.diagram')}</summary><div class="wf-wrap">${workflowDiagram(stepsOf.get(w.id)!, { active: w.active_steps, id: `${r.id}-${w.id}` })}</div></details>` : ''}
+      ${stepsOf.get(w.id)?.length ? html`<details class="task-history wf-console-diagram"><summary>${t('workflows.diagram')}</summary><div class="wf-wrap">${instanceDiagram(ctx, w, history, stepsOf.get(w.id)!, `${r.id}-${w.id}`)}</div></details>` : ''}
       <details class="task-history"><summary>${t('tasks.history', { n: history.length })}</summary>
         <ol>${history.map((e) => html`<li><span class="muted">${cell(e.at, 1184, fmt)}</span> ${e.step ? html`<b>${e.step}</b> ` : ''}${t(`workflows.event.${e.event}`)}${e.detail ? html` <q>${e.detail}</q>` : ''}</li>`)}</ol>
       </details>

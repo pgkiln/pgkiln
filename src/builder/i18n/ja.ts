@@ -7551,4 +7551,11 @@ export const ja: BuilderMessages = {
   'aw.sum_new': '独自のスキーマを持つ新しいアプリケーション',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '閉じる',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': '以前の実行の通知を保持',
+  'ws.notice.earlier': '以前の実行',
+  'ws.notice.clear': '通知をクリア',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'バージョン {version}',
+  'gal.installed_version': 'インストール済み: v{version}',
 };

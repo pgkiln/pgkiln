@@ -632,7 +632,10 @@ leaves its group. Every developer of the workspace manages them.
 
 The **App Gallery** (the cube in the icon rail, `/builder/gallery`; APEX: App Gallery) has four tabs, each with
 the number of its apps. The search field filters the tab's cards as you type (without JavaScript it searches on the
-server, `?q=`); every word must be in the title or the description.
+server, `?q=`); every word must be in the title or the description. Every sample, starter and utility card shows
+its **version** (sprint 172; `version` in `examples/gallery/gallery.json`): installing a sample makes it the
+application's Version (Settings → Definition) unless the sample sets one, and an installed sample of another
+version says *Installed: v…*.
 
 - **Sample Apps**: applications shipped with pgkiln, each with its own schema, data and **demo account with a known
   password**, so install them on a development or demo instance only. Administrators install them; they go into the
@@ -1215,7 +1218,9 @@ handlers, the SQL Workshop and the import box) opens in a small code editor:
 
 - **Syntax highlighting** for SQL and PL/pgSQL (keywords, types, strings, comments, `:ITEM`
   binds, `&ITEM.` substitutions, `$$` bodies), JSON and HTML (tags, attributes, `&ITEM.` and
-  `{{tags}}`). The language follows the component type: a `static` region's source is HTML, a
+  `{{tags}}`). The body of a **plv8** function or `DO` block (`language plv8` before or after the
+  `$$` body; sprint 172) is highlighted as JavaScript: comments, strings and template literals,
+  numbers, keywords and calls. The language follows the component type: a `static` region's source is HTML, a
   `regex` validation is plain text, an `execute_sql` dynamic action is PL/pgSQL.
 - **Line numbers**, the line and column of the cursor, the **current line** (a band and its number in bold
   while the field has the focus) and the **matching bracket** marked.
@@ -2241,7 +2246,9 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     and **Save chart**: SQL Workshop → **Charts** lists the saved charts (shared by the workspace) and draws the ones
     on its dashboard; a chart's page changes its settings, opens its query in the worksheet or deletes it. A saved
     chart's SELECT runs read-only with a 10 second timeout and at most 500 rows.
-  - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run with their time.
+  - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run with their time. Tick
+    **Keep notices of earlier runs** (sprint 172) to keep the notices of the runs before it under *Earlier runs*,
+    newest first (the last 200, for your builder session); **Clear notices** or unticking the box forgets them.
     **SQL History** (sprint 92) lists your last 200 statements in this workspace with how they ended, their rows and
     time; running the same statement again counts on its row (*3×*). Search it, show only the ones that failed or
     succeeded, click one to insert it at the cursor, **Run** to run it again, or copy it. Other developers' history

@@ -1211,6 +1211,10 @@ It is read through `meta.workflows` as the application's role, so a user sees on
 started or administer (the Workflow Console's rule); others see the empty text. The diagram is SVG
 drawn on the server: it needs no JavaScript.
 
+The **workflow console** region draws each of its instances the same way (sprint 172): under *Diagram*, the
+steps the instance went through, where it is now and a failed step, with each step's history as its tooltip,
+for finished and terminated instances too.
+
 ### Send e-mail steps
 
 A `send_mail` step (APEX 26.1: the *Send E-Mail* activity) queues an e-mail through the application's mail service,

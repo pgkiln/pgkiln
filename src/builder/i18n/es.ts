@@ -7551,4 +7551,11 @@ export const es: BuilderMessages = {
   'aw.sum_new': 'Una aplicación nueva con su propio esquema',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Cerrar',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': 'Conservar los avisos de ejecuciones anteriores',
+  'ws.notice.earlier': 'Ejecuciones anteriores',
+  'ws.notice.clear': 'Borrar avisos',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'Versión {version}',
+  'gal.installed_version': 'Instalada: v{version}',
 };

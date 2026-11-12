@@ -7551,4 +7551,11 @@ export const nl: BuilderMessages = {
   'aw.sum_new': 'Een nieuwe applicatie met een eigen schema',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Sluiten',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': 'Meldingen van eerdere runs bewaren',
+  'ws.notice.earlier': 'Eerdere runs',
+  'ws.notice.clear': 'Meldingen wissen',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'Versie {version}',
+  'gal.installed_version': 'Geïnstalleerd: v{version}',
 };

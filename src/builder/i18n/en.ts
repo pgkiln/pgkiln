@@ -7555,4 +7555,11 @@ export const en = {
   'aw.sum_new': 'A new application with its own schema',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Close',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': 'Keep notices of earlier runs',
+  'ws.notice.earlier': 'Earlier runs',
+  'ws.notice.clear': 'Clear notices',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': 'Version {version}',
+  'gal.installed_version': 'Installed: v{version}',
 } as const;

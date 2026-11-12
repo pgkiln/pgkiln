@@ -75,6 +75,66 @@
   const isWord = (c) => isWordStart(c) || (c >= 48 && c <= 57) || c === 36;
   const isDigit = (c) => c >= 48 && c <= 57;
 
+  // (sprint 172, DA-18) JavaScript, for the bodies of plv8 functions: comments, strings and templates, numbers,
+  // keywords, calls and brackets. Regular expression literals stay operators and names (no parser here).
+  const JS_KW = new Set(`async await break case catch class const continue debugger default delete do else export extends
+    false finally for function if import in instanceof let new null of return static super switch this throw true try
+    typeof undefined var void while with yield`.split(/\s+/));
+  function lexJs(src, from, to, push) {
+    let i = from;
+    while (i < to) {
+      const c = src.charCodeAt(i);
+      if (c === 32 || c === 9 || c === 10 || c === 13) { i++; continue; }
+      const next = src.charCodeAt(i + 1);
+      if (c === 47 && next === 47) { // // comment
+        let e = src.indexOf('\n', i);
+        if (e < 0 || e > to) e = to;
+        push('com', i, e); i = e; continue;
+      }
+      if (c === 47 && next === 42) { // /* comment */
+        let e = src.indexOf('*/', i + 2);
+        e = e < 0 || e + 2 > to ? to : e + 2;
+        push('com', i, e); i = e; continue;
+      }
+      if (c === 39 || c === 34 || c === 96) { // 'string', "string", `template`
+        let j = i + 1;
+        while (j < to) {
+          const d = src.charCodeAt(j);
+          if (d === 92) { j += 2; continue; }
+          if (d === c || (d === 10 && c !== 96)) { j++; break; }
+          j++;
+        }
+        push('str', i, Math.min(j, to)); i = Math.min(j, to); continue;
+      }
+      if (isDigit(c) || (c === 46 && isDigit(next))) {
+        const m = /0[xX][0-9a-fA-F]+|\d*\.?\d+(?:[eE][+-]?\d+)?n?|\d+\.?/y;
+        m.lastIndex = i; m.test(src);
+        const e = Math.min(m.lastIndex || i + 1, to);
+        push('num', i, e); i = e; continue;
+      }
+      if (isWordStart(c) || c === 36) {
+        let j = i + 1; while (j < to && isWord(src.charCodeAt(j))) j++;
+        const w = src.slice(i, j);
+        let k = j; while (k < to && src.charCodeAt(k) === 32) k++;
+        push(JS_KW.has(w) ? 'kw' : src.charCodeAt(k) === 40 ? 'fn' : 'id', i, j); i = j; continue;
+      }
+      if (OPEN[src[i]] || CLOSE[src[i]]) { push('br', i, i + 1); i++; continue; }
+      push(c === 44 || c === 59 || c === 46 ? 'pun' : 'op', i, i + 1); i++;
+    }
+  }
+  /**
+   * Is the dollar-quoted body that ends at `end` written in plv8? LANGUAGE plv8 stands before it (in the tokens of
+   * its statement, so not inside a string or comment) or right after it, among the function's other options.
+   */
+  const PLV8_AFTER = /^(?:\s+[A-Za-z_]+)*?\s*language\s+(?:'plv8'|"plv8"|plv8)(?![A-Za-z0-9_])/i;
+  function isPlv8(src, end, T, S, E) {
+    for (let k = T.length - 2; k >= 1; k--) { // T[last] is the opening delimiter
+      if (T[k] === 'pun' && src[S[k]] === ';') break;
+      if (/^(?:plv8|'plv8'|"plv8")$/i.test(src.slice(S[k], E[k])) && src.slice(S[k - 1], E[k - 1]).toLowerCase() === 'language') return true;
+    }
+    return PLV8_AFTER.test(src.slice(end, end + 400));
+  }
+
   function lexSql(src, pl) {
     const T = [], S = [], E = [];
     const push = (t, s, e) => { T.push(t); S.push(s); E.push(e); };
@@ -121,7 +181,18 @@
         if (isDigit(next)) { let j = i + 1; while (j < n && isDigit(src.charCodeAt(j))) j++; push('bind', i, j); i = j; continue; }
         const m = /\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/y;
         m.lastIndex = i;
-        if (m.test(src)) { push('dol', i, m.lastIndex); i = m.lastIndex; continue; }
+        if (m.test(src)) {
+          const open = m.lastIndex, tag = src.slice(i, open);
+          push('dol', i, open);
+          // (sprint 172, DA-18) the body of a plv8 function or DO block is JavaScript
+          const close = src.indexOf(tag, open);
+          if (close >= 0 && isPlv8(src, close + tag.length, T, S, E)) {
+            lexJs(src, open, close, push);
+            push('dol', close, close + tag.length);
+            i = close + tag.length; continue;
+          }
+          i = open; continue;
+        }
         push('op', i, i + 1); i++; continue;
       }
       if (isDigit(c) || (c === 46 && isDigit(next))) {
@@ -1059,7 +1130,7 @@
       colorize(pre);
     }
   }
-  window.pgkilnCodeEditor = { enhance, editorOf: (ta) => editors.get(ta) };
+  window.pgkilnCodeEditor = { enhance, editorOf: (ta) => editors.get(ta), lex };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => enhance());
   else enhance();
   document.addEventListener('pgkiln:replaced', (e) => enhance(e.detail && e.detail.parentElement ? e.detail.parentElement : document));

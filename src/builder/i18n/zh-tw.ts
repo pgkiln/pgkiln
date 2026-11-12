@@ -7551,4 +7551,11 @@ export const zhTW: BuilderMessages = {
   'aw.sum_new': '一個擁有自己結構描述的新應用程式',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '關閉',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': '保留先前執行的通知',
+  'ws.notice.earlier': '先前的執行',
+  'ws.notice.clear': '清除通知',
+  // ------------------------------------------------------------ sprint 172: gallery version badge
+  'gal.version': '版本 {version}',
+  'gal.installed_version': '已安裝：v{version}',
 };
