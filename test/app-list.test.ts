@@ -55,20 +55,20 @@ describe('App Builder list: updated by, working copies, lock (WS-12)', () => {
     const admin = await builder();
     assert.equal(await changedBy(), undefined);
     const { body } = await reportRow(admin);
-    assert.match(body, /<th scope="col">Updated by<\/th><th scope="col" class="num">Working copies<\/th>/);
+    assert.match(body, /<th scope="col" class="col-low">Updated by<\/th><th scope="col" class="num col-low">Working copies<\/th>/);
     await admin.get(`/builder/pages/${pageId}`);
     assert.equal((await addRegion(admin, 'By admin')).statusCode, 303);
     assert.equal(await changedBy(), 'admin');
     const { row } = await reportRow(admin);
-    assert.match(row, /<td class="ab-by">admin<\/td>/);
-    assert.match(row, /<td class="num">0<\/td>/, 'no working copies yet');
+    assert.match(row, /<td class="ab-by col-low">admin<\/td>/);
+    assert.match(row, /<td class="num col-low">0<\/td>/, 'no working copies yet');
     assert.doesNotMatch(row, /ab-lock/);
     // another developer's change takes over
     const dev = await builder(DEV, DEV_PW);
     await dev.get(`/builder/pages/${pageId}`);
     assert.equal((await addRegion(dev, 'By dev')).statusCode, 303);
     assert.equal(await changedBy(), DEV);
-    assert.match((await reportRow(admin)).row, new RegExp(`<td class="ab-by">${DEV}</td>`));
+    assert.match((await reportRow(admin)).row, new RegExp(`<td class="ab-by col-low">${DEV}</td>`));
   });
 
   test('locks and comments are not changes; a refused change is not recorded', async () => {
@@ -107,7 +107,7 @@ describe('App Builder list: updated by, working copies, lock (WS-12)', () => {
     assert.equal((await dev.submit('/builder/working-copies', { main_app_id: String(appId), name: 'one' })).statusCode, 303);
     assert.equal(await changedBy(), undefined);
     const { row } = await reportRow(dev);
-    assert.match(row, new RegExp(`<td class="num"><a href="/builder/apps/${appId}/working-copies" aria-label="1 working copy of App list 116">1</a></td>`));
+    assert.match(row, new RegExp(`<td class="num col-low"><a href="/builder/apps/${appId}/working-copies" aria-label="1 working copy of App list 116">1</a></td>`));
     const cards = (await dev.get(`/builder/apps?q=${alias}&view=grid`)).body;
     assert.match(cards, new RegExp(`<a class="tag" href="/builder/apps/${appId}/working-copies"><svg[^]*?</svg> 1 working copy</a>`));
     await dev.get('/builder/apps?view=report');
