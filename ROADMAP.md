@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.90.0 (November 2026): the builder usability pass completed: typed confirmation for deletes, Create application name first, reports at laptop width, page not found inside the builder.
+- **Current release:** 0.91.0 (November 2026): parity leftovers: keep notices in the SQL Worksheet, workflow instance diagrams in the Workflow Console, plv8 bodies highlighted as JavaScript, a version per App Gallery app.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

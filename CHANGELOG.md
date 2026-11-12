@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.91.0] - 2026-11-12
+
 ### Added
 - **Keep notices in the SQL Worksheet** (sprint 172, DA-5 leftover; no migration): *Keep notices of earlier runs* in
   the Notices tab keeps the `RAISE NOTICE`, `INFO` and `WARNING` messages of earlier runs under the last run's (the
