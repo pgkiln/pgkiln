@@ -5,8 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.91.0] - 2026-11-12
-
 ### Added
 - **An application page from a saved chart** (sprint 173, DA-6 leftover; no migration): a saved chart's page in SQL
   Workshop → Charts has *Create an application page*: choose an application of the workspace, a page number and a
@@ -15,6 +13,10 @@ All notable changes to this project are documented here. The format follows
 - **The SQL Worksheet loads the next rows as you scroll** (sprint 173, DA-3 leftover): when a SELECT has more than
   the 500 rows shown, the next 500 load when the end of the Query Result comes into view, up to 10,000. *All rows*
   stays for browsers without JavaScript, for a tab's open transaction and when running as an application's role.
+
+## [0.91.0] - 2026-11-12
+
+### Added
 - **Keep notices in the SQL Worksheet** (sprint 172, DA-5 leftover; no migration): *Keep notices of earlier runs* in
   the Notices tab keeps the `RAISE NOTICE`, `INFO` and `WARNING` messages of earlier runs under the last run's (the
   last 200, for the builder session), until *Clear notices* or the box is unticked.
