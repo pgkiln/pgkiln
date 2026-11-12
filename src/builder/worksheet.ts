@@ -689,7 +689,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
           <textarea id="ws-sql" name="sql" aria-label="SQL" class="code sql-editor" rows="14" spellcheck="false" data-code="plpgsql">${text || (isPost ? '' : 'select current_user, version();')}</textarea>
         </div>
         <div class="ws-split ws-split-h" role="separator" aria-orientation="horizontal" aria-label="${tx('ws.resize_out')}" tabindex="0" data-ws-split="out" hidden></div>
-        <div class="ws-output" data-active="${active}"${!run && !req.query?.tab ? raw(' data-empty') : ''}>
+        <div class="ws-output" data-active="${active}"${!run && !req.query?.tab && !(isPost && body.mode === 'clear_notices') ? raw(' data-empty') : ''}>
           <div class="ws-tabs" role="tablist" aria-label="${tx('ws.output')}">${TABS.map(([k]) => html`<button type="button" role="tab" id="ws-tab-${k}" aria-controls="ws-pane-${k}" aria-selected="${k === active ? 'true' : 'false'}" data-ws-tab="${k}">${tx(`ws.tab.${k}`)}</button>`)}</div>
           ${TABS.map(([k]) => html`<section class="ws-pane" id="ws-pane-${k}" role="tabpanel" aria-labelledby="ws-tab-${k}" data-pane="${k}"><h2 class="ws-pane-title">${tx(`ws.tab.${k}`)}</h2>${panes[k]}</section>`)}
         </div>

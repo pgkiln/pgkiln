@@ -114,6 +114,31 @@ describe('SQL Worksheet', () => {
     await context.close();
   });
 
+  test('(sprint 172, DA-5) Keep notices: the notices of an earlier run stay under the last run until Clear notices', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    const run = async (word: string) => {
+      await setEditor(page, `do $$ begin raise notice 'kept ${word}'; end $$`, 5);
+      await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+      await page.locator('#ws-tab-notices').click();
+    };
+    await run('zero');
+    assert.equal(await page.locator('#ws-pane-notices [data-ws-kept]').count(), 0);
+    await page.locator('#ws-pane-notices input[name=keep_notices]').check();
+    await run('one');
+    assert.ok(await page.locator('#ws-pane-notices input[name=keep_notices]').isChecked(), 'the box stays ticked');
+    assert.equal(await page.locator('#ws-pane-notices [data-ws-kept]').count(), 0, 'nothing kept from before the box was ticked');
+    await run('two');
+    assert.match(await page.locator('#ws-pane-notices .ws-notices:not([data-ws-kept])').textContent() ?? '', /kept two/);
+    assert.match(await page.locator('#ws-pane-notices [data-ws-kept]').textContent() ?? '', /kept one/);
+    await Promise.all([page.waitForNavigation(), page.locator('#ws-pane-notices button[value=clear_notices]').click()]);
+    assert.ok(await page.locator('#ws-pane-notices').isVisible(), 'Clear notices stays on the Notices tab');
+    assert.equal(await page.locator('#ws-pane-notices [data-ws-kept]').count(), 0);
+    assert.ok(await page.locator('#ws-pane-notices input[name=keep_notices]').isChecked());
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
+
   test('the navigator: another type without a reload, search, columns, a table dragged in gives a SELECT', async () => {
     const { context, page } = await builder();
     await page.goto(`${base}/builder/sql/worksheet?schema=${S}`);

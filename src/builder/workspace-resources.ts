@@ -73,7 +73,8 @@ async function fileUsers(wsId: number) {
      union all
      select substr(u.n, 18), a.alias, array_agg(p.page_no order by p.page_no)
        from meta.app a join meta.page p on p.app_id = a.id, unnest(p.static_includes) u(n)
-      where meta.app_workspace(a.id) = $1 and u.n like '#WORKSPACE\\_FILES#%' group by 1, 2`, [wsId])).rows;
+      where meta.app_workspace(a.id) = $1 and u.n like '#WORKSPACE\\_FILES#%' group by 1, 2
+      order by 2, 3 nulls first`, [wsId])).rows;
   const out = new Map<string, string[]>();
   for (const r of rows) out.set(r.name, [...(out.get(r.name) ?? []), r.pages ? `${r.alias} (page ${r.pages.join(', ')})` : r.alias]);
   return out;

@@ -34,6 +34,10 @@ All notable changes to this project are documented here. The format follows
 - **Page not found inside the builder** (sprint 171, UX-10): for a signed-in developer the page keeps the rail, the
   header search and the status bar, with a search field filled from the address and the recent applications.
 
+### Fixed
+- **Workspace files list the applications that use a file in alphabetical order** (sprint 172): the order was
+  whatever the database returned, which also made a test fail now and then.
+
 ## [0.89.0] - 2026-11-12
 
 ### Changed
