@@ -76,7 +76,7 @@ describe('builder reports at 1118 px (UX-8)', () => {
     const drawer = page.locator('details#us-create');
     await drawer.locator('summary').click();
     assert.equal(await drawer.getAttribute('open'), '');
-    assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('name')), 'username', 'the first field has the focus');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('name') === 'username', null, { timeout: 2000 }); // the first field has the focus
     await page.keyboard.press('Escape');
     assert.equal(await drawer.getAttribute('open'), null);
     await drawer.locator('summary').click();
