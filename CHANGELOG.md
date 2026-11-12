@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-11-12
+
 ### Changed
 - **Deleting an application or a page asks for its name** (sprint 171, UX-6): *Delete the application* moved from
   the Tasks to a **Danger zone** at the bottom of Settings → Definition, where the alias must be typed; *Delete page*
