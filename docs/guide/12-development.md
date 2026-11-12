@@ -106,7 +106,9 @@ src/
                            onClosePools roll back; WORKSHEET_TXN_IDLE_SECONDS / _MAX_PER_DEVELOPER / _MAX
   datamodel.ts             (sprint 98) Data Modeler diagrams: readModel() (catalog), boxSize(), fkPath() (crow's feet), autoLayout(), diagramSvg()
   changelog.ts             (sprint 106, migration 118) the change log: isSchemaDdl(), ddlTarget() (schema and object), changeName()
-                           (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers
+                           (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers;
+                           (sprint 175, migration 157) rollbackFor() / rollbackOf() (the proposed rollback), --rollback lines,
+                           flywayUndoFile() (U0001__name.sql)
   datasets.ts              (sprint 110, migration 120) Data Reporter datasets: checkDataset() (names, joins to earlier tables, columns
                            and filters on its tables, whitelisted operators; with a catalog: existing objects), datasetSql() (quoted
                            identifiers, literal values), readSchemaCatalog() (tables, views, columns, foreign keys), proposeJoin() /
@@ -488,7 +490,8 @@ src/
                            read them through meta.wizard_column_label and the meta.item trigger meta.ui_default_item
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts); (sprint 106) the Apply and record form
     changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
-                           downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded)
+                           downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded);
+                           (sprint 175) POST /sql/changes/:id/rollback (the rollback block; never run)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
                            connection's usable schemas), About Database; read only, with a timeout; /sql/utilities/monitor redirects to the SQL Monitor
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)

@@ -14049,3 +14049,48 @@ describe('sprint 174 grid column validations (CD-1)', () => {
     assert.equal(await owner.one(`select 1 as x from hr.emp where ename = 'SEC174A'`), undefined);
   });
 });
+
+describe('sprint 175 change set rollback blocks (DA-17)', () => {
+  let mine: number;
+  let theirs: number;
+  const evil = '</textarea><img src=x onerror=alert(175)>';
+  before(async () => {
+    await owner.query(`delete from meta.change_set where schema_name = 'sec175'; delete from meta.change_set_counter where schema_name = 'sec175'`);
+    const other = (await owner.one(`insert into meta.workspace (name) values ('sec175 other') returning id`))!.id;
+    mine = (await owner.one(`insert into meta.change_set (schema_name, name, author, source, sql) values ('sec175', 'mine', 'admin', 'worksheet', 'create table sec175.t (id int);') returning id::int`))!.id;
+    theirs = (await owner.one(`insert into meta.change_set (workspace_id, schema_name, name, author, source, sql) values ($1, 'sec175', 'theirs', 'x', 'worksheet', 'create table sec175.u (id int);') returning id::int`, [other]))!.id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.workspace where name = 'sec175 other'`);
+    await owner.query(`delete from meta.change_set where schema_name = 'sec175'; delete from meta.change_set_counter where schema_name = 'sec175'`);
+  });
+
+  test('CSRF; another workspace\'s change set is not found; the rollback is escaped in the page and stays text', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/changes');
+    assert.equal((await dev.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: 'forged', rollback: 'x' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/sql/changes/${theirs}/rollback`, { __csrf: dev.lastCsrf, rollback: 'drop table x' })).statusCode, 404);
+    assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [theirs]))!.rollback_sql, null);
+    assert.equal((await dev.post(`/builder/sql/changes/${theirs}/download`, { __csrf: dev.lastCsrf, undo: '1' })).statusCode, 404);
+    await dev.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: dev.lastCsrf, rollback: evil });
+    assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql, evil);
+    const page = (await dev.get('/builder/sql/changes?schema=sec175')).body;
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.match(page, /&lt;\/textarea&gt;&lt;img src=x/);
+    const king = await as('king');
+    assert.equal((await king.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: king.lastCsrf, rollback: 'x' })).headers.location, '/builder/login');
+  });
+
+  test('a rollback over a million characters is refused', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/changes');
+    const before = (await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql;
+    const res = await dev.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: dev.lastCsrf, rollback: 'x'.repeat(1_000_001) });
+    assert.ok([303, 413].includes(res.statusCode), String(res.statusCode));
+    assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql, before);
+  });
+});

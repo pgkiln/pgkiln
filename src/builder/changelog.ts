@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import pg from 'pg';
 import { filesToZip } from '../appfiles.ts';
-import { flywayFile, flywayName, liquibaseChangelog, plainScript, recordChanges, type ChangeSet } from '../changelog.ts';
+import { flywayFile, flywayName, flywayUndoFile, flywayUndoName, liquibaseChangelog, plainScript, recordChanges, type ChangeSet } from '../changelog.ts';
 import { owner } from '../db.ts';
 import { changeScript, readSchema, userSchemas } from '../ddl.ts';
 import { html, raw } from '../html.ts';
@@ -33,7 +33,7 @@ async function changeSets(s: Session, where: { schema?: string; id?: number }): 
   if (where.schema !== undefined) cond += ` and schema_name = $${params.push(where.schema)}`;
   if (where.id !== undefined) cond += ` and id = $${params.push(where.id)}`;
   return (await owner.query<ChangeSet>(
-    `select id::int, workspace_id, schema_name, seq, name, author, source, sql, object_name, created_at::text, exported_at::text
+    `select id::int, workspace_id, schema_name, seq, name, author, source, sql, object_name, created_at::text, exported_at::text, rollback_sql
        from meta.change_set where workspace_id = $1${cond} order by schema_name, seq`, params)).rows;
 }
 
@@ -75,8 +75,13 @@ async function listPage(s: Session, q: Record<string, unknown>) {
           <form method="post" action="${CHANGES}/${c.id}" class="search u-mwnone">${csrf(s)}
             <div class="field"><label class="label" for="f_name_${c.id}">${tx('scr.name')}</label><input id="f_name_${c.id}" name="name" value="${c.name}" pattern="[a-z0-9][a-z0-9_]{0,59}" required></div>
             <button class="btn btn-sm u-selfend">${tx('cl.rename')}</button></form>
+          <form method="post" action="${CHANGES}/${c.id}/rollback" class="cl-rollback">${csrf(s)}
+            <div class="field"><label class="label" for="f_rb_${c.id}">${tx('cl.rollback')}</label>
+              <textarea id="f_rb_${c.id}" name="rollback" rows="${Math.min(8, Math.max(2, (c.rollback_sql ?? '').split('\n').length))}" maxlength="1000000" spellcheck="false" class="code">${c.rollback_sql ?? ''}</textarea>
+              <small class="help">${tx('cl.rollback_help', { file: flywayUndoName(c) })}</small></div>
+            <button class="btn btn-sm">${tx('cl.rollback_save')}</button></form>
           <div class="buttons">
-            <form method="post" action="${CHANGES}/${c.id}/download" class="u-inline">${csrf(s)}<button class="btn btn-sm">${icon('download')} ${flywayName(c)}</button></form>
+            <form method="post" action="${CHANGES}/${c.id}/download" class="u-inline">${csrf(s)}<button class="btn btn-sm">${icon('download')} ${flywayName(c)}</button>${c.rollback_sql ? html` <button class="btn btn-sm" name="undo" value="1">${icon('download')} ${flywayUndoName(c)}</button>` : ''}</form>
             <form method="post" action="${CHANGES}/${c.id}/delete" class="u-inline">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('cl.delete_confirm', { n: c.seq })}">${icon('trash')} ${tx('scr.delete')}</button></form>
           </div></details></td>
         <td data-label="${tx('cl.col.author')}">${c.author}</td>
@@ -127,8 +132,15 @@ const markExported = (ids: number[]) => owner.query('update meta.change_set set 
 /** The download of change sets in a format: one file, or a zip of Flyway files. */
 function fileOf(list: ChangeSet[], format: Format, schema: string): { name: string; type: string; body: string | Buffer } {
   if (format === 'flyway') {
-    if (list.length === 1) return { name: flywayName(list[0]), type: 'application/sql; charset=utf-8', body: flywayFile(list[0]) };
-    return { name: `${schema}-migrations.zip`, type: 'application/zip', body: Buffer.from(filesToZip(new Map(list.map((c) => [flywayName(c), Buffer.from(flywayFile(c))])), `${schema}-migrations`)) };
+    // (sprint 175) a change set with a rollback also gives its undo migration (U0001__name.sql)
+    const files = new Map<string, Buffer>();
+    for (const c of list) {
+      files.set(flywayName(c), Buffer.from(flywayFile(c)));
+      const undo = flywayUndoFile(c);
+      if (undo) files.set(flywayUndoName(c), Buffer.from(undo));
+    }
+    if (files.size === 1) return { name: flywayName(list[0]), type: 'application/sql; charset=utf-8', body: flywayFile(list[0]) };
+    return { name: `${schema}-migrations.zip`, type: 'application/zip', body: Buffer.from(filesToZip(files, `${schema}-migrations`)) };
   }
   if (format === 'liquibase') return { name: `${schema}.changelog.sql`, type: 'application/sql; charset=utf-8', body: liquibaseChangelog(list) };
   return { name: `${schema}-changes.sql`, type: 'application/sql; charset=utf-8', body: plainScript(list) };
@@ -170,8 +182,27 @@ export async function changeLogRoutes(app: FastifyInstance) {
     if (!s) return;
     const c = await oneOr404(req, reply, s);
     if (!c) return;
+    const undo = req.body?.undo === '1' ? flywayUndoFile(c) : null;
+    if (undo) return reply.header('content-disposition', `attachment; filename="${safeName(flywayUndoName(c))}"`).type('application/sql; charset=utf-8').send(undo);
     await markExported([c.id]);
     return reply.header('content-disposition', `attachment; filename="${safeName(flywayName(c))}"`).type('application/sql; charset=utf-8').send(flywayFile(c));
+  });
+
+  // (sprint 175, DA-17) the rollback block of a change set: written, changed or removed (empty). It is text for the
+  // migration files; pgkiln never runs it.
+  app.post(`${CHANGES}/:id/rollback`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const c = await oneOr404(req, reply, s);
+    if (!c) return;
+    const text = String(req.body?.rollback ?? '').replace(/\r\n/g, '\n').trim();
+    if (text.length > 1_000_000) flash(s, tr(s)('cl.rollback_too_long'), 'error');
+    else {
+      await owner.query('update meta.change_set set rollback_sql = $2 where id = $1', [c.id, text || null]);
+      await logActivity({ username: s.username, event: 'change_log_rollback', ip: clientIp(req), detail: `${c.schema_name} #${c.seq} ${c.name}: ${text ? 'rollback written' : 'rollback removed'}` });
+      flash(s, tr(s)(text ? 'cl.rollback_saved' : 'cl.rollback_removed', { n: c.seq }));
+    }
+    return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema: c.schema_name })}`);
   });
 
   app.post(`${CHANGES}/:id`, async (req: Req, reply) => {

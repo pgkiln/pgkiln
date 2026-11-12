@@ -2454,6 +2454,14 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   **Flyway** versioned migrations (`V0001__add_bonus.sql`; several in a zip), a **Liquibase** formatted SQL changelog
   (`--liquibase formatted sql`, `--changeset author:0001-add_bonus`) or one plain SQL script; each change set also
   has its own Flyway file. Change sets belong to the workspace and are not part of an application export.
+  (sprint 175) A change set can carry a **rollback**: the SQL that undoes it. pgkiln proposes one when every
+  statement has a plain inverse (a table, view, index, sequence, schema, type or domain that was created is dropped;
+  an added column or named constraint is dropped; the last statement first). It proposes nothing for a drop, a
+  changed type, `create or replace`, `if not exists`, a comment or a grant, where only you know what was there
+  before: write it in the change set's **Rollback** box, or change or empty what was proposed. The rollback goes
+  into the migration files: `--rollback` lines after the change set in the Liquibase changelog, a Flyway undo
+  migration (`U0001__add_bonus.sql`, in the zip and as a button next to the change set's own file) and a comment in
+  the plain script. pgkiln never runs a rollback itself.
 - **JavaScript (MLE)**: not planned. Database Actions has a JavaScript tool for Oracle's Multilingual Engine;
   PostgreSQL runs JavaScript in the database only through the [plv8](15-extensions.md) extension. Where plv8 is
   installed, write `create function … language plv8` in the SQL Worksheet like any other function: the navigator,
