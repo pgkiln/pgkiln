@@ -1,6 +1,7 @@
 // Sprint 175 (parity leftover DA-17; migration 157): a rollback block per change set. pgkiln proposes it when every
 // statement has a plain inverse, the developer writes or changes it in SQL Workshop › Change Log, and the migration
 // files carry it: Liquibase --rollback lines, a Flyway undo migration (U0001__name.sql), a comment in plain SQL.
+// DA-11 leftover: a REST module's GET answers carry an ETag; If-None-Match with it answers 304.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -8,6 +9,8 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { flywayUndoFile, flywayUndoName, liquibaseChangelog, plainScript, rollbackFor, rollbackOf, type ChangeSet } from '../src/changelog.ts';
+import { issueApiToken } from '../src/api.ts';
+import { etagOf, noneMatch } from '../src/runtime/rest.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -139,5 +142,75 @@ describe('Change Log: rollback blocks (DA-17)', () => {
     await b.submit(`/builder/sql/changes/${one.id}/rollback`, { rollback: `drop table ${S}.emp;` });
     assert.ok(await owner.one(`select 1 as x from information_schema.tables where table_schema = $1 and table_name = 'emp'`, [S]));
     assert.equal((await b.submit('/builder/sql/changes/999999/rollback', { rollback: 'x' })).statusCode, 404);
+  });
+});
+
+describe('RESTful Services: ETags (DA-11)', () => {
+  let token = '';
+  const call = (path: string, headers: Record<string, string> = {}, method = 'GET', payload?: unknown) =>
+    app.inject({ method: method as 'GET', url: `/a/hr/rest/hr/${path}`, headers: { authorization: `Bearer ${token}`, ...(payload !== undefined ? { 'content-type': 'application/json' } : {}), ...headers }, payload: payload !== undefined ? JSON.stringify(payload) : undefined });
+  before(async () => {
+    const appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    token = (await issueApiToken(appId, 'king', 1)).token;
+  });
+  after(async () => {
+    await owner.query(`update hr.emp set photo = null, photo_mime = null, photo_name = null where empno = 7900`);
+  });
+
+  test('the tag of a content; If-None-Match lists, weak tags and *', () => {
+    const tag = etagOf('{"a":1}');
+    assert.match(tag, /^"[A-Za-z0-9_-]{32}"$/);
+    assert.equal(etagOf('{"a":1}'), tag);
+    assert.notEqual(etagOf('{"a":2}'), tag);
+    assert.equal(etagOf(Buffer.from('{"a":1}')), tag);
+    assert.equal(noneMatch(tag, tag), true);
+    assert.equal(noneMatch(`"other", W/${tag}`, tag), true);
+    assert.equal(noneMatch('*', tag), true);
+    assert.equal(noneMatch('"other"', tag), false);
+    assert.equal(noneMatch(undefined, tag), false);
+    assert.equal(noneMatch(tag.slice(1, -1), tag), false, 'a tag is quoted');
+  });
+
+  test('a single row: the tag with the row, 304 without it when the tag is sent back, the row again after a change', async () => {
+    const first = await call('emp/7839');
+    assert.equal(first.statusCode, 200);
+    const tag = String(first.headers.etag);
+    assert.equal(tag, etagOf(first.body));
+    const again = await call('emp/7839', { 'if-none-match': tag });
+    assert.equal(again.statusCode, 304);
+    assert.equal(again.body, '');
+    assert.equal(again.headers.etag, tag);
+    assert.equal((await call('emp/7839', { 'if-none-match': '"something-else"' })).statusCode, 200);
+    const hired = (await owner.one('select hiredate::text from hr.emp where empno = 7839')).hiredate;
+    await owner.query(`update hr.emp set hiredate = hiredate - 1 where empno = 7839`);
+    try {
+      const changed = await call('emp/7839', { 'if-none-match': tag });
+      assert.equal(changed.statusCode, 200);
+      assert.notEqual(changed.headers.etag, tag);
+    } finally {
+      await owner.query('update hr.emp set hiredate = $1 where empno = 7839', [hired]);
+    }
+  });
+
+  test('the tag never replaces the checks: no token is 401, a missing row 404, whatever tag is sent', async () => {
+    const tag = String((await call('emp/7839')).headers.etag);
+    assert.equal((await app.inject({ method: 'GET', url: '/a/hr/rest/hr/emp/7839', headers: { 'if-none-match': tag } })).statusCode, 401);
+    assert.equal((await app.inject({ method: 'GET', url: '/a/hr/rest/hr/emp/7839', headers: { 'if-none-match': '*' } })).statusCode, 401);
+    assert.equal((await call('emp/1', { 'if-none-match': '*' })).statusCode, 404);
+  });
+
+  test('media has a tag too; a collection is streamed and has none', async () => {
+    await owner.query(`update hr.emp set photo = $1, photo_mime = 'image/png', photo_name = 'p.png' where empno = 7900`, [Buffer.from('not really a png')]);
+    const photo = await call('emp/7900/photo');
+    assert.equal(photo.statusCode, 200);
+    const tag = String(photo.headers.etag);
+    assert.equal(tag, etagOf(Buffer.from('not really a png')));
+    assert.equal(photo.headers['x-content-type-options'], 'nosniff');
+    const again = await call('emp/7900/photo', { 'if-none-match': tag });
+    assert.equal(again.statusCode, 304);
+    assert.equal(again.rawPayload.length, 0);
+    const list = await call('emp?limit=2');
+    assert.equal(list.statusCode, 200);
+    assert.equal(list.headers.etag, undefined);
   });
 });

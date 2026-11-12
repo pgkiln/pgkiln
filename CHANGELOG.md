@@ -16,6 +16,10 @@ All notable changes to this project are documented here. The format follows
   was created is dropped, an added column or named constraint is dropped) and you write or change it in the change
   set's *Rollback* box. Downloads carry it: `--rollback` lines in the Liquibase changelog, a Flyway undo migration
   (`U0001__add_bonus.sql`) and a comment in the plain script. pgkiln never runs a rollback.
+- **ETags in RESTful Services** (sprint 175, DA-11 leftover; no migration): a REST module's GET answer (single row,
+  SQL, PL/pgSQL, media) carries an `ETag` of its content, and a request with that tag in `If-None-Match` answers
+  `304 Not Modified` without the content. The handler still runs first, so the token, roles and row level security
+  are checked as before. Collections are streamed and carry no tag.
 - **An application page from a saved chart** (sprint 173, DA-6 leftover; no migration): a saved chart's page in SQL
   Workshop → Charts has *Create an application page*: choose an application of the workspace, a page number and a
   name, and the page is made with a Chart region (the chart's SELECT, its label and value columns, its type) and,

@@ -8,6 +8,7 @@ import { owner, runtime } from '../db.ts';
 import { english } from '../i18n.ts';
 import { loadApp, type App } from '../metadata.ts';
 import { clientIp } from '../session.ts';
+import { createHash } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import { publicError, writeOut } from './context.ts';
 import { DO_TAG, HandlerInputError, mediaResponse, runPlpgsql, setBinds } from './rest-handlers.ts';
@@ -195,6 +196,15 @@ export async function restServicesOn(appId: number) {
   return r?.on !== false;
 }
 
+/** (sprint 175) A strong ETag of a response's content. */
+export const etagOf = (content: Buffer | string) => `"${createHash('sha256').update(content).digest('base64url').slice(0, 32)}"`;
+/** Whether an If-None-Match header names the tag (a list of tags, weak ones too, or *). */
+export function noneMatch(header: string | string[] | undefined, tag: string): boolean {
+  const value = Array.isArray(header) ? header.join(',') : header;
+  if (!value || value.length > 4000) return false;
+  return value.split(',').map((x) => x.trim().replace(/^W\//, '')).some((x) => x === '*' || x === tag);
+}
+
 async function handle(req: FastifyRequest, reply: FastifyReply) {
   const { alias, module: name } = req.params as { alias: string; module: string };
   const sub = ((req.params as Record<string, string>)['*'] ?? '').replace(/\/+$/, '');
@@ -293,7 +303,19 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       return row ? { status: h.status ?? (req.method === 'POST' ? 201 : 200), body: row } : { status: 204, body: undefined };
     });
     if ('streamed' in result) return reply;
-    if ('media' in result && result.media) return reply.code(200).headers(result.media.headers).send(result.media.body);
+    // (sprint 175, DA-11) a GET's answer carries an ETag of its content; If-None-Match with that tag answers 304
+    // without the content. The handler has run by then (authorization and the query): only the transfer is saved.
+    if ('media' in result && result.media) {
+      const tag = etagOf(result.media.body);
+      if (req.method === 'GET' && noneMatch(req.headers['if-none-match'], tag)) return reply.code(304).header('etag', tag).header('cache-control', 'no-store').send();
+      return reply.code(200).headers(result.media.headers).header('etag', tag).send(result.media.body);
+    }
+    if (req.method === 'GET' && result.status === 200 && result.body !== undefined) {
+      const text = JSON.stringify(result.body);
+      const tag = etagOf(text);
+      if (noneMatch(req.headers['if-none-match'], tag)) return reply.code(304).header('etag', tag).send();
+      return reply.code(200).header('etag', tag).type('application/json; charset=utf-8').send(text);
+    }
     return result.body === undefined ? reply.code(result.status === 204 || result.status < 200 ? 204 : result.status).send() : reply.code(result.status).send(result.body);
   } catch (e) {
     if (e instanceof RestError) return reply.code(e.status).send({ error: e.message });

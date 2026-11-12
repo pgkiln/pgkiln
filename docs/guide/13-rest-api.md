@@ -102,6 +102,18 @@ message and rolls back. Statements without `begin … end` are wrapped in one.
 `filename`; the response is that content, sent with `X-Content-Type-Options: nosniff` and a sandboxing
 Content-Security-Policy, so HTML or SVG from a table can't run script in the application's origin. No row: 404.
 
+**ETags** (sprint 175). The answer of a single row, SQL, PL/pgSQL or media GET carries an `ETag` header: a tag of
+its content. A client that kept the answer sends the tag back in `If-None-Match` and gets `304 Not Modified`
+without the content when nothing changed, or the new content with a new tag. The handler runs either way (the
+token, the module privilege, the roles and row level security are checked first), so a tag never gives access:
+it only saves the transfer. Collections are streamed and carry no tag.
+
+```bash
+curl -i http://127.0.0.1:3100/a/hr/rest/hr/emp/7839 -H "Authorization: Bearer $TOKEN"        # ETag: "Zk3…"
+curl -i http://127.0.0.1:3100/a/hr/rest/hr/emp/7839 -H "Authorization: Bearer $TOKEN" \
+     -H 'If-None-Match: "Zk3…"'                                                              # 304 Not Modified
+```
+
 **Try it.** A handler's page sends a request to the real endpoint, with path parameters, a query string and a JSON
 body, either without a token (to see the 401) or *as* an account of the application with a short-lived token (the
 same as issuing one on App → REST API). A PUT, POST or DELETE changes data. The response's status and body are

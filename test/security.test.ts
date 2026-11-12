@@ -14094,3 +14094,52 @@ describe('sprint 175 change set rollback blocks (DA-17)', () => {
     assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql, before);
   });
 });
+
+describe('sprint 175 ETags of REST module answers (DA-11)', () => {
+  let king = '';
+  let allen = '';
+  const get = (path: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url: `/a/hr/rest/hr/${path}`, headers });
+  before(async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    const appId = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    king = (await issueApiToken(appId, 'king', 1)).token;
+    allen = (await issueApiToken(appId, 'allen', 1)).token;
+  });
+
+  test('a tag is no credential: without a token 401, with a bad token 401, whatever If-None-Match says', async () => {
+    const tag = String((await get('emp/7839', { authorization: `Bearer ${king}` })).headers.etag);
+    assert.match(tag, /^"[A-Za-z0-9_-]{32}"$/);
+    for (const value of [tag, '*', `W/${tag}`]) {
+      const anonymous = await get('emp/7839', { 'if-none-match': value });
+      assert.equal(anonymous.statusCode, 401, value);
+      assert.equal(anonymous.headers.etag, undefined);
+      assert.equal((await get('emp/7839', { authorization: 'Bearer nonsense', 'if-none-match': value })).statusCode, 401, value);
+    }
+  });
+
+  test('304 only for what the caller may read: the handler runs first (roles, row level security, 404)', async () => {
+    const mine = await get('emp/7839', { authorization: `Bearer ${king}` });
+    const tag = String(mine.headers.etag);
+    // another account, with king's tag: the same answer as without it, unless its own row is that very content
+    const plain = await get('emp/7839', { authorization: `Bearer ${allen}` });
+    const tagged = await get('emp/7839', { authorization: `Bearer ${allen}`, 'if-none-match': tag });
+    if (plain.statusCode === 200 && plain.body === mine.body) assert.equal(tagged.statusCode, 304);
+    else assert.equal(tagged.statusCode, plain.statusCode);
+    // a handler for managers and administrators stays refused for an employee; a missing row stays 404
+    const refused = await get('payroll/10', { authorization: `Bearer ${allen}` });
+    assert.equal((await get('payroll/10', { authorization: `Bearer ${allen}`, 'if-none-match': '*' })).statusCode, refused.statusCode);
+    assert.ok(refused.statusCode === 403 || refused.statusCode === 404, String(refused.statusCode));
+    assert.equal((await get('emp/1', { authorization: `Bearer ${king}`, 'if-none-match': '*' })).statusCode, 404);
+  });
+
+  test('304 carries no content; the header is not echoed; a very long header is ignored', async () => {
+    const tag = String((await get('emp/7839', { authorization: `Bearer ${king}` })).headers.etag);
+    const same = await get('emp/7839', { authorization: `Bearer ${king}`, 'if-none-match': `"<script>alert(175)</script>", ${tag}` });
+    assert.equal(same.statusCode, 304);
+    assert.equal(same.rawPayload.length, 0);
+    assert.equal(same.headers.etag, tag);
+    const long = await get('emp/7839', { authorization: `Bearer ${king}`, 'if-none-match': `${'"x", '.repeat(900)}${tag}` });
+    assert.equal(long.statusCode, 200);
+    assert.equal(long.headers.etag, tag);
+  });
+});

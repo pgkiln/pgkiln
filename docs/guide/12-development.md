@@ -273,6 +273,7 @@ src/
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
     rest.ts                REST modules: handler and template checks, matching, bearer tokens, module privilege, the constrained-role
                            check, execution (collections stream from a cursor), OpenAPI (templates, documented parameters, roles)
+                           (sprint 175) etagOf() / noneMatch(): an ETag on a GET's answer, 304 for If-None-Match (after the handler ran)
     rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
                            handlers (content type and file name cleaned, sandboxed response)
     autorest.ts            (sprint 100, migration 113) AutoREST: /a/:alias/autorest/<object>/ for the tables and views SQL Workshop →
