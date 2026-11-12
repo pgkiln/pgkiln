@@ -97,7 +97,7 @@ describe('Workflow Console draws its instances with the Workflow Diagram (CD-7)'
     assert.equal((await king.login('king')).statusCode, 303);
     await king.get('/a/hr/28');
     await king.submit('/a/hr/28', { P28_EMPNO: '7839', __request: 'ONBOARD' });
-    const id = (await owner.one(`select id::text from meta.workflow where app_id = $1 and initiator = 'king' order by id desc limit 1`, [appId]))?.id;
+    const id = (await owner.one(`select max(id)::text as id from meta.workflow where app_id = $1 and initiator = 'king'`, [appId]))?.id;
     assert.ok(id, 'an instance was started');
     const body = (await king.get('/a/hr/14')).body;
     const diagram = itemOf(body, id);
@@ -108,7 +108,7 @@ describe('Workflow Console draws its instances with the Workflow Diagram (CD-7)'
   });
 
   test('a finished instance keeps its diagram, with the steps it went through', async () => {
-    const id = (await owner.one(`select id::text from meta.workflow where app_id = $1 and initiator = 'king' order by id desc limit 1`, [appId]))?.id;
+    const id = (await owner.one(`select max(id)::text as id from meta.workflow where app_id = $1 and initiator = 'king'`, [appId]))?.id;
     assert.ok(id);
     await owner.query(`update meta.workflow set state = 'terminated', ended_at = now() where id = $1`, [id]);
     const king = new Browser(app);
