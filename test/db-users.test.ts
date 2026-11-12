@@ -289,7 +289,8 @@ describe('Database Users pages', () => {
   test('the tool is on the Launchpad (Administration) and in the Administration menu, for administrators', async () => {
     const b = await admin();
     const home = (await b.get('/builder/sql')).body;
-    assert.match(home, /<a href="\/builder\/db-users">/);
-    assert.match(home, /href="\/builder\/db-users">.{0,200}Database users/s);
+    assert.match(home, /href="\/builder\/db-users"[^>]*>.{0,300}Database users/is);
+    // (UX-3, UX-4) Administration is a page of the rail now, not a menu
+    assert.match((await b.get('/builder/utilities')).body, /href="\/builder\/db-users"/);
   });
 });

@@ -33,7 +33,7 @@ async function admin(lang: string) {
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 const SCREENS: [string, string[]][] = [
-  ['/builder/utilities', ['wu.title', 'wu.users', 'wu.ai_text', 'wu.cross_app']],
+  ['/builder/utilities', ['rail.admin', 'wu.sec.people', 'wu.users', 'wu.ai_text', 'wu.cross_app']],
   ['/builder/dashboard', ['wd.title', 'wd.per_app', 'wd.col.views_week']],
   ['/builder/mail-queue', ['mq.title', 'mq.per_hour', 'mq.failures', 'mq.stat.delivered']],
   ['/builder/network', ['na.title', 'na.outgoing', 'na.refusals', 'na.check']],

@@ -7528,4 +7528,18 @@ export const en = {
   'ws.check_title': 'Plan the SQL without running it, as the Advisor does',
   'ws.key.indent': 'Indent (Esc, then Tab: next field)',
   'ws.search_path_plain': '{schema} first in the search path',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': 'Show labels',
+  'rail.labels_hide': 'Hide labels',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': 'Filter the utilities',
+  'wu.filter_none': 'Nothing matches the filter.',
+  'wu.sec.people': 'People and sign-in',
+  'wu.sec.connections': 'Connections',
+  'wu.sec.data': 'Data and AI',
+  'wu.sec.operations': 'Operations',
+  'wu.sec.workspace': 'Workspace {name}',
+  'wu.sec.instance': 'Instance',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': 'Needs attention',
 } as const;

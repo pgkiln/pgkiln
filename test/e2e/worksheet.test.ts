@@ -365,6 +365,19 @@ describe('SQL Worksheet', () => {
     await context.close();
   });
 
+  test('(UX-14) the Launchpad lists each recent page once, never itself or a pinned one', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/changes`);
+    await page.goto(`${base}/builder/sql/changes?schema=hr`);
+    await page.goto(`${base}/builder/sql/scripts`);
+    await page.goto(`${base}/builder/sql`);
+    const chips = await page.locator('[data-lp-recent] a').evaluateAll((as) => as.map((a) => a.getAttribute('href')!.split('?')[0]));
+    assert.equal(chips.filter((h) => h === '/builder/sql/changes').length, 1, chips.join(' '));
+    assert.ok(!chips.includes('/builder/sql'), 'not the Launchpad itself');
+    assert.equal(new Set(chips).size, chips.length, 'each page once');
+    await context.close();
+  });
+
   test('(sprint 97) Ctrl+F11 draws the last query; changing the type draws it again', async () => {
     const { context, page } = await builder();
     await page.goto(`${base}/builder/sql/worksheet`);

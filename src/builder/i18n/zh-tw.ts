@@ -7524,4 +7524,18 @@ export const zhTW: BuilderMessages = {
   'ws.check_title': '像 Advisor 一樣規劃 SQL 而不執行',
   'ws.key.indent': '縮排（先按 Esc 再按 Tab：下一個欄位）',
   'ws.search_path_plain': '{schema} 位於搜尋路徑首位',
+  // ------------------------------------------------------------ Rail labels (UX-3)
+  'rail.labels_show': '顯示標籤',
+  'rail.labels_hide': '隱藏標籤',
+  // ------------------------------------------------------------ Administration page (UX-4)
+  'wu.filter': '篩選公用程式',
+  'wu.filter_none': '沒有符合篩選條件的項目。',
+  'wu.sec.people': '人員與登入',
+  'wu.sec.connections': '連線',
+  'wu.sec.data': '資料與 AI',
+  'wu.sec.operations': '維運',
+  'wu.sec.workspace': '工作區 {name}',
+  'wu.sec.instance': '執行個體',
+  // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
+  'wh.attention': '需要注意',
 };

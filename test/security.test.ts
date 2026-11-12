@@ -13816,3 +13816,18 @@ describe('sprint 168 every page offline: prefetched pages', () => {
     assert.notEqual(res.statusCode, 200, 'signed out: no page to keep');
   });
 });
+
+describe('sprint 170 the rail labels toggle', () => {
+  test('needs a developer and the CSRF token, and only goes back to a builder page of this host', async () => {
+    assert.equal((await new Browser().post('/builder/rail', { labels: 'labels' })).headers.location, '/builder/login', 'signed out');
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/apps');
+    assert.equal((await dev.post('/builder/rail', { labels: 'labels' })).statusCode, 403, 'no CSRF token');
+    const cookie = [...dev.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+    for (const referer of ['https://evil.example/builder/apps', 'javascript:alert(1)', '//evil.example/builder'])
+      assert.equal((await app.inject({ method: 'POST', url: '/builder/rail', payload: new URLSearchParams({ __csrf: dev.lastCsrf, labels: 'labels' }).toString(),
+        headers: { 'content-type': 'application/x-www-form-urlencoded', cookie, referer } })).headers.location, '/builder/home', referer);
+  });
+});

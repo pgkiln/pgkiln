@@ -9,7 +9,7 @@ import { migrate } from '../migrate.ts';
 import { clientIp, logActivity } from '../session.ts';
 import { openBlueprint } from './blueprints.ts';
 import { isAdmin } from './locks.ts';
-import { back, BASE, csrf, developer, flash, send, shell, type Req } from './ui.ts';
+import { back, BASE, csrf, developer, flash, pageHeader, send, shell, type Req } from './ui.ts';
 import { currentWorkspace, inWorkspaceSql, placeApp } from './workspaces.ts';
 import { workspacesChanged } from '../workspace-db.ts';
 import { scopedTx as tx, type BuilderKey } from './i18n.ts';
@@ -104,7 +104,7 @@ export async function galleryRoutes(app: FastifyInstance) {
     const tabs = html`<nav class="gal-tabs segmented" aria-label="${tx('gal.kinds')}">${TABS.map(([t, l]) =>
       html`<a href="${BASE}/gallery?tab=${t}${q ? `&q=${encodeURIComponent(q)}` : ''}"${tab === t ? raw(' aria-current="page"') : ''}>${tx(l)} <span class="gal-count">${counts[t]}</span></a>`)}</nav>`;
     const blueprintCard = (kind: 'starters' | 'utilities') => (x: Starter) => card(x.icon, x.title, 'pgkiln', x.description,
-      html`<form method="post" action="${BASE}/gallery/${kind}/${x.key}">${csrf(s)}<button class="btn btn-hot btn-sm">${tx('gal.install')}</button></form>`);
+      html`<form method="post" action="${BASE}/gallery/${kind}/${x.key}">${csrf(s)}<button class="btn btn-sm">${tx('gal.install')}</button></form>`);
     const cards =
       tab === 'samples'
         ? samples.filter(matches).map((x) => {
@@ -115,13 +115,13 @@ export async function galleryRoutes(app: FastifyInstance) {
                     ? html`<a class="btn btn-sm" href="${BASE}/apps/${it.id}">${tx('gal.edit')}</a>`
                     : html`<span class="muted small">${tx('gal.other_workspace')}</span>`}`
                 : admin
-                  ? html`<form method="post" action="${BASE}/gallery/samples/${x.key}">${csrf(s)}<button class="btn btn-hot btn-sm" data-confirm="${tx('gal.confirm_install', { title: x.title })}">${tx('gal.install')}</button></form>`
+                  ? html`<form method="post" action="${BASE}/gallery/samples/${x.key}">${csrf(s)}<button class="btn btn-sm" data-confirm="${tx('gal.confirm_install', { title: x.title })}">${tx('gal.install')}</button></form>`
                   : html`<span class="muted small">${tx('gal.admin_installs')}</span>`);
           })
         : tab === 'starters' || tab === 'utilities'
           ? (tab === 'starters' ? starters : utilities).filter(matches).map(blueprintCard(tab))
           : custom.filter(matches).map((x) => card('copy', x.name, tx('gal.this_workspace'), x.description ?? tx('gal.boilerplate_desc'),
-              html`<a class="btn btn-hot btn-sm" href="${BASE}/create?boilerplate=${x.id}">${tx('gal.create_from')}</a><a class="btn btn-sm" href="${BASE}/apps/${x.id}">${tx('gal.edit')}</a>`));
+              html`<a class="btn btn-sm" href="${BASE}/create?boilerplate=${x.id}">${tx('gal.create_from')}</a><a class="btn btn-sm" href="${BASE}/apps/${x.id}">${tx('gal.edit')}</a>`));
     const empty = q && counts[tab]
       ? html`<p class="muted">${tx.rich('gal.no_match', { q: html`<strong>${q}</strong>` })} <a href="${BASE}/gallery?tab=${tab}">${tx('gal.show_all')}</a></p>`
       : tab === 'custom'
@@ -129,13 +129,13 @@ export async function galleryRoutes(app: FastifyInstance) {
         : html`<p class="muted">${tx('gal.empty')}</p>`;
     const intro = tx(({ samples: 'gal.intro.samples', starters: 'gal.intro.starters', utilities: 'gal.intro.utilities', custom: 'gal.intro.custom' } as const)[tab]);
     const main = html`<div class="gal">
+      ${pageHeader(tx('rail.gallery'))}
       <div class="gal-bar">
         <form class="ab-search gal-search" role="search" method="get" action="${BASE}/gallery"><label class="sr-only" for="gal-q">${tx('gal.search')}</label>${icon('search')}
           <input type="hidden" name="tab" value="${tab}">
           <input id="gal-q" name="q" type="search" placeholder="${tx('gal.search')}" autocomplete="off" value="${q}" data-filter-list=".gal [data-filter-row]"></form>
         ${tabs}
       </div>
-      <h1 class="sr-only">${tx('rail.gallery')}</h1>
       <p class="muted">${intro}</p>
       ${cards.length ? html`<div class="gal-grid">${cards}</div>` : empty}
     </div>`;

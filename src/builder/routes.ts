@@ -540,6 +540,24 @@ export async function builderRoutes(app: FastifyInstance) {
     return reply.redirect(`${BASE}/login`, 303);
   });
 
+  // (UX-3) the icon rail with labels next to the icons, or icons only (kept in the developer's session)
+  app.post(`${BASE}/rail`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    if (req.body?.labels === 'labels') s.state.__RAIL = 'labels';
+    else delete s.state.__RAIL;
+    const ref = String(req.headers.referer ?? '');
+    let to = `${BASE}/home`;
+    try {
+      const u = new URL(ref);
+      if (u.host === req.headers.host && u.pathname.startsWith(BASE)) to = u.pathname + u.search;
+    } catch {
+      /* no referer: the home page */
+    }
+    await saveState(s);
+    return reply.redirect(to, 303);
+  });
+
   // The builder's light/dark theme (the developer's menu in the icon rail).
   app.post(`${BASE}/theme`, async (req: Req, reply) => {
     const s = await developer(req, reply);
@@ -654,7 +672,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const tx = tr(s);
 
     const main = html`
-      ${appHeader(a, 'pages', s)}
+      ${appHeader(a, 'pages', s, [`${BASE}/apps/${a.id}/create-page`, tx('app.create_page'), 'plus'])}
       ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} ${tx('app.lock_refused')}</div>` : ''}
       <div class="app-home">
       <div class="app-home-main">
@@ -664,7 +682,6 @@ export async function builderRoutes(app: FastifyInstance) {
           <button class="btn">${icon('search')}<span class="sr-only">${tx('common.search')}</span></button></form>
         <div class="seg view-toggle" role="group" aria-label="${tx('ab.view')}">
           <a href="${keep({})}"${icons ? '' : raw(' aria-current="true"')}>${icon('list')} ${tx('ab.view_report')}</a><a href="${keep({ view: 'icons' })}"${icons ? raw(' aria-current="true"') : ''}>${icon('grid')} ${tx('app.view_icons')}</a></div>
-        <a class="btn btn-hot" href="${BASE}/apps/${a.id}/create-page">${icon('plus')} ${tx('app.create_page')}</a>
       </div>
       ${region(tx('app.tab.pages'), html`${grouped
           ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">${tx('app.page_group')}</label>
@@ -690,7 +707,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('kind', tx('app.page_type'), 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, kindLabel(k, label)]))}
               ${select('table', tx('app.table_or_view'), '', tables.map((t): [string, string] => [t.t, t.access ? t.t : tx('app.no_access', { table: t.t, role: a.db_role })]))}
             </div>
-            <div class="buttons"><button class="btn btn-hot">${tx('common.next')}</button></div>
+            <div class="buttons"><button class="btn">${tx('common.next')}</button></div>
           </form>
           <p><a href="${BASE}/apps/${a.id}/create-page">${tx('app.all_page_types')} ▸</a></p>
           <p><a href="${BASE}/apps/${a.id}/ai-pages">${tx('app.ai_pages')} ▸</a> <span class="muted">${tx('app.ai_pages_note')}</span></p>`)}
@@ -702,25 +719,19 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('mode', tx('app.col.mode'), 'normal', ['normal', 'modal'])}
               ${input('parent_page', tx('app.parent'), a.home_page, { type: 'number' })}
             </div>
-            <div class="buttons"><button class="btn btn-hot">${tx('app.create_page')}</button></div>
+            <div class="buttons"><button class="btn">${tx('app.create_page')}</button></div>
           </form>`)}
       </div>
       </div>
       <aside class="app-tasks region region-standard" aria-labelledby="app-tasks-h"><header class="region-header"><h2 id="app-tasks-h">${tx('common.tasks')}</h2></header>
         <ul class="sc-links">
-          <li><a href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('app.task.run')}</a></li>
-          <li><a href="${BASE}/apps/${a.id}/create-page">${icon('plus')} ${tx('app.create_page')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/create-page?tab=feature">${icon('puzzle')} ${tx('app.task.add_feature')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/create-page?tab=copy">${icon('copy')} ${tx('app.task.copy_page')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/ai-pages">${icon('lightbulb')} ${tx('app.ai_pages')}</a></li>
-          <li><a href="${BASE}/apps/${a.id}/shared">${icon('layers')} ${tx('app.tab.shared')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/shared?type=page_group">${icon('folder')} ${tx('app.task.page_groups')}</a></li>
-          <li><a href="${BASE}/apps/${a.id}/export">${icon('download')} ${tx('app.head.export')}</a></li>
-          <li><a href="${BASE}/apps/${a.id}/backups">${icon('history')} ${tx('app.head.backups')}</a></li>
           <li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('database')} ${tx('app.task.supporting')}</a></li>
           <li><a href="#app-lock">${icon('lock')} ${tx('app.task.lock')}</a></li>
           ${issues.task}
-          <li><a href="${BASE}/apps/${a.id}/settings?tab=definition">${icon('trash')} ${tx('app.task.delete')}</a></li>
         </ul></aside>
       </div>`;
     return send(reply, s, shell(s, a.name, [[tx('rte.app_builder'), BASE], [a.name]], main));

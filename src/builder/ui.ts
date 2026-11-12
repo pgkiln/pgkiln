@@ -50,7 +50,24 @@ export async function send(reply: FastifyReply, s: Session, body: string) {
   return reply.type('text/html').send(body);
 }
 
-export type Section = 'home' | 'apps' | 'users' | 'sql' | 'developers' | 'gallery' | 'reporter' | 'team';
+export type Section = 'home' | 'apps' | 'users' | 'sql' | 'developers' | 'gallery' | 'reporter' | 'team' | 'admin';
+
+/**
+ * (UX-3) The rail's current section, from the request's path: one rule for every builder page, so a page doesn't have
+ * to name it (and can't name the wrong one). Administration: the workspace utilities and what they lead to.
+ */
+const ADMIN_PATHS = /^\/builder\/(utilities|users|developers|workspaces?|workspace-(?:import|export|files|credentials)|instance|installation|mail|mail-queue|network|dashboard|telemetry|ui-defaults|icons|vector-providers|ai|sso|backups|db-users|remote-servers|remote-databases|rest-catalogs|app-groups|cross-app)(?:[/?#]|$)/;
+export function sectionOf(path: string | undefined, fallback: Section): Section {
+  if (!path) return fallback;
+  if (/^\/builder\/home(?:[/?#]|$)/.test(path)) return 'home';
+  if (/^\/builder\/sql(?:[/?#]|$)/.test(path)) return 'sql';
+  if (/^\/builder\/(gallery)(?:[/?#]|$)/.test(path)) return 'gallery';
+  if (/^\/builder\/reporter(?:[/?#]|$)/.test(path)) return 'reporter';
+  if (/^\/builder\/team(?:[/?#]|$)/.test(path)) return 'team';
+  if (ADMIN_PATHS.test(path)) return 'admin';
+  if (/^\/builder\/(apps|pages|create|import|blueprints|working-copies)(?:[/?#]|$)/.test(path)) return 'apps';
+  return fallback;
+}
 
 // ------------------------------------------------------------------ builder head
 // Builder-only stylesheets and scripts, loaded on every builder page after
@@ -100,14 +117,15 @@ const initials = (name: string) => name.replace(/[^\p{L}\p{N}]+/gu, ' ').trim().
  * Administration, Help, the developer's menu), an environment banner (091), a compact toolbar with
  * back button and breadcrumb, then the page itself.
  */
-export function shell(s: Session, title: string, crumbs: [string, string?][], main: Raw, section: Section = 'apps', opts: ShellOpts = {}) {
+export function shell(s: Session, title: string, crumbs: [string, string?][], main: Raw, pageSection: Section = 'apps', opts: ShellOpts = {}) {
+  // (UX-3) the rail's current entry follows the request's path; a page's own choice only where the path says nothing
+  const section = sectionOf(s.path, pageSection);
+  const railLabels = s.state.__RAIL === 'labels';
   const ok = takeFlash(s, '__FLASH');
   const err = takeFlash(s, '__ERROR');
   const theme = builderTheme(s);
   // (sprint 121) the developer's builder language (i18n.ts); known English breadcrumb labels are translated here
   const tx = tr(s);
-  // the application these pages belong to (for the Search entry), from the breadcrumb
-  const appId = crumbs.map(([, href]) => /^\/builder\/apps\/(\d+)$/.exec(href ?? '')?.[1]).find(Boolean);
   const rail = (key: Section | 'search' | 'help', href: string, ic: string, label: string, extra: Raw | '' = '') =>
     html`<li><a href="${href}" class="rail-link" title="${label}"${section === key ? raw(' aria-current="page"') : ''}${extra}>${bicon(ic)}<span class="rail-label">${label}</span></a></li>`;
   // (sprint 74) the default-password warning: on the Workspace home (sprint 109), the App Builder home and the Developers page only, until
@@ -131,40 +149,16 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
         ${rail('gallery', `${BASE}/gallery`, 'package', tx('rail.gallery'))}
         ${rail('reporter', `${BASE}/reporter`, 'pie-chart', tx('rail.reporter'))}
         ${rail('team', `${BASE}/team`, 'kanban', tx('rail.team'))}
-        ${appId ? rail('search', `${BASE}/apps/${appId}/search`, 'search', tx('rail.search_app')) : ''}
+        ${rail('admin', `${BASE}/utilities`, 'settings', tx('rail.admin'))}
       </ul>
       <ul class="rail-list rail-bottom">
-        <li><details class="menu rail-user rail-admin">
-          <summary class="rail-link${section === 'users' || section === 'developers' ? ' rail-open' : ''}" title="${tx('rail.admin')}"${section === 'users' || section === 'developers' ? raw(' aria-current="page"') : ''}>${icon('settings')}<span class="rail-label">${tx('rail.admin')}</span></summary>
-          <div class="menu-panel">
-            <div class="menu-section menu-links">
-              <strong>${tx('rail.admin')}</strong>
-              <a href="${BASE}/utilities">${icon('grid')} ${tx('admin.utilities')}</a>
-            </div>
-            ${s.workspace?.admin ? html`<div class="menu-section menu-links">
-              <span class="small muted">${tx('admin.manage_service', { name: s.workspace.name })}</span>
-              <a href="${BASE}/workspaces/${s.workspace.id}#service">${icon('bell')} ${tx('admin.ws_message')}</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}#preferences">${icon('sliders-horizontal')} ${tx('admin.ws_prefs')}</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}#links">${icon('external-link')} ${tx('admin.ext_links')}</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}/utilization">${icon('chart')} ${tx('admin.utilization')}</a>
-              <a href="${BASE}/mail-queue">${icon('inbox')} ${tx('admin.mail_queue')}</a>
-              <a href="${BASE}/network">${icon('globe')} ${tx('admin.network')}</a>
-              <a href="${BASE}/workspaces/${s.workspace.id}">${icon('layers')} ${tx('admin.ws_devs')}</a>
-            </div>` : ''}
-            <div class="menu-section menu-links">
-              <a href="${BASE}/users">${icon('user')} ${tx('admin.users')}</a>
-              <a href="${BASE}/developers">${icon('users')} ${tx('admin.developers')}</a>
-              <a href="${BASE}/dashboard">${icon('activity')} ${tx('admin.monitor')}</a>
-              ${s.instanceAdmin ? html`<a href="${BASE}/db-users">${icon('key')} ${tx('admin.db_users')}</a>` : ''}
-              <a href="${BASE}/developers">${icon('key')} ${tx('admin.change_my_password')}</a>
-            </div>
-          </div></details></li>
         ${s.workspace?.links?.length ? html`<li><details class="menu rail-user rail-admin rail-extensions">
           <summary class="rail-link" title="${tx('rail.extensions')}">${icon('puzzle')}<span class="rail-label">${tx('rail.extensions')}</span></summary>
           <div class="menu-panel"><div class="menu-section menu-links"><strong>${tx('rail.extensions')}</strong>
             ${s.workspace.links.map((l) => html`<a href="${l.url}" target="_blank" rel="noopener noreferrer"${l.description ? html` title="${l.description}"` : ''}>${icon('external-link')} ${l.label}</a>`)}
           </div></div></details></li>` : ''}
         ${rail('help', 'https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md', 'help', tx('rail.help'), raw(' target="_blank" rel="noopener"'))}
+        <li><form method="post" action="${BASE}/rail">${csrf(s)}<button class="rail-link rail-toggle" name="labels" value="${railLabels ? '' : 'labels'}" title="${tx(railLabels ? 'rail.labels_hide' : 'rail.labels_show')}" aria-pressed="${railLabels ? 'true' : 'false'}">${bicon(railLabels ? 'left' : 'right')}<span class="rail-label">${tx(railLabels ? 'rail.labels_hide' : 'rail.labels_show')}</span></button></form></li>
         <li><details class="menu rail-user">
           <summary class="rail-avatar${weak ? ' has-dot' : ''}" title="${weak ? tx('user.weak_title', { user: s.username }) : s.username}"><span aria-hidden="true">${initials(s.username ?? '')}</span><span class="sr-only">${tx(weak ? 'user.account_weak' : 'user.account', { user: s.username })}</span></summary>
           <div class="menu-panel">
@@ -213,7 +207,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       </footer>
     </div>
     <div id="builder-texts" hidden data-texts="${JSON.stringify(clientTexts(tx.lang))}"></div>`,
-    `builder-body ide${opts.full ? ' ide-full' : ''}`,
+    `builder-body ide${opts.full ? ' ide-full' : ''}${railLabels ? ' rail-labels' : ''}`,
     {},
     builderHead(),
     { theme, lang: tx.lang },
@@ -224,6 +218,23 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
 export const BANNER_COLORS = ['red', 'orange', 'yellow', 'green', 'teal', 'blue', 'purple', 'gray'];
 
 export const csrf = (s: Session) => html`<input type="hidden" name="__csrf" value="${s.csrf_token}">`;
+
+/**
+ * (UX-5) A builder page's header: its one heading, its one primary action (accent), a few secondary actions and a ⋯ menu
+ * for the rest. Every builder page should have exactly one H1 and one primary button.
+ */
+export function pageHeader(title: string | Raw, o: { sub?: Raw | string; primary?: [href: string, label: string, ic?: string]; secondary?: [href: string, label: string, ic?: string][]; more?: [href: string, label: string, ic?: string][]; moreLabel?: string } = {}) {
+  const link = ([href, label, ic]: [string, string, string?], cls: string) => html`<a class="${cls}" href="${href}">${ic ? icon(ic) : ''}<span>${label}</span></a>`;
+  return html`<div class="page-head">
+    <div class="page-head-title"><h1>${title}</h1>${o.sub ? html`<p class="page-head-sub muted">${o.sub}</p>` : ''}</div>
+    <div class="page-head-actions">
+      ${(o.secondary ?? []).map((a) => link(a, 'btn'))}
+      ${o.more?.length ? html`<details class="menu page-head-more"><summary class="btn btn-icon" title="${o.moreLabel ?? ''}"><span aria-hidden="true">⋯</span><span class="sr-only">${o.moreLabel ?? ''}</span></summary>
+        <div class="menu-panel align-right"><div class="menu-section menu-links">${o.more.map(([href, label, ic]) => html`<a href="${href}">${ic ? icon(ic) : ''} ${label}</a>`)}</div></div></details>` : ''}
+      ${o.primary ? link(o.primary, 'btn btn-hot') : ''}
+    </div>
+  </div>`;
+}
 
 export function input(name: string, label: string, value: unknown, opts: { type?: string; help?: string; required?: boolean; placeholder?: string; auto?: string } = {}) {
   return html`<div class="field"><label class="label" for="f_${name}">${label}</label>
@@ -243,7 +254,7 @@ export const region = (title: string, body: Raw | Raw[], extra: Raw | '' = '', i
   html`<section class="region region-standard"${id ? raw(` id="${id.replace(/[^a-z0-9-]/g, '')}"`) : ''}><header class="region-header"><h2>${title}</h2>${extra}</header><div class="region-body">${body}</div></section>`;
 
 /** Title and tabs of an application's builder pages (Pages, Shared Components, …), in the session's builder language. */
-export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor' | 'utilities', s?: Pick<Session, 'state'>) => {
+export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'activity' | 'api' | 'search' | 'advisor' | 'utilities', s?: Pick<Session, 'state'>, primary?: [href: string, label: string, ic: string]) => {
   const tx = tr(s);
   const tab = (key: typeof active, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${bicon(ic)}<span>${label}</span></a>`;
@@ -256,7 +267,9 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/backups">${icon('history')} ${tx('app.head.backups')}</a>
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/availability">${icon('power')} ${tx('app.head.availability')}</a>
           <a class="btn btn-sm" href="${BASE}/apps/${a.id}/export">${icon('download')} ${tx('app.head.export')}</a>
-          <a class="btn btn-sm btn-run" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('common.run')}</a>
+          <!-- (UX-5) one primary action: the page's own (Create page on the Pages tab), else Run -->
+          <a class="btn btn-sm${primary ? '' : ' btn-run'}" href="/a/${a.alias}" target="_blank" rel="noopener">${icon('play')} ${tx('common.run')}</a>
+          ${primary ? html`<a class="btn btn-sm btn-hot" href="${primary[0]}">${icon(primary[2])} ${primary[1]}</a>` : ''}
         </div></div>
       <nav class="ide-tabs" aria-label="${tx('app.head.tabs')}">
         ${tab('pages', `${BASE}/apps/${a.id}`, 'pages', tx('app.tab.pages'))}
@@ -323,6 +336,7 @@ export async function developer(req: Req, reply: FastifyReply) {
   // (sprint 121) a session from before the developer's language was kept in it: the stored choice (language.ts)
   if (s.state.__BLANG === undefined) await loadLanguage(s);
   setRequestTranslator(tr(s)); // (sprint 164) scopedTx in this request's handler and helpers
+  s.path = req.url; // (UX-3) the rail's section
   // (sprint 126, SEC-2) the two-factor policy: a banner during the grace period, then only the Security page until they enrol
   delete s.state.__MFA_DUE;
   const admin = await isAdmin(s.username);

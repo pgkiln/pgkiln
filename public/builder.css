@@ -1684,3 +1684,44 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .tb-save.is-dirty::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--hot); }
 #pd-p-props .component-form > .buttons { position: sticky; bottom: 0; z-index: 1; margin: 0; padding: 8px 0; background: var(--surface); border-top: 1px solid var(--border); }
 .pd-note.is-cut { display: none; }
+
+/* (UX-3) the rail with labels next to its icons (the toggle at its bottom, kept in the session) */
+.rail-toggle { width: 100%; border: 0; background: none; cursor: pointer; font: inherit; }
+@media (min-width: 900px) {
+  .ide.rail-labels { --rail-w: 196px; }
+  .rail-labels .rail-list { padding: 0 10px; }
+  .rail-labels .rail-link { display: flex; justify-content: flex-start; gap: 12px; padding: 0 12px; }
+  .rail-labels .rail-link .rail-label { position: static; opacity: 1; transform: none; padding: 0; background: none; color: inherit;
+    box-shadow: none; font-size: 13.5px; font-weight: 500; pointer-events: auto; }
+  .rail-labels .rail-logo { margin-left: 18px; }
+  .rail-labels .rail-user { justify-content: flex-start; padding-left: 14px; }
+}
+
+/* (UX-4) Administration: the workspace utilities in sections of compact tiles, with a filter (builder.js) */
+.adm { max-width: 1180px; }
+.adm .title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.adm-filter input { width: min(320px, 100%); }
+.adm-lede { max-width: 75ch; }
+.adm-section { margin-top: 22px; }
+.adm-section h2 { font-size: 15px; margin: 0 0 8px; color: var(--text-2, var(--muted)); text-transform: none; }
+.adm-tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px; }
+.adm-tile { display: flex; flex-direction: column; gap: 2px; height: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); text-decoration: none; transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease); }
+.adm-tile:hover, .adm-tile:focus-visible { border-color: var(--hot); background: var(--surface-2); }
+.adm-tile-head { display: flex; align-items: center; gap: 8px; }
+.adm-tile-head .icon { width: 16px; height: 16px; color: var(--hot); flex: none; }
+.adm-tile-text { color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.adm-reports { columns: 2 260px; }
+
+/* (UX-5) a builder page's header: one heading, one primary (accent) action, secondary actions and a ⋯ menu */
+.page-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 16px; }
+.page-head h1 { margin: 0; font-size: 22px; }
+.page-head-sub { margin: 2px 0 0; }
+.page-head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page-head-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.page-head-actions .icon { width: 15px; height: 15px; }
+/* (UX-13) the Workspace home's "Needs attention" list for administrators, above the tools */
+.wh-attention { display: block; margin: 0 0 16px; }
+.wh-attention h2 { margin: 0 0 4px; font-size: 14px; }
+.wh-attention ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.wh-attention .icon { width: 15px; height: 15px; vertical-align: -2px; }

@@ -63,10 +63,9 @@ describe('Database Users (browser)', () => {
     test(`create report_reader: review the SQL (password masked), apply, find it in the list; drop it (${width} px)`, async () => {
       const page = await signedIn(width);
       try {
-        // from the Administration menu
-        await page.goto(`${base}/builder`);
-        await page.click('summary[title="Administration"]');
-        await Promise.all([page.waitForNavigation(), page.click('.rail-admin a[href="/builder/db-users"]')]);
+        // from the Administration page (UX-4)
+        await page.goto(`${base}/builder/utilities`);
+        await Promise.all([page.waitForNavigation(), page.click('.adm-tile[href="/builder/db-users"]')]);
         await ok(page, 'list');
         if (width > 1000) assert.deepEqual(await axe(page), []);
         await Promise.all([page.waitForNavigation(), page.click('a[href="/builder/db-users/new"]')]);

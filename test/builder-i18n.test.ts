@@ -151,7 +151,7 @@ describe('choosing the builder language', () => {
     const home = (await b.get('/builder/apps')).body;
     assert.match(home, /<html lang="en"/);
     assert.ok(home.includes(`>${en['rail.app_builder']}<`));
-    assert.ok(home.includes(en['ab.tile.create_text']));
+    assert.ok(home.includes(`<span>${en['ab.tile.create']}</span>`));
     assert.equal(await stored(DEV), null, 'nothing stored without a choice');
   });
 
@@ -178,11 +178,11 @@ describe('choosing the builder language', () => {
     assert.match(wh, /<html lang="de"/);
     for (const k of ['rail.home', 'rail.app_builder', 'rail.admin', 'user.sign_out', 'wh.summary', 'wh.card.apps'] as BuilderKey[]) assert.ok(wh.includes(esc(de[k])), k);
     const ab = (await b.get('/builder/apps')).body;
-    for (const k of ['ab.tile.create_text', 'ab.tile.import', 'ab.task.import', 'ab.col.updated_by', 'ab.sort_by', 'ab.recent'] as BuilderKey[]) assert.ok(ab.includes(esc(de[k])), k);
+    for (const k of ['ab.tile.create', 'ab.tile.import', 'ab.col.updated_by', 'ab.sort_by', 'ab.recent'] as BuilderKey[]) assert.ok(ab.includes(esc(de[k])), k);
     assert.ok(ab.includes(`placeholder="${esc(de['bar.search_placeholder'])}"`));
     // an application's home: tabs, toolbar, tasks
     const appHome = (await b.get(`/builder/apps/${appId}`)).body;
-    for (const k of ['app.tab.pages', 'app.tab.shared', 'app.tab.settings', 'app.create_page', 'app.task.run', 'app.from_table'] as BuilderKey[]) assert.ok(appHome.includes(esc(de[k])), k);
+    for (const k of ['app.tab.pages', 'app.tab.shared', 'app.tab.settings', 'app.create_page', 'app.from_table'] as BuilderKey[]) assert.ok(appHome.includes(esc(de[k])), k);
 
     // the Page Designer: toolbar menus, tree headings, gallery
     const pd = (await b.get(`/builder/apps/${appId}/pages/${pageNo}`)).body;
@@ -350,11 +350,11 @@ describe('choosing the builder language', () => {
     assert.match(wh, /<html lang="ja"/);
     for (const k of ['rail.home', 'rail.app_builder', 'user.sign_out', 'wh.summary', 'wh.card.apps'] as BuilderKey[]) assert.ok(wh.includes(esc(ja[k])), k);
     const ab = (await b.get('/builder/apps')).body;
-    for (const k of ['ab.tile.create_text', 'ab.tile.import', 'ab.col.updated_by', 'ab.recent'] as BuilderKey[]) assert.ok(ab.includes(esc(ja[k])), k);
+    for (const k of ['ab.tile.create', 'ab.tile.import', 'ab.col.updated_by', 'ab.recent'] as BuilderKey[]) assert.ok(ab.includes(esc(ja[k])), k);
     const sec = (await b.get('/builder/security')).body;
     for (const k of ['mfa.title', 'mfa.intro', 'mfa.factors', 'mfa.add_app'] as BuilderKey[]) assert.ok(sec.includes(esc(ja[k])), k);
     // Japanese, not English: written in kana and kanji
-    for (const k of ['wh.summary', 'ab.tile.create_text', 'mfa.intro'] as BuilderKey[]) assert.match(ja[k], /[\u3040-\u30ff\u4e00-\u9fff]/, k);
+    for (const k of ['wh.summary', 'ab.tile.create', 'mfa.intro'] as BuilderKey[]) assert.match(ja[k], /[\u3040-\u30ff\u4e00-\u9fff]/, k);
     // no raw keys
     for (const page of [wh, ab, sec]) {
       const text = page.replace(/<(?:script|style)[\s\S]*?<\/(?:script|style)>/g, '').replace(/<[^>]+>/g, ' ');
@@ -365,7 +365,7 @@ describe('choosing the builder language', () => {
     assert.equal(await stored(DEV), 'zh-TW');
     const zh = (await b.get('/builder/apps')).body;
     assert.match(zh, /<html lang="zh-TW"/);
-    assert.ok(zh.includes(esc(builderMessages('zh-TW')['ab.tile.create_text'])));
+    assert.ok(zh.includes(esc(builderMessages('zh-TW')['ab.tile.create'])));
     await owner.query(`update meta.developer set language = null where username = $1`, [DEV]);
   });
 

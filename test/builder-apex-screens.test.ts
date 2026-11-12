@@ -125,9 +125,10 @@ describe('Administration: message, banner, utilization', () => {
     await owner.query('update meta.workspace_member set is_admin = false where workspace_id = $1 and username = $2', [wsId, DEV]);
   });
 
-  test('the Administration menu and workspace utilization', async () => {
-    const home = (await admin.get('/builder')).body;
-    assert.match(home, /class="menu rail-user rail-admin"/);
+  test('the Administration page and workspace utilization', async () => {
+    // (UX-3, UX-4) Administration is a rail entry; its page has the workspace's links
+    assert.match((await admin.get('/builder')).body, /<a href="\/builder\/utilities" class="rail-link"/);
+    const home = (await admin.get('/builder/utilities')).body;
     assert.match(home, /href="\/builder\/workspaces\/\d+\/utilization"/);
     const util = await admin.get('/builder/workspaces/1/utilization');
     assert.equal(util.statusCode, 200);

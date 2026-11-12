@@ -113,7 +113,7 @@ describe('the Create page grid (tab Component)', () => {
     assert.match((await b.get(`/builder/apps/${appId}/create-page?tab=copy`)).body, /Copy from application/);
     // App home: Create page opens the grid; the tasks add a feature or copy a page
     const home = (await b.get(`/builder/apps/${appId}`)).body;
-    assert.match(home, new RegExp(`class="btn btn-hot" href="/builder/apps/${appId}/create-page"`));
+    assert.match(home, new RegExp(`class="btn btn-sm btn-hot" href="/builder/apps/${appId}/create-page"`));
     assert.match(home, /create-page\?tab=feature/);
     assert.match(home, /create-page\?tab=copy/);
   });
