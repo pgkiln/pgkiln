@@ -334,3 +334,6 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 .ws-status-run { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; }
 .ws-runas-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 .ws-runas-chip select { padding: 1px 22px 1px 6px; min-height: 0; font-size: 12.5px; }
+/* (sprint 172, DA-5) the Notices tab: Keep notices and the earlier runs' notices */
+.ws-notice-bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.ws-notice-earlier { font-size: 12px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }

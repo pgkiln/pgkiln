@@ -7551,4 +7551,8 @@ export const zhCN: BuilderMessages = {
   'aw.sum_new': '一个拥有自己模式的新应用程序',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '关闭',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': '保留之前运行的通知',
+  'ws.notice.earlier': '之前的运行',
+  'ws.notice.clear': '清除通知',
 };

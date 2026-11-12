@@ -7551,4 +7551,8 @@ export const it: BuilderMessages = {
   'aw.sum_new': 'Una nuova applicazione con il proprio schema',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Chiudi',
+  // ------------------------------------------------------------ sprint 172: parity leftovers
+  'ws.notice.keep': 'Mantieni gli avvisi delle esecuzioni precedenti',
+  'ws.notice.earlier': 'Esecuzioni precedenti',
+  'ws.notice.clear': 'Cancella avvisi',
 };
