@@ -13913,3 +13913,88 @@ describe('sprint 172 worksheet notices kept per session; the gallery\'s version 
     for (const m of body.matchAll(/gal-version"[^>]*>([^<]*)</g)) assert.match(m[1], /^v[0-9A-Za-z][0-9A-Za-z.+-]{0,19}$/);
   });
 });
+
+describe('sprint 173 an application page from a saved chart (DA-6)', () => {
+  const evil = '<img src=x onerror=alert(173)>';
+  let hr: number;
+  let other: number;
+  let theirs: number;
+  let mine: number;
+  before(async () => {
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    other = (await owner.one(`insert into meta.workspace (name) values ('sec173 other') returning id`))!.id;
+    theirs = (await owner.one(`insert into meta.sql_chart (workspace_id, name, sql) values ($1, 'sec173 theirs', 'select ''a'' as l, 1 as n') returning id`, [other]))!.id;
+    mine = (await owner.one(`insert into meta.sql_chart (name, sql) values ($1, $2) returning id`, [`sec173 ${evil}`, `select '${evil}' as "${evil}", 1 as "n"" from x"`]))!.id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.nav_entry where app_id = $1 and target_page in (8176, 8177)`, [hr]);
+    await owner.query(`delete from meta.page where app_id = $1 and page_no in (8176, 8177)`, [hr]);
+    await owner.query(`delete from meta.sql_chart where name like 'sec173%'`);
+    await owner.query(`delete from meta.workspace where name = 'sec173 other'`);
+  });
+  const signIn = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/charts');
+    return dev;
+  };
+
+  test('CSRF; another workspace\'s chart is not found and makes no page; an application user is sent to the sign-in', async () => {
+    const dev = await signIn();
+    assert.equal((await dev.post(`/builder/apps/${hr}/chart-page`, { __csrf: 'forged', chart: String(mine), page_no: '8176', name: 'x' })).statusCode, 403);
+    assert.equal((await dev.get(`/builder/apps/${hr}/chart-page?chart=${theirs}`)).statusCode, 404);
+    assert.equal((await dev.post(`/builder/apps/${hr}/chart-page`, { __csrf: dev.lastCsrf, chart: String(theirs), page_no: '8176', name: 'x' })).statusCode, 404);
+    assert.equal(await owner.one('select 1 as x from meta.page where app_id = $1 and page_no = 8176', [hr]), undefined);
+    const king = await as('king');
+    assert.equal((await king.get(`/builder/apps/${hr}/chart-page?chart=${mine}`)).headers.location, '/builder/login');
+  });
+
+  test('names and column names are escaped on the pages and quoted in the region source', async () => {
+    const dev = await signIn();
+    for (const url of [`/builder/sql/charts/${mine}`, `/builder/apps/${hr}/chart-page?chart=${mine}`]) assert.doesNotMatch((await dev.get(url)).body, /<img src=x/, url);
+    const res = await dev.post(`/builder/apps/${hr}/chart-page`, { __csrf: dev.lastCsrf, chart: String(mine), page_no: '8177', name: evil, nav: 'on' });
+    assert.equal(res.statusCode, 303);
+    const r = (await owner.one(`select r.source from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 8177`, [hr]))!;
+    assert.ok(r.source.startsWith(`select "${evil}", "n"" from x"\n  from (`), r.source);
+    assert.doesNotMatch((await dev.get(res.headers.location as string)).body, /<img src=x/);
+    const king = await as('king');
+    assert.doesNotMatch((await king.get('/a/hr/8177')).body, /<img src=x/);
+  });
+});
+
+describe('sprint 173 the worksheet\'s next rows (DA-3)', () => {
+  const signIn = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/worksheet');
+    return dev;
+  };
+  after(async () => {
+    await owner.query('drop table if exists public.sec173_rows');
+  });
+
+  test('CSRF and a developer session are needed; the statement runs read-only and only as one SELECT', async () => {
+    const dev = await signIn();
+    assert.equal((await dev.post('/builder/sql/worksheet/rows', { __csrf: 'forged', query: 'select 1', offset: '0' })).statusCode, 403);
+    const king = await as('king');
+    assert.equal((await king.post('/builder/sql/worksheet/rows', { __csrf: king.lastCsrf, query: 'select 1', offset: '0' })).headers.location, '/builder/login');
+    await owner.query('create table if not exists public.sec173_rows (n int)');
+    for (const query of ['insert into public.sec173_rows values (1) returning n', 'select 1; insert into public.sec173_rows values (1)', 'select 1) x; insert into public.sec173_rows values (1); select * from (select 1'])
+      assert.notEqual((await dev.post('/builder/sql/worksheet/rows', { __csrf: dev.lastCsrf, query, offset: '0' })).statusCode, 200, query);
+    // a function that writes is stopped by the read-only transaction
+    const res = await dev.post('/builder/sql/worksheet/rows', { __csrf: dev.lastCsrf, query: `with w as (insert into public.sec173_rows values (2) returning n) select * from w`, offset: '0' });
+    assert.notEqual(res.statusCode, 200);
+    assert.equal(Number((await owner.one('select count(*) as n from public.sec173_rows'))!.n), 0);
+    // the offset is a number, never SQL
+    assert.equal((await dev.post('/builder/sql/worksheet/rows', { __csrf: dev.lastCsrf, query: 'select 1', offset: '0; drop table public.sec173_rows' })).statusCode, 400);
+  });
+
+  test('values come back as JSON text, not as markup', async () => {
+    const dev = await signIn();
+    const res = await dev.post('/builder/sql/worksheet/rows', { __csrf: dev.lastCsrf, query: `select '<img src=x onerror=alert(173)>' as v`, offset: '0' });
+    assert.match(String(res.headers['content-type']), /application\/json/);
+    assert.deepEqual(JSON.parse(res.body), { rows: [['<img src=x onerror=alert(173)>']], more: false });
+  });
+});

@@ -494,4 +494,30 @@ describe('SQL Worksheet', () => {
     await endAllTxns();
     await phone.context.close();
   });
+
+  test('(sprint 173, DA-3) the next rows load while the end of the grid is in view; the count follows and All rows goes', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    await setEditor(page, "select g as n, case when g = 1234 then null else 'row ' || g end as label from generate_series(1, 1234) g order by g", 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    const count = () => page.locator('[data-ws-grid] tbody tr').count();
+    assert.equal(await count(), 500, 'the first rows come with the page');
+    assert.equal(await page.locator('[data-ws-showing]').textContent(), 'showing the first 500');
+    // scrolling to the end of the grid loads the next rows, until there are no more
+    for (let i = 0; i < 10 && (await count()) < 1234; i++) {
+      const had = await count();
+      await page.locator('[data-ws-grid] tbody tr').last().scrollIntoViewIfNeeded();
+      await page.waitForFunction((n) => document.querySelectorAll('[data-ws-grid] tbody tr').length > n, had);
+    }
+    assert.equal(await count(), 1234);
+    const last = page.locator('[data-ws-grid] tbody tr').last();
+    assert.deepEqual(await last.locator('td').allTextContents(), ['1234', '1234', '(null)']);
+    assert.equal(await last.locator('td.num').count(), 1, 'numbers stay right-aligned');
+    assert.equal(await last.locator('td .null').count(), 1);
+    assert.equal(await page.locator('[data-ws-showing]').textContent(), 'all 1234 shown');
+    assert.equal(await page.locator('[data-ws-more-end]').count(), 0);
+    assert.equal(await page.locator('button[name="mode"][value="statement_all"]').count(), 0);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await context.close();
+  });
 });

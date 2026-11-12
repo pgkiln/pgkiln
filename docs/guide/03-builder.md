@@ -2227,7 +2227,10 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     query show in **Query Result**, up to 500, with row numbers, numbers right-aligned and NULL as *(null)*. The
     statement that ran is selected again afterwards. (sprint 92) Click a column heading to sort the rows, a cell to
     see its whole value (JSON indented), **Copy** for the rows as tab-separated text, and **All rows** to run the
-    statement again for up to 10,000 rows. **Download** saves a SELECT as CSV, JSON, XML, Excel or SQL inserts
+    statement again for up to 10,000 rows. (sprint 173) When a SELECT has more rows than shown, the next 500 load as
+    you scroll to the end of the grid, up to 10,000: the statement is read again from that row in a read-only
+    transaction, so give it an ORDER BY when the order matters. This is not done in a tab's open transaction or when
+    running as an application's role, where *All rows* remains. **Download** saves a SELECT as CSV, JSON, XML, Excel or SQL inserts
     through Unload Data (a read-only transaction, so the query runs once more).
   - **Run Script** (**F5**) runs every statement in order and writes **Script Output**: for each statement its line,
     the rows as text (up to 50), its notices, and its command tag like psql's (`CREATE TABLE`, `INSERT 0 2`,
@@ -2245,7 +2248,12 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     column, stacked bar, line, area, donut, pie, scatter), the label column or the values and it draws again. Name it
     and **Save chart**: SQL Workshop → **Charts** lists the saved charts (shared by the workspace) and draws the ones
     on its dashboard; a chart's page changes its settings, opens its query in the worksheet or deletes it. A saved
-    chart's SELECT runs read-only with a 10 second timeout and at most 500 rows.
+    chart's SELECT runs read-only with a 10 second timeout and at most 500 rows. (sprint 173) **Create an
+    application page** on a chart's page makes it a page of an application of the workspace: choose the application,
+    then a page number and a name, and whether the navigation menu gets an entry. The page has one Chart region with
+    the chart's type, whose source selects the label column and the value columns from the chart's SELECT. From then
+    on the query runs as the application's database role, so that role must be able to read the tables, by their
+    schema-qualified names; the page is yours to change in the Page Designer and no longer follows the saved chart.
   - **Notices** lists the `RAISE NOTICE`, `INFO` and `WARNING` messages of the last run with their time. Tick
     **Keep notices of earlier runs** (sprint 172) to keep the notices of the runs before it under *Earlier runs*,
     newest first (the last 200, for your builder session); **Clear notices** or unticking the box forgets them.
