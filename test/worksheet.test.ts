@@ -238,7 +238,7 @@ describe('the SQL Worksheet page', () => {
     assert.match(many, /showing the first 500/);
     assert.match(many, /name="mode" value="statement_all"/);
     const all = (await b.submit('/builder/sql/worksheet', { sql: 'select g from generate_series(1, 600) g', mode: 'statement_all' })).body;
-    assert.doesNotMatch(all, /showing the first/);
+    assert.doesNotMatch(all, /data-ws-showing/); // (sprint 173) the words themselves are among the page's script texts
     assert.match(all, /<td class="num">600<\/td>/);
     // no download for something that isn't one SELECT
     assert.doesNotMatch((await b.submit('/builder/sql/worksheet', { sql: 'show search_path', mode: 'statement' })).body, /id="ws-dl"/);
