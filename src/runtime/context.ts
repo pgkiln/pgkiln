@@ -40,6 +40,8 @@ export interface PageContext {
   messages: string[];
   /** (161) grid regions whose changes this request saved (POST), or the request before it saved (GET): grid_save dynamic actions */
   savedGrids?: number[];
+  /** (sprint 174, CD-1) a failed grid save: the message of each cell that is not valid, by its posted field name (g<region>_<row>_c<column>) */
+  gridErrors?: Record<string, string>;
   /** rendered inside a modal dialog (iframe) */
   dialog: boolean;
   client?: Client;

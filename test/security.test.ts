@@ -14,7 +14,7 @@ import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/ru
 import { maxRows } from '../src/runtime/report.ts';
 import { lovMax } from '../src/runtime/items.ts';
 import { loadWithDefinition } from '../src/dataload.ts';
-import { Browser as FileBrowser } from './helpers.ts';
+import { Browser as FileBrowser, gridForm } from './helpers.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -13996,5 +13996,56 @@ describe('sprint 173 the worksheet\'s next rows (DA-3)', () => {
     const res = await dev.post('/builder/sql/worksheet/rows', { __csrf: dev.lastCsrf, query: `select '<img src=x onerror=alert(173)>' as v`, offset: '0' });
     assert.match(String(res.headers['content-type']), /application\/json/);
     assert.deepEqual(JSON.parse(res.body), { rows: [['<img src=x onerror=alert(173)>']], more: false });
+  });
+});
+
+describe('sprint 174 grid column validations (CD-1)', () => {
+  let staffId: number;
+  let deptsId: number;
+  let cfg: unknown;
+  before(async () => {
+    const rows = (await owner.query(`select r.id, r.title, r.config from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 27`)).rows;
+    staffId = rows.find((r) => r.title === 'Staff').id;
+    deptsId = rows.find((r) => r.title === 'Departments').id;
+    cfg = rows.find((r) => r.title === 'Staff').config;
+  });
+  after(async () => {
+    await owner.query('update meta.region set config = $2 where id = $1', [staffId, cfg]);
+    await owner.query(`delete from hr.emp where ename like 'SEC174%'`);
+  });
+  const staff = async (b: Browser) => {
+    const page = (await b.get('/a/hr/27')).body;
+    const m = new RegExp(`href="([^"]*r${deptsId}_sel=20&amp;[^"]*)"`).exec(page)!;
+    const body = (await b.get(m[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"'))).body;
+    const start = body.indexOf(`id="R${staffId}"`);
+    return gridForm(body.slice(start, body.indexOf('</section>', start)), `g${staffId}`);
+  };
+
+  test('a posted value is a literal in the expression, never SQL; the message and the value are escaped in the cell', async () => {
+    const g = `g${staffId}`;
+    const evil = '<img src=x onerror=alert(174)>';
+    await owner.query(`update meta.region set config = jsonb_set(jsonb_set(config, '{columns,ename,validation}', '":ENAME not like ''SEC174%''"'), '{columns,ename,validation_message}', $2::jsonb) where id = $1`, [staffId, JSON.stringify(`${evil} &APP_USER.`)]);
+    const king = await as('king');
+    const form = await staff(king);
+    // a value that would end the literal and add a statement stays text: the validation simply fails on it
+    const inject = `SEC174'); delete from hr.emp where ename = 'SCOTT'; --`;
+    const res = await king.post('/a/hr/27', { ...form, __csrf: king.lastCsrf, __request: `GRID_SAVE_${staffId}`, [`${g}_n0_c1`]: inject, [`${g}_n0_c4`]: '2026-01-02', [`${g}_n0_c5`]: '10' });
+    assert.equal(res.statusCode, 422);
+    assert.ok(await owner.one(`select 1 as x from hr.emp where ename = 'SCOTT'`), 'nothing ran');
+    assert.equal(await owner.one(`select 1 as x from hr.emp where ename like 'SEC174%'`), undefined);
+    assert.doesNotMatch(res.body, /<img src=x/);
+    assert.match(res.body, /&lt;img src=x onerror=alert\(174\)&gt; king/, 'the message, with its substitution, as text');
+  });
+
+  test('the expression runs as the application\'s role; a database error is not shown to the user', async () => {
+    const g = `g${staffId}`;
+    // the application's role cannot read meta.app_user: the expression fails, the row is refused, nothing leaks
+    await owner.query(`update meta.region set config = jsonb_set(config #- '{columns,ename,validation_message}', '{columns,ename,validation}', '"exists (select 1 from meta.app_user)"') where id = $1`, [staffId]);
+    const king = await as('king');
+    const form = await staff(king);
+    const res = await king.post('/a/hr/27', { ...form, __csrf: king.lastCsrf, __request: `GRID_SAVE_${staffId}`, [`${g}_n0_c1`]: 'SEC174A', [`${g}_n0_c4`]: '2026-01-02', [`${g}_n0_c5`]: '10' });
+    assert.equal(res.statusCode, 422);
+    assert.doesNotMatch(res.body, /password|app_user/i, 'the database error is not shown to an application user');
+    assert.equal(await owner.one(`select 1 as x from hr.emp where ename = 'SEC174A'`), undefined);
   });
 });
