@@ -417,7 +417,8 @@ src/
     sql-charts.ts          (sprint 97) charts of a query: chartSpec(), drawChart() (runtime/charts.ts, a PageCss in a nonce'd <style>), the
                            worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs)
     sql-tools.ts           (sprint 96) SQL_TOOLS: every SQL Workshop tool with its group, tab and description (home, More menu, search)
-    worksheet.ts           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
+    worksheet.ts           (sprint 172) Keep notices: keptNotices() in the session state (__WSKEEP, __WSNOTICES);
+                           (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
                            columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator;
                            (sprint 107) transaction mode: the txn field, Commit / Rollback (mode=commit|rollback), txnBadge(), GET/POST /sql/worksheet/txn (JSON)
     object-browser.ts      (sprint 75) the Object Browser: objects by type, system objects hidden, a table in tabs, column actions as SQL to review
@@ -558,6 +559,7 @@ public/
                            remove_wait_popup as a modal <dialog class="wait-popup">, pgkiln.waitPopup(), the menu_entry event), (sprint 140) shuttle()
                            and selectPick() (Select One / Many: combobox + listbox, chips) over the item's hidden <select>, grids (add/duplicate rows, master-detail refresh, move/resize columns, copy/paste of cell ranges), menus, lazy regions, maps (Leaflet layers, marker clusters, heat layer, layer legend, area/distance filter) (no inline JS)
   code-editor.js, .css     builder code editor: enhances <textarea data-code>, highlighting, suggestions (no dependencies);
+                           (sprint 172) lexJs() for the body of a plv8 function (isPlv8: LANGUAGE plv8 in the statement);
                            (sprint 108) the current line, and read-only <pre data-code-view="sql|plpgsql|json|html"> highlighted;
                            its colours are the --ce-* tokens in builder.css
   palette.js               (sprint 96) the builder's search dialog (Ctrl+K), recently visited SQL Workshop pages, the Launchpad's tabs

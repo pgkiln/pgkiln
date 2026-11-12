@@ -5,7 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Keep notices in the SQL Worksheet** (sprint 172, DA-5 leftover; no migration): *Keep notices of earlier runs* in
+  the Notices tab keeps the `RAISE NOTICE`, `INFO` and `WARNING` messages of earlier runs under the last run's (the
+  last 200, for the builder session), until *Clear notices* or the box is unticked.
+- **plv8 function bodies highlighted as JavaScript** (sprint 172, DA-18 leftover): in the code editor and in
+  read-only code, the `$$` body of a function or `DO` block with `language plv8`.
+- **A version per App Gallery app** (sprint 172, WS-8 leftover): the cards of samples, starters and utilities show
+  the version from `gallery.json`; an installed sample gets it as its application Version.
+
 ### Changed
+- **The Workflow Console draws instances with the Workflow Diagram** (sprint 172, CD-7 leftover): the steps an
+  instance went through, where it is and a failed step, with each step's history as a tooltip, for finished
+  instances too (before: only the current step of running instances).
 - **Deleting an application or a page asks for its name** (sprint 171, UX-6): *Delete the application* moved from
   the Tasks to a **Danger zone** at the bottom of Settings → Definition, where the alias must be typed; *Delete page*
   moved from beside *Save page* into the Page Designer's page menu, where the page number must be typed. The server
