@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.88.0 (November 2026): every page of the navigation offline from the first visit (Progressive Web Apps).
+- **Current release:** 0.89.0 (November 2026): the builder on a laptop screen: SQL Worksheet and Page Designer, the rail and Administration, one heading and one primary action per page.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

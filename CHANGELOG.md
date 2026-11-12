@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-11-12
+
 ### Changed
 - **SQL Worksheet on a laptop screen** (sprint 169, UX-1): the editor had one line left at 1118 × 679; it now gets
   about half of the window (12 lines and the result rows at 1280 × 720). The toolbar is one row (the run buttons,
