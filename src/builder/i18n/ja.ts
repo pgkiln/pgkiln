@@ -408,7 +408,6 @@ export const ja: BuilderMessages = {
   'pd.not_found': 'コンポーネントが見つかりません。',
   'pd.save_page': 'ページの保存',
   'pd.delete_page': 'ページの削除',
-  'pd.delete_page_confirm': 'ページ {n} とそのすべてのコンポーネントを削除しますか。',
   'pd.filter_label': 'プロパティのフィルタ',
   'pd.filter': 'フィルタ',
   'pd.help_hint': 'プロパティを選択すると、ここにヘルプが表示されます。',
@@ -1427,7 +1426,6 @@ export const ja: BuilderMessages = {
   'st.ts_format': '日時書式',
   'st.ts_format_ph': '例: DD-MM-YYYY HH24:MI',
   'st.save_settings': '設定の保存',
-  'st.delete_confirm': 'アプリケーション {app} とそのすべてのページを削除しますか。',
   'st.delete': 'アプリケーションの削除',
   'st.error_fn': 'エラー処理関数',
   'st.error_fn_ph': '例: sales.error_message',
@@ -7538,4 +7536,19 @@ export const ja: BuilderMessages = {
   'wu.sec.instance': 'インスタンス',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '要対応',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '危険な操作',
+  'st.delete_text': '{app} を削除すると、ページ、共有コンポーネント、作業コピー、バックアップも削除され、元に戻せません。再び必要になる可能性がある場合は、先にエクスポートしてください。',
+  'st.delete_type': '確認のため別名 {alias} を入力してください',
+  'st.delete_mismatch': '削除するには、アプリケーションの別名 {alias} を入力してください。',
+  'pd.delete_type': '確認のためページ番号 {n} を入力してください',
+  'pd.delete_mismatch': 'ページを削除するには、ページ番号 {n} を入力してください。',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': 'データとページ',
+  'aw.sign_in': 'サインイン',
+  'aw.sum_on': '{schema} の {n} ページ',
+  'aw.sum_on_1': '{schema} の {n} ページ',
+  'aw.sum_new': '独自のスキーマを持つ新しいアプリケーション',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '閉じる',
 };

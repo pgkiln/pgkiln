@@ -181,6 +181,32 @@ describe('page designer on a laptop window (UX-2, UX-12)', () => {
   });
 });
 
+describe('deleting a page from the wrench menu (UX-6)', () => {
+  test('the page number must be typed; a wrong number keeps the page', async () => {
+    const ids = await scratchPage();
+    const { page, errors } = await signIn({ width: 1280, height: 800 });
+    await page.goto(`${base}/builder/pages/${ids.p}`);
+    const menu = page.locator('details.tb-menu:has(form.danger-form)');
+    await menu.locator('summary').click();
+    const confirm = menu.locator('form.danger-form input[name="confirm"]');
+    assert.equal(await confirm.isVisible(), true);
+    // the browser refuses an empty or wrong number (pattern), so the server's own check is posted around it
+    await confirm.fill('1');
+    assert.equal(await confirm.evaluate((i: HTMLInputElement) => i.checkValidity()), false);
+    await confirm.evaluate((i: HTMLInputElement) => i.removeAttribute('pattern'));
+    await Promise.all([page.waitForNavigation(), menu.locator('form.danger-form button').click()]);
+    assert.ok(await owner.one('select 1 from meta.page where id = $1', [ids.p]), 'a wrong number keeps the page');
+    assert.match(await page.locator('.alert-error[role=alert]').first().textContent() ?? '', new RegExp(String(PAGE_NO)));
+    await menu.locator('summary').click();
+    await confirm.fill(String(PAGE_NO));
+    await Promise.all([page.waitForNavigation(), menu.locator('form.danger-form button').click()]);
+    assert.equal(await owner.one('select 1 from meta.page where id = $1', [ids.p]), undefined, 'deleted');
+    assert.equal(new URL(page.url()).pathname, `/builder/apps/${appId}`);
+    assert.deepEqual(errors, []);
+    await page.context().close();
+  });
+});
+
 describe('page designer interaction (desktop)', () => {
   const size = VIEWPORTS.desktop;
 

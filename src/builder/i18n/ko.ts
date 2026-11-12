@@ -408,7 +408,6 @@ export const ko: BuilderMessages = {
   'pd.not_found': '구성요소를 찾을 수 없습니다.',
   'pd.save_page': '페이지 저장',
   'pd.delete_page': '페이지 삭제',
-  'pd.delete_page_confirm': '페이지 {n}과(와) 모든 구성요소를 삭제하시겠습니까?',
   'pd.filter_label': '속성 필터',
   'pd.filter': '필터',
   'pd.help_hint': '속성을 선택하면 여기에 도움말이 표시됩니다.',
@@ -1427,7 +1426,6 @@ export const ko: BuilderMessages = {
   'st.ts_format': '날짜 및 시간 형식',
   'st.ts_format_ph': '예: DD-MM-YYYY HH24:MI',
   'st.save_settings': '설정 저장',
-  'st.delete_confirm': '애플리케이션 {app}과(와) 모든 페이지를 삭제하시겠습니까?',
   'st.delete': '애플리케이션 삭제',
   'st.error_fn': '오류 처리 함수',
   'st.error_fn_ph': '예: sales.error_message',
@@ -7538,4 +7536,19 @@ export const ko: BuilderMessages = {
   'wu.sec.instance': '인스턴스',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '주의 필요',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '위험 구역',
+  'st.delete_text': '{app}을(를) 삭제하면 페이지, 공유 구성 요소, 작업 사본과 백업도 함께 삭제되며 되돌릴 수 없습니다. 다시 필요할 수 있다면 먼저 내보내십시오.',
+  'st.delete_type': '확인하려면 별칭 {alias}을(를) 입력하십시오',
+  'st.delete_mismatch': '삭제하려면 애플리케이션의 별칭 {alias}을(를) 입력하십시오.',
+  'pd.delete_type': '확인하려면 페이지 번호 {n}을(를) 입력하십시오',
+  'pd.delete_mismatch': '페이지를 삭제하려면 페이지 번호 {n}을(를) 입력하십시오.',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': '데이터와 페이지',
+  'aw.sign_in': '로그인',
+  'aw.sum_on': '{schema}의 페이지 {n}개',
+  'aw.sum_on_1': '{schema}의 페이지 {n}개',
+  'aw.sum_new': '자체 스키마를 가진 새 애플리케이션',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '닫기',
 };

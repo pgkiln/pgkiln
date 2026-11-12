@@ -95,6 +95,20 @@ describe('the builder\'s error pages', () => {
     assert.match((await b.get('/builder/nope')).body, /<html lang="en" data-theme="dark">/);
   });
 
+  test('(UX-10) for a developer, inside the builder frame: rail, search filled from the address, status bar', async () => {
+    const b = await developer();
+    const res = await b.get('/builder/apps/999999/nope-here');
+    assert.equal(res.statusCode, 404);
+    assert.match(res.body, /<nav class="ide-rail"/);
+    assert.match(res.body, /<footer class="ide-status">/);
+    assert.match(res.body, /<input id="nf-q" type="search" name="q" value="apps nope-here"/);
+    assert.match(res.body, /<a class="btn btn-hot" href="\/builder">App Builder home<\/a>/);
+    const anon = new Browser(app, { accept: 'text/html' });
+    const out = await anon.get('/builder/nope');
+    assert.equal(out.statusCode, 404);
+    assert.doesNotMatch(out.body, /ide-rail/, 'signed out: the standalone page');
+  });
+
   test('scripts and other addresses keep their plain answers', async () => {
     const plain = await developer(false);
     const res = await plain.get('/builder/nope');

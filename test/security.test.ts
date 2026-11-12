@@ -8087,6 +8087,8 @@ describe('sprint 86 builder addresses and error pages', () => {
     assert.equal(res.statusCode, 404);
     assert.doesNotMatch(res.body, /<img src=x/);
     assert.match(String(res.headers['content-security-policy'] ?? ''), /script-src/, 'the page keeps the CSP');
+    // (UX-10) the search field filled from the address holds words only
+    assert.match(res.body, /<input id="nf-q" type="search" name="q" value="x img src x onerror alert 1"/);
     // signed out: the same page, nothing about the builder's applications
     const anon = new Browser();
     anon.headers.accept = 'text/html';
@@ -13829,5 +13831,47 @@ describe('sprint 170 the rail labels toggle', () => {
     for (const referer of ['https://evil.example/builder/apps', 'javascript:alert(1)', '//evil.example/builder'])
       assert.equal((await app.inject({ method: 'POST', url: '/builder/rail', payload: new URLSearchParams({ __csrf: dev.lastCsrf, labels: 'labels' }).toString(),
         headers: { 'content-type': 'application/x-www-form-urlencoded', cookie, referer } })).headers.location, '/builder/home', referer);
+  });
+});
+
+describe('sprint 171 UX-6 deleting an application or a page needs its alias or number typed', () => {
+  let a171: number;
+  let p171: number;
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = 'sec171-del'`);
+    a171 = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec171-del', 'Sec 171', 'hr_app') returning id`)).id;
+    p171 = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 7, 'Seven') returning id`, [a171])).id;
+  });
+  after(async () => { await owner.query(`delete from meta.app where alias = 'sec171-del'`); });
+
+  test('without, or with the wrong confirmation, nothing is deleted; with it, the page and then the app go', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/apps/${a171}/settings?tab=definition`);
+    for (const confirm of [undefined, '', '8', ' 7x', '07 or 1=1'])
+      await dev.post(`/builder/pages/${p171}/delete`, { __csrf: dev.lastCsrf, ...(confirm === undefined ? {} : { confirm }) });
+    assert.ok(await owner.one('select 1 as ok from meta.page where id = $1', [p171]), 'page kept');
+    for (const confirm of [undefined, '', 'SEC171-DEL', 'sec171', 'sec171-del2', 'Sec 171'])
+      await dev.post(`/builder/apps/${a171}/delete`, { __csrf: dev.lastCsrf, ...(confirm === undefined ? {} : { confirm }) });
+    assert.ok(await owner.one('select 1 as ok from meta.app where id = $1', [a171]), 'app kept');
+    assert.equal((await dev.post(`/builder/pages/${p171}/delete`, { __csrf: dev.lastCsrf, confirm: '7' })).statusCode, 303);
+    assert.ok(!(await owner.one('select 1 as ok from meta.page where id = $1', [p171])), 'page deleted');
+    assert.equal((await dev.post(`/builder/apps/${a171}/delete`, { __csrf: dev.lastCsrf, confirm: 'sec171-del' })).statusCode, 303);
+    assert.ok(!(await owner.one('select 1 as ok from meta.app where id = $1', [a171])), 'app deleted');
+  });
+
+  test('the forms say what to type; delete page is in the designer menu, not beside Save page', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    const st = (await dev.get(`/builder/apps/${hr}/settings?tab=definition`)).body;
+    assert.match(st, /class="danger-zone danger-box"[\s\S]*name="confirm"[^>]*pattern="hr"/);
+    const page = (await owner.one('select id from meta.page where app_id = $1 order by page_no limit 1', [hr])).id;
+    const pd = (await dev.get(`/builder/pages/${page}`)).body;
+    const form = pd.indexOf(`action="/builder/pages/${page}/delete"`);
+    assert.ok(form > 0);
+    assert.ok(pd.lastIndexOf('<details', form) > pd.lastIndexOf('</details>', form), 'inside a menu');
   });
 });

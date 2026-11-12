@@ -408,7 +408,6 @@ export const zhCN: BuilderMessages = {
   'pd.not_found': '未找到组件。',
   'pd.save_page': '保存页面',
   'pd.delete_page': '删除页面',
-  'pd.delete_page_confirm': '删除页面 {n} 及其所有组件？',
   'pd.filter_label': '筛选属性',
   'pd.filter': '筛选',
   'pd.help_hint': '选择一个属性以在此处查看其帮助。',
@@ -1427,7 +1426,6 @@ export const zhCN: BuilderMessages = {
   'st.ts_format': '日期和时间格式',
   'st.ts_format_ph': '例如 DD-MM-YYYY HH24:MI',
   'st.save_settings': '保存设置',
-  'st.delete_confirm': '删除应用程序 {app} 及其所有页面？',
   'st.delete': '删除应用程序',
   'st.error_fn': '错误处理函数',
   'st.error_fn_ph': '例如 sales.error_message',
@@ -7538,4 +7536,19 @@ export const zhCN: BuilderMessages = {
   'wu.sec.instance': '实例',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '需要注意',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '危险区域',
+  'st.delete_text': '删除 {app} 会移除其页面、共享组件、工作副本以及备份；此操作无法撤销。如果以后可能还需要，请先导出。',
+  'st.delete_type': '输入别名 {alias} 以确认',
+  'st.delete_mismatch': '输入应用程序的别名 {alias} 才能删除它。',
+  'pd.delete_type': '输入页码 {n} 以确认',
+  'pd.delete_mismatch': '输入页码 {n} 才能删除该页面。',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': '数据和页面',
+  'aw.sign_in': '登录',
+  'aw.sum_on': '{schema} 上的 {n} 个页面',
+  'aw.sum_on_1': '{schema} 上的 {n} 个页面',
+  'aw.sum_new': '一个拥有自己模式的新应用程序',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '关闭',
 };

@@ -408,7 +408,6 @@ export const zhTW: BuilderMessages = {
   'pd.not_found': '找不到元件。',
   'pd.save_page': '儲存頁面',
   'pd.delete_page': '刪除頁面',
-  'pd.delete_page_confirm': '要刪除頁面 {n} 及其所有元件嗎？',
   'pd.filter_label': '篩選屬性',
   'pd.filter': '篩選',
   'pd.help_hint': '選取屬性即可在此查看其說明。',
@@ -1427,7 +1426,6 @@ export const zhTW: BuilderMessages = {
   'st.ts_format': '日期與時間格式',
   'st.ts_format_ph': '例如 DD-MM-YYYY HH24:MI',
   'st.save_settings': '儲存設定',
-  'st.delete_confirm': '要刪除應用程式 {app} 及其所有頁面嗎？',
   'st.delete': '刪除應用程式',
   'st.error_fn': '錯誤處理函數',
   'st.error_fn_ph': '例如 sales.error_message',
@@ -7538,4 +7536,19 @@ export const zhTW: BuilderMessages = {
   'wu.sec.instance': '執行個體',
   // ------------------------------------------------------------ Workspace home: needs attention (UX-13)
   'wh.attention': '需要注意',
+  // ------------------------------------------------------------ Delete with a typed confirmation (UX-6)
+  'st.danger_zone': '危險區域',
+  'st.delete_text': '刪除 {app} 會移除其頁面、共用元件、工作副本以及備份；此動作無法復原。如果日後可能還需要，請先匯出。',
+  'st.delete_type': '輸入別名 {alias} 以確認',
+  'st.delete_mismatch': '輸入應用程式的別名 {alias} 才能刪除它。',
+  'pd.delete_type': '輸入頁碼 {n} 以確認',
+  'pd.delete_mismatch': '輸入頁碼 {n} 才能刪除該頁面。',
+  // ------------------------------------------------------------ Create application: name first, a sticky footer (UX-7)
+  'aw.data_and_pages': '資料和頁面',
+  'aw.sign_in': '登入',
+  'aw.sum_on': '{schema} 上的 {n} 個頁面',
+  'aw.sum_on_1': '{schema} 上的 {n} 個頁面',
+  'aw.sum_new': '一個擁有自己結構描述的新應用程式',
+  // ------------------------------------------------------------ A side drawer's Close (UX-8)
+  'common.close': '關閉',
 };

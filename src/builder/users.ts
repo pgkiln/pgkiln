@@ -121,27 +121,10 @@ export async function usersRoutes(app: FastifyInstance) {
     ).rows;
     const cfg = await accountSettings();
     const main = html`
-      <div class="title-row"><h1>${tx('us.title')}</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">${tx('us.providers_btn')}</a> <a class="btn" href="${BASE}/users/directories">${tx('us.ldap_btn')}</a></div></div>
-      <p class="muted u-mt0">${tx.rich('us.intro', { where: html`<b>${tx('us.access_path')}</b>` })}</p>
-      <div class="columns wide-left">
-        ${region(tx('us.accounts'), html`
-          <form method="get" class="search u-mb075 u-mwnone" role="search">
-            <input type="search" name="q" value="${q}" placeholder="${tx('us.search_ph')}" aria-label="${tx('us.search_label')}"><button class="btn">${tx('us.search')}</button>
-          </form>
-          <div class="table-wrap"><table class="report report-reflow">
-            <thead><tr><th>${tx('us.username')}</th><th>${tx('us.name')}</th><th>${tx('us.apps_roles')}</th><th>${tx('us.signin')}</th><th>${tx('mfa.column')}</th><th>${tx('us.status')}</th></tr></thead>
-            <tbody>${users.length
-              ? users.map((u) => html`<tr>
-                  <td data-label="${tx('us.username')}"><a href="${BASE}/users/${u.id}">${u.username}</a></td>
-                  <td data-label="${tx('us.name')}">${u.display_name ?? ''}${u.email ? html`<div class="muted">${u.email}</div>` : ''}</td>
-                  <td data-label="${tx('us.applications')}">${u.apps.length ? u.apps.map((x: any) => html`<span class="chip">${x.alias}${x.roles.length ? `: ${x.roles.join(', ')}` : ''}</span> `) : html`<span class="muted">${tx('us.none')}</span>`}</td>
-                  <td data-label="${tx('us.signin')}">${u.password_hash ? tx('us.password') : html`<span class="muted">${tx('us.no_password')}</span>`}</td>
-                  <td data-label="${tx('mfa.column')}">${u.mfa ? html`${icon('lock')} ${tx('mfa.on')}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td>
-                  <td data-label="${tx('us.status')}">${u.active ? tx('us.active') : html`<b>${tx('us.inactive')}</b>`}${u.last_login_at ? html`<div class="muted">${tx('us.last', { at: String(u.last_login_at).slice(0, 16) })}</div>` : ''}</td>
-                </tr>`)
-              : html`<tr><td colspan="6" class="empty">${tx('us.no_accounts')}</td></tr>`}</tbody>
-          </table></div>`)}
-        ${region(tx('us.create'), html`
+      <div class="title-row"><h1>${tx('us.title')}</h1><div class="buttons"><a class="btn" href="${BASE}/users/providers">${tx('us.providers_btn')}</a> <a class="btn" href="${BASE}/users/directories">${tx('us.ldap_btn')}</a>
+        <!-- (UX-8) Create account in a side drawer, so the accounts get the page's width (a details element: works without script) -->
+        <details class="drawer" id="us-create"><summary class="btn btn-hot">${icon('plus')} ${tx('us.create')}</summary>
+          <div class="drawer-panel" role="dialog" aria-labelledby="us-create-title"><div class="drawer-head"><h2 id="us-create-title">${tx('us.create')}</h2><button type="button" class="btn btn-sm" data-drawer-close>${tx('common.close')}</button></div>
           <form method="post" action="${BASE}/users">${csrf(s)}
             ${input('username', tx('us.username'), '', { required: true, help: tx('us.username_help') })}
             ${input('display_name', tx('us.name'), '')}
@@ -149,7 +132,26 @@ export async function usersRoutes(app: FastifyInstance) {
             ${input('password', tx('us.password_label'), '', { type: 'password', auto: 'new-password', help: tx('us.password_help') })}
             <div class="field"><label class="check"><input type="checkbox" name="must_change" value="true" checked> ${tx('us.must_change')}</label></div>
             <div class="buttons"><button class="btn btn-hot">${tx('us.create')}</button></div>
-          </form>`)}
+          </form></div></details></div></div>
+      <p class="muted u-mt0">${tx.rich('us.intro', { where: html`<b>${tx('us.access_path')}</b>` })}</p>
+      <div class="us-page">
+        ${region(tx('us.accounts'), html`
+          <form method="get" class="search u-mb075 u-mwnone" role="search">
+            <input type="search" name="q" value="${q}" placeholder="${tx('us.search_ph')}" aria-label="${tx('us.search_label')}"><button class="btn">${tx('us.search')}</button>
+          </form>
+          <div class="table-wrap rep-fit"><table class="report report-reflow">
+            <thead><tr><th>${tx('us.username')}</th><th>${tx('us.name')}</th><th>${tx('us.apps_roles')}</th><th>${tx('us.signin')}</th><th>${tx('mfa.column')}</th><th>${tx('us.status')}</th></tr></thead>
+            <tbody>${users.length
+              ? users.map((u) => html`<tr>
+                  <td data-label="${tx('us.username')}"><a href="${BASE}/users/${u.id}">${u.username}</a></td>
+                  <td data-label="${tx('us.name')}">${u.display_name ?? ''}${u.email ? html`<div class="muted">${u.email}</div>` : ''}</td>
+                  <td class="col-wrap" data-label="${tx('us.applications')}">${u.apps.length ? u.apps.map((x: any) => html`<span class="chip">${x.alias}${x.roles.length ? `: ${x.roles.join(', ')}` : ''}</span> `) : html`<span class="muted">${tx('us.none')}</span>`}</td>
+                  <td data-label="${tx('us.signin')}">${u.password_hash ? tx('us.password') : html`<span class="muted">${tx('us.no_password')}</span>`}</td>
+                  <td data-label="${tx('mfa.column')}">${u.mfa ? html`${icon('lock')} ${tx('mfa.on')}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td>
+                  <td data-label="${tx('us.status')}">${u.active ? tx('us.active') : html`<b>${tx('us.inactive')}</b>`}${u.last_login_at ? html`<div class="muted">${tx('us.last', { at: String(u.last_login_at).slice(0, 16) })}</div>` : ''}</td>
+                </tr>`)
+              : html`<tr><td colspan="6" class="empty">${tx('us.no_accounts')}</td></tr>`}</tbody>
+          </table></div>`)}
         ${region(tx('us.settings'), html`
           <form method="post" action="${BASE}/users/settings">${csrf(s)}
             <div class="form-grid">

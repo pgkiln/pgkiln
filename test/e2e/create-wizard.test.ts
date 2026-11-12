@@ -62,8 +62,8 @@ describe('the Create Application wizard (browser)', () => {
     const page = await developer();
     await page.goto(`${base}/builder/create`);
     await page.evaluate(() => ((window as any).__stay = true));
-    assert.equal(await page.isVisible('form.create-schema button'), false, 'no button with JavaScript');
-    await page.selectOption('form.create-schema select[name="schema"]', 'hr');
+    assert.equal(await page.isVisible('button[form="aw-schema-get"]'), false, 'no button with JavaScript');
+    await page.selectOption('select[name="schema"][form="aw-schema-get"]', 'hr');
     await page.waitForSelector('#aw-pages input[name^="t_"][value="leave_request"]', { state: 'attached' });
     assert.equal(await page.evaluate(() => (window as any).__stay), true, 'the page was not reloaded');
     assert.match(page.url(), /\/builder\/create\?schema=hr$/);
@@ -71,6 +71,22 @@ describe('the Create Application wizard (browser)', () => {
     assert.equal(await page.inputValue('#f_name'), 'Hr');
     assert.match(await page.inputValue('#f_alias'), /^hr(-\d+)?$/);
     assert.ok((await page.locator('#aw-pages .aw-rls').count()) >= 1, 'hr has tables with row level security');
+    // (UX-7) the footer's summary counts the pages and follows the choices
+    assert.match(await page.textContent('#aw-summary') ?? '', /^\d+ pages on hr · App users/);
+    await page.selectOption('#f_authentication', 'none');
+    assert.match(await page.textContent('#aw-summary') ?? '', /^\d+ pages on hr · None/);
     await page.context().close();
+  });
+
+  test('(UX-7) at 1366 × 768 the name, the schema and Create are on screen without scrolling', async () => {
+    const page = await developer();
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await page.goto(`${base}/builder/create`);
+    const inView = async (sel: string) => {
+      const box = await page.locator(sel).first().boundingBox();
+      return !!box && box.y >= 0 && box.y + box.height <= 768;
+    };
+    for (const sel of ['#f_name', '#f_schema', '.aw-footer button.btn-hot']) assert.ok(await inView(sel), sel);
+    assert.equal(await page.evaluate(() => window.scrollY), 0);
   });
 });
