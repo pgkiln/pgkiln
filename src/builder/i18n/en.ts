@@ -7709,4 +7709,22 @@ export const en = {
   'apip.modules_unknown': 'This application has no REST module named {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Leave out of the legend (always shown)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Tour of the SQL Workshop',
+  'tour.take': 'Take the tour',
+  'tour.intro': 'A short walk through the tools you will use most. Each step says what a tool is for and gives you something to try; open the tool, then come back for the next step.',
+  'tour.step': 'Step {n} of {total}',
+  'tour.try': 'Try this:',
+  'tour.open': 'Open {tool}',
+  'tour.previous': 'Previous',
+  'tour.next': 'Next',
+  'tour.done': 'Done',
+  'tour.after': 'That was the tour. On the SQL Workshop home, {pin} pins a tool you use often, and the search field at the top finds tools, applications, pages and tables.',
+  'tour.try.worksheet': 'Type a SELECT on one of your tables and press Run Statement. The navigator at the left lists the tables; the result opens under the editor.',
+  'tour.try.objects': 'Pick a table and look at its tabs: columns, data, keys, row level security policies and the DDL that creates it.',
+  'tour.try.load': 'Upload a small CSV or Excel file into a new table. You choose the column names and types before anything is created.',
+  'tour.try.quicksql': 'Write a table name on one line and its columns indented under it. The DDL appears beside it, ready to run.',
+  'tour.try.rest': 'Publish a table as a REST endpoint with AutoREST, then open its OpenAPI document. Modules hold handlers you write yourself.',
+  'tour.try.changes': 'Run an ALTER TABLE in the SQL Worksheet, then look here: it is a change set you can download as a Flyway or Liquibase migration.',
+  'tour.try.monitor': 'See which sessions are running a statement right now, what they wait for and what blocks them.',
 } as const;

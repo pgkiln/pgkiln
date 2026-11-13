@@ -51,6 +51,7 @@ export async function launchpad(s: Session, admin: boolean): Promise<Raw> {
       <h2 id="lp-pins-title">${tx('sw.pinned')}</h2>
       ${pins.length ? html`<ul class="lp-chips">${pins.map((p) => html`<li><a href="${p.href}">${icon(p.icon)}<span>${p.label}</span></a>${pinButton(s, p, true, `${BASE}/sql`)}</li>`)}</ul>`
         : html`<p class="muted small">${tx.rich('sw.pin_hint', { pin: icon('pin') })}</p>`}
+      <p class="small u-m0"><a href="${BASE}/sql/tour">${icon('compass')} ${tx('tour.take')}</a></p>
       <ul class="lp-chips lp-recent" data-lp-recent aria-label="${tx('sw.recent')}" hidden></ul>
     </section>
     <div class="lp-groups">

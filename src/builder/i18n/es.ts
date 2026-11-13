@@ -7705,4 +7705,22 @@ export const es: BuilderMessages = {
   'apip.modules_unknown': 'Esta aplicación no tiene ningún módulo REST llamado {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'No incluir en la leyenda (siempre visible)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Recorrido por SQL Workshop',
+  'tour.take': 'Hacer el recorrido',
+  'tour.intro': 'Un breve recorrido por las herramientas que más usará. Cada paso dice para qué sirve una herramienta y le propone algo que probar; abra la herramienta y vuelva para el paso siguiente.',
+  'tour.step': 'Paso {n} de {total}',
+  'tour.try': 'Pruebe esto:',
+  'tour.open': 'Abrir {tool}',
+  'tour.previous': 'Anterior',
+  'tour.next': 'Siguiente',
+  'tour.done': 'Listo',
+  'tour.after': 'Ese fue el recorrido. En el inicio de SQL Workshop, {pin} fija una herramienta que use a menudo, y el campo de búsqueda de arriba encuentra herramientas, aplicaciones, páginas y tablas.',
+  'tour.try.worksheet': 'Escriba un SELECT sobre una de sus tablas y pulse Ejecutar sentencia. El navegador de la izquierda muestra las tablas; el resultado se abre debajo del editor.',
+  'tour.try.objects': 'Elija una tabla y mire sus pestañas: columnas, datos, claves, políticas de seguridad a nivel de fila y el DDL que la crea.',
+  'tour.try.load': 'Cargue un archivo CSV o Excel pequeño en una tabla nueva. Usted elige los nombres y tipos de las columnas antes de que se cree nada.',
+  'tour.try.quicksql': 'Escriba el nombre de una tabla en una línea y sus columnas con sangría debajo. El DDL aparece al lado, listo para ejecutarse.',
+  'tour.try.rest': 'Publique una tabla como punto de acceso REST con AutoREST y abra su documento OpenAPI. Los módulos contienen los manejadores que usted escribe.',
+  'tour.try.changes': 'Ejecute un ALTER TABLE en SQL Worksheet y mire aquí: es un conjunto de cambios que puede descargar como migración de Flyway o Liquibase.',
+  'tour.try.monitor': 'Vea qué sesiones están ejecutando una sentencia ahora mismo, qué esperan y qué las bloquea.',
 };

@@ -7705,4 +7705,22 @@ export const de: BuilderMessages = {
   'apip.modules_unknown': 'Diese Anwendung hat kein REST-Modul namens {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Nicht in der Legende (immer sichtbar)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Rundgang durch den SQL Workshop',
+  'tour.take': 'Rundgang starten',
+  'tour.intro': 'Ein kurzer Rundgang durch die Werkzeuge, die Sie am häufigsten verwenden. Jeder Schritt sagt, wofür ein Werkzeug da ist, und gibt Ihnen etwas zum Ausprobieren; öffnen Sie das Werkzeug und kommen Sie für den nächsten Schritt zurück.',
+  'tour.step': 'Schritt {n} von {total}',
+  'tour.try': 'Probieren Sie:',
+  'tour.open': '{tool} öffnen',
+  'tour.previous': 'Zurück',
+  'tour.next': 'Weiter',
+  'tour.done': 'Fertig',
+  'tour.after': 'Das war der Rundgang. Auf der Startseite des SQL Workshop heftet {pin} ein häufig verwendetes Werkzeug an, und das Suchfeld oben findet Werkzeuge, Anwendungen, Seiten und Tabellen.',
+  'tour.try.worksheet': 'Geben Sie ein SELECT auf eine Ihrer Tabellen ein und drücken Sie Anweisung ausführen. Der Navigator links listet die Tabellen auf; das Ergebnis erscheint unter dem Editor.',
+  'tour.try.objects': 'Wählen Sie eine Tabelle und sehen Sie sich ihre Register an: Spalten, Daten, Schlüssel, Richtlinien für Zeilensicherheit und die DDL, die sie erstellt.',
+  'tour.try.load': 'Laden Sie eine kleine CSV- oder Excel-Datei in eine neue Tabelle. Sie wählen Spaltennamen und Typen, bevor etwas erstellt wird.',
+  'tour.try.quicksql': 'Schreiben Sie einen Tabellennamen in eine Zeile und die Spalten eingerückt darunter. Die DDL erscheint daneben und kann ausgeführt werden.',
+  'tour.try.rest': 'Veröffentlichen Sie eine Tabelle mit AutoREST als REST-Endpunkt und öffnen Sie dann das OpenAPI-Dokument. Module enthalten Handler, die Sie selbst schreiben.',
+  'tour.try.changes': 'Führen Sie im SQL Worksheet ein ALTER TABLE aus und sehen Sie dann hier nach: Es ist ein Change Set, das Sie als Flyway- oder Liquibase-Migration herunterladen können.',
+  'tour.try.monitor': 'Sehen Sie, welche Sitzungen gerade eine Anweisung ausführen, worauf sie warten und was sie blockiert.',
 };

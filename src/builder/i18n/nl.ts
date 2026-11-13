@@ -7705,4 +7705,22 @@ export const nl: BuilderMessages = {
   'apip.modules_unknown': 'Deze applicatie heeft geen REST-module met de naam {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Niet in de legenda (altijd zichtbaar)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Rondleiding door de SQL Workshop',
+  'tour.take': 'Volg de rondleiding',
+  'tour.intro': 'Een korte rondleiding langs de hulpmiddelen die u het meest gebruikt. Elke stap zegt waar een hulpmiddel voor is en geeft u iets om te proberen; open het hulpmiddel en kom terug voor de volgende stap.',
+  'tour.step': 'Stap {n} van {total}',
+  'tour.try': 'Probeer dit:',
+  'tour.open': '{tool} openen',
+  'tour.previous': 'Vorige',
+  'tour.next': 'Volgende',
+  'tour.done': 'Klaar',
+  'tour.after': 'Dat was de rondleiding. Op de startpagina van de SQL Workshop zet {pin} een hulpmiddel vast dat u vaak gebruikt, en het zoekveld bovenaan vindt hulpmiddelen, applicaties, pagina\'s en tabellen.',
+  'tour.try.worksheet': 'Typ een SELECT op een van uw tabellen en druk op Statement uitvoeren. De navigator links toont de tabellen; het resultaat opent onder de editor.',
+  'tour.try.objects': 'Kies een tabel en bekijk de tabbladen: kolommen, gegevens, sleutels, policy\'s voor beveiliging op rijniveau en de DDL die de tabel maakt.',
+  'tour.try.load': 'Laad een klein CSV- of Excel-bestand in een nieuwe tabel. U kiest de kolomnamen en typen voordat er iets wordt aangemaakt.',
+  'tour.try.quicksql': 'Schrijf een tabelnaam op een regel en de kolommen ingesprongen eronder. De DDL verschijnt ernaast, klaar om uit te voeren.',
+  'tour.try.rest': 'Publiceer een tabel als REST-endpoint met AutoREST en open daarna het OpenAPI-document. Modules bevatten handlers die u zelf schrijft.',
+  'tour.try.changes': 'Voer een ALTER TABLE uit in de SQL Worksheet en kijk dan hier: het is een change set die u kunt downloaden als Flyway- of Liquibase-migratie.',
+  'tour.try.monitor': 'Zie welke sessies op dit moment een statement uitvoeren, waarop ze wachten en wat ze blokkeert.',
 };

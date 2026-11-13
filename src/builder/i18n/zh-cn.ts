@@ -7705,4 +7705,22 @@ export const zhCN: BuilderMessages = {
   'apip.modules_unknown': '此应用程序没有名为 {names} 的 REST 模块。',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '不在图例中显示（始终可见）',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'SQL Workshop 导览',
+  'tour.take': '开始导览',
+  'tour.intro': '简要介绍您最常用的工具。每一步都会说明工具的用途并给出可以尝试的操作；打开工具，然后回来继续下一步。',
+  'tour.step': '第 {n} 步，共 {total} 步',
+  'tour.try': '试一试：',
+  'tour.open': '打开 {tool}',
+  'tour.previous': '上一步',
+  'tour.next': '下一步',
+  'tour.done': '完成',
+  'tour.after': '导览到此结束。在 SQL Workshop 主页上，{pin} 可以固定常用工具，顶部的搜索框可以查找工具、应用程序、页面和表。',
+  'tour.try.worksheet': '对您的某个表输入 SELECT 并按“运行语句”。左侧的导航器列出各表；结果显示在编辑器下方。',
+  'tour.try.objects': '选择一个表并查看其选项卡：列、数据、键、行级安全策略以及创建它的 DDL。',
+  'tour.try.load': '将一个小的 CSV 或 Excel 文件上传到新表中。在创建任何内容之前，您可以选择列名和类型。',
+  'tour.try.quicksql': '在一行写下表名，并在其下缩进写出各列。DDL 会显示在旁边，可直接运行。',
+  'tour.try.rest': '使用 AutoREST 将表发布为 REST 端点，然后打开其 OpenAPI 文档。模块中包含您自己编写的处理程序。',
+  'tour.try.changes': '在 SQL Worksheet 中运行 ALTER TABLE，然后查看此处：它是一个变更集，可下载为 Flyway 或 Liquibase 迁移。',
+  'tour.try.monitor': '查看当前有哪些会话正在运行语句、它们在等待什么以及被什么阻塞。',
 };

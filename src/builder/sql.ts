@@ -9,6 +9,7 @@ import { clearCompletions } from './code-editor.ts';
 import { scriptRoutes } from './scripts.ts';
 import { worksheetRoutes } from './worksheet.ts';
 import { launchpad, launchpadRoutes } from './launchpad.ts';
+import { sqlTourRoutes } from './sql-tour.ts';
 import { sqlShareRoutes } from './sql-shares.ts';
 import { sqlChartRoutes } from './sql-charts.ts';
 import { isAdmin } from './locks.ts';
@@ -118,6 +119,8 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(sqlShareRoutes);
   // (sprint 96) the Launchpad's pins and the builder's search (Ctrl+K)
   await app.register(launchpadRoutes);
+  // (sprint 179) the guided tour of the workshop's tools
+  await app.register(sqlTourRoutes);
   // (sprint 91) the SQL Worksheet (was SQL Commands; /sql/commands and a post to /sql are the same page)
   await app.register(worksheetRoutes);
   app.get(`${BASE}/sql`, workshopHome);

@@ -7705,4 +7705,22 @@ export const ja: BuilderMessages = {
   'apip.modules_unknown': 'このアプリケーションに {names} という REST モジュールはありません。',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '凡例に表示しない（常に表示）',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'SQL Workshop ツアー',
+  'tour.take': 'ツアーを見る',
+  'tour.intro': 'よく使うツールを順に紹介します。各ステップでツールの用途と試してみることを示します。ツールを開いたら、戻って次のステップに進んでください。',
+  'tour.step': 'ステップ {n} / {total}',
+  'tour.try': '試してみましょう:',
+  'tour.open': '{tool} を開く',
+  'tour.previous': '前へ',
+  'tour.next': '次へ',
+  'tour.done': '完了',
+  'tour.after': 'ツアーは以上です。SQL Workshop のホームでは、{pin} でよく使うツールをピン留めでき、上部の検索欄でツール、アプリケーション、ページ、テーブルを検索できます。',
+  'tour.try.worksheet': 'いずれかのテーブルに対する SELECT を入力し、「文を実行」を押します。左のナビゲーターにテーブルが一覧表示され、結果はエディターの下に開きます。',
+  'tour.try.objects': 'テーブルを選び、タブを見てください。列、データ、キー、行レベルセキュリティのポリシー、作成用の DDL があります。',
+  'tour.try.load': '小さな CSV または Excel ファイルを新しいテーブルに読み込みます。作成される前に列名と型を選べます。',
+  'tour.try.quicksql': '1 行にテーブル名を書き、その下に字下げして列を書きます。横に DDL が表示され、そのまま実行できます。',
+  'tour.try.rest': 'AutoREST でテーブルを REST エンドポイントとして公開し、その OpenAPI ドキュメントを開きます。モジュールには自分で書くハンドラーを置きます。',
+  'tour.try.changes': 'SQL Worksheet で ALTER TABLE を実行してから、ここを見てください。Flyway または Liquibase のマイグレーションとしてダウンロードできる変更セットになっています。',
+  'tour.try.monitor': 'いま文を実行しているセッション、その待機対象、ブロックしているものを確認できます。',
 };
