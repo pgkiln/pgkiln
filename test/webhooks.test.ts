@@ -15,6 +15,11 @@ const { closePools, owner } = await import('../src/db.ts');
 const { encryptSecret } = await import('../src/secrets.ts');
 const wh = await import('../src/webhooks.ts');
 const { handlerProblems, openApi } = await import('../src/runtime/rest.ts');
+const { ownerUrl, runtimeUrl } = await import('../src/db.ts');
+const { runtimeForApp, workspacesChanged } = await import('../src/workspace-db.ts');
+const wr = await import('../src/webrequests.ts');
+const { Browser } = await import('./helpers.ts');
+const http = await import('node:http');
 
 let app: FastifyInstance;
 let appId: number;
@@ -49,7 +54,20 @@ const HANDLERS = [
   { method: 'POST', path: 'echo', type: 'plpgsql', auth: 'public', source: `perform meta.rest_reply(jsonb_build_object('n', :N, 'body', :BODY), 200)` },
 ];
 
+const ISO_WS = 'S177 Iso';
+const ISO_ALIAS = 's177-iso';
+async function isoCleanup() {
+  await owner.query(`update meta.workspace set isolated = false where name = $1`, [ISO_WS]);
+  await owner.query('delete from meta.app where alias = $1', [ISO_ALIAS]);
+  await owner.query('delete from meta.workspace where name = $1', [ISO_WS]);
+  await owner.query('drop schema if exists s177_iso cascade');
+  await owner.query('drop owned by app_s177_iso cascade').catch(() => {});
+  await owner.query('drop role if exists app_s177_iso');
+  await workspacesChanged();
+}
+
 before(async () => {
+  await isoCleanup();
   app = await buildApp({ logger: false });
   await owner.query(`drop schema if exists ${SCHEMA} cascade`);
   await owner.query(`delete from meta.app where alias = $1`, [alias]);
@@ -73,6 +91,7 @@ beforeEach(async () => {
 });
 
 after(async () => {
+  await isoCleanup();
   await wh.stopWebhookRunner();
   await owner.query('delete from meta.app where id = $1', [appId]);
   await owner.query(`drop schema if exists ${SCHEMA} cascade`);
@@ -256,5 +275,126 @@ describe('sprint 177: a webhook handler receives first and processes later', () 
     assert.match(handlerProblems([{ method: 'POST', path: 'x', type: 'sql', source: 'select 1', webhook: {} }]).join(' '), /belongs to a handler of type webhook/);
     const doc = openApi({ alias, name: 'T' }, { name: 'in', title: 'In', description: null, handlers: HANDLERS as never }) as any;
     assert.deepEqual(doc.paths['/github'].post.security, []);
+  });
+});
+
+describe('sprint 177: the builder edits webhook handlers and lists events', () => {
+  test('a webhook handler is saved from the form; the events page lists and re-processes', async () => {
+    const dev = new Browser(app);
+    await dev.get('/builder/login');
+    await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const m = (await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'in'`, [appId])).id;
+    await owner.query(`update meta.rest_module set templates = '[{"uri": "new"}]' where id = $1`, [m]);
+    let page = await dev.get(`/builder/sql/rest/modules/${m}/handler?t=new`);
+    assert.equal(page.statusCode, 200);
+    assert.match(page.body, /name="wh_scheme"/);
+    const form = { t: 'new', method: 'POST', type: 'webhook', source: 'null', auth: 'token', wh_scheme: 'stripe', wh_credential: 'hook_secret', wh_event_id: 'body:id',
+      wh_tolerance: '120', wh_headers: 'X-A, X-B', wh_retention: '7', wh_attempts: '2', wh_prefix: 'ignored-for-stripe' };
+    // a credential that doesn't exist, then the real one
+    let res = await dev.submit(`/builder/sql/rest/modules/${m}/handler`, { ...form, wh_credential: 'NOPE' });
+    assert.equal(res.statusCode, 422);
+    assert.match(res.body, /Web credential NOPE does not exist/);
+    res = await dev.submit(`/builder/sql/rest/modules/${m}/handler`, { ...form, wh_retention: '9999' });
+    assert.equal(res.statusCode, 422);
+    assert.match(res.body, /retention_days/);
+    await dev.get(`/builder/sql/rest/modules/${m}/handler?t=new`);
+    res = await dev.submit(`/builder/sql/rest/modules/${m}/handler`, form);
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    const h = (await owner.one(`select h from meta.rest_module, jsonb_array_elements(handlers) h where id = $1 and h->>'path' = 'new'`, [m])).h;
+    assert.deepEqual(h, { method: 'POST', path: 'new', type: 'webhook', source: 'null', auth: 'public',
+      webhook: { scheme: 'stripe', credential: 'HOOK_SECRET', tolerance_s: 120, event_id: 'body:id', headers: ['X-A', 'X-B'], retention_days: 7, max_attempts: 2 } });
+    page = await dev.get(`/builder/sql/rest/modules/${m}/handler?t=new&m=POST`);
+    assert.match(page.body, /name="wh_retention"[^>]*value="7"/);
+    assert.match(page.body, /\/a\/hooks-s177\/rest\/in\/new/);
+    assert.doesNotMatch(page.body, new RegExp(SECRET));
+    // an event of this handler: listed, shown, re-processed
+    const body = '{"id": "evt_b1", "note": "<b>bold</b>"}';
+    assert.equal((await post('new', body, { 'stripe-signature': stripeSig(body) })).statusCode, 202);
+    await wh.webhookTick();
+    const [ev] = await events();
+    assert.equal(ev.state, 'done');
+    const list = await dev.get(`/builder/sql/rest/events?module=${m}&path=new`);
+    assert.match(list.body, /evt_b1/);
+    assert.match((await dev.get('/builder/sql/rest/events?state=failed')).body, /No events/);
+    const one = await dev.get(`/builder/sql/rest/events/${ev.id}`);
+    assert.match(one.body, /&quot;note&quot;: &quot;&lt;b&gt;bold&lt;\/b&gt;&quot;/);
+    assert.equal((await dev.submit(`/builder/sql/rest/events/${ev.id}`, { action: 'reprocess' })).statusCode, 303);
+    assert.equal((await events())[0].state, 'received');
+    await wh.webhookTick();
+    assert.equal((await events())[0].state, 'done');
+    await owner.query(`update meta.rest_module set handlers = $2::jsonb, templates = '[]' where id = $1`, [m, JSON.stringify(HANDLERS)]);
+  });
+});
+
+describe('sprint 177: webhooks and the outbox in an isolated workspace', { skip: runtimeUrl === ownerUrl && 'needs RUNTIME_DATABASE_URL' }, () => {
+  test('the event is processed and the callback called on the workspace\'s own login, as the application\'s role', async () => {
+    const admin = new Browser(app);
+    await admin.get('/builder/login');
+    await admin.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const ws = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [ISO_WS])).id;
+    await admin.get(`/builder/workspaces/${ws}`);
+    assert.equal((await admin.submit(`/builder/workspaces/${ws}/isolation`, { isolated: 'true' })).statusCode, 303);
+    const w = await owner.one('select isolated, run_role from meta.workspace where id = $1', [ws]);
+    assert.equal(w.isolated, true);
+    await admin.get('/builder');
+    await admin.submit('/builder/workspace', { workspace: String(ws) });
+    await admin.get('/builder/create');
+    assert.equal((await admin.submit('/builder/apps', { name: 'S177 iso', alias: ISO_ALIAS, authentication: 'none' })).statusCode, 303);
+    const iso = (await owner.one(`select id, db_role from meta.app where alias = $1`, [ISO_ALIAS]));
+    assert.equal(iso.db_role, 'app_s177_iso');
+    await workspacesChanged();
+    await owner.query(`create table s177_iso.seen (id serial primary key, what text, role text, login text)`);
+    await owner.query(`alter table s177_iso.seen owner to app_s177_iso`);
+    await owner.query(`create function s177_iso.sent(p_id bigint) returns void language sql as
+      $$ insert into s177_iso.seen (what, role, login) values ('callback ' || (meta.web_response(p_id)->>'status'), current_user, session_user) $$`);
+    await owner.query(`alter function s177_iso.sent(bigint) owner to app_s177_iso`);
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc) values ($1, 'ISO_HOOK', 'bearer', $2)`, [iso.id, encryptSecret(SECRET)]);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'in', 'Inbound', $2::jsonb)`, [iso.id, JSON.stringify([
+      { method: 'POST', path: 'hook', type: 'webhook', auth: 'public', source: `insert into s177_iso.seen (what, role, login) values ('event ' || :ID, current_user, session_user)`,
+        webhook: { scheme: 'hmac-sha256', credential: 'ISO_HOOK', event_id: 'body:id' } }])]);
+    try {
+      // the webhook
+      const body = '{"id": "iso-1"}';
+      const res = await app.inject({ method: 'POST', url: `/a/${ISO_ALIAS}/rest/in/hook`, payload: body, headers: { 'content-type': 'application/json', 'x-signature': hmac(body) } });
+      assert.equal(res.statusCode, 202, res.body);
+      assert.equal((await app.inject({ method: 'POST', url: `/a/${ISO_ALIAS}/rest/in/hook`, payload: body, headers: { 'content-type': 'application/json', 'x-signature': hmac(body, 'wrong') } })).statusCode, 401);
+      await wh.webhookTick();
+      let rows = (await owner.query('select what, role, login from s177_iso.seen order by id')).rows;
+      assert.deepEqual(rows, [{ what: 'event iso-1', role: 'app_s177_iso', login: w.run_role }]);
+      // the outbox: queued on the workspace's login, delivered, called back on it
+      const mock = http.createServer((_req, r) => r.end('ok'));
+      await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+      const saved = [process.env.PGKILN_REST_ALLOWED_HOSTS, process.env.PGKILN_REST_PRIVATE_HOSTS];
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      try {
+        const db = await runtimeForApp(iso.id);
+        const id = await db.tx(async (c) => {
+          await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'ann', true)`, [String(iso.id)]);
+          await c.query('set local role app_s177_iso');
+          return (await c.query(`select meta.web_request($1, 'POST', '{}', p_callback => 's177_iso.sent') as id`, [`http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}/x`])).rows[0].id;
+        });
+        await wr.webRequestTick();
+        const r = await owner.one('select status, callback_state, callback_error from meta.web_request_log where id = $1', [id]);
+        assert.deepEqual(r, { status: 'ok', callback_state: 'done', callback_error: null });
+        rows = (await owner.query('select what, role, login from s177_iso.seen order by id')).rows;
+        assert.deepEqual(rows[1], { what: 'callback ok', role: 'app_s177_iso', login: w.run_role });
+      } finally {
+        mock.close();
+        [process.env.PGKILN_REST_ALLOWED_HOSTS, process.env.PGKILN_REST_PRIVATE_HOSTS] = saved;
+        if (saved[0] === undefined) delete process.env.PGKILN_REST_ALLOWED_HOSTS;
+        if (saved[1] === undefined) delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      }
+      // the Default workspace's developers don't see the isolated workspace's events or requests
+      await admin.submit('/builder/workspace', { workspace: '1' });
+      assert.doesNotMatch((await admin.get('/builder/sql/rest/events')).body, /iso-1/);
+      assert.doesNotMatch((await admin.get('/builder/sql/rest/requests')).body, new RegExp(ISO_ALIAS));
+      await admin.submit('/builder/workspace', { workspace: String(ws) });
+      assert.match((await admin.get('/builder/sql/rest/events')).body, /iso-1/);
+      assert.match((await admin.get('/builder/sql/rest/requests')).body, new RegExp(ISO_ALIAS));
+    } finally {
+      await admin.get('/builder');
+      await admin.submit('/builder/workspace', { workspace: '1' });
+    }
   });
 });
