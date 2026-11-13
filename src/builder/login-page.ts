@@ -26,9 +26,13 @@ interface AppRow {
 
 /** The fields in the settings form: the sign-in page, and two-factor sign-in (each placed by the settings page). */
 export async function loginSettingsFields(a: AppRow) {
-  const pages = (await owner.query<{ page_no: number; name: string; requires_auth: boolean }>(
-    'select page_no, name, requires_auth from meta.page where app_id = $1 order by page_no', [a.id],
+  // (NX-U2) only pages that can be the sign-in page: public, with a Login region; the current choice stays listed
+  const pages = (await owner.query<{ page_no: number; name: string; requires_auth: boolean; login: boolean }>(
+    `select p.page_no, p.name, p.requires_auth, exists (select 1 from meta.region r where r.page_id = p.id and r.type = 'login') as login
+       from meta.page p where p.app_id = $1 order by p.page_no`, [a.id],
   )).rows;
+  const usable = (p: { requires_auth: boolean; login: boolean }) => !p.requires_auth && p.login;
+  const left = pages.filter((p) => !usable(p) && String(p.page_no) !== String(a.login_page ?? '')).length;
   const mail = await owner.one<{ service: string | null; enabled: boolean | null; from_address: string | null }>(
     `select s.name as service, s.enabled, ams.from_address
        from meta.app_mail_service ams join meta.mail_service s on s.id = ams.service_id where ams.app_id = $1`, [a.id],
@@ -39,9 +43,9 @@ export async function loginSettingsFields(a: AppRow) {
   const current = a.login_page ? String(a.login_page) : '';
   const page = html`<div class="form-grid">
       <div class="field"><label class="label" for="f_login_page">${tx('lgp.login_page')}</label>
-        <select id="f_login_page" name="login_page">${opt('', tx('lgp.the_built_in_sign_in'), current)}${pages.map((p) =>
-          opt(String(p.page_no), p.requires_auth ? tx('lgp.requires_signin', { page: `${p.page_no} ${p.name}` }) : `${p.page_no} ${p.name}`, current))}</select>
-        <small class="help">${tx.rich('lgp.page_help', { login: html`<em>${tx('lgp.login')}</em>`, minimal: html`<em>${tx('lgp.minimal')}</em>` })}
+        <select id="f_login_page" name="login_page">${opt('', tx('lgp.the_built_in_sign_in'), current)}${pages.filter((p) => usable(p) || String(p.page_no) === current).map((p) =>
+          opt(String(p.page_no), p.requires_auth ? tx('lgp.requires_signin', { page: `${p.page_no} ${p.name}` }) : !p.login ? tx('lgp.no_login_region', { page: `${p.page_no} ${p.name}` }) : `${p.page_no} ${p.name}`, current))}</select>
+        <small class="help">${left ? html`${tx(left === 1 ? 'lgp.left_out_one' : 'lgp.left_out', { n: left })} ` : ''}${tx.rich('lgp.page_help', { login: html`<em>${tx('lgp.login')}</em>`, minimal: html`<em>${tx('lgp.minimal')}</em>` })}
           <button class="link-button" formaction="${BASE}/apps/${a.id}/login-page">${tx('lgp.create_a_login_page')}</button></small></div>
     </div>
     <div class="field"><label class="check"><input type="checkbox" name="password_reset" value="true"${a.password_reset ? raw(' checked') : ''}> ${tx('lgp.offer_forgot_password')}</label>

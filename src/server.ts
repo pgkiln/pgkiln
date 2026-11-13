@@ -9,6 +9,19 @@ import { startEmbeddingRunner } from './vector.ts';
 import { startWebRequestRunner } from './webrequests.ts';
 import { startWebhookRunner } from './webhooks.ts';
 
+// (NX-S3) a public installation never runs with a default password (the Docker image checks this too:
+// scripts/docker-start.ts replaces admin / admin with PGKILN_ADMIN_PASSWORD)
+{
+  const { defaultPasswords, publicInstance } = await import('./instance-checks.ts');
+  if (publicInstance()) {
+    const weak = await defaultPasswords();
+    if (weak.length) {
+      console.error(`pgkiln: PUBLIC_URL (${process.env.PUBLIC_URL}) is a public address, and ${weak.join(', ')} still sign${weak.length === 1 ? 's' : ''} in with the default password ("admin" or the user name). Change ${weak.length === 1 ? 'it' : 'them'} first: pgkiln users password <name> --developer (or set PGKILN_ADMIN_PASSWORD with the Docker image), then start again.`);
+      process.exit(1);
+    }
+  }
+}
+
 const app = await buildApp();
 await app.listen({ port: Number(process.env.PORT ?? 3100), host: process.env.HOST ?? '127.0.0.1' });
 // automations, workflows and background processes (AUTOMATIONS=off / WORKFLOWS=off / BACKGROUND_PROCESSES=off on servers that should not run them)

@@ -1,4 +1,5 @@
 import { availabilityBadge } from './availability.ts';
+import { publicInstance } from '../instance-checks.ts';
 import { appOfPath, blockingLock, isAdmin, refuseLocked } from './locks.ts';
 import { appAllowed, loadWorkspaces, workspaceMenu } from './workspaces.ts';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -128,11 +129,11 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
   const tx = tr(s);
   const rail = (key: Section | 'search' | 'help', href: string, ic: string, label: string, extra: Raw | '' = '') =>
     html`<li><a href="${href}" class="rail-link" title="${label}"${section === key ? raw(' aria-current="page"') : ''}${extra}>${bicon(ic)}<span class="rail-label">${label}</span></a></li>`;
-  // (sprint 74) the default-password warning: on the Workspace home (sprint 109), the App Builder home and the Developers page only, until
-  // dismissed (for this sign-in); a dot on the avatar stays until the password is changed
+  // (sprint 74) the default-password warning: on the Workspace home (sprint 109), the App Builder home and the Developers page,
+  // until the password is changed ((NX-S3) it can't be dismissed any more); a dot on the avatar too
   const weak = !!s.state.__WEAK;
   const mfaDue = typeof s.state.__MFA_DUE === 'string' ? s.state.__MFA_DUE : '';
-  const weakBanner = weak && !s.state.__WEAK_HIDDEN && crumbs.length === 1 && (crumbs[0][0] === 'Home' || crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
+  const weakBanner = weak && crumbs.length === 1 && (crumbs[0][0] === 'Home' || crumbs[0][0] === 'App Builder' || crumbs[0][0] === 'Developers');
   const trail = crumbs.map(([label, href]): [string, string?] => [tx.label(label), href]);
   const back = [...trail].reverse().find(([, href], i) => i > 0 && href);
   const themeButton = (t: BuilderTheme, ic: string, label: string) =>
@@ -190,8 +191,7 @@ export function shell(s: Session, title: string, crumbs: [string, string?][], ma
       ${s.workspace?.banner_label ? html`<div class="ide-banner ide-banner-${BANNER_COLORS.includes(s.workspace.banner_color ?? '') ? s.workspace.banner_color : 'blue'}" role="note" aria-label="${tx('bar.environment')}">${s.workspace.banner_label}</div>` : ''}
       ${weakBanner || mfaDue || ok || err ? html`<div class="ide-alerts">
         ${mfaDue ? html`<div class="alert alert-warning" role="status">${tx.rich('mfa.banner', { date: mfaDue.slice(0, 10), link: html`<a href="${BASE}/security">${tx('mfa.set_up_now')}</a>` })}</div>` : ''}
-        ${weakBanner ? html`<div class="alert alert-error alert-dismissible" role="alert"><span>${tx.rich('weak.banner', { link: html`<a href="${BASE}/developers">${tx('weak.change_now')}</a>` })}</span>
-          <form method="post" action="${BASE}/weak/dismiss">${csrf(s)}<button class="link-button" aria-label="${tx('weak.dismiss')}" title="${tx('weak.dismiss')}">${icon('close')}</button></form></div>` : ''}
+        ${weakBanner ? html`<div class="alert alert-error" role="alert"><span>${tx.rich('weak.banner', { link: html`<a href="${BASE}/developers">${tx('weak.change_now')}</a>` })}</span></div>` : ''}
         ${ok ? html`<div class="alert alert-success" role="status">${ok}</div>` : ''}
         ${err ? html`<div class="alert alert-error" role="alert">${err}</div>` : ''}
       </div>` : ''}
@@ -347,9 +347,11 @@ export async function developer(req: Req, reply: FastifyReply) {
   const admin = await isAdmin(s.username);
   // (sprint 128) signed in with the default password while a second factor is required: change it first
   // (on Developers), then the enrolment below
-  const weakFirst = !!s.state.__WEAK && (await requirement(s.username, admin)).required;
+  // (NX-S3) and on a public installation (PUBLIC_URL), always: only the password form until it is changed
+  const weakPublic = !!s.state.__WEAK && publicInstance();
+  const weakFirst = !!s.state.__WEAK && (weakPublic || (await requirement(s.username, admin)).required);
   if (weakFirst && !/^\/builder\/(developers|logout|language|theme)(?:[/?#]|$)/.test(req.url)) {
-    flash(s, tr(s)('mfa.weak_required'), 'error');
+    flash(s, tr(s)(weakPublic ? 'weak.public_required' : 'mfa.weak_required'), 'error');
     await saveState(s);
     reply.redirect(`${BASE}/developers`);
     return null;

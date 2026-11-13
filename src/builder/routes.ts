@@ -597,13 +597,7 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // (sprint 73) POST /apps, creating an application, is in appwizard.ts
 
-  // (sprint 74) hide the default-password warning until the next sign-in (the avatar keeps a dot)
-  app.post(`${BASE}/weak/dismiss`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    s.state.__WEAK_HIDDEN = '1';
-    return back(reply, s, BASE);
-  });
+  // (sprint 74) the default-password warning could be hidden until the next sign-in: (NX-S3) no more
 
   app.post(`${BASE}/import`, async (req: Req, reply) => {
     const s = await developer(req, reply);
