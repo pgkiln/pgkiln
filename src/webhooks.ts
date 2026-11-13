@@ -294,7 +294,10 @@ export async function purgeWebhookEvents(force = false) {
 }
 
 /** One pass: the events that are due, one after the other in the order received. Returns the ids processed. */
-export async function webhookTick(max = 100): Promise<string[]> {
+/** Events per pass; (sprint 180) a full pass is followed by another at once. */
+export const WEBHOOK_PER_PASS = 100;
+
+export async function webhookTick(max = WEBHOOK_PER_PASS): Promise<string[]> {
   // a server that stopped while it processed an event: the next attempt, or failed
   await owner.query(
     `update meta.webhook_event set state = case when attempts >= max_attempts then 'failed' else 'retry' end,
@@ -308,6 +311,8 @@ export async function webhookTick(max = 100): Promise<string[]> {
          from meta.app a
         where a.id = e.app_id and e.id = (
           select q.id from meta.webhook_event q where q.state in ('received', 'retry') and coalesce(q.next_attempt_at, '-infinity') <= now()
+             -- (sprint 180) a disabled module's events wait until it is enabled again (a removed module's fail below)
+             and not exists (select 1 from meta.rest_module m where m.app_id = q.app_id and m.name = q.module and not m.enabled)
            order by q.id for update skip locked limit 1)
         returning e.id::text, e.app_id, a.db_role, e.module, e.path, e.event_key, e.headers, e.content_type, e.body,
                   to_char(e.received_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as received_at, e.attempts, e.max_attempts`,
@@ -335,8 +340,10 @@ export async function webhookTick(max = 100): Promise<string[]> {
   return done;
 }
 
-async function nextDueS(): Promise<number | null> {
-  const r = await owner.one<{ s: number | null }>(`select extract(epoch from min(next_attempt_at) - now())::float8 as s from meta.webhook_event where state = 'retry'`);
+/** Seconds until the next retry of an enabled module falls due (null: none waits). */
+export async function webhookNextDueS(): Promise<number | null> {
+  const r = await owner.one<{ s: number | null }>(`select extract(epoch from min(q.next_attempt_at) - now())::float8 as s from meta.webhook_event q
+      where q.state = 'retry' and not exists (select 1 from meta.rest_module m where m.app_id = q.app_id and m.name = q.module and not m.enabled)`);
   return r?.s === null || r?.s === undefined ? null : Math.max(0, r.s);
 }
 
@@ -345,7 +352,7 @@ let runner: QueueRunner | undefined;
 /** Process events as they arrive (NOTIFY pgkiln_webhook_event) and when a retry falls due; polls as the fallback. Off with WEBHOOKS=off. */
 export async function startWebhookRunner() {
   if (process.env.WEBHOOKS === 'off' || runner) return;
-  runner = await startQueueRunner({ channel: 'pgkiln_webhook_event', label: 'webhook events', tick: () => webhookTick(), nextDueS, pollS: 15 });
+  runner = await startQueueRunner({ channel: 'pgkiln_webhook_event', label: 'webhook events', tick: () => webhookTick(), more: (r) => (r as string[]).length >= WEBHOOK_PER_PASS, nextDueS: webhookNextDueS, pollS: 15 });
 }
 
 export async function stopWebhookRunner() {

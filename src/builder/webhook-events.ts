@@ -34,6 +34,8 @@ interface Row {
   next: string | null;
   error: string | null;
   size: number;
+  /** (sprint 180) the module is disabled: the event waits until it is enabled again */
+  held: boolean;
 }
 
 const stateTag = (tx: BuilderTranslate, st: string) =>
@@ -41,7 +43,8 @@ const stateTag = (tx: BuilderTranslate, st: string) =>
 
 const COLUMNS = `e.id::text, e.app_id, a.alias, e.module, (select m.id from meta.rest_module m where m.app_id = e.app_id and m.name = e.module) as module_id, e.path, e.event_key,
   to_char(e.received_at, 'YYYY-MM-DD HH24:MI:SS') as received, e.state, e.attempts, e.max_attempts,
-  to_char(e.next_attempt_at, 'YYYY-MM-DD HH24:MI:SS') as next, e.error, octet_length(e.body) as size`;
+  to_char(e.next_attempt_at, 'YYYY-MM-DD HH24:MI:SS') as next, e.error, octet_length(e.body) as size,
+  (e.state in ('received', 'retry') and exists (select 1 from meta.rest_module m where m.app_id = e.app_id and m.name = e.module and not m.enabled)) as held`;
 /** Events of applications of the session's workspace only. */
 const MINE = `meta.app_workspace(a.id) = $1`;
 
@@ -78,7 +81,7 @@ export async function webhookEventRoutes(app: FastifyInstance) {
             <td data-label="${L.handler}" class="u-break wrap-anywhere">${r.module_id ? html`<a href="${MODULES}/${r.module_id}/handler?${new URLSearchParams({ t: r.path, m: 'POST' }).toString()}">${r.module}/${r.path}</a>` : `${r.module}/${r.path}`}</td>
             <td data-label="${L.event}" class="u-break wrap-anywhere"><a href="${EVENTS}/${r.id}">#${r.id}</a>${r.event_key ? html` <span class="muted small">${r.event_key}</span>` : ''}</td>
             <td data-label="${L.received}">${r.received}</td>
-            <td data-label="${L.state}">${stateTag(tx, r.state)}${r.state === 'retry' && r.next ? html`<br><span class="muted small">${r.next}</span>` : ''}</td>
+            <td data-label="${L.state}">${stateTag(tx, r.state)}${r.state === 'retry' && r.next ? html`<br><span class="muted small">${r.next}</span>` : ''}${r.held ? html`<br><span class="muted small">${tx('whk.held')}</span>` : ''}</td>
             <td data-label="${L.attempts}">${r.attempts} / ${r.max_attempts}</td>
             <td data-label="${L.error}" class="u-break wrap-anywhere"><span class="small">${(r.error ?? '').slice(0, 300)}</span></td>
             <td data-label="${L.actions}">${r.state === 'failed' || r.state === 'done' ? html`<form method="post" action="${EVENTS}/${r.id}" class="inline-form">${csrf(s)}<button class="btn btn-sm" name="action" value="reprocess">${tx('whk.reprocess')}</button></form>` : ''}</td></tr>`)}

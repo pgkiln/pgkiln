@@ -2482,6 +2482,26 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   into the migration files: `--rollback` lines after the change set in the Liquibase changelog, a Flyway undo
   migration (`U0001__add_bonus.sql`, in the zip and as a button next to the change set's own file) and a comment in
   the plain script. pgkiln never runs a rollback itself.
+  (sprint 180) **DDL from other tools**: the Change Log can also record DDL run outside pgkiln: with psql, a
+  migration tool or another IDE. Two event triggers do this, and only a superuser can create them, so it is off
+  until someone turns it on. The panel *DDL from other tools* at the bottom of the page shows whether it is on. An
+  administrator gets a button for it when pgkiln connects as a superuser; everyone else sees the two statements a
+  superuser runs:
+
+  ```sql
+  create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+  create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop();
+  ```
+
+  Each statement is recorded once per schema it changes, in that schema's log, with the source *Another tool* and
+  the session user as its author. The change set is part of the statement's transaction, so a rollback removes it
+  too. Not recorded: pgkiln's own sessions (their `application_name` starts with `pgkiln`; the builder records its
+  own DDL, and migrations are pgkiln's), sessions that run `set pgkiln.change_log = 'off'` (a migration tool whose
+  files you already keep), system schemas, `meta`, temporary objects and objects of an extension. Statements on
+  schemas themselves (`create schema`, `drop schema`) are not recorded either. A schema owned by an isolated
+  workspace's role is logged in that workspace; any other schema in the default workspace. The functions run as
+  pgkiln's owner (`security definer`), never as the superuser who runs the DDL. If recording fails, the statement
+  still runs and gets a warning. pgkiln proposes no rollback for these change sets.
 - **JavaScript (MLE)**: not planned. Database Actions has a JavaScript tool for Oracle's Multilingual Engine;
   PostgreSQL runs JavaScript in the database only through the [plv8](15-extensions.md) extension. Where plv8 is
   installed, write `create function … language plv8` in the SQL Worksheet like any other function: the navigator,

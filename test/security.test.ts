@@ -14904,3 +14904,116 @@ describe('sprint 179 the SQL Workshop tour', () => {
     assert.doesNotMatch(last.body, /step=8/);
   });
 });
+
+describe('sprint 180 the Change Log records DDL of other tools (DA-17)', () => {
+  const DEV = 'sec180_dev';
+  const PW = 'Sec180-dev-password!';
+  const S = 'sec180x';
+  const pg = async () => (await import('pg')).default;
+  /** DDL from another tool: its own connection, not one of pgkiln's (application_name psql) */
+  const psql = async (sql: string, appName = 'psql') => {
+    const c = new (await pg()).Client({ connectionString: process.env.DATABASE_URL, application_name: appName });
+    await c.connect();
+    try {
+      return await c.query(sql);
+    } finally {
+      await c.end();
+    }
+  };
+  const external = async () => (await owner.query(`select name, author, source, object_name, sql from meta.change_set where schema_name = $1 order by seq`, [S])).rows;
+  const triggers = async () => (await owner.query(`select evtname from pg_event_trigger where evtname like 'pgkiln_change_log%' order by 1`)).rows.map((r) => r.evtname);
+  const superuser = async () => !!(await owner.one(`select rolsuper from pg_roles where rolname = current_user`))!.rolsuper;
+  const clean = async () => {
+    await owner.query(`drop event trigger if exists pgkiln_change_log_ddl`);
+    await owner.query(`drop event trigger if exists pgkiln_change_log_drop`);
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`delete from meta.change_set where schema_name = $1`, [S]);
+    await owner.query(`delete from meta.change_set_counter where schema_name = $1`, [S]);
+  };
+  const admin = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder/sql/changes');
+    return b;
+  };
+
+  before(async () => {
+    await clean();
+    await owner.query(`create schema ${S}`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, PW]);
+  });
+  after(async () => {
+    await clean();
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+  });
+
+  test('the functions run as pgkiln\'s owner with a fixed search_path; nobody else may call them', async () => {
+    const fns = (await owner.query(
+      `select p.proname, p.prosecdef, p.proconfig, has_function_privilege('pgkiln_runtime', p.oid, 'execute') as runtime_may
+         from pg_proc p where p.pronamespace = 'meta'::regnamespace and p.proname in ('change_log_ddl', 'change_log_drop', 'change_log_record') order by 1`)).rows;
+    assert.equal(fns.length, 3);
+    for (const f of fns) {
+      assert.equal(f.prosecdef, true, `${f.proname}: never as the superuser who runs the DDL`);
+      assert.match(String(f.proconfig), /search_path=pg_catalog, pg_temp/, f.proname);
+      assert.equal(f.runtime_may, false, f.proname);
+    }
+  });
+
+  test('only an administrator turns it on, with the CSRF token, and only when pgkiln connects as a superuser', async (t) => {
+    if (!(await superuser())) return t.skip('pgkiln does not connect as a superuser here');
+    const d = new FileBrowser(app);
+    await d.get('/builder/login');
+    await d.post('/builder/login', { __csrf: d.lastCsrf, username: DEV, password: PW });
+    const page = await d.get('/builder/sql/changes');
+    assert.equal(page.statusCode, 200);
+    assert.doesNotMatch(page.body, /action="\/builder\/sql\/changes\/capture"/, 'no button for a developer');
+    assert.match(page.body, /create event trigger pgkiln_change_log_ddl/, 'the statements instead');
+    assert.equal((await d.submit('/builder/sql/changes/capture', { on: '1' })).statusCode, 403);
+    const a = await admin();
+    assert.equal((await a.post('/builder/sql/changes/capture', { __csrf: 'forged', on: '1' })).statusCode, 403);
+    assert.deepEqual(await triggers(), []);
+    assert.match((await a.get('/builder/sql/changes')).body, /action="\/builder\/sql\/changes\/capture"/);
+    assert.equal((await a.submit('/builder/sql/changes/capture', { on: '1' })).statusCode, 303);
+    assert.deepEqual(await triggers(), ['pgkiln_change_log_ddl', 'pgkiln_change_log_drop']);
+    assert.match((await a.get('/builder/sql/changes')).body, /DDL run outside pgkiln/);
+  });
+
+  test('DDL of another tool is recorded as data; pgkiln\'s own, rolled back and opted-out DDL is not', async (t) => {
+    if (!(await superuser())) return t.skip('pgkiln does not connect as a superuser here');
+    if ((await triggers()).length < 2) await owner.query(`create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+      create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop()`);
+    await psql(`create table ${S}.t (id int)`);
+    // a name and a comment that look like SQL are kept as text, not run
+    await psql(`create table ${S}."x'); drop table ${S}.t; --" (a int)`);
+    await psql(`comment on table ${S}.t is '</pre><script>alert(1)</script>'`);
+    await psql(`begin; create table ${S}.rolled_back (a int); rollback;`).catch(() => {});
+    await psql(`set pgkiln.change_log = 'off'; create table ${S}.quiet (a int);`);
+    await psql(`create table ${S}.spoofed (a int)`, 'pgkiln-anything');
+    await owner.query(`create table ${S}.own (a int)`);
+    await psql(`drop table ${S}.t`);
+    const rows = await external();
+    assert.deepEqual(rows.map((r) => r.name), ['create_table_t', 'create_table_x_drop_table_sec180x_t', 'comment_t', 'drop_table_t']);
+    for (const r of rows) assert.equal(r.source, 'external');
+    assert.equal(rows[0].author, (await owner.one('select session_user as u'))!.u);
+    assert.equal(rows[1].sql, `create table ${S}."x'); drop table ${S}.t; --" (a int)`);
+    assert.ok((await owner.one(`select to_regclass('${S}.quiet') as r`))!.r, 'opted-out DDL still ran');
+    // the page shows the SQL escaped
+    const body = (await (await admin()).get(`/builder/sql/changes?schema=${S}`)).body;
+    assert.match(body, /Another tool/);
+    assert.ok(!body.includes('<script>alert(1)</script>'));
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  });
+
+  test('turned off from the builder: the triggers are gone and nothing more is recorded', async (t) => {
+    if (!(await superuser())) return t.skip('pgkiln does not connect as a superuser here');
+    if ((await triggers()).length < 2) await owner.query(`create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+      create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop()`);
+    const a = await admin();
+    assert.equal((await a.submit('/builder/sql/changes/capture', { on: '0' })).statusCode, 303);
+    assert.deepEqual(await triggers(), []);
+    const before = (await external()).length;
+    await psql(`create table ${S}.after_off (a int)`);
+    assert.equal((await external()).length, before);
+  });
+});
