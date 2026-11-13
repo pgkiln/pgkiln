@@ -6,6 +6,7 @@ import { html, raw, type Raw } from './html.ts';
 import type { WebResponse } from './webclient.ts';
 import { invoke, invokeCallProblems, invokeJson, isStringMap, toRows, valueAt, type InvokeConfig, type RestSource } from './websources.ts';
 import { rootSpan, setAttrs, traceApp } from './telemetry/trace.ts';
+import { setAppRole } from './app-role.ts';
 
 // Workflows (APEX 23.2: Workflow). A definition is a list of named steps;
 // an instance runs them one after the other. Each step runs in its own
@@ -516,7 +517,7 @@ export class AppSide {
               set_config('pgkiln.workflow_id', $3, true), set_config('statement_timeout', '30s', true), set_config('pgkiln.tenant_id', $4, true)`,
       [String(w.app_id), w.initiator, w.id, w.tenant_id],
     );
-    if (w.db_role) await c.query(`set local role ${pg.escapeIdentifier(w.db_role)}`);
+    await setAppRole(c, w.db_role); // (sprint 186) none or a powerful one: refused
     return c;
   }
 
@@ -611,7 +612,7 @@ async function step(c: pg.PoolClient, side: AppSide, id: string, at: { branch: s
   const asApp = async <T>(fn: (q: pg.PoolClient) => Promise<T>) => {
     const isolated = await side.open(w);
     if (isolated) return fn(isolated);
-    if (w.db_role) await c.query(`set local role ${pg.escapeIdentifier(w.db_role)}`);
+    await setAppRole(c, w.db_role);
     const result = await fn(c);
     if (w.db_role) await c.query('reset role');
     return result;

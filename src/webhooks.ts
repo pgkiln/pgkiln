@@ -9,6 +9,7 @@ import { decryptSecret } from './secrets.ts';
 import { logActivity } from './session.ts';
 import { loadCredential, parsePath, valueAt } from './websources.ts';
 import { withAppDb } from './workspace-db.ts';
+import { setAppRole, AppRoleRefused } from './app-role.ts';
 
 // (sprint 177, migration 161) Inbound webhooks: REST module handlers of type "webhook".
 //
@@ -275,7 +276,8 @@ async function processEvent(ev: EventRow) {
       [String(ev.app_id), process.env.STATEMENT_TIMEOUT ?? '30s', JSON.stringify(event)],
     );
     await setBinds(c, binds);
-    if (ev.db_role) await c.query(`set local role ${pg.escapeIdentifier(ev.db_role)}`);
+    // (sprint 186) the application's role; none or a powerful one is refused
+    await setAppRole(c, ev.db_role).catch((e) => { throw e instanceof AppRoleRefused ? new Unprocessable(e.message) : e; });
     const role = (await c.query(
       `select r.rolsuper or r.rolbypassrls or pg_has_role(current_user, n.nspowner, 'MEMBER') as bad
          from pg_roles r, pg_namespace n where r.rolname = current_user and n.nspname = 'meta'`)).rows[0];

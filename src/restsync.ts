@@ -3,6 +3,7 @@ import { nextRun, parseCron } from './automations.ts';
 import { owner, runtime, type Client } from './db.ts';
 import { withAppDb } from './workspace-db.ts';
 import { fetchSource, sourceParamValues, toRows, type RestSource } from './websources.ts';
+import { setAppRole } from './app-role.ts';
 
 // REST data source synchronisation (APEX: REST Source Synchronization):
 // the source's rows are copied into a local table, so reports, searches and
@@ -155,7 +156,7 @@ export async function runSync(sourceId: number, trigger: 'manual' | 'schedule' |
                     set_config('statement_timeout', '300s', true)`,
             [`rest_sync:${s.name}`, String(s.app_id)],
           );
-          if (s.db_role) await c.query(`set local role ${ident(s.db_role)}`);
+          await setAppRole(c, s.db_role); // (sprint 186) none or a powerful one: refused
           // a cut-off response (maximum rows) must not delete the rows beyond the cut
           return writeRows(c, s, columns.map((x) => x.name), rows, !truncated);
         }));

@@ -1,6 +1,6 @@
-import pg from 'pg';
 import { owner, runtime } from './db.ts';
 import { withAppDb } from './workspace-db.ts';
+import { setAppRole } from './app-role.ts';
 
 // Automations (Shared Components → Automations): SQL or PL/pgSQL on a cron
 // schedule, run by the pgkiln server as the application's database role.
@@ -234,7 +234,7 @@ async function execute(def: Definition): Promise<{ rows: number; failed: number;
               set_config('pgkiln.automation_chain', $4, true), set_config('statement_timeout', $5, true)`,
       [def.binds.APP_USER, String(def.app_id), String(def.id), `,${def.id},`, `${def.timeout_s}s`],
     );
-    if (def.db_role) await c.query(`set local role ${pg.escapeIdentifier(def.db_role)}`);
+    await setAppRole(c, def.db_role); // (sprint 186) none or a powerful one: refused
     return (await c.query('select meta.automation_execute($1::jsonb) as r', [JSON.stringify(def)])).rows[0].r;
   }));
 }

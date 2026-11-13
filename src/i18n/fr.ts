@@ -613,6 +613,7 @@ export const fr: Record<MessageKey, string> = {
   'app.unavailable': 'Cette application est momentanément indisponible. Veuillez réessayer plus tard.',
   'app.developers_only': 'Cette application n\'est actuellement accessible qu\'à ses développeurs.',
   'app.restricted': 'Cette application n\'est actuellement pas accessible à votre compte.',
+  'app.role_refused': 'Cette application ne peut pas s\'exécuter : elle n\'a pas de rôle de base de données propre, ou un rôle aux droits trop étendus. Un développeur le définit dans Paramètres → Sécurité.',
   'region.url_frame': 'Page intégrée',
   'region.url_open': 'Ouvrir dans un nouvel onglet',
   'page.unsaved_changes': 'Vous avez des modifications non enregistrées. Quitter cette page quand même ?',

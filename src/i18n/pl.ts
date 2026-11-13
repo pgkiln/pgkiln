@@ -652,6 +652,7 @@ export const pl: Record<MessageKey, string> = {
   'app.unavailable': 'Ta aplikacja jest w tej chwili niedostępna. Spróbuj ponownie później.',
   'app.developers_only': 'Ta aplikacja jest w tej chwili dostępna tylko dla jej programistów.',
   'app.restricted': 'Ta aplikacja jest w tej chwili niedostępna dla Twojego konta.',
+  'app.role_refused': 'Tej aplikacji nie można uruchomić: nie ma własnej roli bazy danych albo ma rolę ze zbyt dużymi uprawnieniami. Programista ustawia ją w Ustawienia → Bezpieczeństwo.',
   'region.url_frame': 'Osadzona strona',
   'region.url_open': 'Otwórz w nowej karcie',
   'page.unsaved_changes': 'Masz niezapisane zmiany. Czy mimo to opuścić tę stronę?',

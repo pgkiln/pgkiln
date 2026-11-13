@@ -2,6 +2,7 @@ import pg from 'pg';
 import { applyBinds, splitStatements, type BindValues } from './binds.ts';
 import { owner } from './db.ts';
 import { isQuery, stepTx } from './workflow.ts';
+import { setAppRole } from './app-role.ts';
 
 // (123) Task events and built-in notifications (APEX 26.2: Human Task events).
 //
@@ -201,7 +202,7 @@ async function runHook(id: string): Promise<boolean> {
     const asApp = async <T>(fn: (q: pg.PoolClient) => Promise<T>) => {
       const isolated = await side.open({ app_id: h.app_id, db_role: h.db_role, initiator: actor, id: h.workflow_id ?? '', tenant_id: h.tenant_id });
       if (isolated) return fn(isolated);
-      if (h.db_role) await c.query(`set local role ${pg.escapeIdentifier(h.db_role)}`);
+      await setAppRole(c, h.db_role); // (sprint 186) none or a powerful one: refused
       const result = await fn(c);
       if (h.db_role) await c.query('reset role');
       return result;

@@ -51,7 +51,7 @@ export async function runScripts(app: { id: number; alias: string; db_role: stri
   const results: StatementResult[] = [];
   class Failed extends Error {}
   try {
-    await appTx({ appId: app.id, alias: app.alias, dbRole: app.db_role, appUser: developerName, sessionId: '' }, async (c: Client) => {
+    await appTx({ appId: app.id, alias: app.alias, dbRole: app.db_role, developer: true, appUser: developerName, sessionId: '' }, async (c: Client) => {
       await c.query(`select set_config('statement_timeout', $1, true)`, [RUN_TIMEOUT]);
       for (const s of scripts)
         for (const sql of splitStatements(s.script).map((x) => x.trim()).filter((x) => x && !/^(--[^\n]*\n?\s*)+$/.test(x))) {

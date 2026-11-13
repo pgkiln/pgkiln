@@ -153,6 +153,9 @@ export async function queryIdentity(db: Db, alias: string, user: string | undefi
   const a = (await db.query(`select id, db_role from meta.app where alias = $1`, [alias])).rows[0];
   if (!a) throw new ToolError(`no application ${alias}`);
   if (!a.db_role) throw new ToolError(`${alias} runs without a database role, so its users see what pgkiln's owner sees: give it one (Settings → Security) to run as its users`);
+  // (sprint 186) nor as a powerful role (meta.role_is_powerful, migration 167)
+  if ((await db.query('select meta.role_is_powerful($1) as p', [a.db_role])).rows[0].p)
+    throw new ToolError(`${alias} runs as ${a.db_role}, a role that bypasses row level security, creates roles or owns pgkiln's schemas: give it a role of its own (Settings → Security)`);
   return { appId: a.id, dbRole: a.db_role, user: user?.trim() || 'nobody' };
 }
 

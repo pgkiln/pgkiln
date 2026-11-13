@@ -652,6 +652,7 @@ export const pt: Record<MessageKey, string> = {
   'app.unavailable': 'Esta aplicação não está disponível de momento. Tente novamente mais tarde.',
   'app.developers_only': 'De momento, esta aplicação só está disponível para os seus programadores.',
   'app.restricted': 'De momento, esta aplicação não está disponível para a sua conta.',
+  'app.role_refused': 'Esta aplicação não pode ser executada: não tem uma função de base de dados própria, ou tem uma com demasiados privilégios. Um programador define-a em Definições → Segurança.',
   'region.url_frame': 'Página incorporada',
   'region.url_open': 'Abrir num novo separador',
   'page.unsaved_changes': 'Tem alterações não guardadas. Sair desta página mesmo assim?',

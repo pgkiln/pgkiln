@@ -8,6 +8,7 @@ import { purgeRefusals } from './network-acl.ts';
 import { backoffS, retryBaseS, retryCapS, startQueueRunner, type QueueRunner } from './queue-runner.ts';
 import { logActivity } from './session.ts';
 import { withAppDb } from './workspace-db.ts';
+import { setAppRole } from './app-role.ts';
 
 // Web requests from SQL (APEX_WEB_SERVICE; migration 052): application SQL
 // queues a request with meta.web_request(url, …) or
@@ -309,7 +310,7 @@ async function runCallback(cb: Callback) {
               set_config('statement_timeout', $3, true), set_config('pgkiln.tenant_id', $4, true)`,
       [cb.requested_by ?? 'nobody', String(cb.app_id), process.env.STATEMENT_TIMEOUT ?? '30s', cb.tenant_id ?? ''],
     );
-    if (cb.db_role) await c.query(`set local role ${pg.escapeIdentifier(cb.db_role)}`);
+    await setAppRole(c, cb.db_role); // (sprint 186) none or a powerful one: refused
     const role = (await c.query(
       `select r.rolsuper or r.rolbypassrls or pg_has_role(current_user, n.nspowner, 'MEMBER') as bad
          from pg_roles r, pg_namespace n where r.rolname = current_user and n.nspname = 'meta'`)).rows[0];

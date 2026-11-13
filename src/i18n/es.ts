@@ -613,6 +613,7 @@ export const es: Record<MessageKey, string> = {
   'app.unavailable': 'Esta aplicación no está disponible en este momento. Inténtelo de nuevo más tarde.',
   'app.developers_only': 'Esta aplicación solo está disponible para sus desarrolladores en este momento.',
   'app.restricted': 'Esta aplicación no está disponible para su cuenta en este momento.',
+  'app.role_refused': 'Esta aplicación no puede ejecutarse: no tiene un rol de base de datos propio, o tiene uno con demasiados privilegios. Un desarrollador lo define en Configuración → Seguridad.',
   'region.url_frame': 'Página incrustada',
   'region.url_open': 'Abrir en una pestaña nueva',
   'page.unsaved_changes': 'Tiene cambios sin guardar. ¿Salir de esta página de todos modos?',

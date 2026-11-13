@@ -80,7 +80,9 @@ import { restRoutes } from './runtime/rest.ts';
 import { autoRestRoutes } from './runtime/autorest.ts';
 import { oauthRoutes } from './oauth.ts';
 import { MAX_UPLOAD_MB } from './runtime/files.ts';
-import { runtimeRoutes } from './runtime/routes.ts';
+import { runtimeRoutes, simplePage } from './runtime/routes.ts';
+import { AppRoleRefused } from './app-role.ts';
+import { english } from './i18n.ts';
 import { debugOf, finishDebug } from './debug.ts';
 import { migrate, pendingMigrations } from './migrate.ts';
 import { ownerUrl, runtime } from './db.ts';
@@ -176,6 +178,11 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   // that's a page that doesn't exist, not a server error.
   app.setErrorHandler((err: Error & { code?: string }, req, reply) => {
     if (err.code === '22P02' || err.code === '22003') return reply.code(404).type('text/plain').send('Not found');
+    // (sprint 186, NX-S2) an application without a role of its own (or with a powerful one) that loadContext didn't stop
+    if (err instanceof AppRoleRefused && !req.url.startsWith('/builder')) {
+      if (/json/.test(String(req.headers.accept ?? '')) || req.method !== 'GET') return reply.code(503).send({ error: english('app.role_refused') });
+      return simplePage(reply, 503, english('app.unavailable_title'), english('app.role_refused'));
+    }
     // (sprint 86) a browser on a builder page gets an HTML error page
     if (builderServerError(req, reply, err)) return reply;
     return reply.send(err);

@@ -652,6 +652,7 @@ export const zh: Record<MessageKey, string> = {
   'app.unavailable': '此应用程序目前不可用。请稍后再试。',
   'app.developers_only': '此应用程序目前仅对其开发人员开放。',
   'app.restricted': '此应用程序目前不对您的帐户开放。',
+  'app.role_refused': '此应用程序无法运行：它没有自己的数据库角色，或其角色权限过大。请开发人员在“设置 → 安全”中设置。',
   'region.url_frame': '嵌入的页面',
   'region.url_open': '在新标签页中打开',
   'page.unsaved_changes': '您有未保存的更改。仍要离开此页面吗？',

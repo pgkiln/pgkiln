@@ -52,6 +52,7 @@ import { passwordSignIn, twoStepRoutes } from './two-step.ts';
 import { carriesSecondStep, markSecondStep } from '../account-mfa.ts';
 import { devbarOf, devbarRoutes, sessionDebugLevel } from './devbar.ts';
 import { availabilityRefusal } from './availability.ts';
+import { runRefusal } from '../app-role.ts';
 import { feedbackRoutes } from './feedback.ts';
 import { dataItemRoutes, loadPreferences, savePreferences } from './data-items.ts';
 import { ajaxRoutes } from './ajax.ts';
@@ -218,6 +219,7 @@ export const txContext = (ctx: PageContext) => ({
   appId: ctx.app.id,
   alias: ctx.app.alias,
   dbRole: ctx.app.db_role,
+  developer: !!ctx.devbar,
   appUser: ctx.user,
   sessionId: ctx.session.id,
   lang: ctx.locale.lang,
@@ -290,6 +292,15 @@ export async function loadContext(
   const devbar = await devbarOf(req, app.id);
   // (083) the application's availability: unavailable, developers only, or restricted to named users
   const refusal = availabilityRefusal(app, { username: session.username, developer: !!devbar });
+  // (sprint 186, NX-S2) no database role of its own (or a powerful one): only its developers run it, from the builder
+  const roleRefused = refusal ? null : await runRefusal(runtime, app.db_role, !!devbar);
+  if (roleRefused) {
+    dbg({ debug: debug ?? undefined }, 1, 'access', `refused: ${roleRefused === 'missing' ? 'no database role' : `the role ${app.db_role} is too powerful`}`);
+    const text = locale.t('app.role_refused');
+    if (json) reply.code(503).send({ error: text });
+    else simplePage(reply, 503, locale.t('app.unavailable_title'), text, undefined, locale);
+    return null;
+  }
   if (refusal) {
     if (refusal.signIn) {
       if (json) reply.code(401).send({ error: locale.t('error.session_ended') });

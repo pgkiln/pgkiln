@@ -652,6 +652,7 @@ export const sv: Record<MessageKey, string> = {
   'app.unavailable': 'Programmet är inte tillgängligt just nu. Försök igen senare.',
   'app.developers_only': 'Programmet är just nu bara tillgängligt för sina utvecklare.',
   'app.restricted': 'Programmet är inte tillgängligt för ditt konto just nu.',
+  'app.role_refused': 'Programmet kan inte köras: det har ingen egen databasroll, eller en med för många rättigheter. En utvecklare anger en under Inställningar → Säkerhet.',
   'region.url_frame': 'Inbäddad sida',
   'region.url_open': 'Öppna i en ny flik',
   'page.unsaved_changes': 'Du har ändringar som inte har sparats. Lämna sidan ändå?',

@@ -652,6 +652,7 @@ export const fi: Record<MessageKey, string> = {
   'app.unavailable': 'Sovellus ei ole juuri nyt käytettävissä. Yritä myöhemmin uudelleen.',
   'app.developers_only': 'Sovellus on tällä hetkellä vain kehittäjiensä käytettävissä.',
   'app.restricted': 'Sovellus ei ole tällä hetkellä käytettävissä tilillesi.',
+  'app.role_refused': 'Tätä sovellusta ei voi suorittaa: sillä ei ole omaa tietokantaroolia, tai sen roolilla on liikaa oikeuksia. Kehittäjä asettaa roolin kohdassa Asetukset → Suojaus.',
   'region.url_frame': 'Upotettu sivu',
   'region.url_open': 'Avaa uudessa välilehdessä',
   'page.unsaved_changes': 'Sinulla on tallentamattomia muutoksia. Poistutaanko sivulta silti?',

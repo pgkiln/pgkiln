@@ -613,6 +613,7 @@ export const de: Record<MessageKey, string> = {
   'app.unavailable': 'Diese Anwendung ist im Moment nicht verfügbar. Bitte versuchen Sie es später erneut.',
   'app.developers_only': 'Diese Anwendung ist im Moment nur für ihre Entwickler verfügbar.',
   'app.restricted': 'Diese Anwendung ist im Moment für Ihr Konto nicht verfügbar.',
+  'app.role_refused': 'Diese Anwendung kann nicht ausgeführt werden: Sie hat keine eigene Datenbankrolle oder eine mit zu vielen Rechten. Ein Entwickler legt sie unter Einstellungen → Sicherheit fest.',
   'region.url_frame': 'Eingebettete Seite',
   'region.url_open': 'In neuem Tab öffnen',
   'page.unsaved_changes': 'Sie haben nicht gespeicherte Änderungen. Diese Seite trotzdem verlassen?',

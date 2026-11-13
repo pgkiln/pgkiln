@@ -10,6 +10,7 @@ import type { Locale } from './locale.ts';
 import { english, type Translate } from '../i18n.ts';
 import { logActivity, type Session } from '../session.ts';
 import type { DebugLog } from '../debug.ts';
+import { setAppRole } from '../app-role.ts';
 
 export interface Errors {
   page: string[];
@@ -207,14 +208,14 @@ const ERROR_FUNCTION = /^([A-Za-z_][A-Za-z0-9_$]{0,62})\.([A-Za-z_][A-Za-z0-9_$]
  * knows of the error. When it returns {"message": "…"}, that is shown instead;
  * when it returns null or fails, the message stays.
  */
-async function errorFunction(ctx: Pick<PageContext, 'app' | 'user'> & { debug?: DebugLog }, info: { message: string } & Record<string, unknown>) {
+async function errorFunction(ctx: Pick<PageContext, 'app' | 'user'> & { debug?: DebugLog; devbar?: unknown }, info: { message: string } & Record<string, unknown>) {
   const fn = ERROR_FUNCTION.exec(ctx.app.error_function ?? '');
   if (!fn) return info.message;
   try {
     const r = await runtime.tx(async (c) => {
       await c.query(`set local statement_timeout = '2s'`);
       await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true)`, [String(ctx.app.id), ctx.user]);
-      if (ctx.app.db_role) await c.query(`set local role ${pg.escapeIdentifier(ctx.app.db_role)}`);
+      await setAppRole(c, ctx.app.db_role, { developer: !!ctx.devbar, app: ctx.app.alias }); // (sprint 186)
       return (await c.query(`select ${pg.escapeIdentifier(fn[1])}.${pg.escapeIdentifier(fn[2])}($1::jsonb) as r`, [JSON.stringify(info)])).rows[0]?.r;
     });
     if (r && typeof r === 'object' && typeof r.message === 'string' && r.message.trim()) return r.message.trim().slice(0, 2000);
