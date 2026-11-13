@@ -596,7 +596,7 @@ message. Set them in the region's settings under *Column validations*, or in the
 
 ```json
 "columns": {
-  "sal":  {"validation": ":SAL::numeric > 0", "validation_message": "The salary must be more than zero."},
+  "sal":  {"validation": ":SAL is null or :SAL::numeric > 0", "validation_message": "The salary must be more than zero."},
   "comm": {"validation": ":COMM is null or :COMM::numeric <= :SAL::numeric",
            "validation_message": "The commission cannot be more than the salary."}
 }
@@ -606,7 +606,7 @@ The row's columns are bind variables by their names in upper case (`:SAL`, `:COM
 saved, so what the user typed over what the page showed. They are text, like page items: cast them where the type
 matters. Page items and the built-in names (`:APP_USER`, `:APP_ID`, …) work too; a column never replaces a built-in
 name. The expression runs as the application's database role in the transaction of the save; false, null or an
-error fails. A row that fails is not saved, and because the save is one process nothing else of it is kept either.
+error fails, so allow an empty value in the expression where a column may stay empty (`:SAL is null or …`). A row that fails is not saved, and because the save is one process nothing else of it is kept either.
 The grid comes back with what the user typed: the message stands under the cell (the control is marked invalid for
 screen readers) and in the notification with its row (*Row 3: The salary must be more than zero.*). A required
 column that was emptied is marked in its cell the same way. The message may use `&ITEM.` substitutions and is
