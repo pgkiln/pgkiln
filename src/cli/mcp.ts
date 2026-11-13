@@ -426,6 +426,7 @@ export const TOOLS: Tool[] = [
           : 'Not imported: fix the errors above (or import with force=true). Nothing changed.\n');
       return report + (
         (r.replaced ? `Replaced ${alias} (application ${r.id}).\n` : `Imported ${alias} (application ${r.id}). Its database role and who may sign in are set in the builder.\n`) +
+        (r.roleNote ? `${r.roleNote}\n` : '') +
         (r.scripts ? `It has ${r.scripts} supporting object script(s); they were not run.\n` : '')
       );
     },

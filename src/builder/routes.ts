@@ -20,7 +20,7 @@ import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
 import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
-import { AppRoleError, appRoleName, makeAppRole, reservedSchema, roleProblem } from '../app-role.ts';
+import { AppRoleError, appRoleName, importRole, makeAppRole, reservedSchema, roleProblem } from '../app-role.ts';
 import { workspacesChanged } from '../workspace-db.ts';
 import { securityRoutes } from './security.ts';
 import { instanceRoutes } from './instance.ts';
@@ -608,7 +608,10 @@ export async function builderRoutes(app: FastifyInstance) {
       const ws = currentWorkspace(s);
       if (ws < 1) throw new Error(tx('rte.you_are_not_a_developer'));
       const doc = JSON.parse(req.body?.doc ?? '');
+      let roleNote: string | null = null;
       const r = await owner.tx(async (c) => {
+        // (sprint 186, NX-S2) a file without a database role gets app_<alias>, never the owner's or the runtime's
+        roleNote = await importRole(c, doc, { alias: req.body?.alias?.trim() || String(doc?.app?.alias ?? ''), ws });
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
         await placeApp(c, made.id, ws);
         // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
@@ -626,7 +629,7 @@ export async function builderRoutes(app: FastifyInstance) {
       const servers = (await owner.query<{ server: string }>(
         `select distinct x.server from meta.rest_source x where x.app_id = $1 and x.server is not null
             and not exists (select 1 from meta.remote_server r where r.workspace_id = meta.app_workspace($1) and r.static_id = x.server) order by 1`, [r.id])).rows.map((x) => x.server);
-      flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}${servers.length ? ` Its REST data sources use remote server${servers.length > 1 ? 's' : ''} ${servers.join(', ')}, which this workspace doesn't have: add ${servers.length > 1 ? 'them' : 'it'} under Workspace utilities → Remote servers.` : ''}`);
+      flash(s, `Application imported. ${roleNote ? `${roleNote} ` : ''}Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}${servers.length ? ` Its REST data sources use remote server${servers.length > 1 ? 's' : ''} ${servers.join(', ')}, which this workspace doesn't have: add ${servers.length > 1 ? 'them' : 'it'} under Workspace utilities → Remote servers.` : ''}`);
       return back(reply, s, scripts ? `${BASE}/apps/${r.id}/supporting-objects?imported=1` : `${BASE}/apps/${r.id}`);
     } catch (e) {
       flash(s, `Import failed: ${(e as Error).message}`, 'error');
