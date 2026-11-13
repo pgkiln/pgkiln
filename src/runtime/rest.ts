@@ -12,6 +12,8 @@ import { createHash } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import { publicError, writeOut } from './context.ts';
 import { DO_TAG, HandlerInputError, mediaResponse, runPlpgsql, setBinds } from './rest-handlers.ts';
+import { logActivity } from '../session.ts';
+import { MAX_BODY, receive, webhookProblems, WebhookRefused, type WebhookConfig } from '../webhooks.ts';
 
 // REST modules (APEX: RESTful Services): handlers defined in the builder (Shared Components, or (sprint 104)
 // SQL Workshop › RESTful Services › Modules as templates and handlers; plpgsql and media types: rest-handlers.ts),
@@ -37,8 +39,10 @@ export interface Handler {
   method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   /** (117) plpgsql: a PL/pgSQL block (rest-handlers.ts); media: a row's content_type and content */
-  type: 'collection' | 'item' | 'sql' | 'plpgsql' | 'media';
+  type: 'collection' | 'item' | 'sql' | 'plpgsql' | 'media' | 'webhook';
   source: string;
+  /** (sprint 177, migration 161) a webhook handler's signature check, event id and retention (src/webhooks.ts) */
+  webhook?: WebhookConfig;
   roles?: string[];
   auth?: 'token' | 'public';
   description?: string;
@@ -64,7 +68,7 @@ export interface Template {
 }
 
 export const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
-export const TYPES = ['collection', 'item', 'sql', 'plpgsql', 'media'];
+export const TYPES = ['collection', 'item', 'sql', 'plpgsql', 'media', 'webhook'];
 export const PARAM_TYPES = ['string', 'integer', 'number', 'boolean'];
 const PARAM_NAME = /^[a-z_][a-z0-9_]{0,62}$/i;
 const SEGMENT = /^(:[a-z][a-z0-9_]*|[a-z0-9][a-z0-9._-]*)$/i;
@@ -90,6 +94,10 @@ export function handlerProblems(handlers: unknown): string[] {
     if (typeof h.source !== 'string' || !h.source.trim()) problems.push(`${at}: "source" is the SQL.`);
     if ((h.type === 'collection' || h.type === 'item' || h.type === 'media') && h.method !== 'GET') problems.push(`${at}: collection, item and media handlers answer GET; use "sql" or "plpgsql" for ${h.method}.`);
     if (h.type === 'plpgsql' && typeof h.source === 'string' && h.source.includes(DO_TAG)) problems.push(`${at}: a PL/pgSQL block may not contain ${DO_TAG}.`);
+    // (sprint 177) a webhook handler: its signature is its authentication
+    if (h.type === 'webhook') for (const p of webhookProblems(h)) problems.push(`${at}: ${p}`);
+    else if (h.webhook !== undefined) problems.push(`${at}: "webhook" belongs to a handler of type webhook.`);
+    if (h.type === 'webhook' && (h.roles?.length || h.params?.length)) problems.push(`${at}: a webhook handler has no roles or parameters (the sender is known by its signature).`);
     if (h.params !== undefined) {
       if (!Array.isArray(h.params)) problems.push(`${at}: "params" is a list of {"name", "in": "query", "body" or "header", "type", "required"}.`);
       else h.params.forEach((p: any) => {
@@ -212,16 +220,60 @@ export function noneMatch(header: string | string[] | undefined, tag: string): b
   return value.split(',').map((x) => x.trim().replace(/^W\//, '')).some((x) => x === '*' || x === tag);
 }
 
-async function handle(req: FastifyRequest, reply: FastifyReply) {
+/** The application, module and handler of a request (found before the body is read: a webhook's body is kept raw). */
+interface Matched {
+  a: App | undefined;
+  mod: { handlers: Handler[]; enabled: boolean; roles: string[] | null } | undefined;
+  on: boolean;
+  m: ReturnType<typeof matchHandler>;
+  /** the Content-Type the sender gave (a webhook request is parsed as WEBHOOK_TYPE) */
+  contentType?: string;
+}
+const matched = new WeakMap<FastifyRequest, Matched>();
+/** (sprint 177) The content type a webhook request is read as: its raw bytes, whatever the sender calls them. */
+const WEBHOOK_TYPE = 'application/x-pgkiln-webhook';
+
+async function match(req: FastifyRequest): Promise<Matched> {
   const { alias, module: name } = req.params as { alias: string; module: string };
   const sub = ((req.params as Record<string, string>)['*'] ?? '').replace(/\/+$/, '');
   const a = await loadApp(alias);
   const mod = a ? await runtime.one<{ handlers: Handler[]; enabled: boolean; roles: string[] | null }>('select handlers, enabled, roles from meta.rest_module where app_id = $1 and name = $2', [a.id, name]) : undefined;
-  if (!a || !mod?.enabled || !(await restServicesOn(a.id))) return reply.code(404).send({ error: 'Not found' });
-  const m = matchHandler(mod.handlers ?? [], req.method, sub);
+  const on = !!a && !!mod?.enabled && (await restServicesOn(a.id));
+  return { a, mod, on, m: on ? matchHandler(mod!.handlers ?? [], req.method, sub) : null };
+}
+
+/** (sprint 177) A webhook: signature first, then the event is stored and the request answered; processing follows (src/webhooks.ts). */
+async function handleWebhook(req: FastifyRequest, reply: FastifyReply, a: App, name: string, h: Handler, contentType: string | undefined) {
+  const refusal = availabilityRefusal(a, { username: null, developer: false });
+  if (refusal) return reply.code(refusal.status).send({ error: refusal.message ?? english(refusal.key) });
+  const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  try {
+    const got = await receive({ appId: a.id, module: name, path: h.path, webhook: h.webhook!, raw, headers: req.headers, contentType: contentType ?? null });
+    return got.stored ? reply.code(h.status ?? 202).send({ status: 'accepted' }) : reply.code(200).send({ status: 'duplicate' });
+  } catch (e) {
+    if (!(e instanceof WebhookRefused)) throw e;
+    // the reason only (never the signature, the secret or the body)
+    await logActivity({ appId: a.id, username: 'nobody', event: 'webhook_refused', ip: clientIp(req), detail: `REST POST ${name}/${h.path}: ${e.reason}`.slice(0, 500) }).catch(() => {});
+    return reply.code(e.status).send({ error: e.message });
+  }
+}
+
+async function handle(req: FastifyRequest, reply: FastifyReply) {
+  const { module: name } = req.params as { alias: string; module: string };
+  const sub = ((req.params as Record<string, string>)['*'] ?? '').replace(/\/+$/, '');
+  const { a, mod, on, m, contentType } = matched.get(req) ?? (await match(req));
+  if (!a || !mod || !on) return reply.code(404).send({ error: 'Not found' });
   if (m === 'method') return reply.code(405).send({ error: `${req.method} is not allowed here.` });
   if (!m) return reply.code(404).send({ error: 'Not found' });
   const { handler: h, params } = m;
+  if (h.type === 'webhook') {
+    try {
+      return await handleWebhook(req, reply, a, name, h, contentType);
+    } catch (e) {
+      await publicError({ app: a, page: { page_no: 0 } as never, user: 'api', ip: clientIp(req) }, e, `REST ${req.method} ${name}/${sub}`);
+      return reply.code(500).send({ error: 'The event could not be received.' });
+    }
+  }
   const query = req.query as Record<string, string | string[]>;
   try {
     const who = await caller(req, a, h.auth === 'public');
@@ -375,7 +427,7 @@ export function openApi(
       ...(roles.length ? { description: `The caller needs ${roles.join(' and ')}.`, 'x-pgkiln-roles': [modRoles, h.roles ?? []].filter((r) => r.length) } : {}),
       ...(params.length ? { parameters: params } : {}),
       ...(h.method !== 'GET' ? { requestBody: { required: bodyParams.some((q) => q.required), content: { 'application/json': { schema: bodySchema } } } } : {}),
-      ...(h.auth === 'public' ? { security: [] } : {}),
+      ...(h.auth === 'public' || h.type === 'webhook' ? { security: [] } : {}),
       responses: {
         [ok]: h.type === 'media'
           ? { description: 'The content (content type from the row)', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } }
@@ -407,5 +459,21 @@ export async function restRoutes(app: FastifyInstance) {
     if (!a || !mod?.enabled || !(await restServicesOn(a.id))) return reply.code(404).send({ error: english('error.not_found') });
     return reply.send(openApi(a, mod));
   });
-  app.route({ method: METHODS as never, url: '/a/:alias/rest/:module/*', handler: handle });
+  // (sprint 177) a webhook's signature is over the raw bytes of its body: the handler is found before the body is
+  // read, and a webhook request is read as WEBHOOK_TYPE (a buffer of at most MAX_BODY bytes), whatever content
+  // type its sender names. Other handlers' requests are parsed as before.
+  app.addContentTypeParser(WEBHOOK_TYPE, { parseAs: 'buffer', bodyLimit: MAX_BODY }, (_req, body, done) => done(null, body));
+  app.route({
+    method: METHODS as never,
+    url: '/a/:alias/rest/:module/*',
+    onRequest: async (req) => {
+      const found = await match(req);
+      matched.set(req, found);
+      if (found.m && found.m !== 'method' && found.m.handler.type === 'webhook') {
+        found.contentType = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : undefined;
+        req.headers['content-type'] = WEBHOOK_TYPE;
+      }
+    },
+    handler: handle,
+  });
 }

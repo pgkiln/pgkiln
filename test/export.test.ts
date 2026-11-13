@@ -56,6 +56,7 @@ const NOT_EXPORTED = new Set([
   'embedding_queue', // (136) rows queued for their embeddings: work of this installation (the vector providers travel in meta.app)
   'app_snapshot', // (138) the export after the last recorded change: what the change history compares with
   'component_change', // (138) the change history: who changed which component here, a record of this installation
+  'webhook_event', // (161) events received by webhook handlers: data of this installation (the handler travels in meta.rest_module)
 ]);
 
 /** Where each exported table appears in the document. */

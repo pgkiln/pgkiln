@@ -9,6 +9,7 @@ import { publicUrl } from '../sso.ts';
 import { lockText } from './locks.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { splitRoles } from './users.ts';
+import { DEFAULT_EVENT_ATTEMPTS, DEFAULT_RETENTION_DAYS, DEFAULT_TOLERANCE_S, WEBHOOK_SCHEMES, type WebhookConfig } from '../webhooks.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { scopedTx as tx, tr, translatorFor, withTranslator, type BuilderTranslate } from './i18n.ts';
 
@@ -23,7 +24,7 @@ import { scopedTx as tx, tr, translatorFor, withTranslator, type BuilderTranslat
 
 export const MODULES = `${BASE}/sql/rest/modules`;
 const NAME = /^[a-z][a-z0-9_-]{0,39}$/;
-const TYPES = ['collection', 'item', 'sql', 'plpgsql', 'media'] as const;
+const TYPES = ['collection', 'item', 'sql', 'plpgsql', 'media', 'webhook'] as const;
 const typeLabel = (k: string) => ((TYPES as readonly string[]).includes(k) ? tx(`rm.type.${k as (typeof TYPES)[number]}`) : k);
 const MAX_TRY_BODY = 20_000;
 
@@ -42,11 +43,13 @@ interface ModRow {
   db_role: string | null;
 }
 
-/** RESTful Services' two parts as tabs: Modules and AutoREST. */
-export const restNav = (active: 'modules' | 'autorest') =>
-  html`<nav class="settings-tabs" aria-label="${tx('sql.tool.rest')}">
-    <a href="${MODULES}"${active === 'modules' ? raw(' aria-current="page"') : ''}>${tx('rm.modules')}</a>
-    <a href="${BASE}/sql/rest"${active === 'autorest' ? raw(' aria-current="page"') : ''}>${tx('rm.autorest_tab')}</a></nav>`;
+/** RESTful Services' parts as tabs: Modules, AutoREST, (sprint 177) webhook events and the web request outbox. */
+export const restNav = (active: 'modules' | 'autorest' | 'events' | 'requests', t: BuilderTranslate = tx) =>
+  html`<nav class="settings-tabs" aria-label="${t('sql.tool.rest')}">
+    <a href="${MODULES}"${active === 'modules' ? raw(' aria-current="page"') : ''}>${t('rm.modules')}</a>
+    <a href="${BASE}/sql/rest"${active === 'autorest' ? raw(' aria-current="page"') : ''}>${t('rm.autorest_tab')}</a>
+    <a href="${BASE}/sql/rest/events"${active === 'events' ? raw(' aria-current="page"') : ''}>${t('whk.title')}</a>
+    <a href="${BASE}/sql/rest/requests"${active === 'requests' ? raw(' aria-current="page"') : ''}>${t('wq.title')}</a></nav>`;
 
 /** The modules of the current workspace's applications (one, with id). */
 async function modules(s: Session, id?: number): Promise<ModRow[]> {
@@ -269,7 +272,7 @@ async function handlerPageInner(s: Session, m: ModRow, uri: string, method: stri
         <div class="field"><label class="label" for="f_description">${tx('rm.description')}</label><input id="f_description" name="description" value="${v('description', h.description)}"></div>
       </div>
       <div class="field"><label class="label" for="f_source">${tx('rm.source')}</label>
-        <textarea id="f_source" name="source" class="code sql-editor" rows="10" spellcheck="false" data-code="${type === 'plpgsql' ? 'plpgsql' : 'sql'}" required>${v('source', h.source)}</textarea>
+        <textarea id="f_source" name="source" class="code sql-editor" rows="10" spellcheck="false" data-code="${type === 'plpgsql' || type === 'webhook' ? 'plpgsql' : 'sql'}" required>${v('source', h.source)}</textarea>
         <small class="help">${tx.code('rm.source_help', { params: pathParams(uri).map((p) => `:${p.toUpperCase()}`).join(', ') || tx('rm.none_here') })}</small></div>
       <fieldset class="prop-group"><legend>${tx('rm.who')}</legend>
         <label class="check"><input type="radio" name="auth" value="token"${v('auth', h.auth ?? 'token') !== 'public' ? raw(' checked') : ''}> ${m.roles.length ? tx('rm.auth_token_role', { roles: anyOf(m.roles) }) : tx('rm.auth_token')}</label>
@@ -280,14 +283,41 @@ async function handlerPageInner(s: Session, m: ModRow, uri: string, method: stri
         <div class="field"><label class="label" for="f_page_size">${tx('rm.page_size')}</label><input id="f_page_size" name="page_size" type="number" min="1" max="500" value="${v('page_size', h.page_size)}" placeholder="25"><small class="help">${tx('rm.page_size_help')}</small></div>
         <div class="field"><label class="label" for="f_status">${tx('rm.status')}</label><input id="f_status" name="status" type="number" min="200" max="299" value="${v('status', h.status)}" placeholder="${tx('rm.status_ph')}"><small class="help">${tx('rm.status_help')}</small></div>
       </div>
+      ${webhookFields(f, h.webhook, type === 'webhook')}
       <div class="field"><label class="label" for="f_params">${tx('rm.params')}</label>
         <textarea id="f_params" name="params" class="code" rows="3" spellcheck="false" placeholder="start_date body string required First day">${f ? String(f.params ?? '') : paramsText(h.params)}</textarea>
         <small class="help">${tx.code('rm.params_help', { types: PARAM_TYPES.join('|') })}</small></div>
       <div class="buttons"><button class="btn btn-hot">${isNew ? tx('rm.create_handler') : tx('rm.save')}</button></div></form>
     ${existing ? html`<form method="post" action="${MODULES}/${m.id}/handler/delete" class="danger-zone">${csrf(s)}<input type="hidden" name="t" value="${uri}"><input type="hidden" name="m" value="${existing.method}">
       <button class="btn btn-danger" data-confirm="${tx('rm.delete_handler_confirm', { method: existing.method, uri })}">${icon('trash')} ${tx('rm.delete_handler')}</button></form>` : ''}`;
-  const body = html`${region(isNew ? tx('rm.new_handler_for', { uri: uri || '/' }) : `${h.method} ${uri || '/'}`, editor)}${existing ? await tryPanel(s, m, existing, opts.tried, opts.tryForm) : ''}`;
+  const tryIt = !existing ? '' : existing.type === 'webhook'
+    ? region(tx('whk.endpoint'), html`<p class="wrap-anywhere u-mt0">${tx('rm.url')} <code>${baseUrl(m)}${existing.path}</code></p>
+        <p class="muted">${tx('whk.endpoint_help')}</p>
+        <p class="u-m0"><a class="btn" href="${BASE}/sql/rest/events?${q({ module: String(m.id), path: existing.path })}">${tx('whk.see_events')}</a></p>`)
+    : await tryPanel(s, m, existing, opts.tried, opts.tryForm);
+  const body = html`${region(isNew ? tx('rm.new_handler_for', { uri: uri || '/' }) : `${h.method} ${uri || '/'}`, editor)}${tryIt}`;
   return frame(s, m, `REST ${h.method} ${m.name}/${uri}`, [[m.name, `${MODULES}/${m.id}`], [uri || '/', tplUrl(m, uri)], [isNew ? tx('rm.new_handler') : String(h.method)]], { t: uri, m: existing?.method }, body);
+}
+
+/** (sprint 177) The settings of a webhook handler: the signature check, the event id, what is kept and for how long. */
+function webhookFields(f: Record<string, unknown> | undefined, w: WebhookConfig | undefined, open: boolean) {
+  const v = (k: string, d: unknown) => String(f ? (f[k] ?? '') : (d ?? ''));
+  const scheme = v('wh_scheme', w?.scheme ?? 'hmac-sha256');
+  const encoding = v('wh_encoding', w?.encoding ?? 'hex');
+  return html`<fieldset class="prop-group"${open ? '' : raw(' data-wh-off')}><legend>${tx('whk.settings')}</legend>
+      <p class="muted small">${tx.code('whk.settings_help')}</p>
+      <div class="form-grid">
+        <div class="field"><label class="label" for="f_wh_scheme">${tx('whk.scheme')}</label><select id="f_wh_scheme" name="wh_scheme">${WEBHOOK_SCHEMES.map((k) => html`<option value="${k}"${scheme === k ? raw(' selected') : ''}>${tx.dyn(`whk.scheme.${k}`, k)}</option>`)}</select></div>
+        <div class="field"><label class="label" for="f_wh_credential">${tx('whk.credential')}</label><input id="f_wh_credential" name="wh_credential" value="${v('wh_credential', w?.credential)}" placeholder="SHOP_WEBHOOK"><small class="help">${tx('whk.credential_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_header">${tx('whk.header')}</label><input id="f_wh_header" name="wh_header" value="${v('wh_header', w?.header)}" placeholder="X-Hub-Signature-256"><small class="help">${tx.code('whk.header_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_encoding">${tx('whk.encoding')}</label><select id="f_wh_encoding" name="wh_encoding">${['hex', 'base64'].map((k) => html`<option${encoding === k ? raw(' selected') : ''}>${k}</option>`)}</select></div>
+        <div class="field"><label class="label" for="f_wh_prefix">${tx('whk.prefix')}</label><input id="f_wh_prefix" name="wh_prefix" value="${v('wh_prefix', w?.prefix)}" placeholder="sha256="><small class="help">${tx('whk.prefix_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_tolerance">${tx('whk.tolerance')}</label><input id="f_wh_tolerance" name="wh_tolerance" type="number" min="1" max="86400" value="${v('wh_tolerance', w?.tolerance_s)}" placeholder="${DEFAULT_TOLERANCE_S}"><small class="help">${tx('whk.tolerance_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_event_id">${tx('whk.event_id')}</label><input id="f_wh_event_id" name="wh_event_id" value="${v('wh_event_id', w?.event_id)}" placeholder="body:id"><small class="help">${tx.code('whk.event_id_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_headers">${tx('whk.keep_headers')}</label><input id="f_wh_headers" name="wh_headers" value="${f ? String(f.wh_headers ?? '') : (w?.headers ?? []).join(', ')}" placeholder="X-GitHub-Event"><small class="help">${tx('whk.keep_headers_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_retention">${tx('whk.retention')}</label><input id="f_wh_retention" name="wh_retention" type="number" min="1" max="365" value="${v('wh_retention', w?.retention_days)}" placeholder="${DEFAULT_RETENTION_DAYS}"><small class="help">${tx('whk.retention_help')}</small></div>
+        <div class="field"><label class="label" for="f_wh_attempts">${tx('whk.attempts')}</label><input id="f_wh_attempts" name="wh_attempts" type="number" min="1" max="20" value="${v('wh_attempts', w?.max_attempts)}" placeholder="${DEFAULT_EVENT_ATTEMPTS}"><small class="help">${tx('whk.attempts_help')}</small></div>
+      </div></fieldset>`;
 }
 
 /** Accounts a Try it request may run as: those with access to the application (all active ones for "any user"). */
@@ -365,6 +395,24 @@ function readHandler(t: BuilderTranslate, b: Record<string, unknown>, uri: strin
   const p = parseParams(String(b.params ?? ''), t);
   problems.push(...p.problems);
   if (p.params.length) h.params = p.params;
+  // (sprint 177) a webhook: its settings; the sender is known by its signature, so it is public and has no roles
+  if (h.type === 'webhook') {
+    const num = (k: string) => (str(k) ? Number(str(k)) : undefined);
+    const w: WebhookConfig = { scheme: str('wh_scheme') as WebhookConfig['scheme'], credential: str('wh_credential').toUpperCase() };
+    if (str('wh_header')) w.header = str('wh_header');
+    if (w.scheme !== 'stripe') {
+      if (str('wh_encoding') === 'base64') w.encoding = 'base64';
+      if (str('wh_prefix')) w.prefix = str('wh_prefix');
+    } else if (num('wh_tolerance') !== undefined) w.tolerance_s = num('wh_tolerance');
+    if (str('wh_event_id')) w.event_id = str('wh_event_id');
+    const kept = str('wh_headers').split(/[\s,]+/).filter(Boolean);
+    if (kept.length) w.headers = kept;
+    if (num('wh_retention') !== undefined) w.retention_days = num('wh_retention');
+    if (num('wh_attempts') !== undefined) w.max_attempts = num('wh_attempts');
+    h.webhook = w;
+    h.auth = 'public';
+    delete h.page_size;
+  }
   return { h, problems };
 }
 
@@ -548,6 +596,11 @@ export async function restModuleRoutes(app: FastifyInstance) {
     const orig = b.orig_m ? String(b.orig_m) : null;
     if (!templatesOf(m).some((t) => t.uri === uri)) return reply.code(404).send('Not found');
     const { h, problems } = readHandler(tr(s), b, uri);
+    // (sprint 177) a webhook's signing secret is a web credential of the application or its workspace
+    if (h.type === 'webhook' && /^[A-Z][A-Z0-9_]{0,59}$/.test(h.webhook?.credential ?? '') && !(await owner.one(
+      `select 1 from meta.web_credential where app_id = $1 and name = $2 union all
+       select 1 from meta.workspace_credential where workspace_id = meta.app_workspace($1) and name = $2`, [m.app_id, h.webhook!.credential])))
+      problems.push(tr(s)('whk.e.credential', { name: h.webhook!.credential }));
     const refused = await changeRefused(s, m.app_id);
     if (refused) problems.push(refused);
     if (!problems.length)

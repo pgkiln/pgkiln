@@ -636,7 +636,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         checked++;
         // (117) a PL/pgSQL handler is compiled as the DO block it runs as
         let block: string | null = null;
-        if (h.type === 'plpgsql') try {
+        if (h.type === 'plpgsql' || h.type === 'webhook') try {
           block = plpgsqlBlock(h.source);
         } catch (e) {
           findings.push({ severity: 'error', message: (e as Error).message, entry, field: `${h.method} ${h.path}` });

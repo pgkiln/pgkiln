@@ -7,6 +7,7 @@ import { startPushListener } from './push.ts';
 import { startMailListener } from './mail/mail.ts';
 import { startEmbeddingRunner } from './vector.ts';
 import { startWebRequestRunner } from './webrequests.ts';
+import { startWebhookRunner } from './webhooks.ts';
 
 const app = await buildApp();
 await app.listen({ port: Number(process.env.PORT ?? 3100), host: process.env.HOST ?? '127.0.0.1' });
@@ -18,6 +19,8 @@ await startPushListener();
 await startMailListener();
 // (sprint 177) the web request outbox: delivered when queued (NOTIFY), retried when due (off with AUTOMATIONS=off)
 await startWebRequestRunner();
+// (sprint 177) events received by webhook handlers: processed when they arrive (WEBHOOKS=off on servers that should not)
+await startWebhookRunner();
 // (sprint 136) rows queued for their embeddings (EMBEDDINGS=off on servers that should not embed)
 startEmbeddingRunner();
 // (sprint 133, SEC-6) say at start-up what could lock people out: a changed instance key or address, the clock

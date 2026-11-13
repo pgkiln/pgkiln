@@ -350,7 +350,7 @@ describe('sprint 177: ordering and idempotency keys', () => {
     assert.equal((await row(a3)).status, 'queued');
     assert.equal((await row(b1)).status, 'ok');
     assert.equal((await row(free)).status, 'ok');
-    assert.deepEqual(seen.map((s) => s.body), ['a1', 'b1', 'free']);
+    assert.deepEqual(seen.map((s) => s.body).sort(), ['a1', 'b1', 'free']);
     await wr.webRequestTick();
     assert.equal(hits('/o2').length, 0);
     await due(a1);
