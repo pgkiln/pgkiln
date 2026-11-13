@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Share links for query results** (sprint 176, DA-3 leftover; migration 158 `meta.sql_share`): the SQL Worksheet's
+  Query Result has *Share*. It makes a link (`/builder/sql/shared/<token>`, seven days) that shows the query's
+  result to the other developers of the workspace. The link keeps the SELECT, not its rows: it runs again,
+  read-only, with the connection of the developer who opens it. Its maker or an administrator names it, moves its
+  end or stops sharing; *Shared queries* in the worksheet's ⋯ menu lists the workspace's links.
 - **Column validations in an interactive grid** (sprint 174, CD-1 leftover; no migration): a grid column takes an
   SQL expression that must be true for a row that is added or changed (`validation`, `validation_message`; the
   region's settings have *Column validations*). The row's columns are bind variables by name (`:SAL`). A row that

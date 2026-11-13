@@ -520,4 +520,25 @@ describe('SQL Worksheet', () => {
     assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
     await context.close();
   });
+  test('(sprint 176, DA-3) Share makes a link: its page shows the result and the address, also at phone width', async () => {
+    const { context, page } = await builder();
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    await setEditor(page, "select g as n, 'row ' || g as label from generate_series(1, 3) g order by g", 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    await Promise.all([page.waitForNavigation(), page.locator('button[formaction$="/builder/sql/shared"]').click()]);
+    assert.match(page.url(), /\/builder\/sql\/shared\/[A-Za-z0-9_-]{32}$/);
+    assert.deepEqual(await page.locator('.sh-grid tbody tr').last().locator('td').allTextContents(), ['3', '3', 'row 3']);
+    assert.ok((await page.locator('#sh-link').inputValue()).endsWith(new URL(page.url()).pathname));
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `no horizontal overflow (${overflow}px)`);
+    // stop sharing: the confirmation, then the list without it
+    page.once('dialog', (d) => d.accept());
+    const url = page.url();
+    await Promise.all([page.waitForNavigation(), page.locator('button[name="action"][value="stop"]').click()]);
+    assert.match(page.url(), /\/builder\/sql\/shared$/);
+    assert.equal((await page.goto(url))!.status(), 404);
+    await context.close();
+  });
 });

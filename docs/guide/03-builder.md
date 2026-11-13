@@ -2231,7 +2231,13 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     you scroll to the end of the grid, up to 10,000: the statement is read again from that row in a read-only
     transaction, so give it an ORDER BY when the order matters. This is not done in a tab's open transaction or when
     running as an application's role, where *All rows* remains. **Download** saves a SELECT as CSV, JSON, XML, Excel or SQL inserts
-    through Unload Data (a read-only transaction, so the query runs once more).
+    through Unload Data (a read-only transaction, so the query runs once more). (sprint 176) **Share** makes a link
+    to the query's result for the other developers of the workspace (`/builder/sql/shared/<token>`, seven days). The
+    link keeps the SELECT, not its rows: whoever opens it is signed in to the builder, and the query runs again,
+    read-only and at most 500 rows, with that developer's own connection, so a link never shows more than its reader
+    may select. On the link's page its maker (or an administrator) names it, moves its end (1, 7, 30 or 90 days from
+    now) or stops sharing; every reader can open the query in the worksheet. The worksheet's ⋯ menu has
+    **Shared queries**, the workspace's links.
   - **Run Script** (**F5**) runs every statement in order and writes **Script Output**: for each statement its line,
     the rows as text (up to 50), its notices, and its command tag like psql's (`CREATE TABLE`, `INSERT 0 2`,
     `SELECT 14`) with its time. An error says its line and column in the worksheet; the cursor goes to that line.

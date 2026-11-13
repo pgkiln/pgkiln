@@ -14197,3 +14197,92 @@ describe('sprint 175 header parameters of REST handlers (DA-11)', () => {
     assert.match(other.body, /401/);
   });
 });
+
+describe('sprint 176 share links for query results (DA-3)', () => {
+  const DEV = 'sec176_dev';
+  const PW = 'Sec176-dev-password!';
+  const evil = '<img src=x onerror=alert(176)>';
+  let other = 0;
+  const theirs = 'T'.repeat(32);
+  before(async () => {
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    other = (await owner.one(`insert into meta.workspace (name) values ('sec176 other') returning id`))!.id;
+    await owner.query(`insert into meta.sql_share (workspace_id, token, title, sql, created_by) values ($1, $2, 'sec176 theirs', 'select 176 as secret_of_theirs', 'x')`, [other, theirs]);
+    await owner.query('create table if not exists public.sec176_rows (n int)');
+  });
+  after(async () => {
+    await owner.query(`delete from meta.sql_share where title like 'sec176%' or sql like '%sec176%'`);
+    await owner.query(`delete from meta.workspace where name = 'sec176 other'`);
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await owner.query('drop table if exists public.sec176_rows');
+  });
+  const signIn = async (username = 'admin', password = 'admin') => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username, password });
+    await dev.get('/builder/sql/worksheet');
+    return dev;
+  };
+  const tokenOf = async (title: string) => (await owner.one(`select token from meta.sql_share where title = $1`, [title]))!.token as string;
+
+  test('CSRF and a developer session are needed; another workspace\'s link is not found, by any route', async () => {
+    const dev = await signIn();
+    assert.equal((await dev.post('/builder/sql/shared', { __csrf: 'forged', query: 'select 1 as sec176' })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 as x from meta.sql_share where sql = 'select 1 as sec176'`), undefined);
+    assert.equal((await dev.get(`/builder/sql/shared/${theirs}`)).statusCode, 404);
+    for (const action of ['stop', 'save', 'worksheet'])
+      assert.equal((await dev.post(`/builder/sql/shared/${theirs}`, { __csrf: dev.lastCsrf, action, title: 'sec176 taken' })).statusCode, 404, action);
+    assert.equal((await owner.one(`select title from meta.sql_share where token = $1`, [theirs]))!.title, 'sec176 theirs');
+    assert.doesNotMatch((await dev.get('/builder/sql/shared')).body, /sec176 theirs/);
+    // an application user and a visitor are sent to the builder's sign-in: the token alone opens nothing
+    await dev.post('/builder/sql/shared', { __csrf: dev.lastCsrf, query: 'select 176 as sec176_secret', title: 'sec176 mine' });
+    const mine = await tokenOf('sec176 mine');
+    const king = await as('king');
+    assert.equal((await king.get(`/builder/sql/shared/${mine}`)).headers.location, '/builder/login');
+    const visitor = await app.inject({ method: 'GET', url: `/builder/sql/shared/${mine}` });
+    assert.equal(visitor.statusCode, 302);
+    assert.doesNotMatch(visitor.body, /sec176_secret/);
+  });
+
+  test('only the maker or an administrator changes or stops a link; a forged request does neither', async () => {
+    const admin = await signIn();
+    await admin.post('/builder/sql/shared', { __csrf: admin.lastCsrf, query: 'select 1 as sec176_keep', title: 'sec176 keep' });
+    const token = await tokenOf('sec176 keep');
+    const dev = await signIn(DEV, PW);
+    assert.equal((await dev.get(`/builder/sql/shared/${token}`)).statusCode, 200);
+    assert.equal((await dev.post(`/builder/sql/shared/${token}`, { __csrf: dev.lastCsrf, action: 'stop' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/sql/shared/${token}`, { __csrf: dev.lastCsrf, action: 'save', title: 'sec176 taken', days: '90' })).statusCode, 403);
+    assert.equal((await admin.post(`/builder/sql/shared/${token}`, { __csrf: 'forged', action: 'stop' })).statusCode, 403);
+    const row = (await owner.one(`select title, round(extract(epoch from expires_at - created_at) / 86400)::int as days from meta.sql_share where token = $1`, [token]))!;
+    assert.deepEqual(row, { title: 'sec176 keep', days: 7 });
+    // the number of days is one of the list: anything else is seven
+    await admin.post('/builder/sql/shared', { __csrf: admin.lastCsrf, query: 'select 2 as sec176_days', title: 'sec176 days', days: '99999' });
+    assert.equal((await owner.one(`select round(extract(epoch from expires_at - created_at) / 86400)::int as d from meta.sql_share where title = 'sec176 days'`))!.d, 7);
+  });
+
+  test('the shared statement is one SELECT and runs read-only, as the reader', async () => {
+    const dev = await signIn();
+    for (const query of ['insert into public.sec176_rows values (1) returning n', 'select 1 as sec176; drop table public.sec176_rows', 'drop table public.sec176_rows'])
+      assert.equal((await dev.post('/builder/sql/shared', { __csrf: dev.lastCsrf, query })).headers.location, '/builder/sql/worksheet', query);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.sql_share where sql like '%sec176_rows%'`))!.n, 0);
+    // a stored statement that writes (put there past the route) fails in the read-only transaction and changes nothing
+    const sneaky = 'S'.repeat(32);
+    await owner.query(`insert into meta.sql_share (token, title, sql, created_by) values ($1, 'sec176 sneaky', 'with x as (insert into public.sec176_rows values (176) returning n) select n from x', 'admin')`, [sneaky]);
+    const page = await dev.get(`/builder/sql/shared/${sneaky}`);
+    assert.equal(page.statusCode, 200);
+    assert.match(page.body, /alert-error/);
+    assert.equal((await owner.one('select count(*)::int as n from public.sec176_rows'))!.n, 0);
+  });
+
+  test('titles, column names, values and the query are escaped on the link\'s page and in the list', async () => {
+    const dev = await signIn();
+    await dev.post('/builder/sql/shared', { __csrf: dev.lastCsrf, query: `select '${evil}' as "${evil}", 'sec176' as tag`, title: `sec176 ${evil}` });
+    const token = await tokenOf(`sec176 ${evil}`);
+    for (const url of [`/builder/sql/shared/${token}`, '/builder/sql/shared']) {
+      const body = (await dev.get(url)).body;
+      assert.doesNotMatch(body, /<img src=x/, url);
+      assert.match(body, /&lt;img src=x onerror=alert\(176\)&gt;/, url);
+    }
+  });
+});

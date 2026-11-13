@@ -296,6 +296,10 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 .ch-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 10px 12px; min-width: 0; }
 .ch-card h2 { font-size: 14px; margin: 0 0 6px; }
 .ch-edit { max-width: 48rem; margin-top: 16px; }
+/* (sprint 176) a shared query's page: the result as the worksheet's grid, the link in a field to copy from */
+.sh-grid { max-height: 60vh; overflow: auto; }
+.sh-edit { max-width: 48rem; }
+.sh-link { font-family: var(--mono); font-size: 12.5px; }
 
 /* (sprint 107) transaction mode: Autocommit / Transaction, the badge, Commit and Rollback */
 .ws-txn { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }

@@ -176,6 +176,7 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
         ${query.more ? html`<button class="btn btn-sm" name="mode" value="statement_all" title="${tx('ws.all_rows.title', { n: ALL_ROWS.toLocaleString(tx.lang) })}">${tx('ws.all_rows')}</button>` : ''}
         <button class="btn btn-sm" name="mode" value="chart" title="${tx('ws.chart.title')}">${icon('chart')}<span>${tx('ws.tab.chart')}</span></button>
         <button type="button" class="btn btn-sm" data-ws-copy hidden>${icon('copy')}<span>${tx('ws.copy')}</span></button>
+        ${download ? html`<button class="btn btn-sm" form="ws-dl" formaction="${BASE}/sql/shared" title="${tx('ws.share.title')}">${icon('link')}<span>${tx('ws.share')}</span></button>` : ''}
         ${download}
       </div>
       <div class="table-wrap ws-grid"><table class="report" data-ws-grid${scroll && query.more && download ? raw(` data-ws-more="${query.data!.length}"`) : ''}><thead><tr><th scope="col" class="ws-rownum">#</th>${query.columns!.map((c, k) => html`<th scope="col"${query.numeric?.[k] ? raw(' class="num"') : ''}><button type="button" class="ws-sort" data-ws-sort="${k}" hidden>${c}</button><span class="ws-sort-label">${c}</span></th>`)}</tr></thead>
@@ -664,6 +665,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
               <button type="button" class="ws-menu-item" data-ws-case title="${tx('ws.case_title')}" hidden><span aria-hidden="true" class="ws-aa">Aa</span> ${tx('ws.case')} <kbd>Ctrl+B</kbd></button>
               <button type="button" class="ws-menu-item" data-ws-find title="${tx('ws.find_title')}" hidden>${icon('search')} ${tx('ws.find')} <kbd>Ctrl+F</kbd></button>
               <a class="ws-menu-item" href="${BASE}/sql/load?schema=${encodeURIComponent(navSchema)}" title="${tx('ws.load_title')}">${icon('upload')} ${tx('ws.load')}</a>
+              <a class="ws-menu-item" href="${BASE}/sql/shared" title="${tx('ws.shared_title')}">${icon('link')} ${tx('sh.title')}</a>
               <button type="button" class="ws-menu-item" data-ws-clear title="${tx('ws.clear_title')}" hidden>${icon('trash')} ${tx('ws.clear')}</button>
             </div>
             <div class="menu-section"><strong class="ws-more-head">${tx('ws.keys')}</strong><dl class="ws-keylist">

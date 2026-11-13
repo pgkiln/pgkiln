@@ -9,6 +9,7 @@ import { clearCompletions } from './code-editor.ts';
 import { scriptRoutes } from './scripts.ts';
 import { worksheetRoutes } from './worksheet.ts';
 import { launchpad, launchpadRoutes } from './launchpad.ts';
+import { sqlShareRoutes } from './sql-shares.ts';
 import { sqlChartRoutes } from './sql-charts.ts';
 import { isAdmin } from './locks.ts';
 import { quickSqlRoutes } from './quicksql.ts';
@@ -111,6 +112,8 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(sqlUtilityRoutes);
   // (sprint 97) Charts: saved charts and their dashboard
   await app.register(sqlChartRoutes);
+  // (sprint 176) share links for query results
+  await app.register(sqlShareRoutes);
   // (sprint 96) the Launchpad's pins and the builder's search (Ctrl+K)
   await app.register(launchpadRoutes);
   // (sprint 91) the SQL Worksheet (was SQL Commands; /sql/commands and a post to /sql are the same page)
