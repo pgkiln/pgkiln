@@ -7651,6 +7651,7 @@ export const ko: BuilderMessages = {
   'whk.title': 'Webhook 이벤트',
   'whk.intro': '이 작업 공간 애플리케이션의 Webhook 핸들러가 받은 이벤트입니다. 각 이벤트는 먼저 저장된 뒤 핸들러의 PL/pgSQL 블록으로 처리됩니다. 실패한 이벤트는 다시 처리할 수 있습니다.',
   'whk.none': '이벤트가 없습니다.',
+  'whk.held': "대기 중: 모듈이 비활성화되어 있습니다",
   'whk.col.handler': '핸들러',
   'whk.col.event': '이벤트',
   'whk.col.received': '수신 시각',

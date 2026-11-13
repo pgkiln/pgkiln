@@ -7651,6 +7651,7 @@ export const nl: BuilderMessages = {
   'whk.title': 'Webhookgebeurtenissen',
   'whk.intro': 'De gebeurtenissen die de webhook-handlers van de applicaties van deze werkruimte hebben ontvangen. Elke gebeurtenis wordt eerst opgeslagen en daarna verwerkt door het PL/pgSQL-blok van de handler; een mislukte kan opnieuw worden verwerkt.',
   'whk.none': 'Geen gebeurtenissen.',
+  'whk.held': "Wacht: de module is uitgeschakeld",
   'whk.col.handler': 'Handler',
   'whk.col.event': 'Gebeurtenis',
   'whk.col.received': 'Ontvangen',

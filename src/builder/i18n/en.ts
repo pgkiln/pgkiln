@@ -7655,6 +7655,7 @@ export const en = {
   'whk.title': 'Webhook events',
   'whk.intro': 'The events the webhook handlers of this workspace\'s applications received. Each is stored first and processed afterwards by its handler\'s PL/pgSQL block; a failed one can be processed again.',
   'whk.none': 'No events.',
+  'whk.held': "Waits: the module is disabled",
   'whk.col.handler': 'Handler',
   'whk.col.event': 'Event',
   'whk.col.received': 'Received',

@@ -7651,6 +7651,7 @@ export const zhCN: BuilderMessages = {
   'whk.title': 'Webhook 事件',
   'whk.intro': '此工作区应用程序的 Webhook 处理程序收到的事件。每个事件先存储,然后由其处理程序的 PL/pgSQL 块处理;失败的事件可以重新处理。',
   'whk.none': '没有事件。',
+  'whk.held': "等待中：模块已停用",
   'whk.col.handler': '处理程序',
   'whk.col.event': '事件',
   'whk.col.received': '接收时间',

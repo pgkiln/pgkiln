@@ -7651,6 +7651,7 @@ export const zhTW: BuilderMessages = {
   'whk.title': 'Webhook 事件',
   'whk.intro': '此工作區應用程式的 Webhook 處理常式收到的事件。每個事件先儲存,再由其處理常式的 PL/pgSQL 區塊處理;失敗的事件可以重新處理。',
   'whk.none': '沒有事件。',
+  'whk.held': "等待中：模組已停用",
   'whk.col.handler': '處理常式',
   'whk.col.event': '事件',
   'whk.col.received': '接收時間',

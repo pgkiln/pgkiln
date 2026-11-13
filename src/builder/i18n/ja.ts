@@ -7651,6 +7651,7 @@ export const ja: BuilderMessages = {
   'whk.title': 'Webhook イベント',
   'whk.intro': 'このワークスペースのアプリケーションの Webhook ハンドラーが受信したイベントです。各イベントはまず保存され、その後ハンドラーの PL/pgSQL ブロックで処理されます。失敗したイベントは再処理できます。',
   'whk.none': 'イベントはありません。',
+  'whk.held': "待機中: モジュールが無効です",
   'whk.col.handler': 'ハンドラー',
   'whk.col.event': 'イベント',
   'whk.col.received': '受信日時',

@@ -7651,6 +7651,7 @@ export const pt: BuilderMessages = {
   'whk.title': 'Eventos de webhook',
   'whk.intro': 'Os eventos que os handlers de webhook das aplicações desta área de trabalho receberam. Cada um é primeiro guardado e depois processado pelo bloco PL/pgSQL do seu handler; um falhado pode ser processado de novo.',
   'whk.none': 'Sem eventos.',
+  'whk.held': "Em espera: o módulo está desativado",
   'whk.col.handler': 'Handler',
   'whk.col.event': 'Evento',
   'whk.col.received': 'Recebido',

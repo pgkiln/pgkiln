@@ -17,6 +17,8 @@ export async function startQueueRunner(o: {
   label: string;
   /** one pass over the queue */
   tick: () => Promise<unknown>;
+  /** (sprint 180) whether a pass stopped at its cap with work left: another pass follows at once, not at the next poll */
+  more?: (result: unknown) => boolean;
   /** seconds until the next row falls due (null: nothing waits); the runner wakes then */
   nextDueS?: () => Promise<number | null>;
   pollS: number;
@@ -32,7 +34,8 @@ export async function startQueueRunner(o: {
     try {
       do {
         again = false;
-        await o.tick();
+        const r = await o.tick();
+        if (o.more?.(r)) again = true;
         if (o.nextDueS && !stopped) {
           const s = await o.nextDueS();
           clearTimeout(due);
