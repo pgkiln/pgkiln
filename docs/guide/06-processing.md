@@ -175,7 +175,9 @@ Procedures work too (`call my_proc(:P1_X)`), as do several statements separated 
 
 A web request queued in a process with [`meta.web_request()`](09-reference.md#web-requests-from-sql)
 is made by the server right after that process, so the **next** process can read
-`meta.web_response(id)`; the process that queued it can't wait for it.
+`meta.web_response(id)`; the process that queued it can't wait for it. A request with a callback or an
+ordering key is sent after the submit commits instead, with retries: the
+[outbox](09-reference.md#the-outbox-retries-callbacks-ordering) (sprint 177).
 
 ### Error handling
 

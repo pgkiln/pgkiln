@@ -179,6 +179,9 @@ which is read at startup; real environment variables take precedence.
 | `SCHEDULER_INTERVAL_S` | `30` | How often the automation scheduler looks for due runs |
 | `BACKGROUND_PROCESSES` | on | `off` stops this server from running [background execution chains](06-processing.md#execution-chains) (another server runs them) |
 | `PROCESS_JOB_INTERVAL_S` | `10` | How often a server looks for queued background chains (besides being woken by `NOTIFY`) |
+| `QUEUE_RETRY_S` | `30` | (sprint 177) The wait before the second attempt of a queued [web request](09-reference.md#the-outbox-retries-callbacks-ordering), its callback or a [webhook event](13-rest-api.md#webhooks); it doubles with each attempt |
+| `QUEUE_RETRY_MAX_S` | `3600` | The longest wait between two attempts (also the most a `Retry-After` header is honoured) |
+| `WEBHOOKS` | on | `off` stops this server from processing webhook events (it still receives them; another server processes them). Queued web requests follow `AUTOMATIONS` |
 | `GEOCODER_URL`, `GEOCODER_KEY` | *(none)* | A Nominatim-compatible search API for [geocoded address items](05-items.md#display-image-and-geocoded-address), e.g. your own Nominatim; `GEOCODER_KEY` is sent as `key` (LocationIQ). Without it address items are plain text items |
 | `PDF_FONT`, `PDF_FONT_BOLD` | *(none)* | TrueType fonts for report PDFs, for text beyond Western European (e.g. `DejaVuSans.ttf`) |
 | `ANTHROPIC_API_KEY` | *(none)* | Default API key of [AI services](03-builder.md#ai-services) with the provider Claude that have no key of their own |

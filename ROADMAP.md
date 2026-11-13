@@ -9,6 +9,8 @@ Released changes are in the [changelog](CHANGELOG.md).
 - **Current release:** 0.91.0 (November 2026): parity leftovers: keep notices in the SQL Worksheet, workflow instance diagrams in the Workflow Console, plv8 bodies highlighted as JavaScript, a version per App Gallery app.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
+- **Beyond parity, unreleased (sprint 177):** `meta.web_request` as an outbox (retries, callbacks, ordered delivery,
+  idempotency keys) and inbound webhooks (the REST handler type `webhook`: signed, deduplicated, processed afterwards).
 
 ## Next
 
