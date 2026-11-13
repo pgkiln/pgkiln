@@ -384,6 +384,8 @@ Browser ──HTTPS──> nginx / Caddy / Traefik ──HTTP──> pgkiln (nod
 5. **Restrict the builder.** `/builder` is for developers. Consider allowing it only from your
    office network or VPN at the proxy (for example an nginx `location /builder { allow …; deny all; }`).
 6. **Change default passwords**: `admin` in the builder (Developers page), and the demo users if the sample is installed.
+   (NX-S3) With a public `PUBLIC_URL` the server refuses to start while a developer still has a default password
+   (`admin`, or the user name): `pgkiln users password admin --developer` sets a new one.
    Don't install the example application in production: `npm run db:migrate` installs pgkiln only.
 7. Walk through the checklist at the end of [SECURITY.md](../../SECURITY.md).
 

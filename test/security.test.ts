@@ -15639,3 +15639,39 @@ describe('sprint 185 the SQL Workshop runs as the workspace\'s developer login, 
     if (me) assert.match((await a.get('/builder/instance')).body, /DATABASE_URL is a superuser/);
   });
 });
+
+describe('NX-S3 a default password on a public installation changes nothing until it is changed', () => {
+  const USER = 'nxs3_sec';
+  before(async () => {
+    await owner.query(`delete from meta.developer where username = $1`, [USER]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), true)`, [USER]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.developer where username = $1`, [USER]);
+  });
+
+  test('every other builder request, also a POST with a valid token, goes to the password form; after the change all is open', async () => {
+    const keep = process.env.PUBLIC_URL;
+    process.env.PUBLIC_URL = 'http://pgkiln.example.com';
+    try {
+      const b = new FileBrowser(app);
+      await b.get('/builder/login');
+      await b.post('/builder/login', { __csrf: b.lastCsrf, username: USER, password: USER });
+      await b.get('/builder/developers');
+      const before = (await owner.one('select name from meta.app where id = $1', [appId]))!.name;
+      const res = await b.post(`/builder/apps/${appId}/settings`, { __csrf: b.lastCsrf, name: 'changed by nxs3' });
+      assert.equal(res.statusCode, 302);
+      assert.equal(res.headers.location, '/builder/developers');
+      assert.equal((await owner.one('select name from meta.app where id = $1', [appId]))!.name, before, 'nothing changed');
+      assert.equal((await b.get('/builder/instance')).statusCode, 302);
+      // the password form itself is open, and changing the password lifts it
+      await b.get('/builder/developers');
+      const changed = await b.post('/builder/developers/password', { __csrf: b.lastCsrf, current: USER, password: 'Nxs3-a-much-longer-passphrase!' });
+      assert.equal(changed.statusCode, 303);
+      assert.equal((await b.get('/builder/instance')).statusCode, 200);
+    } finally {
+      if (keep === undefined) delete process.env.PUBLIC_URL;
+      else process.env.PUBLIC_URL = keep;
+    }
+  });
+});

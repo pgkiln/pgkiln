@@ -94,6 +94,10 @@ the login page with its message and the user name. A login page that requires au
 or doesn't exist, is ignored (the built-in page shows) and the Advisor reports it; so does a
 login page without a Login region.
 
+(NX-U2) The *Login page* list offers only the pages that can be one: pages that don't require authentication and have
+a Login region. A note under it says how many pages were left out, and a current choice that no longer qualifies stays
+in the list with the reason, until you choose another.
+
 With single sign-on, password changes happen at the identity provider; My account says so.
 
 **My account** also holds the user's **preferences**: light or dark (when the app allows it) and

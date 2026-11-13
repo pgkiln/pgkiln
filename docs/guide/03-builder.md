@@ -93,6 +93,20 @@ moment it was turned on, then only their Security page. The page lists the membe
 while two-factor sign-in is required of them sees only **Developers**, to change it, before anything else (then the
 grace period or the Security page as above).
 
+(NX-S3) **On a public installation** (`PUBLIC_URL` names another computer than this one: not `localhost`,
+`*.localhost`, `127.x.x.x` or `::1`) the default password is never accepted for long:
+
+- the server **refuses to start** while a developer still has it (`admin`, or the user name as password), and names
+  them; change it with `pgkiln users password <name> --developer` (the Docker image replaces `admin` / `admin` with
+  `PGKILN_ADMIN_PASSWORD`, as before);
+- a developer who signs in with it anyway (a password set back later) sees only **Developers**, with *choose a new
+  password to continue*, until it is changed, whatever two-factor sign-in requires;
+- the [lockout checks](#lockout-checks) list it as an error, and list *Two-factor sign-in for administrators* as needing
+  attention until the policy requires it of administrators (a passkey is the quickest way to set one up).
+
+On a developer's own machine (`PUBLIC_URL` unset or local) the warning below stays, so `admin` / `admin` keeps working
+for a first look.
+
 **Trusted browsers** (0.61): *Trust a browser (days)* in the same region (0, the default: never) adds *Trust this
 browser for N days* to the second step. A trusted browser skips the second step for that developer until the days
 are over; only a hash of the cookie's random token is stored. The developer's Security page shows how many browsers
@@ -189,6 +203,8 @@ found before it happens. The Workspace home tells administrators how many need a
 | Instance key backed up | No administrator confirmed a copy of the current key (*I have a copy of this key*, or `pgkiln admin key-backed-up`). The confirmation is kept per key fingerprint, so a new key asks again |
 | Clock | The server's clock is 10 seconds or more off the database's, or GitHub's when the [release check](#workspace-home) is on; from 30 seconds authenticator codes fail |
 | Passkey domain | Passkeys were made for another domain than `PUBLIC_URL` (or `PGKILN_RP_ID`) gives, with the number of people who have no other factor |
+| Default passwords (NX-S3) | `PUBLIC_URL` is a public address and a developer still signs in with `admin` or their user name (an error: the server doesn't start like this) |
+| Two-factor sign-in for administrators (NX-S3) | `PUBLIC_URL` is a public address and the two-factor policy doesn't require it of administrators |
 | Break-glass administrators | A workspace requires single sign-on and there is no break-glass administrator, or one without a second factor while two-factor sign-in is required |
 
 The server writes the same problems to its log when it starts, and `pgkiln admin check` prints them on the server
@@ -998,8 +1014,8 @@ page's mode in the property editor's words (*Normal*, *Modal dialog*), and Group
 where you type the application's alias to confirm (the server checks it too). Its pages, shared components,
 working copies and backups go with it, so export it first if you may need it again.
 
-The **default-password** warning shows on the App Builder home (and Developers) only; dismiss it with × until the
-next sign-in. The avatar keeps a red dot until the password is changed.
+The **default-password** warning shows on the Workspace home, the App Builder home and Developers until the password is
+changed; (NX-S3) it can no longer be dismissed. The avatar keeps a red dot until then too.
 
 Open an application to see its pages, with region/item/dynamic-action/process counts,
 authorization and protection. The tabs under its name lead to **Shared Components**, **Activity**,

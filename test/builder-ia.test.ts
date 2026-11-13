@@ -107,19 +107,15 @@ describe('the application home', () => {
 });
 
 describe('the default-password warning', () => {
-  test('on the App Builder home only, until dismissed; the avatar keeps a dot', async () => {
+  test('on the App Builder home, not inside an app; (NX-S3) it can\'t be dismissed; the avatar keeps a dot', async () => {
     const b = await builder();
-    assert.match((await b.get('/builder')).body, /You signed in with the default password/);
+    const home = (await b.get('/builder')).body;
+    assert.match(home, /You signed in with the default password/);
+    assert.doesNotMatch(home, /weak\/dismiss/, 'no dismiss button');
     const inApp = (await b.get(`/builder/apps/${hr}`)).body;
     assert.doesNotMatch(inApp, /You signed in with the default password/);
     assert.match(inApp, /class="rail-avatar has-dot"/);
-    await b.get('/builder');
-    assert.equal((await b.post('/builder/weak/dismiss', { __csrf: 'forged' })).statusCode, 403);
-    assert.equal((await b.submit('/builder/weak/dismiss', {})).statusCode, 303);
-    const after = (await b.get('/builder')).body;
-    assert.doesNotMatch(after, /You signed in with the default password/);
-    assert.match(after, /class="rail-avatar has-dot"/);
-    // a new sign-in shows it again
-    assert.match((await (await builder()).get('/builder')).body, /You signed in with the default password/);
+    assert.equal((await b.submit('/builder/weak/dismiss', {})).statusCode, 404, 'the route is gone');
+    assert.match((await b.get('/builder')).body, /You signed in with the default password/);
   });
 });

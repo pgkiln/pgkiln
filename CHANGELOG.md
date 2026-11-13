@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- **No default password on a public installation** (NX-S3): when `PUBLIC_URL` names another computer, the server
+  refuses to start while a developer still signs in with a default password (`admin`, or the user name), and names
+  them (`pgkiln users password <name> --developer` sets a new one). A developer who signs in with one anyway sees only
+  the password form until it is changed. The lockout checks report it, and report *Two-factor sign-in for
+  administrators* until the policy requires it of them. The default-password warning can no longer be dismissed.
+
+### Changed
+- (NX-U2) Settings → Sign-in: the *Login page* list offers only pages that can be one (public, with a Login region),
+  says how many were left out, and keeps a current choice that no longer qualifies with the reason.
+
 ## [0.96.0] - 2026-11-13
 
 ### Security

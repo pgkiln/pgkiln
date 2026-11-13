@@ -24,8 +24,26 @@ import { decryptSecret, encryptSecret, keyFingerprint, secretKeyConfigured } fro
 
 export type Level = 'ok' | 'info' | 'warning' | 'error';
 
+/**
+ * (NX-S3) A public installation: PUBLIC_URL names a host other than this computer (not localhost, *.localhost,
+ * 127.0.0.0/8 or ::1). Unset or local: a developer's own machine, where the default password is only a warning.
+ */
+export function publicInstance(url = process.env.PUBLIC_URL): boolean {
+  if (!url || !URL.canParse(url)) return false;
+  const host = new URL(url).hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return !(host === 'localhost' || host.endsWith('.localhost') || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) || host === '::1');
+}
+
+/** (NX-S3) Developers who sign in with a default password: "admin", or their own user name. */
+export async function defaultPasswords(): Promise<string[]> {
+  return (await owner.query<{ username: string }>(
+    `select username from meta.developer
+      where password_hash is not null and (password_hash = crypt('admin', password_hash) or password_hash = crypt(username, password_hash))
+      order by lower(username)`)).rows.map((r) => r.username);
+}
+
 export interface Check {
-  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role';
+  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role' | 'default_password' | 'admin_mfa';
   level: Level;
   title: string;
   detail: string;
@@ -181,6 +199,17 @@ export async function instanceChecks(rpId: string | null): Promise<Check[]> {
 
   // (sprint 185, NX-S1) DATABASE_URL as a superuser
   checks.push(ownerRoleCheck(await ownerRole()));
+  // (NX-S3) a public installation: no default passwords, and a second factor for administrators
+  if (publicInstance()) {
+    const weak = await defaultPasswords();
+    if (weak.length)
+      checks.push({ key: 'default_password', level: 'error', title: 'Default passwords on a public installation',
+        detail: `${weak.join(', ')} still sign${weak.length === 1 ? 's' : ''} in with the default password ("admin" or the user name). The server refuses to start like this when PUBLIC_URL is a public address: change ${weak.length === 1 ? 'it' : 'them'} (Developers, or pgkiln users password <name> --developer).` });
+    const { policy } = await mfaPolicy();
+    if (policy !== 'admins' && policy !== 'all')
+      checks.push({ key: 'admin_mfa', level: 'warning', title: 'Two-factor sign-in for administrators',
+        detail: 'PUBLIC_URL is a public address, and administrators may still sign in with a password alone: require two-factor sign-in for administrators (Instance settings → Two-factor sign-in). A passkey is the quickest way to set it up.' });
+  }
 
   // break-glass administrators
   const ssoOnly = (await owner.query<{ name: string }>(`select name from meta.workspace where sso_only order by name`)).rows.map((r) => r.name);
