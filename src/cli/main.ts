@@ -299,6 +299,76 @@ const COMMANDS: Record<string, Command> = {
     },
   },
 
+  // (sprint 182, CD-1/CD-4 leftover) an Oracle APEX export, translated to a pgkiln/2 document, then the import above
+  'import-apex': {
+    usage: 'pgkiln import-apex <f100.sql | dir | zip> [--alias <alias>] [--schema <schema>] [--db-role <role>] [--dry-run | --out <dir>] [--json] [--all]',
+    summary: 'import an Oracle APEX application export (SQL format) and report what was mapped',
+    details:
+      'Reads an APEX application export in the SQL format (f100.sql, or a split export as a directory or\n' +
+      '.zip) as text (nothing in it runs) and translates it to a pgkiln application: pages, regions,\n' +
+      'items, buttons, validations, processes, computations, branches, simple dynamic actions, lists of\n' +
+      'values, authorization schemes and the navigation menu (docs/guide/11-from-apex.md). PL/SQL is\n' +
+      'carried over as it is and marked "needs porting". The report lists every component as mapped,\n' +
+      'mapped with notes or not mapped. Unqualified tables are taken to be in --schema (default: the\n' +
+      'export\'s parsing schema in lower case). --dry-run only prints the report; --out writes the\n' +
+      'application files (text style) to a directory to edit, then pgkiln import <dir>. The alias must be free.',
+    options: {
+      alias: { type: 'string', short: 'a' }, schema: { type: 'string' }, 'db-role': { type: 'string' },
+      'dry-run': { type: 'boolean' }, out: { type: 'string', short: 'o' }, json: { type: 'boolean' }, all: { type: 'boolean' },
+    },
+    optionHelp: [
+      ['-a, --alias <alias>', 'alias of the new application (default: from the APEX alias or name)'],
+      ['--schema <schema>', 'schema of unqualified tables (default: the parsing schema, lower case; "" for none)'],
+      ['--db-role <role>', 'the application\'s database role (default: none, set it in Settings)'],
+      ['--dry-run', 'print the report, import nothing'],
+      ['-o, --out <dir>', 'write the application files there instead of importing'],
+      ['--json', 'the report as JSON'],
+      ['--all', 'also list the components that were mapped without notes'],
+    ],
+    positionals: [1, 1],
+    async run(v, [path]) {
+      const { apexSource, apexSourceFromDir, apexToDoc, NotAnApexExport, reportText, MAX_APEX_BYTES } = await import('../apeximport.ts');
+      const { ApexParseError } = await import('../apexparse.ts');
+      if (!existsSync(path)) throw new UsageError(`${path} not found`);
+      const alias = v.alias as string | undefined;
+      if (alias !== undefined && !/^[a-z][a-z0-9_-]*$/.test(alias)) throw new UsageError('--alias: lower case letters, digits, - and _, starting with a letter');
+      let result;
+      try {
+        let source: string;
+        if (statSync(path).isDirectory()) source = await apexSourceFromDir(path);
+        else {
+          if (statSync(path).size > MAX_APEX_BYTES) throw new NotAnApexExport(`${path} is larger than ${MAX_APEX_BYTES / 1024 / 1024} MB`);
+          source = await apexSource(readFileSync(path));
+        }
+        result = apexToDoc(source, { alias, schema: v.schema as string | undefined, dbRole: (v['db-role'] as string) ?? null });
+      } catch (e) {
+        if (e instanceof NotAnApexExport || e instanceof ApexParseError) {
+          err(`pgkiln import-apex: ${e.message}\n`);
+          return EXIT.failure;
+        }
+        throw e;
+      }
+      const { doc, report } = result;
+      out(v.json ? stableJson(report) : reportText(report, { all: !!v.all }));
+      if (v['dry-run']) {
+        if (!v.json) out('\nDry run: nothing was imported.\n');
+        return EXIT.ok;
+      }
+      if (v.out) {
+        const { writeDir } = await import('./files.ts');
+        const w = writeDir(v.out as string, docToFiles(doc, 'text'));
+        err(`Wrote ${w.written} file(s) to ${v.out}. Edit them, then: pgkiln import ${v.out}\n`);
+        return EXIT.ok;
+      }
+      const r = await withDb(async (db) => {
+        if ((await db.query('select 1 from meta.app where alias = $1', [report.application.alias])).rowCount) throw new UsageError(`application ${report.application.alias} exists: choose another --alias`);
+        return importDoc(db, doc, { alias: report.application.alias, replace: false, by: `pgkiln import-apex (${userInfo().username})` });
+      });
+      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}). Set its database role, then finish what the report lists.\n`);
+      return EXIT.ok;
+    },
+  },
+
   diff: {
     usage: 'pgkiln diff <alias> <path> [--name-only | --quiet]',
     summary: 'show how a directory export (or JSON file) differs from the application in the database',
