@@ -423,7 +423,7 @@ select pg_temp.page_id('ux-patterns', r.page), r.seq, r.title, r.type, r.cols, r
    '<p>A stylesheet of your own (Shared Components → Static Application Files) uses the theme''s variables, so it follows the style and the mode too:</p><ul><li><code>--bg</code>, <code>--surface</code>, <code>--surface-2</code>, <code>--surface-3</code>: the page and its cards</li><li><code>--text</code>, <code>--muted</code>, <code>--border</code></li><li><code>--accent</code>, <code>--accent-text</code>, <code>--accent-soft</code>: links, hot buttons, the current entry</li><li><code>--success</code>, <code>--success-soft</code>, <code>--danger</code>, <code>--danger-soft</code>, <code>--warning-soft</code></li><li><code>--header</code>, <code>--header-text</code>, <code>--nav-bg</code>, <code>--nav-active</code></li><li><code>--series-1</code> to <code>--series-8</code>: the colours of chart series and map layers</li><li><code>--radius</code>, <code>--font</code>, <code>--font-size</code>, <code>--shadow</code></li></ul>',
    '{}', null, null),
   (18, 40, 'Alerts', 'static', 12, 'standard', '{}',
-   '<div class="alert alert-success u-mb1">Success: <code>alert alert-success</code>.</div><div class="alert alert-warning u-mb1">Warning: <code>alert alert-warning</code>.</div><div class="alert alert-error">Error: <code>alert alert-error</code>.</div>',
+   '<div class="alert alert-success u-mb1">Success: <code>alert alert-success</code>.</div><div class="alert alert-warning u-mb1">Warning: <code>alert alert-warning</code>.</div><div class="alert alert-error u-mb0">Error: <code>alert alert-error</code>.</div>',
    '{}', null, null)
   ) as r (page, seq, title, type, cols, template, topts, source, config, sid, pos);
 
