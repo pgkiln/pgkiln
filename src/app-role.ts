@@ -148,7 +148,10 @@ export async function importRole(c: Queryable, doc: { app?: Record<string, unkno
     app.db_role = installed.db_role;
     return `The file has no database role: the application keeps its role ${installed.db_role}.`;
   }
-  const { role, created } = await makeAppRole(c, { alias, ws: o.ws ?? 1, schema: o.schema ?? null, appId: null });
+  // a parsing schema that isn't here (yet): the role without rights, and the note says so
+  const wanted = o.schema?.trim() || null;
+  const schema = wanted && !reservedSchema(wanted) && (await c.query('select 1 from pg_namespace where nspname = $1', [wanted])).rowCount ? wanted : null;
+  const { role, created } = await makeAppRole(c, { alias, ws: o.ws ?? 1, schema, appId: null });
   app.db_role = role;
-  return `The file has no database role: the application runs as ${role}, ${created ? 'a role pgkiln created' : 'an existing role'}${o.schema ? ` with rights on schema ${o.schema}` : ' without rights yet'}. Grant it what the pages need (the Advisor lists the SQL it can't run).`;
+  return `The file has no database role: the application runs as ${role}, ${created ? 'a role pgkiln created' : 'an existing role'}${schema ? ` with rights on schema ${schema}` : ` without rights yet${wanted ? ` (there is no schema ${wanted} here)` : ''}`}. Grant it what the pages need (the Advisor lists the SQL it can't run).`;
 }

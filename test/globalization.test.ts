@@ -186,7 +186,7 @@ describe('number format masks (HR page 29)', () => {
 
 describe('time zones', () => {
   test('appTx runs the queries in the request\'s time zone', async () => {
-    const ctx = { appId, alias: 'hr', dbRole: null, appUser: 'king', sessionId: '0', lang: 'en' };
+    const ctx = { appId, alias: 'hr', dbRole: 'hr_app', appUser: 'king', sessionId: '0', lang: 'en' };
     const tz = (zone?: string | null) => appTx({ ...ctx, timeZone: zone }, async (c) => (await c.query(`select current_setting('TimeZone') as tz, '2026-01-01 12:00:00+00'::timestamptz::text as t`)).rows[0]);
     assert.deepEqual(await tz('Asia/Tokyo'), { tz: 'Asia/Tokyo', t: '2026-01-01 21:00:00+09' });
     const db = await tz(null);

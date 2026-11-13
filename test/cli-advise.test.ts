@@ -42,9 +42,9 @@ before(async () => {
   const p2 = await page(2, 'Orders', true);
   const p3 = await page(3, 'Lookup', true, { protection: 'unrestricted' });
   const p4 = await page(4, 'Admin', true, { authz: 'ADMIN' });
-  await owner.query(`insert into meta.process (page_id, seq, name, type, code) values ($1, 10, 'Store sign up', 'sql', 'update meta.app set name = name where false'),
-    ($2, 10, 'Save order', 'sql', 'update meta.app set name = name where false'), ($2, 20, 'Read only', 'sql', 'select 1'), ($3, 10, 'Delete it', 'sql', 'delete from meta.app where false'), ($4, 10, 'Purge', 'sql', 'delete from meta.app where false')`, [p1, p2, p3, p4]);
-  await owner.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Order list', 'report', 'select no_such_column from meta.app')`, [p2]);
+  await owner.query(`insert into meta.process (page_id, seq, name, type, code) values ($1, 10, 'Store sign up', 'sql', 'update hr.emp set ename = ename where false'),
+    ($2, 10, 'Save order', 'sql', 'update hr.emp set ename = ename where false'), ($2, 20, 'Read only', 'sql', 'select 1'), ($3, 10, 'Delete it', 'sql', 'delete from hr.emp where false'), ($4, 10, 'Purge', 'sql', 'delete from hr.emp where false')`, [p1, p2, p3, p4]);
+  await owner.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Order list', 'report', 'select no_such_column from hr.emp')`, [p2]);
   await owner.query(`insert into meta.item (page_id, seq, name, type) values ($1, 10, 'P3_ID', 'text')`, [p3]);
 });
 
@@ -81,12 +81,12 @@ describe('pgkiln advise', () => {
     assert.match(r.out, /adv144: \d+ SQL fragment\(s\) checked; 1 error\(s\), 2 warning\(s\), 2 note\(s\)\./);
     assert.equal(cli('advise', A, '--fail-on', 'never').code, 0);
     // without the error: warnings fail only from --fail-on warning
-    await owner.query(`update meta.region set source = 'select alias from meta.app' where title = 'Order list'`);
+    await owner.query(`update meta.region set source = 'select ename from hr.emp' where title = 'Order list'`);
     try {
       assert.equal(cli('advise', A).code, 0);
       assert.equal(cli('advise', A, '--fail-on', 'warning').code, 1);
     } finally {
-      await owner.query(`update meta.region set source = 'select no_such_column from meta.app' where title = 'Order list'`);
+      await owner.query(`update meta.region set source = 'select no_such_column from hr.emp' where title = 'Order list'`);
     }
     assert.equal(cli('advise', A, '--format', 'xml').code, 2);
     assert.equal(cli('advise', A, '--fail-on', 'sometimes').code, 2);
