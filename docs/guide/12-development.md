@@ -59,6 +59,8 @@ src/
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
                            PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
+  gallery-remote.ts        (sprint 181, migration 164) the App Gallery's remote catalogues: parseCatalogue (blueprints only, checked
+                           and cut to size), refreshSource (guarded webRequest), remoteBlueprint (fetched on Install)
   ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
   static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
   session.ts               sessions (hashed tokens), activity log, login throttling
@@ -559,7 +561,8 @@ src/
     gallery.ts             the App Gallery (sprint 61, 120): examples/gallery/gallery.json, sample apps (administrators: migrate --example,
                            or one SQL file of examples/ or examples/gallery/samples/ in one transaction), starter and utility apps
                            (blueprints of starters/ and utilities/ → openBlueprint's review), custom apps (the workspace's boilerplates);
-                           four tabs with counts, ?q= search
+                           four tabs with counts, ?q= search; (sprint 181) remote catalogues: the administrators' panel,
+                           POST /gallery/sources[/:id/refresh|toggle|delete], /gallery/remote/:id/:kind/:key (fetch → review)
     app-groups.ts          application groups (092): a workspace's groups, a group per application (the App Builder home filters)
     cross-app.ts           Cross Application Reports (sprint 61): REPORTS (one SQL per topic over the workspace's applications)
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid

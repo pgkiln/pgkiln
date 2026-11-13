@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Remote catalogues for the App Gallery** (sprint 181, WS-8 leftover; migration 164): an administrator adds the URL
+  of a catalogue in the format of `examples/gallery/gallery.json` (Starter Apps or Utility Apps tab → *Remote
+  catalogues*). Its starter and utility apps are listed next to the shipped ones, with the catalogue's name, and
+  *Install* fetches the blueprint and opens it in the review. Catalogues and blueprints are fetched under the same rules
+  as REST data sources (the server's allow-list, no private addresses, 1 MB, 10 seconds). A remote catalogue can't
+  list sample apps.
 - **The Change Log records DDL from other tools** (sprint 180, DA-17 leftover; migration 163): DDL run with psql, a
   migration tool or another IDE can be recorded as change sets too, with the source *Another tool*. It needs two
   event triggers that only a superuser can create, so it is off until turned on: SQL Workshop → Change Log → *DDL

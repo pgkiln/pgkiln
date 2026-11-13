@@ -50,11 +50,15 @@ const axe = async (page: Page) => {
 const csp = async (page: Page) => assert.deepEqual(await page.evaluate(() => (window as any).__csp), [], 'Content-Security-Policy');
 
 async function passwordStep(page: Page) {
+  // (sprint 181) no throttling from other tests: login_unlocked resets the user's failures, not the address's (the
+  // unit and e2e suites sign in wrongly from 127.0.0.1 on purpose)
+  await owner.query(`delete from meta.activity_log where event = 'login_failed' and at > now() - interval '1 day' and (ip in ('127.0.0.1', '::1', '::ffff:127.0.0.1') or lower(username) = 'king')`);
+  await owner.query(`insert into meta.activity_log (username, event, detail) values ('king', 'login_unlocked', 'e2e')`);
   await page.goto(`${base}/a/hr/login`);
   await page.fill('input[name="username"]', 'king');
   await page.fill('input[name="password"]', 'king');
   await Promise.all([page.waitForNavigation(), page.click('form.login-form button.btn-hot')]);
-  assert.match(page.url(), /\/a\/hr\/login\/2fa$/);
+  assert.match(page.url(), /\/a\/hr\/login\/2fa$/, `refused: ${await page.locator('.alert, [role=alert]').allTextContents()}`);
 }
 
 describe('two-factor sign-in for application users (browser)', () => {
