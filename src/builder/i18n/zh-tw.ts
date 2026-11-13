@@ -7703,4 +7703,6 @@ export const zhTW: BuilderMessages = {
   'apip.modules_saved': '{name} 僅限於這些 REST 模組：{modules}。',
   'apip.modules_all': '{name} 可以再次呼叫整個應用程式。',
   'apip.modules_unknown': '此應用程式沒有名為 {names} 的 REST 模組。',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': '不在圖例中顯示（一律顯示）',
 };

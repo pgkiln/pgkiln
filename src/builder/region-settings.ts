@@ -440,6 +440,7 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
   set('cluster', b.cluster === 'true' && !b.layer && b.load !== 'tiles' ? true : undefined);
   set('style', mergeStyle(b, 'style'));
   set('name', b.name?.trim().slice(0, 60) || undefined);
+  set('no_legend', b.no_legend === 'true' ? true : undefined);
   set('visible_area', b.load === 'area' ? true : undefined);
   set('tiles', b.load === 'tiles' ? true : undefined);
   const report = Number(b.report);
@@ -457,7 +458,9 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
       else if (b[`layer${i}_cluster`] === 'true' && load !== 'tiles') layer.cluster = true;
       const style = mergeStyle(b, `layer${i}`);
       if (style) layer.style = style;
-      if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
+      // (sprint 178) left out of the legend: always drawn, so never off at first
+      if (b[`layer${i}_no_legend`] === 'true') layer.no_legend = true;
+      else if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
       if (load === 'area') layer.visible_area = true;
       else if (load === 'tiles') layer.tiles = true;
       const link = mergeLink(b, a.pages, `layer${i}_link`);
@@ -618,6 +621,7 @@ async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_n
         ${loadField(id, `${p}_load`, l)}
         ${check(`${p}_cluster`, tx('rs.group_markers'), l.cluster === true)}
         ${check(`${p}_hidden`, tx('rs.off_at_first'), l.hidden === true)}
+        ${check(`${p}_no_legend`, tx('rs.not_in_legend'), l.no_legend === true)}
         <div class="field" data-wide><label class="label" for="${id(`${p}_source`)}">${tx('rs.query')}</label>
           <textarea id="${id(`${p}_source`)}" name="${p}_source" class="code" rows="5" spellcheck="false" data-code="sql" placeholder="select lat, lng, title from …">${l.source ?? ''}</textarea>
           <small class="help">${tx('rs.the_same_columns_as_the')}</small></div>
@@ -875,6 +879,7 @@ async function regionSettingsFormInner(pageId: number, appId: number, r: RegionR
             <input id="${id('zoom')}" name="zoom" type="number" min="1" max="19" value="${cfg.zoom ?? ''}" placeholder="14"></div>
           ${loadField(id, 'load', cfg)}
           ${check('cluster', tx('rs.group_markers_that_are_close'), cfg.cluster === true)}
+          ${check('no_legend', tx('rs.not_in_legend'), cfg.no_legend === true)}
           ${emptyField(id, cfg)}
         </div></fieldset>
         ${linkFieldset(id, cfg.link, allPages, tx('rs.w.place'))}

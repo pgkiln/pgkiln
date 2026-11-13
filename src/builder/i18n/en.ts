@@ -7707,4 +7707,6 @@ export const en = {
   'apip.modules_saved': '{name} is limited to these REST modules: {modules}.',
   'apip.modules_all': '{name} may call the whole application again.',
   'apip.modules_unknown': 'This application has no REST module named {names}.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': 'Leave out of the legend (always shown)',
 } as const;

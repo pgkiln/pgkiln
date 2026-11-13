@@ -7703,4 +7703,6 @@ export const ko: BuilderMessages = {
   'apip.modules_saved': '{name}은(는) 다음 REST 모듈로 제한됩니다: {modules}.',
   'apip.modules_all': '{name}은(는) 다시 애플리케이션 전체를 호출할 수 있습니다.',
   'apip.modules_unknown': '이 애플리케이션에는 {names}(이)라는 REST 모듈이 없습니다.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': '범례에 표시하지 않음(항상 표시)',
 };

@@ -7703,4 +7703,6 @@ export const it: BuilderMessages = {
   'apip.modules_saved': '{name} è limitato a questi moduli REST: {modules}.',
   'apip.modules_all': '{name} può di nuovo chiamare l\'intera applicazione.',
   'apip.modules_unknown': 'Questa applicazione non ha un modulo REST chiamato {names}.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': 'Non mostrare nella legenda (sempre visibile)',
 };

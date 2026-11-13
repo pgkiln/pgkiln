@@ -11,6 +11,11 @@ All notable changes to this project are documented here. The format follows
   (App → REST API → OAuth clients → *REST modules*). Its tokens then work for the handlers of those modules only:
   other modules, AutoREST and the data API answer 403, and new tokens carry no database role. The limit is read at
   every request, so it applies to tokens already issued. Blank is the whole application, as before.
+- **Map layers and the legend** (sprint 178, CD-6 leftover; no migration): a map layer can be left out of the
+  legend (`"no_legend": true`; *Leave out of the legend* in the map's settings; APEX: *Display in Legend*). It is
+  then always drawn. The legend shows a lines, polygons or extruded layer in the colour of its style.
+- **Sample Maps 1.1**: a page *Lines and areas* with a layer of each shape kind: polygons with one style, buildings
+  shaded by their height (extruded) and routes with a colour per row, left out of the legend.
 
 ## [0.93.0] - 2026-11-13
 

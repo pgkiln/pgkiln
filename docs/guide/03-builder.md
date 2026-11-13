@@ -653,7 +653,7 @@ version says *Installed: v…*.
     **Sample Reporting** (interactive report, faceted search, smart filters that also read a phrase, a classic report
     with column options and a column template); and (sprint 122; APEX: Sample Maps, Sample Approvals, Sample Data
     Loading, Sample File Upload and Download) **Sample Maps** (markers and clusters, layers with GeoJSON and a heat
-    map, a map that filters a list by distance, a location item, without PostGIS), **Sample Approvals** (a form
+    map, lines, polygons and buildings shaded by height, a map that filters a list by distance, a location item, without PostGIS), **Sample Approvals** (a form
     starts a workflow: approved by itself below 1,000, otherwise an approval task decided under My tasks; the
     workflow console; accounts **demo** and **approver**), **Sample Data Loading** (`data_load` processes by column
     name, through a data load definition and skipping bad rows, with example files to download) and **Sample Files**

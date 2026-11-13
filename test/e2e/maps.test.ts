@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 import '../../src/env.ts';
 import { buildApp } from '../../src/app.ts';
-import { closePools } from '../../src/db.ts';
+import { closePools, owner } from '../../src/db.ts';
 import { png } from '../../src/runtime/pwa.ts';
 import { tileOrigin } from '../../src/maptiles.ts';
 
@@ -208,6 +208,43 @@ describe('map and tree regions', () => {
     assert.match((await popup.textContent()) ?? '', /^Station \d+\d+ m$/);
     assert.deepEqual(await violations(page), []);
     await context.close();
+  });
+
+  test('(sprint 178) a layer left out of the legend is drawn and not listed; the legend shows a shape layer\'s own colour', async () => {
+    const alias = 'maps-e178';
+    const square = JSON.stringify({ type: 'Polygon', coordinates: [[[4.8, 52.3], [4.9, 52.3], [4.9, 52.4], [4.8, 52.4], [4.8, 52.3]]] });
+    const line = JSON.stringify({ type: 'LineString', coordinates: [[4.8, 52.3], [4.9, 52.4]] });
+    await owner.query('delete from meta.app where alias = $1', [alias]);
+    const appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Maps 178', 'none') returning id`, [alias]))!.id;
+    try {
+      const p = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [appId]))!.id;
+      await owner.query(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 1, 'Areas', 'map', $2, $3)`, [p, `select 'Park' as title, '${square}' as geojson`, JSON.stringify({
+        name: 'Parks', layer: 'polygons', style: { fill_color: '#1f7a4d' },
+        layers: [{ name: 'Routes', layer: 'lines', no_legend: true, style: { stroke_color: '#c2541b', stroke_width: 4 }, source: `select 'Tram' as title, '${line}' as geojson` },
+          { name: 'Shops', source: `select 52.35 as lat, 4.85 as lng, 'Shop' as title` }],
+      })]);
+      const context = await browser.newContext();
+      await context.route(`${tileOrigin()}/**`, (route) => route.fulfill({ contentType: 'image/png', body: TILE }));
+      await context.addInitScript(() => {
+        (window as any).__csp = [];
+        document.addEventListener('securitypolicyviolation', (e) => (window as any).__csp.push(`${e.violatedDirective}: ${e.blockedURI || e.sample || 'inline'}`));
+      });
+      const page = await context.newPage();
+      await page.goto(`${base}/a/${alias}/1`);
+      const legend = page.locator('.map-layers');
+      await legend.waitFor();
+      assert.deepEqual(await legend.locator('label').allTextContents(), ['Parks', 'Shops']);
+      assert.equal(await page.locator('path.leaflet-interactive').count(), 3, 'the park, the route and the shop are drawn');
+      const colour = (name: string) => legend.locator('label', { hasText: name }).locator('.map-swatch').evaluate((el) => getComputedStyle(el).backgroundColor);
+      assert.equal(await colour('Parks'), 'rgb(31, 122, 77)');
+      assert.notEqual(await colour('Shops'), 'rgb(31, 122, 77)');
+      await legend.locator('label', { hasText: 'Parks' }).locator('input').uncheck();
+      assert.equal(await page.locator('path.leaflet-interactive').count(), 2, 'the route stays');
+      assert.deepEqual(await violations(page), []);
+      await context.close();
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [appId]);
+    }
   });
 
   test('the tree opens and closes; nodes link to the record', async () => {

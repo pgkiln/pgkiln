@@ -7703,4 +7703,6 @@ export const nl: BuilderMessages = {
   'apip.modules_saved': '{name} is beperkt tot deze REST-modules: {modules}.',
   'apip.modules_all': '{name} mag weer de hele applicatie aanroepen.',
   'apip.modules_unknown': 'Deze applicatie heeft geen REST-module met de naam {names}.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': 'Niet in de legenda (altijd zichtbaar)',
 };

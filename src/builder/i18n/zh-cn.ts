@@ -7703,4 +7703,6 @@ export const zhCN: BuilderMessages = {
   'apip.modules_saved': '{name} 仅限于这些 REST 模块：{modules}。',
   'apip.modules_all': '{name} 可以再次调用整个应用程序。',
   'apip.modules_unknown': '此应用程序没有名为 {names} 的 REST 模块。',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': '不在图例中显示（始终可见）',
 };

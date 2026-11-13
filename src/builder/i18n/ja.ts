@@ -7703,4 +7703,6 @@ export const ja: BuilderMessages = {
   'apip.modules_saved': '{name} は次の REST モジュールに限定されました: {modules}。',
   'apip.modules_all': '{name} は再びアプリケーション全体を呼び出せます。',
   'apip.modules_unknown': 'このアプリケーションに {names} という REST モジュールはありません。',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': '凡例に表示しない（常に表示）',
 };

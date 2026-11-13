@@ -3476,7 +3476,9 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: data.zoom || 16 });
     else map.setView([20, 0], 2);
     if (data.layers.some((l) => l.kind === 'heat')) heatLegend(map, data.legend);
-    if (several) layerSwitch(map, group, built, data.layersLabel);
+    // (sprint 178) the legend lists the layers that are not left out of it
+    const listed = built.filter((b) => b.def.legend !== false);
+    if (several && listed.length) layerSwitch(map, group, listed, data.layersLabel);
     if (f) areaFilter(map, f);
     // (161) map_change: moved or zoomed by the user (after the first view); the condition sees the zoom level
     map.on('moveend', () => el.dispatchEvent(new CustomEvent('pgkiln:component', { bubbles: true, detail: { event: 'map_change', element: el, value: map.getZoom() } })));
@@ -3925,6 +3927,8 @@ function layerSwitch(map, group, built, label) {
         const swatch = document.createElement('span');
         swatch.className = `map-swatch ${b.def.kind === 'heat' ? 'map-swatch-heat' : `map-c${b.def.color}`}`;
         swatch.setAttribute('aria-hidden', 'true');
+        // a shape layer's own colour (#rrggbb, checked by the server)
+        if (/^#[0-9a-fA-F]{6}$/.test(b.def.swatch || '')) swatch.style.setProperty('--mc', b.def.swatch);
         const name = document.createElement('span');
         name.textContent = b.def.name;
         row.append(cb, swatch, name);
