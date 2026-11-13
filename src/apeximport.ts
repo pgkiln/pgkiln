@@ -42,7 +42,7 @@ export interface ReportEntry {
 }
 
 export interface ApexReport {
-  application: { id: string | null; name: string; alias: string; release: string | null };
+  application: { id: string | null; name: string; alias: string; release: string | null; schema: string };
   entries: ReportEntry[];
   /** APEX calls that hold no component pgkiln imports (method → count), themes and templates left out */
   skipped: Record<string, number>;
@@ -1455,6 +1455,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (cType && !cMap) e.note(`client-side condition ${cType} is not carried over (pgkiln has no JavaScript expressions: use execute_javascript with a registered function)`);
     const sCond = condition(str(a, 'p_display_when_type'), str(a, 'p_display_when_cond'), str(a, 'p_display_when_cond2'), e);
     const targets: string[] = [];
+    const rows: any[] = [];
     let n = 0;
     for (const x of actions) {
       const xa = x.args;
@@ -1519,8 +1520,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       if (yes(xa, 'p_execute_on_page_init') && event !== 'load') e.note(`"fire on initialization" of ${act} is not carried over: add a page load dynamic action`);
       n++;
       targets.push(action);
-      page.dynamic_actions.push({
-        name: actions.length > 1 ? `${name} (${n})` : name,
+      rows.push({
+        name,
         seq: int(num(a, 'p_event_sequence'), 10) * 100 + n,
         event,
         trigger_element: event === 'load' || event === 'before_submit' ? null : trigger,
@@ -1545,6 +1546,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       e.notMapped('none of its actions is mapped');
       continue;
     }
+    // one row per action: "Name (1)", "Name (2)" when there are several
+    rows.forEach((r, i) => page.dynamic_actions.push({ ...r, name: rows.length > 1 ? `${name} (${i + 1})` : name }));
     e.target = [...new Set(targets)].join(', ');
   }
 
@@ -1614,7 +1617,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   return {
     doc,
     report: {
-      application: { id: appId, name: appName, alias, release: str(begin?.args ?? {}, 'p_release') },
+      application: { id: appId, name: appName, alias, release: str(begin?.args ?? {}, 'p_release'), schema },
       entries: entries.map((e) => ({ kind: e.kind, page: e.page, name: e.name, apexType: e.apexType, target: e.target, status: e.status, port: e.port, notes: e.notes })),
       skipped,
       counts,

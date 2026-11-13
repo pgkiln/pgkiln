@@ -201,6 +201,7 @@ export async function homeRoutes(app: FastifyInstance) {
   app.get(`${BASE}/import`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    const tx = tr(s);
     const main = html`<div class="ab-narrow">
       <h1>Import an application</h1>
       <p class="muted">Paste an application export (<code>meta.export_app()</code>, the builder's Export, or <code>pgkiln export</code>). A directory export is imported with <code>pgkiln import</code>.</p>
@@ -211,6 +212,8 @@ export async function homeRoutes(app: FastifyInstance) {
           <small class="help">The Advisor plans its SQL as the application's database role and checks its references before anything is saved: errors (a missing table, column or function, a wrong type, a missing grant) refuse the import.</small></div>
         <div class="buttons"><a class="btn" href="${BASE}">Cancel</a><button class="btn btn-hot">Import</button></div>
       </form>`)}
+      ${region(tx('apx.from_apex'), html`<p>${tx('apx.from_apex_desc')}</p>
+        <div class="buttons"><a class="btn" href="${BASE}/import/apex">${icon('upload')} ${tx('apx.title')}</a></div>`)}
     </div>`;
     return send(reply, s, shell(s, 'Import application', [['App Builder', BASE], ['Import']], main));
   });

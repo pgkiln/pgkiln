@@ -1760,3 +1760,10 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .drawer-head h2 { margin: 0; font-size: 16px; }
 .drawer-panel .buttons { justify-content: flex-end; }
 .gal-version { margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+/* (sprint 182) Import → From Oracle APEX: the import report */
+.apx-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.apx-notes { margin: 0; padding-left: 1.1em; }
+.apx-notes li { overflow-wrap: anywhere; }
+.apx details { margin-top: 12px; }
+.apx details > summary { cursor: pointer; font-weight: 600; }

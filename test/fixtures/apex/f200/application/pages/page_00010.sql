@@ -1,0 +1,95 @@
+prompt --application/pages/page_00010
+begin
+wwv_flow_api.create_page(
+ p_id=>10
+,p_user_interface_id=>wwv_flow_api.id(1550000000002)
+,p_name=>'Staff'
+,p_step_title=>'Staff'
+,p_page_is_public_y_n=>'Y'
+);
+wwv_flow_api.create_page_plug(
+ p_id=>wwv_flow_api.id(1550000000201)
+,p_plug_name=>'Staff'
+,p_plug_display_sequence=>10
+,p_plug_display_point=>'BODY'
+,p_query_type=>'TABLE'
+,p_query_table=>'EMP'
+,p_query_owner=>'HRAPP'
+,p_plug_source_type=>'NATIVE_IG'
+);
+wwv_flow_api.create_region_column(
+ p_id=>wwv_flow_api.id(1550000000202)
+,p_region_id=>wwv_flow_api.id(1550000000201)
+,p_name=>'EMPNO'
+,p_source_type=>'DB_COLUMN'
+,p_source_expression=>'EMPNO'
+,p_data_type=>'NUMBER'
+,p_is_primary_key=>true
+);
+wwv_flow_api.create_region_column(
+ p_id=>wwv_flow_api.id(1550000000203)
+,p_region_id=>wwv_flow_api.id(1550000000201)
+,p_name=>'ENAME'
+,p_source_type=>'DB_COLUMN'
+,p_source_expression=>'ENAME'
+,p_data_type=>'VARCHAR2'
+);
+wwv_flow_api.create_region_column(
+ p_id=>wwv_flow_api.id(1550000000204)
+,p_region_id=>wwv_flow_api.id(1550000000201)
+,p_name=>'APEX$ROW_ACTION'
+,p_item_type=>'NATIVE_ROW_ACTION'
+);
+wwv_flow_api.create_page_process(
+ p_id=>wwv_flow_api.id(1550000000205)
+,p_process_sequence=>10
+,p_process_point=>'AFTER_SUBMIT'
+,p_region_id=>wwv_flow_api.id(1550000000201)
+,p_process_type=>'NATIVE_IG_DML'
+,p_process_name=>'Staff - Save Interactive Grid Data'
+,p_attribute_01=>'REGION_SOURCE'
+);
+wwv_flow_api.create_page_process(
+ p_id=>wwv_flow_api.id(1550000000206)
+,p_process_sequence=>20
+,p_process_point=>'AFTER_SUBMIT'
+,p_process_type=>'NATIVE_RESET_PAGINATION'
+,p_process_name=>'Reset Pagination'
+);
+wwv_flow_api.create_page_process(
+ p_id=>wwv_flow_api.id(1550000000207)
+,p_process_sequence=>30
+,p_process_point=>'AFTER_SUBMIT'
+,p_process_type=>'NATIVE_EXECUTION_CHAIN'
+,p_process_name=>'Nightly chain'
+,p_attribute_01=>'N'
+);
+wwv_flow_api.create_page_process(
+ p_id=>wwv_flow_api.id(1550000000208)
+,p_process_sequence=>10
+,p_parent_process_id=>wwv_flow_api.id(1550000000207)
+,p_process_point=>'AFTER_SUBMIT'
+,p_process_type=>'NATIVE_INVOKE_API'
+,p_process_name=>'Fetch the rates'
+,p_location=>'WEB_SOURCE'
+,p_web_src_module_id=>wwv_flow_api.id(1550000000300)
+);
+wwv_flow_api.create_invokeapi_comp_param(
+ p_id=>wwv_flow_api.id(1550000000209)
+,p_page_process_id=>wwv_flow_api.id(1550000000208)
+,p_page_id=>10
+,p_name=>'currency'
+,p_direction=>'IN'
+,p_value_type=>'STATIC'
+,p_value=>'EUR'
+);
+wwv_flow_api.create_page_process(
+ p_id=>wwv_flow_api.id(1550000000210)
+,p_process_sequence=>40
+,p_process_point=>'AFTER_SUBMIT'
+,p_process_type=>'NATIVE_SESSION_STATE'
+,p_process_name=>'Forget everything'
+,p_attribute_01=>'CLEAR_CACHE_FOR_APPS'
+);
+end;
+/
