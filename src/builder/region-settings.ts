@@ -198,6 +198,9 @@ export function mergeGridSettings(config: Config, b: Body, a: Allowed): Config {
     readonly: b[`readonly_${i}`] === 'true',
     required: b[`required_${i}`] === 'true',
     lov: (b[`lov_${i}`] ?? '').trim(),
+    // (sprint 174, CD-1) undefined when the form has no validation fields (an older page still open): left as it is
+    validation: b[`validation_${i}`] === undefined ? undefined : b[`validation_${i}`]!.trim().slice(0, 4000),
+    validationMessage: (b[`validation_message_${i}`] ?? '').trim().slice(0, 500),
   })).filter((c) => c.name);
   const headings = Object.fromEntries(cols.filter((c) => c.heading).map((c) => [c.name, c.heading]));
   set('headings', Object.keys(headings).length ? headings : undefined);
@@ -217,6 +220,12 @@ export function mergeGridSettings(config: Config, b: Body, a: Allowed): Config {
     if (shared && a.lovs.has(shared[1].toUpperCase())) col.lov = `LOV:${shared[1].toUpperCase()}`;
     else if (c.lov && c.lov === col.lov) col.lov = c.lov;
     else delete col.lov;
+    if (c.validation !== undefined) {
+      if (c.validation) col.validation = c.validation;
+      else delete col.validation;
+      if (c.validation && c.validationMessage) col.validation_message = c.validationMessage;
+      else delete col.validation_message;
+    }
     if (Object.keys(col).length) columns[c.name] = col;
     else delete columns[c.name];
   }
@@ -571,7 +580,15 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
         ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rs.column')}</th><th>${tx('rs.heading')}</th><th>${tx('rs.shown')}</th><th>${tx('rs.read_only')}</th><th>${tx('rs.required')}</th><th>${tx('rs.edit_as')}</th></tr></thead><tbody>${rows}</tbody></table></div>
           <small class="help">${tx('rs.edit_as_picks_a_shared')}</small>`
         : html`<p class="muted">${tx('rs.no_columns_yet')}</p>`}
-    </fieldset>`;
+    </fieldset>
+    ${all.length ? html`<fieldset class="prop-group"><legend>${tx('rs.col_validations')}</legend>
+      <details${all.some((n) => colCfg[n]?.validation) ? raw(' open') : ''}><summary>${tx('rs.col_validations_summary')}</summary>
+      <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('rs.column')}</th><th>${tx('rs.valid_when')}</th><th>${tx('rs.error_message')}</th></tr></thead><tbody>${all.map((n, i) => html`<tr>
+        <td data-label="${tx('rs.column')}"><code>${n}</code></td>
+        <td data-label="${tx('rs.valid_when')}"><input name="validation_${i}" value="${colCfg[n]?.validation ?? ''}" maxlength="4000" spellcheck="false" placeholder=":${n.toUpperCase()} is not null" aria-label="${tx('rs.aria_valid_when', { name: n })}"></td>
+        <td data-label="${tx('rs.error_message')}"><input name="validation_message_${i}" value="${colCfg[n]?.validation_message ?? ''}" maxlength="500" aria-label="${tx('rs.aria_error_message', { name: n })}"></td>
+      </tr>`)}</tbody></table></div>
+      <small class="help">${tx('rs.col_validations_help')}</small></details></fieldset>` : ''}`;
 }
 
 /** A map's further layers, each with its own query: the filled ones and one empty to add (up to MAX_EXTRA_LAYERS). */

@@ -1,6 +1,6 @@
 import { componentSetting } from './component-settings.ts';
 import pg from 'pg';
-import { applyBinds, literal } from '../binds.ts';
+import { applyBinds, literal, RESERVED_BINDS, type BindValues } from '../binds.ts';
 import { savepoint, type Client } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -104,8 +104,8 @@ const rowToken = (ctx: PageContext, r: Region, pk: string) => urlChecksum(ctx.ap
 
 // ---------------------------------------------------------------- render
 
-function control(ctx: PageContext, col: GridColumn, name: string, value: string, label: string) {
-  const aria = raw(` aria-label="${label.replace(/"/g, '&quot;')}"`);
+function control(ctx: PageContext, col: GridColumn, name: string, value: string, label: string, invalid = false) {
+  const aria = raw(` aria-label="${label.replace(/"/g, '&quot;')}"${invalid ? ` aria-invalid="true" aria-describedby="${name}_error"` : ''}`);
   if (col.options)
     return html`<select name="${name}"${aria}><option value=""></option>${col.options.map(
       (o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`,
@@ -119,6 +119,9 @@ function control(ctx: PageContext, col: GridColumn, name: string, value: string,
     return html`<input type="datetime-local" name="${name}" value="${value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
   return html`<input type="text" name="${name}" value="${value}"${aria}>`;
 }
+
+/** (sprint 174, CD-1) The message of a cell a failed save refused (a column's validation, a required column), under its control. */
+const cellError = (name: string, message: string | undefined) => (message ? html`<small class="error grid-cell-error" id="${name}_error">${message}</small>` : '');
 
 /**
  * (APEX: cell navigation mode) An editable cell's value as text, with its column's format mask or the
@@ -339,8 +342,9 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       const lbl = label(col.name);
       if (!col.editable) return html`<td class="${colCls(p, pIdx, NUMERIC.has(col.typeOid) ? 'num' : null)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cell(row[col.idx], col.typeOid, fmtOf(col.name))}</td>`;
       const name = `${g}_${i}_c${col.ci}`;
+      const err = pi !== undefined ? ctx.gridErrors?.[`${g}_${pi}_c${col.ci}`] : undefined;
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${col.ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${col.ci}`) ?? dbValue)) : dbValue;
-      return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${cellText(col, value, value === dbValue ? cell(row[col.idx], col.typeOid, fmtOf(col.name)) : value)}${control(ctx, col, name, value, `${lbl}, row ${i + 1}`)}</td>`;
+      return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${err ? '' : cellText(col, value, value === dbValue ? cell(row[col.idx], col.typeOid, fmtOf(col.name)) : value)}${control(ctx, col, name, value, `${lbl}, row ${i + 1}`, !!err)}${cellError(name, err)}</td>`;
     });
     const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
     const selValue = selIdx >= 0 ? toState(row[selIdx]) ?? '' : null;
@@ -380,7 +384,7 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
         const lbl = label(col.name);
         if (masterCol && col.name === masterCol) return html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${masterValue}</td>`;
         return writable.has(col.name)
-          ? html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${control(ctx, { ...col, editable: true }, `${g}_n${j}_c${col.ci}`, values[col.ci] ?? '', `${lbl}, new row`)}</td>`
+          ? html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}>${control(ctx, { ...col, editable: true }, `${g}_n${j}_c${col.ci}`, values[col.ci] ?? '', `${lbl}, new row`, !!ctx.gridErrors?.[`${g}_n${j}_c${col.ci}`])}${cellError(`${g}_n${j}_c${col.ci}`, ctx.gridErrors?.[`${g}_n${j}_c${col.ci}`])}</td>`
           : html`<td class="${colCls(p, pIdx)}" data-col="${col.ci}" data-label="${lbl}"${hiddenAttr(p)}></td>`;
       })}
       ${Object.keys(started).length ? html`<td hidden>${defInput(`${g}_n${j}_def`, started)}</td>` : ''}
@@ -433,7 +437,8 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       orig[col.ci] = dbValue;
       if (!col.editable) return field(p, cell(row[col.idx], col.typeOid, fmtOf(col.name)), false);
       const value = pi !== undefined ? (col.typeOid === 16 ? (pv(`${g}_${pi}_c${col.ci}`) === 'true' ? 'true' : 'false') : (pv(`${g}_${pi}_c${col.ci}`) ?? dbValue)) : dbValue;
-      return field(p, control(ctx, col, `${g}_0_c${col.ci}`, value, label(col.name)), true);
+      const err = pi !== undefined ? ctx.gridErrors?.[`${g}_${pi}_c${col.ci}`] : undefined;
+      return field(p, html`${control(ctx, col, `${g}_0_c${col.ci}`, value, label(col.name), !!err)}${cellError(`${g}_0_c${col.ci}`, err)}`, true);
     });
     const deleted = pi !== undefined && pv(`${g}_${pi}_del`) === 'true';
     const links = [
@@ -454,7 +459,8 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
       const col = p.col;
       if (masterCol && col.name === masterCol) return [field(p, masterValue, false)];
       if (!writable.has(col.name)) return [];
-      return [field(p, control(ctx, { ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? defaults[col.ci] ?? '', label(col.name)), true)];
+      const err = ctx.gridErrors?.[`${g}_n0_c${col.ci}`];
+      return [field(p, html`${control(ctx, { ...col, editable: true }, `${g}_n0_c${col.ci}`, pv(`${g}_n0_c${col.ci}`) ?? defaults[col.ci] ?? '', label(col.name), !!err)}${cellError(`${g}_n0_c${col.ci}`, err)}`, true)];
     });
     const started = pv(`${g}_n0_def`) !== undefined ? postedDefaults(pv(`${g}_n0_def`)) : defaults;
     return html`<div class="grid-record grid-new" data-new-row="0"><div class="form-grid">${fieldsHtml}</div>${defInput(`${g}_n0_def`, started)}</div>
@@ -785,6 +791,38 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     : v ?? '';
 
   const errors: string[] = [];
+  // (sprint 174, CD-1) a cell that is refused: its message goes to the notification and under the cell
+  const cellErrors: Record<string, string> = {};
+  const refuse = (field: string, rowLabel: string, message: string) => {
+    errors.push(`${rowLabel}: ${message}`);
+    cellErrors[field] ??= message;
+  };
+  // column validations (config.columns.<name>.validation): an SQL expression that must be true for a row that is
+  // added or changed. The row's columns are bind variables by their names in upper case (:SAL), next to the page
+  // items and the built-in names, which a column never replaces.
+  const checked = cols.map((col, ci) => ({ col, ci, expr: String(r.config.columns?.[col.name]?.validation ?? '').trim(), message: String(r.config.columns?.[col.name]?.validation_message ?? '').trim() })).filter((x) => x.expr);
+  const validateRow = async (values: Record<number, string | null>, field: (ci: number) => string, rowLabel: string) => {
+    if (!checked.length) return true;
+    const state = bindValues(ctx);
+    const binds: BindValues = { ...state };
+    cols.forEach((col, ci) => {
+      const name = col.name.toUpperCase();
+      if (!RESERVED_BINDS.has(name)) binds[name] = values[ci] ?? null;
+    });
+    let ok = true;
+    for (const x of checked) {
+      const heading = headingOf(r, x.col.name, ctx.locale.tr);
+      try {
+        const res = await savepoint(c, () => c.query(`select (${stripSemicolon(applyBinds(x.expr, binds))}) is true as ok`));
+        if (res.rows[0]?.ok === true) continue;
+        refuse(field(x.ci), rowLabel, x.message ? substitute(ctx.locale.tr(x.message), ctx, (v) => v) : heading);
+      } catch (e) {
+        refuse(field(x.ci), rowLabel, `${heading}: ${await publicError(ctx, e, 'grid validation')}`);
+      }
+      ok = false;
+    }
+    return ok;
+  };
   let inserted = 0, updated = 0, deleted = 0;
   const attempt = async (label: string, fn: () => Promise<void>) => {
     try {
@@ -825,18 +863,28 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
     }
     const sets: string[] = [];
     const changes: Record<string, string | null> = {};
+    // the row as it would be saved: what the page showed, with what was posted over it
+    const rowValues: Record<number, string | null> = {};
+    cols.forEach((_, ci) => (rowValues[ci] = orig[ci] === undefined || orig[ci] === '' ? null : orig[ci]));
+    let rowOk = true;
     for (const [ci, col] of cols.entries()) {
       if (!writable.has(col.name)) continue;
       // a field that was not posted is left alone (an unchecked checkbox posts nothing: false)
       if (col.dataTypeID !== 16 && body[`${g}_${i}_c${ci}`] === undefined) continue;
       const v = norm(ci, one(`${g}_${i}_c${ci}`));
       if (v === (orig[ci] ?? null)) continue;
-      if (required(col.name) && v === '') errors.push(ctx.locale.t('grid.required', { row: Number(i) + 1, label: headingOf(r, col.name, ctx.locale.tr) }));
+      rowValues[ci] = v === '' ? null : v;
+      if (required(col.name) && v === '') {
+        errors.push(ctx.locale.t('grid.required', { row: Number(i) + 1, label: headingOf(r, col.name, ctx.locale.tr) }));
+        cellErrors[`${g}_${i}_c${ci}`] ??= ctx.locale.t('formdesigner.required_short');
+        rowOk = false;
+      }
       if (!(await offered(col.name, v))) errors.push(ctx.locale.t('error.lov_value', { label: `${ctx.locale.t('grid.row', { row: Number(i) + 1 })}: ${headingOf(r, col.name, ctx.locale.tr)}` }));
       sets.push(`${ident(col.name)} = ${literal(v === '' ? null : v)}`);
       changes[col.name] = v === '' ? null : v;
     }
     if (!sets.length) continue;
+    if (!(await validateRow(rowValues, (ci) => `${g}_${i}_c${ci}`, ctx.locale.t('grid.row', { row: Number(i) + 1 }))) || !rowOk) continue;
     await attempt(ctx.locale.t('grid.row', { row: Number(i) + 1 }), async () => {
       if (rest) await restGridCall(r, 'update', pk, changes);
       else {
@@ -879,8 +927,12 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
       const missing = cols.filter((col) => required(col.name) && !values.some(([n]) => n === col.name));
       if (missing.length) {
         errors.push(ctx.locale.t('grid.new_required', { labels: missing.map((col) => headingOf(r, col.name, ctx.locale.tr)).join(', ') }));
+        for (const col of missing) cellErrors[`${g}_n${j}_c${cols.indexOf(col)}`] ??= ctx.locale.t('formdesigner.required_short');
         continue;
       }
+      const newValues: Record<number, string | null> = {};
+      cols.forEach((col, ci) => (newValues[ci] = values.find(([n]) => n === col.name)?.[1] ?? null));
+      if (!(await validateRow(newValues, (ci) => `${g}_n${j}_c${ci}`, ctx.locale.t('grid.new_row')))) continue;
       await attempt(ctx.locale.t('grid.new_row'), async () => {
         if (rest) await restGridCall(r, 'insert', null, Object.fromEntries(values));
         else await c.query(`insert into ${table} (${values.map(([n]) => ident(n)).join(', ')}) values (${values.map(([, v]) => literal(v)).join(', ')})`);
@@ -888,7 +940,10 @@ export async function gridDml(ctx: PageContext, p: Process): Promise<string | nu
       });
     }
 
-  if (errors.length) throw new Error(errors.join(' '));
+  if (errors.length) {
+    ctx.gridErrors = { ...ctx.gridErrors, ...cellErrors };
+    throw new Error(errors.join(' '));
+  }
   const t = ctx.locale.t;
   const parts = [inserted && t('grid.added', { n: inserted }), updated && t('grid.updated', { n: updated }), deleted && t('grid.deleted', { n: deleted })].filter(Boolean);
   (ctx.savedGrids ??= []).push(r.id);

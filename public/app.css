@@ -1119,6 +1119,9 @@ fieldset.prop-group > legend { font-size: 0.75rem; text-transform: uppercase; le
 .js .grid-table td[data-col] > .grid-text.num { justify-content: flex-end; font-variant-numeric: tabular-nums; }
 .js .grid-table td[data-col]:has(> .grid-text) :is(input, select) { color: transparent; }
 .js .grid-table td[data-col]:focus-within > .grid-text { display: none; }
+/* (sprint 174, CD-1) a cell a failed save refused: its control stays visible, outlined, with the message under it */
+.grid-cell-error { display: block; margin-top: 2px; white-space: normal; }
+.grid-table td[data-col] :is(input, select)[aria-invalid="true"], .grid-record :is(input, select)[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
 .js .grid-table td[data-col]:focus-within :is(input, select) { color: inherit; }
 .grid-columns-form { border-collapse: collapse; font-size: 0.85rem; }
 .grid-columns-form th, .grid-columns-form td { padding: 0.2rem 0.35rem; text-align: left; white-space: nowrap; }

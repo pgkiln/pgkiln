@@ -560,7 +560,7 @@ Attributes:
 | `pagination`, `max_rows` | | As for reports |
 | `allow` | all `true` | `{"insert": false, "update": true, "delete": false}` |
 | `readonly` | `[]` | Columns that may not be edited |
-| `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)). (167) `default` and `default_sql` give a new row's starting value: see [New rows' default values](#new-rows-default-values) |
+| `columns` | `{}` | Per column: `{"deptno": {"lov": "LOV:DEPARTMENTS", "required": true}}`. `lov` makes it a select list (any [list of values](05-items.md#lists-of-values)). (167) `default` and `default_sql` give a new row's starting value: see [New rows' default values](#new-rows-default-values). (174) `validation` and `validation_message` check a row that is added or changed: see *Column validations* below |
 | `headings`, `hidden`, `formats` | | As for reports |
 | `aggregates` | | Totals in the footer: `{"sal": ["sum", "avg"], "empno": "count"}` (`sum`, `avg`, `count`, `min`, `max`) |
 | `layout` | | The default column layout: `{"order": ["ename", "sal"], "hidden": ["comm"], "widths": {"ename": 180}, "frozen": 1}` |
@@ -589,6 +589,30 @@ A new row the user left at its default values counts as blank and isn't inserted
 any value and the whole row, defaults included, is inserted. A duplicated row is always inserted. Only columns
 a new row may set take a default (a detail grid's master column is filled from the master as before). For
 anything that needs a decision per row, the `grid_row_init` dynamic action event still runs on each new row.
+
+**Column validations.** (174; APEX: a validation on an editable region's column) A column's `validation` is an SQL
+expression that must be true for every row that is added or changed, with `validation_message` as its error
+message. Set them in the region's settings under *Column validations*, or in the configuration:
+
+```json
+"columns": {
+  "sal":  {"validation": ":SAL is null or :SAL::numeric > 0", "validation_message": "The salary must be more than zero."},
+  "comm": {"validation": ":COMM is null or :COMM::numeric <= :SAL::numeric",
+           "validation_message": "The commission cannot be more than the salary."}
+}
+```
+
+The row's columns are bind variables by their names in upper case (`:SAL`, `:COMM`): the values as they would be
+saved, so what the user typed over what the page showed. They are text, like page items: cast them where the type
+matters. Page items and the built-in names (`:APP_USER`, `:APP_ID`, …) work too; a column never replaces a built-in
+name. The expression runs as the application's database role in the transaction of the save; false, null or an
+error fails, so allow an empty value in the expression where a column may stay empty (`:SAL is null or …`). A row that fails is not saved, and because the save is one process nothing else of it is kept either.
+The grid comes back with what the user typed: the message stands under the cell (the control is marked invalid for
+screen readers) and in the notification with its row (*Row 3: The salary must be more than zero.*). A required
+column that was emptied is marked in its cell the same way. The message may use `&ITEM.` substitutions and is
+translated like the application's other texts; without a message the column's heading is shown. Deleted rows and
+rows the user did not change are not checked. The HR example checks the salary and the commission in the Staff grid
+of page 27 (`examples/hr/hr_83_grid_validations.sql`).
 
 **Aggregates** are computed in the database over **every row of the search**, not only the rows
 on the page, and shown in a footer row under their columns. Besides the developer's
