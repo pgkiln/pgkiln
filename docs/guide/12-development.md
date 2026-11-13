@@ -277,6 +277,7 @@ src/
                            (sprint 175) header parameters: headerName(), bound from the request header only, credential headers refused
     rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
                            handlers (content type and file name cleaned, sandboxed response)
+                           (sprint 176, migration 159) replyHeaders(): the response headers meta.rest_header set, checked again
     autorest.ts            (sprint 100, migration 113) AutoREST: /a/:alias/autorest/<object>/ for the tables and views SQL Workshop →
                            RESTful Services published (meta.rest_object): caller() of rest.ts, SET ROLE to the app role, owner/BYPASSRLS
                            check, columns from the catalog (column grants), filters/q/order/paging, POST/PUT/DELETE by primary key, OpenAPI
@@ -421,6 +422,9 @@ src/
     sql-charts.ts          (sprint 97) charts of a query: chartSpec(), drawChart() (runtime/charts.ts, a PageCss in a nonce'd <style>), the
                            worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs);
                            (sprint 173) an application page from a saved chart: chartRegionSource(), /apps/:id/chart-page
+    sql-shares.ts          (sprint 176) share links for query results: POST /sql/shared keeps the worksheet's SELECT behind a
+                           token (meta.sql_share, 158), GET /sql/shared/:token runs it read-only as the reader's connection
+                           (runShare(), 500 rows), the maker or an administrator renames, extends, stops; /sql/shared lists
     sql-tools.ts           (sprint 96) SQL_TOOLS: every SQL Workshop tool with its group, tab and description (home, More menu, search)
     worksheet.ts           (sprint 173) POST /sql/worksheet/rows: the grid's next rows from an offset (read-only; public/worksheet.js
                            loads them while [data-ws-more-end] is in view);

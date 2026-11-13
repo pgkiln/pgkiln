@@ -98,6 +98,19 @@ end
 transaction is still committed); without it the handler answers 204. A `raise exception` answers 400 with its
 message and rolls back. Statements without `begin … end` are wrapped in one.
 
+**Response headers** (sprint 176). `meta.rest_header(name text, value text)` sets a header of the response, which
+is what ORDS does with an OUT parameter bound to an HTTP header:
+
+```sql
+  perform meta.rest_header('Location', '/a/sales/rest/orders/orders/' || v_id);
+  perform meta.rest_reply(jsonb_build_object('id', v_id), 201);
+```
+
+A value is one line of at most 2000 characters, a handler sets at most 20 headers, and `null` as the value takes a
+header back. The headers the server answers with itself are refused: the content type and length, cookies,
+`ETag`, the security headers and the CORS (`Access-Control-…`) headers. The HR example's `POST leave` answers with
+the `Location` of the new request (`examples/hr/hr_85_rest_response_header.sql`).
+
 **Media handlers** run a query whose first row has `content_type`, `content` (bytea or text) and optionally
 `filename`; the response is that content, sent with `X-Content-Type-Options: nosniff` and a sandboxing
 Content-Security-Policy, so HTML or SVG from a table can't run script in the application's origin. No row: 404.

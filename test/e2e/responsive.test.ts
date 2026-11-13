@@ -731,6 +731,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         table_security: '/builder/sql/objects/security?o=hr.emp',
         // (sprint 97) Charts
         sql_charts: '/builder/sql/charts',
+        // (sprint 176) share links for query results
+        sql_shared: '/builder/sql/shared',
         gallery: '/builder/gallery',
         gallery_starters: '/builder/gallery?tab=starters',
         app_groups: '/builder/app-groups',
