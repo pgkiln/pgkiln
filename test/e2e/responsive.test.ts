@@ -844,6 +844,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
           })),
         ),
         sql: '/builder/sql',
+        // (sprint 179) the tour of the SQL Workshop: its first and last step
+        sql_tour: '/builder/sql/tour', sql_tour_last: '/builder/sql/tour?step=99',
         objects: '/builder/sql/objects?schema=hr&k=table&o=hr.emp',
         objects_ddl: '/builder/sql/objects?schema=hr&k=table&o=hr.emp&tab=ddl',
         objects_home: '/builder/sql/objects?schema=hr&q=emp',
