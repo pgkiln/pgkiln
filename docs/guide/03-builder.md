@@ -661,7 +661,9 @@ version says *Installed: v…*.
   - the **UX Pattern Catalog** (APEX: the Universal Theme app): region templates and template options, button
     styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments,
     avatars, metric cards, empty states, a dialog, a drawer and a side column, each named by its template, option
-    or class to copy from.
+    or class to copy from; (1.1, sprint 179) an *Icons* page (pgkiln's own, Lucide and Font APEX names, and the
+    modifiers) and a *Colours* page (the colour classes, status colours and the theme's variables). It is pgkiln's
+    theme reference.
 
   Each single-topic app and the catalog is one SQL file in `examples/gallery/samples/`, run in one transaction (a
   failing script leaves nothing behind); sign in with **demo** / **demo**. Outside the builder:

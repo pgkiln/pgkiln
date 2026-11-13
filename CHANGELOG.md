@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 ## [0.94.0] - 2026-11-13
 
 ### Added
+- **UX Pattern Catalog 1.1, the theme reference** (sprint 179, WS-8 leftover): two more pages. *Icons* shows
+  pgkiln's own icons by use, Lucide and Font APEX names, and the modifiers (size, colour, spin, rotate, flip).
+  *Colours* shows the fifteen colour classes, the status colours and the theme's variables, which follow the
+  application's style and dark mode.
 - **OAuth clients limited to REST modules** (sprint 178, DA-11 leftover; migration 162
   `meta.api_client.rest_modules`): an OAuth client of an application can be limited to some of its REST modules
   (App → REST API → OAuth clients → *REST modules*). Its tokens then work for the handlers of those modules only:
