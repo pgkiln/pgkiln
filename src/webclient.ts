@@ -34,10 +34,14 @@ import { SPAN_KIND, traceparent, withSpan } from './telemetry/trace.ts';
 export class WebError extends Error {
   /** "PGXWS": publicError() logs the details and shows the user a reference */
   readonly code = 'PGXWS';
+  /** (sprint 177) the service was not reached or did not answer in time: worth another attempt (the outbox retries these) */
+  transient = false;
   constructor(message: string, readonly status?: number) {
     super(message);
   }
 }
+
+const transient = (e: WebError) => Object.assign(e, { transient: true });
 
 export interface WebRequest {
   method?: string;
@@ -207,7 +211,7 @@ function once(url: URL, req: WebRequest, deadline: number, maxBytes: number): Pr
   const lib = url.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
     const left = deadline - Date.now();
-    if (left <= 0) return reject(new WebError('The web service did not answer in time.'));
+    if (left <= 0) return reject(transient(new WebError('The web service did not answer in time.')));
     const r = lib.request(
       url,
       {
@@ -247,10 +251,10 @@ function once(url: URL, req: WebRequest, deadline: number, maxBytes: number): Pr
         });
       },
     );
-    const timer = setTimeout(() => r.destroy(new WebError('The web service did not answer in time.')), left);
+    const timer = setTimeout(() => r.destroy(transient(new WebError('The web service did not answer in time.'))), left);
     r.on('error', (e) => {
       clearTimeout(timer);
-      reject(e instanceof WebError ? e : new WebError(`The web service could not be reached (${(e as NodeJS.ErrnoException).code ?? e.message}).`));
+      reject(e instanceof WebError ? e : transient(new WebError(`The web service could not be reached (${(e as NodeJS.ErrnoException).code ?? e.message}).`)));
     });
     if (req.body !== undefined) r.write(req.body);
     r.end();
