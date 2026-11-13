@@ -24,6 +24,7 @@ before(async () => {
     create view ${S}.dept_names as select name from ${S}.dept`);
   close = async () => {
     await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`delete from meta.owner_sql_audit where reason like 'e2e:%'`);
     await browser.close();
     await app.close();
     await closePools();
@@ -31,7 +32,7 @@ before(async () => {
 });
 after(() => close());
 
-async function builder(viewport = { width: 1440, height: 1000 }): Promise<{ context: BrowserContext; page: Page }> {
+async function builder(viewport = { width: 1440, height: 1000 }, ownerConn = true): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ viewport });
   await context.addInitScript(() => {
     (window as any).__csp = [];
@@ -43,6 +44,13 @@ async function builder(viewport = { width: 1440, height: 1000 }): Promise<{ cont
   await page.fill('#f_username', 'admin');
   await page.fill('#f_password', 'admin');
   await Promise.all([page.waitForNavigation(), page.click('button.btn-hot')]);
+  // (sprint 185) the schema above is the owner's: the Owner connection, with a reason
+  if (ownerConn) {
+    await page.goto(`${base}/builder/sql`);
+    const csrf = await page.locator('input[name=__csrf]').first().getAttribute('value');
+    const res = await page.request.post(`${base}/builder/sql/run-as`, { form: { __csrf: csrf!, as: 'owner', reason: 'e2e: the owner\'s schema' }, maxRedirects: 0 });
+    assert.equal(res.status(), 303);
+  }
   return { context, page };
 }
 
@@ -539,6 +547,44 @@ describe('SQL Worksheet', () => {
     await Promise.all([page.waitForNavigation(), page.locator('button[name="action"][value="stop"]').click()]);
     assert.match(page.url(), /\/builder\/sql\/shared$/);
     assert.equal((await page.goto(url))!.status(), 404);
+    await context.close();
+  });
+  test('(sprint 185, NX-S1) Run as: the developer login by default; the Owner connection is red, asks for a reason and shows a chip until Back', async () => {
+    const { context, page } = await builder({ width: 1440, height: 1000 }, false);
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    const runAs = page.locator('.ws-status select[name=as_app]');
+    assert.equal(await runAs.inputValue(), '');
+    assert.equal(await page.locator('.ws-owner-reason').isVisible(), false, 'no reason field for the developer login');
+    await setEditor(page, 'select session_user::text as who', 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.match((await page.locator('.ws-grid tbody td').first().textContent())!, /^pgkiln_ws\d+_dev_/);
+    // Owner connection: the chip turns red and the reason field appears; without a reason nothing runs
+    await runAs.selectOption('owner');
+    assert.ok(await page.locator('.ws-owner-reason input').isVisible());
+    const red = await page.locator('.ws-runas-chip select').evaluate((el) => getComputedStyle(el).color);
+    const plain = await page.locator('.ws-status-run').evaluate((el) => getComputedStyle(el).color);
+    assert.notEqual(red, plain, 'the chip is red');
+    await setEditor(page, 'select session_user::text as who', 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.match((await page.locator('.ws-owner-error').textContent())!, /Give a reason/);
+    assert.ok(await page.locator('.ws-owner-reason input').isVisible());
+    await page.fill('.ws-owner-reason input', 'e2e: look at the owner');
+    await setEditor(page, 'select session_user::text as who', 0);
+    await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+    assert.doesNotMatch((await page.locator('.ws-grid tbody td').first().textContent())!, /^pgkiln_ws/);
+    assert.ok(await page.locator('.ws-runas-chip.ws-runas-owner').isVisible());
+    // every SQL Workshop page shows the red chip, with the way back
+    await page.goto(`${base}/builder/sql`);
+    assert.ok(await page.locator('.sw-owner-chip').isVisible());
+    await Promise.all([page.waitForNavigation(), page.locator('.sw-owner-chip button').click()]);
+    assert.equal(await page.locator('.sw-owner-chip').count(), 0);
+    assert.deepEqual(await page.evaluate(() => (window as any).__csp), []);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${base}/builder/sql/worksheet?new=1`);
+    await page.locator('.ws-status select[name=as_app]').selectOption('owner');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert.ok(overflow <= 1, `no horizontal overflow (${overflow}px)`);
+    await owner.query(`delete from meta.owner_sql_audit where reason like 'e2e:%'`);
     await context.close();
   });
 });

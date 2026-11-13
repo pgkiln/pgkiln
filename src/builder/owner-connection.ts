@@ -94,21 +94,30 @@ export function auditedOwner(s: Session, reason: string, tool = 'workshop'): Db 
     return c;
   };
   const unwatch = (c: pg.PoolClient, orig: pg.PoolClient['query']) => {
-    (c as any).query = orig;
+    if (Object.getPrototypeOf(c).query === orig) delete (c as any).query;
+    else (c as any).query = orig;
   };
-  const pool = Object.create(owner.pool) as pg.Pool;
-  pool.connect = (async () => {
-    const c = await owner.pool.connect();
-    const orig = c.query;
-    const release = c.release;
-    watch(c);
-    c.release = ((err?: Error | boolean) => {
-      unwatch(c, orig);
-      c.release = release;
-      return release.call(c, err);
-    }) as typeof c.release;
-    return c;
-  }) as typeof pool.connect;
+  // the pool's connect() and query(), what the SQL Workshop's tools use of it
+  const pool = {
+    async connect() {
+      const c = await owner.pool.connect();
+      const orig = c.query;
+      const release = c.release;
+      watch(c);
+      c.release = ((err?: Error | boolean) => {
+        unwatch(c, orig);
+        c.release = release;
+        return release.call(c, err);
+      }) as typeof c.release;
+      return c;
+    },
+    query(config: any, values?: any) {
+      const t0 = performance.now();
+      const p = owner.pool.query(config, values);
+      p.then((r) => record(config, r, null, t0), (e) => record(config, null, e, t0));
+      return p;
+    },
+  } as unknown as pg.Pool;
   return {
     ...owner,
     pool,
