@@ -1,4 +1,4 @@
-import { shapeStyle } from '../runtime/maps.ts';
+import { layerDefs, shapeStyle } from '../runtime/maps.ts';
 import type { FastifyInstance } from 'fastify';
 import { aiFilterSettingsForm, assistantSettingsForm } from './assistant.ts';
 import { designSql } from './websources.ts';
@@ -72,8 +72,8 @@ const FACET_LIMIT = 12;
 // ---------------------------------------------------------------- shared bits
 
 const opt = (value: string, label: string, current: unknown) => html`<option value="${value}"${String(current ?? '') === value ? raw(' selected') : ''}>${label}</option>`;
-const check = (name: string, label: string, on: boolean) =>
-  html`<div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label></div>`;
+const check = (name: string, label: string, on: boolean, help = '') =>
+  html`<div class="field"><span class="label" aria-hidden="true"></span><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
 
 /** A {page, items} link from the form, or undefined (no page, or a page of another app). */
 function mergeLink(b: Body, pages: Set<number>, prefix = 'link') {
@@ -458,9 +458,9 @@ export function mergeMapSettings(config: Config, b: Body, a: Allowed): Config {
       else if (b[`layer${i}_cluster`] === 'true' && load !== 'tiles') layer.cluster = true;
       const style = mergeStyle(b, `layer${i}`);
       if (style) layer.style = style;
-      // (sprint 178) left out of the legend: always drawn, so never off at first
+      // (sprint 184) kept as ticked: the map (layerDefs) decides whether "off at first" applies, and the form says so
+      if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
       if (b[`layer${i}_no_legend`] === 'true') layer.no_legend = true;
-      else if (b[`layer${i}_hidden`] === 'true') layer.hidden = true;
       if (load === 'area') layer.visible_area = true;
       else if (load === 'tiles') layer.tiles = true;
       const link = mergeLink(b, a.pages, `layer${i}_link`);
@@ -606,6 +606,8 @@ function loadField(id: (n: string) => string, name: string, l: Config) {
 async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_no: number; name: string }[], id: (n: string) => string) {
   const layers: Config[] = (Array.isArray(cfg.layers) ? cfg.layers : []).slice(0, MAX_EXTRA_LAYERS);
   const shown = layers.length < MAX_EXTRA_LAYERS ? [...layers, {}] : layers;
+  // (sprint 184) the layers the map's Layers legend lists (layerDefs: the one place of the rule), by position
+  const listed = new Set(layerDefs({ title: '', source: 'select 1', config: cfg } as never).flatMap((d, n) => (d.listed ? [n] : [])));
   const parts = [];
   for (const [i, l] of shown.entries()) {
     const p = `layer${i}`;
@@ -620,7 +622,7 @@ async function mapLayersFieldsets(cfg: Config, appId: number, allPages: { page_n
         ${styleFields(id, p, l.style)}
         ${loadField(id, `${p}_load`, l)}
         ${check(`${p}_cluster`, tx('rs.group_markers'), l.cluster === true)}
-        ${check(`${p}_hidden`, tx('rs.off_at_first'), l.hidden === true)}
+        ${check(`${p}_hidden`, tx('rs.off_at_first'), l.hidden === true, l.hidden === true && l.source && !listed.has(i + 1) ? tx('rs.off_at_first_unused') : '')}
         ${check(`${p}_no_legend`, tx('rs.not_in_legend'), l.no_legend === true)}
         <div class="field" data-wide><label class="label" for="${id(`${p}_source`)}">${tx('rs.query')}</label>
           <textarea id="${id(`${p}_source`)}" name="${p}_source" class="code" rows="5" spellcheck="false" data-code="sql" placeholder="select lat, lng, title from …">${l.source ?? ''}</textarea>

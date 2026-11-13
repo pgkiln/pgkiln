@@ -1490,7 +1490,9 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 /* several layers: each layer's places, lines and areas in its own colour (the light series colours: the tiles are light in both themes) */
 .map-c1 { --mc: #2a78d6; } .map-c2 { --mc: #eb6834; } .map-c3 { --mc: #1baf7a; } .map-c4 { --mc: #eda100; }
 .map-c5 { --mc: #e87ba4; } .map-c6 { --mc: #008300; } .map-c7 { --mc: #4a3aa7; } .map-c8 { --mc: #e34948; }
-path.leaflet-interactive[class*="map-c"] { stroke: var(--mc); fill: var(--mc); }
+/* (sprint 184) a colour the shape's style sets wins (map-keep-*: Leaflet's own attribute; a line has no fill) */
+path.leaflet-interactive[class*="map-c"]:not(.map-keep-stroke) { stroke: var(--mc); }
+path.leaflet-interactive[class*="map-c"]:not(.map-keep-fill) { fill: var(--mc); }
 path.map-dot { stroke: #fff; fill: var(--mc); }
 path.map-near { stroke: #1f2733; stroke-dasharray: 6 4; fill: #1f2733; fill-opacity: 0.06; }
 /* a cluster: a round marker with the number of places in it */

@@ -247,6 +247,58 @@ describe('map and tree regions', () => {
     }
   });
 
+  test('(sprint 184) the legend shows the colours shapes are drawn in; no Layers legend with a single check box, no heat legend for a layer left out', async () => {
+    const alias = 'maps-e184';
+    const sq = (x: number) => JSON.stringify({ type: 'Polygon', coordinates: [[[x, 52.3], [x + 0.1, 52.3], [x + 0.1, 52.4], [x, 52.4], [x, 52.3]]] });
+    await owner.query('delete from meta.app where alias = $1', [alias]);
+    const appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Maps 184', 'none') returning id`, [alias]))!.id;
+    try {
+      const p1 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Legend', false) returning id`, [appId]))!.id;
+      const p2 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 2, 'Single', false) returning id`, [appId]))!.id;
+      // page 1: parks with their own colours, districts coloured per row, shops
+      await owner.query(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 1, 'Areas', 'map', $2, $3)`, [p1, `select 'Park' as title, '${sq(4.8)}' as geojson`, JSON.stringify({
+        name: 'Parks', layer: 'polygons', style: { fill_color: '#1f7a4d', stroke_color: '#145233' },
+        layers: [{ name: 'Districts', layer: 'polygons', style: { fill_color: '#000000' }, source: `select * from (values ('North', '${sq(4.6)}', '#aa0000'), ('South', '${sq(4.4)}', '#0000aa')) v(title, geojson, fill_color)` },
+          { name: 'Shops', source: `select 52.35 as lat, 4.85 as lng, 'Shop' as title` }],
+      })]);
+      // page 2: a base layer, and an overlay and a heat map left out of the legend
+      await owner.query(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 1, 'Areas', 'map', $2, $3)`, [p2, `select 'Park' as title, '${sq(4.8)}' as geojson`, JSON.stringify({
+        name: 'Parks', layer: 'polygons',
+        layers: [{ name: 'Routes', layer: 'polygons', no_legend: true, hidden: true, source: `select 'Tram' as title, '${sq(4.6)}' as geojson` },
+          { name: 'Visits', layer: 'heat', no_legend: true, source: `select 52.35 as lat, 4.85 as lng` }],
+      })]);
+      const context = await browser.newContext();
+      await context.route(`${tileOrigin()}/**`, (route) => route.fulfill({ contentType: 'image/png', body: TILE }));
+      await context.addInitScript(() => {
+        (window as any).__csp = [];
+        document.addEventListener('securitypolicyviolation', (e) => (window as any).__csp.push(`${e.violatedDirective}: ${e.blockedURI || e.sample || 'inline'}`));
+      });
+      const page = await context.newPage();
+      await page.goto(`${base}/a/${alias}/1`);
+      const legend = page.locator('.map-layers');
+      await legend.waitFor();
+      assert.deepEqual(await legend.locator('label').allTextContents(), ['Parks', 'Districts', 'Shops']);
+      // a shape is drawn in its style's and its row's colours (the layer's colour only where they set none)
+      const fills = await page.locator('path.leaflet-interactive').evaluateAll((els) => els.map((el) => [getComputedStyle(el).fill, getComputedStyle(el).stroke]));
+      assert.ok(fills.some(([f, s]) => f === 'rgb(31, 122, 77)' && s === 'rgb(20, 82, 51)'), JSON.stringify(fills));
+      assert.ok(fills.some(([f]) => f === 'rgb(170, 0, 0)') && fills.some(([f]) => f === 'rgb(0, 0, 170)'), JSON.stringify(fills));
+      const swatch = (name: string) => legend.locator('label', { hasText: name }).locator('.map-swatch');
+      assert.equal(await swatch('Parks').evaluate((el) => getComputedStyle(el).backgroundColor), 'rgb(31, 122, 77)');
+      assert.match(await swatch('Districts').evaluate((el) => getComputedStyle(el).backgroundImage), /conic-gradient\(rgb\(170, 0, 0\).*rgb\(0, 0, 170\)/);
+      assert.deepEqual(await violations(page), []);
+      // page 2: one listed layer, so no Layers legend; the overlay ("off at first", but left out of the legend) is drawn; no heat legend
+      await page.goto(`${base}/a/${alias}/2`);
+      await page.locator('path.leaflet-interactive').first().waitFor();
+      assert.equal(await page.locator('path.leaflet-interactive').count(), 2, 'the park and the route');
+      assert.equal(await page.locator('.map-layers').count(), 0);
+      assert.equal(await page.locator('.map-legend').count(), 0);
+      assert.deepEqual(await violations(page), []);
+      await context.close();
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [appId]);
+    }
+  });
+
   test('the tree opens and closes; nodes link to the record', async () => {
     const { context, page } = await signedIn();
     await page.goto(`${base}/a/hr/8`);
