@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-11-13
+
 ### Added
 - **Conditions in words in the Pages report** (sprint 183, CD-2): the application's Pages report has a *Conditions*
   column listing each page's conditional regions, items, buttons, validations, processes and dynamic actions, with
