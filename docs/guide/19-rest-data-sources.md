@@ -465,6 +465,10 @@ Full-text and vector columns are left out of the documents. Like APEX's duality 
 MCP tools one document per business object; the trigger (`meta.json_document_write`) is SECURITY INVOKER, so the
 tables' grants and row level security apply to every row it touches.
 
+**Composite keys** (sprint 183): Create page and forms identify a row by one key column. When a JSON source's rows
+are keyed by several values, give its view one key column, for example a generated column
+`concat_ws(':', order_no, line_no)`, and use that; a key over several columns is not planned.
+
 ## Export, import and application files
 
 The export ([chapter 3](03-builder.md#export-format)) has two new sections: `web_credentials`

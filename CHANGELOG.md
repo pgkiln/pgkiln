@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Conditions in words in the Pages report** (sprint 183, CD-2): the application's Pages report has a *Conditions*
+  column listing each page's conditional regions, items, buttons, validations, processes and dynamic actions, with
+  their server-side condition in words.
+- **A database role linked to an isolated workspace from Database users** (sprint 183, DA-13): a role's page shows
+  the isolated workspace it belongs to and links it to one, or takes it out, with the checks of the workspace page.
 - **Remote catalogues for the App Gallery** (sprint 181, WS-8 leftover; migration 164): an administrator adds the URL
   of a catalogue in the format of `examples/gallery/gallery.json` (Starter Apps or Utility Apps tab → *Remote
   catalogues*). Its starter and utility apps are listed next to the shipped ones, with the catalogue's name, and
