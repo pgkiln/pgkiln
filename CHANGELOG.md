@@ -6,19 +6,6 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Security
-- **No default password on a public installation** (NX-S3): when `PUBLIC_URL` names another computer, the server
-  refuses to start while a developer still signs in with a default password (`admin`, or the user name), and names
-  them (`pgkiln users password <name> --developer` sets a new one). A developer who signs in with one anyway sees only
-  the password form until it is changed. The lockout checks report it, and report *Two-factor sign-in for
-  administrators* until the policy requires it of them. The default-password warning can no longer be dismissed.
-
-### Changed
-- (NX-U2) Settings → Sign-in: the *Login page* list offers only pages that can be one (public, with a Login region),
-  says how many were left out, and keeps a current choice that no longer qualifies with the reason.
-
-## [0.96.0] - 2026-11-13
-
-### Security
 - **Every application runs as a database role of its own** (sprint 186, NX-S2; migration 167): like an APEX
   application's parsing schema, `db_role` is required. An empty role, or a powerful one (a superuser; `BYPASSRLS`,
   `CREATEROLE`, `CREATEDB` or `REPLICATION`; pgkiln's or PostgreSQL's own roles; the owner of pgkiln's schemas; or a
@@ -32,6 +19,25 @@ All notable changes to this project are documented here. The format follows
   development mode: for a developer of the application signed in to the builder in the same browser (the developer
   toolbar), and only when the runtime login doesn't bypass row level security; everyone else gets a clear 503 page.
   Settings → Security offers *Create app_<alias>* with the Create Application wizard's rights on a schema you choose.
+- **No default password on a public installation** (NX-S3): when `PUBLIC_URL` names another computer, the server
+  refuses to start while a developer still signs in with a default password (`admin`, or the user name), and names
+  them (`pgkiln users password <name> --developer` sets a new one). A developer who signs in with one anyway sees only
+  the password form until it is changed. The lockout checks report it, and report *Two-factor sign-in for
+  administrators* until the policy requires it of them. The default-password warning can no longer be dismissed.
+
+### Changed
+- **A clearer message when row level security refuses the SQL Workshop** (sprint 186): since sprint 185 the SQL
+  Workshop runs as the workspace's developer login, which doesn't own the tables pgkiln's owner made. When row level
+  security or a missing grant refuses it (`new row violates row-level security policy …`, `permission denied for
+  table …`), SQL Commands, SQL Scripts, Sample Data and Load Data keep PostgreSQL's message and add a translated hint
+  after it: why, and what to do (a policy or grant for the developer login, or the Owner connection). Administrators
+  can switch to the Owner connection from the hint, with a reason, and come back to the same tool.
+- (NX-U2) Settings → Sign-in: the *Login page* list offers only pages that can be one (public, with a Login region),
+  says how many were left out, and keeps a current choice that no longer qualifies with the reason.
+
+## [0.96.0] - 2026-11-13
+
+### Security
 - **The SQL Workshop no longer runs as the owner** (sprint 185, NX-S1; migration 166): every workspace has a
   developer login (`pgkiln_ws<id>_dev_<suffix>`; existing workspaces get theirs from the migration, new ones when
   they are created), and every SQL Workshop tool runs as it: the SQL Worksheet, SQL Scripts, Quick SQL, the Query
@@ -49,14 +55,6 @@ All notable changes to this project are documented here. The format follows
 - **A lockout check for a superuser `DATABASE_URL`** (sprint 185, NX-S1): Instance settings and `pgkiln admin check`
   warn when the owner connection is a superuser; chapter 1 shows how to use a non-superuser owner. Splitting the owner
   into a migration role and a builder role is not done yet.
-
-### Changed
-- **A clearer message when row level security refuses the SQL Workshop** (sprint 186): since sprint 185 the SQL
-  Workshop runs as the workspace's developer login, which doesn't own the tables pgkiln's owner made. When row level
-  security or a missing grant refuses it (`new row violates row-level security policy …`, `permission denied for
-  table …`), SQL Commands, SQL Scripts, Sample Data and Load Data keep PostgreSQL's message and add a translated hint
-  after it: why, and what to do (a policy or grant for the developer login, or the Owner connection). Administrators
-  can switch to the Owner connection from the hint, with a reason, and come back to the same tool.
 
 ### Fixed
 - **Code review of 0.94.0** (sprint 184; migration 165 `meta.api_client_module`). OAuth clients limited to REST
