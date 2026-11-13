@@ -11,6 +11,20 @@ All notable changes to this project are documented here. The format follows
   region's settings have *Column validations*). The row's columns are bind variables by name (`:SAL`). A row that
   fails is not saved, and its message shows in the notification and under the cell, which keeps what was typed; a
   required column that was emptied is marked in its cell too. HR Demo: the Staff grid of page 27.
+- **Rollback blocks in the Change Log** (sprint 175, DA-17 leftover; migration 157 `meta.change_set.rollback_sql`): a
+  change set can carry the SQL that undoes it. pgkiln proposes it when every statement has a plain inverse (what
+  was created is dropped, an added column or named constraint is dropped) and you write or change it in the change
+  set's *Rollback* box. Downloads carry it: `--rollback` lines in the Liquibase changelog, a Flyway undo migration
+  (`U0001__add_bonus.sql`) and a comment in the plain script. pgkiln never runs a rollback.
+- **ETags in RESTful Services** (sprint 175, DA-11 leftover; no migration): a REST module's GET answer (single row,
+  SQL, PL/pgSQL, media) carries an `ETag` of its content, and a request with that tag in `If-None-Match` answers
+  `304 Not Modified` without the content. The handler still runs first, so the token, roles and row level security
+  are checked as before. Collections are streamed and carry no tag.
+- **Header parameters in RESTful Services** (sprint 175, DA-11 leftover): a handler parameter can be `in` `header`:
+  `x_request_id header` binds `:X_REQUEST_ID` to the request's `X-Request-Id` header (from the header only, never
+  from a query or body field of that name). `Authorization`, `Proxy-Authorization` and `Cookie` are refused as
+  parameters. The OpenAPI document lists header parameters and *Try it* has a field for each. HR: `GET whoami` in
+  the module `hr` (`examples/hr/hr_84_rest_header_parameter.sql`).
 - **An application page from a saved chart** (sprint 173, DA-6 leftover; no migration): a saved chart's page in SQL
   Workshop → Charts has *Create an application page*: choose an application of the workspace, a page number and a
   name, and the page is made with a Chart region (the chart's SELECT, its label and value columns, its type) and,

@@ -71,10 +71,10 @@ describe('definitions', () => {
     const bad = handlerProblems([
       { method: 'POST', path: 'x', type: 'media', source: 'select 1' },
       { method: 'PUT', path: 'y', type: 'plpgsql', source: 'begin end $pgkiln_rest$' },
-      { method: 'GET', path: 'z', type: 'item', source: 'select 1', params: [{ name: 'a b', in: 'header' as 'query', type: 'date' as 'string' }] },
+      { method: 'GET', path: 'z', type: 'item', source: 'select 1', params: [{ name: 'a b', in: 'cookie' as 'query', type: 'date' as 'string' }] },
       { method: 'GET', path: 'w', type: 'item', source: 'select 1', params: [{ name: 'app_user', in: 'query' }] },
     ]);
-    for (const re of [/media handlers answer GET/, /may not contain/, /name is letters/, /"in" query or body/, /type is one of/, /set by the server/])
+    for (const re of [/media handlers answer GET/, /may not contain/, /name is letters/, /"in" query, body or header/, /type is one of/, /set by the server/])
       assert.ok(bad.some((p) => re.test(p)), String(re));
     assert.deepEqual(templateProblems([{ uri: 'emp' }, { uri: 'emp/:id', description: 'One' }]), []);
     const tbad = templateProblems([{ uri: '' }, { uri: 'a b' }, { uri: 'openapi.json' }, { uri: 'e/:id' }, { uri: 'e/:other' }, { uri: 'x/:app_user' }]);
@@ -152,7 +152,7 @@ describe('the HR module "hr"', () => {
 
   test('the OpenAPI document lists the templates, handlers, parameters and roles', async () => {
     const doc = (await app.inject({ url: '/a/hr/rest/hr/openapi.json' })).json();
-    assert.deepEqual(Object.keys(doc.paths).sort(), ['/emp', '/emp/{id}', '/emp/{id}/photo', '/leave', '/payroll/{deptno}']);
+    assert.deepEqual(Object.keys(doc.paths).sort(), ['/emp', '/emp/{id}', '/emp/{id}/photo', '/leave', '/payroll/{deptno}', '/whoami']);
     assert.equal(doc.paths['/emp/{id}'].description, 'One employee by number');
     assert.deepEqual(doc.paths['/emp/{id}'].get.parameters, [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]);
     const post = doc.paths['/leave'].post;
@@ -260,6 +260,6 @@ describe('export', () => {
     const copy = await owner.one(`select roles, templates, jsonb_array_length(handlers) as n from meta.rest_module where app_id = $1 and name = 'hr'`, [id]);
     assert.deepEqual(copy.roles, []);
     assert.deepEqual(copy.templates, []);
-    assert.equal(copy.n, 5);
+    assert.equal(copy.n, 6);
   });
 });

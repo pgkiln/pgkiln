@@ -8,6 +8,7 @@ import { owner, runtime } from '../db.ts';
 import { english } from '../i18n.ts';
 import { loadApp, type App } from '../metadata.ts';
 import { clientIp } from '../session.ts';
+import { createHash } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import { publicError, writeOut } from './context.ts';
 import { DO_TAG, HandlerInputError, mediaResponse, runPlpgsql, setBinds } from './rest-handlers.ts';
@@ -49,7 +50,8 @@ export interface Handler {
 
 export interface HandlerParam {
   name: string;
-  in: 'query' | 'body';
+  /** (sprint 175) header: the request header of the name with - for _ (x_request_id reads X-Request-Id) */
+  in: 'query' | 'body' | 'header';
   type?: 'string' | 'integer' | 'number' | 'boolean';
   required?: boolean;
   description?: string;
@@ -89,12 +91,13 @@ export function handlerProblems(handlers: unknown): string[] {
     if ((h.type === 'collection' || h.type === 'item' || h.type === 'media') && h.method !== 'GET') problems.push(`${at}: collection, item and media handlers answer GET; use "sql" or "plpgsql" for ${h.method}.`);
     if (h.type === 'plpgsql' && typeof h.source === 'string' && h.source.includes(DO_TAG)) problems.push(`${at}: a PL/pgSQL block may not contain ${DO_TAG}.`);
     if (h.params !== undefined) {
-      if (!Array.isArray(h.params)) problems.push(`${at}: "params" is a list of {"name", "in": "query" or "body", "type", "required"}.`);
+      if (!Array.isArray(h.params)) problems.push(`${at}: "params" is a list of {"name", "in": "query", "body" or "header", "type", "required"}.`);
       else h.params.forEach((p: any) => {
         if (!p || typeof p !== 'object' || typeof p.name !== 'string' || !PARAM_NAME.test(p.name)) problems.push(`${at}: a parameter's name is letters, digits and _.`);
         else if (RESERVED_BINDS.has(p.name.toUpperCase())) problems.push(`${at}: ${p.name} is set by the server and can't be a parameter.`);
         else if (p.name.toUpperCase() === 'BODY') problems.push(`${at}: :BODY is the whole JSON body; name the parameter otherwise.`);
-        if (p && p.in !== 'query' && p.in !== 'body') problems.push(`${at}: a parameter is "in" query or body.`);
+        if (p && p.in !== 'query' && p.in !== 'body' && p.in !== 'header') problems.push(`${at}: a parameter is "in" query, body or header.`);
+        if (p?.in === 'header' && typeof p.name === 'string' && SECRET_HEADERS.has(headerName(p.name))) problems.push(`${at}: the ${headerName(p.name)} header holds credentials and can't be a parameter.`);
         if (p?.type !== undefined && !PARAM_TYPES.includes(p.type)) problems.push(`${at}: a parameter's type is one of ${PARAM_TYPES.join(', ')}.`);
       });
     }
@@ -195,6 +198,20 @@ export async function restServicesOn(appId: number) {
   return r?.on !== false;
 }
 
+/** (sprint 175) The request header a header parameter reads: its name in lower case with - for _. */
+export const headerName = (param: string) => param.toLowerCase().replace(/_/g, '-');
+/** Headers that carry credentials: never a parameter, so a handler's SQL never sees a token or a session cookie. */
+const SECRET_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie']);
+
+/** (sprint 175) A strong ETag of a response's content. */
+export const etagOf = (content: Buffer | string) => `"${createHash('sha256').update(content).digest('base64url').slice(0, 32)}"`;
+/** Whether an If-None-Match header names the tag (a list of tags, weak ones too, or *). */
+export function noneMatch(header: string | string[] | undefined, tag: string): boolean {
+  const value = Array.isArray(header) ? header.join(',') : header;
+  if (!value || value.length > 4000) return false;
+  return value.split(',').map((x) => x.trim().replace(/^W\//, '')).some((x) => x === '*' || x === tag);
+}
+
 async function handle(req: FastifyRequest, reply: FastifyReply) {
   const { alias, module: name } = req.params as { alias: string; module: string };
   const sub = ((req.params as Record<string, string>)['*'] ?? '').replace(/\/+$/, '');
@@ -217,6 +234,13 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
     if (body && typeof body === 'object' && !Buffer.isBuffer(body)) {
       for (const [k, v] of Object.entries(body as Record<string, unknown>)) binds[k.toUpperCase()] = bindValue(v);
       binds.BODY = JSON.stringify(body);
+    }
+    // (sprint 175) a header parameter comes from its request header only: a query or body field of that name is dropped
+    for (const p of h.params ?? []) if (p.in === 'header') {
+      const name = headerName(p.name);
+      const value = SECRET_HEADERS.has(name) ? undefined : req.headers[name];
+      if (value === undefined) delete binds[p.name.toUpperCase()];
+      else binds[p.name.toUpperCase()] = Array.isArray(value) ? value[0] : value;
     }
     Object.assign(binds, params);
     // (117) documented parameters marked required
@@ -293,7 +317,19 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       return row ? { status: h.status ?? (req.method === 'POST' ? 201 : 200), body: row } : { status: 204, body: undefined };
     });
     if ('streamed' in result) return reply;
-    if ('media' in result && result.media) return reply.code(200).headers(result.media.headers).send(result.media.body);
+    // (sprint 175, DA-11) a GET's answer carries an ETag of its content; If-None-Match with that tag answers 304
+    // without the content. The handler has run by then (authorization and the query): only the transfer is saved.
+    if ('media' in result && result.media) {
+      const tag = etagOf(result.media.body);
+      if (req.method === 'GET' && noneMatch(req.headers['if-none-match'], tag)) return reply.code(304).header('etag', tag).header('cache-control', 'no-store').send();
+      return reply.code(200).headers(result.media.headers).header('etag', tag).send(result.media.body);
+    }
+    if (req.method === 'GET' && result.status === 200 && result.body !== undefined) {
+      const text = JSON.stringify(result.body);
+      const tag = etagOf(text);
+      if (noneMatch(req.headers['if-none-match'], tag)) return reply.code(304).header('etag', tag).send();
+      return reply.code(200).header('etag', tag).type('application/json; charset=utf-8').send(text);
+    }
     return result.body === undefined ? reply.code(result.status === 204 || result.status < 200 ? 204 : result.status).send() : reply.code(result.status).send(result.body);
   } catch (e) {
     if (e instanceof RestError) return reply.code(e.status).send({ error: e.message });
@@ -322,6 +358,8 @@ export function openApi(
     const documented = Array.isArray(h.params) ? h.params : [];
     for (const q of documented.filter((x) => x.in === 'query'))
       params.push({ name: q.name, in: 'query', required: !!q.required, schema: { type: q.type ?? 'string' }, ...(q.description ? { description: q.description } : {}) });
+    for (const q of documented.filter((x) => x.in === 'header'))
+      params.push({ name: headerName(q.name), in: 'header', required: !!q.required, schema: { type: q.type ?? 'string' }, ...(q.description ? { description: q.description } : {}) });
     const bodyParams = documented.filter((x) => x.in === 'body');
     const bodySchema = bodyParams.length
       ? { type: 'object', properties: Object.fromEntries(bodyParams.map((q) => [q.name, { type: q.type ?? 'string', ...(q.description ? { description: q.description } : {}) }])),

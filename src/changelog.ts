@@ -20,6 +20,8 @@ export interface ChangeSet {
   object_name: string | null;
   created_at: string;
   exported_at: string | null;
+  /** (sprint 175; migration 157) the SQL that undoes the change set: its rollback block in migration files */
+  rollback_sql?: string | null;
 }
 
 /** Statements that change a schema's definition (as their first keyword says). */
@@ -59,6 +61,57 @@ export function changeName(sql: string): string {
   return clean(`${verb ? verb[1] : 'change'}_${object ?? ''}`);
 }
 
+/**
+ * (sprint 175) The statement that undoes a DDL statement, when that is plain from its text: what was created is
+ * dropped, an added column or constraint is dropped. Null for anything else (a drop, a changed type, a function
+ * that replaced another, a comment or a grant that may have replaced an earlier one, IF NOT EXISTS, which may
+ * have created nothing): the developer writes that rollback.
+ */
+export function rollbackFor(sql: string): string | null {
+  const s = sql.replace(LEAD, '').replace(/;\s*$/, '');
+  if (/\bif\s+not\s+exists\b/i.test(s.replace(/'(?:[^']|'')*'/g, "''"))) return null;
+  const name = String.raw`(${IDENT}(?:\s*\.\s*${IDENT})?)`;
+  const created = new RegExp(`^create\\s+(unique\\s+)?(materialized\\s+)?(table|view|index|sequence|schema|type|domain)\\s+(concurrently\\s+)?(?:if\\s+not\\s+exists\\s+)?${name}`, 'i').exec(s);
+  if (created) {
+    const kind = `${created[2] ? 'materialized ' : ''}${created[3].toLowerCase()}`;
+    // an index is made in its table's schema: the name alone would be looked up on the search path
+    if (kind === 'index') {
+      const on = new RegExp(`\\son\\s+(?:only\\s+)?(${IDENT})\\s*\\.\\s*${IDENT}`, 'i').exec(s);
+      const bare = !/\./.test(created[5].replace(/"(?:[^"]|"")*"/g, ''));
+      return `drop index ${on && bare ? `${on[1]}.` : ''}${created[5]}`;
+    }
+    return `drop ${kind} ${created[5]}`;
+  }
+  const table = new RegExp(`^alter\\s+table\\s+(?:if\\s+exists\\s+)?(?:only\\s+)?${name}\\s+add\\s+(.*)$`, 'is').exec(s);
+  if (table) {
+    // one ADD only: with several actions the inverse is not plain
+    const rest = table[2];
+    let depth = 0;
+    for (const ch of rest.replace(/'(?:[^']|'')*'/g, "''")) {
+      if (ch === '(') depth++;
+      else if (ch === ')') depth--;
+      else if (ch === ',' && depth === 0) return null;
+    }
+    const constraint = new RegExp(`^constraint\\s+(${IDENT})`, 'i').exec(rest);
+    if (constraint) return `alter table ${table[1]} drop constraint ${constraint[1]}`;
+    if (/^(primary|unique|foreign|check|exclude)\b/i.test(rest)) return null; // a constraint without a name
+    const column = new RegExp(`^(?:column\\s+)?(?:if\\s+not\\s+exists\\s+)?(${IDENT})`, 'i').exec(rest);
+    return column ? `alter table ${table[1]} drop column ${column[1]}` : null;
+  }
+  return null;
+}
+
+/** The rollback of a change set's statements: each one's inverse, last first; null when one has none. */
+export function rollbackOf(statements: string[]): string | null {
+  const out: string[] = [];
+  for (const st of statements) {
+    const r = rollbackFor(st);
+    if (!r) return null;
+    out.unshift(r);
+  }
+  return out.length ? joinStatements(out) : null;
+}
+
 /** The SQL of statements as one script, each ending with a semicolon. */
 export const joinStatements = (statements: string[]) => statements.map((x) => x.trim().replace(/;*\s*$/, ';')).join('\n\n');
 
@@ -80,8 +133,9 @@ export async function recordChanges(opts: { workspaceId: number; author: string;
     for (const [schema, g] of groups) {
       const sql = joinStatements(g.sql);
       const r = await owner.one<{ id: number }>(
-        `insert into meta.change_set (workspace_id, schema_name, name, author, source, sql, object_name) values ($1, $2, $3, $4, $5, $6, $7) returning id`,
-        [opts.workspaceId, schema.slice(0, 63), opts.name ?? changeName(g.sql[0]), opts.author, opts.source, sql.slice(0, 1_000_000), g.object?.slice(0, 63) ?? null]);
+        `insert into meta.change_set (workspace_id, schema_name, name, author, source, sql, object_name, rollback_sql) values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
+        [opts.workspaceId, schema.slice(0, 63), opts.name ?? changeName(g.sql[0]), opts.author, opts.source, sql.slice(0, 1_000_000), g.object?.slice(0, 63) ?? null,
+          sql.length <= 1_000_000 ? rollbackOf(g.sql) : null]);
       ids.push(r!.id);
     }
   } catch (e) {
@@ -92,18 +146,26 @@ export async function recordChanges(opts: { workspaceId: number; author: string;
 
 /** Flyway's file name of a change set: V0001__add_bonus.sql. */
 export const flywayName = (c: Pick<ChangeSet, 'seq' | 'name'>) => `V${String(c.seq).padStart(4, '0')}__${c.name}.sql`;
+/** (sprint 175) Flyway's undo migration of a change set with a rollback: U0001__add_bonus.sql. */
+export const flywayUndoName = (c: Pick<ChangeSet, 'seq' | 'name'>) => `U${String(c.seq).padStart(4, '0')}__${c.name}.sql`;
+const rollbackText = (c: ChangeSet) => (c.rollback_sql ?? '').trim();
+/** Each line of a rollback behind a prefix (a comment in plain SQL, Liquibase's --rollback). */
+const prefixed = (text: string, prefix: string) => text.split(/\r?\n/).filter((l) => l.trim()).map((l) => `${prefix}${l}`).join('\n');
 
 const header = (c: ChangeSet) => `-- ${c.schema_name} #${c.seq} ${c.name}: ${c.author}, ${c.created_at.slice(0, 19).replace('T', ' ')} (${c.source})`;
 
 /** Change sets as plain SQL: one script, a comment before each. */
-export const plainScript = (list: ChangeSet[]) => `${list.map((c) => `${header(c)}\n${c.sql.trim()}\n`).join('\n')}`;
+export const plainScript = (list: ChangeSet[]) =>
+  `${list.map((c) => `${header(c)}\n${c.sql.trim()}\n${rollbackText(c) ? `-- rollback:\n${prefixed(rollbackText(c), '--   ')}\n` : ''}`).join('\n')}`;
 
 /** Change sets as a Liquibase formatted SQL changelog. */
 export function liquibaseChangelog(list: ChangeSet[]): string {
   const author = (a: string) => a.replace(/[\s:]+/g, '_') || 'pgkiln';
   return `--liquibase formatted sql\n\n${list.map((c) =>
-    `--changeset ${author(c.author)}:${String(c.seq).padStart(4, '0')}-${c.name}\n--comment: ${c.schema_name}, ${c.source}, ${c.created_at.slice(0, 19).replace('T', ' ')}\n${c.sql.trim()}\n`).join('\n')}`;
+    `--changeset ${author(c.author)}:${String(c.seq).padStart(4, '0')}-${c.name}\n--comment: ${c.schema_name}, ${c.source}, ${c.created_at.slice(0, 19).replace('T', ' ')}\n${c.sql.trim()}\n${rollbackText(c) ? `${prefixed(rollbackText(c), '--rollback ')}\n` : ''}`).join('\n')}`;
 }
 
 /** A Flyway migration file of one change set. */
 export const flywayFile = (c: ChangeSet) => `${header(c)}\n${c.sql.trim()}\n`;
+/** (sprint 175) The Flyway undo migration of a change set, or null without a rollback. */
+export const flywayUndoFile = (c: ChangeSet) => (rollbackText(c) ? `${header(c)} (undo)\n${rollbackText(c)}\n` : null);

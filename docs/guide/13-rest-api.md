@@ -36,7 +36,7 @@ answer 404.
 | `roles` | The caller needs one of these roles (as `meta.has_role()` sees them) |
 | `auth` | `token` (default) or `public` (no token; the SQL runs with `meta.app_user()` = `nobody`) |
 | `description` | For the OpenAPI description |
-| `params` | (sprint 104) Documented parameters: `[{"name": "start_date", "in": "body", "type": "string", "required": true, "description": "…"}]` (`in`: `query` or `body`; types `string`, `integer`, `number`, `boolean`). They go into the OpenAPI document; a required one that is missing or empty answers 400 |
+| `params` | (sprint 104) Documented parameters: `[{"name": "start_date", "in": "body", "type": "string", "required": true, "description": "…"}]` (`in`: `query`, `body` or, since sprint 175, `header`; types `string`, `integer`, `number`, `boolean`). They go into the OpenAPI document; a required one that is missing or empty answers 400 |
 
 **Calling them.** Send `Authorization: Bearer <token>` with a token from **App → REST API**: a token
 issued for an account, or one from `POST /oauth/token` for an OAuth client ([below](#tokens)). An
@@ -101,6 +101,25 @@ message and rolls back. Statements without `begin … end` are wrapped in one.
 **Media handlers** run a query whose first row has `content_type`, `content` (bytea or text) and optionally
 `filename`; the response is that content, sent with `X-Content-Type-Options: nosniff` and a sandboxing
 Content-Security-Policy, so HTML or SVG from a table can't run script in the application's origin. No row: 404.
+
+**Header parameters** (sprint 175). A parameter `in` `header` is the request header of its name with `-` for `_`:
+`x_request_id header` in the handler's *Parameters* makes `:X_REQUEST_ID` the value of the `X-Request-Id` header
+(null without it; `required` makes a request without it a 400). The bind comes from the header only: a query or
+body field of that name does not set it. `Authorization`, `Proxy-Authorization` and `Cookie` can't be parameters,
+so a handler's SQL never sees a token or a session cookie. The OpenAPI document lists the header, and *Try it* has
+a field for it. The HR module's `GET whoami` (`examples/hr/hr_84_rest_header_parameter.sql`) echoes `X-Request-Id`.
+
+**ETags** (sprint 175). The answer of a single row, SQL, PL/pgSQL or media GET carries an `ETag` header: a tag of
+its content. A client that kept the answer sends the tag back in `If-None-Match` and gets `304 Not Modified`
+without the content when nothing changed, or the new content with a new tag. The handler runs either way (the
+token, the module privilege, the roles and row level security are checked first), so a tag never gives access:
+it only saves the transfer. Collections are streamed and carry no tag.
+
+```bash
+curl -i http://127.0.0.1:3100/a/hr/rest/hr/emp/7839 -H "Authorization: Bearer $TOKEN"        # ETag: "Zk3…"
+curl -i http://127.0.0.1:3100/a/hr/rest/hr/emp/7839 -H "Authorization: Bearer $TOKEN" \
+     -H 'If-None-Match: "Zk3…"'                                                              # 304 Not Modified
+```
 
 **Try it.** A handler's page sends a request to the real endpoint, with path parameters, a query string and a JSON
 body, either without a token (to see the 401) or *as* an account of the application with a short-lived token (the

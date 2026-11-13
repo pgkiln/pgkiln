@@ -14049,3 +14049,151 @@ describe('sprint 174 grid column validations (CD-1)', () => {
     assert.equal(await owner.one(`select 1 as x from hr.emp where ename = 'SEC174A'`), undefined);
   });
 });
+
+describe('sprint 175 change set rollback blocks (DA-17)', () => {
+  let mine: number;
+  let theirs: number;
+  const evil = '</textarea><img src=x onerror=alert(175)>';
+  before(async () => {
+    await owner.query(`delete from meta.change_set where schema_name = 'sec175'; delete from meta.change_set_counter where schema_name = 'sec175'`);
+    const other = (await owner.one(`insert into meta.workspace (name) values ('sec175 other') returning id`))!.id;
+    mine = (await owner.one(`insert into meta.change_set (schema_name, name, author, source, sql) values ('sec175', 'mine', 'admin', 'worksheet', 'create table sec175.t (id int);') returning id::int`))!.id;
+    theirs = (await owner.one(`insert into meta.change_set (workspace_id, schema_name, name, author, source, sql) values ($1, 'sec175', 'theirs', 'x', 'worksheet', 'create table sec175.u (id int);') returning id::int`, [other]))!.id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.workspace where name = 'sec175 other'`);
+    await owner.query(`delete from meta.change_set where schema_name = 'sec175'; delete from meta.change_set_counter where schema_name = 'sec175'`);
+  });
+
+  test('CSRF; another workspace\'s change set is not found; the rollback is escaped in the page and stays text', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/changes');
+    assert.equal((await dev.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: 'forged', rollback: 'x' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/sql/changes/${theirs}/rollback`, { __csrf: dev.lastCsrf, rollback: 'drop table x' })).statusCode, 404);
+    assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [theirs]))!.rollback_sql, null);
+    assert.equal((await dev.post(`/builder/sql/changes/${theirs}/download`, { __csrf: dev.lastCsrf, undo: '1' })).statusCode, 404);
+    await dev.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: dev.lastCsrf, rollback: evil });
+    assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql, evil);
+    const page = (await dev.get('/builder/sql/changes?schema=sec175')).body;
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.match(page, /&lt;\/textarea&gt;&lt;img src=x/);
+    const king = await as('king');
+    assert.equal((await king.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: king.lastCsrf, rollback: 'x' })).headers.location, '/builder/login');
+  });
+
+  test('a rollback over a million characters is refused', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/changes');
+    const before = (await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql;
+    const res = await dev.post(`/builder/sql/changes/${mine}/rollback`, { __csrf: dev.lastCsrf, rollback: 'x'.repeat(1_000_001) });
+    assert.ok([303, 413].includes(res.statusCode), String(res.statusCode));
+    assert.equal((await owner.one('select rollback_sql from meta.change_set where id = $1', [mine]))!.rollback_sql, before);
+  });
+});
+
+describe('sprint 175 ETags of REST module answers (DA-11)', () => {
+  let king = '';
+  let allen = '';
+  const get = (path: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url: `/a/hr/rest/hr/${path}`, headers });
+  before(async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    const appId = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    king = (await issueApiToken(appId, 'king', 1)).token;
+    allen = (await issueApiToken(appId, 'allen', 1)).token;
+  });
+
+  test('a tag is no credential: without a token 401, with a bad token 401, whatever If-None-Match says', async () => {
+    const tag = String((await get('emp/7839', { authorization: `Bearer ${king}` })).headers.etag);
+    assert.match(tag, /^"[A-Za-z0-9_-]{32}"$/);
+    for (const value of [tag, '*', `W/${tag}`]) {
+      const anonymous = await get('emp/7839', { 'if-none-match': value });
+      assert.equal(anonymous.statusCode, 401, value);
+      assert.equal(anonymous.headers.etag, undefined);
+      assert.equal((await get('emp/7839', { authorization: 'Bearer nonsense', 'if-none-match': value })).statusCode, 401, value);
+    }
+  });
+
+  test('304 only for what the caller may read: the handler runs first (roles, row level security, 404)', async () => {
+    const mine = await get('emp/7839', { authorization: `Bearer ${king}` });
+    const tag = String(mine.headers.etag);
+    // another account, with king's tag: the same answer as without it, unless its own row is that very content
+    const plain = await get('emp/7839', { authorization: `Bearer ${allen}` });
+    const tagged = await get('emp/7839', { authorization: `Bearer ${allen}`, 'if-none-match': tag });
+    if (plain.statusCode === 200 && plain.body === mine.body) assert.equal(tagged.statusCode, 304);
+    else assert.equal(tagged.statusCode, plain.statusCode);
+    // a handler for managers and administrators stays refused for an employee; a missing row stays 404
+    const refused = await get('payroll/10', { authorization: `Bearer ${allen}` });
+    assert.equal((await get('payroll/10', { authorization: `Bearer ${allen}`, 'if-none-match': '*' })).statusCode, refused.statusCode);
+    assert.ok(refused.statusCode === 403 || refused.statusCode === 404, String(refused.statusCode));
+    assert.equal((await get('emp/1', { authorization: `Bearer ${king}`, 'if-none-match': '*' })).statusCode, 404);
+  });
+
+  test('304 carries no content; the header is not echoed; a very long header is ignored', async () => {
+    const tag = String((await get('emp/7839', { authorization: `Bearer ${king}` })).headers.etag);
+    const same = await get('emp/7839', { authorization: `Bearer ${king}`, 'if-none-match': `"<script>alert(175)</script>", ${tag}` });
+    assert.equal(same.statusCode, 304);
+    assert.equal(same.rawPayload.length, 0);
+    assert.equal(same.headers.etag, tag);
+    const long = await get('emp/7839', { authorization: `Bearer ${king}`, 'if-none-match': `${'"x", '.repeat(900)}${tag}` });
+    assert.equal(long.statusCode, 200);
+    assert.equal(long.headers.etag, tag);
+  });
+});
+
+describe('sprint 175 header parameters of REST handlers (DA-11)', () => {
+  let appId = 0;
+  let id = 0;
+  let king = '';
+  const evil = '<img src=x onerror=alert(175)>';
+  before(async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    appId = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    king = (await issueApiToken(appId, 'king', 1)).token;
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec175'`, [appId]);
+    id = (await owner.one(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec175', 'sec175', $2) returning id`, [appId, JSON.stringify([
+      { method: 'GET', path: 'echo', type: 'item', source: 'select :X_TRACE as trace, :APP_USER as username', params: [{ name: 'x_trace', in: 'header' }] },
+      // stored past the builder's check: the runtime still never binds a credential header
+      { method: 'GET', path: 'leak', type: 'item', source: 'select :AUTHORIZATION as a, :COOKIE as c', params: [{ name: 'authorization', in: 'header' }, { name: 'cookie', in: 'header' }] },
+    ])]))!.id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec175'`, [appId]);
+  });
+  const get = (path: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url: `/a/hr/rest/sec175/${path}`, headers: { authorization: `Bearer ${king}`, ...headers } });
+
+  test('a credential header is never bound, and :APP_USER stays the server\'s', async () => {
+    const leak = await get('leak', { cookie: 'pgkiln_session=secret' });
+    assert.ok(!leak.body.includes(king), 'the token is not in the answer');
+    assert.ok(!leak.body.includes('secret'), 'the cookie is not in the answer');
+    const { handlerProblems } = await import('../src/runtime/rest.ts');
+    assert.match(handlerProblems([{ method: 'GET', path: 'x', type: 'item', source: 'select 1', params: [{ name: 'authorization', in: 'header' }] }]).join(' '), /credentials/);
+    assert.match(handlerProblems([{ method: 'GET', path: 'x', type: 'item', source: 'select 1', params: [{ name: 'app_user', in: 'header' }] }]).join(' '), /set by the server/);
+    // a header named like a built-in does not set it
+    assert.equal((await get('echo', { 'app-user': 'admin', 'x-trace': 't' })).json().username, 'king');
+  });
+
+  test('the value is bound, not SQL; without a token the header changes nothing (401)', async () => {
+    const res = await get('echo', { 'x-trace': `x' || (select password_hash from meta.account limit 1) || '` });
+    assert.equal(res.json().trace, `x' || (select password_hash from meta.account limit 1) || '`);
+    assert.equal((await app.inject({ method: 'GET', url: '/a/hr/rest/sec175/echo', headers: { 'x-trace': 't' } })).statusCode, 401);
+  });
+
+  test('Try it: CSRF, the header value is escaped in the page and stays one header line', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/sql/rest/modules/${id}/handler?t=echo&m=GET`);
+    assert.equal((await dev.post(`/builder/sql/rest/modules/${id}/try`, { __csrf: 'forged', t: 'echo', m: 'GET', as: 'king', h_x_trace: 'x' })).statusCode, 403);
+    const tried = await dev.post(`/builder/sql/rest/modules/${id}/try`, { __csrf: dev.lastCsrf, t: 'echo', m: 'GET', as: 'king', h_x_trace: `${evil}\r\nx-injected: 1` });
+    assert.equal(tried.statusCode, 200);
+    assert.doesNotMatch(tried.body, /<img src=x/);
+    assert.match(tried.body, /&lt;img src=x onerror=alert\(175\)&gt; x-injected: 1/);
+    // a field that is not one of the handler's header parameters is not sent as a header
+    const other = await dev.post(`/builder/sql/rest/modules/${id}/try`, { __csrf: dev.lastCsrf, t: 'echo', m: 'GET', as: '', h_authorization: `Bearer ${king}` });
+    assert.match(other.body, /401/);
+  });
+});
