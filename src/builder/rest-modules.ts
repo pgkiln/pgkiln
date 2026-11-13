@@ -3,7 +3,7 @@ import { apiRoleProblem, issueApiToken } from '../api.ts';
 import { owner } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { handlerProblems, METHODS, PARAM_TYPES, templateProblems, type Handler, type HandlerParam, type Template } from '../runtime/rest.ts';
+import { handlerProblems, headerName, METHODS, PARAM_TYPES, templateProblems, type Handler, type HandlerParam, type Template } from '../runtime/rest.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { publicUrl } from '../sso.ts';
 import { lockText } from './locks.ts';
@@ -221,7 +221,7 @@ export function parseParams(text: string, t: BuilderTranslate = translatorFor('e
     const words = line.trim().split(/\s+/).filter(Boolean);
     if (!words.length) continue;
     const [name, where, ...rest] = words;
-    if (where !== 'query' && where !== 'body') {
+    if (where !== 'query' && where !== 'body' && where !== 'header') {
       problems.push(t('rm.e.params_line', { n: i + 1, types: PARAM_TYPES.join(', ') }));
       continue;
     }
@@ -316,6 +316,7 @@ async function tryPanel(s: Session, m: ModRow, h: Handler, tried?: TryResult, f?
         <div class="field"><label class="label" for="f_as">${tx('rm.as')}</label><select id="f_as" name="as"><option value="">${tx('rm.no_token_option')}</option>${accounts.map((u) => html`<option${v('as') === u ? raw(' selected') : ''}>${u}</option>`)}</select></div>
         ${params.map((p) => html`<div class="field"><label class="label" for="f_p_${p}">:${p}</label><input id="f_p_${p}" name="p_${p}" value="${v(`p_${p}`)}" required></div>`)}
         <div class="field"><label class="label" for="f_query">${tx('rm.query_string')}</label><input id="f_query" name="query" value="${v('query', qs)}" placeholder="limit=10&amp;offset=0"></div>
+        ${(h.params ?? []).filter((p) => p.in === 'header').map((p) => html`<div class="field"><label class="label" for="f_h_${p.name}"><code>${headerName(p.name)}</code></label><input id="f_h_${p.name}" name="h_${p.name}" value="${v(`h_${p.name}`)}"${p.required ? raw(' required') : ''}></div>`)}
       </div>
       ${h.method === 'GET' || h.method === 'DELETE' ? '' : html`<div class="field"><label class="label" for="f_body">${tx('rm.json_body')}</label><textarea id="f_body" name="body" class="code" rows="5" spellcheck="false" data-code="json">${v('body', bodyEx)}</textarea></div>`}
       <div class="buttons"><button class="btn btn-hot">${icon('play')} ${tx('rm.send', { method: h.method })}</button></div></form>
@@ -602,6 +603,11 @@ export async function restModuleRoutes(app: FastifyInstance) {
       if (as) {
         if (!(await tryAccounts(m.app_id)).includes(as)) throw new Error(tr(s)('rm.e.choose_account'));
         headers.authorization = `Bearer ${(await issueApiToken(m.app_id, as, 1, { internal: true })).token}`;
+      }
+      // (sprint 175) the handler's header parameters, as request headers (one line each)
+      for (const p of h.params ?? []) if (p.in === 'header') {
+        const value = String(b[`h_${p.name}`] ?? '').replace(/[\r\n]+/g, ' ').slice(0, 2000);
+        if (value) headers[headerName(p.name)] = value;
       }
       const raw = h.method === 'GET' || h.method === 'DELETE' ? '' : String(b.body ?? '').trim();
       if (raw) {

@@ -1,7 +1,8 @@
 // Sprint 175 (parity leftover DA-17; migration 157): a rollback block per change set. pgkiln proposes it when every
 // statement has a plain inverse, the developer writes or changes it in SQL Workshop › Change Log, and the migration
 // files carry it: Liquibase --rollback lines, a Flyway undo migration (U0001__name.sql), a comment in plain SQL.
-// DA-11 leftover: a REST module's GET answers carry an ETag; If-None-Match with it answers 304.
+// DA-11 leftovers: a REST module's GET answers carry an ETag; If-None-Match with it answers 304. A handler
+// parameter "in": "header" reads the request header of its name (x_request_id: X-Request-Id).
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -10,7 +11,8 @@ import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { flywayUndoFile, flywayUndoName, liquibaseChangelog, plainScript, rollbackFor, rollbackOf, type ChangeSet } from '../src/changelog.ts';
 import { issueApiToken } from '../src/api.ts';
-import { etagOf, noneMatch } from '../src/runtime/rest.ts';
+import { etagOf, handlerProblems, headerName, noneMatch } from '../src/runtime/rest.ts';
+import { parseParams } from '../src/builder/rest-modules.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -212,5 +214,83 @@ describe('RESTful Services: ETags (DA-11)', () => {
     const list = await call('emp?limit=2');
     assert.equal(list.statusCode, 200);
     assert.equal(list.headers.etag, undefined);
+  });
+});
+
+describe('RESTful Services: header parameters (DA-11)', () => {
+  let token = '';
+  let appId = 0;
+  const handlers = [
+    { method: 'GET', path: 'echo', type: 'item', source: 'select :X_REQUEST_ID as request_id, :APP_USER as username',
+      params: [{ name: 'x_request_id', in: 'header', description: 'For tracing' }] },
+    { method: 'GET', path: 'need', type: 'item', source: 'select :TENANT as tenant', params: [{ name: 'tenant', in: 'header', required: true }] },
+    { method: 'GET', path: 'echo/:x_request_id', type: 'item', source: 'select :X_REQUEST_ID as request_id', params: [{ name: 'x_request_id', in: 'header' }] },
+  ];
+  const call = (path: string, headers: Record<string, string> = {}) =>
+    app.inject({ method: 'GET', url: `/a/hr/rest/m175/${path}`, headers: { authorization: `Bearer ${token}`, ...headers } });
+  before(async () => {
+    appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    token = (await issueApiToken(appId, 'king', 1)).token;
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'm175'`, [appId]);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'm175', 'Sprint 175', $2)`, [appId, JSON.stringify(handlers)]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'm175'`, [appId]);
+  });
+
+  test('the header of a name; a handler\'s parameters may be in a header, but not one that holds credentials', () => {
+    assert.equal(headerName('x_request_id'), 'x-request-id');
+    assert.equal(headerName('Accept_Language'), 'accept-language');
+    assert.deepEqual(handlerProblems(handlers), []);
+    for (const name of ['authorization', 'Cookie', 'proxy_authorization', 'set_cookie']) {
+      const problems = handlerProblems([{ method: 'GET', path: 'x', type: 'item', source: 'select 1', params: [{ name, in: 'header' }] }]);
+      assert.equal(problems.length, 1, name);
+      assert.match(problems[0], /credentials/);
+    }
+    assert.match(handlerProblems([{ method: 'GET', path: 'x', type: 'item', source: 'select 1', params: [{ name: 'a', in: 'cookie' }] }])[0], /query, body or header/);
+    const parsed = parseParams('x_request_id header string For tracing\ntenant header required');
+    assert.deepEqual(parsed.problems, []);
+    assert.deepEqual(parsed.params, [{ name: 'x_request_id', in: 'header', type: 'string', description: 'For tracing' }, { name: 'tenant', in: 'header', required: true }]);
+  });
+
+  test('the bind is the header\'s value; without the header it is null, and a query field of the name does not set it', async () => {
+    assert.deepEqual((await call('echo', { 'x-request-id': 'abc-123' })).json(), { request_id: 'abc-123', username: 'king' });
+    assert.deepEqual((await call('echo')).json(), { request_id: null, username: 'king' });
+    assert.deepEqual((await call('echo?x_request_id=from-the-query')).json(), { request_id: null, username: 'king' });
+    assert.deepEqual((await call('echo?x_request_id=from-the-query', { 'x-request-id': 'from-the-header' })).json().request_id, 'from-the-header');
+    // the value is bound, never pasted into the SQL
+    assert.equal((await call('echo', { 'x-request-id': `'; drop table hr.emp; --` })).json().request_id, `'; drop table hr.emp; --`);
+  });
+
+  test('a required header missing is a 400; a path parameter of the same name wins', async () => {
+    const missing = await call('need');
+    assert.equal(missing.statusCode, 400);
+    assert.match(missing.json().error, /tenant/);
+    assert.equal((await call('need?tenant=query')).statusCode, 400);
+    assert.deepEqual((await call('need', { tenant: 'acme' })).json(), { tenant: 'acme' });
+    assert.equal((await call('echo/from-the-path', { 'x-request-id': 'from-the-header' })).json().request_id, 'from-the-path');
+  });
+
+  test('OpenAPI lists it in the header; the Try it panel sends it', async () => {
+    const doc = (await app.inject({ url: '/a/hr/rest/m175/openapi.json' })).json();
+    const params = doc.paths['/echo'].get.parameters as { name: string; in: string; required: boolean }[];
+    assert.deepEqual(params.filter((p) => p.in === 'header').map((p) => [p.name, p.required]), [['x-request-id', false]]);
+    assert.equal(doc.paths['/need'].get.parameters.find((p: { in: string }) => p.in === 'header').required, true);
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const id = (await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'm175'`, [appId])).id;
+    const page = await b.get(`/builder/sql/rest/modules/${id}/handler?t=echo&m=GET`);
+    assert.equal(page.statusCode, 200);
+    assert.match(page.body, /name="h_x_request_id"/);
+    assert.match(page.body, /<code>x-request-id<\/code>/);
+    const tried = await b.submit(`/builder/sql/rest/modules/${id}/try`, { t: 'echo', m: 'GET', as: 'king', h_x_request_id: 'try-175' });
+    assert.match(tried.body, /try-175/);
+  });
+
+  test('the HR module: whoami echoes X-Request-Id', async () => {
+    const res = await app.inject({ url: '/a/hr/rest/hr/whoami', headers: { authorization: `Bearer ${token}`, 'x-request-id': 'hr-84' } });
+    assert.deepEqual(res.json(), { username: 'king', request_id: 'hr-84' });
+    assert.match(String(res.headers.etag), /^"/);
   });
 });

@@ -14143,3 +14143,57 @@ describe('sprint 175 ETags of REST module answers (DA-11)', () => {
     assert.equal(long.headers.etag, tag);
   });
 });
+
+describe('sprint 175 header parameters of REST handlers (DA-11)', () => {
+  let appId = 0;
+  let id = 0;
+  let king = '';
+  const evil = '<img src=x onerror=alert(175)>';
+  before(async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    appId = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    king = (await issueApiToken(appId, 'king', 1)).token;
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec175'`, [appId]);
+    id = (await owner.one(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec175', 'sec175', $2) returning id`, [appId, JSON.stringify([
+      { method: 'GET', path: 'echo', type: 'item', source: 'select :X_TRACE as trace, :APP_USER as username', params: [{ name: 'x_trace', in: 'header' }] },
+      // stored past the builder's check: the runtime still never binds a credential header
+      { method: 'GET', path: 'leak', type: 'item', source: 'select :AUTHORIZATION as a, :COOKIE as c', params: [{ name: 'authorization', in: 'header' }, { name: 'cookie', in: 'header' }] },
+    ])]))!.id;
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec175'`, [appId]);
+  });
+  const get = (path: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url: `/a/hr/rest/sec175/${path}`, headers: { authorization: `Bearer ${king}`, ...headers } });
+
+  test('a credential header is never bound, and :APP_USER stays the server\'s', async () => {
+    const leak = await get('leak', { cookie: 'pgkiln_session=secret' });
+    assert.ok(!leak.body.includes(king), 'the token is not in the answer');
+    assert.ok(!leak.body.includes('secret'), 'the cookie is not in the answer');
+    const { handlerProblems } = await import('../src/runtime/rest.ts');
+    assert.match(handlerProblems([{ method: 'GET', path: 'x', type: 'item', source: 'select 1', params: [{ name: 'authorization', in: 'header' }] }]).join(' '), /credentials/);
+    assert.match(handlerProblems([{ method: 'GET', path: 'x', type: 'item', source: 'select 1', params: [{ name: 'app_user', in: 'header' }] }]).join(' '), /set by the server/);
+    // a header named like a built-in does not set it
+    assert.equal((await get('echo', { 'app-user': 'admin', 'x-trace': 't' })).json().username, 'king');
+  });
+
+  test('the value is bound, not SQL; without a token the header changes nothing (401)', async () => {
+    const res = await get('echo', { 'x-trace': `x' || (select password_hash from meta.account limit 1) || '` });
+    assert.equal(res.json().trace, `x' || (select password_hash from meta.account limit 1) || '`);
+    assert.equal((await app.inject({ method: 'GET', url: '/a/hr/rest/sec175/echo', headers: { 'x-trace': 't' } })).statusCode, 401);
+  });
+
+  test('Try it: CSRF, the header value is escaped in the page and stays one header line', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/sql/rest/modules/${id}/handler?t=echo&m=GET`);
+    assert.equal((await dev.post(`/builder/sql/rest/modules/${id}/try`, { __csrf: 'forged', t: 'echo', m: 'GET', as: 'king', h_x_trace: 'x' })).statusCode, 403);
+    const tried = await dev.post(`/builder/sql/rest/modules/${id}/try`, { __csrf: dev.lastCsrf, t: 'echo', m: 'GET', as: 'king', h_x_trace: `${evil}\r\nx-injected: 1` });
+    assert.equal(tried.statusCode, 200);
+    assert.doesNotMatch(tried.body, /<img src=x/);
+    assert.match(tried.body, /&lt;img src=x onerror=alert\(175\)&gt; x-injected: 1/);
+    // a field that is not one of the handler's header parameters is not sent as a header
+    const other = await dev.post(`/builder/sql/rest/modules/${id}/try`, { __csrf: dev.lastCsrf, t: 'echo', m: 'GET', as: '', h_authorization: `Bearer ${king}` });
+    assert.match(other.body, /401/);
+  });
+});
