@@ -71,7 +71,7 @@ describe('definitions', () => {
     const bad = handlerProblems([
       { method: 'POST', path: 'x', type: 'media', source: 'select 1' },
       { method: 'PUT', path: 'y', type: 'plpgsql', source: 'begin end $pgkiln_rest$' },
-      { method: 'GET', path: 'z', type: 'item', source: 'select 1', params: [{ name: 'a b', in: 'header' as 'query', type: 'date' as 'string' }] },
+      { method: 'GET', path: 'z', type: 'item', source: 'select 1', params: [{ name: 'a b', in: 'cookie' as 'query', type: 'date' as 'string' }] },
       { method: 'GET', path: 'w', type: 'item', source: 'select 1', params: [{ name: 'app_user', in: 'query' }] },
     ]);
     for (const re of [/media handlers answer GET/, /may not contain/, /name is letters/, /"in" query, body or header/, /type is one of/, /set by the server/])
