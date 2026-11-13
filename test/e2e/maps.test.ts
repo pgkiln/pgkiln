@@ -215,7 +215,7 @@ describe('map and tree regions', () => {
     const square = JSON.stringify({ type: 'Polygon', coordinates: [[[4.8, 52.3], [4.9, 52.3], [4.9, 52.4], [4.8, 52.4], [4.8, 52.3]]] });
     const line = JSON.stringify({ type: 'LineString', coordinates: [[4.8, 52.3], [4.9, 52.4]] });
     await owner.query('delete from meta.app where alias = $1', [alias]);
-    const appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Maps 178', 'none') returning id`, [alias]))!.id;
+    const appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Maps 178', 'none', 'hr_app') returning id`, [alias]))!.id;
     try {
       const p = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [appId]))!.id;
       await owner.query(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 1, 'Areas', 'map', $2, $3)`, [p, `select 'Park' as title, '${square}' as geojson`, JSON.stringify({
@@ -251,7 +251,7 @@ describe('map and tree regions', () => {
     const alias = 'maps-e184';
     const sq = (x: number) => JSON.stringify({ type: 'Polygon', coordinates: [[[x, 52.3], [x + 0.1, 52.3], [x + 0.1, 52.4], [x, 52.4], [x, 52.3]]] });
     await owner.query('delete from meta.app where alias = $1', [alias]);
-    const appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Maps 184', 'none') returning id`, [alias]))!.id;
+    const appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Maps 184', 'none', 'hr_app') returning id`, [alias]))!.id;
     try {
       const p1 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Legend', false) returning id`, [appId]))!.id;
       const p2 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 2, 'Single', false) returning id`, [appId]))!.id;

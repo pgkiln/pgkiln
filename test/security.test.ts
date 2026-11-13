@@ -1033,7 +1033,14 @@ describe('sprint 23: code editor', () => {
     await owner.query('grant usage on schema sec23 to sec23_role');
     await owner.query('grant select on sec23.other_secret to sec23_role');
     const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec23other', 'Other', 'sec23_role') returning id`)).id;
-    const noRole = (await owner.one(`insert into meta.app (alias, name) values ('sec23norole', 'No role') returning id`)).id;
+    // (sprint 186) an application made before migration 167, without a role
+    const noRole = await owner.tx(async (c) => {
+      await c.query('alter table meta.app disable trigger app_role_check');
+      const id = (await c.query(`insert into meta.app (alias, name) values ('sec23norole', 'No role') returning id`)).rows[0].id;
+      await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+      await c.query('alter table meta.app enable trigger app_role_check');
+      return id;
+    });
     const { clearCompletions } = await import('../src/builder/code-editor.ts');
     clearCompletions();
     try {
@@ -2202,7 +2209,7 @@ describe('sprint 29 header authentication', () => {
 
   before(async () => {
     process.env.PGKILN_AUTH_HEADER_PROXIES = `${PROXY}, 192.168.50.0/24, not-an-ip`;
-    hdrApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Header test', 'header') returning id`, [alias])).id;
+    hdrApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Header test', 'header', 'hr_app') returning id`, [alias])).id;
     await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [hdrApp]);
     for (const u of users) await owner.query(`insert into meta.account (username, active) values ($1, $2) on conflict do nothing`, [u, u !== 'hdr_off']);
     await owner.query(
@@ -2364,7 +2371,7 @@ describe('sprint 29 header authentication', () => {
     assert.match(form.body, /<option value="header" selected>HTTP header/);
     assert.match(form.body, /name="header_name"/);
     const saved = await b.post(`/builder/apps/${hdrApp}/settings`, {
-      __csrf: b.lastCsrf, name: 'Header test', alias, home_page: '1', authentication: 'header',
+      __csrf: b.lastCsrf, name: 'Header test', alias, home_page: '1', authentication: 'header', db_role: 'hr_app',
       header_name: 'X-Forwarded-User', header_auto_create: 'true', logout_url: '/a/other',
     });
     assert.equal(saved.statusCode, 303);
@@ -2472,7 +2479,7 @@ describe('sprint 30', () => {
       await owner.query(`create role ${R.eve} login password 'Eve-pw-30!'`);
       await owner.query(`create role ${R.off} nologin password 'Off-pw-30!'`);
       await owner.query(`create role ${R.boss} superuser login password 'Boss-pw-30!'`);
-      dbApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles) values ($1, 'DB sec', 'database', $2) returning id`,
+      dbApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles, db_role) values ($1, 'DB sec', 'database', $2, 'hr_app') returning id`,
         [dbAlias, [R.ann, R.off, R.boss, 'pgkiln', 'pgkiln_runtime']])).id;
       await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [dbApp]);
     });
@@ -3112,7 +3119,7 @@ describe('sprint 31 logic', () => {
       });
     await assert.rejects(asApp('king', (q) => q('select * from meta.process_job')), /permission denied/);
     await assert.rejects(asApp('king', (q) => q('select meta.enqueue_process_job($1, $2)', [onboard, '{}'])), /not a background chain/);
-    const other = await owner.one(`insert into meta.app (alias, name) values ('logic-other-sec', 'Other') returning id`);
+    const other = await owner.one(`insert into meta.app (alias, name, db_role) values ('logic-other-sec', 'Other', 'hr_app') returning id`);
     undo.push(`delete from meta.app where id = ${Number(other.id)}`);
     await assert.rejects(
       runtime.tx(async (c) => {
@@ -3522,7 +3529,7 @@ describe('sprint 32 automations: actions, error handling per row, meta.run_autom
 
   before(async () => {
     await owner.query(`delete from meta.app where alias = $1`, [OTHER]);
-    other = (await owner.one(`insert into meta.app (alias, name) values ($1, 'S32 automations') returning id`, [OTHER])).id;
+    other = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'S32 automations', 'hr_app') returning id`, [OTHER])).id;
     await owner.query(`insert into meta.automation (app_id, name, enabled, code) values ($1, 'sec32 other', false, 'select 1')`, [other]);
     hrAuto = (await owner.one(`insert into meta.automation (app_id, name, enabled, code, roles) values ($1, 'sec32 hr', false, 'select 1', '{admin}') returning id`, [appId])).id;
   });
@@ -3632,7 +3639,7 @@ describe('sprint 32 item 2: workflow invoke_api steps', () => {
     await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
     mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
     await owner.query(`delete from meta.app where alias = $1`, [OTHER]);
-    other = (await owner.one(`insert into meta.app (alias, name) values ($1, 'S32 invoke') returning id`, [OTHER])).id;
+    other = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'S32 invoke', 'hr_app') returning id`, [OTHER])).id;
     await owner.query(`insert into meta.rest_source (app_id, name, url) values ($1, 'SEC32_FOREIGN', $2)`, [other, `${mockBase}/foreign`]);
     const { encryptSecret } = await import('../src/secrets.ts');
     await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, 'SEC32_CRED', 'bearer', $2, $3)`,
@@ -3848,8 +3855,8 @@ describe('sprint 32 item 4: create page wizards', () => {
   before(async () => {
     await owner.query(`delete from meta.app where alias = '${alias}'`);
     await owner.query(`drop table if exists public.sec32_wiz; create table public.sec32_wiz (id int primary key, "na""me; drop table x" text, d date, n int);
-      insert into public.sec32_wiz values (1, '<script>alert(1)</script>', current_date, 5); grant select on public.sec32_wiz to pgkiln_runtime`);
-    wizApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Wizard security', 'none') returning id`, [alias])).id;
+      insert into public.sec32_wiz values (1, '<script>alert(1)</script>', current_date, 5); grant select on public.sec32_wiz to pgkiln_runtime, hr_app`);
+    wizApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Wizard security', 'none', 'hr_app') returning id`, [alias])).id;
   });
   after(async () => {
     await owner.query('delete from meta.app where id = $1', [wizApp]);
@@ -4437,7 +4444,7 @@ describe('sprint 33 item 4: debug messages and the installation log', () => {
     assert.equal(res.statusCode, 200);
     assert.doesNotMatch(res.body, /<script>alert\(1\)/);
     assert.match(res.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
-    const other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-other', 'Other', 'none') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec33-other', 'Other', 'none', 'hr_app') returning id`)).id;
     try {
       assert.equal((await dev.get(`/builder/apps/${other}/debug/${id}`)).statusCode, 404);
     } finally {
@@ -4499,7 +4506,7 @@ describe('sprint 33 item 5: meta.web_request and meta.parse_data', () => {
     process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,api.example.com';
     delete process.env.PGKILN_REST_PRIVATE_HOSTS;
     role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
-    other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec33-wr', 'Other', 'none') returning id`)).id;
+    other = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec33-wr', 'Other', 'none', 'hr_app') returning id`)).id;
     const { encryptSecret } = await import('../src/secrets.ts');
     await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc) values ($1, 'SEC5_TOKEN', 'bearer', $2)`, [other, encryptSecret('other-app-s3cret')]);
     const http = await import('node:http');
@@ -4655,7 +4662,7 @@ describe('sprint 33 item 6: Theme Roller style variants and template options', (
   test('the style switch needs the CSRF token, stays in the app and only picks the app\'s own styles', async () => {
     const before = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
     await owner.query(`update meta.app set theme = theme || $2::jsonb where id = $1`, [appId, JSON.stringify({ styles: [{ name: 'Own', accent: '#0a0b0c' }], style_choice: true })]);
-    const other = (await owner.one(`insert into meta.app (alias, name, authentication, theme) values ('sec6-other', 'Other', 'none', $1) returning id`,
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, theme, db_role) values ('sec6-other', 'Other', 'none', $1, 'hr_app') returning id`,
       [JSON.stringify({ styles: [{ name: 'Foreign', accent: '#fe0000' }], style_choice: true })])).id;
     try {
       const king = await as('king');
@@ -4793,7 +4800,7 @@ describe('sprint 34 application types and subscriptions', () => {
   let lib: number, sub: number;
   let dev: FileBrowser;
   const blank = async (alias: string, type = 'standard') =>
-    (await owner.one(`insert into meta.app (alias, name, app_type) values ($1, $2, $3) returning id`, [alias, `App ${alias}`, type])).id as number;
+    (await owner.one(`insert into meta.app (alias, name, app_type, db_role) values ($1, $2, $3, 'hr_app') returning id`, [alias, `App ${alias}`, type])).id as number;
   const lov = async (id: number) => (await owner.one(`select query from meta.lov where app_id = $1 and name = 'SECRET_LOV'`, [id]))?.query;
   before(async () => {
     await owner.query('delete from meta.app where alias like $1', [`${P}%`]);
@@ -6550,7 +6557,7 @@ describe('sprint 50 developer toolbar', () => {
 describe('sprint 50 search', () => {
   test('the search text is a value, the search runs as the application role, and only this application\'s configurations count', async () => {
     const page = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 1`, [appId])).id;
-    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-search-other', 'Other', 'pgkiln_runtime') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-search-other', 'Other', 'hr_api') returning id`)).id;
     await owner.query(
       `insert into meta.search_config (app_id, name, label, source_type, source, title_column) values
          ($1, 'SEC_EMP', 'Employees', 'table', 'hr.emp', 'ename'),
@@ -6608,7 +6615,7 @@ describe('sprint 50 mail', () => {
   test('application code can\'t send in another application\'s name, nor with the runtime\'s role', async () => {
     await setup();
     const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
-    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-mail-other', 'Other', 'pgkiln_runtime') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-mail-other', 'Other', 'hr_api') returning id`)).id;
     try {
       assert.ok((await asRole(hrRole, appId, `select meta.send_mail('a@example.com', 'x', 'y') as id`))[0].id);
       // the HR role claiming the other application (which has a mail service too)
@@ -6651,7 +6658,7 @@ describe('sprint 50 mail', () => {
     const id = await setup();
     const DEV = 'sec_mail_dev';
     await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password('Sec-mail-dev-password!'), false) on conflict do nothing`, [DEV]);
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec-mail-x', 'X') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec-mail-x', 'X', 'hr_app') returning id`)).id;
     try {
       const dev = new Browser();
       await dev.get('/builder/login');
@@ -6718,7 +6725,7 @@ describe('sprint 51 safe deployments and feedback', () => {
       assert.equal((await owner.one(`select has_function_privilege($1, 'meta.backup_app(int, text, text, text)', 'execute') as ok`, [r])).ok, false, r);
     }
     const b = (await owner.one(`select meta.backup_app($1, 'manual', 'sec51') as id`, [appId])).id;
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec51-other', 'Other') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec51-other', 'Other', 'hr_app') returning id`)).id;
     try {
       const dev = new Browser();
       await dev.get('/builder/login');
@@ -6807,7 +6814,7 @@ describe('sprint 52 page behaviour', () => {
     const hid = (await owner.one(`insert into meta.item (page_id, seq, name, type) values ($1, 991, 'P1_SEC_HID', 'hidden') returning id`, [page])).id;
     const proc = (await owner.one(`insert into meta.process (page_id, seq, name, type, point, code) values ($1, 990, 'SEC_ECHO', 'sql', 'ajax',
       'select :P1_SEC_RO as ro, :P1_SEC_HID as hid, :APP_ID as app') returning id`, [page])).id;
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec52-other', 'Other') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec52-other', 'Other', 'hr_app') returning id`)).id;
     await owner.query(`insert into meta.app_process (app_id, seq, name, point, code) values ($1, 10, 'SEC_OTHER', 'ajax', 'select 1 as x')`, [other]);
     try {
       const king = await as('king');
@@ -6884,7 +6891,7 @@ describe('sprint 53 data and settings', () => {
 
   test('settings and preferences belong to the calling application, called as its own role', async () => {
     const hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec53-other', 'Other') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec53-other', 'Other', 'hr_api') returning id`)).id;
     try {
       await owner.query(`insert into meta.app_setting (app_id, name, value) values ($1, 'SECRET_THING', 'other''s')`, [other]);
       await owner.query(`insert into meta.user_preference (app_id, username, name, value) values ($1, 'king', 'P1_X', 'other''s')`, [other]);
@@ -7763,7 +7770,7 @@ describe('sprint 73 activity reporting', () => {
     hrSession = (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values ('sec73-a', $1, 'king', '{admin}') returning id`, [appId])).id;
     readerSession = (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values ('sec73-r', $1, 'allen', '{employee}') returning id`, [appId])).id;
     await owner.query(`delete from meta.app where alias = 'sec73-other'`);
-    otherApp = (await owner.one(`insert into meta.app (alias, name) values ('sec73-other', 'Other') returning id`)).id;
+    otherApp = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec73-other', 'Other', 'hr_app') returning id`)).id;
     await owner.query(`insert into meta.activity_log (app_id, page_no, username, event, ip, detail) values ($1, 1, 'king', 'page_view', '10.0.0.1', 'sec73'), ($2, 1, 'eve', 'page_view', '10.0.0.2', 'sec73')`, [appId, otherApp]);
   });
   after(async () => {
@@ -7818,7 +7825,7 @@ describe('sprint 77 display positions, duplicate and copy to other page', () => 
   };
   test('a signed-in developer with the CSRF token; only pages of the same application; only known positions', async () => {
     await owner.query('delete from meta.page where app_id = $1 and page_no in (9111, 9112)', [appId]);
-    const other = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec-s77', 'Other', 'none') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec-s77', 'Other', 'none', 'hr_app') returning id`)).id;
     try {
       const p = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 9111, 'Positions') returning id`, [appId])).id;
       const r1 = (await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'One', 'static', '<p>1</p>') returning id`, [p])).id;
@@ -7928,7 +7935,7 @@ describe('sprint 83 component settings and component groups', () => {
   test('only developers change them; a stored setting out of bounds is not used; a group from another workspace is refused', async () => {
     const before = (await owner.one('select component_settings from meta.app where id = $1', [appId])).component_settings;
     const ws = (await owner.one(`insert into meta.workspace (name) values ('SEC83 other') returning id`)).id;
-    const lib = (await owner.one(`insert into meta.app (alias, name, app_type) values ('sec83-lib', 'SEC83 library', 'library') returning id`)).id;
+    const lib = (await owner.one(`insert into meta.app (alias, name, app_type, db_role) values ('sec83-lib', 'SEC83 library', 'library', 'hr_app') returning id`)).id;
     try {
       const king = await as('king');
       assert.equal((await king.post(`/builder/apps/${appId}/component-settings`, { __csrf: king.lastCsrf, report_rows: '1' })).statusCode, 302, 'an application user goes to the builder sign-in');
@@ -9187,11 +9194,18 @@ describe('sprint 104 rest handlers', () => {
     // a role that bypasses row level security (or pgkiln's owner) is refused before the SQL runs
     await owner.query(`do $$ begin if not exists (select 1 from pg_roles where rolname = 'sec104_bypass') then create role sec104_bypass nologin bypassrls; end if; end $$`);
     await owner.query(`grant usage on schema ${S} to sec104_bypass; grant select, insert on ${S}.note to sec104_bypass; grant sec104_bypass to pgkiln_runtime`);
-    await owner.query(`update meta.app set db_role = 'sec104_bypass' where id = $1`, [appId]);
+    // (sprint 186) meta.app refuses such a role: one that was given BYPASSRLS after it was saved
+    await owner.tx(async (c) => {
+      await c.query('alter table meta.app disable trigger app_role_check');
+      await c.query(`update meta.app set db_role = 'sec104_bypass' where id = $1`, [appId]);
+      await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+      await c.query('alter table meta.app enable trigger app_role_check');
+    });
     try {
       const n = await notes();
-      assert.equal((await call('GET', 'who', 'king')).statusCode, 403);
-      assert.equal((await call('POST', 'note', 'king', { body_text: 'bypass' })).statusCode, 403);
+      // (sprint 186) refused before the handler as an application that can't run (503)
+      assert.equal((await call('GET', 'who', 'king')).statusCode, 503);
+      assert.equal((await call('POST', 'note', 'king', { body_text: 'bypass' })).statusCode, 503);
       assert.equal(await notes(), n);
       // the Advisor says so before the endpoints fail, and is quiet again for the application's own role
       const { advise } = await import('../src/builder/advisor.ts');
@@ -9558,7 +9572,7 @@ describe('sprint 109 WS-1', () => {
     await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
     await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, false)', [ws, DEV]);
     await owner.query(`delete from meta.app where alias = 'sec109x'`);
-    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec109x', 'Sec109 secret app', 'none') returning id`)).id;
+    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec109x', 'Sec109 secret app', 'none', 'hr_app') returning id`)).id;
     await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [otherApp, other]);
     await owner.query(`insert into meta.activity_log (app_id, page_no, username, event) values ($1, 1, 'sec109_reader', 'page_view')`, [otherApp]);
   });
@@ -10206,8 +10220,8 @@ describe('sprint 113 WS-3', () => {
     wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec113 B') returning id`)).id;
     await owner.query('delete from meta.workspace_member where username = any($1::text[])', [[DEV, OTHER]]);
     await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2), ($3, $4)', [wsA, DEV, wsB, OTHER]);
-    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec113a', 'Sec113 A app', 'none') returning id`)).id;
-    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec113b', 'Sec113 B app', 'none') returning id`)).id;
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec113a', 'Sec113 A app', 'none', 'hr_app') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec113b', 'Sec113 B app', 'none', 'hr_app') returning id`)).id;
     await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2), ($3, $4)', [appA, wsA, appB, wsB]);
     await owner.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home'), ($2, 1, 'Home', 'Home')`, [appA, appB]);
     groupB = (await owner.one(`insert into meta.team_label_group (workspace_id, name) values ($1, 'Secret group') returning id`, [wsB])).id;
@@ -10712,8 +10726,8 @@ describe('sprint 116 WS-12', () => {
     wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec116 B') returning id`)).id;
     await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
     await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1)', [DEV]);
-    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec116a', 'Sec116 A', 'none') returning id`)).id;
-    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec116b', 'Sec116 B', 'none') returning id`)).id;
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec116a', 'Sec116 A', 'none', 'hr_app') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec116b', 'Sec116 B', 'none', 'hr_app') returning id`)).id;
     await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [appB, wsB]);
     pageA = (await owner.one(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appA])).id;
     pageB = (await owner.one(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [appB])).id;
@@ -10911,8 +10925,8 @@ describe('sprint 118 WS-9', () => {
     wsB = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WSB])).id;
     await owner.query('delete from meta.workspace_member where username = any($1::text[])', [[ADMIN_A, ADMIN_B, DEV_A]]);
     await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($1, $3, false), ($4, $5, true)', [wsA, ADMIN_A, DEV_A, wsB, ADMIN_B]);
-    appA = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec118a', 'Sec118 A app', 'none') returning id`)).id;
-    appB = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec118b', 'Sec118 B app', 'none') returning id`)).id;
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec118a', 'Sec118 A app', 'none', 'hr_app') returning id`)).id;
+    appB = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec118b', 'Sec118 B app', 'none', 'hr_app') returning id`)).id;
     await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2), ($3, $4)', [appA, wsA, appB, wsB]);
     for (const [a, subject] of [[appA, 'Sec118 mail of A'], [appB, 'Sec118 secret mail of B']] as const)
       await owner.query(`insert into meta.mail_queue (app_id, to_addresses, subject, body_text, status, attempts, message, last_attempt_at)
@@ -12208,7 +12222,7 @@ describe('sprint 136 AP-1', () => {
     const n = embCalls();
     await assert.rejects(embedTexts({ name: 'X', type: 'ai_service', service: 'HR_ASSISTANT', model: 'm', dimensions: 8 }, ['x'], { appId }), /Claude has no embeddings API/);
     // an application that may not use the service can't embed with it
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('sec136-other', 'Sec136 other') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('sec136-other', 'Sec136 other', 'hr_app') returning id`)).id;
     try {
       await assert.rejects(embedTexts({ name: 'X', type: 'ai_service', service: 'SEC136_SVC', model: 'm', dimensions: 8 }, ['x'], { appId: other }), /may not use AI service SEC136_SVC/);
     } finally {
@@ -12334,7 +12348,7 @@ describe('sprint 137 AP-3', () => {
     otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec137 Other') returning id`)).id;
     await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
     await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
-    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ('sec137-other', 'Sec137 other', 'none') returning id`)).id;
+    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec137-other', 'Sec137 other', 'none', 'hr_app') returning id`)).id;
     await owner.query('insert into meta.workspace_app (workspace_id, app_id) values ($1, $2)', [otherWs, otherApp]);
     await owner.query(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Secret page', false)`, [otherApp]);
   });
@@ -12713,7 +12727,7 @@ describe('sprint 140 AP-4', () => {
       [pid, title, type, source, JSON.stringify(config), position])).id as number;
   before(async () => {
     await owner.query('delete from meta.app where alias = $1', [A]);
-    id = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Sec140', 'none') returning id`, [A])).id;
+    id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec140', 'none', 'hr_app') returning id`, [A])).id;
     await owner.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, $2, 'Home', false)`, [id, `Home ${XSS}`]);
     pid = (await owner.one(`insert into meta.page (app_id, page_no, name, title, requires_auth, parent_page, help) values ($1, 2, 'Two', $2, false, 1, $3) returning id`,
       [id, 'Two &P2_ONE.', `<script>alert(1)</script> [x](javascript:alert(1)) **&P2_ONE.**`])).id;
@@ -12860,7 +12874,7 @@ describe('sprint 141 AP-7', () => {
     wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec141 B') returning id`)).id;
     await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($1, $3, false), ($4, $5, true)', [wsA, ADMIN_A, DEV_A, wsB, ADMIN_B]);
     for (const [alias, w] of [['sec141a', wsA], ['sec141b', wsB]] as const) {
-      const id = (await owner.one(`insert into meta.app (alias, name, authentication, home_page) values ($1, $1, 'none', 1) returning id`, [alias])).id;
+      const id = (await owner.one(`insert into meta.app (alias, name, authentication, home_page, db_role) values ($1, $1, 'none', 1, 'hr_app') returning id`, [alias])).id;
       await owner.query(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false)`, [id]);
       await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [id, w]);
       if (alias === 'sec141a') appA = id;
@@ -13075,7 +13089,7 @@ describe('sprint 142 AP-8', () => {
     await owner.query(`delete from meta.workspace where name in ('Sec142 A', 'Sec142 B')`);
     wsA = (await owner.one(`insert into meta.workspace (name) values ('Sec142 A') returning id`)).id;
     wsB = (await owner.one(`insert into meta.workspace (name) values ('Sec142 B') returning id`)).id;
-    appA = (await owner.one(`insert into meta.app (alias, name, authentication, home_page, json_sources) values ('sec142a', 'sec142a', 'none', 1, $1) returning id`,
+    appA = (await owner.one(`insert into meta.app (alias, name, authentication, home_page, json_sources, db_role) values ('sec142a', 'sec142a', 'none', 1, $1, 'hr_app') returning id`,
       [JSON.stringify([{ name: 'EMP_PROFILE', schema: 'hr', table: 'emp', key: ['empno'], column: 'profile', view: 'emp_profile', columns: [], arrays: [] }])])).id;
     await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [appA, wsA]);
     await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true)', [wsB, ADMIN_B]);
@@ -13263,7 +13277,7 @@ describe('sprint 144 AP-10', () => {
   before(async () => {
     await owner.query(`delete from meta.app where alias like 'sec144%'`);
     await owner.query(`create table if not exists public.sec144_t (n int); delete from public.sec144_t; insert into public.sec144_t values (1)`);
-    const id = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Sec144', 'none') returning id`, [A])).id;
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec144', 'none', 'hr_app') returning id`, [A])).id;
     const pid = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
     await owner.query(`insert into meta.process (page_id, seq, name, type, code) values ($1, 10, 'Wipe', 'sql', 'delete from public.sec144_t; do $$ begin delete from public.sec144_t; end $$')`, [pid]);
     await owner.query(`insert into meta.supporting_script (app_id, seq, name, script) values ($1, 10, 'drop', 'drop table public.sec144_t')`, [id]);
@@ -13302,7 +13316,7 @@ describe('sprint 144 AP-10', () => {
   });
 
   test('working copy names are checked, lock notes are cut; unknown applications and actions are errors', async () => {
-    await owner.query(`insert into meta.app (alias, name, authentication) values ('sec144b', 'Sec144b', 'none')`);
+    await owner.query(`insert into meta.app (alias, name, authentication, db_role) values ('sec144b', 'Sec144b', 'none', 'hr_app')`);
     for (const name of ["x'; drop table meta.app; --", '../../etc', '', 'a'.repeat(41)])
       assert.equal((await callTool('working_copy', { action: 'create', alias: 'sec144b', name })).error, true, name);
     assert.equal((await owner.one(`select count(*)::int as n from meta.working_copy w join meta.app a on a.id = w.main_app_id where a.alias = 'sec144b'`)).n, 0);
@@ -14597,7 +14611,13 @@ describe('sprint 177 the web request outbox and inbound webhooks', () => {
     // the application's role changed to one that bypasses RLS, then to pgkiln's owner: the event fails, the block does not run
     const ownerName = (await owner.one('select current_user::text as u'))!.u;
     for (const role of ['sec177_bypass', ownerName]) {
-      await owner.query('update meta.app set db_role = $2 where id = $1', [hr, role]);
+      // (sprint 186) meta.app refuses such a role: one that became powerful after it was saved
+      await owner.tx(async (c) => {
+        await c.query('alter table meta.app disable trigger app_role_check');
+        await c.query('update meta.app set db_role = $2 where id = $1', [hr, role]);
+        await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+        await c.query('alter table meta.app enable trigger app_role_check');
+      });
       try {
         const b = `{"id": "role-${role}"}`;
         assert.equal((await post('hook', b, { 'x-hub-signature-256': `sha256=${hmac(b)}` })).statusCode, 202);
@@ -14610,8 +14630,8 @@ describe('sprint 177 the web request outbox and inbound webhooks', () => {
     const failed = (await events()).slice(1);
     assert.equal(failed[0].state, 'failed');
     assert.notEqual(failed[1].state, 'done');
-    assert.match(failed[0].error, /bypasses row level security or owns pgkiln/);
-    assert.match(failed[1].error, /permission denied|bypasses row level security or owns pgkiln/);
+    assert.match(failed[0].error, /bypasses row level security/);
+    assert.match(failed[1].error, /permission denied|bypasses row level security/);
     // the runtime role cannot read events or the queue itself
     await assert.rejects(runtime.query('select * from meta.webhook_event'), /permission denied/);
     await assert.rejects(runtime.query('select * from meta.web_request_log'), /permission denied/);
@@ -14658,7 +14678,13 @@ describe('sprint 177 the web request outbox and inbound webhooks', () => {
     assert.equal((await owner.one('select callback_state from meta.web_request_log where id = $1', [id]))!.callback_state, 'done');
     for (const role of ['sec177_bypass', ownerName]) {
       const id2 = (await asHr((q) => q(`select meta.web_request($1, p_callback => 'sec177.done') as id`, [`${mockBase}/sec177`])))[0].id;
-      await owner.query('update meta.app set db_role = $2 where id = $1', [hr, role]);
+      // (sprint 186) meta.app refuses such a role: one that became powerful after it was saved
+      await owner.tx(async (c) => {
+        await c.query('alter table meta.app disable trigger app_role_check');
+        await c.query('update meta.app set db_role = $2 where id = $1', [hr, role]);
+        await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+        await c.query('alter table meta.app enable trigger app_role_check');
+      });
       try {
         await wr.webRequestTick();
       } finally {
@@ -14667,7 +14693,7 @@ describe('sprint 177 the web request outbox and inbound webhooks', () => {
       const r = (await owner.one('select status, callback_state, callback_error from meta.web_request_log where id = $1', [id2]))!;
       assert.equal(r.status, 'ok');
       assert.notEqual(r.callback_state, 'done', role);
-      assert.match(r.callback_error, /bypasses row level security or owns pgkiln|permission denied/, role);
+      assert.match(r.callback_error, /bypasses row level security|permission denied/, role);
       await owner.query('delete from meta.web_request_log where id = $1', [id2]);
     }
     assert.equal((await ran()).length, 1);
@@ -15673,5 +15699,326 @@ describe('NX-S3 a default password on a public installation changes nothing unti
       if (keep === undefined) delete process.env.PUBLIC_URL;
       else process.env.PUBLIC_URL = keep;
     }
+  });
+
+describe('sprint 186 every application runs as a database role of its own (NX-S2)', async () => {
+  const { AppRoleRefused, setAppRole, rolesChanged } = await import('../src/app-role.ts');
+  const { importDoc } = await import('../src/cli/apps.ts');
+  const { readFileSync } = await import('node:fs');
+  const S = 'sec186';
+  const ROLE = 'sec186_app';
+  const BYPASS = 'sec186_bypass';
+  const MEMBER = 'sec186_member';
+  const LEGACY = 'sec186-legacy';
+  const ROLES = [ROLE, BYPASS, MEMBER, 'app_sec186_imp', 'app_sec186_legacy', 'app_sec186_apx'];
+  const ALIASES = [LEGACY, 'sec186-ok', 'sec186-imp', 'sec186-bad', 'sec186-apx'];
+  const DEV = 'sec186_dev';
+  const PW = 'Sec186-dev-password!';
+  const dropRoles = async () => {
+    for (const r of ROLES)
+      if ((await owner.query('select 1 from pg_roles where rolname = $1', [r])).rowCount) await owner.query(`drop owned by ${r} cascade; drop role ${r}`);
+  };
+  const cleanup = async () => {
+    await owner.query('delete from meta.app where alias = any($1)', [ALIASES]);
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query('drop table if exists public.sec186_rls, public.sec186_nogrant');
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.sql_script where name like 'SEC186%'`);
+    await dropRoles();
+    rolesChanged();
+  };
+  const builder = async (username = 'admin', password = 'admin') => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password })).statusCode, 303);
+    return b;
+  };
+  /** an application made before migration 167, without a role (the trigger is off for the insert only) */
+  const legacyApp = async (role: string | null = null) => owner.tx(async (c) => {
+    await c.query('alter table meta.app disable trigger app_role_check');
+    const id = (await c.query(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'SEC186 legacy', 'none', $2) returning id`, [LEGACY, role])).rows[0].id as number;
+    await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+    await c.query('alter table meta.app enable trigger app_role_check');
+    const p = (await c.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false) returning id`, [id])).rows[0].id;
+    await c.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Who', 'static', '<p>SEC186 page</p>')`, [p]);
+    return id;
+  });
+  before(async () => {
+    await cleanup();
+    await owner.query(`create role ${ROLE} nologin; create role ${BYPASS} nologin bypassrls; create role ${MEMBER} nologin; grant ${BYPASS} to ${MEMBER}`);
+    await owner.query(`create schema ${S}; create table ${S}.t (a int); insert into ${S}.t values (1)`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing`, [DEV]);
+  });
+  after(cleanup);
+
+  test('meta.role_is_powerful: superusers, BYPASSRLS, pgkiln\'s and PostgreSQL\'s roles, the owner and their members', async () => {
+    const p = async (r: string) => (await owner.one<{ p: boolean }>('select meta.role_is_powerful($1) as p', [r]))!.p;
+    assert.equal(await p(ROLE), false);
+    assert.equal(await p('hr_app'), false);
+    assert.equal(await p(BYPASS), true);
+    assert.equal(await p(MEMBER), true, 'a member of a BYPASSRLS role can SET ROLE to it');
+    for (const r of ['pgkiln_runtime', 'pgkiln_app_code', 'pg_read_all_data', 'pg_monitor']) assert.equal(await p(r), true, r);
+    const metaOwner = (await owner.one<{ o: string }>(`select nspowner::regrole::text as o from pg_namespace where nspname = 'meta'`))!.o;
+    assert.equal(await p(metaOwner), true);
+    assert.equal(await p('sec186_does_not_exist'), false);
+  });
+
+  test('the owner\'s acceptance test: meta.app refuses an empty role and a BYPASSRLS, superuser or pgkiln role, made or set', async () => {
+    const insert = (role: string | null) => owner.query(`insert into meta.app (alias, name, db_role) values ('sec186-bad', 'Bad', $1)`, [role]);
+    await assert.rejects(insert(null), (e: Error & { code?: string }) => e.code === '23502' && /needs a database role of its own/.test(e.message));
+    await assert.rejects(insert('  '), /needs a database role/);
+    for (const r of [BYPASS, MEMBER, 'pgkiln_runtime', (await owner.one<{ u: string }>('select current_user as u'))!.u])
+      await assert.rejects(insert(r), (e: Error & { code?: string }) => e.code === '42501', r);
+    const ok = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, db_role) values ('sec186-ok', 'Ok', $1) returning id`, [ROLE]))!.id;
+    await assert.rejects(owner.query('update meta.app set db_role = null where id = $1', [ok]), /needs a database role/);
+    await assert.rejects(owner.query('update meta.app set db_role = $2 where id = $1', [ok, BYPASS]), /can't run as/);
+    await owner.query('delete from meta.app where id = $1', [ok]);
+  });
+
+  test('Settings → Security refuses an empty or powerful role, also from a forged post', async () => {
+    const id = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, authentication, db_role) values ('sec186-ok', 'SEC186 ok', 'none', $1) returning id`, [ROLE]))!.id;
+    const a = await builder();
+    const page = (await a.get(`/builder/apps/${id}/settings?tab=security`)).body;
+    assert.match(page, /<li>✓ Runs as a dedicated database role \(<code>sec186_app<\/code>\)<\/li>/);
+    assert.doesNotMatch(page, /id="make-role"/);
+    const save = async (db_role: string) => {
+      await a.get(`/builder/apps/${id}/settings?tab=security`);
+      await a.submit(`/builder/apps/${id}/settings`, { name: 'SEC186 ok', alias: 'sec186-ok', authentication: 'none', db_role, tab: 'security' });
+      return (await a.get(`/builder/apps/${id}/settings?tab=security`)).body;
+    };
+    assert.match(await save(''), /An application needs a database role of its own/);
+    assert.match(await save('   '), /An application needs a database role of its own/);
+    assert.match(await save(BYPASS), /The role sec186_bypass can&#39;t be an application&#39;s role/);
+    assert.match(await save(MEMBER), /The role sec186_member can&#39;t be an application&#39;s role/);
+    assert.match(await save('pgkiln'), /can&#39;t be an application&#39;s role/);
+    assert.equal((await owner.one<{ r: string }>('select db_role as r from meta.app where id = $1', [id]))!.r, ROLE);
+    assert.match(await save('hr_app'), /Settings saved|saved/i);
+    assert.equal((await owner.one<{ r: string }>('select db_role as r from meta.app where id = $1', [id]))!.r, 'hr_app');
+    // without the form's token: refused before anything is read
+    const forged = await a.post(`/builder/apps/${id}/settings`, { name: 'x', alias: 'sec186-ok', db_role: '' });
+    assert.equal(forged.statusCode, 403);
+    assert.equal((await owner.one<{ r: string }>('select db_role as r from meta.app where id = $1', [id]))!.r, 'hr_app');
+    await owner.query('delete from meta.app where id = $1', [id]);
+  });
+
+  test('an import without a role gets app_<alias> (or keeps the installed one); a powerful role is refused; never the owner', async () => {
+    const doc = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
+    delete doc.app.db_role;
+    // the CLI's and MCP's import (importDoc)
+    const { default: pg } = await import('pg');
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      const r = await importDoc(db as never, structuredClone(doc) as never, { alias: 'sec186-imp', replace: false });
+      assert.match(r.roleNote!, /The file has no database role: the application runs as app_sec186_imp, a role pgkiln created without rights yet/);
+      assert.equal((await owner.one<{ r: string }>(`select db_role as r from meta.app where alias = 'sec186-imp'`))!.r, 'app_sec186_imp');
+      assert.equal((await owner.one<{ l: boolean; m: boolean }>(`select rolcanlogin as l, pg_has_role('pgkiln_runtime', 'app_sec186_imp', 'MEMBER') as m from pg_roles where rolname = 'app_sec186_imp'`))!.m, true);
+      // a replacing import without a role keeps the installed one
+      const r2 = await importDoc(db as never, structuredClone(doc) as never, { alias: 'sec186-imp', replace: true });
+      assert.match(r2.roleNote!, /keeps its role app_sec186_imp/);
+      // a file that names a powerful role
+      await assert.rejects(importDoc(db as never, { ...structuredClone(doc), app: { ...doc.app, db_role: BYPASS } } as never, { alias: 'sec186-bad', replace: false }), /can't run as sec186_bypass/);
+      assert.equal((await owner.query(`select 1 from meta.app where alias = 'sec186-bad'`)).rowCount, 0);
+    } finally {
+      await db.end();
+    }
+    await owner.query(`delete from meta.app where alias = 'sec186-imp'`);
+    // the builder's import
+    const a = await builder();
+    await a.get('/builder/import');
+    await a.submit('/builder/import', { doc: JSON.stringify({ ...doc, app: { ...doc.app, db_role: BYPASS } }), alias: 'sec186-bad' });
+    assert.match((await a.get('/builder')).body, /Import failed: Application sec186-bad can&#39;t run as sec186_bypass/);
+    await a.get('/builder/import');
+    await a.submit('/builder/import', { doc: JSON.stringify(doc), alias: 'sec186-imp' });
+    assert.match((await a.get('/builder')).body, /The file has no database role: the application runs as app_sec186_imp, an existing role/);
+    assert.equal((await owner.one<{ r: string }>(`select db_role as r from meta.app where alias = 'sec186-imp'`))!.r, 'app_sec186_imp');
+  });
+
+  test('an application without a role: refused at runtime outside development mode (a clear page), an Advisor error, a red checklist line', async () => {
+    const id = await legacyApp();
+    // an unrelated change still saves (nothing about the role)
+    await owner.query(`update meta.app set name = 'SEC186 legacy app' where id = $1`, [id]);
+    const user = new Browser();
+    const res = await user.get(`/a/${LEGACY}/1`);
+    assert.equal(res.statusCode, 503);
+    assert.match(res.body, /<h1>Not available<\/h1><p>This application can&#39;t run: it has no database role of its own/);
+    assert.doesNotMatch(res.body, /SEC186 page/);
+    // a JSON request too
+    const json = await app.inject({ method: 'GET', url: `/a/${LEGACY}/1`, headers: { accept: 'application/json', 'x-requested-with': 'fetch' } });
+    assert.equal(json.statusCode, 503);
+    // background work and anything else that runs the application's SQL
+    await assert.rejects(appTx({ appId: id, alias: LEGACY, dbRole: null, appUser: 'nobody', sessionId: '' }, async () => 1), (e) => e instanceof AppRoleRefused && e.problem === 'missing');
+    // development mode: a developer of the application, signed in to the builder in the same browser
+    const a = await builder();
+    await a.get('/builder');
+    const dev = await a.get(`/a/${LEGACY}/1`);
+    assert.equal(dev.statusCode, 200);
+    assert.match(dev.body, /SEC186 page/);
+    assert.equal(await appTx({ appId: id, alias: LEGACY, dbRole: null, developer: true, appUser: 'nobody', sessionId: '' },
+      async (c) => (await c.query('select current_user::text as u')).rows[0].u), 'pgkiln_runtime', 'the runtime login, never the owner');
+    // the Advisor and the security checklist
+    const { advise } = await import('../src/builder/advisor.ts');
+    const f = (await advise(id)).findings.find((x) => x.field === 'database role');
+    assert.equal(f?.severity, 'error');
+    assert.match(f!.message, /no database role of its own/);
+    const settings = (await a.get(`/builder/apps/${id}/settings?tab=security`)).body;
+    assert.match(settings, /<li class="ck-error">✗ Runs as a dedicated database role <b>No database role: the application runs only for its developers from the builder<\/b><\/li>/);
+    assert.match(settings, /<form method="post" action="\/builder\/apps\/\d+\/settings\/role" id="make-role">/);
+    assert.match(settings, /Create app_sec186_legacy and use it/);
+    // a working copy of it is refused until it has a role
+    const { createCopy } = await import('../src/workingcopy.ts');
+    await assert.rejects(createCopy(id, 'SEC186 copy', 'admin'), /needs a database role/);
+    // Settings → Security: make app_<alias> with rights on a schema
+    await a.get(`/builder/apps/${id}/settings?tab=security`);
+    await a.submit(`/builder/apps/${id}/settings/role`, { schema: S });
+    assert.match((await a.get(`/builder/apps/${id}/settings?tab=security`)).body, /The application now runs as app_sec186_legacy\./);
+    assert.equal((await owner.one<{ r: string }>('select db_role as r from meta.app where id = $1', [id]))!.r, 'app_sec186_legacy');
+    const rights = (await owner.one<{ u: boolean; s: boolean; l: boolean }>(
+      `select has_schema_privilege('app_sec186_legacy', $1, 'USAGE') as u, has_table_privilege('app_sec186_legacy', $1 || '.t', 'SELECT') as s,
+              (select rolcanlogin from pg_roles where rolname = 'app_sec186_legacy') as l`, [S]))!;
+    assert.deepEqual(rights, { u: true, s: true, l: false });
+    rolesChanged();
+    const now = await new Browser().get(`/a/${LEGACY}/1`);
+    assert.equal(now.statusCode, 200, 'end users again');
+    assert.match(now.body, /SEC186 page/);
+    // a reserved schema is refused
+    await a.get(`/builder/apps/${id}/settings?tab=security`);
+    await a.submit(`/builder/apps/${id}/settings/role`, { schema: 'meta' });
+    assert.match((await a.get(`/builder/apps/${id}/settings?tab=security`)).body, /The schema meta can&#39;t be an application&#39;s parsing schema|exists and application/);
+    assert.equal((await owner.one<{ c: boolean }>(`select has_schema_privilege('app_sec186_legacy', 'meta', 'CREATE') as c`))!.c, false);
+  });
+
+  test('a role made powerful after it was saved: refused when the application runs, in development mode too', async () => {
+    await owner.query('delete from meta.app where alias = $1', [LEGACY]);
+    const id = await legacyApp(ROLE);
+    rolesChanged();
+    assert.equal((await new Browser().get(`/a/${LEGACY}/1`)).statusCode, 200);
+    await owner.query(`alter role ${ROLE} bypassrls`);
+    try {
+      rolesChanged();
+      const res = await new Browser().get(`/a/${LEGACY}/1`);
+      assert.equal(res.statusCode, 503);
+      const a = await builder();
+      await a.get('/builder');
+      assert.equal((await a.get(`/a/${LEGACY}/1`)).statusCode, 503, 'development mode doesn\'t run a powerful role');
+      await assert.rejects(setAppRole(owner as never, ROLE, { developer: true }), (e) => e instanceof AppRoleRefused && e.problem === 'powerful');
+      assert.match((await a.get(`/builder/apps/${id}/settings?tab=security`)).body, /<li class="ck-error">✗ Runs as a dedicated database role \(<code>sec186_app<\/code>\) <b>This role is too powerful/);
+    } finally {
+      await owner.query(`alter role ${ROLE} nobypassrls`);
+      rolesChanged();
+    }
+  });
+
+  test('the upgrade (migration 167 again) changes no application and grants nothing', async () => {
+    await owner.query('delete from meta.app where alias = $1', [LEGACY]);
+    const id = await legacyApp();
+    const sql = readFileSync('db/migrations/167_app_role_required.sql', 'utf8');
+    const grants = `select coalesce(string_agg(m.roleid::regrole::text || '>' || m.member::regrole::text, ',' order by 1), '') as g from pg_auth_members m`;
+    const before0 = (await owner.one<{ g: string }>(grants))!.g;
+    const apps0 = (await owner.query('select id, alias, db_role, updated_at from meta.app order by id')).rows;
+    await owner.tx(async (c) => {
+      await c.query(sql);
+      assert.equal((await c.query(grants)).rows[0].g, before0, 'no membership granted');
+      assert.deepEqual((await c.query('select id, alias, db_role, updated_at from meta.app order by id')).rows, apps0);
+      assert.equal((await c.query('select db_role from meta.app where id = $1', [id])).rows[0].db_role, null, 'the application without a role keeps its row');
+      await c.query('rollback; begin'); // nothing of the second run stays
+    });
+    assert.equal((await new Browser().get(`/a/${LEGACY}/1`)).statusCode, 503);
+    await owner.query('delete from meta.app where id = $1', [id]);
+  });
+});
+
+describe('sprint 186 a clear message when row level security refuses the developer login', async () => {
+  const DEV = 'sec186_rls';
+  const PW = 'Sec186-rls-password!';
+  const T = 'public.sec186_rls';
+  const dev = async () => (await owner.one<{ d: string }>('select dev_role as d from meta.workspace where id = 1'))!.d;
+  const login = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password })).statusCode, 303);
+    return b;
+  };
+  const RLS = /new row violates row-level security policy for table &quot;sec186_rls&quot;/;
+  const HINT = /class="alert alert-note rls-hint"[^>]*><p class="u-m0">Row level security or the table&#39;s privileges refused this: the SQL Workshop runs as the workspace&#39;s developer login/;
+  const ASK = /Only an administrator can use the Owner connection/;
+  const SWITCH = /<form method="post" action="\/builder\/sql\/run-as"[^>]*>[\s\S]*?name="to" value="\/builder\/sql\/[a-z-]+"[\s\S]*?Switch to the Owner connection/;
+  const cleanup = async () => {
+    await owner.query(`drop table if exists ${T}, public.sec186_nogrant`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`delete from meta.sql_script where name like 'SEC186%'`);
+  };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing`, [DEV]);
+    // a table the owner made, with row level security: the developer login may insert, no policy lets it
+    await owner.query(`create table ${T} (id int primary key, note text); alter table ${T} enable row level security;
+      create policy sec186_read on ${T} for select using (true); grant select, insert on ${T} to ${await dev()}`);
+    await owner.query('create table public.sec186_nogrant (id int)');
+  });
+  after(cleanup);
+
+  test('SQL Commands (the worksheet): PostgreSQL\'s message, then the hint; administrators can switch to the Owner connection', async () => {
+    const d = await login(DEV, PW);
+    await d.get('/builder/sql/worksheet');
+    const body = (await d.submit('/builder/sql/worksheet', { sql: `insert into ${T} values (1, 'x')`, mode: 'statement' })).body;
+    assert.match(body, RLS);
+    assert.match(body, HINT);
+    assert.match(body, ASK);
+    assert.doesNotMatch(body, SWITCH, 'not offered to a developer who isn\'t an administrator');
+    // permission denied (no grant) gives the hint too; a plain error doesn't
+    assert.match((await d.submit('/builder/sql/worksheet', { sql: 'insert into public.sec186_nogrant values (1)', mode: 'statement' })).body, HINT);
+    assert.doesNotMatch((await d.submit('/builder/sql/worksheet', { sql: 'select 1/0', mode: 'statement' })).body, HINT);
+    const a = await login('admin', 'admin');
+    await a.get('/builder/sql/worksheet');
+    const ab = (await a.submit('/builder/sql/worksheet', { sql: `insert into ${T} values (1, 'x')`, mode: 'statement' })).body;
+    assert.match(ab, HINT);
+    assert.match(ab, SWITCH);
+    // the switch needs a reason and comes back to the tool; on the Owner connection the hint isn't shown
+    const sw = await a.submit('/builder/sql/run-as', { as: 'owner', reason: 'SEC186 fix rls', to: '/builder/sql/worksheet' });
+    assert.equal(sw.headers.location, '/builder/sql/worksheet');
+    await a.get('/builder/sql/worksheet');
+    const owned = (await a.submit('/builder/sql/worksheet', { sql: `insert into ${T} values (2, 'y')`, mode: 'statement', as_app: 'owner' })).body;
+    assert.doesNotMatch(owned, HINT);
+    assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from ${T}`))!.n, 1);
+    await a.submit('/builder/sql/run-as', { as: 'developer' });
+    await owner.query(`delete from meta.owner_sql_audit where reason = 'SEC186 fix rls'`);
+  });
+
+  test('SQL Scripts, Sample Data and Load Data show the hint after the refusal', async () => {
+    const d = await login(DEV, PW);
+    // SQL Scripts
+    await d.get('/builder/sql/scripts/new');
+    const script = await d.submit('/builder/sql/scripts', { name: 'SEC186 rls script', content: `insert into ${T} values (3, 'z');`, action: 'run' });
+    const shown = script.statusCode === 303 ? (await d.get(String(script.headers.location))).body : script.body;
+    assert.match(shown, RLS);
+    assert.match(shown, HINT);
+    // Sample Data: insert into the table
+    const form = (await d.get(`/builder/sql/sample-data?schema=public&t=sec186_rls`)).body;
+    const f: Record<string, string | string[]> = {};
+    const fo = form.slice(form.indexOf('<form method="post" action="/builder/sql/sample-data">'));
+    for (const m of fo.matchAll(/<input ([^>]*)>/g)) {
+      const name = /name="([^"]+)"/.exec(m[1])?.[1];
+      if (!name || name === '__csrf') continue;
+      const v = (/value="([^"]*)"/.exec(m[1])?.[1] ?? '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+      f[name] = f[name] === undefined ? v : [f[name]].flat().concat(v);
+    }
+    for (const m of fo.matchAll(/<select name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) f[m[1]] = /<option value="([^"]+)" selected>/.exec(m[2])?.[1] ?? '';
+    const sd = await d.submit('/builder/sql/sample-data', { ...f, action: 'insert' });
+    const sdBody = sd.statusCode === 303 ? (await d.get(String(sd.headers.location))).body : sd.body;
+    assert.match(sdBody, /row-level security policy|permission denied/);
+    assert.match(sdBody, HINT);
+    // Load Data into the existing table
+    await d.get('/builder/sql/load');
+    const up = await d.upload('/builder/sql/load', { headers: 'true' }, { file: { name: 'x.csv', type: 'text/csv', data: Buffer.from('id,note\n5,a\n') } });
+    assert.equal(up.statusCode, 303, up.body.slice(0, 300));
+    const url = String(up.headers.location).split('?')[0];
+    await d.get(url);
+    const ld = await d.submit(url, { h: '1', target: 'existing', table: 'sec186_rls', map_0: 'id', map_1: 'note', mode: 'append' });
+    assert.match(ld.body, /row-level security policy/);
+    assert.match(ld.body, HINT);
+    assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from ${T}`))!.n, 1, 'nothing more was inserted');
   });
 });

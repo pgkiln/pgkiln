@@ -933,8 +933,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         // (sprint 34) subscriptions: a library application and a subscriber
         ...(await (async () => {
           await owner.query(`delete from meta.app where alias in ('e2e-library', 'e2e-subscriber')`);
-          const lib = (await owner.one(`insert into meta.app (alias, name, app_type) values ('e2e-library', 'E2E shared components library', 'library') returning id`)).id;
-          const sub = (await owner.one(`insert into meta.app (alias, name) values ('e2e-subscriber', 'E2E subscriber') returning id`)).id;
+          const lib = (await owner.one(`insert into meta.app (alias, name, app_type, db_role) values ('e2e-library', 'E2E shared components library', 'library', 'hr_app') returning id`)).id;
+          const sub = (await owner.one(`insert into meta.app (alias, name, db_role) values ('e2e-subscriber', 'E2E subscriber', 'hr_app') returning id`)).id;
           await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'DEPARTMENTS_WITH_A_LONG_NAME', 'select dname as d, deptno as r from hr.dept')`, [lib]);
           await owner.query(`insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'MANAGERS', 'role', 'manager', 'Managers only.')`, [lib]);
           await subscribe(sub, lib, 'lov', 'DEPARTMENTS_WITH_A_LONG_NAME', 'admin');
@@ -1285,7 +1285,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
       const copyAlias = `hr-e2e116-${size.width}`;
       await owner.query('delete from meta.app where alias = $1', [copyAlias]);
-      const copy = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'HR Demo e2e116', 'none') returning id`, [copyAlias])).id;
+      const copy = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'HR Demo e2e116', 'none', 'hr_app') returning id`, [copyAlias])).id;
       await owner.query(`insert into meta.working_copy (app_id, main_app_id, name, base, created_by) values ($1, $2, 'e2e116', '{}', 'admin')`, [copy, hr]);
       await owner.query(`insert into meta.app_change (app_id, updated_by) values ($1, 'admin') on conflict (app_id) do update set updated_by = 'admin', updated_at = now()`, [hr]);
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, 'admin') on conflict do nothing`, [hr]);
@@ -1338,4 +1338,56 @@ describe('builder region spacing', () => {
     for (const m of await page.$$eval('.sc-grid > .region', (els) => els.map((e) => getComputedStyle(e).marginTop))) assert.equal(m, '0px');
     await page.context().close();
   });
+});
+
+// (sprint 186) the new screens at a phone's width, and at 360 px (CI's fonts render wider than a developer's):
+// Settings → Security of an application without a role (the red line and Create app_<alias>), the worksheet's hint
+// after a refusal by row level security, and the page an end user gets for an application without a role.
+describe('sprint 186 an application\'s own role and the RLS hint fit a phone', () => {
+  const ALIAS = 'e2e186-legacy';
+  const T = 'public.e2e186_rls';
+  before(async () => {
+    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+    await owner.query(`drop table if exists ${T}`);
+    await owner.tx(async (c) => {
+      await c.query('alter table meta.app disable trigger app_role_check');
+      const id = (await c.query(`insert into meta.app (alias, name, authentication) values ($1, 'E2E 186 an application made before 0.97 without a role', 'none') returning id`, [ALIAS])).rows[0].id;
+      await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+      await c.query('alter table meta.app enable trigger app_role_check');
+      await c.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false)`, [id]);
+    });
+    const dev = (await owner.one<{ d: string }>('select dev_role as d from meta.workspace where id = 1'))!.d;
+    await owner.query(`create table ${T} (id int); alter table ${T} enable row level security; grant insert on ${T} to ${dev}`);
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+    await owner.query(`drop table if exists ${T}`);
+  });
+  for (const [vp, size] of [['phone-360', { width: 360, height: 780 }], ['phone', VIEWPORTS.phone]] as const) {
+    test(`at ${vp}`, async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      // the end user's page
+      const res = await page.goto(`${base}/a/${ALIAS}/1`);
+      assert.equal(res?.status(), 503);
+      await check(page, 'app-without-role', vp);
+      await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
+      const id = (await owner.one(`select id from meta.app where alias = $1`, [ALIAS])).id;
+      await page.goto(`${base}/builder/apps/${id}/settings?tab=security`);
+      assert.ok(await page.locator('#make-role').isVisible());
+      assert.ok(await page.locator('.checklist .ck-error').isVisible());
+      await check(page, 'settings-security-no-role', vp);
+      await page.goto(`${base}/builder/sql/worksheet`);
+      await page.evaluate((t) => {
+        const ta = document.querySelector<HTMLTextAreaElement>('textarea[name=sql]')!;
+        ta.value = t;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+        ta.focus();
+        ta.setSelectionRange(0, 0);
+      }, `insert into ${T} values (1)`);
+      await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+      await page.locator('.rls-hint').first().waitFor();
+      await check(page, 'worksheet-rls-hint', vp);
+      await page.context().close();
+    });
+  }
 });

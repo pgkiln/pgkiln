@@ -622,7 +622,8 @@ The role is **required**, and some roles are **refused**:
 - **an empty role**: refused by *Settings → Security*, by every import and by `meta.app` itself (migration 167), so a
   forged settings post or a hand-written `insert` can't make one either;
 - **a powerful role** (`meta.role_is_powerful`): a superuser; a role with `BYPASSRLS`, `CREATEROLE`, `CREATEDB` or
-  `REPLICATION`; pgkiln's own roles and PostgreSQL's (`pgkiln*`, `pg_*`); the owner of pgkiln's schemas; and any role
+  `REPLICATION`; pgkiln's own roles (`pgkiln_runtime`, `pgkiln_app_code`, `pgkiln_authenticator`, `pgkiln_anon`, the
+  workspaces' logins) and PostgreSQL's (`pg_*`); the owner of pgkiln's schemas; and any role
   that is a member of one of these (it could `SET ROLE` to it) or of `pg_read_all_data`, `pg_write_all_data` or the
   server file roles. The SQL Workshop's developer logins (sprint 185) use the same check.
 

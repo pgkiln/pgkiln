@@ -34,7 +34,7 @@ before(async () => {
   await owner.query(`delete from meta.workspace where name = 'WH109 test'`);
   // a workspace of its own: other tests' page views stay out of its numbers
   ws = (await owner.one(`insert into meta.workspace (name) values ('WH109 test') returning id`)).id;
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Home 109 app', 'none') returning id`, [ALIAS])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Home 109 app', 'none', 'hr_app') returning id`, [ALIAS])).id;
   await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [appId, ws]);
   await owner.query(`insert into meta.activity_log (app_id, page_no, username, event, at) select $1, 1, 'wh109_user', 'page_view', now() - interval '30 minutes' from generate_series(1, 7)`, [appId]);
   await owner.query(`insert into meta.activity_log (app_id, page_no, username, event, at) select $1, 1, 'wh109_old', 'page_view', now() - interval '3 days' from generate_series(1, 9)`, [appId]);

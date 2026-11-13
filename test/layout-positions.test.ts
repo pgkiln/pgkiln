@@ -38,7 +38,7 @@ const at = (body: string, text: string) => {
 before(async () => {
   app = await buildApp({ logger: false });
   await owner.query('delete from meta.app where alias = $1', [alias]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Positions test', 'none') returning id`, [alias])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Positions test', 'none', 'hr_app') returning id`, [alias])).id;
   pageId = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [appId])).id;
   r.body = await region('Main', null, 10);
   r.banner = await region('Notice', 'banner', 20);
@@ -235,7 +235,7 @@ describe('the rendering tree', () => {
 
   test('Copy to other page: item names get the page\'s number; not into another application', async () => {
     const page2 = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 2, 'Second') returning id`, [appId])).id;
-    const otherApp = (await owner.one(`insert into meta.app (alias, name, authentication) values ('ts-s77b', 'Other', 'none') returning id`)).id;
+    const otherApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('ts-s77b', 'Other', 'none', 'hr_app') returning id`)).id;
     const otherPage = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Other') returning id`, [otherApp])).id;
     try {
       await owner.query(`insert into meta.item (page_id, region_id, seq, name, label) values ($1, $2, 10, 'P1_CODE', 'Code')`, [pageId, r.footer]);

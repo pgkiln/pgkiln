@@ -31,7 +31,7 @@ async function mcp(name: string, args: Record<string, unknown>) {
 
 before(async () => {
   await owner.query(`delete from meta.app where alias like $1`, [`${A}%`]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Advise 144', 'app_users') returning id`, [A])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Advise 144', 'app_users', 'hr_app') returning id`, [A])).id;
   await owner.query(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'ADMIN', 'role', 'admin')`, [appId]);
   // page 1: public, writes data; page 2: signed in, writes data, no scheme, a region with an unknown column;
   // page 3: unrestricted with an item; page 4: writes data behind a scheme (no finding)

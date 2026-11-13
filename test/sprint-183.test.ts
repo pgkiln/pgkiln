@@ -23,7 +23,7 @@ const admin = async () => {
 before(async () => {
   app = await buildApp({ logger: false });
   await owner.query('delete from meta.app where alias = $1', [ALIAS]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'S183 conditions', 'none') returning id`, [ALIAS]))!.id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'S183 conditions', 'none', 'hr_app') returning id`, [ALIAS]))!.id;
   const p1 = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Orders') returning id`, [appId]))!.id;
   await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 2, 'Plain')`, [appId]);
   await owner.query(`insert into meta.region (page_id, type, title, condition_type, condition, condition_value) values ($1, 'static', 'Notes <b>x</b>', 'item_equals', 'P1_STATUS', '<i>open</i>')`, [p1]);

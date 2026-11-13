@@ -23,7 +23,7 @@ before(async () => {
   await cleanup();
   app = await buildApp({ logger: false });
   for (const [alias, group] of [['ss-one', 'ss_group'], ['ss-two', 'ss_group'], ['ss-other', 'ss_else']]) {
-    const id = (await owner.one(`insert into meta.app (alias, name, authentication, session_group) values ($1, $1, 'app_users', $2) returning id`, [alias, group])).id;
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication, session_group, db_role) values ($1, $1, 'app_users', $2, 'hr_app') returning id`, [alias, group])).id;
     const page = (await owner.one(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home') returning id`, [id])).id;
     await owner.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Hi', 'static', '<p>Hello &APP_USER.</p>')`, [page]);
   }
@@ -112,7 +112,7 @@ describe('session sharing', () => {
     const id = (await owner.one(`select id from meta.app where alias = 'ss-other'`)).id;
     const page = (await dev.get(`/builder/apps/${id}/settings`)).body;
     assert.match(page, /name="session_group" type="text" value="ss_else"/);
-    const form = { name: 'ss-other', alias: 'ss-other', home_page: '1', authentication: 'app_users', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' };
+    const form = { name: 'ss-other', alias: 'ss-other', home_page: '1', authentication: 'app_users', db_role: 'hr_app', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' };
     await dev.submit(`/builder/apps/${id}/settings`, { ...form, session_group: 'SS_Group' });
     assert.equal((await owner.one('select session_group from meta.app where id = $1', [id])).session_group, 'ss_group', 'lower case');
     await dev.get(`/builder/apps/${id}/settings`);

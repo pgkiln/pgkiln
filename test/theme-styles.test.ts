@@ -28,7 +28,7 @@ before(async () => {
   app = await buildApp({ logger: false });
   await owner.query('delete from meta.app where alias = $1', [alias]);
   appId = (await owner.one(
-    `insert into meta.app (alias, name, authentication, theme) values ($1, 'Theme test', 'none', $2) returning id`,
+    `insert into meta.app (alias, name, authentication, theme, db_role) values ($1, 'Theme test', 'none', $2, 'hr_app') returning id`,
     [alias, JSON.stringify({ accent: '#123456', styles: STYLES, style: 'Ocean', style_choice: true })],
   )).id;
   pageId = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [appId])).id;
@@ -242,7 +242,7 @@ describe('Theme Roller in the builder', () => {
     // Settings → Theme saves its own keys and keeps the styles
     const settings = await dev.get(`/builder/apps/${appId}/settings`);
     assert.match(settings.body, /Theme Roller: style variants/);
-    await dev.submit(`/builder/apps/${appId}/settings`, { name: 'Theme test', alias, home_page: '1', authentication: 'none', accent: '#222222', header: '#333333', nav: 'top', mode: 'auto', user_choice: 'true', local_login: 'true', language: 'en', language_from: 'browser' });
+    await dev.submit(`/builder/apps/${appId}/settings`, { name: 'Theme test', alias, home_page: '1', authentication: 'none', db_role: 'hr_app', accent: '#222222', header: '#333333', nav: 'top', mode: 'auto', user_choice: 'true', local_login: 'true', language: 'en', language_from: 'browser' });
     theme = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
     assert.equal(theme.accent, '#222222');
     assert.equal(theme.nav, 'top');
@@ -330,7 +330,7 @@ describe('base style Iris', () => {
       const settings = (await dev.get(`/builder/apps/${id}/settings`)).body;
       assert.match(settings, /<option value="iris" selected/);
       assert.match(settings, /name="accent"[^>]*value="#2b62c4"/);
-      const form = { name: 'Iris test', alias: 'ts-iris', home_page: '1', authentication: 'none', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' };
+      const form = { name: 'Iris test', alias: 'ts-iris', home_page: '1', authentication: 'none', db_role: 'hr_app', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' };
       await dev.submit(`/builder/apps/${id}/settings`, { ...form, base: 'standard', accent: '#2b62c4', header: '#3a3632' });
       assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.base, undefined);
       assert.equal((await owner.one('select theme from meta.app where id = $1', [id])).theme.accent, undefined, 'a base style\'s own colour is not stored');
@@ -385,7 +385,7 @@ describe('Theme Roller: dark-mode colours, live preview, items and report column
   test('Settings → Theme keeps dark colours of the base theme when "use" is checked', async () => {
     const dev = await login();
     await dev.get(`/builder/apps/${appId}/settings`);
-    const form = { name: 'Theme test', alias, home_page: '1', authentication: 'none', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser', accent: '#123456' };
+    const form = { name: 'Theme test', alias, home_page: '1', authentication: 'none', db_role: 'hr_app', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser', accent: '#123456' };
     try {
       await dev.submit(`/builder/apps/${appId}/settings`, { ...form, accent_dark: '#ddeeff', accent_dark_own: 'true', header_dark: '#010203' });
       const t = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;

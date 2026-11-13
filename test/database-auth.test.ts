@@ -23,7 +23,7 @@ before(async () => {
   await owner.query(`create role ${BOB} login password 'Bob-pw-30!'`);
   await owner.query(`create role ${GROUP} nologin`);
   await owner.query(`grant ${GROUP} to ${BOB}`);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles) values ($1, 'Database sign-in', 'database', $2) returning id`, [alias, [ANN]])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_auth_roles, db_role) values ($1, 'Database sign-in', 'database', $2, 'hr_app') returning id`, [alias, [ANN]])).id;
   const page = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home') returning id`, [appId])).id;
   await owner.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Who', 'static', '<p>Signed in as &APP_USER.</p>')`, [page]);
 });
@@ -81,7 +81,7 @@ describe('database accounts', () => {
     const form = await b.get(`/builder/apps/${appId}/settings`);
     assert.match(form.body, /<option value="database" selected>Database accounts/);
     const saved = await b.post(`/builder/apps/${appId}/settings`, {
-      __csrf: b.lastCsrf, name: 'Database sign-in', alias, home_page: '1', authentication: 'database',
+      __csrf: b.lastCsrf, name: 'Database sign-in', alias, home_page: '1', authentication: 'database', db_role: 'hr_app',
       db_auth_roles: ` ${ANN}, ${BOB}, ${ANN}, bad\u0001name `, db_auth_member_of: GROUP,
     });
     assert.equal(saved.statusCode, 303);

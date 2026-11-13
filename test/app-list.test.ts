@@ -22,7 +22,7 @@ before(async () => {
   await owner.query(`delete from meta.developer where username = $1`, [DEV]);
   await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, DEV_PW]);
   await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing`, [DEV]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'App list 116', 'none') returning id`, [alias])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'App list 116', 'none', 'hr_app') returning id`, [alias])).id;
   pageId = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [appId])).id;
 });
 

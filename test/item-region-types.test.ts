@@ -40,7 +40,7 @@ before(async () => {
   app = await buildApp({ logger: false });
   hrId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   await owner.query('delete from meta.app where alias = $1', [alias]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Types test', 'none') returning id`, [alias])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Types test', 'none', 'hr_app') returning id`, [alias])).id;
   const home = (await owner.one(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false) returning id`, [appId])).id;
   pageId = (await owner.one(`insert into meta.page (app_id, page_no, name, title, requires_auth, parent_page, help) values ($1, 2, 'Picks', 'Picks', false, 1, $2) returning id`,
     [appId, 'Some **help** for &P2_ONE..\n\n- one\n- two'])).id;

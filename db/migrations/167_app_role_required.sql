@@ -11,7 +11,9 @@
 --   - meta.role_is_powerful(role): a role no application (and no developer
 --     login, 166) may run as: a superuser, a role that creates roles or
 --     databases, bypasses row level security or replicates; pgkiln's own
---     roles and PostgreSQL's (pgkiln*, pg_*); and any member of such a role,
+--     roles (pgkiln_runtime, pgkiln_app_code, pgkiln_authenticator,
+--     pgkiln_anon, the workspaces' logins) and PostgreSQL's (pg_*); and any
+--     member of such a role,
 --     of the owner of pgkiln's schemas, or of PostgreSQL's roles that read
 --     or write every table or the server's files;
 --   - meta.app refuses an empty db_role and a powerful one when an
@@ -33,7 +35,9 @@
 create or replace function meta.role_is_powerful(p_role text) returns boolean
 language sql stable set search_path = meta, pg_catalog as $$
   select p_role is not null and (
-    p_role like 'pgkiln%' or p_role like 'pg\_%'
+    -- pgkiln's own roles (the runtime, application code, PostgREST's and the workspaces' logins) and PostgreSQL's
+    p_role in ('pgkiln_runtime', 'pgkiln_app_code', 'pgkiln_authenticator', 'pgkiln_anon')
+    or p_role ~ '^pgkiln_ws[0-9]+_(run|dev)_' or p_role like 'pg\_%'
     or exists (
       select 1 from pg_roles r
        where r.rolname = p_role
@@ -42,7 +46,8 @@ language sql stable set search_path = meta, pg_catalog as $$
               or exists (select 1 from pg_roles g
                           where g.oid <> r.oid
                             and (g.rolsuper or g.rolcreaterole or g.rolcreatedb or g.rolbypassrls or g.rolreplication
-                                 or g.rolname like 'pgkiln%'
+                                 or g.rolname in ('pgkiln_runtime', 'pgkiln_app_code', 'pgkiln_authenticator', 'pgkiln_anon')
+                                 or g.rolname ~ '^pgkiln_ws[0-9]+_(run|dev)_'
                                  or g.rolname in ('pg_read_all_data', 'pg_write_all_data', 'pg_execute_server_program',
                                                   'pg_read_server_files', 'pg_write_server_files'))
                             and pg_has_role(r.oid, g.oid, 'MEMBER'))
@@ -52,7 +57,7 @@ language sql stable set search_path = meta, pg_catalog as $$
                             and pg_has_role(r.oid, n.nspowner, 'MEMBER')))));
 $$;
 comment on function meta.role_is_powerful(text) is
-  'A role no application or developer login may run as (167): superuser, CREATEROLE, CREATEDB, BYPASSRLS, REPLICATION, pgkiln''s or PostgreSQL''s own, a member of one of those or of the owner of pgkiln''s schemas.';
+  'A role no application or developer login may run as (167): superuser, CREATEROLE, CREATEDB, BYPASSRLS, REPLICATION, pgkiln''s own roles (runtime, app code, PostgREST, workspace logins) or PostgreSQL''s, a member of one of those or of the owner of pgkiln''s schemas.';
 
 -- (166) a shared workspace's developer login: the same check
 create or replace function meta.workspace_dev_roles(p_ws int) returns setof text
