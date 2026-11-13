@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-11-13
+
 ### Security
 - **The SQL Workshop no longer runs as the owner** (sprint 185, NX-S1; migration 166): every workspace has a
   developer login (`pgkiln_ws<id>_dev_<suffix>`; existing workspaces get theirs from the migration, new ones when
