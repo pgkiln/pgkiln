@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.93.0 (November 2026): beyond parity: `meta.web_request` as an outbox (retries, callbacks, ordered delivery, idempotency keys) and inbound webhooks (the REST handler type `webhook`: signed, deduplicated, processed afterwards).
+- **Current release:** 0.94.0 (November 2026): parity leftovers: OAuth clients limited to REST modules, map layers left out of the legend with a Sample Maps page per shape layer.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

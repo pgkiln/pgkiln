@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-11-13
+
 ### Added
 - **OAuth clients limited to REST modules** (sprint 178, DA-11 leftover; migration 162
   `meta.api_client.rest_modules`): an OAuth client of an application can be limited to some of its REST modules
