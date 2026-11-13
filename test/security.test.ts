@@ -15158,3 +15158,109 @@ describe('sprint 183 Database Users links a role to an isolated workspace (DA-13
     assert.equal((await owner.query(`select 1 from meta.workspace_role where role_name = $1`, [POWER])).rowCount, 0);
   });
 });
+
+describe('sprint 182 the APEX importer (CD-1/CD-4 leftover)', () => {
+  const ALIAS = 'sec182-apex';
+  const DEV2 = 'sec182_dev';
+  const DEV2_PW = 'Sec182-dev-password!';
+  const EVIL = `<script>alert(1)</script>`;
+  // an "export" whose PL/SQL would do harm if it ran: it is only read
+  const EXPORT = `prompt APPLICATION 1 - it's harmless
+create table public.sec182_pwned (id int);
+begin
+  execute immediate 'create table public.sec182_pwned2 (id int)';
+wwv_imp_workspace.create_flow(
+ p_id=>wwv_flow.g_flow_id
+,p_name=>'${EVIL} app'
+,p_alias=>'SEC182'
+);
+wwv_flow_imp_page.create_page(p_id=>1, p_name=>'<img src=x onerror=alert(2)>');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(11), p_plug_name=>'${EVIL}', p_plug_source_type=>'NATIVE_JET_CHART', p_plug_source=>'</pre>${EVIL}');
+wwv_flow_imp_page.create_page_process(p_id=>wwv_flow_imp.id(12), p_process_name=>'Drop', p_process_type=>'NATIVE_PLSQL',
+  p_process_sql_clob=>'begin execute immediate ''create table public.sec182_pwned3 (id int)''; end;');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(13), p_validation_name=>'${EVIL}', p_validation_type=>'NATIVE_${EVIL}');
+end;
+/
+`;
+  const file = (data: string | Buffer, name = 'f1.sql') => ({ file: { name, type: 'application/sql', data: Buffer.isBuffer(data) ? data : Buffer.from(data) } });
+  const builder = async (user = 'admin', password = 'admin') => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password })).statusCode, 303);
+    await b.get('/builder/import/apex');
+    return b;
+  };
+  const tableExists = async (t: string) => (await owner.one<{ r: string | null }>('select to_regclass($1)::text as r', [t]))!.r !== null;
+  const cleanup = async () => {
+    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+    await owner.query('delete from meta.developer where username = $1', [DEV2]);
+    await owner.query(`delete from meta.temp_file where item_name = 'APEX_IMPORT'`);
+  };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV2, DEV2_PW]);
+  });
+  after(cleanup);
+
+  test('developers only, with the CSRF token', async () => {
+    const king = new FileBrowser(app);
+    await king.login('king');
+    for (const b of [new FileBrowser(app), king]) {
+      assert.equal((await b.get('/builder/import/apex')).statusCode, 302);
+      assert.equal((await b.upload('/builder/import/apex', {}, file(EXPORT))).statusCode, 302);
+    }
+    const dev = await builder();
+    dev.lastCsrf = 'forged';
+    assert.equal((await dev.upload('/builder/import/apex', {}, file(EXPORT))).statusCode, 403);
+    const ok = await builder();
+    const up = await ok.upload('/builder/import/apex', {}, file(EXPORT));
+    assert.equal(up.statusCode, 303);
+    const url = up.headers.location as string;
+    await ok.get(url);
+    assert.equal((await ok.post(url, { __csrf: 'forged', action: 'import', alias: ALIAS, schema: '' })).statusCode, 403);
+    assert.ok(!(await owner.one('select 1 from meta.app where alias = $1', [ALIAS])));
+    // another developer does not get this developer's file
+    const other = await builder(DEV2, DEV2_PW);
+    assert.equal((await other.get(url)).statusCode, 303);
+    assert.equal((await other.submit(url, { action: 'import', alias: ALIAS, schema: '' })).statusCode, 303);
+    assert.ok(!(await owner.one('select 1 from meta.app where alias = $1', [ALIAS])));
+  });
+
+  test('the file is never run, and its names and markup are escaped in the report', async () => {
+    const dev = await builder();
+    const up = await dev.upload('/builder/import/apex', {}, file(EXPORT));
+    const url = up.headers.location as string;
+    const rep = await dev.get(url);
+    assert.equal(rep.statusCode, 200);
+    assert.doesNotMatch(rep.body, /<script>alert\(1\)/);
+    assert.doesNotMatch(rep.body, /<img src=x/);
+    assert.match(rep.body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+    const done = await dev.submit(url, { action: 'import', alias: ALIAS, schema: '' });
+    assert.equal(done.statusCode, 303, done.body.slice(0, 300));
+    for (const t of ['public.sec182_pwned', 'public.sec182_pwned2', 'public.sec182_pwned3']) assert.equal(await tableExists(t), false, t);
+    // the placeholder of an unmapped region holds its source as text
+    const src = (await owner.one<{ source: string }>(`select r.source from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id where a.alias = $1`, [ALIAS]))!.source;
+    assert.doesNotMatch(src, /<script>/);
+    assert.match(src, /&lt;\/pre&gt;&lt;script&gt;/);
+    // the PL/SQL is stored as text for porting, not run
+    assert.ok(await owner.one(`select 1 from meta.process x join meta.page p on p.id = x.page_id join meta.app a on a.id = p.app_id where a.alias = $1 and x.code like '%sec182_pwned3%'`, [ALIAS]));
+    assert.equal(await tableExists('public.sec182_pwned3'), false);
+  });
+
+  test('size limits: the upload, a zip that unpacks to too much, a broken file', async () => {
+    const dev = await builder();
+    const big = await dev.upload('/builder/import/apex', {}, file(Buffer.alloc(21 * 1024 * 1024, 0x20)));
+    assert.equal(big.statusCode, 422);
+    assert.match(big.body, /larger than 20 MB/);
+    const { zipSync } = await import('fflate');
+    const bomb = Buffer.from(zipSync({ 'f1/application/a.sql': new Uint8Array(101 * 1024 * 1024) }, { level: 1 }));
+    assert.ok(bomb.length < 1024 * 1024);
+    const z = await dev.upload('/builder/import/apex', {}, file(bomb, 'f1.zip'));
+    assert.equal(z.statusCode, 422);
+    assert.match(z.body, /holds too much/);
+    const broken = await dev.upload('/builder/import/apex', {}, file("begin wwv_flow_imp_page.create_page(p_name=>'not closed); end;"));
+    assert.equal(broken.statusCode, 422);
+    assert.match(broken.body, /not closed/);
+    assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from meta.temp_file where item_name = 'APEX_IMPORT'`))!.n <= 2, true);
+  });
+});

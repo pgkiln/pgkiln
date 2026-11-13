@@ -32,6 +32,12 @@ src/
                            never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
                            or fails a file in public.pgkiln_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
+  apexparse.ts             (sprint 182) an APEX SQL export read as text, never run: a tokenizer ('' and q'[…]' quotes, unistr,
+                           comments, SQL*Plus lines) and every wwv_* call as an ApexCall with its named arguments evaluated
+                           (wwv_flow_imp.id → ApexId with every digit, wwv_flow_string.join, ||, nvl); joinSplitExport (install.sql order)
+  apeximport.ts            (sprint 182) apexToDoc: ApexCalls → a pgkiln/2 document (imported by meta.import_app like any export) and the
+                           import report (mapped / mapped with notes / not mapped, needs porting); the validation, process, item,
+                           region, condition and dynamic action type maps; apexSource (.sql or a .zip with limits), reportText
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows
@@ -383,6 +389,8 @@ src/
                            applications / users / developers over meta.developer.home_timeframe, System message (src/release-check.ts),
                            POST timeframe, message, release-check; releaseCheckRegion for Instance settings
     newapp.ts              creating an application (schema, role app_<alias>, Home page, first user): blank app, from a file, from tables
+    apex-import.ts         (sprint 182) Import → From Oracle APEX: upload (meta.temp_file of the session), the report, import with
+                           meta.import_app into the developer's workspace
     appfromfile.ts         Create → From a file: upload (src/dataload.ts parsing), proposed table/columns, one transaction:
                            app + table + rows (loadRows) + pages (meta.generate_page: report and form, chart, facets)
     appsheets.ts           Create → From a file with several sheets/JSON arrays: parseBook, proposed keys and foreign keys,

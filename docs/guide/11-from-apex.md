@@ -80,7 +80,89 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Universal Theme 26.2: *Pillar Light* / *Pillar Dark*, Theme Roller's *Header Pillar Strip*, `u-color-*-subtle` | Theme Roller → *Navigation appearance* and *Header strip colour* (per application or style), the same utility classes ([chapter 14](14-globalization.md#navigation-appearances-pillar-light-and-pillar-dark)) |
 | Template Options (regions, buttons) | *Template options* in the Page Designer: CSS classes from a fixed list ([chapter 4](04-pages-and-regions.md#template-options)) |
 | ORDS | Not needed to serve apps; REST APIs with PostgREST, see [below](#ords-and-postgrest) |
-| Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON) |
+| Export `f123.sql` / APEXlang | `meta.export_app('alias')` (JSON); an APEX `f123.sql` imports with `pgkiln import-apex` or Import → *From Oracle APEX* ([below](#importing-an-apex-application)) |
+
+## Importing an APEX application
+
+(Sprint 182.) An APEX application export in the **SQL format** (`f100.sql`, or a split export as a
+directory or `.zip`) becomes a pgkiln application in one step:
+
+```sh
+pgkiln import-apex f100.sql --dry-run            # the report only
+pgkiln import-apex f100.sql --alias sales --schema sales
+pgkiln import-apex f100.sql --out apps/sales     # the application files, to edit, then: pgkiln import apps/sales
+```
+
+or in the builder: **App Builder → Import → From Oracle APEX** (upload, read the report, choose the
+alias and the schema, Import). The file is **read as text and never run**: the importer parses the
+`wwv_flow_imp…` calls (named arguments, `q'[…]'` quotes, `wwv_flow_string.join` lines, `unistr`,
+`wwv_flow_imp.id` ids) and builds the same document `meta.export_app()` writes, which
+`meta.import_app()` imports like any export. The tables, views and packages of the parsing schema
+are not in an application export: create them in PostgreSQL first (`--schema` names the schema
+unqualified tables are in; the default is the parsing schema in lower case). The application gets no
+database role: set it in Settings.
+
+**The import report** lists every component as *mapped*, *mapped with notes* or *not mapped*,
+with its APEX type, and marks what **needs porting**: PL/SQL is carried over as it is (into the
+PL/pgSQL or SQL field of the pgkiln component) and Oracle SQL keeps its `nvl`, `decode`, `sysdate`,
+`dual`, `rownum`, `(+)` and package calls, which the report names. Port them with the table
+[below](#porting-plsql-to-plpgsql); the [Advisor](03-builder.md#advisor) then finds what doesn't
+run yet. Nothing unknown fails the import: it is in the report.
+
+What maps:
+
+| APEX | pgkiln |
+|---|---|
+| Application: name, alias, primary language, date format, home page, version | The same; authentication becomes the user directory, themes and templates pgkiln's theme |
+| Pages: number, name, title, normal or modal (non-modal: modal), public, help, authorization | The same. The global page (0) and the login page (with `apex_authentication.login`) are not imported |
+| Regions: Static Content, Classic Report, Interactive Report, Form, Interactive Grid, Breadcrumb, Help Text | `static`, `classic_report`, `report`, `form` (table, key column and item), `grid` (table, key, columns), `breadcrumb`, `help_text`; a table source becomes `select … from schema.table`. Other types (charts, cards, maps, PL/SQL dynamic content, …) become a static region that says what it was, with its source |
+| Page items: text (e-mail, phone, URL), text area, number, date picker, select list, radio group, checkbox(es), switch, hidden, display only, password, popup LOV, shuttle, file, rich text, Markdown, star rating, colour, combobox, Select One / Many, QR code, image upload, display image, percent graph, address, display map | The pgkiln [item type](05-items.md#item-types) of the same name; form columns, primary key, required, help, lists of values (shared, SQL, `STATIC`/`STATIC2`), static defaults. A SQL or PL/SQL default or source becomes a before header [computation](06-processing.md#computations). Plug-in items become text fields |
+| Buttons: submit, redirect to a page of the application (with items), defined by dynamic action | `submit`, `redirect` (target page and items), `da`; position as the slot |
+| Server-side conditions | The [same catalogue](06-processing.md#server-side-conditions): rows returned, expression, function body, request =/in, item null / not null / zero / = / in list, current page, public user, language, never |
+| Computations: static, item, query, SQL / PL/SQL expression, function body | `static`, `item`, `sql_query`, `sql_expression`, `function_body` |
+| Branches to a page of the application, function returning a URL | `page` with items, `function` |
+| Dynamic actions: change, click, page load, Dialog Closed, focus, key and mouse events, after refresh, before submit, custom; Show, Hide, Enable, Disable, Set Value, Refresh, Execute Server-side Code, Submit, Close / Cancel Dialog, Alert, Confirm, Set Focus, Add / Remove Class, Clear, Cancel Event | One pgkiln row per action with the event's trigger and client-side condition; *false* actions with the opposite condition |
+| Shared lists of values (SQL, table, static), authorization schemes (exists, not exists, is in group / role) | `lov`, `authz_scheme` (`sql` or `role`); a scheme that isn't mapped is not created, so the components that name it are denied (fail closed) until you add it |
+| Navigation menu | The navigation menu (entries to pages of the application) |
+
+Validation types (CD-1):
+
+| APEX `p_validation_type` | pgkiln `type` | Notes |
+|---|---|---|
+| `ITEM_NOT_NULL`, `ITEM_NOT_NULL_OR_ZERO`, `ITEM_NOT_ZERO`, `ITEM_CONTAINS_NO_SPACES`, `ITEM_IS_ALPHANUMERIC`, `ITEM_IS_NUMERIC`, `ITEM_IS_DATE`, `ITEM_IS_TIMESTAMP` | `not_null`, `not_null_or_zero`, `not_zero`, `no_spaces`, `alphanumeric`, `numeric`, `valid_date`, `valid_timestamp` | |
+| `ITEM_IN_VALIDATION_EQ_STRING2`, `…_NOT_EQ_STRING2`, `…_IN_STRING2`, `…_NOT_IN_STRING2` | `equals`, `not_equals`, `in_list`, `not_in_list` | Colon lists stay colon lists |
+| `ITEM_IN_VALIDATION_CONTAINS_ONLY_CHAR_IN_STRING2`, `…_AT_LEAST_ONE_CHAR_…`, `…_NO_CHAR_…` | `chars_only`, `chars_any`, `chars_none` | |
+| `REGULAR_EXPRESSION` | `regex` | Checked by PostgreSQL (POSIX): check Oracle-only syntax |
+| `EXISTS`, `NOT_EXISTS`, `SQL_EXPRESSION`, `EXPRESSION` (SQL) | `exists`, `not_exists`, `sql` | Oracle SQL is named in the report |
+| `EXPRESSION` (PL/SQL), `PLSQL_EXPRESSION` | `sql` | Needs porting |
+| `FUNC_BODY_RETURNING_BOOLEAN`, `FUNC_BODY_RETURNING_ERR_TEXT` | `function_body`, `function_error` | Needs porting |
+| `PLSQL_ERROR`, plug-in validations, interactive grid column validations | not mapped | Use `function_body`, or a [grid column's validation](04-pages-and-regions.md#grid-interactive-grid) |
+
+The error message's `#LABEL#` becomes the item's label; *Always Execute*, *When Button Pressed*,
+the server-side condition and the display location (*Inline with Field and in Notification*, *Inline
+with Field*, *Inline in Notification*; *On Error Page* becomes a notification) carry over.
+
+Process types (CD-4):
+
+| APEX `p_process_type` | pgkiln `type` | Notes |
+|---|---|---|
+| `NATIVE_FORM_INIT`, `NATIVE_FORM_DML` | `form_init`, `form_dml` | With the form region. `form_dml` decides by the button name (`CREATE`, `SAVE`, `DELETE` …): the report says when a button's *Database Action* doesn't match its name |
+| `NATIVE_IG_DML` | `grid_dml` | With the grid region |
+| `NATIVE_PLSQL` | `sql` | The PL/SQL as it is: needs porting |
+| `NATIVE_SESSION_STATE` (clear the current page, pages, items, all) | `clear_session_state` | `{"pages": …}`, `{"items": …}`, `{"all": true}` |
+| `NATIVE_CLOSE_WINDOW` | `close_dialog` | Items to return as `{"items": …}` |
+| `NATIVE_RESET_PAGINATION` | `reset_pagination` | |
+| `NATIVE_SEND_EMAIL` | `send_email` | From, to, cc, bcc, reply to, subject, plain and HTML body; attachments and e-mail templates are not carried over; the application needs a [mail service](06-processing.md#sending-e-mail) |
+| `NATIVE_INVOKE_API` on a PL/SQL package | `sql`: `call pkg.proc(p_a => :P3_ID, …)` | Create the function or procedure in PostgreSQL (a schema for the package) |
+| `NATIVE_INVOKE_API` on a REST data source | `invoke_api` with `source` and `params` | Create the [REST data source](19-rest-data-sources.md) under that name |
+| `NATIVE_EXECUTION_CHAIN` | `chain` | Child processes keep their chain |
+| `NATIVE_FORM_FETCH`, `NATIVE_FORM_PROCESS` (legacy forms), `NATIVE_WEB_SERVICE`, `NATIVE_USER_PREFERENCES`, `NATIVE_PRINT_REPORT`, `NATIVE_GEOCODING`, `NATIVE_WORKFLOW`, `NATIVE_HUMAN_TASK_*`, plug-ins | not mapped | The report says which pgkiln type to set up by hand |
+
+Not imported yet: interactive report and grid column settings and saved reports, charts, cards,
+calendars, maps, trees and faceted search, lists other than the navigation menu, application items,
+processes and computations, shared component types beyond lists of values and authorization
+schemes, translations, page JavaScript and CSS, plug-ins, and the APEXlang (`.apx`) and YAML
+exports.
 
 ## Users per application
 

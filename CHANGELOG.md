@@ -30,6 +30,18 @@ All notable changes to this project are documented here. The format follows
   pgkiln's own icons by use, Lucide and Font APEX names, and the modifiers (size, colour, spin, rotate, flip).
   *Colours* shows the fifteen colour classes, the status colours and the theme's variables, which follow the
   application's style and dark mode.
+- **An APEX application importer** (sprint 182, CD-1/CD-4 leftover; no migration): `pgkiln import-apex f100.sql`
+  and App Builder → Import → **From Oracle APEX** read an APEX application export in the SQL format (a single file,
+  or a split export as a directory or `.zip`) as text, never running it, and translate it into a pgkiln application
+  that `meta.import_app()` imports like any export: pages, regions (static, classic and interactive reports, forms,
+  interactive grids, breadcrumb, help text), page items, buttons, validations and processes by the mapping in guide
+  chapter 11 (every validation type APEX has as a declarative type; form init / DML, grid DML, PL/SQL, clear
+  session state, close dialog, reset pagination, send e-mail, invoke API, execution chains), computations, branches,
+  simple dynamic actions, server-side conditions, lists of values, authorization schemes and the navigation menu.
+  PL/SQL is carried over as it is and marked *needs porting*; Oracle-only SQL (`nvl`, `sysdate`, `dual`, `rownum`,
+  `(+)` …) is named. The **import report** lists every component as mapped, mapped with notes or not mapped, with its
+  APEX type. `--dry-run` only reports, `--out` writes the application files to edit first, `--schema` names the
+  schema of unqualified tables.
 
 ### Changed
 - (sprint 180) Webhooks: events of a disabled REST module wait and are processed once the module is enabled again

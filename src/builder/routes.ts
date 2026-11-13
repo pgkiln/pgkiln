@@ -27,6 +27,7 @@ import { notificationSettings, saveNotificationSettings } from './notification-s
 import { kindLabel, WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
 import { createPageRoutes } from './create-page.ts';
 import { featureRoutes } from './features.ts';
+import { apexImportRoutes } from './apex-import.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
@@ -591,6 +592,8 @@ export async function builderRoutes(app: FastifyInstance) {
   await createPageRoutes(app);
   await featureRoutes(app);
   await appFromFileRoutes(app);
+  // (sprint 182) Import → From Oracle APEX
+  await apexImportRoutes(app);
 
   // (sprint 73) POST /apps, creating an application, is in appwizard.ts
 
