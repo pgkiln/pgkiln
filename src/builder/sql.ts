@@ -84,7 +84,7 @@ async function workshopHome(req: Req, reply: FastifyReply) {
       </div>
     </div>
     <aside class="ab-side" aria-label="${tx('sw.aside')}">
-      <section><h2>${tx('common.about')}</h2><p>${tx('sw.about', { role: workshopRunsAs(db) })}</p>
+      <section><h2>${tx('common.about')}</h2><p>${tx('sw.about', { role: workshopRunsAs(s) })}</p>
         <a href="https://github.com/pgkiln/pgkiln/blob/main/docs/guide/03-builder.md#sql-workshop" target="_blank" rel="noopener">${tx('common.learn_more')}</a></section>
       <section><h2>${tx('sw.schema')}</h2><p>${tx('sw.schema_text')}</p>
         <form method="post" action="${BASE}/sql/schema" class="sw-schema">${csrf(s)}

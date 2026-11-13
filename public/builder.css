@@ -1767,3 +1767,8 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .apx-notes li { overflow-wrap: anywhere; }
 .apx details { margin-top: 12px; }
 .apx details > summary { cursor: pointer; font-weight: 600; }
+
+/* (sprint 185, NX-S1) the SQL Workshop on the Owner connection: a red chip under the tabs, with the way back */
+.sw-owner-chip { display: flex; align-items: center; gap: 8px; margin: -0.5rem 0 1rem; padding: 4px 10px; border-radius: 999px; width: fit-content; max-width: 100%;
+  background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); font-size: 13px; font-weight: 600; }
+.sw-owner-chip .icon { flex: none; }

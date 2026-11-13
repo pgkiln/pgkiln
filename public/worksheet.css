@@ -341,3 +341,10 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 /* (sprint 172, DA-5) the Notices tab: Keep notices and the earlier runs' notices */
 .ws-notice-bar { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .ws-notice-earlier { font-size: 12px; font-weight: 600; color: var(--muted); margin: 10px 0 2px; }
+/* (sprint 185, NX-S1) Run as: the Owner connection is a red chip; its reason field shows when it is chosen */
+.ws-runas-chip.ws-runas-owner, .ws-status:has(select[name=as_app] option[value=owner]:checked) .ws-runas-chip { color: var(--danger); }
+.ws-runas-chip.ws-runas-owner select, .ws-status:has(select[name=as_app] option[value=owner]:checked) .ws-runas-chip select { border-color: var(--danger); background: var(--danger-soft); color: var(--danger); font-weight: 600; }
+.ws-owner-reason { display: none; align-items: center; gap: 6px; font-size: 12.5px; color: var(--danger); }
+.ws-owner-reason input { font-size: 12.5px; padding: 1px 6px; min-height: 0; width: 14rem; max-width: 40vw; }
+.ws-owner-reason.ws-owner-reason-open, .ws-status:has(select[name=as_app] option[value=owner]:checked) .ws-owner-reason { display: inline-flex; }
+.ws-owner-error { color: var(--danger); font-size: 12.5px; }

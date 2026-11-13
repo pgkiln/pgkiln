@@ -115,14 +115,40 @@ pgkiln deliberately uses **two** database logins:
 
 | Connection | Setting | Role | Used for |
 |---|---|---|---|
-| Owner | `DATABASE_URL` | the owner of the `meta` schema (e.g. `pgkiln`) | migrations, the builder, the SQL Workshop |
+| Owner | `DATABASE_URL` | the owner of the `meta` schema (e.g. `pgkiln`) | migrations, the builder; an administrator's audited *Owner connection* in the SQL Workshop |
 | Runtime | `RUNTIME_DATABASE_URL` | `pgkiln_runtime` (created by migration 001) | running applications |
+| Developer logins | *(none: derived from `PGKILN_SECRET_KEY`)* | `pgkiln_ws<id>_dev_<suffix>`, one per workspace (migration 166) | the SQL Workshop and the tools that check a developer's SQL |
+
+(sprint 185) The SQL Workshop doesn't run as the owner: each workspace has a **developer login** with the rights of
+its applications' roles and schemas and none in `meta` (chapter 3, *Who the SQL Workshop runs as*). pgkiln sets its
+password when it first opens a connection, derived from `PGKILN_SECRET_KEY`; without that key a single server
+process uses a password of its own (several processes need the key, or they change each other's password). The
+login connects to the database and host of `RUNTIME_DATABASE_URL`, so `pg_hba.conf` must let it sign in with a
+password there, like the runtime role.
 
 The runtime role is **least privilege**. It can read application definitions and manage sessions,
 but it cannot read developer accounts, password hashes or instance secrets. It is `NOINHERIT`, so
 it reaches application data only by switching to an application's own database role
 (`SET LOCAL ROLE`) for the duration of a request. If `RUNTIME_DATABASE_URL` is missing, pgkiln
 falls back to the owner connection and prints a warning; don't run like that in production.
+
+### A non-superuser owner
+
+(sprint 185) Instance settings → *Lockout checks* (and `pgkiln admin check`) warn when `DATABASE_URL` signs in as a
+**superuser**: then migrations, the builder and an administrator's Owner connection could also read files on the
+server, run programs and change every database of the PostgreSQL server. The Docker image's bundled database makes
+`pgkiln` a superuser (the image's `POSTGRES_USER`); on a server of your own, make an owner without it:
+
+```sql
+create role pgkiln_owner login createrole password 'a-long-random-password';
+alter database pgkiln owner to pgkiln_owner;
+reassign owned by pgkiln to pgkiln_owner;   -- as a superuser, in pgkiln's database
+```
+
+The owner needs `CREATEROLE` (application roles, workspace logins) and to own the database. A few things then need
+a superuser once (the Change Log's event triggers, `create extension` of an untrusted extension): pgkiln shows the
+statements to run. Splitting the owner into a migration role and a builder role that can't create roles is not done
+yet: `DATABASE_URL` is still used for both.
 
 The migration creates `pgkiln_runtime` with the password `pgkiln_runtime`. **Change it**:
 
@@ -137,7 +163,7 @@ which is read at startup; real environment variables take precedence.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATABASE_URL` | `postgres://pgkiln:pgkiln@localhost:5434/pgkiln` | Owner connection (builder, migrations) |
+| `DATABASE_URL` | `postgres://pgkiln:pgkiln@localhost:5434/pgkiln` | Owner connection (builder, migrations; not the SQL Workshop since sprint 185: see above). Not a superuser, ideally |
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |

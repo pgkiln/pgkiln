@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- **The SQL Workshop no longer runs as the owner** (sprint 185, NX-S1; migration 166): every workspace has a
+  developer login (`pgkiln_ws<id>_dev_<suffix>`; existing workspaces get theirs from the migration, new ones when
+  they are created), and every SQL Workshop tool runs as it: the SQL Worksheet, SQL Scripts, Quick SQL, the Query
+  Builder, Load and Unload Data, Sample Data, the Data Modeler, the Object Browser, DDL tools, AI tools, and the
+  application tools that check a developer's SQL (Advisor, code check, region settings, document previews,
+  dependencies), which used the owner behind an escapable `SET ROLE` in shared workspaces. In a shared workspace the
+  login is a member of the applications' database roles and may use and create in their schemas and `public`; it
+  has no rights in `meta` and can't create roles or schemas. Administrators run as it too by default; the
+  worksheet's *Run as* offers them (only them) the **Owner connection**, shown in red, with a reason to type: the
+  choice lasts for the session (a red chip on every SQL Workshop page, with *Back to the developer login*), and it and
+  every statement run on it go to `meta.owner_sql_audit`. A developer who belongs to no workspace gets no SQL
+  Workshop. **Upgrading**: tables the owner created keep their owner, so a developer can change their data but not
+  their structure (an administrator uses the Owner connection, or `alter table … owner to` the workspace's developer
+  login). Without `PGKILN_SECRET_KEY` a single server process uses a password of its own for the developer logins.
+- **A lockout check for a superuser `DATABASE_URL`** (sprint 185, NX-S1): Instance settings and `pgkiln admin check`
+  warn when the owner connection is a superuser; chapter 1 shows how to use a non-superuser owner. Splitting the owner
+  into a migration role and a builder role is not done yet.
+
 ### Fixed
 - **Code review of 0.94.0** (sprint 184; migration 165 `meta.api_client_module`). OAuth clients limited to REST
   modules (sprint 178, DA-11):

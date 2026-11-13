@@ -430,7 +430,8 @@ On a workspace's page an administrator chooses **Isolate this workspace** (Works
 workspace → *Isolation*). It needs `RUNTIME_DATABASE_URL` (applications don't run on the owner connection) and
 `PGKILN_SECRET_KEY` (the passwords of the workspace's logins are derived from it; nothing is stored). Then:
 
-- **Two PostgreSQL logins of its own**: `pgkiln_ws<id>_run_<suffix>` runs its applications (pages, processes, REST
+- **Two PostgreSQL logins of its own** (since sprint 185 every workspace has the developer login; isolating adds the
+  runtime one and keeps the developer login's name): `pgkiln_ws<id>_run_<suffix>` runs its applications (pages, processes, REST
   handlers, automations, workflows, background processes, REST synchronisation); `pgkiln_ws<id>_dev_<suffix>` runs its
   developers' SQL: the SQL Worksheet, SQL Scripts, Quick SQL, Load and Unload Data, Sample Data, DDL and Compare, the
   Advisor, code checks and document previews. SQL that runs `RESET ROLE` (or `set_config('role', …)`) only gets back to
@@ -2185,6 +2186,38 @@ Worksheet; other developers' are never shown) and the workspace's **recent SQL s
 session's **schema** (APEX: the default schema): it goes first in the search path of the SQL Worksheet and SQL Scripts until
 you sign out. Tasks link to Quick SQL, blueprints, table descriptions, sample data and Generate DDL.
 
+### Who the SQL Workshop runs as
+
+(sprint 185, NX-S1; APEX: the SQL Workshop parses as one of the workspace's schemas, never as the repository owner)
+Every tool of the SQL Workshop runs as the **workspace's developer login** (`pgkiln_ws<id>_dev_<suffix>`, made by
+migration 166 for every workspace, and for a new workspace when it is created): the SQL Worksheet, SQL Scripts, Quick
+SQL, the Query Builder, Load and Unload Data, Sample Data, the Data Modeler, the Object Browser and its actions, DDL and
+Compare, the Change Log, the AI tools, AutoREST and REST testing, and the application tools that check a developer's SQL
+(the Advisor, the code editor's check, region and report settings, document previews, dependencies). What the login
+may do:
+
+- **A shared workspace** (not isolated): it is a member of the database roles of the workspace's applications (it can
+  read and change their data as they can), and has `USAGE` and `CREATE` on the schemas those roles use and on
+  `public`. The tables, views and functions it creates are its own, with default privileges that give the
+  applications' roles the same rights as the owner's (select, insert, update, delete; sequences; execute). It has no
+  rights in `meta`, can't create roles, schemas or databases, and isn't a superuser. Objects the owner created (for
+  example by an earlier release's SQL Workshop or a migration) keep their owner: their data can be changed, their
+  structure only with the Owner connection.
+- **An isolated workspace** (see *Isolated workspaces*): its own login, as before.
+
+`RESET ROLE` or `set_config('role', …)` only gets back to that login. A developer who belongs to no workspace has no
+SQL Workshop. Administrators run as the developer login too, by default.
+
+**The Owner connection** (administrators only). The SQL Worksheet's **Run as** chip lists *Developer login* (the
+default), the applications' roles and, for an instance administrator only, **Owner connection**: pgkiln's own rights
+(`DATABASE_URL`), shown in red. Choosing it asks for a **reason**; without one nothing runs. The choice lasts for
+the session, for every SQL Workshop tool, until you choose another Run as or press **Back to the developer login** on
+the red chip that every SQL Workshop page then shows. The choice (who, when, workspace, reason) and every statement
+run on it go to **`meta.owner_sql_audit`**: each statement of the SQL Worksheet and SQL Scripts with its rows, status
+and time, and the statements that change something which the other tools send. Only the owner can read that table.
+A developer who isn't an administrator never sees the option, and a forged `as_app=owner` or `/builder/sql/run-as`
+post is refused (403).
+
 (sprint 75) The tools are tabs: Home, SQL Worksheet, Object Browser, SQL Scripts and Utilities; **More** opens the
 others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, Data Modeler, AI), and the open one is a tab too.
 
@@ -2319,8 +2352,9 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
     (**Ctrl + F**, **Ctrl + H**) with a regular expression or exact case, **Go to line** (**Ctrl + G**), and
     **Ctrl + /** comments the selected lines out or in. The **⋯** menu lists every key; **F1** opens this help.
     *Load data* in the same menu opens Load Data for the navigator's schema.
-  - Each statement commits on its own (**Autocommit**, like Database Actions). Statements run as the **owner connection** (an isolated workspace's
-    developer login for its developers), on a connection of their own that is closed afterwards, so `SET ROLE` or
+  - Each statement commits on its own (**Autocommit**, like Database Actions). Statements run as the workspace's
+    **developer login** (sprint 185; an administrator may choose the audited *Owner connection*, see *Who the SQL
+    Workshop runs as*), on a connection of their own that is closed afterwards, so `SET ROLE` or
     `SET search_path` doesn't leak. **Run as** picks an application of your workspace instead: the statements then
     run as its database role, with `pgkiln.app_id` set, so its grants and row level security policies apply. Use
     it to test policies; it is no security boundary, since the SQL could `RESET ROLE`. A `BEGIN` typed in

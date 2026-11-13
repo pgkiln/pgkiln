@@ -8,6 +8,7 @@ import { runScript, splitScript, type ScriptRun, type StatementResult } from '..
 import { clearCompletions } from './code-editor.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
 import { currentWorkspace, sessionSchema, workshopDb } from './workspaces.ts';
+import { auditRun } from './owner-connection.ts';
 import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 
 // SQL Workshop → SQL Scripts: saved scripts (create, edit, upload, download,
@@ -33,7 +34,7 @@ export interface RunRequest {
 /** Run a script, record the run (history + activity log) and return the run's id. */
 export async function runAndRecord(s: Session, ip: string, r: RunRequest): Promise<{ id: string; run: ScriptRun }> {
   const statements = splitScript(r.content);
-  const db = await workshopDb(s);
+  const db = await workshopDb(s, { raw: true });
   const schema = await sessionSchema(s, db);
   const c = await db.pool.connect();
   let run: ScriptRun;
@@ -46,6 +47,9 @@ export async function runAndRecord(s: Session, ip: string, r: RunRequest): Promi
     c.release(true);
   }
   clearCompletions(); // the script may have changed tables or grants
+  // (sprint 185, NX-S1) on the Owner connection: every statement into meta.owner_sql_audit
+  await auditRun(s, 'scripts', run.results.map((x) => ({
+    sql: statements[x.n - 1]?.sql ?? x.sql, status: x.status, rows: x.rows, error: x.error, ms: x.ms })));
   const saved = await owner.one<{ id: string }>(
     `insert into meta.sql_script_run (script_id, script_name, run_by, elapsed_ms, stop_on_error, transactional, statements, succeeded, failed, rolled_back, results, workspace_id)
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,

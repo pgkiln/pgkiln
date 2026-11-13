@@ -63,6 +63,16 @@ export class Browser {
     if (m) this.lastCsrf = m[1];
     return res;
   }
+  /**
+   * (sprint 185, NX-S1) An administrator's SQL Workshop on the Owner connection (with a reason), for tests that use
+   * schemas the owner made; without it the SQL Workshop runs as the workspace's developer login.
+   */
+  async ownerConnection(reason = 'test fixture: schemas made by the owner') {
+    await this.get('/builder/sql');
+    const res = await this.submit('/builder/sql/run-as', { as: 'owner', reason });
+    if (res.statusCode !== 303) throw new Error(`Owner connection refused: ${res.statusCode}`);
+    return res;
+  }
   async login(user: string, password = user, alias = 'hr') {
     await this.get(`/a/${alias}/login`);
     return this.post(`/a/${alias}/login`, { __csrf: this.lastCsrf, username: user, password });
