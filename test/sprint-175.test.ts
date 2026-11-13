@@ -35,6 +35,7 @@ const builder = async () => {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   await b.get('/builder/sql/worksheet');
   return b;
 };
@@ -279,6 +280,7 @@ describe('RESTful Services: header parameters (DA-11)', () => {
     const b = new Browser(app);
     await b.get('/builder/login');
     await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
     const id = (await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'm175'`, [appId])).id;
     const page = await b.get(`/builder/sql/rest/modules/${id}/handler?t=echo&m=GET`);
     assert.equal(page.statusCode, 200);

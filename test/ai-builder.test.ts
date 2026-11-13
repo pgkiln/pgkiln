@@ -44,6 +44,7 @@ before(async () => {
   await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [appId]);
   await owner.query(`delete from meta.ai_table_note where schema_name = 'hr' and table_name = 'dept'`);
   admin = await signIn('admin', 'admin');
+  await admin.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
 });
 
 after(async () => {

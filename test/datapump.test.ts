@@ -211,6 +211,7 @@ describe('schema export and import', { skip: noTools }, () => {
     const b = new Browser(app);
     await b.get('/builder/login');
     assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
     const list = await b.get('/builder/sql/data-pump');
     assert.equal(list.statusCode, 200);
     assert.match(list.body, /Schema Export \/ Import/);

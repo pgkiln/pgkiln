@@ -25,7 +25,7 @@ import { decryptSecret, encryptSecret, keyFingerprint, secretKeyConfigured } fro
 export type Level = 'ok' | 'info' | 'warning' | 'error';
 
 export interface Check {
-  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass';
+  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role';
   level: Level;
   title: string;
   detail: string;
@@ -179,6 +179,9 @@ export async function instanceChecks(rpId: string | null): Promise<Check[]> {
       : { key: 'passkey_domain', level: 'ok', title: 'Passkey domain', detail: `Every passkey is for ${rpId}.` });
   }
 
+  // (sprint 185, NX-S1) DATABASE_URL as a superuser
+  checks.push(ownerRoleCheck(await ownerRole()));
+
   // break-glass administrators
   const ssoOnly = (await owner.query<{ name: string }>(`select name from meta.workspace where sso_only order by name`)).rows.map((r) => r.name);
   if (ssoOnly.length) {
@@ -194,6 +197,23 @@ export async function instanceChecks(rpId: string | null): Promise<Check[]> {
         : { key: 'break_glass', level: 'ok', title: 'Break-glass administrators', detail: `${glass.join(', ')} may sign in with the pgkiln password when the identity provider fails (${ssoOnly.join(', ')} require${ssoOnly.length === 1 ? 's' : ''} single sign-on).` });
   }
   return checks;
+}
+
+/** (sprint 185) The role DATABASE_URL signs in as, and what it may do. */
+export async function ownerRole() {
+  return (await owner.one<{ name: string; superuser: boolean; createrole: boolean; bypassrls: boolean }>(
+    `select rolname as name, rolsuper as superuser, rolcreaterole as createrole, rolbypassrls as bypassrls from pg_roles where rolname = session_user`))!;
+}
+
+/**
+ * (sprint 185, NX-S1) A lockout check: DATABASE_URL should not be a superuser. The owner connection runs migrations
+ * and the builder (and an administrator's Owner connection in the SQL Workshop); as a superuser it can also read
+ * files on the server, run programs and change every database of the cluster.
+ */
+export function ownerRoleCheck(r: { name: string; superuser: boolean; bypassrls?: boolean }): Check {
+  return r.superuser
+    ? { key: 'owner_role', level: 'warning', title: 'DATABASE_URL is a superuser', detail: `pgkiln's owner connection signs in as ${r.name}, a superuser: migrations, the builder and an administrator's Owner connection in the SQL Workshop can read and write files on the server, run programs and change every database of the PostgreSQL server. Make a role that owns pgkiln's database with CREATEROLE but not SUPERUSER, reassign pgkiln's objects to it, and use it in DATABASE_URL (docs/guide/01-installation.md, "A non-superuser owner").` }
+    : { key: 'owner_role', level: 'ok', title: 'Owner connection', detail: `pgkiln's owner connection signs in as ${r.name}, not a superuser.` };
 }
 
 /** How many checks need attention (warnings and errors). */

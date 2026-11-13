@@ -46,6 +46,7 @@ before(async () => {
   await owner.query(`create schema ${SCHEMA}`);
   admin = new Browser(app);
   await signIn(admin, 'admin', 'admin');
+  await admin.ownerConnection(); // (sprint 185) the owner's schema: the Owner connection
   dev = new Browser(app);
   await signIn(dev, DEV, DEV_PW);
 });

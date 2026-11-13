@@ -189,7 +189,7 @@ export async function sqlUtilityRoutes(app: FastifyInstance) {
     const title = reportTitle(tx, key, r);
     const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('utilities', s)}
       <div class="ab-home"><div class="ab-main">
-        ${region(title, html`<p class="muted u-mt0">${reportAbout(tx, key, r)} ${tx('su.over', { role: workshopRunsAs(db) })}</p>
+        ${region(title, html`<p class="muted u-mt0">${reportAbout(tx, key, r)} ${tx('su.over', { role: workshopRunsAs(s) })}</p>
           ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}${table}`)}
       </div><aside class="ab-side" aria-label="${reports}"><section><h2>${reports}</h2>${nav}</section></aside></div>`;
     return send(reply, s, shell(s, title, crumbs(tx, reports), main, 'sql'));

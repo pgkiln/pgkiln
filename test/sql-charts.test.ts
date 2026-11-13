@@ -27,6 +27,7 @@ const builder = async () => {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   return b;
 };
 const SQL = `select region, amount, units from ${S}.sale order by region`;

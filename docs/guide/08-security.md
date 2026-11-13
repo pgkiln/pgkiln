@@ -626,8 +626,14 @@ A `data_load` process loads files as the app role too, also with a data load def
 definition naming a table the role can't write fails like any other insert, and a process only
 finds the definitions of its own application. XML files with a document type declaration are
 refused ([chapter 16](16-files.md#data-loading)). The SQL Workshop (the SQL Worksheet, SQL Scripts,
-Quick SQL, Load Data, Unload Data, Sample Data) runs as the owner instead, so every developer can change any table: keep
-developer accounts to people you trust with the database.
+Quick SQL, the Query Builder, Load Data, Unload Data, Sample Data, the Data Modeler, ...) runs as the **workspace's
+developer login** (sprint 185, NX-S1): the rights of the workspace's applications' roles and schemas, none in `meta`,
+no `CREATEROLE`; `RESET ROLE` doesn't leave it. A developer's worksheet can't change pgkiln's own tables, accounts or
+another workspace's applications. Only an instance administrator may choose the **Owner connection** in the
+worksheet's *Run as* (red, with a reason; the choice and every statement are kept in `meta.owner_sql_audit`), see
+[chapter 3](03-builder.md#who-the-sql-workshop-runs-as). Developers still read and change their applications' data:
+keep developer accounts to people you trust with it. The lockout checks warn when `DATABASE_URL` is a superuser
+([chapter 1](01-installation.md#a-non-superuser-owner)).
 
 The REST endpoints pgkiln serves (an application's REST modules and the tables and views published with **SQL
 Workshop → RESTful Services**, AutoREST) run as the app role too, never as the owner: these grants, column grants

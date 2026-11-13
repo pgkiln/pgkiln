@@ -2,6 +2,7 @@ import { tr, translatorFor, type BuilderTranslate } from './i18n.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner, type Db } from '../db.ts';
 import { devDbForWorkspace, workspacesChanged } from '../workspace-db.ts';
+import { auditedOwner, ownerChosen, ownerReasonOf } from './owner-connection.ts';
 import { ownerUrl, runtimeUrl } from '../db.ts';
 import { secretKeyConfigured } from '../secrets.ts';
 import { html, raw } from '../html.ts';
@@ -79,14 +80,22 @@ export async function appAllowed(s: Session, appId: number | string) {
 }
 
 /**
- * The connection for a developer's own SQL (the SQL Workshop's tools): the owner, or in an
- * isolated workspace (090) its developer login, which reaches the workspace's application
- * roles only. Administrators keep the owner.
+ * The connection for a developer's own SQL (the SQL Workshop's tools): (166, sprint 185) the workspace's developer
+ * login, which reaches the workspace's application roles and schemas only, never pgkiln's own tables; an isolated
+ * workspace's (090) its isolated login. Administrators too: only an administrator who chose the Owner connection
+ * (with a reason, owner-connection.ts) gets the owner, its statements recorded in meta.owner_sql_audit. `raw`: the
+ * caller records the statements itself (the worksheet, SQL Scripts).
  */
-export async function workshopDb(s: Session): Promise<Db> {
-  if (!s.workspace || (await isAdmin(s.username))) return owner;
-  return (await devDbForWorkspace(s.workspace.id)) ?? owner;
+export async function workshopDb(s: Session, opts: { raw?: boolean; tool?: string } = {}): Promise<Db> {
+  const reason = await ownerChosen(s);
+  if (reason) return opts.raw ? owner : auditedOwner(s, reason, opts.tool);
+  // a developer without a workspace has no developer login (the SQL Workshop refuses them, ui.ts): fail closed
+  if (!s.workspace) throw new Error('You are not a developer of any workspace.');
+  return devDbForWorkspace(s.workspace.id);
 }
+
+/** (sprint 185) Does the SQL Workshop run on the Owner connection for this session? */
+export const onOwner = async (s: Session) => !!(await ownerChosen(s));
 
 /** Schemas the SQL Workshop's connection may use (not pgkiln's, not the system's). */
 export async function usableSchemas(db: Db) {
@@ -103,7 +112,7 @@ export async function sessionSchema(s: Session, db: Db) {
 }
 
 /** Who the SQL Workshop runs as, for its notes. */
-export const workshopRunsAs = (db: Db) => (db === owner ? 'the builder\'s owner connection' : 'this isolated workspace\'s developer login (its applications\' roles, nothing else)');
+export const workshopRunsAs = (s: Pick<Session, 'state'>) => (ownerReasonOf(s) ? tr(s)('ws.owner.runs_as') : tr(s)('ws.dev.runs_as'));
 
 /** Put an application in a workspace (inside the caller's transaction, or on the owner pool). */
 export async function placeApp(db: { query: (sql: string, params?: unknown[]) => Promise<unknown> }, appId: number, workspaceId: number) {

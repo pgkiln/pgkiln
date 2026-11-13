@@ -55,6 +55,13 @@ class Browser {
     await this.get(`/a/${alias}/login`);
     return this.post(`/a/${alias}/login`, { __csrf: this.lastCsrf, username: user, password });
   }
+  /** (sprint 185) an administrator's SQL Workshop on the Owner connection, for tests of tables the owner made */
+  async ownerConnection(reason = 'test fixture: tables made by the owner') {
+    await this.get('/builder/sql');
+    const res = await this.post('/builder/sql/run-as', { __csrf: this.lastCsrf, as: 'owner', reason });
+    assert.equal(res.statusCode, 303, 'Owner connection');
+    return res;
+  }
 }
 
 const as = async (user: string) => {
@@ -3742,6 +3749,7 @@ describe('sprint 32 item 3: SQL Workshop unload data', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/unload?source=query');
     return b;
   };
@@ -5146,6 +5154,7 @@ describe('sprint 35 sampledata', () => {
     dev = new FileBrowser(app);
     await dev.get('/builder/login');
     await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
   });
   after(async () => {
     await owner.query(`drop schema if exists ${S} cascade`);
@@ -5556,6 +5565,7 @@ describe('sprint 36 app builder ai', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: user, password: pw });
+    if (user === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder');
     return b;
   };
@@ -5609,9 +5619,14 @@ describe('sprint 36 app builder ai', () => {
   test('describe tables: only existing tables outside pgkiln and the system schemas; notes are plain text in comments', async () => {
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'meta', table: 'developer', 'note:': 'x' })).statusCode, 404);
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'no_such_table', 'note:': 'x' })).statusCode, 404);
-    assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': "x'; drop table hr.dept; --", comments: 'true' })).statusCode, 303);
+    // (sprint 185) a developer's comments run as the workspace's developer login: the owner's table hr.dept takes them
+    // from an administrator on the Owner connection only
+    await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': 'sec185 not the owner', comments: 'true' });
+    assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, null);
+    await admin.get('/builder/sql/ai/describe?schema=hr&table=dept');
+    assert.equal((await admin.post('/builder/sql/ai/describe', { __csrf: admin.lastCsrf, schema: 'hr', table: 'dept', 'note:': "x'; drop table hr.dept; --", comments: 'true' })).statusCode, 303);
     assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, "x'; drop table hr.dept; --");
-    await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': '', comments: 'true' });
+    await admin.post('/builder/sql/ai/describe', { __csrf: admin.lastCsrf, schema: 'hr', table: 'dept', 'note:': '', comments: 'true' });
     assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, null);
     await assert.rejects(runtime.query('select * from meta.ai_table_note'), /permission denied/);
     await assert.rejects(runtime.query('select * from meta.builder_ai'), /permission denied/);
@@ -7520,6 +7535,7 @@ describe('sprint 67 workspace export and import', () => {
     const b = new FileBrowser(app);
     await b.get('/builder/login');
     await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder');
     await b.submit('/builder/workspace', { workspace: String(ws) });
     await b.get('/builder/workspace-export');
@@ -7551,7 +7567,10 @@ describe('sprint 67 workspace export and import', () => {
       developers: [{ username: 'sec67x_ghost', admin: true }, { username: 'admin', admin: true, is_admin: true, password_hash: 'x' }],
     }));
     const w = await owner.one('select name, isolated, run_role, dev_role, banner_color, message from meta.workspace where id = $1', [ws]);
-    assert.deepEqual(w, { name: 'Sec67x Target', isolated: false, run_role: null, dev_role: null, banner_color: 'blue', message: 'ok' });
+    // (sprint 185) every workspace has its developer login, named by pgkiln (pgkiln_ws<id>_dev_<suffix>), never by a file
+    assert.match(w.dev_role, new RegExp(`^pgkiln_ws${ws}_dev_[0-9a-f]{8}$`));
+    delete w.dev_role;
+    assert.deepEqual(w, { name: 'Sec67x Target', isolated: false, run_role: null, banner_color: 'blue', message: 'ok' });
     assert.equal(await owner.one(`select 1 as ok from meta.developer where username = 'sec67x_ghost'`), undefined);
     assert.equal((await owner.one(`select password_hash <> 'x' as ok from meta.developer where username = 'admin'`)).ok, true);
   });
@@ -8125,6 +8144,7 @@ describe('sprint 89 Object Browser column toolbar', () => {
       const dev = new Browser();
       await dev.get('/builder/login');
       await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      await dev.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
       await dev.get('/builder/sql/objects?schema=sec89&k=table&o=sec89.t&tab=columns');
       for (const expr of ["0); drop table sec89.t; select (1", "0 /* x */", "now() -- x", 'x'.repeat(201)]) {
         const res = await dev.post('/builder/sql/objects/alter', { __csrf: dev.lastCsrf, schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', default_action: 'set', default: expr });
@@ -8204,6 +8224,7 @@ describe('sprint 92 the SQL Worksheet: history, plans, SQL inserts', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/worksheet');
     return b;
   };
@@ -8242,6 +8263,7 @@ describe('sprint 93 the SQL Worksheet: scripts as files, bind values', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/worksheet');
     return b;
   };
@@ -8293,6 +8315,7 @@ describe('sprint 94 object menus', () => {
     const a = new Browser();
     await a.get('/builder/login');
     await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    await a.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     const ws = (await a.get(`/builder/sql/worksheet?schema=${encodeURIComponent('sec94<i>')}`)).body;
     assert.doesNotMatch(ws, /<img src=x|<i>/);
     assert.match(ws, /class="menu obj-menu"/);
@@ -8319,6 +8342,7 @@ describe('sprint 95 Table Properties', () => {
     const a = new Browser();
     await a.get('/builder/login');
     await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    await a.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     const page = (await a.get(`/builder/sql/objects/table?${new URLSearchParams({ o: 'sec95."<img src=x onerror=alert(95)>"' })}`)).body;
     assert.doesNotMatch(page, /<img src=x/);
     const form = { schema: 'sec95', name: 't', 'col.0.name': 'a', 'col.0.type': 'int', mode: 'apply' };
@@ -8357,6 +8381,7 @@ describe('sprint 96 Launchpad pins and the builder search', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql');
     return b;
   };
@@ -8430,6 +8455,7 @@ describe('sprint 98 data modeler', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/modeler');
     return b;
   };
@@ -8496,6 +8522,7 @@ describe('sprint 99 database users', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/db-users/new');
     return b;
   };
@@ -8600,6 +8627,7 @@ describe('sprint 100 rest', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/rest');
     return b;
   };
@@ -8727,7 +8755,8 @@ describe('sprint 100 rest', () => {
     assert.equal((await d.get(`/builder/sql/rest/${id}`)).statusCode, 404);
     assert.equal((await d.post(`/builder/sql/rest/${id}`, { __csrf: d.lastCsrf, methods: 'GET', auth: 'public', page_size: '25', enabled: '1' })).statusCode, 404);
     assert.equal((await d.post(`/builder/sql/rest/${id}/delete`, { __csrf: d.lastCsrf })).statusCode, 404);
-    assert.match((await d.post('/builder/sql/rest', { __csrf: d.lastCsrf, ...enable })).body, /Choose an application of this workspace/);
+    // (sprint 185) its developer login can't see the owner's schema at all: refused as an object, before the application
+    assert.match((await d.post('/builder/sql/rest', { __csrf: d.lastCsrf, ...enable })).body, /Choose a table or view|Choose an application of this workspace/);
     assert.equal((await owner.one('select count(*)::int as n from meta.rest_object where id = $1 and auth = $2', [id, 'token'])).n, 1);
     // application users are not developers
     const king = await as('king');
@@ -8752,6 +8781,7 @@ describe('sprint 102 monitor', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql');
     return b;
   };
@@ -8844,6 +8874,7 @@ describe('sprint 101 scheduling', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql');
     return b;
   };
@@ -9072,6 +9103,7 @@ describe('sprint 104 rest handlers', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/rest/modules');
     return b;
   };
@@ -9270,6 +9302,7 @@ describe('sprint 106 change log', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/changes');
     return b;
   };
@@ -9361,6 +9394,7 @@ describe('sprint 107 transaction mode', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/worksheet');
     return b;
   };
@@ -11102,6 +11136,7 @@ describe('sprint 119 WS-13', () => {
     const d = new Browser();
     await d.get('/builder/login');
     await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'admin', password: 'admin' });
+    await d.ownerConnection(); // (sprint 185) a masking view makes a role: the Owner connection (developer logins can't)
     await d.get(`/builder/sql/objects/security?o=public.${T}`);
     return d;
   };
@@ -15444,5 +15479,163 @@ describe('sprint 184 code review of 0.94.0: OAuth clients limited to REST module
     await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'payroll'`, [appId]);
     assert.match((await dev.get(`/builder/apps/${appId}/api`)).body, /its REST modules were deleted: it is refused everywhere/);
     await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'payroll', 'payroll', $2)`, [appId, handlers('payroll')]);
+  });
+});
+
+describe('sprint 185 the SQL Workshop runs as the workspace\'s developer login, not the owner (NX-S1)', async () => {
+  const { ownerRoleCheck, instanceChecks } = await import('../src/instance-checks.ts');
+  const DEV = 'sec185_dev';
+  const PW = 'Sec185-dev-password!';
+  const S = 'sec185';
+  const login = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username, password })).statusCode, 303);
+    await b.get('/builder/sql/worksheet');
+    return b;
+  };
+  const run = async (b: FileBrowser, sql: string, extra: Record<string, string> = {}) =>
+    (await b.submit('/builder/sql/worksheet', { sql, mode: 'statement', ...extra })).body;
+  const devLogin = async () => (await owner.one<{ dev_role: string }>('select dev_role from meta.workspace where id = 1'))!.dev_role;
+  const metaOwner = async () => (await owner.one<{ o: string }>(`select nspowner::regrole::text as o from pg_namespace where nspname = 'meta'`))!.o;
+  const audit = async (username: string) => (await owner.query(`select tool, reason, statement, rows, status from meta.owner_sql_audit where username = $1 order by id`, [username])).rows;
+  const cleanup = async () => {
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`drop table if exists public.sec185_script, public.sec185_escape`);
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+    await owner.query(`delete from meta.owner_sql_audit where username in ($1, 'admin') and reason like 'SEC185%'`, [DEV]);
+  };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing`, [DEV]);
+    await owner.query(`create schema ${S}; create table ${S}.t (a int); insert into ${S}.t values (1), (2), (3)`);
+  });
+  after(cleanup);
+
+  test('the owner\'s acceptance test: a developer who isn\'t an administrator can\'t drop pgkiln\'s tables, and Run as has no Owner connection', async () => {
+    const d = await login(DEV, PW);
+    const page = (await d.get('/builder/sql/worksheet')).body;
+    const runAs = /<select name="as_app"[\s\S]*?<\/select>/.exec(page)![0];
+    assert.doesNotMatch(runAs, /value="owner"|Owner connection/);
+    assert.match(runAs, /<option value="">Developer login<\/option>/);
+    assert.doesNotMatch(page, /name="owner_reason"/);
+    const dropped = await run(d, 'drop table meta.setting');
+    assert.match(dropped, /permission denied|must be owner/);
+    assert.ok(await owner.one(`select to_regclass('meta.setting') as t`).then((r) => r!.t), 'meta.setting is still there');
+    for (const sql of ['delete from meta.developer', 'update meta.app set name = name', 'create role sec185_evil', 'create schema sec185_evil', 'drop schema meta cascade'])
+      assert.match(await run(d, sql), /permission denied|must be owner/, sql);
+    assert.equal((await owner.query(`select 1 from pg_roles where rolname = 'sec185_evil'`)).rowCount, 0);
+    // who it is: the workspace's developer login, which RESET ROLE can't leave
+    const who = await run(d, `reset role; select session_user::text || '/' || current_user::text as who`, { mode: 'script' });
+    const login0 = await devLogin();
+    assert.match(who, new RegExp(`<td>${login0}/${login0}</td>`));
+    assert.match(page, /Runs as this workspace&#39;s developer login/);
+    assert.match((await d.get('/builder/sql')).body, /It runs as this workspace&#39;s developer login/);
+  });
+
+  test('a developer who isn\'t an administrator can\'t choose the Owner connection by forging the form or the URL', async () => {
+    const d = await login(DEV, PW);
+    assert.equal((await d.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'statement', as_app: 'owner', owner_reason: 'SEC185 forged' })).statusCode, 403);
+    assert.equal((await d.submit('/builder/sql/run-as', { as: 'owner', reason: 'SEC185 forged' })).statusCode, 403);
+    assert.equal((await d.submit('/builder/sql/commands', { sql: 'select 1', as_app: 'owner', owner_reason: 'SEC185 forged' })).statusCode, 403);
+    assert.deepEqual(await audit(DEV), []);
+    assert.match(await run(d, 'select session_user::text as who'), new RegExp(`<td>${await devLogin()}</td>`));
+    // an administrator's Owner connection ends when they are no longer one
+    await owner.query(`update meta.developer set is_admin = true where username = $1`, [DEV]);
+    const d2 = await login(DEV, PW);
+    assert.equal((await d2.submit('/builder/sql/run-as', { as: 'owner', reason: 'SEC185 then demoted' })).statusCode, 303);
+    assert.match(await run(d2, 'select session_user::text as who'), new RegExp(`<td>${await metaOwner()}</td>`));
+    await owner.query(`update meta.developer set is_admin = false where username = $1`, [DEV]);
+    assert.match(await run(d2, 'select session_user::text as who'), new RegExp(`<td>${await devLogin()}</td>`));
+    await owner.query(`delete from meta.owner_sql_audit where username = $1`, [DEV]);
+  });
+
+  test('an administrator\'s Owner connection needs a reason; it and every statement go to meta.owner_sql_audit; a red chip until they go back', async () => {
+    const a = await login('admin', 'admin');
+    let page = (await a.get('/builder/sql/worksheet')).body;
+    assert.match(page, /<option value="owner">Owner connection<\/option>/);
+    assert.match(page, /name="owner_reason"/);
+    // the developer login by default, for administrators too
+    assert.match(await run(a, 'select session_user::text as who'), new RegExp(`<td>${await devLogin()}</td>`));
+    // no reason: nothing runs
+    page = await run(a, `create table ${S}.no_reason (a int)`, { as_app: 'owner', owner_reason: '  ' });
+    assert.match(page, /Give a reason for the Owner connection/);
+    assert.equal((await owner.one(`select to_regclass('${S}.no_reason') as t`))!.t, null);
+    assert.equal((await audit('admin')).filter((r) => r.reason.startsWith('SEC185')).length, 0);
+    assert.equal((await a.submit('/builder/sql/run-as', { as: 'owner', reason: 'x'.repeat(501) })).statusCode, 303);
+    assert.doesNotMatch((await a.get('/builder/sql')).body, /sw-owner-chip/, 'too long a reason: not chosen');
+    // with a reason
+    page = await run(a, `delete from ${S}.t where a > 1`, { as_app: 'owner', owner_reason: 'SEC185 fix rows' });
+    assert.match(page, /ws-runas-chip ws-runas-owner/);
+    assert.equal((await owner.one(`select count(*)::int as n from ${S}.t`))!.n, 1);
+    page = await run(a, `select session_user::text as who`, { as_app: 'owner' });
+    assert.match(page, new RegExp(`<td>${await metaOwner()}</td>`));
+    assert.match((await a.get('/builder/sql/objects')).body, /class="sw-owner-chip"[\s\S]*Owner connection: every statement is recorded/, 'a red chip on every SQL Workshop page');
+    // SQL Scripts on the Owner connection: each statement recorded too
+    await a.get('/builder/sql/scripts/new');
+    await a.submit('/builder/sql/scripts', { name: 'SEC185 script', content: `insert into ${S}.t values (7), (8);\nselect 1;`, action: 'run' });
+    let rows = (await audit('admin')).filter((r) => r.reason === 'SEC185 fix rows');
+    assert.deepEqual(rows.map((r) => [r.tool, r.status, r.statement, r.rows === null ? null : Number(r.rows)]), [
+      ['worksheet', 'chosen', null, null],
+      ['worksheet', 'ok', `delete from ${S}.t where a > 1`, 2],
+      ['worksheet', 'ok', 'select session_user::text as who', 1],
+      ['scripts', 'ok', `insert into ${S}.t values (7), (8)`, 2],
+      ['scripts', 'ok', 'select 1', 1],
+    ]);
+    // back to the developer login (the chip's button)
+    await a.get('/builder/sql');
+    assert.equal((await a.submit('/builder/sql/run-as', { as: 'developer' })).statusCode, 303);
+    assert.doesNotMatch((await a.get('/builder/sql')).body, /sw-owner-chip/);
+    assert.match(await run(a, 'select session_user::text as who'), new RegExp(`<td>${await devLogin()}</td>`));
+    rows = (await audit('admin')).filter((r) => r.reason === 'SEC185 fix rows');
+    assert.equal(rows.at(-1)!.status, 'ended');
+    // the audit table is not for anyone else
+    assert.equal((await owner.one(`select has_table_privilege('pgkiln_runtime', 'meta.owner_sql_audit', 'select') as ok`))!.ok, false);
+    assert.equal((await owner.one(`select has_table_privilege($1, 'meta.owner_sql_audit', 'select') as ok`, [await devLogin()]))!.ok, false);
+    await owner.query(`delete from meta.sql_script where name = 'SEC185 script'`);
+  });
+
+  test('the converted tools run as the developer login: SQL Scripts, Unload Data, Object Browser, the code editor\'s check (RESET ROLE reaches the login only)', async () => {
+    const d = await login(DEV, PW);
+    const dev = await devLogin();
+    // SQL Scripts
+    await d.get('/builder/sql/scripts/new');
+    await d.submit('/builder/sql/scripts', { name: 'SEC185 dev script', content: 'create table public.sec185_script as select session_user::text as u;', action: 'run' });
+    assert.equal((await owner.one(`select u from public.sec185_script`))!.u, dev);
+    assert.equal((await owner.one(`select tableowner from pg_tables where tablename = 'sec185_script'`))!.tableowner, dev);
+    await owner.query(`delete from meta.sql_script where name = 'SEC185 dev script'`);
+    // Unload Data
+    const csv = await d.submit('/builder/sql/unload', { source: 'query', query: 'select session_user::text as u', format: 'csv' });
+    assert.match(csv.body, new RegExp(dev));
+    // the Object Browser doesn't offer the owner's schemas the workspace's roles don't use; pgkiln's own tables
+    // (shown with the system objects, as the catalogue is) give no rows
+    assert.doesNotMatch((await d.get('/builder/sql/objects')).body, new RegExp(`<option value="${S}"`));
+    assert.doesNotMatch((await d.get('/builder/sql/objects?schema=meta&system=1&k=table&o=meta.developer&tab=data')).body, /admin<\/td>/);
+    // the code editor's check of an application's SQL: a second statement that resets the role is still the login
+    const hr = (await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`))!;
+    await d.get(`/builder/apps/${hr.id}`);
+    await d.submit('/builder/code/check', { app: String(hr.id), shape: 'select', sql: 'select 1) x; reset role; create table public.sec185_escape as select session_user::text as u; select (1' });
+    const esc = await owner.one(`select to_regclass('public.sec185_escape') as t`);
+    if (esc!.t) assert.equal((await owner.one(`select u from public.sec185_escape`))!.u, dev, 'never the owner');
+    assert.equal((await owner.one(`select to_regclass('meta.sec185_escape') as t`))!.t, null);
+  });
+
+  test('a Schema Import takes the default privileges of the dump\'s own schema only', async () => {
+    const { checkStatement } = await import('../src/dumpscript.ts');
+    assert.equal(checkStatement('ALTER DEFAULT PRIVILEGES FOR ROLE pgkiln_ws1_dev_ab12cd34 IN SCHEMA s GRANT SELECT,INSERT ON TABLES TO s_app;', 's'), null);
+    assert.match(checkStatement('ALTER DEFAULT PRIVILEGES FOR ROLE x IN SCHEMA meta GRANT ALL ON TABLES TO x;', 's')!, /outside the dump's schema/);
+    assert.match(checkStatement('ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO x;', 's')!, /not something pg_dump writes/, 'not without a schema');
+  });
+
+  test('a lockout check warns when DATABASE_URL is a superuser', async () => {
+    assert.equal(ownerRoleCheck({ name: 'pgkiln', superuser: true }).level, 'warning');
+    assert.match(ownerRoleCheck({ name: 'pgkiln', superuser: true }).title, /DATABASE_URL is a superuser/);
+    assert.equal(ownerRoleCheck({ name: 'pgkiln_owner', superuser: false }).level, 'ok');
+    const me = (await owner.one<{ s: boolean }>(`select rolsuper as s from pg_roles where rolname = session_user`))!.s;
+    const check = (await instanceChecks(null)).find((c) => c.key === 'owner_role')!;
+    assert.equal(check.level, me ? 'warning' : 'ok');
+    const a = await login('admin', 'admin');
+    if (me) assert.match((await a.get('/builder/instance')).body, /DATABASE_URL is a superuser/);
   });
 });

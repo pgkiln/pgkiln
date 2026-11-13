@@ -25,6 +25,7 @@ async function builder() {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   await b.get('/builder/home');
   return b;
 }

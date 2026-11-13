@@ -3,6 +3,8 @@ import pg from 'pg';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { owner } from '../db.ts';
+import { isAdmin } from './locks.ts';
+import { auditRun, chooseOwner, endOwner, ownerChosen, ownerReasonOf, REASON_MAX } from './owner-connection.ts';
 import { devDbForApp } from '../workspace-db.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, bicon, BASE, csrf, developer, flash, send, shell, workshopTabs, type Req } from './ui.ts';
@@ -290,9 +292,28 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const s = await developer(req, reply);
   if (!s) return;
   const tx = tr(s);
-  const db = await workshopDb(s);
   const body = req.body ?? {};
   const isPost = req.method === 'POST';
+  // (sprint 185, NX-S1) Run as: the workspace's developer login, an application's role, or (administrators, with a
+  // reason) the Owner connection, which lasts for the session and is recorded in meta.owner_sql_audit
+  const admin = await isAdmin(s.username);
+  let ownerError = '';
+  if (isPost && body.as_app === 'owner' && !admin) return reply.code(403).send(tx('ws.owner.admins_only'));
+  // (a tab's open transaction keeps its Run as: changing it is refused below, until Commit or Rollback)
+  const openTab = /^[a-z0-9]{1,20}$/.test(String(body.ws_tab ?? '')) ? findTxn(s.id, String(body.ws_tab)) : undefined;
+  if (isPost && 'as_app' in body && !openTab) {
+    if (body.as_app === 'owner') {
+      if (!admin) return reply.code(403).send(tx('ws.owner.admins_only'));
+      if (!ownerReasonOf(s)) {
+        const reason = String(body.owner_reason ?? '').trim();
+        if (!reason) ownerError = tx('ws.owner.reason_needed');
+        else if (reason.length > REASON_MAX) ownerError = tx('ws.owner.reason_long', { n: REASON_MAX });
+        else await chooseOwner(s, reason, clientIp(req));
+      }
+    } else if (ownerReasonOf(s)) await endOwner(s, clientIp(req));
+  }
+  const onOwnerConn = !!(await ownerChosen(s));
+  const db = await workshopDb(s, { raw: true });
   // a browser posts line breaks as CRLF; the cursor's offsets count LF
   let text: string = isPost ? String(body.sql ?? '').replace(/\r\n?/g, '\n') : '';
   // (sprint 93, DA-7) where the editor's text came from, for the page's worksheet tabs: a run, a saved script, a
@@ -387,7 +408,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const navType = NAV_TYPES.some(([k]) => k === (isPost ? body.nav_type : req.query?.type)) ? String(isPost ? body.nav_type : req.query?.type) : 'all';
   let scrollMore = false;
   const asApp = isPost && /^\d{1,9}$/.test(String(body.as_app ?? '')) ? apps.find((a) => String(a.id) === String(body.as_app)) : undefined;
-  if (isPost && body.as_app && !asApp) return reply.code(404).send('Not found');
+  if (isPost && body.as_app && body.as_app !== 'owner' && !asApp) return reply.code(404).send('Not found');
 
   let run: WorksheetRun | null = null;
   let mode: RunMode | null = null;
@@ -427,7 +448,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
     if (done.ok) txnInfo = done.message;
     else txnError = done.message;
   }
-  if (isPost && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download', 'commit', 'rollback', 'clear_notices'].includes(String(body.mode ?? ''))) {
+  if (isPost && !ownerError && text.trim() && !['nav', 'save', 'save_as', 'rename', 'download', 'commit', 'rollback', 'clear_notices'].includes(String(body.mode ?? ''))) {
     const m: RunMode = MODES.find((x) => x === body.mode) ?? 'statement';
     const allRows = body.mode === 'statement_all';
     chartAsked = body.mode === 'chart';
@@ -457,7 +478,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
       const blocked = txnAsked && !explaining ? statements.find((x) => !x.psql && outsideTxnOnly(x.sql)) : undefined;
       if (txn && !txnAsked) txnError = tx('ws.txn.open_first');
       else if (txnAsked && !tabKey) txnError = tx('ws.txn.needs_js');
-      else if (txn && (asApp?.id ?? null) !== txn.asAppId) txnError = tx('ws.txn.runs_as', { who: txn.runsAs });
+      else if (txn && ((asApp?.id ?? null) !== txn.asAppId || (!asApp && txn.runsAs !== workshopRunsAs(s)))) txnError = tx('ws.txn.runs_as', { who: txn.runsAs });
       else if (txn?.busy) txnError = tx('ws.txn.busy');
       else if (blocked) txnError = tx('ws.txn.not_in_txn', { line: blocked.line, what: outsideTxnOnly(blocked.sql) });
     }
@@ -475,7 +496,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
         if (!txn) {
           const note = txnNote(s.id, tabKey);
           const began = await beginTxn({ sessionId: s.id, username: s.username!, workspaceId: currentWorkspace(s), tab: tabKey, db: asApp ? await devDbForApp(asApp.id) : db,
-            asApp: asApp ?? null, runsAs: asApp ? tx('ws.runs_as_role', { role: asApp.db_role, app: asApp.name }) : workshopRunsAs(db), searchSchema });
+            asApp: asApp ?? null, runsAs: asApp ? tx('ws.runs_as_role', { role: asApp.db_role, app: asApp.name }) : workshopRunsAs(s), searchSchema });
           if (typeof began === 'string') txnError = began;
           else {
             txn = began;
@@ -532,6 +553,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
       if (run && (mode === 'statement' || mode === 'script')) {
         clearCompletions(); // the statements may have changed tables or grants
         await recordHistory(s, run);
+        if (onOwnerConn && !asApp) await auditRun(s, 'worksheet', run.results.map((r) => ({ sql: r.sql, status: r.status, rows: r.rows, error: r.error, ms: r.ms })));
         // (sprint 106, DA-17) the DDL that succeeded goes into the change log (in a transaction: when it commits)
         await recordChanges({ workspaceId: currentWorkspace(s), author: s.username ?? '?', source: 'worksheet', defaultSchema: searchSchema ?? 'public',
           statements: committedDdl ?? run.results.filter((r) => r.status === 'ok').map((r) => r.sql) });
@@ -581,7 +603,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
       <div class="ws-binds-fields">${askValues.binds.map((n) => html`<label class="field"><span class="label"><code>:${n}</code></span><input name="bind_${n}" value="${remembered[`:${n}`] ?? ''}" autocomplete="off"></label>`)}${askValues.subs.map((n) => html`<label class="field"><span class="label"><code>&amp;${n}.</code></span><input name="sub_${n}" value="${remembered[`&${n}`] ?? ''}" autocomplete="off"></label>`)}</div>
       <div class="buttons"><button class="btn btn-hot" name="mode" value="${askValues.mode}">${icon('play')} ${tx('common.run')}</button><button class="btn" name="mode" value="nav" data-ws-binds-cancel>${tx('common.cancel')}</button></div>
     </dialog>` : '';
-  const runsAs = asApp ? tx('ws.runs_as_role', { role: asApp.db_role, app: asApp.name }) : workshopRunsAs(db);
+  const runsAs = asApp ? tx('ws.runs_as_role', { role: asApp.db_role, app: asApp.name }) : workshopRunsAs(s);
   // (sprint 107) the transaction badge: the real state of the tab's transaction on the server
   const tState = txnState(txn);
   const tNote = !txn && tabKey ? txnNote(s.id, tabKey) : null;
@@ -703,11 +725,15 @@ async function worksheet(req: Req, reply: FastifyReply) {
       <footer class="ws-status">
         <span class="ws-status-run" role="status" aria-live="polite">${status}</span>
         <!-- (UX-1) who the statements run as: a chip in the status bar; the explanation is its description -->
-        <label class="ws-runas ws-runas-chip" title="${runsAsText}"><span>${tx('ws.run_as')}</span>
+        <label class="ws-runas ws-runas-chip${onOwnerConn && !asApp ? ' ws-runas-owner' : ''}" title="${runsAsText}"><span>${tx('ws.run_as')}</span>
           <select name="as_app" aria-describedby="ws-runs-as">
-            <option value="">${db === owner ? tx('ws.owner_conn') : tx('ws.ws_login')}</option>
+            <option value="">${tx('ws.ws_login')}</option>
             ${apps.map((a) => html`<option value="${a.id}"${asApp?.id === a.id ? raw(' selected') : ''}>${a.name} (${a.db_role})</option>`)}
+            ${admin ? html`<option value="owner"${(onOwnerConn && !asApp) || (ownerError && body.as_app === 'owner') ? raw(' selected') : ''}>${tx('ws.owner_conn')}</option>` : ''}
           </select></label>
+        ${admin && !onOwnerConn ? html`<label class="ws-owner-reason${ownerError ? ' ws-owner-reason-open' : ''}"><span>${tx('ws.owner.reason')}</span>
+          <input name="owner_reason" maxlength="${REASON_MAX}" autocomplete="off" placeholder="${tx('ws.owner.reason_placeholder')}"></label>` : ''}
+        ${ownerError ? html`<span class="ws-owner-error" role="alert">${ownerError}</span>` : ''}
         <span class="sr-only" id="ws-runs-as">${tx('ws.runs_as', { who: runsAs })}${searchSchema ? html`; ${tx('ws.search_path_plain', { schema: searchSchema })}` : ''}. <span data-ws-commit-note>${txnOn
           ? tx('ws.commit.txn', { idle: idleLabel(tx) })
           : tx('ws.commit.auto')}</span></span>
@@ -723,6 +749,24 @@ export async function worksheetRoutes(app: FastifyInstance) {
     app.get(`${BASE}${path}`, worksheet);
     app.post(`${BASE}${path}`, worksheet);
   }
+  // (sprint 185, NX-S1) Run as for the whole SQL Workshop: back to the developer login (the red chip's button), or
+  // (administrators, with a reason) the Owner connection
+  app.post(`${BASE}/sql/run-as`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const tx = tr(s);
+    if (req.body?.as === 'owner') {
+      if (!(await isAdmin(s.username))) return reply.code(403).send(tx('ws.owner.admins_only'));
+      const reason = String(req.body?.reason ?? '').trim();
+      if (!reason || reason.length > REASON_MAX) {
+        flash(s, tx(reason ? 'ws.owner.reason_long' : 'ws.owner.reason_needed', { n: REASON_MAX }), 'error');
+        return back(reply, s, `${BASE}/sql/worksheet`);
+      }
+      if (!ownerReasonOf(s)) await chooseOwner(s, reason, clientIp(req));
+    } else await endOwner(s, clientIp(req));
+    const to = String(req.body?.to ?? '');
+    return back(reply, s, to.startsWith(`${BASE}/sql`) && !to.startsWith('//') && !/[\\\s]/.test(to) ? to : `${BASE}/sql/worksheet`);
+  });
   // (before sprint 61 SQL Commands was /builder/sql: a post there still runs)
   app.post(`${BASE}/sql`, worksheet);
 

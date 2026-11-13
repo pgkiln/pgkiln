@@ -294,7 +294,7 @@ parsing, type inference and limits.)
 3. The result shows the rows inserted, updated and skipped, with a link to the table in the
    Object Browser.
 
-Load Data runs as the builder's owner connection, like the SQL Worksheet.
+Load Data runs as the workspace's developer login, like the SQL Worksheet (sprint 185; see chapter 3, *Who the SQL Workshop runs as*).
 
 ### SQL Workshop → Unload Data
 
@@ -318,7 +318,7 @@ Values are written as Postgres prints them (dates `2026-10-05`, timestamps with 
 (`declare … fetch`) in batches of 1,000 and each batch is sent before the next is read, so memory
 stays flat for any table, up to `DOWNLOAD_MAX_ROWS` rows (default 1,000,000).
 
-Unload Data runs as the builder's owner connection (any table the owner can read), on a connection
+Unload Data runs as the workspace's developer login (any table it can read), on a connection
 of its own in a **read-only transaction**: a statement other than one SELECT is refused, and a
 data-modifying `with`, `select … into` or a function that writes fails. Each statement has a
 timeout (`UNLOAD_STATEMENT_TIMEOUT`, default `5min`). A failing query shows its error on the form;
@@ -381,8 +381,8 @@ Rows to develop and test with (APEX 26.1's Data Generator / "sample data for dev
    Definitions are shared by the developers of the installation, like SQL scripts, and not part of
    an application export (they describe tables, not an application).
 
-Sample Data runs as the builder's owner connection (like the SQL Worksheet: triggers run, row level
-security doesn't apply to the owner), on a connection of its own that is closed afterwards, with a
+Sample Data runs as the workspace's developer login (like the SQL Worksheet: triggers run, row level
+security applies unless the login owns the table), on a connection of its own that is closed afterwards, with a
 statement timeout (`SAMPLE_DATA_STATEMENT_TIMEOUT`, default `5min`) and at most
 `SAMPLE_DATA_MAX_ROWS` rows per run (default 100,000). Table and column names come from the
 catalog and are always quoted; values are bound parameters. Every insert is recorded in the

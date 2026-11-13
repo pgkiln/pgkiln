@@ -181,9 +181,9 @@ describe('isolated workspaces', { skip: !isolatedRuntime && 'needs RUNTIME_DATAB
     assert.equal(n, 1);
     // the developer login of the Advisor and code checks
     assert.notEqual(await devDbForApp(appA), owner);
-    // administrators keep the owner
+    // (sprint 185) administrators run as the (Default) workspace's developer login too, unless they choose the Owner connection
     page = await sqlCommand(admin, 'select session_user');
-    assert.match(page, /owner connection/);
+    assert.match(page, /pgkiln_ws1_dev_/);
   });
 
   test('SQL scripts, blueprints and data load definitions belong to a workspace', async () => {

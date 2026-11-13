@@ -64,11 +64,14 @@ export async function uiDefaultRoutes(app: FastifyInstance) {
     const schemas = await usableSchemas(db);
     const q = req.query ?? {};
     const schema = typeof q.schema === 'string' && schemas.includes(q.schema) ? q.schema : '';
+    // (sprint 185) the tables as the workshop's connection sees them; their UI defaults (meta) through the owner
+    const defaults = schema ? new Map((await owner.query<{ t: string; n: number }>(
+      'select table_name as t, count(*)::int as n from meta.ui_default where schema_name = $1 group by 1', [schema])).rows.map((r) => [r.t, r.n])) : new Map<string, number>();
     const tables = schema
-      ? (await db.query<{ name: string; n: number }>(
-          `select c.relname as name, (select count(*) from meta.ui_default d where d.schema_name = $1 and d.table_name = c.relname)::int as n
+      ? (await db.query<{ name: string }>(
+          `select c.relname as name
              from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = $1 and c.relkind in ('r', 'p', 'v', 'm', 'f') and not c.relispartition order by 1`,
-          [schema])).rows
+          [schema])).rows.map((r) => ({ name: r.name, n: defaults.get(r.name) ?? 0 }))
       : [];
     const t = schema ? await findTable(s, schema, q.table) : null;
     const counts = (await owner.query<{ schema_name: string; n: number }>('select schema_name, count(*)::int as n from meta.ui_default group by 1')).rows;

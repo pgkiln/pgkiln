@@ -1128,10 +1128,20 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
       }
       // (sprint 35) Sample Data: a preview (inserted and rolled back) of the HR example's saved generator
       {
+        // (sprint 185, NX-S1) the HR tables have row level security and belong to the owner: the developer login's
+        // insert is refused, so this preview runs on the Owner connection (with a reason), then goes back
+        const runAs = async (form: Record<string, string>) => {
+          const csrf = (await page.locator('input[name=__csrf]').first().getAttribute('value'))!;
+          const res = await page.request.post(`${base}/builder/sql/run-as`, { form: { __csrf: csrf, ...form }, maxRedirects: 0 });
+          assert.equal(res.status(), 303);
+        };
+        await page.goto(`${base}${urls.sample_data_saved}`);
+        await runAs({ as: 'owner', reason: 'e2e: sample data into the owner\'s RLS tables' });
         await page.goto(`${base}${urls.sample_data_saved}`);
         await Promise.all([page.waitForNavigation(), page.click('button[name=action][value=preview]')]);
         assert.match(await page.content(), /Rolled back: nothing was saved/);
         await check(page, 'builder-sample_data_preview', vp);
+        await runAs({ as: 'developer' });
       }
       // (sprint 32) create an application from a file: upload, step 2, the result and the generated pages
       const alias = `e2e-ff-${size.width}`;

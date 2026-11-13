@@ -2,7 +2,7 @@ import pg from 'pg';
 import { embedsInDatabase, embedTexts, loadVectorProviders, vectorLiteral, vectorProviderProblems, DEFAULT_BATCH, DEFAULT_PER_MINUTE, type VectorProvider } from './ai/embeddings.ts';
 import { isAiError } from './ai/types.ts';
 import { owner } from './db.ts';
-import { devDbForApp } from './workspace-db.ts';
+import { appIsolated, devDbForApp } from './workspace-db.ts';
 
 // (sprint 136, AP-1) pgvector, and keeping vector columns current.
 //
@@ -115,7 +115,10 @@ async function runBatch(g: Group, p: VectorProvider): Promise<number> {
           where id = any($1::bigint[])`, [ids, message]);
       return 0;
     };
-    const db = await devDbForApp(g.app_id);
+    // (sprint 185) a provider that embeds in the database runs the developer's function: the developer login (never the
+    // owner); an AI service provider's statements are pgkiln's own (checked names) and read every row, past row level
+    // security, as before: the owner for a shared workspace's application, the isolated workspace's login otherwise
+    const db = embedsInDatabase(p) || (await appIsolated(g.app_id)) ? await devDbForApp(g.app_id) : owner;
     const table = (await db.query<{ t: string | null }>('select $1::oid::regclass::text as t from pg_catalog.pg_class where oid = $1', [g.tbl])).rows[0]?.t;
     if (!table) {
       // the table is gone

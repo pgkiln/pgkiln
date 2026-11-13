@@ -49,6 +49,10 @@ async function builder(viewport = { width: 1440, height: 1000 }): Promise<{ cont
   await page.fill('#f_username', 'admin');
   await page.fill('#f_password', 'admin');
   await Promise.all([page.waitForNavigation(), page.click('button.btn-hot')]);
+  // (sprint 185) the owner's schemas: the Owner connection, with a reason
+  await page.goto(`${base}/builder/sql`);
+  const ownerRes = await page.request.post(`${base}/builder/sql/run-as`, { form: { __csrf: (await page.locator('input[name=__csrf]').first().getAttribute('value'))!, as: 'owner', reason: 'e2e: the owner\'s schema' }, maxRedirects: 0 });
+  assert.equal(ownerRes.status(), 303);
   return { context, page };
 }
 

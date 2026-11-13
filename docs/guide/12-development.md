@@ -63,7 +63,8 @@ src/
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the owner and shared runtime pools, `runtime` (the current scope's: runtimeScope), appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
-                           PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests
+                           PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests;
+                           (sprint 185, 166) every workspace's developer login: devDbForWorkspace / devDbForApp never return the owner
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   gallery-remote.ts        (sprint 181, migration 164) the App Gallery's remote catalogues: parseCatalogue (blueprints only, checked
                            and cut to size), refreshSource (guarded webRequest), remoteBlueprint (fetched on Install)
@@ -425,6 +426,9 @@ src/
                            slowest provider calls, failures; Retry / Purge one or all failed, scope checked again per mail
     network-access.ts      (sprint 118, WS-9) Administration → Network access (/builder/network): the installation's list, a workspace's
                            list (workspaceAdmin), Check a URL (nothing called), the workspaces (administrators), refused calls
+    owner-connection.ts    (sprint 185, NX-S1) the SQL Workshop's Owner connection: administrators only, a reason (session state
+                           __OWNER), chooseOwner / endOwner, auditRun (worksheet, SQL Scripts) and auditedOwner (the other tools'
+                           changing statements) into meta.owner_sql_audit; workspaces.ts workshopDb() picks it or the developer login
     workspace-mail.ts      (sprint 118, WS-9) a workspace's own mail service (/builder/workspaces/:id/mail, WORKSPACE_<id>): its
                            administrators only, write-only secret, checks through mail.ts runCheck with the workspace's guard
     workspace-resources.ts (sprint 141, AP-7) Workspace utilities → Static workspace files (/builder/workspace-files), Remote servers

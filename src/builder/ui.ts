@@ -286,8 +286,13 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 
 /** Tabs of the SQL Workshop, in the session's builder language (tool names: sql.tool.<key> in i18n/en.ts). */
 export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'charts' | 'modeler' | 'rest' | 'scheduling' | 'datapump' | 'monitor' | 'changes';
-export const workshopTabs = (active: WorkshopTab, s?: Pick<Session, 'state'>) => {
+export const workshopTabs = (active: WorkshopTab, s?: Pick<Session, 'state'> & Partial<Pick<Session, 'csrf_token'>>) => {
   const tx = tr(s);
+  // (sprint 185, NX-S1) an administrator on the Owner connection: a red chip on every SQL Workshop page, with the way back
+  const ownerReason = typeof s?.state.__OWNER === 'string' && s.state.__OWNER ? s.state.__OWNER : '';
+  const ownerChip = ownerReason ? html`<form method="post" action="${BASE}/sql/run-as" class="sw-owner-chip" role="status" title="${tx('ws.owner.chip_title', { reason: ownerReason })}">
+      <input type="hidden" name="__csrf" value="${s?.csrf_token ?? ''}"><input type="hidden" name="as" value="developer">
+      ${icon('alert')}<span>${tx('ws.owner.chip')}</span><button class="btn btn-sm">${tx('ws.owner.back')}</button></form>` : '';
   const tab = (key: string, href: string, ic: string, label: string) =>
     html`<a class="ide-tab" href="${href}"${active === key ? raw(' aria-current="page"') : ''}>${icon(ic)}<span>${label}</span></a>`;
   // (sprint 75) the main tools as tabs, the others in a More menu (the open one is a tab too), so the strip never
@@ -302,7 +307,7 @@ export const workshopTabs = (active: WorkshopTab, s?: Pick<Session, 'state'>) =>
         // administrators' tools are on the Launchpad and the Utilities page, not in every developer's menu
         const list = SQL_TOOLS.filter((t) => t.group === g && !t.main && !t.admin);
         return list.length ? html`<div class="menu-section menu-links"><span class="small muted">${tx.dyn(`sql.group.${g}`, heading)}</span>${list.map((t) => html`<a href="${t.href}"${t.tab && t.tab === active ? raw(' aria-current="page"') : ''}>${icon(t.icon)} ${toolLabel(tx, t)}</a>`)}</div>` : '';
-      })}</div></details></nav>`;
+      })}</div></details></nav>${ownerChip}`;
 };
 
 /** Number of app tile colours (.app-color-0 … -7 in app.css). */
@@ -370,6 +375,13 @@ export async function developer(req: Req, reply: FastifyReply) {
     const tx = tr(s);
     await send(reply.code(403), s, shell(s, 'SQL Workshop', [['App Builder', BASE], ['SQL Workshop']],
       html`<h1>${tx('rail.sql_workshop')}</h1><div class="alert alert-info" role="status">${tx(s.workspaces && s.workspaces.length > 1 ? 'error.sql_off_switch' : 'error.sql_off', { name: s.workspace.name })}</div>`, 'sql'));
+    return null;
+  }
+  // (sprint 185, NX-S1) the SQL Workshop runs as a workspace's developer login: a developer without a workspace has none
+  if (!s.workspace && /^\/builder\/sql(?:[/?]|$)/.test(req.url)) {
+    const tx = tr(s);
+    await send(reply.code(403), s, shell(s, 'SQL Workshop', [['App Builder', BASE], ['SQL Workshop']],
+      html`<h1>${tx('rail.sql_workshop')}</h1><div class="alert alert-info" role="status">${tx('error.sql_no_workspace')}</div>`, 'sql'));
     return null;
   }
   // a page or application locked by another developer can't be changed (locks.ts)
