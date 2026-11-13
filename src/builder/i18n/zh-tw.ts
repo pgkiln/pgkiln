@@ -7705,4 +7705,22 @@ export const zhTW: BuilderMessages = {
   'apip.modules_unknown': '此應用程式沒有名為 {names} 的 REST 模組。',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '不在圖例中顯示（一律顯示）',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'SQL Workshop 導覽',
+  'tour.take': '開始導覽',
+  'tour.intro': '簡要介紹您最常用的工具。每一步都會說明工具的用途並提供可以嘗試的操作；開啟工具，然後回來繼續下一步。',
+  'tour.step': '第 {n} 步，共 {total} 步',
+  'tour.try': '試一試：',
+  'tour.open': '開啟 {tool}',
+  'tour.previous': '上一步',
+  'tour.next': '下一步',
+  'tour.done': '完成',
+  'tour.after': '導覽到此結束。在 SQL Workshop 首頁上，{pin} 可以釘選常用工具，頂端的搜尋欄位可以尋找工具、應用程式、頁面和資料表。',
+  'tour.try.worksheet': '對您的某個資料表輸入 SELECT 並按「執行陳述式」。左側的導覽器列出各資料表；結果顯示在編輯器下方。',
+  'tour.try.objects': '選擇一個資料表並查看其索引標籤：欄位、資料、鍵、資料列層級安全性原則以及建立它的 DDL。',
+  'tour.try.load': '將一個小的 CSV 或 Excel 檔案上傳到新資料表。在建立任何內容之前，您可以選擇欄位名稱和類型。',
+  'tour.try.quicksql': '在一行寫下資料表名稱，並在其下縮排寫出各欄位。DDL 會顯示在旁邊，可直接執行。',
+  'tour.try.rest': '使用 AutoREST 將資料表發佈為 REST 端點，然後開啟其 OpenAPI 文件。模組中包含您自己撰寫的處理常式。',
+  'tour.try.changes': '在 SQL Worksheet 中執行 ALTER TABLE，然後查看此處：它是一個變更集，可下載為 Flyway 或 Liquibase 移轉。',
+  'tour.try.monitor': '查看目前有哪些工作階段正在執行陳述式、它們在等待什麼以及被什麼封鎖。',
 };

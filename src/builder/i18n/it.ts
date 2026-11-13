@@ -7705,4 +7705,22 @@ export const it: BuilderMessages = {
   'apip.modules_unknown': 'Questa applicazione non ha un modulo REST chiamato {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Non mostrare nella legenda (sempre visibile)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Tour di SQL Workshop',
+  'tour.take': 'Fai il tour',
+  'tour.intro': 'Un breve tour degli strumenti che userai di più. Ogni passo dice a cosa serve uno strumento e ti propone qualcosa da provare; apri lo strumento, poi torna per il passo successivo.',
+  'tour.step': 'Passo {n} di {total}',
+  'tour.try': 'Prova questo:',
+  'tour.open': 'Apri {tool}',
+  'tour.previous': 'Indietro',
+  'tour.next': 'Avanti',
+  'tour.done': 'Fine',
+  'tour.after': 'Questo era il tour. Nella home di SQL Workshop, {pin} fissa uno strumento che usi spesso, e il campo di ricerca in alto trova strumenti, applicazioni, pagine e tabelle.',
+  'tour.try.worksheet': 'Scrivi un SELECT su una delle tue tabelle e premi Esegui istruzione. Il navigatore a sinistra elenca le tabelle; il risultato si apre sotto l\'editor.',
+  'tour.try.objects': 'Scegli una tabella e guarda le sue schede: colonne, dati, chiavi, criteri di sicurezza a livello di riga e il DDL che la crea.',
+  'tour.try.load': 'Carica un piccolo file CSV o Excel in una nuova tabella. Scegli i nomi e i tipi delle colonne prima che venga creato qualcosa.',
+  'tour.try.quicksql': 'Scrivi il nome di una tabella su una riga e le colonne rientrate sotto. Il DDL appare accanto, pronto da eseguire.',
+  'tour.try.rest': 'Pubblica una tabella come endpoint REST con AutoREST, poi apri il suo documento OpenAPI. I moduli contengono gli handler che scrivi tu.',
+  'tour.try.changes': 'Esegui un ALTER TABLE in SQL Worksheet, poi guarda qui: è un change set che puoi scaricare come migrazione Flyway o Liquibase.',
+  'tour.try.monitor': 'Guarda quali sessioni stanno eseguendo un\'istruzione in questo momento, cosa attendono e cosa le blocca.',
 };

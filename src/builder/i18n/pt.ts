@@ -7705,4 +7705,22 @@ export const pt: BuilderMessages = {
   'apip.modules_unknown': 'Esta aplicação não tem nenhum módulo REST chamado {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Não incluir na legenda (sempre visível)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Visita ao SQL Workshop',
+  'tour.take': 'Fazer a visita',
+  'tour.intro': 'Uma breve visita às ferramentas que mais vai usar. Cada passo diz para que serve uma ferramenta e propõe algo para experimentar; abra a ferramenta e volte para o passo seguinte.',
+  'tour.step': 'Passo {n} de {total}',
+  'tour.try': 'Experimente:',
+  'tour.open': 'Abrir {tool}',
+  'tour.previous': 'Anterior',
+  'tour.next': 'Seguinte',
+  'tour.done': 'Concluir',
+  'tour.after': 'Foi esta a visita. No início do SQL Workshop, {pin} fixa uma ferramenta que usa com frequência, e o campo de pesquisa no topo encontra ferramentas, aplicações, páginas e tabelas.',
+  'tour.try.worksheet': 'Escreva um SELECT sobre uma das suas tabelas e prima Executar instrução. O navegador à esquerda lista as tabelas; o resultado abre por baixo do editor.',
+  'tour.try.objects': 'Escolha uma tabela e veja os separadores: colunas, dados, chaves, políticas de segurança ao nível da linha e o DDL que a cria.',
+  'tour.try.load': 'Carregue um pequeno ficheiro CSV ou Excel para uma tabela nova. Escolhe os nomes e os tipos das colunas antes de algo ser criado.',
+  'tour.try.quicksql': 'Escreva o nome de uma tabela numa linha e as colunas indentadas por baixo. O DDL aparece ao lado, pronto a executar.',
+  'tour.try.rest': 'Publique uma tabela como ponto de acesso REST com o AutoREST e abra o respetivo documento OpenAPI. Os módulos contêm os handlers que escreve.',
+  'tour.try.changes': 'Execute um ALTER TABLE no SQL Worksheet e veja aqui: é um conjunto de alterações que pode transferir como migração Flyway ou Liquibase.',
+  'tour.try.monitor': 'Veja que sessões estão a executar uma instrução neste momento, o que esperam e o que as bloqueia.',
 };

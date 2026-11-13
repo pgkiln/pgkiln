@@ -14873,3 +14873,34 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     assert.equal(await mods(), null);
   });
 });
+
+describe('sprint 179 the SQL Workshop tour', () => {
+  test('the tour needs a developer, takes only a step number, and leaves SQL Monitor to administrators', async () => {
+    for (const url of ['/builder/sql/tour', '/builder/sql/tour?step=3']) {
+      const visitor = await app.inject({ method: 'GET', url });
+      assert.equal(visitor.statusCode, 302, url);
+      assert.equal(visitor.headers.location, '/builder/login');
+    }
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const home = await dev.get('/builder/sql');
+    assert.match(home.body, /href="\/builder\/sql\/tour"/);
+    const first = await dev.get('/builder/sql/tour');
+    assert.equal(first.statusCode, 200);
+    assert.match(first.body, /Step 1 of 7/);
+    assert.match(first.body, /href="\/builder\/sql\/worksheet"/);
+    assert.match(first.body, /aria-current="step">1\. SQL Worksheet/);
+    // anything that is no step number: the first step or the last, never echoed
+    for (const [step, want] of [['0', 1], ['-4', 1], ['abc', 1], ['99999999999999999999', 7], ['2<script>alert(1)</script>', 2], ['"><img src=x>', 1]] as const) {
+      const res = await dev.get(`/builder/sql/tour?step=${encodeURIComponent(step)}`);
+      assert.equal(res.statusCode, 200, step);
+      assert.match(res.body, new RegExp(`Step ${want} of 7`), step);
+      assert.doesNotMatch(res.body, /<script>alert|<img src=x/, step);
+    }
+    const last = await dev.get('/builder/sql/tour?step=7');
+    assert.match(last.body, /href="\/builder\/sql\/monitor"/);
+    assert.match(last.body, /class="btn btn-hot" href="\/builder\/sql">Done/);
+    assert.doesNotMatch(last.body, /step=8/);
+  });
+});

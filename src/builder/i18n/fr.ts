@@ -7705,4 +7705,22 @@ export const fr: BuilderMessages = {
   'apip.modules_unknown': 'Cette application n\'a pas de module REST nommé {names}.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Ne pas afficher dans la légende (toujours visible)',
+  // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
+  'tour.title': 'Visite du SQL Workshop',
+  'tour.take': 'Faire la visite',
+  'tour.intro': 'Une courte visite des outils que vous utiliserez le plus. Chaque étape dit à quoi sert un outil et vous propose un essai ; ouvrez l\'outil, puis revenez pour l\'étape suivante.',
+  'tour.step': 'Étape {n} sur {total}',
+  'tour.try': 'Essayez :',
+  'tour.open': 'Ouvrir {tool}',
+  'tour.previous': 'Précédent',
+  'tour.next': 'Suivant',
+  'tour.done': 'Terminé',
+  'tour.after': 'C\'était la visite. Sur l\'accueil du SQL Workshop, {pin} épingle un outil que vous utilisez souvent, et le champ de recherche en haut trouve les outils, les applications, les pages et les tables.',
+  'tour.try.worksheet': 'Saisissez un SELECT sur l\'une de vos tables et appuyez sur Exécuter l\'instruction. Le navigateur à gauche liste les tables ; le résultat s\'ouvre sous l\'éditeur.',
+  'tour.try.objects': 'Choisissez une table et regardez ses onglets : colonnes, données, clés, politiques de sécurité au niveau des lignes et le DDL qui la crée.',
+  'tour.try.load': 'Chargez un petit fichier CSV ou Excel dans une nouvelle table. Vous choisissez les noms et les types des colonnes avant toute création.',
+  'tour.try.quicksql': 'Écrivez un nom de table sur une ligne et ses colonnes en retrait en dessous. Le DDL apparaît à côté, prêt à être exécuté.',
+  'tour.try.rest': 'Publiez une table comme point d\'accès REST avec AutoREST, puis ouvrez son document OpenAPI. Les modules contiennent les gestionnaires que vous écrivez vous-même.',
+  'tour.try.changes': 'Exécutez un ALTER TABLE dans le SQL Worksheet, puis regardez ici : c\'est un jeu de modifications que vous pouvez télécharger comme migration Flyway ou Liquibase.',
+  'tour.try.monitor': 'Voyez quelles sessions exécutent une instruction en ce moment, ce qu\'elles attendent et ce qui les bloque.',
 };

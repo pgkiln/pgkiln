@@ -29,7 +29,7 @@ The builder's **App Gallery** (`/builder/gallery`) lists what `gallery.json` nam
 | `sample-processes.sql` | Sample Processes | every process type, page and application computations, branches, application processes and Ajax callbacks, report queries, shortcuts |
 | `sample-data-loading.sql` | Sample Data Loading | `data_load` processes: by column name and merged, through a data load definition, skipping rows with errors |
 | `sample-files.sql` | Sample Files | a file in the record's columns, several files in a child table, a photo cropped before upload |
-| `ux-patterns.sql` | UX Pattern Catalog | region templates and options, buttons and every button position, items (autocomplete, image upload, multiselect, percent graph, URL) and form layouts, content and page patterns, display positions, the minimal and right-side-column page templates, URL and sign-in regions |
+| `ux-patterns.sql` | UX Pattern Catalog | region templates and options, buttons and every button position, items (autocomplete, image upload, multiselect, percent graph, URL) and form layouts, content and page patterns, display positions, the minimal and right-side-column page templates, URL and sign-in regions, icons and their modifiers, the theme's colour classes and variables |
 
 Each script creates its own schema (`sample_charts`, …), a role (`app_sample_charts`, …) granted to the runtime, the
 application and one account, **demo** / **demo**. Without the builder:

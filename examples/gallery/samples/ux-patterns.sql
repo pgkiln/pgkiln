@@ -20,7 +20,11 @@
 --   page 14 display positions: banner, body, right side column and footer
 --           (page template Right side column);
 --   page 15 button positions: every slot of a region's header and bottom bar;
---   page 16 a sign-in region on a page with the template Minimal.
+--   page 16 a sign-in region on a page with the template Minimal;
+--   page 17 icons: pgkiln's own, Lucide and Font APEX names, and the
+--           modifiers (size, colour, spin, flip);
+--   page 18 colours: the colour classes, status colours and the theme's
+--           variables, which follow the application's style and dark mode.
 -- Every page says which template, option or class it uses.
 --
 -- Installed by an administrator from the App Gallery, or with
@@ -89,7 +93,9 @@ select a.id, p.no, p.name, p.name, p.parent, p.mode, p.pos, p.size, p.tpl
   (11, 'More item types', 1, 'normal', 'center', 'medium', 'standard'),
   (14, 'Display positions', 1, 'normal', 'center', 'medium', 'right_side_column'),
   (15, 'Button positions', 1, 'normal', 'center', 'medium', 'standard'),
-  (16, 'Sign-in region', 1, 'normal', 'center', 'medium', 'minimal')
+  (16, 'Sign-in region', 1, 'normal', 'center', 'medium', 'minimal'),
+  (17, 'Icons', 1, 'normal', 'center', 'medium', 'standard'),
+  (18, 'Colours', 1, 'normal', 'center', 'medium', 'standard')
   ) as p (no, name, parent, mode, pos, size, tpl)
  where a.alias = 'ux-patterns';
 
@@ -99,7 +105,8 @@ select a.id, n.seq, n.label, n.icon, n.page
   (10, 'Home', 'home', 1), (20, 'Region templates', 'layers', 2), (30, 'Region options', 'sliders', 3), (40, 'Buttons', 'target', 4),
   (50, 'Items and forms', 'edit', 5), (60, 'Content patterns', 'grid', 6), (70, 'Page patterns', 'file', 7),
   (80, 'More item types', 'list-plus', 11), (90, 'Display positions', 'layout-panel-left', 14),
-  (100, 'Button positions', 'mouse-pointer-click', 15), (110, 'Sign-in region', 'log-in', 16)
+  (100, 'Button positions', 'mouse-pointer-click', 15), (110, 'Sign-in region', 'log-in', 16),
+  (120, 'Icons', 'star', 17), (130, 'Colours', 'palette', 18)
   ) as n (seq, label, icon, page)
  where a.alias = 'ux-patterns';
 
@@ -108,7 +115,12 @@ select a.id, l.name, 'static', l.description
   from meta.app a, (values
   ('UX_TOPICS', 'The pages of the catalog'),
   ('UX_STEPS', 'Steps of a wizard (wizard progress on page 2)'),
-  ('UX_SHORTCUTS', 'A small list for the list templates on page 6')
+  ('UX_SHORTCUTS', 'A small list for the list templates on page 6'),
+  ('UX_ICONS_ACTIONS', 'Icons for navigation and actions (page 17)'),
+  ('UX_ICONS_OBJECTS', 'Icons for things (page 17)'),
+  ('UX_ICONS_STATUS', 'Icons for status and feedback (page 17)'),
+  ('UX_ICONS_MODIFIERS', 'Icon modifiers (page 17)'),
+  ('UX_ICONS_MORE', 'Lucide and Font APEX names (page 17)')
   ) as l (name, description)
  where a.alias = 'ux-patterns';
 
@@ -125,6 +137,88 @@ select a.id, e.list, e.seq, e.label, e.icon, e.page, e.badge, e.description
   ('UX_TOPICS', 80, 'Display positions', 'layout-panel-left', 14, null, 'Banner, body, right side column and footer.'),
   ('UX_TOPICS', 90, 'Button positions', 'mouse-pointer-click', 15, null, 'Create, edit, help and up in the header; previous, close, delete and next in the bottom bar.'),
   ('UX_TOPICS', 100, 'Sign-in region', 'log-in', 16, null, 'The Login region on a page without navigation, as on an own login page.'),
+  ('UX_TOPICS', 110, 'Icons', 'star', 17, null, 'The built-in icons, Lucide and Font APEX names, and modifiers for size, colour, spin and flip.'),
+  ('UX_TOPICS', 120, 'Colours', 'palette', 18, null, 'Colour classes, status colours and the variables of the theme, in light and dark mode.'),
+  ('UX_ICONS_ACTIONS', 10, 'home', 'home', null, null, null),
+  ('UX_ICONS_ACTIONS', 20, 'menu', 'menu', null, null, null),
+  ('UX_ICONS_ACTIONS', 30, 'search', 'search', null, null, null),
+  ('UX_ICONS_ACTIONS', 40, 'filter', 'filter', null, null, null),
+  ('UX_ICONS_ACTIONS', 50, 'plus', 'plus', null, null, null),
+  ('UX_ICONS_ACTIONS', 60, 'edit', 'edit', null, null, null),
+  ('UX_ICONS_ACTIONS', 70, 'trash', 'trash', null, null, null),
+  ('UX_ICONS_ACTIONS', 80, 'save', 'save', null, null, null),
+  ('UX_ICONS_ACTIONS', 90, 'copy', 'copy', null, null, null),
+  ('UX_ICONS_ACTIONS', 100, 'download', 'download', null, null, null),
+  ('UX_ICONS_ACTIONS', 110, 'upload', 'upload', null, null, null),
+  ('UX_ICONS_ACTIONS', 120, 'refresh', 'refresh', null, null, null),
+  ('UX_ICONS_ACTIONS', 130, 'undo', 'undo', null, null, null),
+  ('UX_ICONS_ACTIONS', 140, 'share', 'share', null, null, null),
+  ('UX_ICONS_ACTIONS', 150, 'send', 'send', null, null, null),
+  ('UX_ICONS_ACTIONS', 160, 'link', 'link', null, null, null),
+  ('UX_ICONS_ACTIONS', 170, 'external', 'external', null, null, null),
+  ('UX_ICONS_ACTIONS', 180, 'settings', 'settings', null, null, null),
+  ('UX_ICONS_ACTIONS', 190, 'sliders', 'sliders', null, null, null),
+  ('UX_ICONS_ACTIONS', 200, 'logout', 'logout', null, null, null),
+  ('UX_ICONS_OBJECTS', 10, 'user', 'user', null, null, null),
+  ('UX_ICONS_OBJECTS', 20, 'users', 'users', null, null, null),
+  ('UX_ICONS_OBJECTS', 30, 'building', 'building', null, null, null),
+  ('UX_ICONS_OBJECTS', 40, 'calendar', 'calendar', null, null, null),
+  ('UX_ICONS_OBJECTS', 50, 'clock', 'clock', null, null, null),
+  ('UX_ICONS_OBJECTS', 60, 'file', 'file', null, null, null),
+  ('UX_ICONS_OBJECTS', 70, 'folder', 'folder', null, null, null),
+  ('UX_ICONS_OBJECTS', 80, 'image', 'image', null, null, null),
+  ('UX_ICONS_OBJECTS', 90, 'table', 'table', null, null, null),
+  ('UX_ICONS_OBJECTS', 100, 'chart', 'chart', null, null, null),
+  ('UX_ICONS_OBJECTS', 110, 'pie-chart', 'pie-chart', null, null, null),
+  ('UX_ICONS_OBJECTS', 120, 'dashboard', 'dashboard', null, null, null),
+  ('UX_ICONS_OBJECTS', 130, 'kanban', 'kanban', null, null, null),
+  ('UX_ICONS_OBJECTS', 140, 'database', 'database', null, null, null),
+  ('UX_ICONS_OBJECTS', 150, 'map', 'map', null, null, null),
+  ('UX_ICONS_OBJECTS', 160, 'inbox', 'inbox', null, null, null),
+  ('UX_ICONS_OBJECTS', 170, 'cart', 'cart', null, null, null),
+  ('UX_ICONS_OBJECTS', 180, 'credit-card', 'credit-card', null, null, null),
+  ('UX_ICONS_OBJECTS', 190, 'truck', 'truck', null, null, null),
+  ('UX_ICONS_OBJECTS', 200, 'box', 'box', null, null, null),
+  ('UX_ICONS_STATUS', 10, 'check', 'check', null, null, null),
+  ('UX_ICONS_STATUS', 20, 'check-circle', 'check-circle', null, null, null),
+  ('UX_ICONS_STATUS', 30, 'x-circle', 'x-circle', null, null, null),
+  ('UX_ICONS_STATUS', 40, 'alert', 'alert', null, null, null),
+  ('UX_ICONS_STATUS', 50, 'info', 'info', null, null, null),
+  ('UX_ICONS_STATUS', 60, 'help', 'help', null, null, null),
+  ('UX_ICONS_STATUS', 70, 'ban', 'ban', null, null, null),
+  ('UX_ICONS_STATUS', 80, 'lock', 'lock', null, null, null),
+  ('UX_ICONS_STATUS', 90, 'unlock', 'unlock', null, null, null),
+  ('UX_ICONS_STATUS', 100, 'eye', 'eye', null, null, null),
+  ('UX_ICONS_STATUS', 110, 'eye-off', 'eye-off', null, null, null),
+  ('UX_ICONS_STATUS', 120, 'bell', 'bell', null, null, null),
+  ('UX_ICONS_STATUS', 130, 'star', 'star', null, null, null),
+  ('UX_ICONS_STATUS', 140, 'heart', 'heart', null, null, null),
+  ('UX_ICONS_STATUS', 150, 'flag', 'flag', null, null, null),
+  ('UX_ICONS_STATUS', 160, 'bookmark', 'bookmark', null, null, null),
+  ('UX_ICONS_STATUS', 170, 'tag', 'tag', null, null, null),
+  ('UX_ICONS_STATUS', 180, 'trend-up', 'trend-up', null, null, null),
+  ('UX_ICONS_STATUS', 190, 'trend-down', 'trend-down', null, null, null),
+  ('UX_ICONS_STATUS', 200, 'bolt', 'bolt', null, null, null),
+  ('UX_ICONS_MODIFIERS', 10, 'star sm', 'star sm', null, null, null),
+  ('UX_ICONS_MODIFIERS', 20, 'star lg', 'star lg', null, null, null),
+  ('UX_ICONS_MODIFIERS', 30, 'star 2x', 'star 2x', null, null, null),
+  ('UX_ICONS_MODIFIERS', 40, 'refresh spin', 'refresh spin', null, null, null),
+  ('UX_ICONS_MODIFIERS', 50, 'truck flip-h', 'truck flip-h', null, null, null),
+  ('UX_ICONS_MODIFIERS', 60, 'arrow-up rotate-90', 'arrow-up rotate-90', null, null, null),
+  ('UX_ICONS_MODIFIERS', 70, 'check-circle success', 'check-circle success', null, null, null),
+  ('UX_ICONS_MODIFIERS', 80, 'alert warning', 'alert warning', null, null, null),
+  ('UX_ICONS_MODIFIERS', 90, 'x-circle danger', 'x-circle danger', null, null, null),
+  ('UX_ICONS_MODIFIERS', 100, 'info info', 'info info', null, null, null),
+  ('UX_ICONS_MODIFIERS', 110, 'clock muted', 'clock muted', null, null, null),
+  ('UX_ICONS_MODIFIERS', 120, 'truck lg success', 'truck lg success', null, null, null),
+  ('UX_ICONS_MORE', 10, 'rocket', 'rocket', null, null, null),
+  ('UX_ICONS_MORE', 20, 'palette', 'palette', null, null, null),
+  ('UX_ICONS_MORE', 30, 'sparkles', 'sparkles', null, null, null),
+  ('UX_ICONS_MORE', 40, 'banknote', 'banknote', null, null, null),
+  ('UX_ICONS_MORE', 50, 'wrench', 'wrench', null, null, null),
+  ('UX_ICONS_MORE', 60, 'fa-users', 'fa-users', null, null, null),
+  ('UX_ICONS_MORE', 70, 'fa-calendar', 'fa-calendar', null, null, null),
+  ('UX_ICONS_MORE', 80, 'fa-refresh fa-spin', 'fa-refresh fa-spin', null, null, null),
   ('UX_STEPS', 10, 'Choose', null, 2, null, null),
   ('UX_STEPS', 20, 'Details', null, 5, null, null),
   ('UX_STEPS', 30, 'Confirm', null, 7, null, null),
@@ -303,7 +397,34 @@ select pg_temp.page_id('ux-patterns', r.page), r.seq, r.title, r.type, r.cols, r
   (16, 5, 'About this page', 'static', 12, 'plain', '{}',
    '<p class="lead">This page has the page template <em>Minimal (no navigation)</em> (<code>minimal</code>): no header, navigation menu or navigation bar, the title and the regions only, centred. The region below is a <strong>Login</strong> region: the application''s sign-in form, as on an own login page (Application settings → Sign-in methods → Create a login page). It posts to the application''s sign-in, so throttling and every sign-in method work as on the built-in page. You are signed in already: signing in again as demo / demo starts a new session and opens the home page. A wrong password shows the built-in sign-in page with its message, because this page is not the application''s login page. The region has <code>{"autofocus": false}</code>: you are signed in already, so the cursor isn''t put in the user name field (on a real login page leave it out).</p>',
    '{}', 'about-login', null),
-  (16, 10, 'Sign in', 'login', 12, 'standard', '{}', null, '{"autofocus": false}', null, null)
+  (16, 10, 'Sign in', 'login', 12, 'standard', '{}', null, '{"autofocus": false}', null, null),
+
+  -- 17 Icons
+  (17, 5, 'About this page', 'static', 12, 'plain', '{}',
+   '<p class="lead">Wherever a component has an <strong>Icon</strong> (a navigation entry, a list entry, a button, a card, a hero region), type a name. pgkiln has about 140 line icons of its own; the names below are a selection, and the icon picker in the builder shows them all. Any name of the <a href="https://lucide.dev/icons/">Lucide</a> set works too, and so does a Font APEX name where Lucide has an icon of that name (<code>fa-users</code>).</p><p>Words after the name are <strong>modifiers</strong>, as in Font APEX: a size (<code>xs</code>, <code>sm</code>, <code>lg</code>, <code>2x</code>, <code>3x</code>, <code>4x</code>), a colour (<code>success</code>, <code>warning</code>, <code>danger</code>, <code>info</code>, <code>muted</code>), <code>spin</code> or <code>pulse</code>, <code>rotate-90</code>, <code>rotate-180</code>, <code>rotate-270</code>, <code>flip-h</code> and <code>flip-v</code>. Each list on this page is a list region whose entries have the icon that their label names.</p>',
+   '{}', null, null),
+  (17, 10, 'Navigation and actions', 'list', 4, 'standard', '{}', null, '{"list": "UX_ICONS_ACTIONS", "template": "links"}', null, null),
+  (17, 20, 'Things', 'list', 4, 'standard', '{}', null, '{"list": "UX_ICONS_OBJECTS", "template": "links"}', null, null),
+  (17, 30, 'Status and feedback', 'list', 4, 'standard', '{}', null, '{"list": "UX_ICONS_STATUS", "template": "links"}', null, null),
+  (17, 40, 'Modifiers', 'list', 6, 'standard', '{}', null, '{"list": "UX_ICONS_MODIFIERS", "template": "links"}', null, null),
+  (17, 50, 'Lucide and Font APEX names', 'list', 6, 'standard', '{}', null, '{"list": "UX_ICONS_MORE", "template": "links"}', null, null),
+
+  -- 18 Colours
+  (18, 5, 'About this page', 'static', 12, 'plain', '{}',
+   '<p class="lead">Colours come from the theme, never from a fixed value in a page: the same class looks right in light and dark mode and follows the application''s style (Shared Components → Themes and Theme Roller). Switch the mode in the user menu to see this page change.</p>',
+   '{}', null, null),
+  (18, 10, 'Colour classes', 'static', 12, 'standard', '{}',
+   '<p>Fifteen hues for categories, as a soft background with readable text. Use them on a <code>span</code> in a static region, a report column template or a card.</p><p><span class="u-color-1-subtle">u-color-1-subtle</span> <span class="u-color-2-subtle">u-color-2-subtle</span> <span class="u-color-3-subtle">u-color-3-subtle</span> <span class="u-color-4-subtle">u-color-4-subtle</span> <span class="u-color-5-subtle">u-color-5-subtle</span> <span class="u-color-6-subtle">u-color-6-subtle</span> <span class="u-color-7-subtle">u-color-7-subtle</span> <span class="u-color-8-subtle">u-color-8-subtle</span> <span class="u-color-9-subtle">u-color-9-subtle</span> <span class="u-color-10-subtle">u-color-10-subtle</span> <span class="u-color-11-subtle">u-color-11-subtle</span> <span class="u-color-12-subtle">u-color-12-subtle</span> <span class="u-color-13-subtle">u-color-13-subtle</span> <span class="u-color-14-subtle">u-color-14-subtle</span> <span class="u-color-15-subtle">u-color-15-subtle</span></p>',
+   '{}', null, null),
+  (18, 20, 'Status colours', 'static', 6, 'standard', '{}',
+   '<p>The same pattern for a meaning. These follow the theme''s own success, danger and accent colours.</p><p><span class="u-color-success-subtle">u-color-success-subtle</span> <span class="u-color-warning-subtle">u-color-warning-subtle</span> <span class="u-color-danger-subtle">u-color-danger-subtle</span> <span class="u-color-info-subtle">u-color-info-subtle</span> <span class="u-color-neutral-subtle">u-color-neutral-subtle</span></p><p><span class="tc-badge tc-badge-success">tc-badge-success</span> <span class="tc-badge tc-badge-info">tc-badge-info</span> <span class="tc-badge tc-badge-warning">tc-badge-warning</span> <span class="tc-badge tc-badge-danger">tc-badge-danger</span> <span class="tc-badge tc-badge-neutral">tc-badge-neutral</span></p><p><span class="tag">tag</span> <span class="tag tag-info">tag-info</span> <span class="tag tag-warning">tag-warning</span> <span class="tag tag-error">tag-error</span></p>',
+   '{}', null, null),
+  (18, 30, 'The theme''s variables', 'static', 6, 'standard', '{}',
+   '<p>A stylesheet of your own (Shared Components → Static Application Files) uses the theme''s variables, so it follows the style and the mode too:</p><ul><li><code>--bg</code>, <code>--surface</code>, <code>--surface-2</code>, <code>--surface-3</code>: the page and its cards</li><li><code>--text</code>, <code>--muted</code>, <code>--border</code></li><li><code>--accent</code>, <code>--accent-text</code>, <code>--accent-soft</code>: links, hot buttons, the current entry</li><li><code>--success</code>, <code>--success-soft</code>, <code>--danger</code>, <code>--danger-soft</code>, <code>--warning-soft</code></li><li><code>--header</code>, <code>--header-text</code>, <code>--nav-bg</code>, <code>--nav-active</code></li><li><code>--series-1</code> to <code>--series-8</code>: the colours of chart series and map layers</li><li><code>--radius</code>, <code>--font</code>, <code>--font-size</code>, <code>--shadow</code></li></ul>',
+   '{}', null, null),
+  (18, 40, 'Alerts', 'static', 12, 'standard', '{}',
+   '<div class="alert alert-success u-mb1">Success: <code>alert alert-success</code>.</div><div class="alert alert-warning u-mb1">Warning: <code>alert alert-warning</code>.</div><div class="alert alert-error u-mb0">Error: <code>alert alert-error</code>.</div>',
+   '{}', null, null)
   ) as r (page, seq, title, type, cols, template, topts, source, config, sid, pos);
 
 -- buttons

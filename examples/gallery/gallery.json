@@ -28,8 +28,8 @@
      "description": "Loading CSV, Excel and JSON files into a table from a page: merged by the key, through a data load definition that maps other headings and a date format, and skipping rows with errors. Example files to download included. Demo account demo / demo."},
     {"key": "sample-files", "title": "Sample Files", "version": "1.0", "alias": "sample-files", "icon": "files", "file": "samples/sample-files.sql",
      "description": "File upload and download: a file in the record's own column with its name, type, size and date, several files per record in a child table, and a photo cropped square before upload. Demo account demo / demo."},
-    {"key": "ux-patterns", "title": "UX Pattern Catalog", "version": "1.0", "alias": "ux-patterns", "icon": "palette", "file": "samples/ux-patterns.sql",
-     "description": "The theme's building blocks to copy from: region templates and template options, button styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments, avatars, metric cards, empty states, dialogs, drawers and side columns. Demo account demo / demo."}
+    {"key": "ux-patterns", "title": "UX Pattern Catalog", "version": "1.1", "alias": "ux-patterns", "icon": "palette", "file": "samples/ux-patterns.sql",
+     "description": "The theme's building blocks to copy from: region templates and template options, button styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments, avatars, metric cards, empty states, dialogs, drawers and side columns, icons with their modifiers, and the colours and variables of the theme (pgkiln's theme reference). Demo account demo / demo."}
   ],
   "starters": [
     {"key": "team-tasks", "title": "Team Tasks", "version": "1.0", "icon": "layout-grid", "file": "starters/team-tasks.json",

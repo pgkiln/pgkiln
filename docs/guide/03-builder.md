@@ -661,7 +661,9 @@ version says *Installed: v…*.
   - the **UX Pattern Catalog** (APEX: the Universal Theme app): region templates and template options, button
     styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments,
     avatars, metric cards, empty states, a dialog, a drawer and a side column, each named by its template, option
-    or class to copy from.
+    or class to copy from; (1.1, sprint 179) an *Icons* page (pgkiln's own, Lucide and Font APEX names, and the
+    modifiers) and a *Colours* page (the colour classes, status colours and the theme's variables). It is pgkiln's
+    theme reference.
 
   Each single-topic app and the catalog is one SQL file in `examples/gallery/samples/`, run in one transaction (a
   failing script leaves nothing behind); sign in with **demo** / **demo**. Outside the builder:
@@ -2164,6 +2166,11 @@ workspace) and the SQL Workshop pages you opened last in this browser (UX-14: ea
 first, without the Launchpad itself or a page that is pinned already). Below, the tools are in three tabs,
 **Development**, **Administration** and **Monitoring**, each with a line about what it does and a pin; the **More**
 menu uses the same headings.
+
+(sprint 179; Database Actions: the guided tour) **Take the tour** under the pins (`/builder/sql/tour`) walks through
+the tools a developer uses most, a step each: SQL Worksheet, Object Browser, Load Data, Quick SQL, RESTful Services,
+the Change Log and, for administrators, SQL Monitor. A step says what the tool is for, gives something to try and
+has a button that opens the tool. The tour is plain pages: it works without JavaScript and stores nothing.
 
 **Search** (**Ctrl/Cmd + K** on any builder page, or the field in the header) finds tools, applications, pages
 (by name or number) and database objects (tables, views, materialized views, functions and procedures) by name;
