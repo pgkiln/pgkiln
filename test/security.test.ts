@@ -14761,7 +14761,7 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
   let dept = '';
   let bearer = '';
   const get = (url: string, token = bearer) => app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
-  const limit = (modules: string[] | null) => owner.query('update meta.api_client set rest_modules = $2 where id = $1', [cid, modules]);
+  const limit = (modules: string[] | null) => owner.query('select meta.oauth_limit_client($1, $2)', [clientId, modules]);
   /** The data API's token check, the way PostgREST runs it for a verified token. */
   const dataApi = async (token: string) => {
     const { decodeJwt } = await import('jose');
@@ -14821,7 +14821,8 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     assert.equal(b.statusCode, 403);
     assert.doesNotMatch(b.body, /sec178b"|client:sec178/);
     assert.equal((await get(`/a/hr/autorest/${dept}/`)).statusCode, 403);
-    assert.equal((await get('/a/hr/autorest/openapi.json')).statusCode, 403);
+    // (sprint 184) the OpenAPI document of AutoREST: the public objects only, as without a token
+    assert.equal((await get('/a/hr/autorest/openapi.json')).statusCode, 200);
     assert.match(await dataApi(bearer), /limited to REST modules/);
     // the limit is not a grant: the module's and the handler's roles still apply
     await owner.query(`update meta.rest_module set roles = '{nobody_has_this}' where app_id = $1 and name = 'sec178a'`, [hr]);
@@ -14829,16 +14830,18 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     await owner.query(`update meta.rest_module set roles = '{}' where app_id = $1 and name = 'sec178a'`, [hr]);
   });
 
-  test('a new token of a limited client carries no database role', async () => {
+  test('a new token of a limited client carries the API role (sprint 184): refused on the data API, works there once the limit is cleared', async () => {
     const { decodeJwt } = await import('jose');
     const { clientToken } = await import('../src/oauth.ts');
     const secret = (await owner.one(`select meta.oauth_rotate_secret($1, make_interval(hours => 0)) as s`, [clientId]))!.s;
     const t = (await clientToken(clientId, secret)).access_token;
-    assert.equal(decodeJwt(t).role, undefined);
+    assert.equal(decodeJwt(t).role, 'hr_api');
+    assert.match(await dataApi(t), /limited to REST modules/);
     assert.equal((await get('/a/hr/rest/sec178a/who', t)).statusCode, 200);
     assert.equal((await get('/a/hr/rest/sec178b/who', t)).statusCode, 403);
     await limit(null);
     assert.equal((await get('/a/hr/rest/sec178b/who', t)).statusCode, 200);
+    assert.equal(await dataApi(t), 'ok');
     assert.equal(decodeJwt((await clientToken(clientId, secret)).access_token).role, 'hr_api');
   });
 
@@ -14851,14 +14854,16 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     const url = `/builder/apps/${hr}/api/clients/${cid}/modules`;
     assert.equal((await dev.post(url, { __csrf: 'forged', modules: 'sec178a' })).statusCode, 403);
     assert.equal((await app.inject({ method: 'POST', url, payload: { modules: 'sec178a' } })).statusCode, 302);
-    const mods = async () => (await owner.one('select rest_modules from meta.api_client where id = $1', [cid]))!.rest_modules;
+    // (165) the modules by link; null: no limit
+    const mods = async () => (await owner.one(`select case when c.module_limit then array(select m.name from meta.api_client_module l join meta.rest_module m on m.id = l.module_id where l.client_id = c.id order by m.name) end as m
+                                                 from meta.api_client c where c.id = $1`, [cid]))!.m;
     assert.equal(await mods(), null);
     // a module of no application, and markup: refused and escaped
     await dev.post(url, { __csrf: dev.lastCsrf, modules: 'sec178a, <b>nope</b>' });
     assert.equal(await mods(), null);
     const refused = await dev.get(`/builder/apps/${hr}/api`);
     assert.doesNotMatch(refused.body, /<b>nope<\/b>/);
-    await dev.post(url, { __csrf: dev.lastCsrf, modules: 'SEC178A sec178b, sec178a' });
+    await dev.post(url, { __csrf: dev.lastCsrf, modules: 'SEC178A, sec178b, sec178a' });
     assert.deepEqual(await mods(), ['sec178a', 'sec178b']);
     // a client of another application is not found through this one's URL
     await owner.query(`delete from meta.app where alias = 'sec178-other'`);
@@ -15262,5 +15267,182 @@ end;
     assert.equal(broken.statusCode, 422);
     assert.match(broken.body, /not closed/);
     assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from meta.temp_file where item_name = 'APEX_IMPORT'`))!.n <= 2, true);
+  });
+});
+
+describe('sprint 184 code review of 0.94.0: OAuth clients limited to REST modules', () => {
+  const ALIAS = 'sec184';
+  let hr = 0;
+  let appId = 0;
+  let clientId = '';
+  let secret = '';
+  let bearer = '';
+  const get = (url: string, token = bearer) => app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+  const handlers = (m: string, auth?: string) => JSON.stringify([{ method: 'GET', path: 'who', type: 'sql', ...(auth ? { auth } : {}), source: `select meta.app_user() as who, meta.has_role('manager') as manager, '${m}' as module` }]);
+  const limit = (modules: string[] | null, id = clientId) => owner.query('select meta.oauth_limit_client($1, $2)', [id, modules]);
+  const token = async (id = clientId, s = secret) => (await (await import('../src/oauth.ts')).clientToken(id, s)).access_token;
+  /** The data API's token check the way PostgREST runs it: SET ROLE to the token's role claim, pgkiln_anon without one. */
+  const dataApi = async (t: string) => {
+    const { decodeJwt } = await import('jose');
+    const claims = decodeJwt(t);
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify(claims)]);
+      await c.query(`set local role ${typeof claims.role === 'string' ? claims.role : 'pgkiln_anon'}`);
+      await c.query('select meta.api_check()');
+      return 'ok';
+    } catch (e) {
+      return (e as Error).message;
+    } finally {
+      await c.query('rollback').catch(() => {});
+      c.release();
+    }
+  };
+
+  before(async () => {
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`delete from meta.api_client where name like 'sec184%'`);
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec184%'`, [hr]);
+    await owner.query(`delete from meta.rest_object where app_id = $1 and alias = 'sec184-pub'`, [hr]);
+    appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) select $1, 'Sec 184', 'none', db_role from meta.app where alias = 'hr' returning id`, [ALIAS]))!.id;
+    for (const m of ['payroll', 'other'])
+      await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, $2, $2, $3)`, [appId, m, handlers(m)]);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'open', 'open', $2)`, [appId, handlers('open', 'public')]);
+    const c = (await owner.one(`select * from meta.oauth_create_client($1, 'sec184-client', '{manager}', 'sprint 184', 15)`, [ALIAS]))!;
+    [clientId, secret] = [c.client_id, c.client_secret];
+    bearer = await token();
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`delete from meta.api_client where name like 'sec184%'`);
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec184%'`, [hr]);
+    await owner.query(`delete from meta.rest_object where app_id = $1 and alias = 'sec184-pub'`, [hr]);
+  });
+
+  test('CR-1: the limit follows a renamed module, and a deleted module is never granted again by its name', async () => {
+    await limit(['payroll']);
+    assert.equal((await get(`/a/${ALIAS}/rest/payroll/who`)).statusCode, 200);
+    // renamed: the client keeps it under its new name
+    await owner.query(`update meta.rest_module set name = 'salaries' where app_id = $1 and name = 'payroll'`, [appId]);
+    assert.equal((await get(`/a/${ALIAS}/rest/salaries/who`)).statusCode, 200, 'the renamed module');
+    assert.equal((await get(`/a/${ALIAS}/rest/other/who`)).statusCode, 403);
+    // deleted, and a new module takes the old name (and the new one): no access nobody gave
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'salaries'`, [appId]);
+    for (const m of ['payroll', 'salaries'])
+      await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, $2, $2, $3)`, [appId, m, handlers(m)]);
+    for (const m of ['payroll', 'salaries', 'other']) assert.equal((await get(`/a/${ALIAS}/rest/${m}/who`)).statusCode, 403, m);
+    // the client stays limited with no module left: refused everywhere, also on the data API
+    assert.equal((await owner.one('select module_limit from meta.api_client where client_id = $1', [clientId]))!.module_limit, true);
+    assert.match(await dataApi(bearer), /limited to REST modules/);
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'salaries'`, [appId]);
+  });
+
+  test('CR-1: importing over the application keeps the modules of the same name, and one it drops is not granted again', async () => {
+    const { replaceApp } = await import('../src/cli/replace.ts');
+    await limit(['payroll']);
+    const doc = (await owner.one('select meta.export_app($1) as d', [ALIAS]))!.d;
+    await owner.tx((c) => replaceApp(c, doc, ALIAS, { backup: null }));
+    assert.equal((await get(`/a/${ALIAS}/rest/payroll/who`)).statusCode, 200, 'the same module after the import');
+    assert.equal((await get(`/a/${ALIAS}/rest/other/who`)).statusCode, 403);
+    // an import without payroll, then one with it again: the client is not given it back
+    const without = { ...doc, rest_modules: doc.rest_modules.filter((m: { name: string }) => m.name !== 'payroll') };
+    await owner.tx((c) => replaceApp(c, without, ALIAS, { backup: null }));
+    assert.equal((await get(`/a/${ALIAS}/rest/payroll/who`)).statusCode, 404);
+    await owner.tx((c) => replaceApp(c, doc, ALIAS, { backup: null }));
+    assert.equal((await get(`/a/${ALIAS}/rest/payroll/who`)).statusCode, 403, 'a module of the old name is not granted');
+    assert.equal((await owner.one('select count(*)::int as n from meta.api_client_module l join meta.api_client c on c.id = l.client_id where c.client_id = $1', [clientId]))!.n, 0);
+  });
+
+  test('CR-1: meta.oauth_limit_client takes modules of the client\'s own application only, and is for the owner', async () => {
+    await assert.rejects(limit(['payroll', 'nope']), /no REST module named nope/);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec184x', 'x', '[]')`, [hr]);
+    await assert.rejects(limit(['sec184x']), /no REST module named sec184x/, 'a module of another application');
+    await assert.rejects(limit([]), /at least one/);
+    await limit(['PAYROLL', ' payroll ']);
+    assert.equal((await get(`/a/${ALIAS}/rest/payroll/who`)).statusCode, 200);
+    for (const role of ['pgkiln_runtime', 'pgkiln_anon', 'hr_api', 'hr_app']) {
+      const ok = await owner.one(`select has_function_privilege($1, 'meta.oauth_limit_client(text, text[])', 'execute') as x, has_table_privilege($1, 'meta.api_client_module', 'select') as y`, [role]);
+      assert.deepEqual([ok!.x, ok!.y], [false, false], role);
+    }
+  });
+
+  test('CR-2: a limited client gets 403 on the data API, also with a token without a role claim; cleared, its token works there', async () => {
+    const { decodeJwt, SignJWT } = await import('jose');
+    const { jwtSecret } = await import('../src/api.ts');
+    await owner.query(`update meta.app set api_role = null where id = $1`, [appId]);
+    const hc = (await owner.one(`select * from meta.oauth_create_client('hr', 'sec184-hr', '{}', 'sprint 184', 15)`))!;
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec184m', 'm', $2) on conflict do nothing`, [hr, handlers('sec184m')]);
+    await limit(['sec184m'], hc.client_id);
+    const t = await token(hc.client_id, hc.client_secret);
+    assert.equal(decodeJwt(t).role, 'hr_api', 'the API role, though limited');
+    assert.match(await dataApi(t), /limited to REST modules/);
+    // a token as 0.94.0 issued it to a limited client: no role claim, so PostgREST runs it as pgkiln_anon
+    const old = await new SignJWT({ app: 'hr', app_user: 'client:sec184-hr', client_id: hc.client_id })
+      .setProtectedHeader({ alg: 'HS256', typ: 'JWT' }).setIssuedAt().setExpirationTime('15m').sign(jwtSecret());
+    assert.match(await dataApi(old), /limited to REST modules/, 'refused, not anonymous');
+    await limit(null, hc.client_id);
+    assert.equal(await dataApi(t), 'ok', 'the limit cleared: the same token works on the data API');
+    // a client of an application without an API role, not limited: anonymous on the data API, as before
+    await limit(null);
+    assert.equal(await dataApi(await token()), 'ok');
+  });
+
+  test('CR-3: public endpoints stay public to a limited client, which is anonymous there', async () => {
+    await limit(['payroll']);
+    for (const t of [undefined, bearer]) {
+      const res = await app.inject({ method: 'GET', url: `/a/${ALIAS}/rest/open/who`, headers: t ? { authorization: `Bearer ${t}` } : {} });
+      assert.equal(res.statusCode, 200, res.body);
+      assert.match(res.body, /"who":\s*"nobody"/, 'its identity does not reach the public handler');
+      assert.match(res.body, /"manager":\s*false/, 'nor its roles');
+    }
+    // a public AutoREST object and the AutoREST OpenAPI document
+    await owner.query(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, auth) values ($1, 'hr', 'weather_station', 'sec184-pub', '{GET}', 'public') on conflict do nothing`, [hr]);
+    const pub = (await owner.one(`select alias, auth from meta.rest_object where app_id = $1 and schema_name = 'hr' and object_name = 'weather_station'`, [hr]))!;
+    const hc = (await owner.one(`select * from meta.oauth_create_client('hr', 'sec184-hr2', '{}', 'sprint 184', 15)`))!;
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec184m', 'm', $2) on conflict do nothing`, [hr, handlers('sec184m')]);
+    await limit(['sec184m'], hc.client_id);
+    const ht = await token(hc.client_id, hc.client_secret);
+    if (pub.auth === 'public') {
+      assert.equal((await app.inject({ method: 'GET', url: `/a/hr/autorest/${pub.alias}/` })).statusCode, 200);
+      assert.equal((await get(`/a/hr/autorest/${pub.alias}/`, ht)).statusCode, 200, 'a public AutoREST object');
+    }
+    const doc = await get('/a/hr/autorest/openapi.json', ht);
+    assert.equal(doc.statusCode, 200);
+    const anon = await app.inject({ method: 'GET', url: '/a/hr/autorest/openapi.json' });
+    assert.deepEqual(Object.keys(JSON.parse(doc.body).paths), Object.keys(JSON.parse(anon.body).paths), 'the public objects only');
+    // a token endpoint stays refused
+    assert.equal((await get(`/a/${ALIAS}/rest/other/who`)).statusCode, 403);
+  });
+
+  test('CR-4, CR-5, CR-9: the builder refuses a list with unknown names (never cuts it) and logs the new limit', async () => {
+    await limit(null);
+    const cid = (await owner.one('select id from meta.api_client where client_id = $1', [clientId]))!.id;
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    assert.equal((await dev.get(`/builder/apps/${appId}/api`)).statusCode, 200);
+    const url = `/builder/apps/${appId}/api/clients/${cid}/modules`;
+    const limited = async () => (await owner.one(`select c.module_limit, array(select m.name from meta.api_client_module l join meta.rest_module m on m.id = l.module_id where l.client_id = c.id order by m.name) as m
+                                                   from meta.api_client c where c.id = $1`, [cid]))!;
+    // 60 names, the 51st+ unknown: refused as a whole and reported, not cut at 50
+    const many = [...Array.from({ length: 50 }, () => 'payroll'), ...Array.from({ length: 10 }, (_, i) => `zz${i}`)].join(', ');
+    assert.equal((await dev.post(url, { __csrf: dev.lastCsrf, modules: many })).statusCode, 303);
+    assert.deepEqual(await limited(), { module_limit: false, m: [] });
+    assert.match((await dev.get(`/builder/apps/${appId}/api`)).body, /no REST module named zz0, zz1, zz2, zz3, zz4 \(\+5\)/);
+    await dev.post(url, { __csrf: dev.lastCsrf, modules: 'payroll, OTHER' });
+    assert.deepEqual(await limited(), { module_limit: true, m: ['other', 'payroll'] });
+    const log = async () => (await owner.one(`select detail from meta.activity_log where app_id = $1 and event = 'oauth_client' order by id desc limit 1`, [appId]))!.detail;
+    assert.equal(await log(), 'modules sec184-client: other, payroll');
+    await dev.post(url, { __csrf: dev.lastCsrf, modules: '' });
+    assert.deepEqual(await limited(), { module_limit: false, m: [] });
+    assert.equal(await log(), 'modules sec184-client: none (the whole application)');
+    // a limited client whose modules were all deleted: the page says so
+    await limit(['payroll']);
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'payroll'`, [appId]);
+    assert.match((await dev.get(`/builder/apps/${appId}/api`)).body, /its REST modules were deleted: it is refused everywhere/);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'payroll', 'payroll', $2)`, [appId, handlers('payroll')]);
   });
 });

@@ -3475,10 +3475,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (allPoints.length === 1 && !allShapes.length) map.setView([allPoints[0].lat, allPoints[0].lng], data.zoom || 14);
     else if (bounds.isValid()) map.fitBounds(bounds, { padding: [24, 24], maxZoom: data.zoom || 16 });
     else map.setView([20, 0], 2);
-    if (data.layers.some((l) => l.kind === 'heat')) heatLegend(map, data.legend);
-    // (sprint 178) the legend lists the layers that are not left out of it
-    const listed = built.filter((b) => b.def.legend !== false);
-    if (several && listed.length) layerSwitch(map, group, listed, data.layersLabel);
+    // (sprint 184) a heat layer left out of the legend has no heat legend either
+    if (data.layers.some((l) => l.kind === 'heat' && l.legend !== false)) heatLegend(map, data.legend);
+    // (sprint 178, 184) the Layers legend lists the layers the server marks as listed: not left out of it, and only
+    // when there are two or more (a single check box could only hide the one layer)
+    const listed = built.filter((b) => b.def.listed);
+    if (listed.length > 1) layerSwitch(map, group, listed, data.layersLabel);
     if (f) areaFilter(map, f);
     // (161) map_change: moved or zoomed by the user (after the first view); the condition sees the zoom level
     map.on('moveend', () => el.dispatchEvent(new CustomEvent('pgkiln:component', { bubbles: true, detail: { event: 'map_change', element: el, value: map.getZoom() } })));
@@ -3496,6 +3498,14 @@ function shapeStyle(st, kind) {
   return o;
 }
 
+// (sprint 184) On a map with several layers a shape is drawn in its layer's colour (map-c<n>), except the colours
+// its style sets: those classes keep Leaflet's own stroke / fill (a line has no fill), as the legend's swatch says.
+function keepColours(f, kind) {
+  const st = (f.properties && f.properties.style) || {};
+  const line = kind === 'lines' || /LineString$/.test((f.geometry && f.geometry.type) || '');
+  return `${st.stroke_color ? ' map-keep-stroke' : ''}${line || st.fill_color ? ' map-keep-fill' : ''}`;
+}
+
 // One layer's Leaflet parts: markers (clustered or not) or a heat map, with its lines and areas.
 function layerParts(l, popup, data, several) {
   const parts = [];
@@ -3505,7 +3515,7 @@ function layerParts(l, popup, data, several) {
   if (l.shapes.length)
     parts.push(window.L.geoJSON({ type: 'FeatureCollection', features: l.shapes }, {
       // (159) a lines / polygons / extruded layer's colours, width and opacity (checked on the server: #rrggbb, numbers)
-      style: (f) => ({ ...(several ? { className: `map-c${l.color}` } : {}), ...shapeStyle(f.properties && f.properties.style, l.kind) }),
+      style: (f) => ({ ...(several ? { className: `map-c${l.color}${keepColours(f, l.kind)}` } : {}), ...shapeStyle(f.properties && f.properties.style, l.kind) }),
       onEachFeature: (f, layer) => {
         layer.bindPopup(() => popup(f.properties));
         // a shape's title as its tooltip (and its height on an extruded layer)
@@ -3927,8 +3937,15 @@ function layerSwitch(map, group, built, label) {
         const swatch = document.createElement('span');
         swatch.className = `map-swatch ${b.def.kind === 'heat' ? 'map-swatch-heat' : `map-c${b.def.color}`}`;
         swatch.setAttribute('aria-hidden', 'true');
-        // a shape layer's own colour (#rrggbb, checked by the server)
-        if (/^#[0-9a-fA-F]{6}$/.test(b.def.swatch || '')) swatch.style.setProperty('--mc', b.def.swatch);
+        // a shape layer's own colour (#rrggbb, checked by the server); (sprint 184) rows in several colours: a split
+        // swatch of up to four ('' is the layer's own colour)
+        const hex = (c) => (/^#[0-9a-fA-F]{6}$/.test(c || '') ? c : 'var(--mc)');
+        if (Array.isArray(b.def.swatches) && b.def.swatches.length > 1) {
+          const parts = b.def.swatches.slice(0, 4);
+          const step = 100 / parts.length;
+          swatch.style.setProperty('background', `conic-gradient(${parts.map((c, i) => `${hex(c)} ${i * step}% ${(i + 1) * step}%`).join(', ')})`);
+          swatch.classList.add('map-swatch-mixed');
+        } else if (/^#[0-9a-fA-F]{6}$/.test(b.def.swatch || '')) swatch.style.setProperty('--mc', b.def.swatch);
         const name = document.createElement('span');
         name.textContent = b.def.name;
         row.append(cb, swatch, name);

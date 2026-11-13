@@ -7760,8 +7760,10 @@ export const nl: BuilderMessages = {
   'apip.modules_saved': '{name} is beperkt tot deze REST-modules: {modules}.',
   'apip.modules_all': '{name} mag weer de hele applicatie aanroepen.',
   'apip.modules_unknown': 'Deze applicatie heeft geen REST-module met de naam {names}.',
+  'apip.modules_none_left': 'Beperkt, maar de REST-modules zijn verwijderd: de client wordt overal geweigerd. Noem modules, of sla leeg op voor de hele applicatie.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Niet in de legenda (altijd zichtbaar)',
+  'rs.off_at_first_unused': 'Niet gebruikt: een laag die niet in de legenda staat (weggelaten, of de enige die erin staat) is altijd zichtbaar.',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'Rondleiding door de SQL Workshop',
   'tour.take': 'Volg de rondleiding',

@@ -467,11 +467,20 @@ curl https://api.example.com/employees -H "Authorization: Bearer eyJ…"
   update the integration without downtime.
 - **Limiting a client to REST modules** (ORDS: a privilege on a module, granted to a client): in the
   client's row, *REST modules* takes the names of REST modules of the application, comma-separated.
-  The client's tokens then work for the handlers of those modules only. Other modules, AutoREST and
-  the data API answer 403, and new tokens carry no database role. Blank means the whole application,
-  as before. The limit is read at every request, so it applies to tokens already issued; it is not
-  a grant, so a module's and a handler's roles still apply. In SQL (owner only):
-  `update meta.api_client set rest_modules = '{payroll}' where name = 'payroll-sync';` (`null` for no limit).
+  Every name must be a module of the application, or nothing is saved. The client's tokens then work
+  for the handlers of those modules only. Other modules, AutoREST and the data API answer 403.
+  Public handlers and public AutoREST objects stay public: there the client is anonymous, as without
+  a token (its identity and roles don't count). Blank means the whole application, as before. The
+  limit is read at every request, so it applies to tokens already issued, both ways: a client's
+  tokens carry the API role, and once the limit is cleared they work on the data API too. It is not
+  a grant, so a module's and a handler's roles still apply. The activity log (`oauth_client`) records
+  the new list, or `none (the whole application)`.
+  The limit links to the modules, not to their names (sprint 184): renaming a module keeps its
+  clients; deleting one takes it out of their limits, and a client whose modules are all gone stays
+  limited and is refused everywhere (the builder says so). A module created later with an old name
+  is never granted by that name. Importing over the application (replace) keeps a client's modules
+  that are in the import by name; a module the import drops is gone from the limit.
+  In SQL (owner only): `select meta.oauth_limit_client('<client_id>', '{payroll}');` (`null` for no limit).
 - **Lifetime** is 5 to 1440 minutes per client. Shorter means a leaked token is useful for less
   time. Because revocation is checked live, a leaked token is also stopped by revoking the client.
 

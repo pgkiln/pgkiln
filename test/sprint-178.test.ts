@@ -61,7 +61,7 @@ describe('sprint 178: map layers and the legend (CD-6)', () => {
     assert.deepEqual(layerDefs({ title: 'M', source: 'select 1', config: { no_legend: 'true' } } as never).map((d) => d.legend), [true], 'only the boolean');
   });
 
-  test('the Page Designer\'s map settings keep "leave out of the legend"; such a layer is not off at first', () => {
+  test('the Page Designer\'s map settings keep "leave out of the legend" (and, sprint 184, "off at first": layerDefs decides)', () => {
     const allowed: Allowed = { pages: new Set([1]), lovs: new Set(), reports: new Map() };
     const merged = mergeMapSettings({}, {
       no_legend: 'true', layers: '1',
@@ -69,7 +69,7 @@ describe('sprint 178: map layers and the legend (CD-6)', () => {
       layer1_source: 'select 2', layer1_name: 'Shops', layer1_hidden: 'true', layer1_no_legend: 'yes',
     }, allowed);
     assert.equal(merged.no_legend, true);
-    assert.deepEqual(merged.layers, [{ name: 'Routes', source: 'select 1', layer: 'lines', no_legend: true }, { name: 'Shops', source: 'select 2', hidden: true }]);
+    assert.deepEqual(merged.layers, [{ name: 'Routes', source: 'select 1', layer: 'lines', hidden: true, no_legend: true }, { name: 'Shops', source: 'select 2', hidden: true }]);
     assert.equal(mergeMapSettings({ no_legend: true }, {}, allowed).no_legend, undefined);
   });
 });

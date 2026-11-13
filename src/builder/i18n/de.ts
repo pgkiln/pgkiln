@@ -7760,8 +7760,10 @@ export const de: BuilderMessages = {
   'apip.modules_saved': '{name} ist auf diese REST-Module beschränkt: {modules}.',
   'apip.modules_all': '{name} darf wieder die ganze Anwendung aufrufen.',
   'apip.modules_unknown': 'Diese Anwendung hat kein REST-Modul namens {names}.',
+  'apip.modules_none_left': 'Beschränkt, aber seine REST-Module wurden gelöscht: Er wird überall abgewiesen. Nennen Sie Module oder speichern Sie leer für die ganze Anwendung.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Nicht in der Legende (immer sichtbar)',
+  'rs.off_at_first_unused': 'Nicht verwendet: Eine Ebene, die nicht in der Legende steht (ausgelassen oder als einzige aufgeführt), ist immer sichtbar.',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'Rundgang durch den SQL Workshop',
   'tour.take': 'Rundgang starten',

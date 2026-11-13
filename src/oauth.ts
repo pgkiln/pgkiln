@@ -25,7 +25,7 @@ export class OAuthError extends Error {
 export async function clientToken(clientId: string, clientSecret: string) {
   const c = await owner.one(
     `select c.id, c.name, c.secret_hash, c.previous_secret_hash, c.previous_valid_until > now() as previous_valid,
-            c.token_minutes, c.active, c.rest_modules, a.alias, a.api_role
+            c.token_minutes, c.active, c.module_limit, a.alias, a.api_role
        from meta.api_client c join meta.app a on a.id = c.app_id
       where c.client_id = $1`,
     [clientId],
@@ -33,11 +33,12 @@ export async function clientToken(clientId: string, clientSecret: string) {
   const hash = sha256(clientSecret);
   const valid = !!c && c.active && (same(c.secret_hash, hash) || (c.previous_valid && same(c.previous_secret_hash, hash)));
   if (!valid) throw new OAuthError('invalid_client', 'Unknown client, wrong secret, or the client was revoked.', 401);
-  // without an API role the token is for pgkiln's own REST modules only; (sprint 178) so is the token of a client
-  // limited to REST modules: it carries no database role
-  const apiRole = c.rest_modules ? null : c.api_role;
-  const problem = apiRole ? await apiRoleProblem(apiRole) : null;
-  if (problem) throw new OAuthError('invalid_client', problem, 401);
+  // without an API role the token is for pgkiln's own REST modules only. (sprint 184) A client limited to REST
+  // modules gets the role too: meta.api_check() then refuses it on the data API (403) while it is limited, and the
+  // same token works there once the limit is cleared. Only it can do without a usable role (it needs none while limited).
+  const problem = c.api_role ? await apiRoleProblem(c.api_role) : null;
+  if (problem && !c.module_limit) throw new OAuthError('invalid_client', problem, 401);
+  const apiRole = problem ? null : c.api_role;
   await owner.query('update meta.api_client set last_used_at = now() where id = $1', [c.id]);
   const token = await new SignJWT({ ...(apiRole ? { role: apiRole } : {}), app: c.alias, app_user: `client:${c.name}`, client_id: clientId })
     .setProtectedHeader({ alg: 'HS256', typ: 'JWT' })

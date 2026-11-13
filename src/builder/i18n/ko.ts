@@ -7760,8 +7760,10 @@ export const ko: BuilderMessages = {
   'apip.modules_saved': '{name}은(는) 다음 REST 모듈로 제한됩니다: {modules}.',
   'apip.modules_all': '{name}은(는) 다시 애플리케이션 전체를 호출할 수 있습니다.',
   'apip.modules_unknown': '이 애플리케이션에는 {names}(이)라는 REST 모듈이 없습니다.',
+  'apip.modules_none_left': '제한되어 있지만 REST 모듈이 삭제되었습니다. 모든 곳에서 거부됩니다. 모듈을 지정하거나 비워 두고 저장하면 애플리케이션 전체를 허용합니다.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '범례에 표시하지 않음(항상 표시)',
+  'rs.off_at_first_unused': '사용되지 않음: 범례에 없는 레이어(제외되었거나 유일하게 표시된 레이어)는 항상 표시됩니다.',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'SQL Workshop 둘러보기',
   'tour.take': '둘러보기 시작',

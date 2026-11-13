@@ -94,16 +94,29 @@ export interface LayerDef {
   cluster: boolean;
   link: Link | undefined;
   hidden: boolean;
-  /** (sprint 178, CD-6) false: the layer is always drawn and not listed in the map's legend */
+  /** (sprint 178, CD-6) false: the layer is always drawn and not listed in the map's legend (nor its heat legend) */
   legend: boolean;
+  /** (sprint 184) listed in the Layers legend, with a check box: legend on, and at least two layers listed */
+  listed: boolean;
   /** (0.31) loaded for the visible area only, again when the map moves */
   visibleArea: boolean;
   /** (0.31) served as vector tiles */
   tiles: boolean;
 }
 
-/** The map's layers: the region's own query first, then config.layers (with a query each). */
+/**
+ * The map's layers: the region's own query first, then config.layers (with a query each).
+ * (sprint 184) The one place of the legend rule: the Layers legend lists the layers not left out of it, when there
+ * are at least two (one check box alone could only hide that layer); a layer that is not listed can't be switched
+ * on, so it is never off at first, whatever its `hidden` says (the Page Designer keeps the setting and says so).
+ */
 export function layerDefs(r: Region): LayerDef[] {
+  const defs = rawLayerDefs(r);
+  const listed = defs.length > 1 && defs.filter((d) => d.legend).length > 1;
+  return defs.map((d) => ({ ...d, listed: listed && d.legend, hidden: d.hidden && listed && d.legend }));
+}
+
+function rawLayerDefs(r: Region): LayerDef[] {
   const first: LayerDef = {
     name: typeof r.config.name === 'string' && r.config.name.trim() ? r.config.name.trim() : (r.title ?? 'Map'),
     source: r.source ?? '',
@@ -113,6 +126,7 @@ export function layerDefs(r: Region): LayerDef[] {
     link: r.config.link,
     hidden: false,
     legend: r.config.no_legend !== true,
+    listed: false,
     visibleArea: r.config.visible_area === true,
     tiles: r.config.tiles === true,
   };
@@ -126,9 +140,9 @@ export function layerDefs(r: Region): LayerDef[] {
       style: shapeStyle(l.style),
       cluster: l.cluster === true,
       link: l.link && typeof l.link === 'object' && Number.isInteger(l.link.page) ? l.link : undefined,
-      // a layer left out of the legend can't be switched on, so it is never off at first
-      hidden: l.hidden === true && l.no_legend !== true,
+      hidden: l.hidden === true,
       legend: l.no_legend !== true,
+      listed: false,
       visibleArea: l.visible_area === true,
       tiles: l.tiles === true,
     }));
@@ -214,11 +228,27 @@ async function loadLayer(ctx: PageContext, def: LayerDef, g: PostGis | null, opt
   return { points, shapes, truncated };
 }
 
+/**
+ * (sprint 178, CD-6; sprint 184) A shape layer's colour in the legend: the colour its areas (a lines layer: its lines)
+ * are drawn in. A row's fill_color / stroke_color columns override the layer's style, so the rows that come with the
+ * page decide: one colour is the swatch, several give a split swatch (`swatches`, up to four; '' is the layer's own
+ * colour). A colour the style doesn't set is the layer's own colour (map-c<n>), as drawn. Markers, heat maps and
+ * vector tiles (drawn in the layer's colour) have none; a visible-area layer's rows aren't known yet: its style counts.
+ */
+export function legendSwatch(def: Pick<LayerDef, 'kind' | 'style' | 'tiles' | 'visibleArea'>, shapes: unknown[]): { swatch?: string; swatches?: string[] } {
+  if (!SHAPE_KINDS.has(def.kind) || def.tiles) return {};
+  const drawn = (st: ShapeStyle | undefined) => (def.kind === 'lines' ? st?.stroke_color : st?.fill_color) ?? '';
+  const styles = def.visibleArea || !shapes.length ? [def.style] : shapes.map((f) => (f as { properties?: { style?: ShapeStyle } }).properties?.style);
+  const colours = [...new Set(styles.map(drawn))];
+  if (colours.length === 1) return colours[0] ? { swatch: colours[0] } : {};
+  return { swatches: colours.slice(0, 4) };
+}
+
 export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
   const g = await postgis();
   const defs = layerDefs(r);
   const t = ctx.locale.t;
-  const layers: { name: string; kind: LayerDef['kind']; cluster: boolean; hidden: boolean; legend: boolean; swatch?: string; color: number; points: Point[]; shapes: unknown[]; area?: string; tiles?: string }[] = [];
+  const layers: { name: string; kind: LayerDef['kind']; cluster: boolean; hidden: boolean; legend: boolean; listed: boolean; swatch?: string; swatches?: string[]; color: number; points: Point[]; shapes: unknown[]; area?: string; tiles?: string }[] = [];
   const errors: Raw[] = [];
   const base = `${ctx.base}/${ctx.page.page_no}/map/${r.id}`;
   const version = Date.now().toString(36);
@@ -226,9 +256,9 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
     try {
       // vector tiles and visible-area layers: the browser fetches what it shows; nothing in the page
       const { points, shapes } = def.tiles || def.visibleArea ? { points: [], shapes: [] } : await loadLayer(ctx, def, g);
-      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers' && !def.tiles, hidden: def.hidden, legend: def.legend, color: i + 1, points, shapes,
-        // (sprint 178) the legend shows a shape layer's own colour
-        ...(SHAPE_KINDS.has(def.kind) && (def.style.fill_color ?? def.style.stroke_color) ? { swatch: def.kind === 'lines' ? (def.style.stroke_color ?? def.style.fill_color) : (def.style.fill_color ?? def.style.stroke_color) } : {}),
+      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers' && !def.tiles, hidden: def.hidden, legend: def.legend, listed: def.listed, color: i + 1, points, shapes,
+        // (sprint 178, 184) the legend shows the colour a shape layer is drawn in
+        ...legendSwatch(def, shapes),
         ...(def.visibleArea && !def.tiles ? { area: `${base}/layer/${i}` } : {}),
         // v: tiles are cached for a minute; a new page view (other item values) gets new ones
         ...(def.tiles ? { tiles: `${base}/tiles/${i}/{z}/{x}/{y}.mvt?v=${version}` } : {}) });
@@ -240,6 +270,8 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
       errors.push(alert);
     }
   }
+  // a layer whose query failed is not drawn: fewer than two listed layers left, no Layers legend, so none is off
+  if (layers.filter((l) => l.listed).length < 2) for (const l of layers) Object.assign(l, { listed: false, hidden: false });
   if (!layers.some((l) => l.points.length || l.shapes.length || l.tiles || l.area)) return html`${errors}<p class="empty">${r.config.empty ?? t('report.no_data')}</p>`;
   const height = ['small', 'large'].includes(r.config.height) ? r.config.height : 'medium';
   // the report this map filters: a visible report region on the same page

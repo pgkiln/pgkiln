@@ -1220,11 +1220,19 @@ Each layer has `name` (shown in the legend, translatable like other texts), `sou
 `layer` (`markers`, `heat`, `lines`, `polygons` or `extruded`), `style`, `cluster`, `link`, `hidden` (off until the user switches it on),
 `no_legend`, `visible_area` and `tiles`.
 On a map with more than one layer each layer's places, lines and areas get their own colour, and a
-**Layers** legend in the corner switches them on and off. A lines, polygons or extruded layer with a
-colour in its `style` shows that colour in the legend. (sprint 178; APEX: a layer's *Display in Legend*)
+**Layers** legend in the corner switches them on and off. A colour that a lines, polygons or extruded
+layer's `style` or a row's `fill_color` / `stroke_color` sets is drawn instead of the layer's colour,
+and the legend shows what is drawn: an area layer's fill, a lines layer's line colour; when the rows
+have several colours, a split swatch of up to four (sprint 184). A colour the style leaves out (a
+polygon with only `stroke_color` has the layer's colour as its fill) stays the layer's colour. Vector
+tiles are drawn in the layer's colour; a visible-area layer's swatch comes from its `style`.
+(sprint 178; APEX: a layer's *Display in Legend*)
 A layer with `"no_legend": true` is left out of the legend: it is always drawn and can't be switched
-off (so `hidden` doesn't apply to it); the region's own layer takes `no_legend` in the region's
-settings. Without JavaScript the list below the map
+off; the region's own layer takes `no_legend` in the region's settings. The Layers legend needs at
+least two listed layers: with one (say, the region's layer and an overlay left out of the legend)
+there is none, since one check box could only hide that layer. A layer that isn't listed is never
+off at first: `hidden` is kept, the Page Designer notes that it isn't used, and it applies again
+once the layer is listed. A heat map left out of the legend has no heat legend either. Without JavaScript the list below the map
 has a part per layer. A layer whose query fails shows its error above the map; the other layers are
 still drawn. In the Page Designer the map's settings have a fieldset per layer (and one empty to add
 a layer; emptying a layer's query removes it), and the Advisor checks every layer's query. The HR

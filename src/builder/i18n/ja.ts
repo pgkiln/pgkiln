@@ -7760,8 +7760,10 @@ export const ja: BuilderMessages = {
   'apip.modules_saved': '{name} は次の REST モジュールに限定されました: {modules}。',
   'apip.modules_all': '{name} は再びアプリケーション全体を呼び出せます。',
   'apip.modules_unknown': 'このアプリケーションに {names} という REST モジュールはありません。',
+  'apip.modules_none_left': '制限されていますが、その REST モジュールは削除されました。すべての場所で拒否されます。モジュールを指定するか、空のまま保存してアプリケーション全体を許可してください。',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '凡例に表示しない（常に表示）',
+  'rs.off_at_first_unused': '使用されません: 凡例に表示されないレイヤー（除外された、または唯一表示されるレイヤー）は常に表示されます。',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'SQL Workshop ツアー',
   'tour.take': 'ツアーを見る',

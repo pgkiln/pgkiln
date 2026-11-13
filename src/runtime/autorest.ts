@@ -6,7 +6,7 @@ import { loadApp, type App } from '../metadata.ts';
 import { clientIp } from '../session.ts';
 import { availabilityRefusal } from './availability.ts';
 import { publicError } from './context.ts';
-import { caller, checkModuleLimit, RestError, restServicesOn } from './rest.ts';
+import { caller, moduleLimit, RestError, restServicesOn } from './rest.ts';
 
 // (sprint 100, Database Actions DA-11 part 1) AutoREST: a table or view that SQL Workshop › RESTful Services
 // enabled (meta.rest_object, migration 113), served through an application:
@@ -146,9 +146,8 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
   const allowed = o.methods.filter((m) => (keyRaw ? m !== 'POST' : m === 'GET' || m === 'POST'));
   if (!o.methods.includes(method) || !allowed.includes(method)) return reply.code(405).header('allow', allowed.join(', ')).send({ error: `${method} is not allowed here.` });
   try {
-    const who = await caller(req, a, o.auth === 'public');
-    // (sprint 178) a client limited to REST modules has no AutoREST
-    checkModuleLimit(who, null);
+    // (sprint 178) a client limited to REST modules has no AutoREST; (sprint 184) a public object stays public to it
+    const who = moduleLimit(await caller(req, a, o.auth === 'public'), null, o.auth === 'public');
     const refusal = availabilityRefusal(a, { username: who.user === 'nobody' ? null : who.user, developer: false });
     if (refusal) throw new RestError(refusal.status, refusal.message ?? english(refusal.key));
     if (!a.db_role) throw new RestError(403, 'The application has no database role: AutoREST needs one.');
@@ -320,8 +319,8 @@ export async function autoRestRoutes(app: FastifyInstance) {
     let all = false;
     if (req.headers.authorization) {
       try {
-        const who = await caller(req, a, false);
-        checkModuleLimit(who, null);
+        // (sprint 184) a client limited to REST modules sees the public objects, as without a token
+        const who = moduleLimit(await caller(req, a, false), null, true);
         all = who.user !== 'nobody';
       } catch (e) {
         if (e instanceof RestError) return reply.code(e.status).send({ error: e.message });
