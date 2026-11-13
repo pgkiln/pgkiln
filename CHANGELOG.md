@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-11-13
+
 ### Added
 - **Response headers from a PL/pgSQL REST handler** (sprint 176, DA-11 leftover; migration 159
   `meta.rest_header`): `perform meta.rest_header('Location', …)` sets a header of the response, next to
