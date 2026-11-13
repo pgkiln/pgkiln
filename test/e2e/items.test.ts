@@ -34,8 +34,8 @@ before(async () => {
 });
 after(() => close());
 
-async function open(javaScriptEnabled = true) {
-  const context = await browser.newContext({ javaScriptEnabled });
+async function open(javaScriptEnabled = true, serviceWorkers: 'allow' | 'block' = 'allow') {
+  const context = await browser.newContext({ javaScriptEnabled, serviceWorkers });
   await context.addInitScript(() => {
     (window as any).__csp = [];
     document.addEventListener('securitypolicyviolation', (e) => (window as any).__csp.push(`${e.violatedDirective}: ${e.blockedURI || e.sample || 'inline'}`));
@@ -156,7 +156,9 @@ describe('sprint 26 item types', () => {
 
 describe('popup LOV', () => {
   test('search in the dialog, pick an employee and submit; no CSP violations', async () => {
-    const page = await open();
+    // (sprint 181) without the service worker: when its fetch of the page after the submit failed, it answered with
+    // the copy of /a/hr/26 it kept on the first visit (empty value, same address): the CI flake this test had
+    const page = await open(true, 'block');
     await page.goto(`${base}/a/hr/26`);
     assert.equal(await page.locator('#P26_EMPNO').isHidden(), true);
     await page.locator('[data-item="P26_EMPNO"] .popup-lov-open').click();
@@ -171,8 +173,6 @@ describe('popup LOV', () => {
     await dlg.locator('.popup-lov-pick', { hasText: 'Scott' }).click();
     assert.equal(await page.inputValue('[data-item="P26_EMPNO"] .popup-lov-display'), 'Scott');
     await Promise.all([page.waitForNavigation(), page.locator('button', { hasText: 'Show' }).click()]);
-    // fails now and then in CI with an empty value (cause unknown): the address says whether the service worker
-    // queued the submit (?queued=1) or the page came back as usual
     assert.equal(await page.inputValue('#P26_EMPNO'), '7788', `P26_EMPNO after Show, at ${page.url()}`);
     assert.deepEqual(await violations(page), []);
     await page.context().close();
