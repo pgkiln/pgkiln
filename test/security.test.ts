@@ -14286,3 +14286,48 @@ describe('sprint 176 share links for query results (DA-3)', () => {
     }
   });
 });
+
+describe('sprint 176 response headers of PL/pgSQL REST handlers (DA-11)', () => {
+  let appId = 0;
+  let king = '';
+  before(async () => {
+    const { issueApiToken } = await import('../src/api.ts');
+    appId = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    king = (await issueApiToken(appId, 'king', 1)).token;
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec176'`, [appId]);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec176', 'sec176', $2)`, [appId, JSON.stringify([
+      // the value comes from the caller: a line break would start a header of the caller's own
+      { method: 'GET', path: 'echo', type: 'plpgsql', source: `begin perform meta.rest_header('X-Echo', :V); perform meta.rest_reply('{"ok": true}'); end` },
+      // the setting written without the function: the runtime holds it to the same rules
+      { method: 'GET', path: 'raw', type: 'plpgsql', source: `begin perform set_config('pgkiln_rest.headers', '{"set-cookie": "pgkiln_session=stolen", "content-type": "text/html", "access-control-allow-origin": "*", "x-split": "a\\r\\nSet-Cookie: b=c", "x-fine": "kept"}', true); perform meta.rest_reply('{"ok": true}'); end` },
+    ])]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec176'`, [appId]);
+  });
+  const get = (path: string) => app.inject({ method: 'GET', url: `/a/hr/rest/sec176/${path}`, headers: { authorization: `Bearer ${king}` } });
+
+  test('a value with a line break is refused: no header of the caller\'s own, no second response', async () => {
+    const res = await get(`echo?v=${encodeURIComponent('a\r\nSet-Cookie: pgkiln_session=evil')}`);
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.headers['set-cookie'], undefined);
+    assert.equal(res.headers['x-echo'], undefined);
+    assert.equal((await get('echo?v=fine')).headers['x-echo'], 'fine');
+  });
+
+  test('a handler cannot set a cookie, the content type or a CORS header, with or without the function', async () => {
+    const res = await get('raw');
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.headers['set-cookie'], undefined);
+    assert.match(String(res.headers['content-type']), /^application\/json/);
+    assert.equal(res.headers['access-control-allow-origin'], undefined);
+    assert.equal(res.headers['x-split'], undefined);
+    assert.equal(res.headers['x-fine'], 'kept');
+    for (const name of ['Set-Cookie', 'Strict-Transport-Security', 'Cross-Origin-Opener-Policy', 'WWW-Authenticate', 'Sec-Fetch-Site', 'Proxy-Authenticate'])
+      await assert.rejects(owner.query('select meta.rest_header($1, $2)', [name, 'x']), /set by the server/, name);
+    // without a token the handler does not run: no header from it
+    const anon = await app.inject({ method: 'GET', url: '/a/hr/rest/sec176/echo?v=x' });
+    assert.equal(anon.statusCode, 401);
+    assert.equal(anon.headers['x-echo'], undefined);
+  });
+});

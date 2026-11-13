@@ -7,7 +7,8 @@ import { substitute, type BindValues } from '../binds.ts';
 //   plpgsql  a PL/pgSQL block run as an anonymous DO block as the application's role. A DO block takes no
 //            parameters, so the binds go in as transaction-local settings, set with query parameters (never part
 //            of the SQL text), and :NAME in the block becomes meta.rest_param('NAME'). The block answers with
-//            meta.rest_reply(body jsonb, status int); without a reply: 204.
+//            meta.rest_reply(body jsonb, status int); without a reply: 204. (sprint 176) meta.rest_header(name, value)
+//            sets a response header (ORDS: an OUT parameter bound to a header).
 //   media    a query whose first row has content_type and content (bytea or text), optional filename: the
 //            response is that content. It is served sandboxed (CSP sandbox, nosniff), so an HTML or SVG
 //            "image" from the table can't run script in the application's origin.
@@ -38,13 +39,42 @@ export async function setBinds(c: pg.PoolClient, binds: BindValues) {
     [entries.map(([k]) => k), entries.map(([, v]) => v ?? null)]);
 }
 
-/** Run a PL/pgSQL handler; its reply (meta.rest_reply) or none. */
-export async function runPlpgsql(c: pg.PoolClient, source: string): Promise<{ body: unknown; status: number | null }> {
+/** Response headers a handler never sets: the server's own (content, cookies, security, CORS, the ETag). */
+const SERVER_HEADERS = new Set(['content-type', 'content-length', 'content-encoding', 'transfer-encoding', 'connection', 'keep-alive', 'upgrade', 'trailer', 'te',
+  'host', 'date', 'etag', 'set-cookie', 'cookie', 'authorization', 'www-authenticate', 'content-security-policy', 'content-security-policy-report-only',
+  'strict-transport-security', 'x-frame-options', 'x-content-type-options', 'referrer-policy', 'permissions-policy', 'clear-site-data', 'server']);
+const SERVER_PREFIXES = ['access-control-', 'cross-origin-', 'proxy-', 'sec-'];
+
+/**
+ * (sprint 176, migration 159) The response headers a PL/pgSQL handler set with meta.rest_header, checked again here:
+ * the setting can be written without the function, so names and values are held to the same rules.
+ */
+export function replyHeaders(setting: unknown): Record<string, string> {
+  let all: unknown;
+  try {
+    all = typeof setting === 'string' && setting ? JSON.parse(setting) : null;
+  } catch {
+    all = null;
+  }
+  const out: Record<string, string> = {};
+  if (!all || typeof all !== 'object' || Array.isArray(all)) return out;
+  for (const [k, v] of Object.entries(all as Record<string, unknown>).slice(0, 20)) {
+    const name = k.toLowerCase();
+    if (!/^[a-z][a-z0-9-]{0,63}$/.test(name) || SERVER_HEADERS.has(name) || SERVER_PREFIXES.some((p) => name.startsWith(p))) continue;
+    // eslint-disable-next-line no-control-regex
+    if (typeof v !== 'string' || v.length > 2000 || /[\x00-\x1f\x7f]/.test(v) || /[^\x20-\x7e\x80-\xff]/.test(v)) continue;
+    out[name] = v;
+  }
+  return out;
+}
+
+/** Run a PL/pgSQL handler; its reply (meta.rest_reply), its response headers (meta.rest_header) or none. */
+export async function runPlpgsql(c: pg.PoolClient, source: string): Promise<{ body: unknown; status: number | null; headers: Record<string, string> }> {
   // a reply from an earlier statement of this transaction must not leak into this one
-  await c.query(`select set_config('pgkiln_rest.body', '', true), set_config('pgkiln_rest.status', '', true)`);
+  await c.query(`select set_config('pgkiln_rest.body', '', true), set_config('pgkiln_rest.status', '', true), set_config('pgkiln_rest.headers', '', true)`);
   await c.query(plpgsqlBlock(source));
-  const r = (await c.query(`select current_setting('pgkiln_rest.body', true) as body, current_setting('pgkiln_rest.status', true) as status`)).rows[0];
-  return { body: r.body ? JSON.parse(r.body) : undefined, status: r.status ? Number(r.status) : null };
+  const r = (await c.query(`select current_setting('pgkiln_rest.body', true) as body, current_setting('pgkiln_rest.status', true) as status, current_setting('pgkiln_rest.headers', true) as headers`)).rows[0];
+  return { body: r.body ? JSON.parse(r.body) : undefined, status: r.status ? Number(r.status) : null, headers: replyHeaders(r.headers) };
 }
 
 /** A content type safe to send as a header: type/subtype with optional parameters, no line breaks. */

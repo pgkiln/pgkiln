@@ -271,7 +271,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       if (h.type === 'plpgsql') {
         const out = await runPlpgsql(c, h.source);
         const status = out.status ?? (out.body === undefined ? 204 : h.status ?? (req.method === 'POST' ? 201 : 200));
-        return { status, body: out.body };
+        return { status, body: out.body, headers: out.headers };
       }
       const sql = applyBinds(h.source.trim().replace(/;+\s*$/, ''), binds);
       if (h.type === 'collection') {
@@ -317,6 +317,8 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
       return row ? { status: h.status ?? (req.method === 'POST' ? 201 : 200), body: row } : { status: 204, body: undefined };
     });
     if ('streamed' in result) return reply;
+    // (sprint 176) the response headers a PL/pgSQL handler set with meta.rest_header
+    if ('headers' in result && result.headers) reply.headers(result.headers);
     // (sprint 175, DA-11) a GET's answer carries an ETag of its content; If-None-Match with that tag answers 304
     // without the content. The handler has run by then (authorization and the query): only the transfer is saved.
     if ('media' in result && result.media) {

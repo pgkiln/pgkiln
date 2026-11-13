@@ -277,6 +277,7 @@ src/
                            (sprint 175) header parameters: headerName(), bound from the request header only, credential headers refused
     rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
                            handlers (content type and file name cleaned, sandboxed response)
+                           (sprint 176, migration 159) replyHeaders(): the response headers meta.rest_header set, checked again
     autorest.ts            (sprint 100, migration 113) AutoREST: /a/:alias/autorest/<object>/ for the tables and views SQL Workshop →
                            RESTful Services published (meta.rest_object): caller() of rest.ts, SET ROLE to the app role, owner/BYPASSRLS
                            check, columns from the catalog (column grants), filters/q/order/paging, POST/PUT/DELETE by primary key, OpenAPI

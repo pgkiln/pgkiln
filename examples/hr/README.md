@@ -48,6 +48,7 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_81_vector_search_type.sql` | *Policies by meaning only* on page 42: the search type `vector` next to part 72's hybrid one (only with pgvector) |
 | `hr_83_grid_validations.sql` | Column validations in the *Staff* grid of page 27: a salary must be more than zero and a commission cannot be more than the salary; a row that fails is not saved and the message shows in its cell |
 | `hr_84_rest_header_parameter.sql` | A header parameter in the REST module `hr`: `GET whoami` answers the token's account and echoes the request's `X-Request-Id` header; the answer carries an ETag |
+| `hr_85_rest_response_header.sql` | A response header from a PL/pgSQL REST handler: `POST leave` in the module `hr` answers with a `Location` header (`meta.rest_header`) that names the new request, and `GET leave/:id` reads it |
 
 The files run in order, each once (recorded in `public.pgkiln_seed`), so new ones can be added
 later. pgkiln's own tests use this application as their fixture (`npm test` installs it first).

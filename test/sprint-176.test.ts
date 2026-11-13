@@ -1,6 +1,7 @@
 // Sprint 176 (parity leftover DA-3; migration 158): share links for query results. The worksheet's Query Result has
 // Share: the SELECT is kept behind a random token (meta.sql_share) and /builder/sql/shared/<token> runs it again,
 // read-only, for a developer of the same workspace. The maker (or an administrator) renames, extends and stops it.
+// DA-11 leftover (migration 159): meta.rest_header sets a response header of a PL/pgSQL REST handler.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -8,6 +9,8 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { MAX_SHARES, shareTitle, shareToken } from '../src/builder/sql-shares.ts';
+import { replyHeaders } from '../src/runtime/rest-handlers.ts';
+import { issueApiToken } from '../src/api.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -148,5 +151,77 @@ describe('share links for query results (DA-3)', () => {
     assert.equal(page.statusCode, 200);
     assert.match(page.body, /class="alert alert-error">[^<]*nothing_here/);
     assert.ok(MAX_SHARES >= 100);
+  });
+});
+
+describe('RESTful Services: response headers of a PL/pgSQL handler (DA-11)', () => {
+  let token = '';
+  let appId = 0;
+  const REASON = 'sh176 rest header';
+  const handlers = [
+    { method: 'POST', path: 'made', type: 'plpgsql', source: `begin perform meta.rest_header('Location', '/a/hr/rest/m176/made/' || :ID); perform meta.rest_header('X-Made-By', :APP_USER); perform meta.rest_reply(jsonb_build_object('id', :ID::int), 201); end` },
+    { method: 'GET', path: 'plain', type: 'plpgsql', source: `begin perform meta.rest_header('X-Trace', 'a'); perform meta.rest_header('x-trace', 'b'); perform meta.rest_header('X-Gone', 'x'); perform meta.rest_header('X-Gone', null); perform meta.rest_reply('{"ok": true}'); end` },
+    { method: 'GET', path: 'empty', type: 'plpgsql', source: `begin perform meta.rest_header('X-Only', 'header'); end` },
+    { method: 'GET', path: 'refused/:name', type: 'plpgsql', source: `begin perform meta.rest_header(:NAME, 'x'); perform meta.rest_reply('{"ok": true}'); end` },
+    { method: 'GET', path: 'value', type: 'plpgsql', source: `begin perform meta.rest_header('X-Long', repeat('x', 2001)); end` },
+    { method: 'GET', path: 'many', type: 'plpgsql', source: `begin for i in 1..21 loop perform meta.rest_header('X-H' || i, 'v'); end loop; end` },
+  ];
+  const call = (method: 'GET' | 'POST', path: string, payload?: unknown) =>
+    app.inject({ method, url: `/a/hr/rest/m176/${path}`, headers: { authorization: `Bearer ${token}`, ...(payload ? { 'content-type': 'application/json' } : {}) }, ...(payload ? { payload: JSON.stringify(payload) } : {}) });
+  before(async () => {
+    appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    token = (await issueApiToken(appId, 'king', 1)).token;
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'm176'`, [appId]);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'm176', 'Sprint 176', $2)`, [appId, JSON.stringify(handlers)]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'm176'`, [appId]);
+    await owner.query('delete from hr.leave_request where reason = $1', [REASON]);
+  });
+
+  test('replyHeaders keeps well-formed headers and drops the server\'s own, bad names and values', () => {
+    assert.deepEqual(replyHeaders('{"location": "/x", "X-Trace": "1"}'), { location: '/x', 'x-trace': '1' });
+    assert.deepEqual(replyHeaders(JSON.stringify({ 'set-cookie': 'a=b', 'content-type': 'text/html', etag: '"x"', 'access-control-allow-origin': '*', 'x bad': 'v', 'x-lines': 'a\r\nSet-Cookie: b', 'x-num': 5, 'x-ok': 'v' })), { 'x-ok': 'v' });
+    for (const bad of ['', 'not json', '[1]', '"text"', null, undefined]) assert.deepEqual(replyHeaders(bad), {});
+  });
+
+  test('a handler sets headers next to its reply; the last value of a name wins, null takes one back', async () => {
+    const made = await call('POST', 'made', { id: 7 });
+    assert.equal(made.statusCode, 201);
+    assert.equal(made.headers.location, '/a/hr/rest/m176/made/7');
+    assert.equal(made.headers['x-made-by'], 'king');
+    assert.deepEqual(made.json(), { id: 7 });
+    const plain = await call('GET', 'plain');
+    assert.equal(plain.headers['x-trace'], 'b');
+    assert.equal(plain.headers['x-gone'], undefined);
+    assert.match(String(plain.headers.etag), /^"/, 'the ETag is still the server\'s');
+    const empty = await call('GET', 'empty');
+    assert.equal(empty.statusCode, 204);
+    assert.equal(empty.headers['x-only'], 'header');
+    // headers do not leak into the next request
+    assert.equal((await call('GET', 'refused/x-fine')).headers['x-only'], undefined);
+  });
+
+  test('the server\'s headers, a bad name, a long value and too many are refused with a 400', async () => {
+    for (const name of ['set-cookie', 'Content-Type', 'etag', 'Access-Control-Allow-Origin', 'content-security-policy', 'x_bad']) {
+      const res = await call('GET', `refused/${name}`);
+      assert.equal(res.statusCode, 400, name);
+      assert.match(res.json().error, /meta\.rest_header/, name);
+    }
+    assert.equal((await call('GET', 'refused/x-fine')).statusCode, 200);
+    assert.match((await call('GET', 'value')).json().error, /one line of at most 2000/);
+    assert.match((await call('GET', 'many')).json().error, /at most 20 headers/);
+  });
+
+  test('the HR module: POST leave answers with the Location of the new request, GET leave/:id reads it', async () => {
+    const allen = (await issueApiToken(appId, 'allen', 1)).token;
+    const res = await app.inject({ method: 'POST', url: '/a/hr/rest/hr/leave', headers: { authorization: `Bearer ${allen}`, 'content-type': 'application/json' }, payload: JSON.stringify({ start_date: '2033-06-06', end_date: '2033-06-07', reason: REASON }) });
+    assert.equal(res.statusCode, 201, res.body);
+    const id = res.json().id;
+    assert.equal(res.headers.location, `/a/hr/rest/hr/leave/${id}`);
+    const read = await app.inject({ url: String(res.headers.location), headers: { authorization: `Bearer ${allen}` } });
+    assert.equal(read.statusCode, 200);
+    assert.equal(read.json().id, id);
+    assert.equal(read.json().status, 'PENDING');
   });
 });
