@@ -204,6 +204,66 @@
       }
       if (e.target.closest('[data-ws-cell-close]')) e.target.closest('dialog').close();
     });
+    // (sprint 173, DA-3) the next rows load while the end of the grid is in view
+    const moreEnd = form.querySelector('[data-ws-more-end]');
+    const again = document.querySelector('#ws-dl [name="query"]');
+    if (moreEnd && again && grid.dataset.wsMore && 'IntersectionObserver' in window) {
+      let offset = Number(grid.dataset.wsMore);
+      let busy = false;
+      const shown = form.querySelector('[data-ws-showing]');
+      const numeric = [...grid.tHead.rows[0].cells].map((th) => th.classList.contains('num'));
+      const io = new IntersectionObserver((entries) => { if (entries.some((x) => x.isIntersecting)) load(); }, { rootMargin: '300px' });
+      const stop = (text) => {
+        io.disconnect();
+        if (text) moreEnd.textContent = text;
+        else moreEnd.remove();
+      };
+      const load = async () => {
+        if (busy) return;
+        busy = true;
+        try {
+          const res = await fetch('/builder/sql/worksheet/rows', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({ __csrf: form.elements.__csrf.value, query: again.value, offset: String(offset) }) });
+          if (!res.ok) throw new Error(String(res.status));
+          const out = await res.json();
+          const rows = document.createDocumentFragment();
+          for (const r of out.rows) {
+            const tr = document.createElement('tr');
+            const n = document.createElement('td');
+            n.className = 'ws-rownum';
+            n.textContent = String(++offset);
+            tr.append(n);
+            r.forEach((v, i) => {
+              const td = document.createElement('td');
+              if (numeric[i + 1]) td.className = 'num';
+              if (v === null) {
+                const nul = document.createElement('span');
+                nul.className = 'null';
+                nul.textContent = '(null)';
+                td.append(nul);
+              } else td.textContent = v;
+              tr.append(td);
+            });
+            rows.append(tr);
+          }
+          grid.tBodies[0].append(rows);
+          if (shown) shown.textContent = msg(out.more ? 'js.ws.showing' : 'js.ws.shown_all', { n: offset });
+          if (!out.more || !out.rows.length) {
+            stop('');
+            if (offset < 10000) form.querySelector('button[name="mode"][value="statement_all"]')?.remove();
+          } else {
+            // observed again: the callback fires when the end is still in view
+            io.unobserve(moreEnd);
+            io.observe(moreEnd);
+          }
+        } catch {
+          stop(msg('js.ws.more_failed'));
+        } finally {
+          busy = false;
+        }
+      };
+      moreEnd.hidden = false;
+      io.observe(moreEnd);
+    }
   }
   const histQ = form.querySelector('[data-ws-hist-q]');
   const histS = form.querySelector('[data-ws-hist-s]');

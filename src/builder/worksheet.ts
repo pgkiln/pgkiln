@@ -12,7 +12,7 @@ import { createTemplate, listObjects, OB_TYPES, pickSchema, SYSTEM_SCHEMAS, type
 import { objectMenu } from './object-actions.ts';
 import { askedSpec, chartControls, chartSpec, drawChart } from './sql-charts.ts';
 import { currentWorkspace, inWorkspaceSql, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
-import { applySubstitutions, explainStatement, pickStatements, runStatements, substitutionNames, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
+import { applySubstitutions, cellText, explainStatement, GRID_VALUE, pickStatements, runStatements, substitutionNames, textTable, type RunMode, type WorksheetRun } from '../sqlworksheet.ts';
 import { applyBinds, bindNames } from '../binds.ts';
 import { formatSql } from '../sqlformat.ts';
 import { planView } from './plan-view.ts';
@@ -147,7 +147,7 @@ function keptNotices(s: { state: Record<string, any> }): KeptNotice[] {
 }
 
 /** The output panes of a run (empty: the page as opened). */
-function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate, kept: { on: boolean; earlier: KeptNotice[] } = { on: false, earlier: [] }): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
+function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate, kept: { on: boolean; earlier: KeptNotice[] } = { on: false, earlier: [] }, scroll = false): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
   const results = run?.results ?? [];
   const ran = results.filter((r) => r.status !== 'not_run');
   const query = [...ran].reverse().find((r) => r.columns);
@@ -171,15 +171,15 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
   }
   const result: Raw = query
     ? html`<div class="ws-result-bar">
-        <p class="muted small ws-info">${rowsLabel(query)} · ${query.ms} ms${query.more ? html` · ${tx('ws.result.showing', { n: query.data!.length })}` : ''} · ${tx('ws.line', { n: query.line })}</p>
+        <p class="muted small ws-info">${rowsLabel(query)} · ${query.ms} ms${query.more ? html` · <span data-ws-showing>${tx('ws.result.showing', { n: query.data!.length })}</span>` : ''} · ${tx('ws.line', { n: query.line })}</p>
         <span class="ws-spacer"></span>
         ${query.more ? html`<button class="btn btn-sm" name="mode" value="statement_all" title="${tx('ws.all_rows.title', { n: ALL_ROWS.toLocaleString(tx.lang) })}">${tx('ws.all_rows')}</button>` : ''}
         <button class="btn btn-sm" name="mode" value="chart" title="${tx('ws.chart.title')}">${icon('chart')}<span>${tx('ws.tab.chart')}</span></button>
         <button type="button" class="btn btn-sm" data-ws-copy hidden>${icon('copy')}<span>${tx('ws.copy')}</span></button>
         ${download}
       </div>
-      <div class="table-wrap ws-grid"><table class="report" data-ws-grid><thead><tr><th scope="col" class="ws-rownum">#</th>${query.columns!.map((c, k) => html`<th scope="col"${query.numeric?.[k] ? raw(' class="num"') : ''}><button type="button" class="ws-sort" data-ws-sort="${k}" hidden>${c}</button><span class="ws-sort-label">${c}</span></th>`)}</tr></thead>
-      <tbody>${query.data!.map((r, k) => html`<tr><td class="ws-rownum">${k + 1}</td>${r.map((v, i) => html`<td${query.numeric?.[i] ? raw(' class="num"') : ''}>${v === null ? html`<span class="null">(null)</span>` : v}</td>`)}</tr>`)}</tbody></table></div>
+      <div class="table-wrap ws-grid"><table class="report" data-ws-grid${scroll && query.more && download ? raw(` data-ws-more="${query.data!.length}"`) : ''}><thead><tr><th scope="col" class="ws-rownum">#</th>${query.columns!.map((c, k) => html`<th scope="col"${query.numeric?.[k] ? raw(' class="num"') : ''}><button type="button" class="ws-sort" data-ws-sort="${k}" hidden>${c}</button><span class="ws-sort-label">${c}</span></th>`)}</tr></thead>
+      <tbody>${query.data!.map((r, k) => html`<tr><td class="ws-rownum">${k + 1}</td>${r.map((v, i) => html`<td${query.numeric?.[i] ? raw(' class="num"') : ''}>${v === null ? html`<span class="null">(null)</span>` : v}</td>`)}</tr>`)}</tbody></table>${scroll && query.more && download ? html`<p class="ws-more muted small" data-ws-more-end hidden>${tx('ws.more.loading')}</p>` : ''}</div>
       <dialog class="ws-cell" id="ws-cell" aria-labelledby="ws-cell-title"><div class="ws-cell-head"><strong id="ws-cell-title">${tx('ws.value')}</strong><button type="button" class="btn btn-sm" data-ws-cell-close>${tx('ws.close')}</button></div><pre></pre></dialog>`
     : run && mode !== 'explain' && mode !== 'autotrace'
       ? html`<p class="muted">${errors.length ? tx('ws.result.failed') : tx('ws.result.no_rows')}</p>`
@@ -384,6 +384,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   const navSchemas = schemas.filter((n) => !SYSTEM_SCHEMAS.includes(n));
   const navSchema = await pickSchema(s, db, navSchemas, isPost ? body.nav_schema : req.query?.schema);
   const navType = NAV_TYPES.some(([k]) => k === (isPost ? body.nav_type : req.query?.type)) ? String(isPost ? body.nav_type : req.query?.type) : 'all';
+  let scrollMore = false;
   const asApp = isPost && /^\d{1,9}$/.test(String(body.as_app ?? '')) ? apps.find((a) => String(a.id) === String(body.as_app)) : undefined;
   if (isPost && body.as_app && !asApp) return reply.code(404).send('Not found');
 
@@ -460,6 +461,9 @@ async function worksheet(req: Req, reply: FastifyReply) {
       else if (blocked) txnError = tx('ws.txn.not_in_txn', { line: blocked.line, what: outsideTxnOnly(blocked.sql) });
     }
     if (statements.length && !txnError) {
+      // (sprint 173, DA-3) the next rows load on scroll when the grid's query can be read again on its own: not in
+      // the tab's transaction (its changes are not visible elsewhere), not as an application's role, not All rows
+      scrollMore = !useTxn && !asApp && !allRows && !explaining;
       ran = { start: statements[0].start, end: statements[statements.length - 1].end };
       const started = performance.now();
       const runOn = (c: pg.ClientBase, inTxn: boolean) => explaining
@@ -558,7 +562,7 @@ async function worksheet(req: Req, reply: FastifyReply) {
   }
   if (keepNotices && run?.notices.length)
     s.state.__WSNOTICES = JSON.stringify([...earlierNotices, ...run.notices.map((n) => ({ level: n.level, message: String(n.message).slice(0, 2000), n: n.n, at: n.at }))].slice(-KEPT_NOTICES));
-  const { panes, active, status } = outputPanes(run, mode, history, isPost && body.mode === 'clear_notices' ? 'notices' : String(req.query?.tab ?? ''), chartPane, tx, { on: keepNotices, earlier: earlierNotices });
+  const { panes, active, status } = outputPanes(run, mode, history, isPost && body.mode === 'clear_notices' ? 'notices' : String(req.query?.tab ?? ''), chartPane, tx, { on: keepNotices, earlier: earlierNotices }, scrollMore);
   const downloadable = (() => {
     try {
       return lastQuery ? unloadStatement(lastQuery.sql) : null;
@@ -748,6 +752,38 @@ export async function worksheetRoutes(app: FastifyInstance) {
     const sql = String(req.body?.sql ?? '');
     if (sql.length > 1_000_000) return reply.code(413).send({ error: 'Too long to format.' });
     return reply.header('Cache-Control', 'no-store').send({ sql: formatSql(sql, req.body?.case === 'upper' ? 'upper' : 'lower') });
+  });
+
+  // (sprint 173, DA-3) the next rows of the Query Result grid, as the grid scrolls to its end: the statement (one
+  // SELECT, as Unload Data takes it) read again from an offset, read-only, as the workshop's connection
+  app.post(`${BASE}/sql/worksheet/rows`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const offset = /^\d{1,6}$/.test(String(req.body?.offset ?? '')) ? Number(req.body!.offset) : -1;
+    let sql = '';
+    try {
+      sql = unloadStatement(String(req.body?.query ?? ''));
+    } catch {
+      return reply.code(400).send({ error: 'Not one SELECT.' });
+    }
+    if (offset < 0 || offset >= ALL_ROWS) return reply.code(400).send({ error: 'No rows there.' });
+    const db = await workshopDb(s);
+    const schema = await sessionSchema(s, db);
+    const limit = Math.min(GRID_ROWS, ALL_ROWS - offset);
+    const c = await db.pool.connect();
+    try {
+      await c.query('begin transaction read only');
+      await c.query(`select set_config('statement_timeout', '30s', true)`);
+      if (schema) await c.query(`select set_config('search_path', $1, true)`, [`${pg.escapeIdentifier(schema)}, public`]);
+      const res = await c.query({ text: `select * from (${sql}\n) ws_rows offset ${offset} limit ${limit + 1}`, rowMode: 'array' });
+      const rows = (res.rows as unknown[][]).slice(0, limit).map((row) => row.map((v) => cellText(v, GRID_VALUE)));
+      return reply.header('Cache-Control', 'no-store').send({ rows, more: res.rows.length > limit && offset + limit < ALL_ROWS });
+    } catch (e) {
+      return reply.code(422).send({ error: (e as Error).message });
+    } finally {
+      await c.query('rollback').catch(() => {});
+      c.release(true);
+    }
   });
 
   // the navigator for another schema or object type (the page swaps it in without a reload)

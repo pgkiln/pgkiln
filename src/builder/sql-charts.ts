@@ -8,8 +8,8 @@ import { isNumeric } from '../runtime/report.ts';
 import { renderChartBody, type ChartKind } from '../runtime/charts.ts';
 import type { Session } from '../session.ts';
 import { unloadStatement } from '../unload.ts';
-import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
-import { currentWorkspace, sessionSchema, workshopDb } from './workspaces.ts';
+import { appHeader, back, BASE, csrf, developer, flash, input, region, send, shell, workshopTabs, type Body, type Req } from './ui.ts';
+import { currentWorkspace, inWorkspaceSql, sessionSchema, workshopDb } from './workspaces.ts';
 import { tr, translatorFor, type BuilderKey, type BuilderTranslate } from './i18n.ts';
 
 // (sprint 97, Database Actions DA-6: Create Chart and Charts) A query drawn as a chart with pgkiln's own
@@ -86,6 +86,13 @@ async function chartCard(s: Session, ch: SavedChart, full = false): Promise<{ bo
   }
 }
 
+/**
+ * (sprint 173, DA-6) The source of a Chart region that draws a saved chart: the label column first, then the value
+ * columns (a Chart region reads its columns by position), from the chart's SELECT.
+ */
+export const chartRegionSource = (sql: string, spec: ChartSpec) =>
+  `select ${[spec.label, ...spec.values].map((c) => pg.escapeIdentifier(c)).join(', ')}\n  from (\n${unloadStatement(sql)}\n) chart_rows`;
+
 const style = (nonce: string, css: string) => (css ? html`<style nonce="${nonce}">${raw(css.replace(/</g, ''))}</style>` : '');
 
 export async function sqlChartRoutes(app: FastifyInstance) {
@@ -129,6 +136,7 @@ export async function sqlChartRoutes(app: FastifyInstance) {
     } catch {
       controls = '';
     }
+    const apps = (await owner.query<{ id: number; name: string }>(`select a.id, a.name from meta.app a where ${inWorkspaceSql('a', 1)} order by lower(a.name)`, [currentWorkspace(s)])).rows;
     const main = html`<h1 class="u-mb1">${ch.name}</h1>${workshopTabs('charts', s)}${style(req.cspNonce, card.css)}
       <div class="ch-view">${card.body}</div>
       <form method="post" action="${BASE}/sql/charts/${ch.id}" class="ch-edit">${csrf(s)}
@@ -139,8 +147,97 @@ export async function sqlChartRoutes(app: FastifyInstance) {
         <div class="buttons"><button class="btn btn-hot" name="action" value="save">${icon('save')} ${tx('scr.save')}</button>
           <button class="btn" name="action" value="worksheet">${icon('code')} ${tx('ch.open_worksheet')}</button>
           <button class="btn btn-danger" name="action" value="delete" data-confirm="${tx('ch.delete_confirm', { name: ch.name })}">${icon('trash')} ${tx('scr.delete')}</button></div>
-      </form>`;
+      </form>
+      ${region(tx('ch.app_page'), apps.length
+        ? html`<form method="get" action="${BASE}/sql/charts/${ch.id}/page" class="ch-app-page">
+            <p class="muted u-mt0">${tx('ch.app_page.help')}</p>
+            <div class="field"><label class="label" for="ch-app">${tx('ch.app_page.app')}</label>
+              <select id="ch-app" name="app">${apps.map((a) => html`<option value="${a.id}">${a.name}</option>`)}</select></div>
+            <div class="buttons"><button class="btn">${icon('plus')} ${tx('ch.app_page')}</button></div>
+          </form>`
+        : html`<p class="muted">${tx('ch.app_page.none')}</p>`)}`;
     return send(reply, s, shell(s, ch.name, [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.charts'), `${BASE}/sql/charts`], [ch.name]], main, 'sql'));
+  });
+
+  // (sprint 173, DA-6) Create an application page from a saved chart: the chart's page names the application, the
+  // application's own URL asks for the page (so workspaces, locks and the change log apply as for any page)
+  app.get(`${BASE}/sql/charts/:id/page`, async (req: Req, reply: FastifyReply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const appId = String((req.query as Record<string, unknown>)?.app ?? '');
+    if (!/^\d{1,9}$/.test(String(req.params.id)) || !/^\d{1,9}$/.test(appId)) return reply.code(404).send('Not found');
+    return reply.redirect(`${BASE}/apps/${appId}/chart-page?chart=${req.params.id}`);
+  });
+
+  const chartOf = async (s: Session, id: unknown) =>
+    (/^\d{1,9}$/.test(String(id)) ? await owner.one<SavedChart>('select * from meta.sql_chart where id = $1 and workspace_id = $2', [id, currentWorkspace(s)]) : undefined);
+
+  app.get(`${BASE}/apps/:id/chart-page`, async (req: Req, reply: FastifyReply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await owner.one<{ id: number; name: string; db_role: string }>('select * from meta.app where id = $1', [req.params.id]);
+    const ch = a ? await chartOf(s, (req.query as Record<string, unknown>)?.chart) : undefined;
+    if (!a || !ch) return reply.code(404).send('Not found');
+    const tx = tr(s);
+    const used = new Set((await owner.query('select page_no from meta.page where app_id = $1', [a.id])).rows.map((r) => r.page_no as number));
+    let n = Math.max(0, ...[...used].filter((x) => x < 9000)) + 1;
+    while (used.has(n)) n++;
+    let source: Raw;
+    try {
+      const r = await runChart(s, ch.sql);
+      const spec = chartSpec(r.columns, r.numeric, { kind: ch.kind, label: ch.label_col, values: ch.value_cols });
+      source = spec
+        ? html`<details class="u-mt1"><summary>${tx('ch.query')}</summary><pre class="source" data-code-view="sql" tabindex="0" aria-label="${tx('ch.query')}">${chartRegionSource(ch.sql, spec)}</pre></details>`
+        : html`<p class="alert alert-error">${tx('ch.no_number')}</p>`;
+    } catch (e) {
+      source = html`<p class="alert alert-error">${(e as Error).message}</p>`;
+    }
+    const main = html`${appHeader(a, 'pages', s)}
+      ${region(tx('ch.app_page'), html`<p class="muted u-mt0">${tx('ch.app_page.role', { role: a.db_role })}</p>
+        <form method="post" action="${BASE}/apps/${a.id}/chart-page">${csrf(s)}<input type="hidden" name="chart" value="${ch.id}">
+          <div class="form-grid">
+            ${input('page_no', tx('cpg.page_number'), n, { type: 'number', required: true })}
+            ${input('name', tx('cpg.name'), ch.name, { required: true })}
+          </div>
+          <label class="check"><input type="checkbox" name="nav" checked> ${tx('ch.app_page.nav')}</label>
+          ${source}
+          <div class="buttons"><a class="btn" href="${BASE}/sql/charts/${ch.id}">${tx('cpg.back')}</a><button class="btn btn-hot">${tx('cpg.create_page')}</button></div>
+        </form>`)}`;
+    return send(reply, s, shell(s, tx('ch.app_page'), [[tx('cpg.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('ch.app_page')]], main));
+  });
+
+  app.post(`${BASE}/apps/:id/chart-page`, async (req: Req, reply: FastifyReply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const b = req.body ?? {};
+    const a = await owner.one<{ id: number }>('select id from meta.app where id = $1', [req.params.id]);
+    const ch = a ? await chartOf(s, b.chart) : undefined;
+    if (!a || !ch) return reply.code(404).send('Not found');
+    const tx = tr(s);
+    const retry = `${BASE}/apps/${a.id}/chart-page?chart=${ch.id}`;
+    const pageNo = /^\d{1,6}$/.test(String(b.page_no ?? '')) ? Number(b.page_no) : 0;
+    const name = String(b.name ?? '').trim().slice(0, 120);
+    try {
+      if (!pageNo || !name) throw new Error(tx('ch.app_page.err.page'));
+      const r = await runChart(s, ch.sql);
+      const spec = chartSpec(r.columns, r.numeric, { kind: ch.kind, label: ch.label_col, values: ch.value_cols });
+      if (!spec) throw new Error(tx('ch.no_number'));
+      const pid = await owner.tx(async (c) => {
+        if ((await c.query('select 1 from meta.page where app_id = $1 and page_no = $2', [a.id, pageNo])).rowCount) throw new Error(tx('ch.app_page.err.page'));
+        const p = (await c.query('insert into meta.page (app_id, page_no, name, title) values ($1, $2, $3, $3) returning id', [a.id, pageNo, name])).rows[0].id as number;
+        await c.query(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, $2, 'chart', $3, $4::jsonb)`,
+          [p, name, chartRegionSource(ch.sql, spec), JSON.stringify({ kind: spec.kind })]);
+        if (b.nav === 'on')
+          await c.query(`insert into meta.nav_entry (app_id, seq, label, icon, target_page)
+            values ($1, (select coalesce(max(seq), 0) + 10 from meta.nav_entry where app_id = $1 and parent_id is null), $2, 'chart', $3)`, [a.id, name, pageNo]);
+        return p;
+      });
+      flash(s, tx('ch.app_page.created', { n: pageNo, name: ch.name }));
+      return back(reply, s, `${BASE}/pages/${pid}`);
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+      return back(reply, s, retry);
+    }
   });
 
   // save a chart from the worksheet (a new one), or change, open or delete a saved one

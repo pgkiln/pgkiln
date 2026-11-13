@@ -5,6 +5,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **An application page from a saved chart** (sprint 173, DA-6 leftover; no migration): a saved chart's page in SQL
+  Workshop → Charts has *Create an application page*: choose an application of the workspace, a page number and a
+  name, and the page is made with a Chart region (the chart's SELECT, its label and value columns, its type) and,
+  if you want, a navigation menu entry. The query then runs as the application's database role.
+- **The SQL Worksheet loads the next rows as you scroll** (sprint 173, DA-3 leftover): when a SELECT has more than
+  the 500 rows shown, the next 500 load when the end of the Query Result comes into view, up to 10,000. *All rows*
+  stays for browsers without JavaScript, for a tab's open transaction and when running as an application's role.
+
 ## [0.91.0] - 2026-11-12
 
 ### Added

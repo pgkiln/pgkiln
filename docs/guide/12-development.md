@@ -415,9 +415,12 @@ src/
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
                            GET /builder/palette (the builder's search: JSON for Ctrl+K, a results page without JavaScript)
     sql-charts.ts          (sprint 97) charts of a query: chartSpec(), drawChart() (runtime/charts.ts, a PageCss in a nonce'd <style>), the
-                           worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs)
+                           worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs);
+                           (sprint 173) an application page from a saved chart: chartRegionSource(), /apps/:id/chart-page
     sql-tools.ts           (sprint 96) SQL_TOOLS: every SQL Workshop tool with its group, tab and description (home, More menu, search)
-    worksheet.ts           (sprint 172) Keep notices: keptNotices() in the session state (__WSKEEP, __WSNOTICES);
+    worksheet.ts           (sprint 173) POST /sql/worksheet/rows: the grid's next rows from an offset (read-only; public/worksheet.js
+                           loads them while [data-ws-more-end] is in view);
+                           (sprint 172) Keep notices: keptNotices() in the session state (__WSKEEP, __WSNOTICES);
                            (sprint 91) the SQL Worksheet (Database Actions' SQL; /sql/commands too): navigator (pickSchema, objects with
                            columns, objectStatements), toolbar, output tabs, history (meta.sql_history, 108), plan trees, Run as an app's role, (sprint 93) Save / Rename / Download as SQL Scripts, bind and substitution values, POST /sql/worksheet/format; GET /sql/worksheet/navigator;
                            (sprint 107) transaction mode: the txn field, Commit / Rollback (mode=commit|rollback), txnBadge(), GET/POST /sql/worksheet/txn (JSON)
