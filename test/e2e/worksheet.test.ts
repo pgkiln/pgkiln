@@ -209,7 +209,7 @@ describe('SQL Worksheet', () => {
     await p.fill('#f_password', 'admin');
     await Promise.all([p.waitForNavigation(), p.click('button.btn-hot')]);
     await p.goto(`${base}/builder/sql/worksheet`);
-    await p.fill('textarea[name=sql]', `select count(*) as n from ${S}.dept`);
+    await p.fill('textarea[name=sql]', 'select count(*) as n from (values (1), (2)) v'); // (sprint 185) the developer login
     await Promise.all([p.waitForNavigation(), p.click('button[value=statement]')]);
     assert.equal(await p.locator('#ws-pane-result td:not(.ws-rownum)').textContent(), '2');
     assert.ok(await p.locator('#ws-pane-output').isVisible(), 'the panes stack without script');
@@ -557,7 +557,7 @@ describe('SQL Worksheet', () => {
     assert.equal(await page.locator('.ws-owner-reason').isVisible(), false, 'no reason field for the developer login');
     await setEditor(page, 'select session_user::text as who', 0);
     await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
-    assert.match((await page.locator('.ws-grid tbody td').first().textContent())!, /^pgkiln_ws\d+_dev_/);
+    assert.match((await page.locator('#ws-pane-result td:not(.ws-rownum)').first().textContent())!, /^pgkiln_ws\d+_dev_/);
     // Owner connection: the chip turns red and the reason field appears; without a reason nothing runs
     await runAs.selectOption('owner');
     assert.ok(await page.locator('.ws-owner-reason input').isVisible());
@@ -571,7 +571,7 @@ describe('SQL Worksheet', () => {
     await page.fill('.ws-owner-reason input', 'e2e: look at the owner');
     await setEditor(page, 'select session_user::text as who', 0);
     await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
-    assert.doesNotMatch((await page.locator('.ws-grid tbody td').first().textContent())!, /^pgkiln_ws/);
+    assert.doesNotMatch((await page.locator('#ws-pane-result td:not(.ws-rownum)').first().textContent())!, /^pgkiln_ws/);
     assert.ok(await page.locator('.ws-runas-chip.ws-runas-owner').isVisible());
     // every SQL Workshop page shows the red chip, with the way back
     await page.goto(`${base}/builder/sql`);
