@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.94.0 (November 2026): parity leftovers: OAuth clients limited to REST modules, map layers left out of the legend with a Sample Maps page per shape layer.
+- **Current release:** 0.95.0 (November 2026): an importer for Oracle APEX applications (`pgkiln import-apex`, Import → From Oracle APEX), the Change Log records DDL run outside the SQL Workshop, remote App Gallery catalogues, conditions in words in the Pages report, a database role linked to an isolated workspace.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
