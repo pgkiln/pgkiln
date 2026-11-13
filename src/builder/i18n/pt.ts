@@ -7760,8 +7760,10 @@ export const pt: BuilderMessages = {
   'apip.modules_saved': '{name} fica limitado a estes módulos REST: {modules}.',
   'apip.modules_all': '{name} pode voltar a chamar toda a aplicação.',
   'apip.modules_unknown': 'Esta aplicação não tem nenhum módulo REST chamado {names}.',
+  'apip.modules_none_left': 'Limitado, mas os seus módulos REST foram eliminados: é recusado em todo o lado. Indique módulos ou guarde em branco para toda a aplicação.',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': 'Não incluir na legenda (sempre visível)',
+  'rs.off_at_first_unused': 'Não usado: uma camada que não está na legenda (excluída, ou a única listada) é sempre mostrada.',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'Visita ao SQL Workshop',
   'tour.take': 'Fazer a visita',

@@ -1,6 +1,6 @@
 // Import an application document *over* an existing application, keeping
 // what belongs to this installation: the application's id and alias, who has
-// access, API clients, sessions, saved reports, running tasks and workflows,
+// access, API clients (and the REST modules they are limited to, by name), sessions, saved reports, running tasks and workflows,
 // the on/off state of automations and REST synchronisations, and the secrets of web credentials. Components are matched by their static
 // id (see src/appfiles.ts): saved reports follow their region (page number +
 // region key), tasks and workflows their definition (name), automation logs and
@@ -106,7 +106,9 @@ const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.def
   // (106) Form Designer forms follow their region
   'user_form.region_id',
   // (061) AI assistant conversations follow their region
-  'ai_conversation.region_id'];
+  'ai_conversation.region_id',
+  // (165) an OAuth client's REST modules follow their module (name)
+  'api_client_module.module_id'];
 
 type Db = pg.ClientBase | pg.Pool;
 
@@ -166,6 +168,14 @@ export async function replaceApp(db: Db, doc: unknown, alias: string, opts: Repl
       [old, neu],
     );
   }
+  // (165) an OAuth client limited to REST modules keeps the modules of the same name; one the document drops loses
+  // its link with the old module (the client stays limited: a module is never granted by a name)
+  await db.query(
+    `update meta.api_client_module l set module_id = n.id
+       from meta.rest_module o join meta.rest_module n on n.name = o.name and n.app_id = $2
+      where o.app_id = $1 and l.module_id = o.id`,
+    [old, neu],
+  );
   // background jobs follow their chain process (page number + process name)
   await db.query(
     `update meta.process_job j set process_id = n.id

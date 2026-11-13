@@ -46,9 +46,12 @@ interface NewSecret {
 async function clientsRegion(s: Session, a: any, secret?: NewSecret, usable = true) {
   const clients = (
     await owner.query(
-      `select id, name, description, client_id, roles, rest_modules, token_minutes, active, secret_changed_at, last_used_at,
-              previous_valid_until > now() as grace, previous_valid_until
-         from meta.api_client where app_id = $1 order by name`,
+      `select c.id, c.name, c.description, c.client_id, c.roles, c.module_limit, c.token_minutes, c.active, c.secret_changed_at, c.last_used_at,
+              c.previous_valid_until > now() as grace, c.previous_valid_until,
+              -- (165) the REST modules a limited client may call, by link
+              array(select m.name from meta.api_client_module l join meta.rest_module m on m.id = l.module_id and m.app_id = c.app_id
+                     where l.client_id = c.id order by m.name) as modules
+         from meta.api_client c where c.app_id = $1 order by c.name`,
       [a.id],
     )
   ).rows;
@@ -86,8 +89,9 @@ async function clientsRegion(s: Session, a: any, secret?: NewSecret, usable = tr
               <td data-label="${tx('apip.client')}"><strong>${c.name}</strong>${c.active ? '' : html` <span class="tag">revoked</span>`}<br><code class="small">${c.client_id}</code>${c.description ? html`<br><small class="help">${c.description}</small>` : ''}</td>
               <td data-label="${tx('apip.roles')}"><form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/roles" class="search roles-form u-m0 u-mwnone">${csrf(s)}
                 <input name="roles" value="${c.roles.join(', ')}" aria-label="${tx('apip.aria_roles', { name: c.name })}" placeholder="${tx('apip.no_roles')}"><button class="btn btn-sm">${tx('apip.save')}</button>${roleHintsHtml(hints, tx('apip.add'))}</form>
-                ${modules.length || c.rest_modules ? html`<form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/modules" class="search roles-form u-m0 u-mwnone u-mt1">${csrf(s)}
-                <input name="modules" value="${(c.rest_modules ?? []).join(', ')}" aria-label="${tx('apip.aria_modules', { name: c.name })}" placeholder="${tx('apip.modules_ph')}"><button class="btn btn-sm">${tx('apip.save')}</button>
+                ${modules.length || c.module_limit ? html`<form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/modules" class="search roles-form u-m0 u-mwnone u-mt1">${csrf(s)}
+                <input name="modules" value="${c.modules.join(', ')}" aria-label="${tx('apip.aria_modules', { name: c.name })}" placeholder="${tx('apip.modules_ph')}"><button class="btn btn-sm">${tx('apip.save')}</button>
+                ${c.module_limit && !c.modules.length ? html`<small class="help"><span class="tag tag-warning">${tx('apip.modules_none_left')}</span></small>` : ''}
                 <small class="help">${tx('apip.modules_help', { modules: modules.join(', ') || '–' })}</small></form>` : ''}</td>
               <td class="num" data-label="${tx('apip.token')}">${tx('apip.minutes', { n: c.token_minutes })}</td>
               <td data-label="${tx('apip.secret_changed')}">${when(c.secret_changed_at)}${c.grace ? html`<br><small class="help">${tx('apip.old_valid_until', { when: when(c.previous_valid_until) })}</small>` : ''}</td>
@@ -245,6 +249,7 @@ export async function apiRoutes(app: FastifyInstance) {
     const c = await clientOf(req.params.id, req.params.cid);
     if (!c) return reply.code(404).send('Not found');
     const op = req.params.op;
+    let detail = `${op} ${c.name}`;
     if (op === 'active') {
       const active = req.body?.active === 'true';
       await owner.query('update meta.api_client set active = $2 where id = $1', [c.id, active]);
@@ -253,21 +258,28 @@ export async function apiRoutes(app: FastifyInstance) {
       await owner.query('update meta.api_client set roles = $2 where id = $1', [c.id, splitRoles(req.body?.roles ?? '')]);
       flash(s, tx('apip.roles_saved', { name: c.name }));
     } else if (op === 'modules') {
-      // (sprint 178, migration 162) limit the client to REST modules of this application (blank: no limit)
-      const names = [...new Set(String(req.body?.modules ?? '').split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))].slice(0, 50);
-      const known = new Set((await owner.query<{ name: string }>('select name from meta.rest_module where app_id = $1', [req.params.id])).rows.map((m) => m.name));
-      const unknown = names.filter((n) => !known.has(n));
+      // (sprint 178, migrations 162, 165) limit the client to REST modules of this application (blank: no limit);
+      // every name must be one of its modules: the whole list is refused, never cut or partly saved
+      const names = splitRoles(req.body?.modules ?? '');
+      const found = (await owner.query<{ id: number; name: string }>('select id, name from meta.rest_module where app_id = $1 and name = any ($2)', [req.params.id, names])).rows;
+      const unknown = names.filter((n) => !found.some((m) => m.name === n));
       if (unknown.length) {
-        flash(s, tx('apip.modules_unknown', { names: unknown.join(', ').slice(0, 200) }), 'error');
+        flash(s, tx('apip.modules_unknown', { names: unknown.length > 5 ? `${unknown.slice(0, 5).join(', ')} (+${unknown.length - 5})` : unknown.join(', ') }), 'error');
         return back(reply, s, `${BASE}/apps/${req.params.id}/api`);
       }
-      await owner.query('update meta.api_client set rest_modules = $2 where id = $1', [c.id, names.length ? names : null]);
+      await owner.tx(async (t) => {
+        await t.query('update meta.api_client set module_limit = $2 where id = $1', [c.id, names.length > 0]);
+        await t.query('delete from meta.api_client_module where client_id = $1', [c.id]);
+        if (found.length) await t.query('insert into meta.api_client_module (client_id, module_id) select $1, unnest($2::int[])', [c.id, found.map((m) => m.id)]);
+      });
       flash(s, names.length ? tx('apip.modules_saved', { name: c.name, modules: names.join(', ') }) : tx('apip.modules_all', { name: c.name }));
+      // (sprint 184) the log says what the limit is now, so a widening can be traced
+      detail = names.length ? `modules ${c.name}: ${names.join(', ')}` : `modules ${c.name}: none (the whole application)`;
     } else if (op === 'delete') {
       await owner.query('delete from meta.api_client where id = $1', [c.id]);
       flash(s, `${c.name} deleted.`);
     } else return reply.code(404).send('Not found');
-    await logActivity({ appId: Number(req.params.id), username: s.username, event: 'oauth_client', ip: clientIp(req), detail: `${op} ${c.name}` });
+    await logActivity({ appId: Number(req.params.id), username: s.username, event: 'oauth_client', ip: clientIp(req), detail: detail.slice(0, 500) });
     return back(reply, s, `${BASE}/apps/${req.params.id}/api`);
   });
 }

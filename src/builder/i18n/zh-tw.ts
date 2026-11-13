@@ -7760,8 +7760,10 @@ export const zhTW: BuilderMessages = {
   'apip.modules_saved': '{name} 僅限於這些 REST 模組：{modules}。',
   'apip.modules_all': '{name} 可以再次呼叫整個應用程式。',
   'apip.modules_unknown': '此應用程式沒有名為 {names} 的 REST 模組。',
+  'apip.modules_none_left': '已受限，但其 REST 模組已被刪除：它在所有地方都會被拒絕。請填寫模組，或留空儲存以允許整個應用程式。',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '不在圖例中顯示（一律顯示）',
+  'rs.off_at_first_unused': '未使用：不在圖例中的圖層（被排除，或是唯一列出的圖層）一律顯示。',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'SQL Workshop 導覽',
   'tour.take': '開始導覽',

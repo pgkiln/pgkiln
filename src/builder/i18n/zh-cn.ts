@@ -7760,8 +7760,10 @@ export const zhCN: BuilderMessages = {
   'apip.modules_saved': '{name} 仅限于这些 REST 模块：{modules}。',
   'apip.modules_all': '{name} 可以再次调用整个应用程序。',
   'apip.modules_unknown': '此应用程序没有名为 {names} 的 REST 模块。',
+  'apip.modules_none_left': '已受限，但其 REST 模块已被删除：它在所有地方都会被拒绝。请填写模块，或留空保存以允许整个应用程序。',
   // ------------------------------------------------------------ sprint 178: map layers left out of the legend
   'rs.not_in_legend': '不在图例中显示（始终可见）',
+  'rs.off_at_first_unused': '未使用：不在图例中的图层（被排除，或是唯一列出的图层）始终显示。',
   // ------------------------------------------------------------ sprint 179: the SQL Workshop tour
   'tour.title': 'SQL Workshop 导览',
   'tour.take': '开始导览',
