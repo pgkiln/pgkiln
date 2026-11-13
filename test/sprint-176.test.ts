@@ -26,7 +26,8 @@ const clean = async () => {
 before(async () => {
   app = await buildApp({ logger: false });
   await owner.query(`drop schema if exists ${S} cascade; create schema ${S}; create table ${S}.sale (region text, amount numeric);
-    insert into ${S}.sale values ('North', 100), ('South', 250.5), ('West', null)`);
+    insert into ${S}.sale values ('North', 100), ('South', 250.5), ('West', null);
+    grant usage on schema ${S} to hr_app; grant select on ${S}.sale to hr_app`); // (sprint 185) what the workspace's developer login reads
   await clean();
   await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
 });

@@ -298,7 +298,10 @@ async function worksheet(req: Req, reply: FastifyReply) {
   // reason) the Owner connection, which lasts for the session and is recorded in meta.owner_sql_audit
   const admin = await isAdmin(s.username);
   let ownerError = '';
-  if (isPost && 'as_app' in body) {
+  if (isPost && body.as_app === 'owner' && !admin) return reply.code(403).send(tx('ws.owner.admins_only'));
+  // (a tab's open transaction keeps its Run as: changing it is refused below, until Commit or Rollback)
+  const openTab = /^[a-z0-9]{1,20}$/.test(String(body.ws_tab ?? '')) ? findTxn(s.id, String(body.ws_tab)) : undefined;
+  if (isPost && 'as_app' in body && !openTab) {
     if (body.as_app === 'owner') {
       if (!admin) return reply.code(403).send(tx('ws.owner.admins_only'));
       if (!ownerReasonOf(s)) {
