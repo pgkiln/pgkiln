@@ -316,6 +316,7 @@ const COMMANDS: Record<string, Command> = {
     options: {
       alias: { type: 'string', short: 'a' }, schema: { type: 'string' }, 'db-role': { type: 'string' },
       'dry-run': { type: 'boolean' }, out: { type: 'string', short: 'o' }, json: { type: 'boolean' }, all: { type: 'boolean' },
+      'no-issues': { type: 'boolean' },
     },
     optionHelp: [
       ['-a, --alias <alias>', 'alias of the new application (default: from the APEX alias or name)'],
@@ -325,6 +326,7 @@ const COMMANDS: Record<string, Command> = {
       ['-o, --out <dir>', 'write the application files there instead of importing'],
       ['--json', 'the report as JSON'],
       ['--all', 'also list the components that were mapped without notes'],
+      ['--no-issues', 'no Team Development issue per component that needs hand work (made by default)'],
     ],
     positionals: [1, 1],
     async run(v, [path]) {
@@ -366,9 +368,23 @@ const COMMANDS: Record<string, Command> = {
         // (sprint 186) without --db-role: app_<alias> with rights on the parsing schema, when it exists here
         const schema = (v.schema as string | undefined)?.trim().toLowerCase() || null;
         const there = schema && (await db.query('select 1 from pg_namespace where nspname = $1', [schema])).rowCount ? schema : null;
-        return importDoc(db, doc, { alias: report.application.alias, replace: false, by: `pgkiln import-apex (${userInfo().username})`, schema: there });
+        const made = await importDoc(db, doc, { alias: report.application.alias, replace: false, by: `pgkiln import-apex (${userInfo().username})`, schema: there });
+        // (sprint 187) a Team Development issue per component that needs hand work, in the application's workspace
+        let issues = 0;
+        if (!v['no-issues'] && made.committed) {
+          const { apexIssues } = await import('../apex-issues.ts');
+          await db.query('begin');
+          try {
+            issues = await apexIssues(db, report, { appId: made.id, alias: report.application.alias, by: `pgkiln import-apex (${userInfo().username})` });
+            await db.query('commit');
+          } catch (e) {
+            await db.query('rollback');
+            throw e;
+          }
+        }
+        return { ...made, issues };
       });
-      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''} Finish what the report lists.\n`);
+      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''}${r.issues ? ` ${r.issues} Team Development issue(s) list what needs hand work (label "APEX import").` : ''} Finish what the report lists.\n`);
       return EXIT.ok;
     },
   },

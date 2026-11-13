@@ -20,15 +20,19 @@ import { Browser } from './helpers.ts';
 
 const FIX = join(root, 'test/fixtures/apex');
 const F100 = readFileSync(join(FIX, 'f100.sql'), 'utf8');
-const ALIASES = ['apex182-cli', 'apex182-split', 'apex182-builder', 'apex182-db'];
+const ALIASES = ['apex182-cli', 'apex182-split', 'apex182-builder', 'apex182-db', 'apex187-cli', 'apex187-none', 'apex187-builder'];
+/** (sprint 187) issues of these applications go with them (an issue keeps its row when its application is deleted) */
+const dropIssues = () => owner.query(`delete from meta.team_issue where app_id in (select id from meta.app where alias = any($1))`, [ALIASES]);
 const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-apex-'));
 let app: FastifyInstance;
 
 before(async () => {
+  await dropIssues();
   await owner.query('delete from meta.app where alias = any($1)', [ALIASES]);
   app = await buildApp({ logger: false });
 });
 after(async () => {
+  await dropIssues();
   await owner.query('delete from meta.app where alias = any($1)', [ALIASES]);
   rmSync(tmp, { recursive: true, force: true });
   await app.close();
@@ -426,5 +430,52 @@ describe('sprint 187: common Oracle SQL rewritten (NX-F1)', async () => {
     const notes = report.entries.flatMap((e) => e.notes);
     assert.ok(notes.some((n) => /^Oracle SQL rewritten: .*nvl → coalesce/.test(n)), notes.join('\n'));
     assert.doesNotMatch(JSON.stringify(doc), /\bnvl\(/i);
+  });
+});
+
+describe('sprint 187: Team Development issues for the hand work (NX-F1)', async () => {
+  const { handWork } = await import('../src/apex-issues.ts');
+  const issues = async (alias: string) => (await owner.query(
+    `select i.title, i.body, i.page_no, i.status, i.app_id, (select string_agg(l.name, ',') from meta.team_issue_label il join meta.team_label l on l.id = il.label_id where il.issue_id = i.id) as labels
+       from meta.team_issue i join meta.app a on a.id = i.app_id where a.alias = $1 order by i.id`, [alias])).rows;
+
+  test('pgkiln import-apex makes one per component that needs hand work, linked to its page; --no-issues makes none', async () => {
+    const { report } = apexToDoc(F100);
+    const work = handWork(report);
+    assert.ok(work.length > 3, 'the fixture has hand work');
+    const r = cli('import-apex', join(FIX, 'f100.sql'), '--alias', 'apex187-cli');
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, new RegExp(`${work.length} Team Development issue\\(s\\) list what needs hand work`));
+    const made = await issues('apex187-cli');
+    assert.equal(made.length, work.length);
+    for (const i of made) {
+      assert.equal(i.status, 'open');
+      assert.equal(i.labels, 'APEX import');
+      assert.match(i.title, /^(Not mapped|Port): /);
+      assert.match(i.body, /^From the APEX import of apex187-cli\.\n\n- APEX type: /);
+    }
+    const plsqlError = made.find((i) => /PLSQL_ERROR|PL\/SQL/.test(i.body));
+    assert.ok(plsqlError, 'a PL/SQL component to port');
+    assert.ok(made.some((i) => i.page_no !== null), 'linked to pages');
+    const none = cli('import-apex', join(FIX, 'f100.sql'), '--alias', 'apex187-none', '--no-issues');
+    assert.equal(none.code, 0, none.err);
+    assert.equal((await issues('apex187-none')).length, 0);
+  });
+
+  test('the builder: on by default, off when unticked; the issues show in Team Development', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.get('/builder/import/apex');
+    const up = await b.upload('/builder/import/apex', {}, { file: { name: 'f100.sql', type: 'application/sql', data: Buffer.from(F100) } });
+    const url = up.headers.location as string;
+    const rep = await b.get(url);
+    assert.match(rep.body, /<input type="checkbox" name="issues" value="1" checked> Make a Team Development issue for each component that needs hand work \(\d+\)/);
+    const done = await b.submit(url, { action: 'import', alias: 'apex187-builder', schema: 'sales', issues: '1' });
+    assert.equal(done.statusCode, 303, done.body.slice(0, 300));
+    const made = await issues('apex187-builder');
+    assert.ok(made.length > 3);
+    const team = (await b.get('/builder/team')).body;
+    assert.match(team, /APEX import/);
   });
 });
