@@ -62,6 +62,10 @@ src/
                            command line and the MCP tools working_copy and lock_app)
   app.ts / server.ts       Fastify setup / entry point
   db.ts                    the owner and shared runtime pools, `runtime` (the current scope's: runtimeScope), appTx() (SET LOCAL ROLE + pgkiln.* settings, NOTICEs to the debug log), savepoints
+  app-role.ts              (sprint 186, NX-S2) an application's own database role: setAppRole() (every application transaction:
+                           a powerful role or none refused, none allowed only in development mode = a developer's page request with
+                           the developer toolbar), roleProblem() for the forms, makeAppRole() / importRole() (app_<alias> for Settings →
+                           Security and imports of a file without a role); meta.role_is_powerful and the meta.app trigger: migration 167
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
                            PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests;
                            (sprint 185, 166) every workspace's developer login: devDbForWorkspace / devDbForApp never return the owner
@@ -426,6 +430,8 @@ src/
                            slowest provider calls, failures; Retry / Purge one or all failed, scope checked again per mail
     network-access.ts      (sprint 118, WS-9) Administration → Network access (/builder/network): the installation's list, a workspace's
                            list (workspaceAdmin), Check a URL (nothing called), the workspaces (administrators), refused calls
+    rls-hint.ts            (sprint 186) the hint after a refusal by row level security or privileges (42501) in SQL Commands,
+                           SQL Scripts, Sample Data and Load Data; administrators get the Owner connection from it
     owner-connection.ts    (sprint 185, NX-S1) the SQL Workshop's Owner connection: administrators only, a reason (session state
                            __OWNER), chooseOwner / endOwner, auditRun (worksheet, SQL Scripts) and auditedOwner (the other tools'
                            changing statements) into meta.owner_sql_audit; workspaces.ts workshopDb() picks it or the developer login

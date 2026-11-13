@@ -612,6 +612,47 @@ Keep in mind:
   useful for triggers that must write notifications for *other* users (`hr.notify_leave_decided`).
   Keep them small and set `search_path`.
 
+## The application's own database role
+
+(sprint 186, NX-S2; APEX: the parsing schema) Every application runs as a **database role of its own**, its
+`db_role`: every page request, process, REST handler, automation, workflow, webhook and background job does
+`SET LOCAL ROLE <db_role>` in its transaction, so the grants below and row level security decide what it may do.
+The role is **required**, and some roles are **refused**:
+
+- **an empty role**: refused by *Settings → Security*, by every import and by `meta.app` itself (migration 167), so a
+  forged settings post or a hand-written `insert` can't make one either;
+- **a powerful role** (`meta.role_is_powerful`): a superuser; a role with `BYPASSRLS`, `CREATEROLE`, `CREATEDB` or
+  `REPLICATION`; pgkiln's own roles and PostgreSQL's (`pgkiln*`, `pg_*`); the owner of pgkiln's schemas; and any role
+  that is a member of one of these (it could `SET ROLE` to it) or of `pg_read_all_data`, `pg_write_all_data` or the
+  server file roles. The SQL Workshop's developer logins (sprint 185) use the same check.
+
+Both are refused **when the role is saved and when the application runs**: a role granted `BYPASSRLS` later stops
+the application within seconds.
+
+**Where the role comes from.** *Create Application* (blank, from a file, a blueprint, the App Gallery) makes
+`app_<alias>` with rights on the application's schema. An **import** of a file without a role (an old export, an
+APEX import without `--db-role`) keeps the role of the application it replaces, or else gets `app_<alias>`: a new
+role that can't sign in, a member of `pgkiln_runtime` in a shared workspace (or one of an isolated workspace's
+roles), with the wizard's rights on the parsing schema when the import names one (`pgkiln import-apex --schema`,
+the builder's APEX import), else **no rights yet**. The import's result says so; the Advisor then lists the SQL the
+role can't run. An import never falls back to the owner or the runtime login. A working copy of an application
+without a role is refused until the application has one.
+
+**Applications made before 0.97 without a role** (or with a powerful one) keep working for their developers only,
+until they get one; the upgrade (migration 167) grants nothing and changes no application. Until then:
+
+- the **Advisor** reports an error, and **Settings → Security checklist** shows a red line;
+- the server **refuses to run it** (HTTP 503, *This application can't run: it has no database role of its own …*)
+  for end users, REST modules, AutoREST, automations, workflows, webhooks and background jobs: everything except
+  **development mode**, a page request from a developer of the application who is signed in to the builder in the
+  same browser (the developer toolbar shows). Even then it runs as the runtime login only when that login doesn't
+  bypass row level security or own pgkiln (`RUNTIME_DATABASE_URL` set to the least-privilege role). A powerful role
+  is refused in development mode too;
+- **Settings → Security** offers **Create app_<alias>**: pgkiln creates the role (or reuses it when no other
+  application has it and it isn't powerful) with the wizard's rights on the schema you choose (`USAGE`; select,
+  insert, update and delete on its tables; its sequences and functions; and the same for objects made later), and
+  sets it as the application's role.
+
 ## Database privileges
 
 Give the app role only what the app needs:
@@ -785,7 +826,7 @@ decision.
 
 ## Checklist for a new application
 
-1. A dedicated `db_role` with minimal grants.
+1. A dedicated `db_role` with minimal grants (required since sprint 186; never a superuser or a role with `BYPASSRLS`).
 2. RLS on tables where rows belong to users or teams.
 3. Authorization schemes on pages and buttons that change data.
 4. Checksum protection on pages (the default).

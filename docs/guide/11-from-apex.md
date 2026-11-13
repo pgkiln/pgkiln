@@ -9,7 +9,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Oracle APEX | pgkiln |
 |---|---|
 | Instance / workspace | One pgkiln installation; workspaces group applications and developers in the builder (Workspace utilities → Workspaces; not a security boundary: tenants who must not see each other get separate installations, [chapter 3](03-builder.md#workspaces)) |
-| Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants |
+| Parsing schema | The app's **database role** (`db_role`); schema access comes from its grants. Required, as in APEX (sprint 186), and never a superuser or a role that bypasses row level security ([chapter 8](08-security.md#the-applications-own-database-role)) |
 | Application, page, region, item, button | The same, stored in `meta.*` |
 | Page Designer | Builder page designer (component tree, layout with drag and drop and a gallery, property editor) |
 | Shared components | Navigation menu, lists, authorization schemes, lists of values, application items, application processes, build options, supporting objects |
@@ -99,8 +99,9 @@ alias and the schema, Import). The file is **read as text and never run**: the i
 `wwv_flow_imp.id` ids) and builds the same document `meta.export_app()` writes, which
 `meta.import_app()` imports like any export. The tables, views and packages of the parsing schema
 are not in an application export: create them in PostgreSQL first (`--schema` names the schema
-unqualified tables are in; the default is the parsing schema in lower case). The application gets no
-database role: set it in Settings.
+unqualified tables are in; the default is the parsing schema in lower case). (sprint 186) Without `--db-role`
+the application gets the role `app_<alias>`, with rights on that schema when it exists (the builder's import and
+`--schema`), else without rights yet: grant it what the pages need, or name a role of your own with `--db-role`.
 
 **The import report** lists every component as *mapped*, *mapped with notes* or *not mapped*,
 with its APEX type, and marks what **needs porting**: PL/SQL is carried over as it is (into the
