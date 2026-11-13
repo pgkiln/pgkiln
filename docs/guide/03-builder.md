@@ -958,6 +958,13 @@ of the export; check it under **Settings**, and create users under **Shared Comp
 application with [supporting objects](#supporting-objects) opens on their page after the import:
 they are **not** run until you choose to.
 
+(Sprint 182) **Import → From Oracle APEX** (`/builder/import/apex`) takes an APEX application export in
+the SQL format (`f100.sql`, or a `.zip` of a split export, at most 20 MB). The file is read as text,
+never run; the next page shows the **import report** (every component mapped, mapped with notes or
+not mapped, with its APEX type, and what needs porting from PL/SQL or Oracle SQL), and **Import**
+creates the application in your workspace with the alias and the schema of the tables you choose
+([chapter 11](11-from-apex.md#importing-an-apex-application)).
+
 ## App dashboard
 
 (sprint 74) Above the pages: a **search** by page name or number (the rows filter while you type),

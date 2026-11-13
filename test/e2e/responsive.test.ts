@@ -5,7 +5,7 @@
 //   npm run test:e2e                  (SCREENSHOTS=1 saves them to test-results/)
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 import '../../src/env.ts';
@@ -1165,6 +1165,24 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         }
       } finally {
         await dropApp();
+      }
+      // (sprint 182) Import → From Oracle APEX: the upload, the report (a wide table) and the import
+      const apexAlias = `e2e-apex-${size.width}`;
+      await owner.query('delete from meta.app where alias = $1', [apexAlias]);
+      try {
+        await page.goto(`${base}/builder/import/apex`);
+        await check(page, 'builder-import_apex', vp);
+        await page.setInputFiles('#f_file', { name: 'f100.sql', mimeType: 'application/sql', buffer: readFileSync(new URL('../fixtures/apex/f100.sql', import.meta.url)) });
+        await Promise.all([page.waitForURL(/\/builder\/import\/apex\/[0-9a-f-]{36}/), page.locator('main button.btn-hot').click()]);
+        assert.match(await page.locator('main').innerText(), /PLSQL_ERROR/);
+        await check(page, 'builder-import_apex_report', vp);
+        await page.locator('details.apx-mapped > summary').click();
+        await check(page, 'builder-import_apex_report_all', vp);
+        await page.fill('#f_alias', apexAlias);
+        await Promise.all([page.waitForURL(/\/builder\/apps\/\d+$/), page.locator('main button.btn-hot').click()]);
+        assert.match(await page.locator('body').innerText(), /imported from APEX/);
+      } finally {
+        await owner.query('delete from meta.app where alias = $1', [apexAlias]);
       }
       // (sprint 35) a workbook with several sheets: step 2 with a section per sheet and foreign keys, the result, the dashboard
       const wbAlias = `e2e-wb-${size.width}`;
