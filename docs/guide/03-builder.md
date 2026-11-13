@@ -2167,6 +2167,11 @@ first, without the Launchpad itself or a page that is pinned already). Below, th
 **Development**, **Administration** and **Monitoring**, each with a line about what it does and a pin; the **More**
 menu uses the same headings.
 
+(sprint 179; Database Actions: the guided tour) **Take the tour** under the pins (`/builder/sql/tour`) walks through
+the tools a developer uses most, a step each: SQL Worksheet, Object Browser, Load Data, Quick SQL, RESTful Services,
+the Change Log and, for administrators, SQL Monitor. A step says what the tool is for, gives something to try and
+has a button that opens the tool. The tour is plain pages: it works without JavaScript and stores nothing.
+
 **Search** (**Ctrl/Cmd + K** on any builder page, or the field in the header) finds tools, applications, pages
 (by name or number) and database objects (tables, views, materialized views, functions and procedures) by name;
 the arrow keys and Enter open one. Applications and pages come from your workspace only; objects from the schemas

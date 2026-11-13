@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 ## [0.94.0] - 2026-11-13
 
 ### Added
+- **A tour of the SQL Workshop** (sprint 179, DA-9 and DA-15 leftover; no migration): *Take the tour* on the SQL
+  Workshop home walks through the tools a developer uses most, a step per tool: what it is for, something to try
+  and a button that opens it. Plain pages, in the builder's eleven languages.
 - **UX Pattern Catalog 1.1, the theme reference** (sprint 179, WS-8 leftover): two more pages. *Icons* shows
   pgkiln's own icons by use, Lucide and Font APEX names, and the modifiers (size, colour, spin, rotate, flip).
   *Colours* shows the fifteen colour classes, the status colours and the theme's variables, which follow the

@@ -426,6 +426,7 @@ src/
     errors.ts              (sprint 86) the builder's HTML 404 and 500 pages for browsers (wantsHtml, a not-found handler and an onSend hook)
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
     sql.ts                 SQL Workshop: the home and the session's schema
+    sql-tour.ts            (sprint 179) GET /builder/sql/tour: the guided tour of the SQL Workshop's tools (a step per tool, no script)
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
                            GET /builder/palette (the builder's search: JSON for Ctrl+K, a results page without JavaScript)
     sql-charts.ts          (sprint 97) charts of a query: chartSpec(), drawChart() (runtime/charts.ts, a PageCss in a nonce'd <style>), the
