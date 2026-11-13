@@ -5619,9 +5619,14 @@ describe('sprint 36 app builder ai', () => {
   test('describe tables: only existing tables outside pgkiln and the system schemas; notes are plain text in comments', async () => {
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'meta', table: 'developer', 'note:': 'x' })).statusCode, 404);
     assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'no_such_table', 'note:': 'x' })).statusCode, 404);
-    assert.equal((await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': "x'; drop table hr.dept; --", comments: 'true' })).statusCode, 303);
+    // (sprint 185) a developer's comments run as the workspace's developer login: the owner's table hr.dept takes them
+    // from an administrator on the Owner connection only
+    await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': 'sec185 not the owner', comments: 'true' });
+    assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, null);
+    await admin.get('/builder/sql/ai/describe?schema=hr&table=dept');
+    assert.equal((await admin.post('/builder/sql/ai/describe', { __csrf: admin.lastCsrf, schema: 'hr', table: 'dept', 'note:': "x'; drop table hr.dept; --", comments: 'true' })).statusCode, 303);
     assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, "x'; drop table hr.dept; --");
-    await dev.post('/builder/sql/ai/describe', { __csrf: dev.lastCsrf, schema: 'hr', table: 'dept', 'note:': '', comments: 'true' });
+    await admin.post('/builder/sql/ai/describe', { __csrf: admin.lastCsrf, schema: 'hr', table: 'dept', 'note:': '', comments: 'true' });
     assert.equal((await owner.one(`select obj_description('hr.dept'::regclass, 'pg_class') as d`)).d, null);
     await assert.rejects(runtime.query('select * from meta.ai_table_note'), /permission denied/);
     await assert.rejects(runtime.query('select * from meta.builder_ai'), /permission denied/);
@@ -7562,7 +7567,10 @@ describe('sprint 67 workspace export and import', () => {
       developers: [{ username: 'sec67x_ghost', admin: true }, { username: 'admin', admin: true, is_admin: true, password_hash: 'x' }],
     }));
     const w = await owner.one('select name, isolated, run_role, dev_role, banner_color, message from meta.workspace where id = $1', [ws]);
-    assert.deepEqual(w, { name: 'Sec67x Target', isolated: false, run_role: null, dev_role: null, banner_color: 'blue', message: 'ok' });
+    // (sprint 185) every workspace has its developer login, named by pgkiln (pgkiln_ws<id>_dev_<suffix>), never by a file
+    assert.match(w.dev_role, new RegExp(`^pgkiln_ws${ws}_dev_[0-9a-f]{8}$`));
+    delete w.dev_role;
+    assert.deepEqual(w, { name: 'Sec67x Target', isolated: false, run_role: null, banner_color: 'blue', message: 'ok' });
     assert.equal(await owner.one(`select 1 as ok from meta.developer where username = 'sec67x_ghost'`), undefined);
     assert.equal((await owner.one(`select password_hash <> 'x' as ok from meta.developer where username = 'admin'`)).ok, true);
   });
@@ -8747,7 +8755,8 @@ describe('sprint 100 rest', () => {
     assert.equal((await d.get(`/builder/sql/rest/${id}`)).statusCode, 404);
     assert.equal((await d.post(`/builder/sql/rest/${id}`, { __csrf: d.lastCsrf, methods: 'GET', auth: 'public', page_size: '25', enabled: '1' })).statusCode, 404);
     assert.equal((await d.post(`/builder/sql/rest/${id}/delete`, { __csrf: d.lastCsrf })).statusCode, 404);
-    assert.match((await d.post('/builder/sql/rest', { __csrf: d.lastCsrf, ...enable })).body, /Choose an application of this workspace/);
+    // (sprint 185) its developer login can't see the owner's schema at all: refused as an object, before the application
+    assert.match((await d.post('/builder/sql/rest', { __csrf: d.lastCsrf, ...enable })).body, /Choose a table or view|Choose an application of this workspace/);
     assert.equal((await owner.one('select count(*)::int as n from meta.rest_object where id = $1 and auth = $2', [id, 'token'])).n, 1);
     // application users are not developers
     const king = await as('king');
@@ -11127,6 +11136,7 @@ describe('sprint 119 WS-13', () => {
     const d = new Browser();
     await d.get('/builder/login');
     await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'admin', password: 'admin' });
+    await d.ownerConnection(); // (sprint 185) a masking view makes a role: the Owner connection (developer logins can't)
     await d.get(`/builder/sql/objects/security?o=public.${T}`);
     return d;
   };
@@ -15598,9 +15608,10 @@ describe('sprint 185 the SQL Workshop runs as the workspace\'s developer login, 
     // Unload Data
     const csv = await d.submit('/builder/sql/unload', { source: 'query', query: 'select session_user::text as u', format: 'csv' });
     assert.match(csv.body, new RegExp(dev));
-    // the Object Browser doesn't offer pgkiln's schema, nor the owner's schemas the workspace's roles don't use
-    assert.doesNotMatch((await d.get('/builder/sql/objects?system=1')).body, /<option value="meta"/);
+    // the Object Browser doesn't offer the owner's schemas the workspace's roles don't use; pgkiln's own tables
+    // (shown with the system objects, as the catalogue is) give no rows
     assert.doesNotMatch((await d.get('/builder/sql/objects')).body, new RegExp(`<option value="${S}"`));
+    assert.doesNotMatch((await d.get('/builder/sql/objects?schema=meta&system=1&k=table&o=meta.developer&tab=data')).body, /admin<\/td>/);
     // the code editor's check of an application's SQL: a second statement that resets the role is still the login
     const hr = (await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`))!;
     await d.get(`/builder/apps/${hr.id}`);
