@@ -2592,6 +2592,12 @@ the connection limit, **valid until** (with *in N days* or *expired*), the roles
 The tiles on top filter the list: roles that can sign in, **passwords that expire within 30 days**, roles with
 **BYPASSRLS**, roles **without sign-in that own objects**, and pgkiln's own roles; a search field filters by name.
 
+(sprint 183; APEX: assign a schema to a workspace) A role's page has an **Isolated workspace** panel: link the role
+to an [isolated workspace](#workspaces) (its applications may then run as that role, and only the workspace's logins
+have it), or take it out again. This is the same as adding the role on the workspace's page, with the same checks: a
+role belongs to one workspace at most, a role that an application of the workspace runs as can't be taken out, and
+superusers, roles that create roles, bypass row-level security or replicate, and pgkiln's own roles are never offered.
+
 **Create database user** (or a role's page) is a form: name, *Can sign in* (LOGIN), the password (*No password* /
 *Set a password*; for an existing role *Keep*, *Set a new password* or *Remove*), **valid until** (a date; empty: no
 expiry), the connection limit, the roles it is a **member of** (group roles and the predefined roles; not pgkiln's own,

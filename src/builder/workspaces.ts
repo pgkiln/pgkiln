@@ -263,6 +263,32 @@ function linksRegion(s: Session, w: { id: number }, links: { id: number; label: 
 const LINK_LABEL = /^\S(.{0,58}\S)?$/;
 const LINK_URL = /^https?:\/\/[^\s<>"]+$/;
 
+/**
+ * (090; sprint 183, DA-13: also from Database Users) Add a database role to an isolated workspace or take it out, with
+ * a flash message; the database's guards (meta.workspace_isolation_check, run by workspacesChanged) apply.
+ * The caller checks that the session is an administrator.
+ */
+export async function changeWorkspaceRole(s: Session, ip: string, id: number, role: string, remove: boolean) {
+  try {
+    if (!ROLE.test(role)) throw new Error(tr(s)('wsp.err.role_name'));
+    if (!remove && !(await owner.one('select 1 as ok from pg_roles where rolname = $1', [role]))) throw new Error(tr(s)('wsp.err.no_role', { role }));
+    if (remove) {
+      const used = await owner.one<{ aliases: string }>(
+        `select string_agg(alias, ', ') as aliases from meta.app a where a.db_role = $2 and meta.app_workspace(a.id) = $1 having count(*) > 0`,
+        [id, role],
+      );
+      if (used) throw new Error(tr(s)(used.aliases.includes(',') ? 'wsp.err.role_used' : 'wsp.err.role_used_one', { apps: used.aliases, role }));
+      await owner.query('delete from meta.workspace_role where workspace_id = $1 and role_name = $2', [id, role]);
+    } else await owner.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2)', [id, role]);
+    await logActivity({ appId: null, username: s.username, event: 'workspace', ip, detail: `workspace ${id}: ${remove ? 'removed' : 'added'} role ${role}` });
+    flash(s, tr(s)(remove ? 'wsp.role_removed' : 'wsp.role_added', { role }));
+  } catch (e) {
+    flash(s, tr(s)('wsp.not_saved', { why: roleError(e, tr(s)) }), 'error');
+  } finally {
+    await workspacesChanged();
+  }
+}
+
 export async function workspaceRoutes(app: FastifyInstance) {
   // switch the current workspace (any of the developer's own)
   app.post(`${BASE}/workspace`, async (req: Req, reply) => {
@@ -523,26 +549,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply))) return;
     const id = Number(req.params.id);
-    const role = String(req.body?.role ?? '').trim();
-    const remove = req.body?.action === 'remove';
-    try {
-      if (!ROLE.test(role)) throw new Error(tr(s)('wsp.err.role_name'));
-      if (!remove && !(await owner.one('select 1 as ok from pg_roles where rolname = $1', [role]))) throw new Error(tr(s)('wsp.err.no_role', { role }));
-      if (remove) {
-        const used = await owner.one<{ aliases: string }>(
-          `select string_agg(alias, ', ') as aliases from meta.app a where a.db_role = $2 and meta.app_workspace(a.id) = $1 having count(*) > 0`,
-          [id, role],
-        );
-        if (used) throw new Error(tr(s)(used.aliases.includes(',') ? 'wsp.err.role_used' : 'wsp.err.role_used_one', { apps: used.aliases, role }));
-        await owner.query('delete from meta.workspace_role where workspace_id = $1 and role_name = $2', [id, role]);
-      } else await owner.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2)', [id, role]);
-      await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${id}: ${remove ? 'removed' : 'added'} role ${role}` });
-      flash(s, tr(s)(remove ? 'wsp.role_removed' : 'wsp.role_added', { role }));
-    } catch (e) {
-      flash(s, tr(s)('wsp.not_saved', { why: roleError(e, tr(s)) }), 'error');
-    } finally {
-      await workspacesChanged();
-    }
+    await changeWorkspaceRole(s, clientIp(req), id, String(req.body?.role ?? '').trim(), req.body?.action === 'remove');
     return back(reply, s, `${BASE}/workspaces/${id}`);
   });
 

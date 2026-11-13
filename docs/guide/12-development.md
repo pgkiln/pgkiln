@@ -366,6 +366,7 @@ src/
     language.ts            (migration 127) the status bar's language menu (POST /builder/language), the sign-in page's
                            language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
+                           (sprint 183, CD-2: the Pages report's Conditions column, conditions.ts serverCondition/conditionWords)
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
     create-page.ts         (137) Create page: the grid of page types with SVG previews (tabs Component / Feature / Copy), the table step,
                            Create page as copy (step per app and page, shared components mapped or copied → meta.copy_page)
@@ -480,6 +481,7 @@ src/
     db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL
                            roles with highlights, create/edit (review the masked SQL, then Apply in one transaction), drop with
                            reassigning; pgkiln's own roles read-only, roles of applications and workspaces not dropped
+                           (sprint 183) a role's Isolated workspace panel, POST /role/:name/workspace → workspaces.ts changeWorkspaceRole
     scheduling.ts          (sprint 101, DA-12) SQL Workshop → Scheduling (/builder/sql/scheduling, administrators only): pg_cron jobs
                            with next runs, create/edit with a schedule builder and preview (review the SQL, then Apply), disable,
                            run now, unschedule, run history and purge; without pg_cron the install note and pgkiln's automations

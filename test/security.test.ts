@@ -15081,3 +15081,80 @@ describe('sprint 181 remote catalogues for the App Gallery (WS-8)', () => {
     assert.match((await d.get(res.headers.location as string)).body, /could not be fetched: The host 127\.0\.0\.1:9 is not on the server&#39;s allow-list/);
   });
 });
+
+describe('sprint 183 Database Users links a role to an isolated workspace (DA-13)', async () => {
+  const { ownerUrl, runtimeUrl } = await import('../src/db.ts');
+  const { workspacesChanged } = await import('../src/workspace-db.ts');
+  const WS = 'SEC183 Iso';
+  const ROLE = 'sec183_reader';
+  const POWER = 'sec183_power';
+  let ws = 0;
+  let plain = 0;
+  const inWs = async () => (await owner.query(`select workspace_id from meta.workspace_role where role_name = $1`, [ROLE])).rows.map((r) => r.workspace_id);
+  const cleanup = async () => {
+    await owner.query(`delete from meta.workspace_role where role_name in ($1, $2)`, [ROLE, POWER]);
+    await owner.query(`update meta.workspace set isolated = false where name = $1`, [WS]);
+    await owner.query(`delete from meta.workspace where name in ($1, 'SEC183 Plain')`, [WS]);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`drop role if exists ${POWER}`);
+    await workspacesChanged();
+  };
+  const admin = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    return b;
+  };
+
+  before(async () => {
+    await cleanup();
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`create role ${POWER} nologin bypassrls`);
+    plain = (await owner.one(`insert into meta.workspace (name) values ('SEC183 Plain') returning id`))!.id;
+    if (runtimeUrl === ownerUrl) return;
+    ws = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WS]))!.id;
+    const a = await admin();
+    await a.get(`/builder/workspaces/${ws}`);
+    assert.equal((await a.submit(`/builder/workspaces/${ws}/isolation`, { isolated: 'true' })).statusCode, 303);
+  });
+  after(cleanup);
+
+  test('an administrator links a role to an isolated workspace and takes it out again; the page says where it belongs', { skip: runtimeUrl === ownerUrl && 'needs RUNTIME_DATABASE_URL' }, async () => {
+    const a = await admin();
+    let page = (await a.get(`/builder/db-users/role/${ROLE}`)).body;
+    assert.match(page, /Isolated workspace/);
+    assert.match(page, new RegExp(`<option value="${ws}">SEC183 Iso</option>`));
+    assert.doesNotMatch(page, new RegExp(`<option value="${plain}">`), 'only isolated workspaces are offered');
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(ws) })).statusCode, 303);
+    assert.deepEqual(await inWs(), [ws]);
+    page = (await a.get(`/builder/db-users/role/${ROLE}`)).body;
+    assert.match(page, /belongs to the isolated workspace <a href="\/builder\/workspaces\/\d+">SEC183 Iso<\/a>/);
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(ws), action: 'remove' })).statusCode, 303);
+    assert.deepEqual(await inWs(), []);
+  });
+
+  test('refused: a developer who is not an administrator, no CSRF token, a workspace that is not isolated, a powerful role', async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec183_dev', meta.hash_password('Sec183-dev-password!'), false) on conflict do nothing`);
+    try {
+      const d = new FileBrowser(app);
+      await d.get('/builder/login');
+      await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'sec183_dev', password: 'Sec183-dev-password!' });
+      await d.get('/builder/home');
+      assert.equal((await d.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(ws || plain) })).statusCode, 403);
+    } finally {
+      await owner.query(`delete from meta.developer where username = 'sec183_dev'`);
+    }
+    const a = await admin();
+    await a.get(`/builder/db-users/role/${ROLE}`);
+    assert.equal((await a.post(`/builder/db-users/role/${ROLE}/workspace`, { __csrf: 'forged', workspace: String(ws || plain) })).statusCode, 403);
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(plain) })).statusCode, 404, 'not isolated');
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: 'x' })).statusCode, 404);
+    assert.equal((await a.submit(`/builder/db-users/role/no_such_role_183/workspace`, { workspace: String(ws || plain) })).statusCode, 404);
+    if (ws) {
+      assert.doesNotMatch((await a.get(`/builder/db-users/role/${POWER}`)).body, /Link to workspace/, 'no form for a role that bypasses RLS');
+      assert.equal((await a.submit(`/builder/db-users/role/${POWER}/workspace`, { workspace: String(ws) })).statusCode, 403);
+    }
+    assert.deepEqual(await inWs(), []);
+    assert.equal((await owner.query(`select 1 from meta.workspace_role where role_name = $1`, [POWER])).rowCount, 0);
+  });
+});
