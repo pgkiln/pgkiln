@@ -20,6 +20,13 @@ All notable changes to this project are documented here. The format follows
   *Colours* shows the fifteen colour classes, the status colours and the theme's variables, which follow the
   application's style and dark mode.
 
+### Changed
+- (sprint 180) Webhooks: events of a disabled REST module wait and are processed once the module is enabled again
+  (they were processed anyway); the Webhook events list says why they wait. Refused webhook requests are written to
+  the activity log at most once per handler a minute, and the row says how many more were refused since the last
+  one. A pass of the webhook runner or the web request outbox that reaches its limit is followed by the next pass at
+  once instead of at the next poll.
+
 ## [0.94.0] - 2026-11-13
 
 ### Added
@@ -33,13 +40,6 @@ All notable changes to this project are documented here. The format follows
   then always drawn. The legend shows a lines, polygons or extruded layer in the colour of its style.
 - **Sample Maps 1.1**: a page *Lines and areas* with a layer of each shape kind: polygons with one style, buildings
   shaded by their height (extruded) and routes with a colour per row, left out of the legend.
-
-### Changed
-- (sprint 180) Webhooks: events of a disabled REST module wait and are processed once the module is enabled again
-  (they were processed anyway); the Webhook events list says why they wait. Refused webhook requests are written to
-  the activity log at most once per handler a minute, and the row says how many more were refused since the last
-  one. A pass of the webhook runner or the web request outbox that reaches its limit is followed by the next pass at
-  once instead of at the next poll.
 
 ## [0.93.0] - 2026-11-13
 
