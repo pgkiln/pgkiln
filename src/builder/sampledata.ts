@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { rlsHint } from './rls-hint.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -201,9 +202,11 @@ export async function sampleDataRoutes(app: FastifyInstance) {
         <div class="sd-cols">${info.columns.map((c, j) => columnRow(i, j, c, spec))}</div></fieldset>`,
     );
     const tablesLink = `${sdUrl}?schema=${encodeURIComponent(st.def.schema)}`;
+    // (sprint 186) row level security or a grant refused the developer login's insert: why, and what to do
+    const hint = await rlsHint(s, sdUrl, [st.error]);
     const form = html`<form method="post" action="${sdUrl}">${csrf(s)}
         <input type="hidden" name="schema" value="${st.def.schema}">${st.id ? html`<input type="hidden" name="id" value="${st.id}">` : ''}
-        ${st.error ? html`<div class="alert alert-error" role="alert">${st.error}</div>` : ''}
+        ${st.error ? html`<div class="alert alert-error" role="alert">${st.error}</div>${hint}` : ''}
         ${missing.length ? html`<div class="alert alert-note">${tx('sd.missing', { tables: missing.join(', ') })}</div>` : ''}
         <div class="form-grid">
           <div class="field"><label class="label" for="f_seed">${tx('sd.seed')}</label>

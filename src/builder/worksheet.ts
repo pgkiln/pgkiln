@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { rlsHint } from './rls-hint.ts';
 import pg from 'pg';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -149,7 +150,7 @@ function keptNotices(s: { state: Record<string, any> }): KeptNotice[] {
 }
 
 /** The output panes of a run (empty: the page as opened). */
-function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate, kept: { on: boolean; earlier: KeptNotice[] } = { on: false, earlier: [] }, scroll = false): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
+function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: HistoryRow[], tabAsked: string, chart: Raw | null, tx: BuilderTranslate, kept: { on: boolean; earlier: KeptNotice[] } = { on: false, earlier: [] }, scroll = false, hint: Raw | '' = ''): { panes: Record<Tab, Raw>; active: Tab; status: Raw } {
   const results = run?.results ?? [];
   const ran = results.filter((r) => r.status !== 'not_run');
   const query = [...ran].reverse().find((r) => r.columns);
@@ -185,7 +186,7 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
       <tbody>${query.data!.map((r, k) => html`<tr><td class="ws-rownum">${k + 1}</td>${r.map((v, i) => html`<td${query.numeric?.[i] ? raw(' class="num"') : ''}>${v === null ? html`<span class="null">(null)</span>` : v}</td>`)}</tr>`)}</tbody></table>${scroll && query.more && download ? html`<p class="ws-more muted small" data-ws-more-end hidden>${tx('ws.more.loading')}</p>` : ''}</div>
       <dialog class="ws-cell" id="ws-cell" aria-labelledby="ws-cell-title"><div class="ws-cell-head"><strong id="ws-cell-title">${tx('ws.value')}</strong><button type="button" class="btn btn-sm" data-ws-cell-close>${tx('ws.close')}</button></div><pre></pre></dialog>`
     : run && mode !== 'explain' && mode !== 'autotrace'
-      ? html`<p class="muted">${errors.length ? tx('ws.result.failed') : tx('ws.result.no_rows')}</p>`
+      ? html`<p class="muted">${errors.length ? tx('ws.result.failed') : tx('ws.result.no_rows')}</p>${errors.length ? hint : ''}`
       : html`<p class="muted">${tx('ws.result.empty')}</p>`;
 
   const log = run
@@ -197,7 +198,7 @@ function outputPanes(run: WorksheetRun | null, mode: RunMode | null, history: Hi
         const body = r.columns ? `${textTable(r.columns, r.data ?? [])}\n${r.more ? `${tx('ws.log.first', { n: r.data!.length, rows: r.rows })}\n` : ''}` : '';
         const notes = run.notices.filter((n) => n.n === r.n).map((n) => `${n.level}: ${n.message}\n`).join('');
         return html`${head}${body}${notes}<span class="ws-log-ok">${r.tag}</span> <span class="muted">(${r.ms} ms)</span>\n\n`;
-      })}<span class="muted">${tx(ran.length === 1 ? 'ws.log.summary_one' : 'ws.log.summary', { n: ran.length, failed: errors.length, ms: run.ms })}</span></pre>`
+      })}<span class="muted">${tx(ran.length === 1 ? 'ws.log.summary_one' : 'ws.log.summary', { n: ran.length, failed: errors.length, ms: run.ms })}</span></pre>${hint}`
     : html`<p class="muted">${tx('ws.log.empty')}</p>`;
 
   // (sprint 172, DA-5) Keep notices: the earlier runs' notices stay under the last run's, until cleared
@@ -585,7 +586,9 @@ async function worksheet(req: Req, reply: FastifyReply) {
   }
   if (keepNotices && run?.notices.length)
     s.state.__WSNOTICES = JSON.stringify([...earlierNotices, ...run.notices.map((n) => ({ level: n.level, message: String(n.message).slice(0, 2000), n: n.n, at: n.at }))].slice(-KEPT_NOTICES));
-  const { panes, active, status } = outputPanes(run, mode, history, isPost && body.mode === 'clear_notices' ? 'notices' : String(req.query?.tab ?? ''), chartPane, tx, { on: keepNotices, earlier: earlierNotices }, scrollMore);
+  const { panes, active, status } = outputPanes(run, mode, history, isPost && body.mode === 'clear_notices' ? 'notices' : String(req.query?.tab ?? ''), chartPane, tx, { on: keepNotices, earlier: earlierNotices }, scrollMore,
+    // (sprint 186) row level security or a grant refused the developer login: why, and what to do
+    run ? await rlsHint(s, `${BASE}/sql/worksheet`, run.results.map((r) => r.error)) : '');
   const downloadable = (() => {
     try {
       return lastQuery ? unloadStatement(lastQuery.sql) : null;

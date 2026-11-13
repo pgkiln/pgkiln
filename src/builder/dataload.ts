@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { rlsHint } from './rls-hint.ts';
 import { owner } from '../db.ts';
 import { esc, html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -399,12 +400,14 @@ export async function dataLoadRoutes(app: FastifyInstance) {
       return page(
         s,
         reply,
-        html`${resultHtml(result, false, tr(s))}<div class="buttons">
+        html`${resultHtml(result, false, tr(s))}${await rlsHint(s, `${BASE}/sql/load`, result.errors.map((x) => x.message))}<div class="buttons">
           <a class="btn btn-hot" href="${BASE}/sql/objects?o=${encodeURIComponent(result.table)}">${icon('table')} ${tr(s)('dl.view', { table: result.table })}</a>
           <a class="btn" href="${BASE}/sql/load">${icon('upload')} ${tr(s)('dl.load_another')}</a></div>`,
       );
     }
     reply.code(422);
-    return targetPage(req, reply, s, result ? resultHtml(result, true, tr(s)) : html`<div class="alert alert-error" role="alert">${error}</div>`);
+    // (sprint 186) row level security or a grant refused the developer login: why, and what to do
+    const hint = await rlsHint(s, `${BASE}/sql/load`, [error, ...(result?.errors ?? []).map((x) => x.message)]);
+    return targetPage(req, reply, s, html`${result ? resultHtml(result, true, tr(s)) : html`<div class="alert alert-error" role="alert">${error}</div>`}${hint}`);
   });
 }
