@@ -182,6 +182,8 @@ const UNKNOWN = undefined;
 
 class Parser {
   private p = 0;
+  // nested calls and parentheses: a crafted file can't run the stack out
+  private nesting = 0;
   constructor(private readonly toks: Tok[]) {}
 
   calls(): ApexCall[] {
@@ -255,6 +257,15 @@ class Parser {
   }
 
   private value(): ApexValue {
+    if (++this.nesting > 100) throw new ApexParseError('calls or parentheses nested too deeply', this.toks[this.p]?.line ?? 1);
+    try {
+      return this.valueInner();
+    } finally {
+      this.nesting--;
+    }
+  }
+
+  private valueInner(): ApexValue {
     let v = this.term();
     for (;;) {
       if (this.peekOp('||')) {

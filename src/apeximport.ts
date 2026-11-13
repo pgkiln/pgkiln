@@ -604,10 +604,13 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   // ---- authorization schemes (an unknown scheme fails closed in pgkiln: components that name one not created are denied)
   const authzSchemes: any[] = [];
   const authzName = new Map<string, string>();
+  const usedAuthz = new Set<string>();
   for (const c of by('create_security_scheme')) {
     const a = c.args;
     const apexName = str(a, 'p_name') ?? 'AUTHZ';
-    const name = upperName(apexName, 'AUTHZ');
+    let name = upperName(apexName, 'AUTHZ');
+    for (let n = 2; usedAuthz.has(name); n++) name = `${upperName(apexName, 'AUTHZ')}_${n}`;
+    usedAuthz.add(name);
     const id = ref(a, 'p_id');
     if (id) authzName.set(id, name);
     const type = (str(a, 'p_scheme_type') ?? '').toUpperCase();
@@ -902,6 +905,10 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     }
     if (!isUpperName(name)) {
       e.notMapped('an item name pgkiln cannot use');
+      continue;
+    }
+    if (page.items.some((x: any) => x.name === name)) {
+      e.notMapped('another item of the page has this name');
       continue;
     }
     let type = ITEM_TYPES[apexType];

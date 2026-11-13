@@ -93,6 +93,7 @@ end;
   test('a broken file fails with its line; nothing else is read', () => {
     assert.throws(() => parseApexCalls("begin\nwwv_flow_imp_page.create_page(\n p_id=>1\n,p_name=>'Home\n);\nend;"), (e: unknown) => e instanceof ApexParseError && e.line === 4);
     assert.throws(() => parseApexCalls("begin wwv_flow_imp_page.create_page(p_name=>q'[never closed); end;"), ApexParseError);
+    assert.throws(() => parseApexCalls(`begin wwv_flow_imp_page.create_page(p_name=>${'('.repeat(100000)}1${')'.repeat(100000)}); end;`), /nested too deeply/);
     // not a call to an APEX package: ignored
     assert.deepEqual(parseApexCalls("begin dbms_output.put_line('x'); execute immediate 'drop table t'; end;"), []);
   });
