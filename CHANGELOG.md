@@ -52,6 +52,36 @@ All notable changes to this project are documented here. The format follows
   one. A pass of the webhook runner or the web request outbox that reaches its limit is followed by the next pass at
   once instead of at the next poll.
 
+### Fixed
+- **Code review of 0.94.0** (sprint 184; migration 165 `meta.api_client_module`). OAuth clients limited to REST
+  modules (sprint 178, DA-11):
+  - CR-1: a client's limit was a list of module names with no link to the modules: renaming a module refused the
+    client silently, and deleting a module and creating another with its name granted it to the client. The limit
+    now links to the modules (`meta.api_client.module_limit` and `meta.api_client_module`, by id; 162's names are
+    carried over and `rest_modules` is dropped): a renamed module keeps its clients, a deleted one leaves their limit
+    and a client with no module left stays limited, refused everywhere. Importing over an application keeps a
+    client's modules by name. In SQL: `meta.oauth_limit_client(client_id, modules)`.
+  - CR-2: a limited client's token had no role claim, so the data API ran it as anonymous instead of answering 403.
+    Its tokens carry the API role again and `meta.api_check()` refuses them, also a 0.94.0 token without the role;
+    once the limit is cleared, a client's tokens work on the data API (0.94.0 tokens of a limited client stay
+    anonymous there until they expire).
+  - CR-3: a limited client got 403 from public handlers, public AutoREST objects and the AutoREST OpenAPI document;
+    it is anonymous there now, as without a token.
+  - CR-4, CR-9: the builder cut the module list at 50 names without saying so. It reads the list like roles and
+    refuses it as a whole when a name is not a module of the application, naming the unknown ones.
+  - CR-5: the activity log entry `modules <client>` now has the new list, or `none (the whole application)`.
+
+  The map legend (sprint 178, CD-6):
+  - CR-6: the swatch came from the layer's style only. It now shows the colour the layer is drawn in: rows with their
+    own `fill_color` / `stroke_color` give a split swatch, an area layer its fill, a lines layer its line colour.
+    On the way: on a map with several layers the layer colours overrode every style and row colour, so shapes were
+    never drawn in them; they are now.
+  - CR-7: a map whose legend would list one layer (say the region's layer and an overlay left out) showed a Layers
+    legend with a single check box; it shows none now. A heat layer left out of the legend has no heat legend.
+  - CR-8: "a layer left out of the legend is never off at first" was applied in two places and the Page Designer
+    dropped a ticked *Off at first* silently. The map applies the rule (also when only one layer is listed); the
+    Page Designer keeps the setting and says when it isn't used.
+
 ## [0.94.0] - 2026-11-13
 
 ### Added
