@@ -85,7 +85,7 @@ async function fragments(appId: number): Promise<Fragment[]> {
         out.push({ entry, field: 'Source', sql: row.source.trim(), shape: row.source_type === 'table' ? 'relation' : 'select' });
       if (kind === 'rest_module')
         for (const h of Array.isArray(row.handlers) ? row.handlers : [])
-          if (typeof h?.source === 'string' && h.source.trim() && h.type !== 'plpgsql') out.push({ entry, field: `${h.method} ${h.path}`, sql: h.source, shape: h.type === 'sql' ? 'statements' : 'select' });
+          if (typeof h?.source === 'string' && h.source.trim() && h.type !== 'plpgsql' && h.type !== 'webhook') out.push({ entry, field: `${h.method} ${h.path}`, sql: h.source, shape: h.type === 'sql' ? 'statements' : 'select' });
       if (kind === 'workflow_definition')
         for (const st of Array.isArray(row.steps) ? row.steps : []) {
           if (st?.type === 'sql' && typeof st.code === 'string') out.push({ entry, field: `step ${st.name}: code`, sql: st.code, shape: 'statements' });

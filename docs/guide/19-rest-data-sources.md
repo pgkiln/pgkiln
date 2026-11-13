@@ -25,7 +25,11 @@ Try it with the HR example: page 23 "Web services" reads the HR example's own RE
 restart the server.
 
 From application SQL, `meta.web_request()` and `meta.web_request_source()` queue a request that
-the server makes (APEX_WEB_SERVICE; [chapter 9](09-reference.md#web-requests-from-sql)).
+the server makes (APEX_WEB_SERVICE; [chapter 9](09-reference.md#web-requests-from-sql)), with retries,
+a callback and ordered delivery when you ask for them (the
+[outbox](09-reference.md#the-outbox-retries-callbacks-ordering), sprint 177). The other direction, another
+system calling you, is a [webhook handler](13-rest-api.md#webhooks) of a REST module; its signing secret is a
+web credential.
 
 ## Server configuration and the allow-list
 

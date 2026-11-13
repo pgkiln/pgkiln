@@ -49,6 +49,8 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_83_grid_validations.sql` | Column validations in the *Staff* grid of page 27: a salary must be more than zero and a commission cannot be more than the salary; a row that fails is not saved and the message shows in its cell |
 | `hr_84_rest_header_parameter.sql` | A header parameter in the REST module `hr`: `GET whoami` answers the token's account and echoes the request's `X-Request-Id` header; the answer carries an ETag |
 | `hr_85_rest_response_header.sql` | A response header from a PL/pgSQL REST handler: `POST leave` in the module `hr` answers with a `Location` header (`meta.rest_header`) that names the new request, and `GET leave/:id` reads it |
+| `hr_86_web_request_outbox.sql` | `meta.web_request` as an outbox: page 35 *Fetch in the background* queues a request with a callback (`hr.contacts_fetched`), an ordering key and three attempts; the server sends it after the commit, retries, and the callback notes the outcome in `hr.contact_fetch` |
+| `hr_87_webhook.sql` | An inbound webhook: `POST events/crm` in the REST module `hr` (type `webhook`) checks an HMAC-SHA256 signature with the secret of the web credential `HR_WEBHOOK`, stores the event and processes it afterwards into `hr.crm_event` |
 
 The files run in order, each once (recorded in `public.pgkiln_seed`), so new ones can be added
 later. pgkiln's own tests use this application as their fixture (`npm test` installs it first).

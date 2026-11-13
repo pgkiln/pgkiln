@@ -84,6 +84,11 @@ src/
   task-events.ts           (sprint 114) task events (complete, expire, fail: SQL, mail, start a workflow) and built-in task
                            notifications from e-mail templates: checks, the actions as the app role, the meta.task_hook outbox runner
   process-jobs.ts          background execution chains: the job queue (SKIP LOCKED, NOTIFY + polling), running a job as the app role
+  queue-runner.ts          (sprint 177) startQueueRunner(): LISTEN + polling + wake for the next due row, shared by the web
+                           request outbox and webhook events; backoffS() and the QUEUE_RETRY_S / QUEUE_RETRY_MAX_S settings
+  webhooks.ts              (sprint 177, migration 161) inbound webhooks: webhookProblems(), signatureProblem() (HMAC-SHA256 and
+                           Stripe, constant time), receive() (signature, event id, meta.webhook_event), webhookTick() (claim
+                           with a lease, the handler's block as the app role, retries), startWebhookRunner(), the purge
   api.ts                   REST API tokens for PostgREST, API role checks
   accounts.ts              account settings and the password policy
   i18n.ts                  pgkiln's own texts (en, nl), translator, Accept-Language
@@ -178,6 +183,8 @@ src/
   webrequests.ts           web requests from SQL (meta.web_request, migration 052): runPending() after each sql page process
                            (same transaction), webRequestTick() for committed ones (automations scheduler), retention purge;
                            calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials)
+                           (sprint 177, migration 160) the outbox: outcome() (retry, gave_up), leases, ordering keys, the
+                           idempotency header, callbackTick() (schema.function(id) as the app role), startWebRequestRunner()
   mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
                            or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
                            Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),
@@ -278,6 +285,8 @@ src/
     rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
                            handlers (content type and file name cleaned, sandboxed response)
                            (sprint 176, migration 159) replyHeaders(): the response headers meta.rest_header set, checked again
+                           (sprint 177) rest.ts finds the handler in onRequest; a webhook's request is read as raw bytes
+                           (WEBHOOK_TYPE) and handed to src/webhooks.ts receive()
     autorest.ts            (sprint 100, migration 113) AutoREST: /a/:alias/autorest/<object>/ for the tables and views SQL Workshop →
                            RESTful Services published (meta.rest_object): caller() of rest.ts, SET ROLE to the app role, owner/BYPASSRLS
                            check, columns from the catalog (column grants), filters/q/order/paging, POST/PUT/DELETE by primary key, OpenAPI
@@ -528,7 +537,11 @@ src/
                            (grants per method, RLS, security_invoker, endpoints, cURL/fetch, OpenAPI link), settings, disable
     rest-modules.ts        (sprint 104) SQL Workshop → RESTful Services → Modules (/builder/sql/rest/modules): modules of the
                            workspace's applications, the module › template › handler tree, handler forms, Try it (inject with a
-                           short-lived token), Run only / lock checks
+                           short-lived token), Run only / lock checks; (sprint 177) the Webhook settings of a handler
+    web-requests.ts        (sprint 177) RESTful Services → Web requests (/builder/sql/rest/requests): the outbox of the
+                           workspace's applications; re-queue, cancel, call back again
+    webhook-events.ts      (sprint 177) RESTful Services → Webhook events (/builder/sql/rest/events): events per handler, an
+                           event's headers and body, re-process
     workflows.ts           workflow versions, diagram and instances (Shared Components)
     workflow-migrate.ts    (sprint 114) migrating running workflow instances to a newer version (map, preview, apply with
                            meta.migrate_workflows) and the diagram as an SVG file (PNG in builder.js)
@@ -655,6 +668,10 @@ test/
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
                            meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
+  outbox.test.ts           (sprint 177) the web request outbox: retries and backoff, gave up, leases, callbacks, ordering and
+                           idempotency keys, NOTIFY delivery (a local HTTP server stands in for the web service)
+  webhooks.test.ts         (sprint 177) webhook handlers: signatures, event ids, receive first and process later, retries, the
+                           builder's handler form and events page, an isolated workspace
   builder-parity.test.ts   lists (HR page 31), page and application locks, comments, developers, supporting objects
   page-wizards.test.ts     create page wizards: catalog defaults, every page type generated and rendered, refusals, the builder steps
   theme-styles.test.ts     Theme Roller style variants (checks, CSS, user choice per app, builder page), template options, base style Iris

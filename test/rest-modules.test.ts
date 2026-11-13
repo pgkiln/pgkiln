@@ -152,7 +152,7 @@ describe('the HR module "hr"', () => {
 
   test('the OpenAPI document lists the templates, handlers, parameters and roles', async () => {
     const doc = (await app.inject({ url: '/a/hr/rest/hr/openapi.json' })).json();
-    assert.deepEqual(Object.keys(doc.paths).sort(), ['/emp', '/emp/{id}', '/emp/{id}/photo', '/leave', '/leave/{id}', '/payroll/{deptno}', '/whoami']);
+    assert.deepEqual(Object.keys(doc.paths).sort(), ['/emp', '/emp/{id}', '/emp/{id}/photo', '/events/crm', '/leave', '/leave/{id}', '/payroll/{deptno}', '/whoami']);
     assert.equal(doc.paths['/emp/{id}'].description, 'One employee by number');
     assert.deepEqual(doc.paths['/emp/{id}'].get.parameters, [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }]);
     const post = doc.paths['/leave'].post;
@@ -260,6 +260,6 @@ describe('export', () => {
     const copy = await owner.one(`select roles, templates, jsonb_array_length(handlers) as n from meta.rest_module where app_id = $1 and name = 'hr'`, [id]);
     assert.deepEqual(copy.roles, []);
     assert.deepEqual(copy.templates, []);
-    assert.equal(copy.n, 7);
+    assert.equal(copy.n, 8); // with (sprint 177) the webhook handler events/crm
   });
 });

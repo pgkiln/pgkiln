@@ -153,6 +153,82 @@ curl -X POST http://127.0.0.1:3100/a/hr/rest/hr/leave -H "Authorization: Bearer 
 Handlers never run as a superuser, a role that bypasses row level security or pgkiln's owner: such a request
 answers 403 (set `RUNTIME_DATABASE_URL` and give the application its own database role).
 
+## Webhooks
+
+(sprint 177, migration 161) A handler of source type **Webhook** receives another system's events: a payment
+provider, a code host, a partner's system. It differs from a public PL/pgSQL handler in three ways: the request
+must be **signed** with a shared secret, an event is handled **once**, and the request is **answered at once**
+while the work happens afterwards.
+
+```json
+{"method": "POST", "path": "payments", "type": "webhook",
+ "source": "insert into sales.payment_event (id, kind, payload) values (:ID, :TYPE, :BODY::jsonb) on conflict do nothing",
+ "webhook": {"scheme": "stripe", "credential": "STRIPE_WEBHOOK", "event_id": "body:id", "tolerance_s": 300}}
+```
+
+In the builder: SQL Workshop → RESTful Services → Modules, a template's *Add handler* with source type
+*Webhook*, and the **Webhook** settings of the handler form.
+
+| Setting | JSON | Meaning |
+|---|---|---|
+| Signature | `scheme` | `hmac-sha256`: the header holds the HMAC-SHA256 of the raw body (GitHub and most others). `stripe`: the `Stripe-Signature` header (`t=…,v1=…`), the HMAC-SHA256 of `t.body` |
+| Signing secret | `credential` | The name of a [web credential](19-rest-data-sources.md#web-credentials) of the application or its workspace: its **secret** is the shared secret (type `bearer` fits; the other fields are not used). Stored encrypted with `PGKILN_SECRET_KEY`, write-only in the builder, never in an export: enter it again after importing the application elsewhere |
+| Signature header | `header` | Default `X-Signature`; for `stripe` `Stripe-Signature`. GitHub: `X-Hub-Signature-256` |
+| Encoding, prefix | `encoding`, `prefix` | `hmac-sha256` only: `hex` (default) or `base64`, and a text before the signature (GitHub: `sha256=`) |
+| Tolerance | `tolerance_s` | `stripe` only: how far the signed timestamp may be from now (default 300 seconds), against replays of a captured request |
+| Event id | `event_id` | `body:<path>` (a field of the JSON body: `body:id`, `body:data.object.id`) or `header:<name>` (`header:X-GitHub-Delivery`) |
+| Headers to keep | `headers` | Request headers stored with the event (never `Authorization`, `Cookie` or the signature) |
+| Retention | `retention_days` | Events are removed this many days after they were received (default 30, at most 365) |
+| Attempts | `max_attempts` | How often the block runs for an event before the event is `failed` (default 5) |
+| | `max_bytes` | The largest body (default and at most 1 MB) |
+
+**What happens to a request** (`POST /a/<alias>/rest/<module>/<path>`, no token):
+
+1. The **signature** is checked on the **raw bytes** of the body, exactly as they arrived (whatever the
+   `Content-Type` says: JSON, a form, XML), and compared in constant time. A missing or wrong signature, or a
+   Stripe timestamp outside the tolerance, answers **401**; nothing is stored, and the refusal is in the
+   application's activity log (event `webhook_refused`, with the reason but never the signature or the body). A
+   body over the limit answers 413. A credential without a secret answers 503: a webhook is never accepted unsigned.
+2. The **event id** is looked up: one seen before for this handler answers **200** `{"status": "duplicate"}` and
+   nothing else happens. Providers send an event again when they did not see your answer; this makes that safe.
+   Ids are remembered as long as the events are kept (the retention).
+3. The event is **stored** (the raw body, the headers you chose, the time) and the request answered **202**
+   `{"status": "accepted"}` (or the handler's *Status*).
+4. The server then runs the handler's **PL/pgSQL block** as the application's database role, in a transaction
+   of its own: at once (`NOTIFY`, with polling as the fallback), on any of your servers (each event is claimed
+   by one). In the block `:BODY` is the body as text (null when it is not text), the fields of a JSON body are
+   binds (`:TYPE`, `:ID`; objects as JSON text), `:EVENT_ID` is the sender's id, and
+   [`meta.webhook_event()`](09-reference.md) has the event's `id`, `received_at`, `attempt`, `content_type`
+   and `headers`. A block that raises is rolled back and tried again with the backoff of the
+   [outbox](09-reference.md#the-outbox-retries-callbacks-ordering) (30 seconds, doubling); after the last
+   attempt the event is `failed`.
+
+**Webhook events** (SQL Workshop → RESTful Services → *Webhook events*) lists the events of the workspace's
+applications per handler with their state, attempts and error; an event's page shows its headers and body, and
+*Re-process* queues a failed (or done) event again. Only developers of the application's workspace see events;
+application roles can't read `meta.webhook_event`. A webhook handler has no roles or parameters and ignores the
+module's roles (the sender has no token); `WEBHOOKS=off` stops a server from processing events (it still
+receives them). Webhooks work in [isolated workspaces](03-builder.md) as other REST module handlers do.
+
+GitHub, signed with HMAC-SHA256:
+
+```json
+{"method": "POST", "path": "github", "type": "webhook", "source": "perform ci.on_push(:BODY::jsonb)",
+ "webhook": {"scheme": "hmac-sha256", "credential": "GITHUB_WEBHOOK", "header": "X-Hub-Signature-256",
+             "prefix": "sha256=", "event_id": "header:X-GitHub-Delivery", "headers": ["X-GitHub-Event"]}}
+```
+
+```bash
+body='{"id": "evt-1", "type": "contact.updated"}'
+sig=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$SECRET" -hex | sed 's/^.* //')
+curl -i -X POST http://127.0.0.1:3100/a/hr/rest/hr/events/crm \
+     -H "Content-Type: application/json" -H "X-Signature: sha256=$sig" -d "$body"     # 202, then 200 for the same id
+```
+
+The HR example has this handler (`examples/hr/hr_87_webhook.sql`: enter a secret for the web credential
+`HR_WEBHOOK` first). To *send* events to another system with retries, see the
+[outbox](09-reference.md#the-outbox-retries-callbacks-ordering).
+
 ## AutoREST: tables and views from the SQL Workshop
 
 **SQL Workshop → RESTful Services** (`/builder/sql/rest`; Database Actions: a table's *REST › Enable*, ORDS

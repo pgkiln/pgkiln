@@ -5,6 +5,39 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **`meta.web_request` is an outbox** (sprint 177; migration 160): a request queued from SQL in the transaction
+  that changes your data is now delivered reliably. The server sends it as soon as the transaction commits
+  (queueing notifies it; the scheduler pass is the fallback) and **tries again** after a network error, a 5xx or
+  a 429 answer: up to `p_max_attempts` times (default 5), with exponential backoff (30 seconds doubling to at most
+  an hour, `Retry-After` honoured), ending in the new status `gave_up`. `p_callback => 'sales.order_sent'` names
+  a function `(bigint)` the server calls with the request's id when the request is final, as the application's
+  database role in a transaction of its own. `p_ordering_key` delivers the requests of one key strictly one at a
+  time in the order queued, and every attempt carries the same `Idempotency-Key` header (your own key, or a
+  generated one). Several servers share the queue; one that stops loses its lease on a request in flight. The
+  builder lists the queue under SQL Workshop → RESTful Services → **Web requests**, with *Re-queue*, *Cancel*
+  and *Call back again*. Existing calls work as before; a request made inside a page process keeps its single
+  attempt unless you give `p_max_attempts`. `meta.web_request_cancel(id)` is new. HR Demo: page 35, *Fetch in
+  the background*.
+- **Inbound webhooks** (sprint 177; migration 161): a REST module handler of the new source type **Webhook**
+  receives another system's events. The request's signature is checked on the raw body with a shared secret (a
+  web credential's, stored encrypted and never exported): HMAC-SHA256 in a header of your choice, hex or base64,
+  with an optional prefix (GitHub's `X-Hub-Signature-256: sha256=…`), or Stripe's `Stripe-Signature` with a
+  tolerance for its timestamp. A wrong or missing signature answers 401 and stores nothing. An event id (a field
+  of the body or a header) is handled once: a repeat answers 200. The event is stored and answered 202 at once;
+  the handler's PL/pgSQL block runs afterwards as the application's role, with retries and backoff, and ends as
+  done or failed. SQL Workshop → RESTful Services → **Webhook events** lists the events per handler with their
+  state and error, shows an event's body and has *Re-process*; events are removed after the handler's retention
+  (default 30 days). HR Demo: `POST events/crm` in the module `hr`.
+
+### Changed
+- (sprint 177) A request queued with `meta.web_request` outside a page process that gets a 5xx or 429 answer, or
+  no answer because the service was unreachable or slow, is no longer final after one attempt: it waits in status
+  `retry` and is tried again (5 attempts by default; `p_max_attempts => 1` keeps one attempt). After the last
+  attempt its status is `gave_up`, where it was `ok` (with a 5xx status code) or `error` before. `POST`, `PUT`,
+  `PATCH` and `DELETE` requests now carry an `Idempotency-Key` header (`p_idempotency_header => null` leaves
+  it out). New server settings: `QUEUE_RETRY_S`, `QUEUE_RETRY_MAX_S`, `WEBHOOKS`.
+
 ## [0.92.0] - 2026-11-13
 
 ### Added

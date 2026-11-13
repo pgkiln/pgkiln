@@ -757,6 +757,23 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
             rest_template: `/builder/sql/rest/modules/${m}/template?t=${encodeURIComponent('emp/:id')}`,
             rest_handler: `/builder/sql/rest/modules/${m}/handler?t=leave&m=POST` };
         })()),
+        // (sprint 177) the web request outbox and webhook events (a request that gave up, a failed event with long texts), a webhook handler
+        ...(await (async () => {
+          const m = (await owner.one(`select id from meta.rest_module where app_id = $1 and name = 'hr'`, [appId])).id;
+          await owner.query(`delete from meta.web_request_log where app_id = $1 and url like '%e2e-responsive%'`, [appId]);
+          await owner.query(`insert into meta.web_request_log (app_id, url, method, status, attempts, max_attempts, status_code, finished_at, message, ordering_key, callback, callback_state, callback_error)
+            values ($1, 'https://api.example.org/e2e-responsive/averyveryverylongpathsegmentwithoutanyspacesinitaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'POST', 'gave_up', 5, 5, 503, now(),
+                    'The web service answered 503.', 'e2e-responsive-ordering-key', 'hr.contacts_fetched', 'failed', 'a_rather_long_error_without_spaces_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+                   ($1, 'https://api.example.org/e2e-responsive/waiting', 'GET', 'retry', 1, null, 503, null, 'The web service answered 503.', null, null, null, null)`, [appId]);
+          await owner.query(`update meta.web_request_log set next_attempt_at = now() + interval '1 hour' where app_id = $1 and status = 'retry' and url like '%e2e-responsive%'`, [appId]);
+          await owner.query(`delete from meta.webhook_event where app_id = $1 and event_key like 'e2e-responsive%'`, [appId]);
+          const ev = (await owner.one(`insert into meta.webhook_event (app_id, module, path, event_key, headers, content_type, body, state, attempts, error)
+            values ($1, 'hr', 'events/crm', 'e2e-responsive-event-with-a-rather-long-identifier-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '{"x-crm-event": "contact.updated"}', 'application/json',
+                    convert_to('{"id": "e2e", "note": "averyveryverylongvaluewithoutanyspacesaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}', 'UTF8'), 'failed', 3,
+                    '[P0001] a_rather_long_error_without_spaces_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') returning id`, [appId])).id;
+          return { rest_requests: '/builder/sql/rest/requests', rest_events: '/builder/sql/rest/events', rest_event: `/builder/sql/rest/events/${ev}`,
+            rest_webhook_handler: `/builder/sql/rest/modules/${m}/handler?t=${encodeURIComponent('events/crm')}&m=POST` };
+        })()),
         // (sprint 106) the change log, with a long change set
         sql_changes: await (async () => {
           await owner.query(`delete from meta.change_set where schema_name = 'hr' and name = 'e2e_responsive_change_with_a_rather_long_name'`);

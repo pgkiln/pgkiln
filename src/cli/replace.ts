@@ -92,6 +92,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'embedding_queue',
   // (138) the change history and the snapshot it compares with (this installation's record)
   'app_snapshot', 'component_change',
+  // (161) events received by webhook handlers (the handlers travel in meta.rest_module)
+  'webhook_event',
 ];
 /** Children of pages (replaced with their page). */
 const PAGE_CHILDREN = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];

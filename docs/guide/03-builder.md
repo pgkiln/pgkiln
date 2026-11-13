@@ -2447,6 +2447,13 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   who may call it, roles, documented parameters). Each handler has a **Try it** panel: the request goes to the real
   endpoint without a token or as an account of the application, and the response is shown in the page. Details in
   [chapter 13](13-rest-api.md#modules-templates-and-handlers-in-the-sql-workshop).
+  (sprint 177) A handler of source type **Webhook** receives another system's signed events
+  ([chapter 13](13-rest-api.md#webhooks)). The **Webhook events** tab lists the events the workspace's applications
+  received, per handler, with their state, attempts and error, an event's headers and body, and *Re-process*. The
+  **Web requests** tab lists the outbox of `meta.web_request`
+  ([chapter 9](09-reference.md#the-outbox-retries-callbacks-ordering)): each request's status, attempts, next attempt,
+  last error and callback, with *Re-queue* for one that gave up or failed, *Cancel* for one that waits and *Call back
+  again* for a failed callback. Both show the current workspace's applications only.
 - **Change Log** (`/builder/sql/changes`, sprint 106; Database Actions: Liquibase): DDL that succeeds in the **SQL
   Worksheet**, **Table Properties** (*Apply*) and **Schema Comparison** (*Apply and record*: the change script run on
   the target in one transaction) is recorded as a *change set*: the schema it changes, its SQL, who ran it, when,

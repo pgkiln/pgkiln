@@ -26,6 +26,8 @@ import { dataSecurityRoutes } from './data-security.ts';
 import { dataModelerRoutes } from './data-modeler.ts';
 import { autoRestBuilderRoutes } from './autorest.ts';
 import { restModuleRoutes } from './rest-modules.ts';
+import { webRequestRoutes } from './web-requests.ts';
+import { webhookEventRoutes } from './webhook-events.ts';
 import { changeLogRoutes } from './changelog.ts';
 import { tr, type BuilderTranslate } from './i18n.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
@@ -150,6 +152,9 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(autoRestBuilderRoutes);
   // (sprint 104) RESTful Services: modules, templates and handlers (rest-modules.ts)
   await app.register(restModuleRoutes);
+  // (sprint 177) the web request outbox and webhook events
+  await app.register(webRequestRoutes);
+  await app.register(webhookEventRoutes);
   // (sprint 106) the change log (changelog.ts)
   await app.register(changeLogRoutes);
 }

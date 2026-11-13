@@ -713,6 +713,27 @@ Policies written per database role (`to sales_app`) apply to the masking role fo
 prefer policies on `meta.app_user()` / `meta.has_role()` on tables with a masking view. The HR example's page 48
 *Salaries (masked)* reads `hr.emp_masked` (`examples/hr/hr_70_data_security.sql`).
 
+## Webhooks and callbacks
+
+(sprint 177) Two places where the server runs your SQL without a signed-in user:
+
+- **Inbound webhooks** ([chapter 13](13-rest-api.md#webhooks)). A webhook handler has no token: the
+  **signature** is its authentication. It is an HMAC-SHA256 with a shared secret over the raw bytes of the
+  body (or Stripe's `t.body`, with a tolerance for the timestamp against replay), compared in constant time; a
+  request without a valid one is answered 401 and nothing of it is stored. The secret is a web credential's:
+  encrypted with `PGKILN_SECRET_KEY`, write-only in the builder, never exported, never logged. An event id is
+  processed once. The handler's block runs later, as the application's database role with `meta.app_user()`
+  `nobody`, so row level security applies as for a public handler: write it for an anonymous caller. Stored
+  events (raw bodies) are readable only through the builder, by developers of the application's workspace.
+  Treat the body as untrusted input even when signed: cast and check it, and never build SQL from it.
+- **Callbacks of web requests** ([chapter 9](09-reference.md#the-outbox-retries-callbacks-ordering)). The
+  callback is named when the request is queued and must be a function `(bigint)` the application's role may
+  execute; it runs as that role, with the user who queued the request as `meta.app_user()`.
+
+Neither ever runs as pgkiln's owner, a superuser or a role that bypasses row level security: such an event or
+callback fails instead. Every attempt of a queued web request, also a retry hours later, goes through the
+host allow-list, the workspace's network access list and the private address checks again.
+
 ## Session state protection
 
 - **URL items**: on pages with protection *Arguments must have checksum* (the default), item

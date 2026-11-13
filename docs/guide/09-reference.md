@@ -31,9 +31,11 @@ triggers, your own functions).
 | `meta.debug(level, text)`, `meta.debug(text)` | void | A [debug message](06-processing.md#debug-messages) (APEX: `apex_debug.message`): recorded with the request when the app's debug level is at least `level` (1 error, 2 warning, 4 information (the default), 6 trace, 9 everything); otherwise it returns at once. Texts are cut at 4000 characters |
 | `meta.debug_enabled(level default 4)` | boolean | Whether a message of this level would be recorded (skip building expensive texts) |
 | `meta.debug_level()` | int | The request's debug level (0: off, and outside a request) |
-| `meta.web_request(url, method default 'GET', body default null, headers jsonb default null, credential default null, timeout_s default 10)` | bigint | Queue an HTTP request (APEX: `apex_web_service.make_rest_request`); the **server** makes it, see [web requests from SQL](#web-requests-from-sql). Returns the request's id |
-| `meta.web_request_source(source, params jsonb default null, timeout_s default null)` | bigint | Queue a call of a [REST data source](19-rest-data-sources.md) of the app (its URL, method, headers and web credential; parameter values as text) |
-| `meta.web_response(id)` | jsonb | The request's state and response: `status` (`queued`, `running`, `ok`, `error`), `status_code`, `headers`, `content_type`, `body` (text), `json` (the body parsed when it is JSON), `size`, `url`, `message`, times. NULL for a request of another application |
+| `meta.web_request(url, method default 'GET', body default null, headers jsonb default null, credential default null, timeout_s default 10, max_attempts default null, callback default null, ordering_key default null, idempotency_key default null, idempotency_header default 'Idempotency-Key')` | bigint | Queue an HTTP request (APEX: `apex_web_service.make_rest_request`); the **server** makes it, see [web requests from SQL](#web-requests-from-sql). Returns the request's id. (sprint 177) The last five parameters make it an [outbox](#the-outbox-retries-callbacks-ordering): retries, a callback function, delivery in order and an idempotency key |
+| `meta.web_request_source(source, params jsonb default null, timeout_s default null, max_attempts default null, callback default null, ordering_key default null)` | bigint | Queue a call of a [REST data source](19-rest-data-sources.md) of the app (its URL, method, headers and web credential; parameter values as text) |
+| `meta.web_response(id)` | jsonb | The request's state and response: `status` (`queued`, `running`, `retry`, `ok`, `error`, `gave_up`, `cancelled`), `status_code`, `headers`, `content_type`, `body` (text), `json` (the body parsed when it is JSON), `size`, `url`, `message`, times, and (sprint 177) `attempts`, `max_attempts`, `next_attempt_at`, `ordering_key`, `idempotency_key`, `callback`, `callback_state` (`pending`, `running`, `done`, `failed`), `callback_error`. NULL for a request of another application |
+| `meta.web_request_cancel(id)` | boolean | (sprint 177) Cancel a request of the current application that still waits (`queued`, or `retry` between two attempts); true when it did |
+| `meta.webhook_event()` | jsonb | (sprint 177) In the block of a [webhook handler](13-rest-api.md#webhooks): the event it runs for, `{"id", "event_id", "received_at", "attempt", "content_type", "headers"}` |
 | `meta.web_response_blob(id)` | bytea | The response body as bytes (files, images) |
 | `meta.parse_data(content bytea, file_name, format, headers, delimiter, row_selector, skip_rows, max_rows)` | table | The rows of a CSV/TSV, JSON, XML or Excel file (APEX: `apex_data_parser.parse`): `line_number`, `cols` (text[] by position), `data` (jsonb by column name). See [parsing files](#parsing-files-in-sql) |
 | `meta.parse_data_columns(…the same arguments)` | table | The file's columns (APEX: `apex_data_parser.get_columns`): `column_position`, `column_name`, `heading`, `data_type` |
@@ -55,7 +57,7 @@ which `meta.web_response(id)` returns. When that happens depends on where the SQ
 | Queued in | Made | Read the response |
 |---|---|---|
 | A page process of type `sql` (also inside a chain or a background chain) | Right after that process, **in the same transaction**, before the next process runs (at most 5 per process; more wait for the scheduler) | In the next process of the same submit |
-| Anything else: automations, workflow steps, computations, validations, region sources, triggers, PostgREST requests, `psql` | After the transaction **commits**, by the next pass of the scheduler (`SCHEDULER_INTERVAL_S`, default 30 seconds; up to 50 per pass, 5 at a time) | Later: from another page view, an automation, a workflow step |
+| Anything else: automations, workflow steps, computations, validations, region sources, triggers, PostgREST requests, `psql`; and every request with a callback or an ordering key | After the transaction **commits**, at once: queueing notifies the server (sprint 177; `NOTIFY pgkiln_web_request`). The scheduler pass (`SCHEDULER_INTERVAL_S`, default 30 seconds) stays as the fallback; up to 50 at a time are claimed, 5 run at once | Later: from another page view, an automation, a workflow step, or in the request's **callback** |
 
 A rolled-back transaction takes its queued requests with it (one made in a page process has been
 sent anyway, as with the `invoke_api` process). With `AUTOMATIONS=off` on every server, requests
@@ -94,11 +96,69 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
 - Limits per call: URL ≤ 4000 characters, body ≤ 1 MB (text), ≤ 30 headers (no `Host`,
   `Content-Length`, `Connection` and the like, no line breaks), methods `GET`, `HEAD`, `POST`, `PUT`,
   `PATCH`, `DELETE`; at most 100 requests of an application waiting at a time.
-- Requests and responses are kept **24 hours** (at most 500 finished ones per application), then
-  removed by the scheduler. They belong to the application, not to a user: any code of the app that
+- Requests and responses are kept **24 hours** (at most 500 finished ones per application; a request that
+  gave up is kept 7 days, so it can be queued again), then removed by the scheduler. They belong to the application, not to a user: any code of the app that
   knows an id can read the response, so don't let users choose the id when responses differ per user.
-- Application roles can't read `meta.web_request_log`; the owner can, e.g. in the SQL Workshop:
-  `select id, status, status_code, url, message from meta.web_request_log order by id desc`.
+- Application roles can't read `meta.web_request_log`. Developers see the queue of their workspace's
+  applications in the builder: **SQL Workshop → RESTful Services → Web requests** (status, attempts, next
+  attempt, last error, the callback's state; *Re-queue*, *Cancel*, *Call back again*).
+
+#### The outbox: retries, callbacks, ordering
+
+(sprint 177, migration 160) A request queued in the same transaction as your data change is an *outbox*: it
+exists only if the change committed, and the server keeps trying to deliver it.
+
+```sql
+-- in a trigger, a process, an automation: tell the warehouse about a shipped order
+select meta.web_request('https://api.example.com/shipments', 'POST',
+         json_build_object('order', :P3_ID, 'status', 'shipped')::text,
+         '{"Content-Type": "application/json"}', p_credential => 'WAREHOUSE_API',
+         p_callback       => 'sales.order_sent',   -- called when the request is final
+         p_ordering_key   => 'order-' || :P3_ID,   -- this order's requests go out one at a time, in order
+         p_max_attempts   => 8);
+
+create function sales.order_sent(p_request bigint) returns void language plpgsql as $$
+declare r jsonb := meta.web_response(p_request);
+begin
+  update sales.orders set sync_status = r ->> 'status', synced_at = now() where id = (r -> 'json' ->> 'order')::int;
+end $$;
+grant execute on function sales.order_sent(bigint) to sales_app;
+```
+
+- **Retries.** A request the server delivers after the commit is tried up to `p_max_attempts` times (default
+  **5**, at most 20). Worth another attempt: the service could not be reached or did not answer in time, a
+  **5xx** answer, a **429** answer. The request then has `status` `retry` until `next_attempt_at`: 30 seconds
+  after the first attempt, doubling each time (±20 %), at most one hour (`QUEUE_RETRY_S`, `QUEUE_RETRY_MAX_S`);
+  a `Retry-After` header is honoured up to that maximum. After the last attempt the status is **`gave_up`**
+  (with the last answer's `status_code`, if there was one). Not retried: any other answer (`ok` with its
+  status code, also a 4xx) and a request that can't be made (`error`: the host is not allowed, the credential
+  has no secret, the response is too large). Every attempt goes through the allow-list and address checks
+  again. A request a **page process** queues keeps its single attempt in the process's transaction, as before;
+  give `p_max_attempts` to have a failed one retried after the commit.
+- **Callback.** `p_callback => 'schema.function'` names a function with **one `bigint` argument**, the
+  request's id, that the application's database role may execute (checked when the request is queued; the
+  name is looked up in the catalog, never run as text; functions of `meta` and `pg_catalog` are refused). The
+  server calls it once the request is final (`ok`, `error`, `gave_up`), as the application's database role
+  on the application's own connection, with `meta.app_user()` the user who queued it and the session's
+  tenant, in a transaction of its own, so triggers fire as usual. It reads everything with
+  `meta.web_response(id)`. A callback that raises is rolled back and called again (3 times in all, with the
+  same backoff), then its `callback_state` is `failed` with the error in `callback_error` and in the
+  application's error log; the HTTP request is **never** sent again because of it. Design the callback to
+  be harmless when called twice (a server that stops right after it ran calls it again). It never runs as
+  pgkiln's owner, a superuser or a role that bypasses row level security.
+- **Ordering.** Requests of one application with the same `p_ordering_key` are delivered strictly one at a
+  time, in the order their transactions committed. One that waits for a retry holds the later ones of its
+  key back until it succeeds or gives up; other keys, and requests without a key, are not held up.
+- **Idempotency.** Every attempt of a request carries the same key in a header, so the receiver can drop a
+  repeat: `p_idempotency_key` if you give one (for example your own event id), otherwise a generated UUID for
+  `POST`, `PUT`, `PATCH` and `DELETE`. The header is `Idempotency-Key`; `p_idempotency_header` names another
+  one, or `null` for none. A header of that name in `p_headers` wins. (`meta.web_request_source` sends the
+  source's own headers only.)
+- **Several servers.** A request is claimed with `FOR UPDATE SKIP LOCKED` and a lease; a server that stops
+  while a request is in flight loses the lease and another server makes the next attempt. Delivery is
+  therefore *at least once*: that is what the idempotency key is for.
+- `meta.web_request_cancel(id)` cancels a waiting request. The HR example's page 35 has *Fetch in the
+  background* (`examples/hr/hr_86_web_request_outbox.sql`).
 
 ### E-mail from SQL
 
@@ -528,7 +588,8 @@ navigation entries and application processes have the same `build_option` column
 | `activity_log` | `at`, `app_id`, `page_no`, `username`, `event` (`page_view`, `page_prefetch` (168: a page fetched for offline use), `login`, `login_failed`, `login_locked`, `login_unlocked`, `logout`, `error`, `forbidden`, `api_token`, `password_expired`, `password_changed`; builder: `lock_broken`, `supporting_objects`, `sample_data`, …), `ip`, `elapsed_ms`, `detail` | yes (insert/select) |
 | `debug_view` | [Debug messages](06-processing.md#debug-messages): one row per recorded request: `app_id`, `page_no`, `username`, `session_id`, `method`, `path` (without the query string), `status`, `level`, `started_at`, `elapsed_ms`, `entries`. Written through `meta.debug_save()` (runtime role only), not exported | no |
 | `debug_message` | The entries of a recorded request: `view_id`, `seq`, `elapsed_ms` (since the start), `duration_ms` (timed steps), `level`, `component`, `message` | no |
-| `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`. Kept 24 hours, not exported | no (through `meta.web_response`) |
+| `web_request_log` | [Web requests from SQL](#web-requests-from-sql): `app_id`, `status`, the request (`url` or `source` + `params`, `method`, `headers`, `body`, `credential` name, `timeout_s`), `requested_by`, times, the response (`status_code`, `response_url`, `response_headers`, `response_body`), `message`; (160) `attempts`, `max_attempts`, `next_attempt_at`, `lease_until`, `ordering_key`, `idempotency_key`, `callback` and its state. Kept 24 hours (given up: 7 days), not exported | no (through `meta.web_response`) |
+| `webhook_event` | (161) Events received by [webhook handlers](13-rest-api.md#webhooks): `app_id`, `module`, `path`, `event_key` (the sender's id, unique per handler), `headers`, `content_type`, `body` (the raw bytes), `received_at`, `purge_after`, `state`, `attempts`, `error`. Removed after the handler's retention, not exported | no |
 | `push_key` | The VAPID key pair of an application with [push notifications](17-mobile.md#push-notifications): `public_key`, `private_key` (encrypted with `PGKILN_SECRET_KEY`). Not exported | no |
 | `push_subscription` | Devices with notifications on: `app_id`, `username`, `endpoint` (the push service URL), the device's keys `p256dh` and `auth`, `user_agent`, `created_at`, `last_sent_at`, `failures`. Not exported | no (through `meta.has_push_subscription`) |
 | `push_message` | [Push notifications from SQL](#push-notifications-from-sql): `app_id`, `username`, `title`, `body`, `url`, `tag`, `urgency`, `ttl_s`, `status`, `attempts`, `devices`, `delivered`, `message`, `requested_by`, times. Kept 7 days, not exported | no |

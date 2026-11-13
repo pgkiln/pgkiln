@@ -14331,3 +14331,425 @@ describe('sprint 176 response headers of PL/pgSQL REST handlers (DA-11)', () => 
     assert.equal(anon.headers['x-echo'], undefined);
   });
 });
+
+describe('sprint 177 the web request outbox and inbound webhooks', () => {
+  const SECRET = 'sec177-signing-secret-never-shown';
+  const ENV = ['PGKILN_SECRET_KEY', 'PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS', 'QUEUE_RETRY_S'];
+  const saved: Record<string, string | undefined> = {};
+  let hr = 0;
+  let otherWs = 0;
+  let otherApp = 0;
+  let theirRequest = '';
+  let theirEvent = '';
+  let mock: import('node:http').Server;
+  let mockBase = '';
+  let hits = 0;
+  let answer = 200;
+  let wr: typeof import('../src/webrequests.ts');
+  let wh: typeof import('../src/webhooks.ts');
+  let hmac: (body: string | Buffer, secret?: string) => string;
+  let stripe: (body: string, t?: number, secret?: string) => string;
+
+  const asHr = <T>(fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>, appId = hr, role = 'hr_app') =>
+    runtime.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
+      await c.query(`set local role ${role}`);
+      return fn(async (sql, params = []) => (await c.query(sql, params)).rows);
+    });
+  const post = (path: string, payload: string | Buffer, headers: Record<string, string | string[]> = {}) =>
+    app.inject({ method: 'POST', url: `/a/hr/rest/sec177/${path}`, payload, headers: { 'content-type': 'application/json', ...headers } });
+  const events = async () => (await owner.query(`select * from meta.webhook_event where app_id = $1 and module = 'sec177' order by id`, [hr])).rows;
+  const ran = async () => (await owner.query('select * from sec177.ran order by id')).rows;
+  const signIn = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql/rest/requests');
+    return dev;
+  };
+
+  before(async () => {
+    for (const k of ENV) saved[k] = process.env[k];
+    process.env.PGKILN_SECRET_KEY = 'security-test-secret-key-0123456789abcdef';
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.QUEUE_RETRY_S = '0';
+    const { createHmac } = await import('node:crypto');
+    const http = await import('node:http');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    wr = await import('../src/webrequests.ts');
+    wh = await import('../src/webhooks.ts');
+    hmac = (body, secret = SECRET) => createHmac('sha256', secret).update(body).digest('hex');
+    stripe = (body, t = Math.floor(Date.now() / 1000), secret = SECRET) => `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${body}`).digest('hex')}`;
+    mock = http.createServer((req, res) => {
+      req.resume();
+      req.on('end', () => {
+        hits++;
+        res.writeHead(answer, { 'content-type': 'text/plain' });
+        res.end('ok');
+      });
+    });
+    await new Promise<void>((r) => mock.listen(0, '127.0.0.1', r));
+    mockBase = `http://127.0.0.1:${(mock.address() as import('node:net').AddressInfo).port}`;
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    await owner.query(`delete from meta.app where alias = 'sec177-other'`);
+    await owner.query(`delete from meta.workspace where name = 'sec177 other'`);
+    await owner.query('drop schema if exists sec177 cascade');
+    await owner.query('drop role if exists sec177_bypass');
+    await owner.query('create schema sec177');
+    await owner.query('grant usage on schema sec177 to hr_app');
+    await owner.query('create table sec177.ran (id serial primary key, what text, who text, role text, login text)');
+    await owner.query('grant select, insert on sec177.ran to hr_app');
+    await owner.query('grant usage on sequence sec177.ran_id_seq to hr_app');
+    await owner.query(`create function sec177.done(p_id bigint) returns void language sql as
+      $$ insert into sec177.ran (what, who, role, login) values ('callback ' || (meta.web_response(p_id)->>'status'), meta.app_user(), current_user, session_user) $$`);
+    await owner.query(`create function sec177.owner_only(p_id bigint) returns void language sql as $$ insert into sec177.ran (what) values ('owner only') $$`);
+    await owner.query('revoke execute on function sec177.owner_only(bigint) from public');
+    // a role that bypasses row level security, which the runtime could switch to
+    await owner.query('create role sec177_bypass nologin bypassrls');
+    await owner.query('grant sec177_bypass to pgkiln_runtime');
+    await owner.query('grant usage on schema sec177 to sec177_bypass');
+    await owner.query('grant select, insert on sec177.ran to sec177_bypass');
+    await owner.query('grant usage on sequence sec177.ran_id_seq to sec177_bypass');
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC177_HOOK'`, [hr]);
+    await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc) values ($1, 'SEC177_HOOK', 'bearer', $2)`, [hr, encryptSecret(SECRET)]);
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec177'`, [hr]);
+    const block = (kind: string) => `insert into sec177.ran (what, who, role, login) values ('${kind} ' || coalesce(:BODY, ''), meta.app_user(), current_user, session_user)`;
+    await owner.query(`insert into meta.rest_module (app_id, name, title, roles, handlers) values ($1, 'sec177', 'sec177', '{}', $2)`, [hr, JSON.stringify([
+      { method: 'POST', path: 'hook', type: 'webhook', auth: 'public', source: block('hook'),
+        webhook: { scheme: 'hmac-sha256', credential: 'SEC177_HOOK', header: 'X-Hub-Signature-256', prefix: 'sha256=', event_id: 'body:id' } },
+      { method: 'POST', path: 'small', type: 'webhook', auth: 'public', source: block('small'), webhook: { scheme: 'hmac-sha256', credential: 'SEC177_HOOK', max_bytes: 100 } },
+      { method: 'POST', path: 'stripe', type: 'webhook', auth: 'public', source: block('stripe'), webhook: { scheme: 'stripe', credential: 'SEC177_HOOK', event_id: 'body:id', tolerance_s: 300 } },
+      { method: 'POST', path: 'plain', type: 'plpgsql', auth: 'public', source: `perform meta.rest_reply(jsonb_build_object('body', :BODY, 'x', :X), 200)` },
+    ])]);
+    // another workspace's application, with a queued request and an event of its own
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('sec177 other') returning id`))!.id;
+    otherApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec177-other', 'sec177 other app', 'none', 'hr_app') returning id`))!.id;
+    await owner.query(`insert into meta.workspace_app (app_id, workspace_id) values ($1, $2) on conflict (app_id) do update set workspace_id = excluded.workspace_id`, [otherApp, otherWs]);
+    theirRequest = (await owner.one(`insert into meta.web_request_log (app_id, url, status, finished_at, message) values ($1, 'https://theirs.example.org/sec177-their-url', 'gave_up', now(), 'sec177 their error') returning id::text`, [otherApp]))!.id;
+    theirEvent = (await owner.one(`insert into meta.webhook_event (app_id, module, path, event_key, body, state, error) values ($1, 'theirs', 'hook', 'sec177-their-key', 'sec177 their body', 'failed', 'sec177 their failure') returning id::text`, [otherApp]))!.id;
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = 'sec177-other'`);
+    await owner.query(`delete from meta.workspace where name = 'sec177 other'`);
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec177'`, [hr]);
+    await owner.query(`delete from meta.web_credential where app_id = $1 and name = 'SEC177_HOOK'`, [hr]);
+    await owner.query(`delete from meta.webhook_event where app_id = $1 and module = 'sec177'`, [hr]);
+    await owner.query(`delete from meta.web_request_log where app_id = $1 and (url like '%sec177%' or url like $2)`, [hr, `${mockBase}%`]);
+    await owner.query('drop schema if exists sec177 cascade');
+    await owner.query('drop owned by sec177_bypass');
+    await owner.query('drop role if exists sec177_bypass');
+    mock.close();
+    for (const k of ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  afterEach(async () => {
+    await owner.query(`delete from meta.webhook_event where app_id = $1 and module = 'sec177'`, [hr]);
+    await owner.query(`delete from meta.web_request_log where app_id = $1`, [hr]);
+    await owner.query('truncate sec177.ran');
+    hits = 0;
+    answer = 200;
+  });
+
+  test('a webhook without a valid signature is answered 401 and nothing is stored or run', async () => {
+    const body = '{"id": "e1", "amount": 5}';
+    const good = `sha256=${hmac(body)}`;
+    const attempts: [string, Record<string, string | string[]>, string | Buffer][] = [
+      ['no signature', {}, body],
+      ['an empty signature', { 'x-hub-signature-256': '' }, body],
+      ['the prefix alone', { 'x-hub-signature-256': 'sha256=' }, body],
+      ['without the prefix', { 'x-hub-signature-256': hmac(body) }, body],
+      ['another secret', { 'x-hub-signature-256': `sha256=${hmac(body, 'guess')}` }, body],
+      ['an empty secret', { 'x-hub-signature-256': `sha256=${hmac(body, '')}` }, body],
+      ['a truncated signature', { 'x-hub-signature-256': good.slice(0, -2) }, body],
+      ['a signature with more after it', { 'x-hub-signature-256': `${good}00` }, body],
+      ['the signature of another body', { 'x-hub-signature-256': good }, '{"id": "e1", "amount": 5000}'],
+      ['the body re-serialised', { 'x-hub-signature-256': good }, JSON.stringify(JSON.parse(body))],
+      ['the signature in another header', { 'x-signature': good }, body],
+      ['the signature as a query parameter is not read', {}, body],
+      ['a bearer token instead', { authorization: 'Bearer anything' }, body],
+      ['two signature headers', { 'x-hub-signature-256': [good, `sha256=${'0'.repeat(64)}`] }, body],
+      ['not hex', { 'x-hub-signature-256': `sha256=${'z'.repeat(64)}` }, body],
+    ];
+    for (const [what, headers, payload] of attempts) {
+      const res = await post(what.includes('query') ? `hook?x-hub-signature-256=${encodeURIComponent(good)}` : 'hook', payload, headers);
+      assert.equal(res.statusCode, 401, what);
+      assert.doesNotMatch(res.body, new RegExp(hmac(body)), what);
+    }
+    assert.deepEqual(await events(), []);
+    await wh.webhookTick();
+    assert.deepEqual(await ran(), []);
+    // the refusals are logged with a reason, never with the signature, the secret or the body
+    const log = (await owner.query(`select detail from meta.activity_log where app_id = $1 and event = 'webhook_refused' order by id desc limit 15`, [hr])).rows.map((r) => r.detail).join('\n');
+    assert.match(log, /REST POST sec177\/hook: (no signature header|signature mismatch|malformed signature)/);
+    assert.ok(!log.includes(SECRET) && !log.includes(hmac(body)) && !log.includes('amount'));
+    // the same request with the right signature is accepted (upper-case hex too)
+    assert.equal((await post('hook', body, { 'x-hub-signature-256': good })).statusCode, 202);
+    assert.equal((await post('hook', '{"id": "e2"}', { 'x-hub-signature-256': `sha256=${hmac('{"id": "e2"}').toUpperCase()}` })).statusCode, 202);
+    // a credential without a secret never means "unsigned is fine"
+    await owner.query(`update meta.web_credential set secret_enc = null where app_id = $1 and name = 'SEC177_HOOK'`, [hr]);
+    try {
+      assert.equal((await post('hook', '{"id": "e3"}', { 'x-hub-signature-256': `sha256=${hmac('{"id": "e3"}', '')}` })).statusCode, 503);
+    } finally {
+      const { encryptSecret } = await import('../src/secrets.ts');
+      await owner.query(`update meta.web_credential set secret_enc = $2 where app_id = $1 and name = 'SEC177_HOOK'`, [hr, encryptSecret(SECRET)]);
+    }
+    assert.equal((await events()).length, 2);
+  });
+
+  test('replay: an event id is processed once; a Stripe timestamp outside the tolerance is refused', async () => {
+    const body = '{"id": "evt_replay", "n": 1}';
+    assert.equal((await post('stripe', body, { 'stripe-signature': stripe(body) })).statusCode, 202);
+    // the captured request sent again, now and after it was processed
+    assert.equal((await post('stripe', body, { 'stripe-signature': stripe(body) })).statusCode, 200);
+    await wh.webhookTick();
+    assert.equal((await post('stripe', body, { 'stripe-signature': stripe(body) })).statusCode, 200);
+    await wh.webhookTick();
+    assert.equal((await ran()).length, 1);
+    // an old capture (validly signed then), a timestamp from the future, a timestamp changed without re-signing
+    const old = Math.floor(Date.now() / 1000) - 3600;
+    const b2 = '{"id": "evt_old"}';
+    assert.equal((await post('stripe', b2, { 'stripe-signature': stripe(b2, old) })).statusCode, 401);
+    assert.equal((await post('stripe', b2, { 'stripe-signature': stripe(b2, old + 7200) })).statusCode, 401);
+    assert.equal((await post('stripe', b2, { 'stripe-signature': stripe(b2, old).replace(`t=${old}`, `t=${old + 3600}`) })).statusCode, 401);
+    assert.equal((await post('stripe', b2, { 'stripe-signature': `t=${old + 3600}` })).statusCode, 401);
+    assert.equal((await post('stripe', b2, { 'stripe-signature': `v1=${hmac(b2)}` })).statusCode, 401);
+    // v0 (an older scheme) is never accepted, whatever it holds
+    const now = Math.floor(Date.now() / 1000);
+    assert.equal((await post('stripe', b2, { 'stripe-signature': stripe(b2, now).replace('v1=', 'v0=') })).statusCode, 401);
+    assert.equal((await events()).length, 1);
+    // an event id that is no id
+    const b3 = `{"id": {"nested": true}}`;
+    assert.equal((await post('stripe', b3, { 'stripe-signature': stripe(b3) })).statusCode, 400);
+    const b4 = `{"id": "${'x'.repeat(300)}"}`;
+    assert.equal((await post('stripe', b4, { 'stripe-signature': stripe(b4) })).statusCode, 400);
+    assert.equal((await events()).length, 1);
+  });
+
+  test('an oversized body is refused; the raw body route does not open other handlers', async () => {
+    const big = `{"id": "big", "pad": "${'x'.repeat(1024 * 1024)}"}`;
+    assert.equal((await post('hook', big, { 'x-hub-signature-256': `sha256=${hmac(big)}` })).statusCode, 413);
+    const medium = `{"pad": "${'x'.repeat(200)}"}`;
+    assert.equal((await post('small', medium, { 'x-signature': hmac(medium) })).statusCode, 413, 'the handler\'s own limit');
+    assert.equal((await post('small', '{"a": 1}', { 'x-signature': hmac('{"a": 1}') })).statusCode, 202);
+    assert.equal((await events()).length, 1);
+    // the webhook content type sent to an ordinary handler: its body is not parsed, nothing else changes
+    const res = await post('plain?x=1', '{"x": "from body"}', { 'content-type': 'application/x-pgkiln-webhook' });
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.json(), { body: null, x: '1' });
+    // GET on a webhook path, and a webhook in a disabled module
+    assert.equal((await app.inject({ method: 'GET', url: '/a/hr/rest/sec177/hook' })).statusCode, 405);
+    await owner.query(`update meta.rest_module set enabled = false where app_id = $1 and name = 'sec177'`, [hr]);
+    try {
+      assert.equal((await post('small', '{"a": 2}', { 'x-signature': hmac('{"a": 2}') })).statusCode, 404);
+    } finally {
+      await owner.query(`update meta.rest_module set enabled = true where app_id = $1 and name = 'sec177'`, [hr]);
+    }
+  });
+
+  test('a webhook\'s block runs as the application\'s role, never as the owner or a role that bypasses row level security', async () => {
+    const body = '{"id": "role-1"}';
+    assert.equal((await post('hook', body, { 'x-hub-signature-256': `sha256=${hmac(body)}` })).statusCode, 202);
+    await wh.webhookTick();
+    const [row] = await ran();
+    assert.equal(row.role, 'hr_app');
+    assert.equal(row.who, 'nobody');
+    assert.notEqual(row.login, (await owner.one('select current_user::text as u'))!.u);
+    // the application's role changed to one that bypasses RLS, then to pgkiln's owner: the event fails, the block does not run
+    const ownerName = (await owner.one('select current_user::text as u'))!.u;
+    for (const role of ['sec177_bypass', ownerName]) {
+      await owner.query('update meta.app set db_role = $2 where id = $1', [hr, role]);
+      try {
+        const b = `{"id": "role-${role}"}`;
+        assert.equal((await post('hook', b, { 'x-hub-signature-256': `sha256=${hmac(b)}` })).statusCode, 202);
+        await wh.webhookTick();
+      } finally {
+        await owner.query(`update meta.app set db_role = 'hr_app' where id = $1`, [hr]);
+      }
+    }
+    assert.equal((await ran()).length, 1);
+    const failed = (await events()).slice(1);
+    assert.equal(failed[0].state, 'failed');
+    assert.notEqual(failed[1].state, 'done');
+    assert.match(failed[0].error, /bypasses row level security or owns pgkiln/);
+    assert.match(failed[1].error, /permission denied|bypasses row level security or owns pgkiln/);
+    // the runtime role cannot read events or the queue itself
+    await assert.rejects(runtime.query('select * from meta.webhook_event'), /permission denied/);
+    await assert.rejects(runtime.query('select * from meta.web_request_log'), /permission denied/);
+    await assert.rejects(asHr((q) => q('select body from meta.webhook_event')), /permission denied/);
+  });
+
+  test('a callback name is never run as SQL, and only a function the application\'s role may execute is taken', async () => {
+    const names = [
+      `sec177.done(1); drop table sec177.ran; --`, `sec177.done'); drop table sec177.ran; --`, `sec177."done"`, `"sec177".done`, 'sec177.done(bigint)',
+      'sec177.done, pg_sleep(5)', 'pg_catalog.pg_terminate_backend', 'meta.web_request_done', 'sec177.owner_only', 'sec177.missing', 'done', 'sec177.done.x', 'information_schema.x',
+    ];
+    for (const name of names)
+      await assert.rejects(asHr((q) => q(`select meta.web_request($1, p_callback => $2)`, [`${mockBase}/sec177`, name])), /meta\.web_request: the callback/, name);
+    assert.equal((await owner.one(`select count(*)::int as n from meta.web_request_log where app_id = $1`, [hr]))!.n, 0);
+    // a row changed behind the function's back: the server checks the name again and calls nothing
+    const id = (await asHr((q) => q(`select meta.web_request($1, p_callback => 'sec177.done') as id`, [`${mockBase}/sec177`])))[0].id;
+    await owner.query(`update meta.web_request_log set callback = $2 where id = $1`, [id, `sec177.done($1); insert into sec177.ran (what) values ('injected')`]);
+    await wr.webRequestTick();
+    for (let i = 0; i < 4; i++) {
+      await owner.query(`update meta.web_request_log set callback_next_at = now() where id = $1 and callback_state = 'pending'`, [id]);
+      await wr.callbackTick();
+    }
+    let row = (await owner.one('select status, callback_state, callback_error from meta.web_request_log where id = $1', [id]))!;
+    assert.deepEqual([row.status, row.callback_state], ['ok', 'failed']);
+    assert.match(row.callback_error, /not schema\.function/);
+    assert.deepEqual(await ran(), []);
+    assert.equal(hits, 1, 'the request itself was sent once');
+    // a function the application's role lost the right to execute after queueing: the call fails as that role
+    const id2 = (await asHr((q) => q(`select meta.web_request($1, p_callback => 'sec177.done') as id`, [`${mockBase}/sec177`])))[0].id;
+    await owner.query(`update meta.web_request_log set callback = 'sec177.owner_only' where id = $1`, [id2]);
+    await wr.webRequestTick();
+    row = (await owner.one('select status, callback_state, callback_error from meta.web_request_log where id = $1', [id2]))!;
+    assert.match(row.callback_error, /permission denied/);
+    assert.deepEqual(await ran(), []);
+  });
+
+  test('a callback runs as the application\'s role and the queueing user, never as the owner or a role that bypasses row level security', async () => {
+    const id = (await asHr((q) => q(`select meta.web_request($1, p_callback => 'sec177.done') as id`, [`${mockBase}/sec177`])))[0].id;
+    await wr.webRequestTick();
+    const [row] = await ran();
+    const ownerName = (await owner.one('select current_user::text as u'))!.u;
+    assert.deepEqual([row.what, row.who, row.role], ['callback ok', 'king', 'hr_app']);
+    assert.notEqual(row.login, ownerName);
+    assert.equal((await owner.one('select callback_state from meta.web_request_log where id = $1', [id]))!.callback_state, 'done');
+    for (const role of ['sec177_bypass', ownerName]) {
+      const id2 = (await asHr((q) => q(`select meta.web_request($1, p_callback => 'sec177.done') as id`, [`${mockBase}/sec177`])))[0].id;
+      await owner.query('update meta.app set db_role = $2 where id = $1', [hr, role]);
+      try {
+        await wr.webRequestTick();
+      } finally {
+        await owner.query(`update meta.app set db_role = 'hr_app' where id = $1`, [hr]);
+      }
+      const r = (await owner.one('select status, callback_state, callback_error from meta.web_request_log where id = $1', [id2]))!;
+      assert.equal(r.status, 'ok');
+      assert.notEqual(r.callback_state, 'done', role);
+      assert.match(r.callback_error, /bypasses row level security or owns pgkiln|permission denied/, role);
+      await owner.query('delete from meta.web_request_log where id = $1', [id2]);
+    }
+    assert.equal((await ran()).length, 1);
+  });
+
+  test('every attempt goes through the allow-list: a retry to a host no longer allowed is refused, not sent', async () => {
+    answer = 503;
+    process.env.QUEUE_RETRY_S = '60';
+    const id = (await asHr((q) => q(`select meta.web_request($1, 'POST', '{}') as id`, [`${mockBase}/sec177`])))[0].id;
+    await wr.webRequestTick();
+    assert.equal(hits, 1);
+    assert.equal((await owner.one('select status from meta.web_request_log where id = $1', [id]))!.status, 'retry');
+    // between the attempts the host leaves the allow-list (private addresses are refused again)
+    process.env.PGKILN_REST_ALLOWED_HOSTS = 'api.example.org';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '';
+    try {
+      await owner.query(`update meta.web_request_log set next_attempt_at = now() where id = $1`, [id]);
+      await wr.webRequestTick();
+    } finally {
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      process.env.QUEUE_RETRY_S = '0';
+    }
+    const r = (await owner.one('select status, attempts, message, next_attempt_at from meta.web_request_log where id = $1', [id]))!;
+    assert.equal(hits, 1, 'the second attempt never left the server');
+    assert.equal(r.status, 'error');
+    assert.equal(r.next_attempt_at, null);
+    assert.match(r.message, /allow-list|private|network access list/);
+    // a URL the queue row was changed to (not http) is not requested either
+    const id2 = (await asHr((q) => q(`select meta.web_request($1) as id`, [`${mockBase}/sec177`])))[0].id;
+    await owner.query(`update meta.web_request_log set url = 'file:///etc/passwd?sec177' where id = $1`, [id2]);
+    await wr.webRequestTick();
+    assert.equal((await owner.one('select status from meta.web_request_log where id = $1', [id2]))!.status, 'error');
+    // the idempotency header cannot smuggle a second header or replace a credential's
+    await assert.rejects(asHr((q) => q(`select meta.web_request($1, p_idempotency_key => E'k\\r\\nX-Evil: 1')`, [`${mockBase}/sec177`])), /printable ASCII/);
+    await assert.rejects(asHr((q) => q(`select meta.web_request($1, p_idempotency_key => 'k', p_idempotency_header => E'X-A\\r\\nX-Evil')`, [`${mockBase}/sec177`])), /can't be the header/);
+    await assert.rejects(asHr((q) => q(`select meta.web_request($1, p_idempotency_key => 'k', p_idempotency_header => 'Cookie')`, [`${mockBase}/sec177`])), /can't be the header/);
+  });
+
+  test('an application reads, cancels and is called back for its own requests only', async () => {
+    answer = 503;
+    process.env.QUEUE_RETRY_S = '60';
+    try {
+      const id = (await asHr((q) => q(`select meta.web_request($1) as id`, [`${mockBase}/sec177`])))[0].id;
+      await wr.webRequestTick();
+      // the other application (same database role) sees nothing of it and cannot cancel it
+      assert.equal((await asHr((q) => q('select meta.web_response($1) as r', [id]), otherApp))[0].r, null);
+      assert.equal((await asHr((q) => q('select meta.web_request_cancel($1) as ok', [id]), otherApp))[0].ok, false);
+      assert.equal((await asHr((q) => q('select meta.web_response($1) as r', [theirRequest])))[0].r, null);
+      assert.equal((await asHr((q) => q('select meta.web_request_cancel($1) as ok', [id])))[0].ok, true);
+      // the server's own functions do nothing for a request of another transaction
+      await asHr((q) => q(`select meta.web_request_done($1, 'ok', 200, null, null, null, null)`, [id]));
+      assert.equal((await owner.one('select status from meta.web_request_log where id = $1', [id]))!.status, 'cancelled');
+      // without an application nothing is queued
+      await assert.rejects(runtime.query(`select meta.web_request($1)`, [`${mockBase}/sec177`]), /no current application/);
+    } finally {
+      process.env.QUEUE_RETRY_S = '0';
+    }
+  });
+
+  test('the builder shows a workspace its own queue and events only; changes need CSRF and a developer', async () => {
+    const evil = '<img src=x onerror=alert(177)>';
+    const mine = (await owner.one(`insert into meta.web_request_log (app_id, url, status, finished_at, message, callback, callback_state, callback_error)
+      values ($1, $2, 'gave_up', now(), $3, 'sec177.done', 'failed', $3) returning id::text`, [hr, `https://mine.example.org/sec177/${evil}?api_key=sec177-key-in-query`, `sec177 mine ${evil}`]))!.id;
+    const myEvent = (await owner.one(`insert into meta.webhook_event (app_id, module, path, event_key, body, headers, state, error)
+      values ($1, 'sec177', 'hook', $2, $3, $4, 'failed', $2) returning id::text`, [hr, `sec177-key ${evil}`, `sec177 my body ${evil}`, JSON.stringify({ 'x-kind': evil })]))!.id;
+    const dev = await signIn();
+    let page = (await dev.get('/builder/sql/rest/requests')).body;
+    assert.match(page, /mine\.example\.org/);
+    assert.doesNotMatch(page, /sec177-their-url|sec177 their error/);
+    assert.ok(!page.includes(evil) && page.includes('&lt;img src=x'), 'escaped');
+    assert.doesNotMatch(page, /sec177-key-in-query/, 'a URL\'s query string is not shown');
+    assert.doesNotMatch((await dev.get('/builder/sql/rest/requests?state=gave_up')).body, /sec177-their-url/);
+    page = (await dev.get('/builder/sql/rest/events')).body;
+    assert.match(page, /sec177-key/);
+    assert.doesNotMatch(page, /sec177-their-key|sec177 their failure/);
+    assert.ok(!page.includes(evil));
+    page = (await dev.get(`/builder/sql/rest/events/${myEvent}`)).body;
+    assert.match(page, /sec177 my body/);
+    assert.ok(!page.includes(evil));
+    assert.ok(!page.includes(SECRET));
+    assert.equal((await dev.get(`/builder/sql/rest/events/${theirEvent}`)).statusCode, 404);
+    assert.equal((await dev.get(`/builder/sql/rest/events/${theirEvent}%20or%201=1`)).statusCode, 404);
+    // another workspace's rows can't be changed, by any action
+    for (const action of ['requeue', 'cancel', 'callback']) await dev.post(`/builder/sql/rest/requests/${theirRequest}`, { __csrf: dev.lastCsrf, action });
+    await dev.post(`/builder/sql/rest/events/${theirEvent}`, { __csrf: dev.lastCsrf, action: 'reprocess' });
+    assert.equal((await owner.one('select status from meta.web_request_log where id = $1', [theirRequest]))!.status, 'gave_up');
+    assert.equal((await owner.one('select state from meta.webhook_event where id = $1', [theirEvent]))!.state, 'failed');
+    // a forged request changes nothing; neither does an application user or a visitor
+    assert.equal((await dev.post(`/builder/sql/rest/requests/${mine}`, { __csrf: 'forged', action: 'requeue' })).statusCode, 403);
+    assert.equal((await dev.post(`/builder/sql/rest/events/${myEvent}`, { __csrf: 'forged', action: 'reprocess' })).statusCode, 403);
+    const king = await as('king');
+    for (const url of ['/builder/sql/rest/requests', '/builder/sql/rest/events', `/builder/sql/rest/events/${myEvent}`]) {
+      assert.equal((await king.get(url)).headers.location, '/builder/login', url);
+      const visitor = await app.inject({ method: 'GET', url });
+      assert.equal(visitor.statusCode, 302, url);
+      assert.doesNotMatch(visitor.body, /sec177/);
+    }
+    assert.equal((await owner.one('select status from meta.web_request_log where id = $1', [mine]))!.status, 'gave_up');
+    assert.equal((await owner.one('select state from meta.webhook_event where id = $1', [myEvent]))!.state, 'failed');
+    assert.equal((await dev.post(`/builder/sql/rest/requests/${mine}`, { __csrf: dev.lastCsrf, action: 'drop' })).statusCode, 400);
+    // the developer's own: re-queue and re-process work
+    await dev.post(`/builder/sql/rest/requests/${mine}`, { __csrf: dev.lastCsrf, action: 'requeue' });
+    const r = (await owner.one('select status, attempts, callback_state from meta.web_request_log where id = $1', [mine]))!;
+    assert.deepEqual(r, { status: 'queued', attempts: 0, callback_state: null });
+    await dev.post(`/builder/sql/rest/requests/${mine}`, { __csrf: dev.lastCsrf, action: 'cancel' });
+    assert.equal((await owner.one('select status from meta.web_request_log where id = $1', [mine]))!.status, 'cancelled');
+    await dev.post(`/builder/sql/rest/events/${myEvent}`, { __csrf: dev.lastCsrf, action: 'reprocess' });
+    assert.deepEqual((await owner.one('select state, attempts from meta.webhook_event where id = $1', [myEvent]))!, { state: 'received', attempts: 0 });
+  });
+
+  test('the signing secret is not in an export, and a webhook handler travels with its module', async () => {
+    const doc = JSON.stringify((await owner.one(`select meta.export_app('hr') as doc`))!.doc);
+    assert.ok(!doc.includes(SECRET));
+    assert.doesNotMatch(doc, /secret_enc/);
+    assert.match(doc, /"type": ?"webhook"/);
+    assert.match(doc, /"credential": ?"SEC177_HOOK"/);
+    assert.doesNotMatch(doc, /sec177 my body|webhook_event"/);
+  });
+});
