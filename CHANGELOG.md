@@ -5,8 +5,6 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.92.0] - 2026-11-13
-
 ### Added
 - **`meta.web_request` is an outbox** (sprint 177; migration 160): a request queued from SQL in the transaction
   that changes your data is now delivered reliably. The server sends it as soon as the transaction commits
@@ -31,6 +29,18 @@ All notable changes to this project are documented here. The format follows
   done or failed. SQL Workshop → RESTful Services → **Webhook events** lists the events per handler with their
   state and error, shows an event's body and has *Re-process*; events are removed after the handler's retention
   (default 30 days). HR Demo: `POST events/crm` in the module `hr`.
+
+### Changed
+- (sprint 177) A request queued with `meta.web_request` outside a page process that gets a 5xx or 429 answer, or
+  no answer because the service was unreachable or slow, is no longer final after one attempt: it waits in status
+  `retry` and is tried again (5 attempts by default; `p_max_attempts => 1` keeps one attempt). After the last
+  attempt its status is `gave_up`, where it was `ok` (with a 5xx status code) or `error` before. `POST`, `PUT`,
+  `PATCH` and `DELETE` requests now carry an `Idempotency-Key` header (`p_idempotency_header => null` leaves
+  it out). New server settings: `QUEUE_RETRY_S`, `QUEUE_RETRY_MAX_S`, `WEBHOOKS`.
+
+## [0.92.0] - 2026-11-13
+
+### Added
 - **Response headers from a PL/pgSQL REST handler** (sprint 176, DA-11 leftover; migration 159
   `meta.rest_header`): `perform meta.rest_header('Location', …)` sets a header of the response, next to
   `meta.rest_reply` for its body and status (ORDS: an OUT parameter bound to a header). Headers the server sets
@@ -67,14 +77,6 @@ All notable changes to this project are documented here. The format follows
 - **The SQL Worksheet loads the next rows as you scroll** (sprint 173, DA-3 leftover): when a SELECT has more than
   the 500 rows shown, the next 500 load when the end of the Query Result comes into view, up to 10,000. *All rows*
   stays for browsers without JavaScript, for a tab's open transaction and when running as an application's role.
-
-### Changed
-- (sprint 177) A request queued with `meta.web_request` outside a page process that gets a 5xx or 429 answer, or
-  no answer because the service was unreachable or slow, is no longer final after one attempt: it waits in status
-  `retry` and is tried again (5 attempts by default; `p_max_attempts => 1` keeps one attempt). After the last
-  attempt its status is `gave_up`, where it was `ok` (with a 5xx status code) or `error` before. `POST`, `PUT`,
-  `PATCH` and `DELETE` requests now carry an `Idempotency-Key` header (`p_idempotency_header => null` leaves
-  it out). New server settings: `QUEUE_RETRY_S`, `QUEUE_RETRY_MAX_S`, `WEBHOOKS`.
 
 ## [0.91.0] - 2026-11-12
 
