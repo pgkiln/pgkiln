@@ -33,15 +33,17 @@ export async function startQueueRunner(o: {
       do {
         again = false;
         await o.tick();
-      } while (again && !stopped);
-      if (o.nextDueS && !stopped) {
-        const s = await o.nextDueS();
-        clearTimeout(due);
-        if (s !== null && s < o.pollS) {
-          due = setTimeout(() => void run(), Math.max(0.05, s) * 1000 + 20);
-          due.unref();
+        if (o.nextDueS && !stopped) {
+          const s = await o.nextDueS();
+          clearTimeout(due);
+          if (s !== null && s < o.pollS) {
+            due = setTimeout(() => void run(), Math.max(0.05, s) * 1000 + 20);
+            due.unref();
+          }
         }
-      }
+        // a wake-up that came during the pass or the query above: another pass (nothing is awaited between this
+        // check and "busy = false", so none is lost)
+      } while (again && !stopped);
     } catch (e) {
       console.error(`${o.label}:`, (e as Error).message);
     } finally {

@@ -415,6 +415,34 @@ describe('sprint 177: delivery when queued', () => {
     await wr.stopWebRequestRunner();
   });
 
+  test('a wake-up while the runner asks when the next retry is due is not lost', async () => {
+    const { startQueueRunner } = await import('../src/queue-runner.ts');
+    let ticks = 0;
+    let woken = false;
+    const q = await startQueueRunner({
+      channel: 'pgkiln_test_wake_s177',
+      label: 'test queue',
+      tick: async () => {
+        ticks++;
+        await new Promise((x) => setTimeout(x, 20));
+      },
+      // the wake-up arrives here, after the pass and before the runner is idle again
+      nextDueS: async () => {
+        if (!woken) {
+          woken = true;
+          q.wake();
+        }
+        await new Promise((x) => setTimeout(x, 20));
+        return null;
+      },
+      pollS: 3600,
+    });
+    const t0 = Date.now();
+    while (ticks < 2 && Date.now() - t0 < 2000) await new Promise((x) => setTimeout(x, 10));
+    await q.stop();
+    assert.equal(ticks, 2);
+  });
+
   test('a request queued in a transaction that rolls back is never made', async () => {
     await assert.rejects(asApp(async (q) => {
       await q(`select meta.web_request($1, 'POST', '{}')`, [`${mockBase}/rolled-back`]);
