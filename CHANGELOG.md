@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-11-13
+
 ### Added
 - **`meta.web_request` is an outbox** (sprint 177; migration 160): a request queued from SQL in the transaction
   that changes your data is now delivered reliably. The server sends it as soon as the transaction commits

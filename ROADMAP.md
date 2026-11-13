@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.91.0 (November 2026): parity leftovers: keep notices in the SQL Worksheet, workflow instance diagrams in the Workflow Console, plv8 bodies highlighted as JavaScript, a version per App Gallery app.
+- **Current release:** 0.92.0 (November 2026): parity leftovers: share links for query results and next rows on scroll in the SQL Worksheet, column validations in an interactive grid, rollback blocks in change sets, ETags, header parameters and response headers in RESTful Services, an application page from a saved chart.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 - **Beyond parity, unreleased (sprint 177):** `meta.web_request` as an outbox (retries, callbacks, ordered delivery,
