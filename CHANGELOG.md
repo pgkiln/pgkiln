@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The Change Log records DDL from other tools** (sprint 180, DA-17 leftover; migration 163): DDL run with psql, a
+  migration tool or another IDE can be recorded as change sets too, with the source *Another tool*. It needs two
+  event triggers that only a superuser can create, so it is off until turned on: SQL Workshop → Change Log → *DDL
+  from other tools* shows the statements, or a button for administrators when pgkiln connects as a superuser.
+  pgkiln's own sessions, rolled-back statements, system schemas and sessions that `set pgkiln.change_log = 'off'`
+  are not recorded.
 - **A tour of the SQL Workshop** (sprint 179, DA-9 and DA-15 leftover; no migration): *Take the tour* on the SQL
   Workshop home walks through the tools a developer uses most, a step per tool: what it is for, something to try
   and a button that opens it. Plain pages, in the builder's eleven languages.
@@ -27,6 +33,13 @@ All notable changes to this project are documented here. The format follows
   then always drawn. The legend shows a lines, polygons or extruded layer in the colour of its style.
 - **Sample Maps 1.1**: a page *Lines and areas* with a layer of each shape kind: polygons with one style, buildings
   shaded by their height (extruded) and routes with a colour per row, left out of the legend.
+
+### Changed
+- (sprint 180) Webhooks: events of a disabled REST module wait and are processed once the module is enabled again
+  (they were processed anyway); the Webhook events list says why they wait. Refused webhook requests are written to
+  the activity log at most once per handler a minute, and the row says how many more were refused since the last
+  one. A pass of the webhook runner or the web request outbox that reaches its limit is followed by the next pass at
+  once instead of at the next poll.
 
 ## [0.93.0] - 2026-11-13
 

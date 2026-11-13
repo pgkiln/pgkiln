@@ -10,6 +10,7 @@ import { splitStatements } from '../binds.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, region, send, shell, workshopTabs, type Req } from './ui.ts';
 import { currentWorkspace, workshopDb } from './workspaces.ts';
+import { isAdmin } from './locks.ts';
 import { tr, type BuilderKey } from './i18n.ts';
 
 // (sprint 106, Database Actions DA-17; migration 118) SQL Workshop › Change Log: the change sets recorded from the
@@ -52,7 +53,32 @@ async function latestExports(s: Session) {
 }
 
 const when = (t: string | null) => (t ? t.slice(0, 16).replace('T', ' ') : '');
-const SOURCE_LABELS: Record<string, BuilderKey> = { worksheet: 'sql.tool.worksheet', table: 'cl.from.table', compare: 'sql.tool.compare' };
+const SOURCE_LABELS: Record<string, BuilderKey> = { worksheet: 'sql.tool.worksheet', table: 'cl.from.table', compare: 'sql.tool.compare', external: 'cl.from.external' };
+
+// (sprint 180, DA-17 leftover; migration 163) DDL run outside pgkiln is recorded by two event triggers a superuser creates
+export const CAPTURE_ON = `create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop();`;
+export const CAPTURE_OFF = `drop event trigger if exists pgkiln_change_log_ddl;
+drop event trigger if exists pgkiln_change_log_drop;`;
+
+/** Whether both event triggers exist and are enabled, and whether pgkiln's own connection could create them. */
+export async function captureState() {
+  const r = await owner.one<{ on: boolean; superuser: boolean }>(
+    `select (select count(*) from pg_event_trigger where evtname in ('pgkiln_change_log_ddl', 'pgkiln_change_log_drop') and evtenabled <> 'D') = 2 as on,
+            (select rolsuper from pg_roles where rolname = current_user) as superuser`);
+  return { on: !!r?.on, superuser: !!r?.superuser };
+}
+
+async function capturePanel(s: Session) {
+  const tx = tr(s);
+  const st = await captureState();
+  const canSwitch = st.superuser && (await isAdmin(s.username));
+  return region(tx('cl.ext.title'), html`<p>${st.on ? html`<span class="tag tag-ok">${tx('cl.ext.state_on')}</span> ${tx('cl.ext.on')}` : html`<span class="tag">${tx('cl.ext.state_off')}</span> ${tx('cl.ext.off')}`}</p>
+    <p class="muted small">${tx.code('cl.ext.help')}</p>
+    ${canSwitch
+      ? html`<form method="post" action="${CHANGES}/capture" class="buttons">${csrf(s)}<button class="btn${st.on ? '' : ' btn-hot'}" name="on" value="${st.on ? '0' : '1'}">${tx(st.on ? 'cl.ext.turn_off' : 'cl.ext.turn_on')}</button></form>`
+      : html`<p class="small">${tx(st.on ? 'cl.ext.sql_off' : 'cl.ext.sql_on')}</p><pre class="source wrap-pre" data-code-view="sql" tabindex="0" aria-label="SQL">${st.on ? CAPTURE_OFF : CAPTURE_ON}</pre>`}`);
+}
 
 async function listPage(s: Session, q: Record<string, unknown>) {
   const tx = tr(s);
@@ -116,7 +142,8 @@ async function listPage(s: Session, q: Record<string, unknown>) {
   const main = html`<h1 class="u-mb1">${tx('rail.sql_workshop')}</h1>${workshopTabs('changes', s)}
     <p class="muted">${tx('cl.intro')}</p>
     ${nav}
-    ${schema ? region(tx('cl.change_sets_of', { schema }), html`${exportPick}${table}${downloads}`) : region(tx('cl.change_sets'), table)}`;
+    ${schema ? region(tx('cl.change_sets_of', { schema }), html`${exportPick}${table}${downloads}`) : region(tx('cl.change_sets'), table)}
+    ${await capturePanel(s)}`;
   return shell(s, tx('sql.tool.changes'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.changes')]], main, 'sql');
 }
 
@@ -152,6 +179,30 @@ export async function changeLogRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     return send(reply, s, await listPage(s, req.query ?? {}));
+  });
+
+  // (sprint 180) recording DDL of other tools on or off: an administrator, when pgkiln connects as a superuser
+  app.post(`${CHANGES}/capture`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const tx = tr(s);
+    if (!(await isAdmin(s.username)) || !(await captureState()).superuser) return reply.code(403).send(tx('cl.ext.not_allowed'));
+    const on = (req.body as Record<string, unknown> | undefined)?.on === '1';
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(CAPTURE_OFF);
+      if (on) await c.query(CAPTURE_ON);
+      await c.query('commit');
+    } catch (e) {
+      await c.query('rollback').catch(() => {});
+      throw e;
+    } finally {
+      c.release();
+    }
+    await logActivity({ username: s.username, event: 'change_log_capture', ip: clientIp(req), detail: on ? 'on' : 'off' });
+    flash(s, tx(on ? 'cl.ext.turned_on' : 'cl.ext.turned_off'));
+    return back(reply, s, CHANGES);
   });
 
   app.post(`${CHANGES}/download`, async (req: Req, reply) => {

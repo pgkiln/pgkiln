@@ -187,7 +187,8 @@ In the builder: SQL Workshop → RESTful Services → Modules, a template's *Add
 1. The **signature** is checked on the **raw bytes** of the body, exactly as they arrived (whatever the
    `Content-Type` says: JSON, a form, XML), and compared in constant time. A missing or wrong signature, or a
    Stripe timestamp outside the tolerance, answers **401**; nothing is stored, and the refusal is in the
-   application's activity log (event `webhook_refused`, with the reason but never the signature or the body). A
+   application's activity log (event `webhook_refused`, with the reason but never the signature or the body;
+   (sprint 180) at most one row per handler a minute, which says how many more were refused since the last one). A
    body over the limit answers 413. A credential without a secret answers 503: a webhook is never accepted unsigned.
 2. The **event id** is looked up: one seen before for this handler answers **200** `{"status": "duplicate"}` and
    nothing else happens. Providers send an event again when they did not see your answer; this makes that safe.
@@ -208,7 +209,9 @@ applications per handler with their state, attempts and error; an event's page s
 *Re-process* queues a failed (or done) event again. Only developers of the application's workspace see events;
 application roles can't read `meta.webhook_event`. A webhook handler has no roles or parameters and ignores the
 module's roles (the sender has no token); `WEBHOOKS=off` stops a server from processing events (it still
-receives them). Webhooks work in [isolated workspaces](03-builder.md) as other REST module handlers do.
+receives them). (sprint 180) Events of a **disabled module** wait: they are stored, and processed once the module
+is enabled again (the list says *Waits: the module is disabled*). A server that receives many events at once
+processes them in passes of 100 and starts the next pass straight away. Webhooks work in [isolated workspaces](03-builder.md) as other REST module handlers do.
 
 GitHub, signed with HMAC-SHA256:
 

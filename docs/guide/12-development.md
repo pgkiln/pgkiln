@@ -508,6 +508,8 @@ src/
     changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
                            downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded);
                            (sprint 175) POST /sql/changes/:id/rollback (the rollback block; never run)
+                           (sprint 180, migration 163) captureState(), the panel and POST /capture: the event
+                           triggers meta.change_log_ddl / change_log_drop that record DDL of other tools (source external)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
                            connection's usable schemas), About Database; read only, with a timeout; /sql/utilities/monitor redirects to the SQL Monitor
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
