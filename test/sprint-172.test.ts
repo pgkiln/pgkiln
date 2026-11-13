@@ -121,13 +121,20 @@ describe('Workflow Console draws its instances with the Workflow Diagram (CD-7)'
 });
 
 describe('App Gallery: a version badge per app (WS-8)', () => {
+  /** The catalogue's version per card (Sample Maps is 1.1 since sprint 178). */
+  const CATALOGUE = JSON.parse(readFileSync(new URL('../examples/gallery/gallery.json', import.meta.url), 'utf8'));
   test('every sample, starter and utility card shows its version; an installed sample of another version says which', async () => {
     const b = await builder();
     for (const tab of ['samples', 'starters', 'utilities']) {
       const body = (await b.get(`/builder/gallery?tab=${tab}`)).body;
       const cards = body.split('<article class="gal-card"').slice(1);
       assert.ok(cards.length > 0, tab);
-      for (const c of cards) assert.match(c, /<span class="tag gal-version" title="Version 1\.0">v1\.0<\/span>/, `${tab}: ${/<h2>([^<]*)/.exec(c)?.[1]}`);
+      for (const c of cards) {
+        const title = /<h2>([^<]*)/.exec(c)?.[1];
+        const v = (CATALOGUE[tab] as { title: string; version: string }[]).find((x) => x.title === title)?.version;
+        assert.ok(v, `${tab}: ${title} is in gallery.json`);
+        assert.ok(c.includes(`<span class="tag gal-version" title="Version ${v}">v${v}</span>`), `${tab}: ${title}`);
+      }
     }
     const hr = (body: string) => body.split('<article class="gal-card"').find((c) => c.includes('<h2>HR Demo</h2>')) ?? '';
     assert.match(hr((await b.get('/builder/gallery')).body), /<span class="tag tag-ok">Installed<\/span>/);

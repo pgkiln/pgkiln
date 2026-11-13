@@ -14784,6 +14784,9 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     hr = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
     await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec178%'`, [hr]);
     await owner.query(`delete from meta.api_client where name = 'sec178-client'`);
+    await owner.query(`delete from meta.rest_object where app_id = $1 and alias = 'sec178-dept'`, [hr]);
+    // the test publishes hr.dept to AutoREST itself (alias sec178-dept), so it does not depend on another test
+    await owner.query(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, auth) values ($1, 'hr', 'dept', 'sec178-dept', '{GET}', 'token')`, [hr]);
     for (const m of ['sec178a', 'sec178b'])
       await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, $2, $2, $3)`,
         [hr, m, JSON.stringify([{ method: 'GET', path: 'who', type: 'sql', source: `select meta.app_user() as who, '${m}' as module` }])]);
@@ -14796,13 +14799,14 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
 
   after(async () => {
     await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec178%'`, [hr]);
+    await owner.query(`delete from meta.rest_object where app_id = $1 and alias = 'sec178-dept'`, [hr]);
     await owner.query(`delete from meta.api_client where name = 'sec178-client'`);
   });
 
   test('without a limit the client calls every module, AutoREST and the data API, as before', async () => {
     assert.equal((await get('/a/hr/rest/sec178a/who')).statusCode, 200);
     assert.equal((await get('/a/hr/rest/sec178b/who')).statusCode, 200);
-    assert.equal((await get('/a/hr/autorest/dept/')).statusCode, 200);
+    assert.equal((await get('/a/hr/autorest/sec178-dept/')).statusCode, 200);
     assert.equal(await dataApi(bearer), 'ok');
   });
 
@@ -14814,7 +14818,7 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     const b = await get('/a/hr/rest/sec178b/who');
     assert.equal(b.statusCode, 403);
     assert.doesNotMatch(b.body, /sec178b"|client:sec178/);
-    assert.equal((await get('/a/hr/autorest/dept/')).statusCode, 403);
+    assert.equal((await get('/a/hr/autorest/sec178-dept/')).statusCode, 403);
     assert.equal((await get('/a/hr/autorest/openapi.json')).statusCode, 403);
     assert.match(await dataApi(bearer), /limited to REST modules/);
     // the limit is not a grant: the module's and the handler's roles still apply
