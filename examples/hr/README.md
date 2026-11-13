@@ -46,11 +46,8 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_72_vector_search.sql` | Search by meaning: `hr.policy` gets *Relocation leave* and a managers-only *Salary bands* with row level security (`audience`); with pgvector, the vector provider `POLICY_EMBEDDINGS` (a stand-in function, `hr.policy_embedding`, eight topics), `hr.policy.embedding vector(8)` with an HNSW index and a trigger, the hybrid search configuration `POLICIES_MEANING` on page 42 (*time off for a family move* finds *Relocation leave*), and *Policy questions* (page 49): the agent `POLICY_AGENT` with the Retrieve tool `policy_search`. Needs an AI service named `HR_ASSISTANT` for page 49 |
 | `hr_80_notifications.sql` | The notification bell and live badges: HR's own notifications (`hr.notification`: leave requested and decided, workflow, automation and task messages) also go on the bell through `meta.notify`, a leave notification opening the request (page 7); *Mark all read* clears the bell too; badges from SQL (`badge_query`) on the navigation bar (*Leave requests* pending, *My tasks* you can act on), the *Pending requests* shortcut and the *Mark all read* button, refreshed every 30 seconds without a reload; a `timer` dynamic action refreshes *My notifications*. Sign in as jones, and as scott in another browser: ask for leave and watch jones's bell |
 | `hr_81_vector_search_type.sql` | *Policies by meaning only* on page 42: the search type `vector` next to part 72's hybrid one (only with pgvector) |
-<<<<<<< HEAD
 | `hr_83_grid_validations.sql` | Column validations in the *Staff* grid of page 27: a salary must be more than zero and a commission cannot be more than the salary; a row that fails is not saved and the message shows in its cell |
-=======
 | `hr_84_rest_header_parameter.sql` | A header parameter in the REST module `hr`: `GET whoami` answers the token's account and echoes the request's `X-Request-Id` header; the answer carries an ETag |
->>>>>>> 74522ad (wip: sprint 175 DA-11 header parameters of REST handlers (in: header; credentials refused))
 
 The files run in order, each once (recorded in `public.pgkiln_seed`), so new ones can be added
 later. pgkiln's own tests use this application as their fixture (`npm test` installs it first).
