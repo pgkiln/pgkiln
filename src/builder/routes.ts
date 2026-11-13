@@ -617,7 +617,7 @@ export async function builderRoutes(app: FastifyInstance) {
         await placeApp(c, made.id, ws);
         // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
         if (req.body?.check === 'true') {
-          const errors = (await advise(made.id, c, { db: await workshopDb(s) })).findings.filter((f) => f.severity === 'error');
+          const errors = (await advise(made.id, c, { db: await workshopDb(s, { raw: true }) })).findings.filter((f) => f.severity === 'error');
           if (errors.length)
             throw new Error(`the check found ${errors.length} error(s), nothing was imported: ${errors.slice(0, 5).map((f) =>
               `${f.entry ? `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.label}` : 'database'} (${f.field}): ${f.message}`).join('; ')}${errors.length > 5 ? '; …' : ''}. Fix them, or import without the check.`);

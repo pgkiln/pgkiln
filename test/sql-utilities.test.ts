@@ -25,7 +25,9 @@ async function cleanup() {
 
 async function signIn(b: Browser, username: string, password: string) {
   await b.get('/builder/login');
-  return b.submit('/builder/login', { username, password });
+  const r = await b.submit('/builder/login', { username, password });
+  if (username === 'admin' && r.statusCode === 303) await b.ownerConnection(); // (sprint 185) the owner's schemas
+  return r;
 }
 
 before(async () => {

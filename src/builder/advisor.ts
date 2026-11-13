@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { applyBinds, splitStatements } from '../binds.ts';
 import { owner, runtime, type Db } from '../db.ts';
-import { devDbForApp } from '../workspace-db.ts';
+import { appIsolated, devDbForApp } from '../workspace-db.ts';
 import { settingFrom } from '../instance.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -504,15 +504,20 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
   // (090) an isolated workspace's application: planned on the workspace's developer login, in a
   // transaction of its own (planning can run the application's functions; RESET ROLE there only
   // reaches that login, never the owner); `opts.db` names the login for an import into the workspace
-  const own = opts.db && opts.db !== owner ? opts.db : await devDbForApp(appId);
+  // (sprint 185) a shared workspace's application too: its developer login, except inside the caller's transaction on
+  // the owner (pgkiln advise / import on the command line, which signs in as the owner anyway)
+  const own = opts.db ?? (tx && !(await appIsolated(appId)) ? owner : await devDbForApp(appId));
   const inTx = !!tx && own === owner;
   const c = (inTx ? tx : await (own === owner ? owner : own).pool.connect()) as pg.PoolClient;
   try {
     await c.query(inTx ? 'savepoint advisor_all' : 'begin');
     await c.query(`set local statement_timeout = '5s'`);
     await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
-    if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
-    for (const { kind, row } of all) {
+    // (sprint 185) a developer login that isn't a member of the role yet (an import, before its commit): not checked
+    const member = !app.db_role || (await c.query(`select pg_has_role(current_user, $1, 'MEMBER') and exists (select 1 from pg_roles where rolname = $1) as ok`, [app.db_role])).rows[0].ok;
+    if (!member) findings.push({ severity: 'info', entry: null, field: 'database', message: `The SQL was not checked: the developer login can't use the role ${app.db_role} yet.` });
+    if (app.db_role && member) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
+    for (const { kind, row } of member ? all : []) {
       for (const f of sqlFields(kind, row)) {
         const sql = row[f.name];
         if (typeof sql !== 'string' || !sql.trim()) continue;
@@ -524,7 +529,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       }
     }
     // a map region's further layers (config.layers[].source)
-    for (const { kind, row } of all.filter((x) => x.kind === 'region' && x.row.type === 'map')) {
+    for (const { kind, row } of (member ? all : []).filter((x) => x.kind === 'region' && x.row.type === 'map')) {
       const entry = byKey.get(`${kind}-${row.id}`) ?? null;
       for (const l of Array.isArray(row.config?.layers) ? row.config.layers : []) {
         if (typeof l?.source !== 'string' || !l.source.trim()) continue;
@@ -534,7 +539,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       }
     }
     // (080) search configurations: their source with the columns they name
-    for (const { kind, row } of all.filter((x) => x.kind === 'search_config' && x.row.source_type !== 'list')) {
+    for (const { kind, row } of (member ? all : []).filter((x) => x.kind === 'search_config' && x.row.source_type !== 'list')) {
       const entry = byKey.get(`${kind}-${row.id}`) ?? null;
       const problems = searchConfigProblems(row);
       if (problems.length) {

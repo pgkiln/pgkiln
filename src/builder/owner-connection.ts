@@ -118,6 +118,8 @@ export function auditedOwner(s: Session, reason: string, tool = 'workshop'): Db 
       return p;
     },
   } as unknown as pg.Pool;
+  // a pg.Pool to callers that tell a pool from a client (ddl.ts readSchema): its own connect() and query() above
+  Object.setPrototypeOf(pool, pg.Pool.prototype);
   return {
     ...owner,
     pool,

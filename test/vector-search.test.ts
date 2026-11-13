@@ -49,6 +49,7 @@ async function builder() {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   return b;
 }
 const search = async (b: InstanceType<typeof Browser>, text: string, pageNo = 1, r = region) => results((await b.get(`/a/hr/${pageNo}?s${r}=${encodeURIComponent(text)}`)).body);

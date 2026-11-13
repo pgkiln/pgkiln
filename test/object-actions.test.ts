@@ -35,6 +35,7 @@ const builder = async () => {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   return b;
 };
 const act = (k: string, o: string, d: string, n?: string) => `/builder/sql/objects/action?${new URLSearchParams({ schema: S, k, o, do: d, ...(n ? { n } : {}) })}`;

@@ -171,7 +171,19 @@ export async function devDbForApp(appId: number | string | null | undefined): Pr
   const iso = await isoOfApp(appId);
   if (iso) return poolFor(iso.devRole);
   const dev = devByApp.get(Number(appId));
+  if (dev) await ensureMember(Number(appId), dev);
   return dev ? poolFor(dev, true) : devDbForWorkspace((await owner.one<{ ws: number }>('select meta.app_workspace($1::int) as ws', [String(appId)]))?.ws ?? 1);
+}
+
+/**
+ * (166) A shared workspace's developer login is a member of its applications' roles (meta.workspace_sync_roles at the
+ * commit that adds the application or changes its role); a role created after its application is granted now.
+ */
+async function ensureMember(appId: number, dev: string) {
+  const r = await owner.one<{ ok: boolean }>(
+    `select pg_has_role($2, a.db_role, 'MEMBER') as ok from meta.app a join pg_roles r on r.rolname = a.db_role
+      where a.id = $1 and $2 in (select l.rolname from pg_roles l)`, [appId, dev]);
+  if (r && !r.ok) await owner.query('select meta.workspace_sync_roles()');
 }
 
 /**

@@ -32,6 +32,7 @@ const builder = async () => {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   await b.get('/builder/sql/worksheet');
   return b;
 };
@@ -186,7 +187,7 @@ describe('worksheet transactions', () => {
     await run(b, 'tx8', `update ${S}.emp set sal = sal where id = 1`);
     assert.match((await b.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'statement', ws_tab: 'tx8' })).body, /This worksheet has an open transaction: Commit or Rollback it first/);
     const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
-    assert.match(await run(b, 'tx8', 'select 1', { as_app: String(hr) }), /This worksheet&#39;s transaction runs as the builder&#39;s owner connection: Commit or Rollback it before changing Run as\./);
+    assert.match(await run(b, 'tx8', 'select 1', { as_app: String(hr) }), /This worksheet&#39;s transaction runs as the Owner connection \(pgkiln&#39;s own rights; every statement is recorded\): Commit or Rollback it before changing Run as\./);
     const v = await run(b, 'tx8', `select 1;\nvacuum ${S}.emp`, { mode: 'script' });
     assert.match(v, /Line 2: VACUUM can&#39;t run inside a transaction\. Switch the worksheet to Autocommit to run it\./);
     assert.equal(JSON.parse((await b.get('/builder/sql/worksheet/txn?tab=tx8')).body).state, 'open', 'the transaction is intact');
@@ -201,6 +202,7 @@ describe('worksheet transactions', () => {
     assert.match(p, new RegExp(`<td>${hr.db_role}</td>`));
     assert.match(p, new RegExp(`title="Runs as the role ${hr.db_role} of `));
     await b.submit('/builder/sql/worksheet', { sql: '', mode: 'rollback', ws_tab: 'tx9', txn: 'on' });
+    await b.ownerConnection(); // (sprint 185) Run as an application's role ended the Owner connection
     await run(b, 'tx10', `create table ${S}.made_in_tx (a int)`);
     const ex = (await b.submit('/builder/sql/worksheet', { sql: `select * from ${S}.made_in_tx`, mode: 'autotrace', ws_tab: 'tx10', txn: 'on' })).body;
     assert.match(ex, /Seq Scan/);

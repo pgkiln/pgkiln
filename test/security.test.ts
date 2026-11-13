@@ -55,6 +55,13 @@ class Browser {
     await this.get(`/a/${alias}/login`);
     return this.post(`/a/${alias}/login`, { __csrf: this.lastCsrf, username: user, password });
   }
+  /** (sprint 185) an administrator's SQL Workshop on the Owner connection, for tests of tables the owner made */
+  async ownerConnection(reason = 'test fixture: tables made by the owner') {
+    await this.get('/builder/sql');
+    const res = await this.post('/builder/sql/run-as', { __csrf: this.lastCsrf, as: 'owner', reason });
+    assert.equal(res.statusCode, 303, 'Owner connection');
+    return res;
+  }
 }
 
 const as = async (user: string) => {
@@ -3742,6 +3749,7 @@ describe('sprint 32 item 3: SQL Workshop unload data', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/unload?source=query');
     return b;
   };
@@ -5146,6 +5154,7 @@ describe('sprint 35 sampledata', () => {
     dev = new FileBrowser(app);
     await dev.get('/builder/login');
     await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await dev.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
   });
   after(async () => {
     await owner.query(`drop schema if exists ${S} cascade`);
@@ -5556,6 +5565,7 @@ describe('sprint 36 app builder ai', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: user, password: pw });
+    if (user === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder');
     return b;
   };
@@ -7520,6 +7530,7 @@ describe('sprint 67 workspace export and import', () => {
     const b = new FileBrowser(app);
     await b.get('/builder/login');
     await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder');
     await b.submit('/builder/workspace', { workspace: String(ws) });
     await b.get('/builder/workspace-export');
@@ -8125,6 +8136,7 @@ describe('sprint 89 Object Browser column toolbar', () => {
       const dev = new Browser();
       await dev.get('/builder/login');
       await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      await dev.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
       await dev.get('/builder/sql/objects?schema=sec89&k=table&o=sec89.t&tab=columns');
       for (const expr of ["0); drop table sec89.t; select (1", "0 /* x */", "now() -- x", 'x'.repeat(201)]) {
         const res = await dev.post('/builder/sql/objects/alter', { __csrf: dev.lastCsrf, schema: 'sec89', table: 'sec89.t', action: 'modify', column: 'name', default_action: 'set', default: expr });
@@ -8204,6 +8216,7 @@ describe('sprint 92 the SQL Worksheet: history, plans, SQL inserts', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/worksheet');
     return b;
   };
@@ -8242,6 +8255,7 @@ describe('sprint 93 the SQL Worksheet: scripts as files, bind values', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/worksheet');
     return b;
   };
@@ -8293,6 +8307,7 @@ describe('sprint 94 object menus', () => {
     const a = new Browser();
     await a.get('/builder/login');
     await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    await a.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     const ws = (await a.get(`/builder/sql/worksheet?schema=${encodeURIComponent('sec94<i>')}`)).body;
     assert.doesNotMatch(ws, /<img src=x|<i>/);
     assert.match(ws, /class="menu obj-menu"/);
@@ -8319,6 +8334,7 @@ describe('sprint 95 Table Properties', () => {
     const a = new Browser();
     await a.get('/builder/login');
     await a.post('/builder/login', { __csrf: a.lastCsrf, username: 'admin', password: 'admin' });
+    await a.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     const page = (await a.get(`/builder/sql/objects/table?${new URLSearchParams({ o: 'sec95."<img src=x onerror=alert(95)>"' })}`)).body;
     assert.doesNotMatch(page, /<img src=x/);
     const form = { schema: 'sec95', name: 't', 'col.0.name': 'a', 'col.0.type': 'int', mode: 'apply' };
@@ -8357,6 +8373,7 @@ describe('sprint 96 Launchpad pins and the builder search', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql');
     return b;
   };
@@ -8430,6 +8447,7 @@ describe('sprint 98 data modeler', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/modeler');
     return b;
   };
@@ -8496,6 +8514,7 @@ describe('sprint 99 database users', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/db-users/new');
     return b;
   };
@@ -8600,6 +8619,7 @@ describe('sprint 100 rest', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/rest');
     return b;
   };
@@ -8752,6 +8772,7 @@ describe('sprint 102 monitor', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql');
     return b;
   };
@@ -8844,6 +8865,7 @@ describe('sprint 101 scheduling', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql');
     return b;
   };
@@ -9072,6 +9094,7 @@ describe('sprint 104 rest handlers', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/rest/modules');
     return b;
   };
@@ -9270,6 +9293,7 @@ describe('sprint 106 change log', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/changes');
     return b;
   };
@@ -9361,6 +9385,7 @@ describe('sprint 107 transaction mode', () => {
     const b = new Browser();
     await b.get('/builder/login');
     await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username });
+    if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's tables: the Owner connection
     await b.get('/builder/sql/worksheet');
     return b;
   };
@@ -15583,6 +15608,13 @@ describe('sprint 185 the SQL Workshop runs as the workspace\'s developer login, 
     const esc = await owner.one(`select to_regclass('public.sec185_escape') as t`);
     if (esc!.t) assert.equal((await owner.one(`select u from public.sec185_escape`))!.u, dev, 'never the owner');
     assert.equal((await owner.one(`select to_regclass('meta.sec185_escape') as t`))!.t, null);
+  });
+
+  test('a Schema Import takes the default privileges of the dump\'s own schema only', async () => {
+    const { checkStatement } = await import('../src/dumpscript.ts');
+    assert.equal(checkStatement('ALTER DEFAULT PRIVILEGES FOR ROLE pgkiln_ws1_dev_ab12cd34 IN SCHEMA s GRANT SELECT,INSERT ON TABLES TO s_app;', 's'), null);
+    assert.match(checkStatement('ALTER DEFAULT PRIVILEGES FOR ROLE x IN SCHEMA meta GRANT ALL ON TABLES TO x;', 's')!, /outside the dump's schema/);
+    assert.match(checkStatement('ALTER DEFAULT PRIVILEGES GRANT ALL ON TABLES TO x;', 's')!, /not something pg_dump writes/, 'not without a schema');
   });
 
   test('a lockout check warns when DATABASE_URL is a superuser', async () => {

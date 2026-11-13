@@ -26,6 +26,7 @@ before(async () => {
   dev = new Browser(app);
   await dev.get('/builder/login');
   await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+  await dev.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
 });
 
 after(async () => {

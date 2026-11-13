@@ -181,6 +181,7 @@ describe('sprint 135 AP-2: full-text search configurations', () => {
     const b = new Browser(app);
     await b.get('/builder/login');
     assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
+    await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
     await owner.query(`create table ${S}.article (id int primary key, title text, body varchar(2000), n int)`);
     const ref = `${S}.article`;
     const form = (await b.get(`/builder/sql/objects/fulltext?o=${ref}`)).body;

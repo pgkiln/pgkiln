@@ -246,6 +246,9 @@ export function checkStatement(sql: string, schema: string): string | null {
   m = re(String.raw`^(?:grant|revoke)\s+.+?\s+on\s+schema\s+(${ID})`).exec(s);
   if (m) return ident(m[1]) === schema ? null : outside(m[1]);
   if (/^(grant|revoke)\b/i.test(s) && !/\son\s/i.test(s)) return 'role memberships are not granted from a dump';
+  // (sprint 185) default privileges in the schema (a workspace's developer login has them: migration 166)
+  m = re(String.raw`^alter\s+default\s+privileges\s+(?:for\s+(?:role|user)\s+${ID}(?:\s*,\s*${ID})*\s+)?in\s+schema\s+(${ID})\s+(?:grant|revoke)\s`).exec(s);
+  if (m) return ident(m[1]) === schema ? null : outside(m[1]);
   // never: ownership, moving objects to another schema
   if (/^alter\b/i.test(s) && /\bowner\s+to\b/i.test(s)) return 'OWNER TO is not run (pg_restore runs with --no-owner)';
   if (/^alter\b/i.test(s) && /\bset\s+schema\b/i.test(s)) return 'SET SCHEMA would move an object out of the dump\'s schema';

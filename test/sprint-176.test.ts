@@ -40,6 +40,7 @@ const builder = async (username = 'admin', password = 'admin') => {
   const b = new Browser(app);
   await b.get('/builder/login');
   assert.equal((await b.submit('/builder/login', { username, password })).statusCode, 303);
+  if (username === 'admin') await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   await b.get('/builder/sql/worksheet');
   return b;
 };

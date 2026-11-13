@@ -125,6 +125,7 @@ describe('SQL Workshop pages', () => {
       const dev = new Browser(app);
       await dev.get('/builder/login');
       await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+      await dev.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
       const first = await dev.get('/builder/sql/ddl');
       assert.equal(first.statusCode, 200);
       assert.match(first.body, new RegExp(`<option value="${A}">`));

@@ -29,6 +29,7 @@ async function builder() {
   const b = new Browser(app);
   await b.get('/builder/login');
   await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+  await b.ownerConnection(); // (sprint 185) the owner's schemas: the Owner connection
   await b.get('/builder/sql/load');
   return b;
 }
