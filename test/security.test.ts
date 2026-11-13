@@ -14758,6 +14758,7 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
   let hr = 0;
   let cid = 0;
   let clientId = '';
+  let dept = '';
   let bearer = '';
   const get = (url: string, token = bearer) => app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
   const limit = (modules: string[] | null) => owner.query('update meta.api_client set rest_modules = $2 where id = $1', [cid, modules]);
@@ -14785,8 +14786,9 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec178%'`, [hr]);
     await owner.query(`delete from meta.api_client where name = 'sec178-client'`);
     await owner.query(`delete from meta.rest_object where app_id = $1 and alias = 'sec178-dept'`, [hr]);
-    // the test publishes hr.dept to AutoREST itself (alias sec178-dept), so it does not depend on another test
-    await owner.query(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, auth) values ($1, 'hr', 'dept', 'sec178-dept', '{GET}', 'token')`, [hr]);
+    // hr.dept on AutoREST: the test publishes it itself (alias sec178-dept) unless another test already did
+    await owner.query(`insert into meta.rest_object (app_id, schema_name, object_name, alias, methods, auth) values ($1, 'hr', 'dept', 'sec178-dept', '{GET}', 'token') on conflict do nothing`, [hr]);
+    dept = (await owner.one(`select alias from meta.rest_object where app_id = $1 and schema_name = 'hr' and object_name = 'dept'`, [hr]))!.alias;
     for (const m of ['sec178a', 'sec178b'])
       await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, $2, $2, $3)`,
         [hr, m, JSON.stringify([{ method: 'GET', path: 'who', type: 'sql', source: `select meta.app_user() as who, '${m}' as module` }])]);
@@ -14806,7 +14808,7 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
   test('without a limit the client calls every module, AutoREST and the data API, as before', async () => {
     assert.equal((await get('/a/hr/rest/sec178a/who')).statusCode, 200);
     assert.equal((await get('/a/hr/rest/sec178b/who')).statusCode, 200);
-    assert.equal((await get('/a/hr/autorest/sec178-dept/')).statusCode, 200);
+    assert.equal((await get(`/a/hr/autorest/${dept}/`)).statusCode, 200);
     assert.equal(await dataApi(bearer), 'ok');
   });
 
@@ -14818,7 +14820,7 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     const b = await get('/a/hr/rest/sec178b/who');
     assert.equal(b.statusCode, 403);
     assert.doesNotMatch(b.body, /sec178b"|client:sec178/);
-    assert.equal((await get('/a/hr/autorest/sec178-dept/')).statusCode, 403);
+    assert.equal((await get(`/a/hr/autorest/${dept}/`)).statusCode, 403);
     assert.equal((await get('/a/hr/autorest/openapi.json')).statusCode, 403);
     assert.match(await dataApi(bearer), /limited to REST modules/);
     // the limit is not a grant: the module's and the handler's roles still apply
@@ -14859,8 +14861,13 @@ describe('sprint 178 OAuth clients limited to REST modules', () => {
     await dev.post(url, { __csrf: dev.lastCsrf, modules: 'SEC178A sec178b, sec178a' });
     assert.deepEqual(await mods(), ['sec178a', 'sec178b']);
     // a client of another application is not found through this one's URL
-    const other = (await owner.one(`select id from meta.app where alias <> 'hr' order by id limit 1`))!.id;
-    assert.equal((await dev.post(`/builder/apps/${other}/api/clients/${cid}/modules`, { __csrf: dev.lastCsrf, modules: '' })).statusCode, 404);
+    await owner.query(`delete from meta.app where alias = 'sec178-other'`);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) select 'sec178-other', 'Other', 'none', db_role from meta.app where alias = 'hr' returning id`))!.id;
+    try {
+      assert.equal((await dev.post(`/builder/apps/${other}/api/clients/${cid}/modules`, { __csrf: dev.lastCsrf, modules: '' })).statusCode, 404);
+    } finally {
+      await owner.query(`delete from meta.app where id = $1`, [other]);
+    }
     assert.deepEqual(await mods(), ['sec178a', 'sec178b']);
     await dev.post(url, { __csrf: dev.lastCsrf, modules: '' });
     assert.equal(await mods(), null);
