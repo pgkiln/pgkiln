@@ -7696,4 +7696,13 @@ export const fr: BuilderMessages = {
   'whk.attempts': 'Tentatives',
   'whk.attempts_help': 'Combien de fois le bloc s\'exécute avant que l\'événement soit en échec.',
   'whk.e.credential': 'Les identifiants web {name} n\'existent ni dans cette application ni dans son espace de travail.',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': 'Modules REST de {name}',
+  'apip.modules_ph': 'Modules REST : toute l\'application',
+  'apip.modules_help': 'Laissez vide pour toute l\'application. Avec des noms de modules REST (séparés par des virgules), les jetons du client ne valent que pour ces modules : ni AutoREST ni API de données. Modules : {modules}',
+  'apip.modules_saved': '{name} est limité à ces modules REST : {modules}.',
+  'apip.modules_all': '{name} peut de nouveau appeler toute l\'application.',
+  'apip.modules_unknown': 'Cette application n\'a pas de module REST nommé {names}.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': 'Ne pas afficher dans la légende (toujours visible)',
 };

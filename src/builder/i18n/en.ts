@@ -7700,4 +7700,13 @@ export const en = {
   'whk.attempts': 'Attempts',
   'whk.attempts_help': 'How often the block runs before the event is failed.',
   'whk.e.credential': 'Web credential {name} does not exist in this application or its workspace.',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': 'REST modules of {name}',
+  'apip.modules_ph': 'REST modules: the whole application',
+  'apip.modules_help': 'Leave blank for the whole application. With names of REST modules (comma-separated), the client\'s tokens work for those modules only: no AutoREST and no data API. Modules: {modules}',
+  'apip.modules_saved': '{name} is limited to these REST modules: {modules}.',
+  'apip.modules_all': '{name} may call the whole application again.',
+  'apip.modules_unknown': 'This application has no REST module named {names}.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': 'Leave out of the legend (always shown)',
 } as const;

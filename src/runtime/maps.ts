@@ -94,6 +94,8 @@ export interface LayerDef {
   cluster: boolean;
   link: Link | undefined;
   hidden: boolean;
+  /** (sprint 178, CD-6) false: the layer is always drawn and not listed in the map's legend */
+  legend: boolean;
   /** (0.31) loaded for the visible area only, again when the map moves */
   visibleArea: boolean;
   /** (0.31) served as vector tiles */
@@ -110,6 +112,7 @@ export function layerDefs(r: Region): LayerDef[] {
     cluster: r.config.cluster === true,
     link: r.config.link,
     hidden: false,
+    legend: r.config.no_legend !== true,
     visibleArea: r.config.visible_area === true,
     tiles: r.config.tiles === true,
   };
@@ -123,7 +126,9 @@ export function layerDefs(r: Region): LayerDef[] {
       style: shapeStyle(l.style),
       cluster: l.cluster === true,
       link: l.link && typeof l.link === 'object' && Number.isInteger(l.link.page) ? l.link : undefined,
-      hidden: l.hidden === true,
+      // a layer left out of the legend can't be switched on, so it is never off at first
+      hidden: l.hidden === true && l.no_legend !== true,
+      legend: l.no_legend !== true,
       visibleArea: l.visible_area === true,
       tiles: l.tiles === true,
     }));
@@ -213,7 +218,7 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
   const g = await postgis();
   const defs = layerDefs(r);
   const t = ctx.locale.t;
-  const layers: { name: string; kind: LayerDef['kind']; cluster: boolean; hidden: boolean; color: number; points: Point[]; shapes: unknown[]; area?: string; tiles?: string }[] = [];
+  const layers: { name: string; kind: LayerDef['kind']; cluster: boolean; hidden: boolean; legend: boolean; swatch?: string; color: number; points: Point[]; shapes: unknown[]; area?: string; tiles?: string }[] = [];
   const errors: Raw[] = [];
   const base = `${ctx.base}/${ctx.page.page_no}/map/${r.id}`;
   const version = Date.now().toString(36);
@@ -221,7 +226,9 @@ export async function renderMap(ctx: PageContext, r: Region): Promise<Raw> {
     try {
       // vector tiles and visible-area layers: the browser fetches what it shows; nothing in the page
       const { points, shapes } = def.tiles || def.visibleArea ? { points: [], shapes: [] } : await loadLayer(ctx, def, g);
-      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers' && !def.tiles, hidden: def.hidden, color: i + 1, points, shapes,
+      layers.push({ name: ctx.locale.tr(def.name), kind: def.kind, cluster: def.cluster && def.kind === 'markers' && !def.tiles, hidden: def.hidden, legend: def.legend, color: i + 1, points, shapes,
+        // (sprint 178) the legend shows a shape layer's own colour
+        ...(SHAPE_KINDS.has(def.kind) && (def.style.fill_color ?? def.style.stroke_color) ? { swatch: def.kind === 'lines' ? (def.style.stroke_color ?? def.style.fill_color) : (def.style.fill_color ?? def.style.stroke_color) } : {}),
         ...(def.visibleArea && !def.tiles ? { area: `${base}/layer/${i}` } : {}),
         // v: tiles are cached for a minute; a new page view (other item values) gets new ones
         ...(def.tiles ? { tiles: `${base}/tiles/${i}/{z}/{x}/{y}.mvt?v=${version}` } : {}) });

@@ -7696,4 +7696,13 @@ export const zhCN: BuilderMessages = {
   'whk.attempts': '尝试次数',
   'whk.attempts_help': '在事件判为失败之前运行该块的次数。',
   'whk.e.credential': 'Web 凭据 {name} 在此应用程序及其工作区中不存在。',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': '{name} 的 REST 模块',
+  'apip.modules_ph': 'REST 模块：整个应用程序',
+  'apip.modules_help': '留空表示整个应用程序。填写 REST 模块名称（用逗号分隔）后，该客户端的令牌仅适用于这些模块：不能用于 AutoREST 和数据 API。模块：{modules}',
+  'apip.modules_saved': '{name} 仅限于这些 REST 模块：{modules}。',
+  'apip.modules_all': '{name} 可以再次调用整个应用程序。',
+  'apip.modules_unknown': '此应用程序没有名为 {names} 的 REST 模块。',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': '不在图例中显示（始终可见）',
 };

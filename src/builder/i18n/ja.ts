@@ -7696,4 +7696,13 @@ export const ja: BuilderMessages = {
   'whk.attempts': '試行回数',
   'whk.attempts_help': 'イベントを失敗とするまでにブロックを実行する回数。',
   'whk.e.credential': 'Web 資格情報 {name} は、このアプリケーションにもそのワークスペースにもありません。',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': '{name} の REST モジュール',
+  'apip.modules_ph': 'REST モジュール: アプリケーション全体',
+  'apip.modules_help': '空欄ならアプリケーション全体です。REST モジュール名（カンマ区切り）を入力すると、クライアントのトークンはそれらのモジュールでのみ有効です（AutoREST とデータ API は不可）。モジュール: {modules}',
+  'apip.modules_saved': '{name} は次の REST モジュールに限定されました: {modules}。',
+  'apip.modules_all': '{name} は再びアプリケーション全体を呼び出せます。',
+  'apip.modules_unknown': 'このアプリケーションに {names} という REST モジュールはありません。',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': '凡例に表示しない（常に表示）',
 };

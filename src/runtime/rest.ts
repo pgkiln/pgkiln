@@ -168,6 +168,13 @@ export class RestError extends Error {
 export interface Caller {
   user: string;
   claims: Record<string, unknown> | null;
+  /** (sprint 178, migration 162) an OAuth client limited to these REST modules (absent: no limit) */
+  modules?: string[];
+}
+
+/** (sprint 178) Refuse a client that is limited to REST modules: `module` is the one it calls, null for anything else. */
+export function checkModuleLimit(who: Caller, module: string | null) {
+  if (who.modules && (module === null || !who.modules.includes(module))) throw new RestError(403, 'This OAuth client is not allowed here: it is limited to other REST modules.');
 }
 
 /** The caller of a request: the bearer token checked like meta.api_check does. */
@@ -185,9 +192,10 @@ export async function caller(req: FastifyRequest, a: App, publicHandler: boolean
   }
   if (claims.app !== a.alias) throw new RestError(401, 'The token is for another application.');
   if (typeof claims.client_id === 'string') {
-    const c = await owner.one('select 1 from meta.api_client where client_id = $1 and app_id = $2 and active', [claims.client_id, a.id]);
+    // read with every request: revoking a client or changing its modules applies to tokens already issued
+    const c = await owner.one<{ rest_modules: string[] | null }>('select rest_modules from meta.api_client where client_id = $1 and app_id = $2 and active', [claims.client_id, a.id]);
     if (!c) throw new RestError(401, 'The OAuth client of this token does not exist or was revoked.');
-    return { user: String(claims.app_user ?? `client:${claims.client_id}`), claims };
+    return { user: String(claims.app_user ?? `client:${claims.client_id}`), claims, ...(c.rest_modules ? { modules: c.rest_modules } : {}) };
   }
   const acc = await owner.one(
     `select ac.username, ac.active, a.access_control = 'any_user' or exists (select 1 from meta.app_access aa where aa.app_id = a.id and aa.account_id = ac.id) as allowed
@@ -277,6 +285,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
   const query = req.query as Record<string, string | string[]>;
   try {
     const who = await caller(req, a, h.auth === 'public');
+    checkModuleLimit(who, name);
     // (083) the application's availability (no builder session here: developers only means nobody)
     const refusal = availabilityRefusal(a, { username: who.user === 'nobody' ? null : who.user, developer: false });
     if (refusal) throw new RestError(refusal.status, refusal.message ?? english(refusal.key));

@@ -8,15 +8,15 @@ import { owner } from '../src/db.ts';
 const dir = new URL('../examples/gallery/', import.meta.url);
 const gallery = JSON.parse(readFileSync(new URL('gallery.json', dir), 'utf8'));
 
-export interface GallerySample { key: string; alias: string; title: string; file: string; schema: string; role: string }
+export interface GallerySample { key: string; alias: string; title: string; file: string; schema: string; role: string; version: string }
 export interface GalleryBlueprint { key: string; file: string; alias: string; schema: string; kind: 'starters' | 'utilities' }
 
 /** The single-file sample apps of examples/gallery/samples/ (HR and Tasks are installed otherwise). */
-export const SAMPLES: GallerySample[] = (gallery.samples as { key: string; alias: string; title: string; file?: string }[])
+export const SAMPLES: GallerySample[] = (gallery.samples as { key: string; alias: string; title: string; file?: string; version: string }[])
   .filter((x) => x.file?.startsWith('samples/'))
   .map((x) => {
     const sql = readFileSync(new URL(x.file!, dir), 'utf8');
-    return { key: x.key, alias: x.alias, title: x.title, file: x.file!, schema: /create schema (\w+);/.exec(sql)![1], role: /create role (\w+) nologin/.exec(sql)![1] };
+    return { key: x.key, alias: x.alias, title: x.title, file: x.file!, version: x.version, schema: /create schema (\w+);/.exec(sql)![1], role: /create role (\w+) nologin/.exec(sql)![1] };
   });
 
 export const BLUEPRINTS: GalleryBlueprint[] = (['starters', 'utilities'] as const).flatMap((kind) =>

@@ -315,7 +315,7 @@ describe('sprint 177: the builder edits webhook handlers and lists events', () =
     assert.equal(ev.state, 'done');
     const list = await dev.get(`/builder/sql/rest/events?module=${m}&path=new`);
     assert.match(list.body, /evt_b1/);
-    assert.match((await dev.get('/builder/sql/rest/events?state=failed')).body, /No events/);
+    assert.match((await dev.get(`/builder/sql/rest/events?state=failed&module=${m}`)).body, /No events/);
     const one = await dev.get(`/builder/sql/rest/events/${ev.id}`);
     assert.match(one.body, /&quot;note&quot;: &quot;&lt;b&gt;bold&lt;\/b&gt;&quot;/);
     assert.equal((await dev.submit(`/builder/sql/rest/events/${ev.id}`, { action: 'reprocess' })).statusCode, 303);

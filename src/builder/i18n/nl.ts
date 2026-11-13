@@ -7696,4 +7696,13 @@ export const nl: BuilderMessages = {
   'whk.attempts': 'Pogingen',
   'whk.attempts_help': 'Hoe vaak het blok wordt uitgevoerd voordat de gebeurtenis als mislukt geldt.',
   'whk.e.credential': 'Webreferentie {name} bestaat niet in deze applicatie of haar werkruimte.',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': 'REST-modules van {name}',
+  'apip.modules_ph': 'REST-modules: de hele applicatie',
+  'apip.modules_help': 'Laat leeg voor de hele applicatie. Met namen van REST-modules (door komma\'s gescheiden) werken de tokens van de client alleen voor die modules: geen AutoREST en geen data-API. Modules: {modules}',
+  'apip.modules_saved': '{name} is beperkt tot deze REST-modules: {modules}.',
+  'apip.modules_all': '{name} mag weer de hele applicatie aanroepen.',
+  'apip.modules_unknown': 'Deze applicatie heeft geen REST-module met de naam {names}.',
+  // ------------------------------------------------------------ sprint 178: map layers left out of the legend
+  'rs.not_in_legend': 'Niet in de legenda (altijd zichtbaar)',
 };

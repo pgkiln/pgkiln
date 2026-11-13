@@ -462,6 +462,13 @@ curl https://api.example.com/employees -H "Authorization: Bearer eyJ…"
 - **Rotating a secret:** *New secret* in the builder, or `meta.oauth_rotate_secret()`. The old
   secret keeps working for a grace period (24 hours by default, 7 days, or none), so you can
   update the integration without downtime.
+- **Limiting a client to REST modules** (ORDS: a privilege on a module, granted to a client): in the
+  client's row, *REST modules* takes the names of REST modules of the application, comma-separated.
+  The client's tokens then work for the handlers of those modules only. Other modules, AutoREST and
+  the data API answer 403, and new tokens carry no database role. Blank means the whole application,
+  as before. The limit is read at every request, so it applies to tokens already issued; it is not
+  a grant, so a module's and a handler's roles still apply. In SQL (owner only):
+  `update meta.api_client set rest_modules = '{payroll}' where name = 'payroll-sync';` (`null` for no limit).
 - **Lifetime** is 5 to 1440 minutes per client. Shorter means a leaked token is useful for less
   time. Because revocation is checked live, a leaked token is also stopped by revoking the client.
 

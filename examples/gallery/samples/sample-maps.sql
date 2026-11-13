@@ -3,7 +3,8 @@
 --
 -- Map regions on Dutch museums, without PostGIS: markers with popups and
 -- clustering; several layers (markers, a route and an area as GeoJSON, a
--- heat map that starts hidden); a map that filters the report beside it by
+-- heat map that starts hidden); a layer per kind of shape (lines, polygons,
+-- buildings shaded by height); a map that filters the report beside it by
 -- distance; a form with a location item ("Use my location"), a geocoded
 -- address and a display map, whose places show on a map; and dynamic
 -- actions on a map's own events and on the device's position.
@@ -66,6 +67,36 @@ insert into sample_maps.shape (name, geojson) values
   ('Museumplein',
    '{"type": "Polygon", "coordinates": [[[4.8790, 52.3590], [4.8850, 52.3590], [4.8855, 52.3565], [4.8795, 52.3560], [4.8790, 52.3590]]]}');
 
+-- (1.1) shapes for the line, polygon and extruded layers: a kind per row, a colour for some, a height for buildings
+create table sample_maps.area (
+  id      int generated always as identity primary key,
+  name    text not null,
+  kind    text not null check (kind in ('route', 'park', 'building')),
+  colour  text check (colour ~ '^#[0-9a-f]{6}$'),
+  height  int,
+  geojson text not null
+);
+
+insert into sample_maps.area (name, kind, colour, height, geojson) values
+  ('Tram to the museums', 'route', '#c2541b', null,
+   '{"type": "LineString", "coordinates": [[4.9004, 52.3789], [4.8925, 52.3731], [4.8897, 52.3668], [4.8839, 52.3622], [4.8811, 52.3584]]}'),
+  ('Ferry to the north bank', 'route', '#2e5c8a', null,
+   '{"type": "LineString", "coordinates": [[4.9010, 52.3806], [4.9022, 52.3827], [4.9020, 52.3843]]}'),
+  ('Vondelpark', 'park', null, null,
+   '{"type": "Polygon", "coordinates": [[[4.8580, 52.3560], [4.8800, 52.3610], [4.8815, 52.3595], [4.8600, 52.3540], [4.8580, 52.3560]]]}'),
+  ('Museumplein', 'park', null, null,
+   '{"type": "Polygon", "coordinates": [[[4.8790, 52.3590], [4.8850, 52.3590], [4.8855, 52.3565], [4.8795, 52.3560], [4.8790, 52.3590]]]}'),
+  ('Oosterpark', 'park', null, null,
+   '{"type": "Polygon", "coordinates": [[[4.9160, 52.3615], [4.9245, 52.3615], [4.9245, 52.3585], [4.9160, 52.3585], [4.9160, 52.3615]]]}'),
+  ('A''DAM Tower', 'building', null, 100,
+   '{"type": "Polygon", "coordinates": [[[4.9014, 52.3839], [4.9026, 52.3839], [4.9026, 52.3846], [4.9014, 52.3846], [4.9014, 52.3839]]]}'),
+  ('Rijksmuseum', 'building', null, 35,
+   '{"type": "Polygon", "coordinates": [[[4.8838, 52.3594], [4.8866, 52.3594], [4.8866, 52.3606], [4.8838, 52.3606], [4.8838, 52.3594]]]}'),
+  ('NEMO Science Museum', 'building', null, 22,
+   '{"type": "Polygon", "coordinates": [[[4.9112, 52.3733], [4.9134, 52.3733], [4.9134, 52.3745], [4.9112, 52.3745], [4.9112, 52.3733]]]}'),
+  ('Rembrandt Tower', 'building', null, 135,
+   '{"type": "Polygon", "coordinates": [[[4.9163, 52.3442], [4.9175, 52.3442], [4.9175, 52.3449], [4.9163, 52.3449], [4.9163, 52.3442]]]}');
+
 create table sample_maps.place (
   id       int generated always as identity primary key,
   name     text not null,
@@ -83,7 +114,7 @@ do $$ begin
 end $$;
 grant app_sample_maps to pgkiln_runtime;
 grant usage on schema sample_maps to app_sample_maps;
-grant select on sample_maps.museum, sample_maps.shape to app_sample_maps;
+grant select on sample_maps.museum, sample_maps.shape, sample_maps.area to app_sample_maps;
 grant select, insert, update, delete on sample_maps.place to app_sample_maps;
 
 -- 3. The application ----------------------------------------------------------
@@ -95,7 +126,7 @@ select id, 'demo', meta.hash_password('demo'), '{}' from meta.app where alias = 
 
 insert into meta.page (app_id, page_no, name, title, parent_page)
 select a.id, p.no, p.name, p.name, p.parent
-  from meta.app a, (values (1, 'Sample Maps', null), (2, 'Museums', 1), (3, 'Layers', 1), (4, 'Map and list', 1), (7, 'Map events', 1)) as p (no, name, parent)
+  from meta.app a, (values (1, 'Sample Maps', null), (2, 'Museums', 1), (3, 'Layers', 1), (4, 'Map and list', 1), (7, 'Map events', 1), (8, 'Lines and areas', 1)) as p (no, name, parent)
  where a.alias = 'sample-maps';
 
 -- page 5 and its form, page 6: the Report and form wizard on the places
@@ -108,7 +139,7 @@ insert into meta.nav_entry (app_id, seq, label, icon, target_page)
 select a.id, n.seq, n.label, n.icon, n.page
   from meta.app a, (values
   (10, 'Home', 'home', 1), (20, 'Museums', 'map', 2), (30, 'Layers', 'layers', 3),
-  (40, 'Map and list', 'list', 4), (50, 'My places', 'map', 5), (60, 'Map events', 'bolt', 7)
+  (35, 'Lines and areas', 'layers', 8), (40, 'Map and list', 'list', 4), (50, 'My places', 'map', 5), (60, 'Map events', 'bolt', 7)
   ) as n (seq, label, icon, page)
  where a.alias = 'sample-maps';
 
@@ -120,6 +151,7 @@ select a.id, 'MAP_TOPICS', e.seq, e.label, e.icon, e.page, e.description
   from meta.app a, (values
   (10, 'Museums', 'map', 2, 'Markers from latitude and longitude columns, popups, and clusters that open as you zoom in.'),
   (20, 'Layers', 'layers', 3, 'Several queries on one map: markers, a route and an area as GeoJSON, a heat map you switch on.'),
+  (25, 'Lines and areas', 'layers', 8, 'A layer per kind of shape: lines with a colour per row, polygons with one style, buildings shaded by their height.'),
   (30, 'Map and list', 'list', 4, 'Move the map, then show only the museums within that distance in the list beside it.'),
   (40, 'My places', 'map', 5, 'A form with a location item: Use my location stores latitude,longitude, the map shows them.'),
   (50, 'Map events', 'bolt', 7, 'Dynamic actions on a marker clicked and the map moved, and the museums nearest to you.')
@@ -153,6 +185,18 @@ select pg_temp.page_id('sample-maps', r.page), r.seq, r.title, r.type, r.cols, r
      "layers": [{"name": "Walk and square", "source": "select name as title, geojson from sample_maps.shape"},
                 {"name": "Visitors", "layer": "heat", "hidden": true,
                  "source": "select lat, lng, visitors / 100000 as weight from sample_maps.museum"}]}', 'layers'),
+
+  -- 8 Lines and areas: a layer of each shape kind
+  (8, 5, 'About this page', 'static', 12, 'plain',
+   '<p class="lead">A layer has a kind. <code>"layer": "lines"</code> and <code>"polygons"</code> draw the shapes of a <code>geojson</code> column with a style: <code>fill_color</code>, <code>stroke_color</code>, <code>stroke_width</code> and <code>opacity</code>, set for the layer or per row from columns of the same names (the routes take their colour from the row). <code>"extruded"</code> shades each polygon by its <code>height</code> column, from light to strong. The legend shows each layer in its own colour; the routes have <code>"no_legend": true</code>, so they are always drawn and not listed.</p>',
+   '{}', null),
+  (8, 10, 'Parks, buildings and routes', 'map', 12, 'standard',
+   E'select name as title, ''Park'' as body, geojson from sample_maps.area where kind = ''park''',
+   '{"name": "Parks", "layer": "polygons", "height": "large", "style": {"fill_color": "#1f7a4d", "stroke_color": "#145233", "stroke_width": 1, "opacity": 0.35},
+     "layers": [{"name": "Buildings by height", "layer": "extruded", "style": {"fill_color": "#4a3aa7", "stroke_color": "#2a2166", "stroke_width": 1},
+                 "source": "select name as title, height || '' m'' as body, height, geojson from sample_maps.area where kind = ''building''"},
+                {"name": "Routes", "layer": "lines", "no_legend": true, "style": {"stroke_width": 4},
+                 "source": "select name as title, colour as stroke_color, geojson from sample_maps.area where kind = ''route''"}]}', 'shapes'),
 
   -- 4 Map and list
   (4, 5, 'About this page', 'static', 12, 'plain',

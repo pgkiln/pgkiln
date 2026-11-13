@@ -147,7 +147,7 @@ describe('App Gallery', () => {
       assert.equal(a.ws, 1, 'in the current workspace');
       assert.equal(res.headers.location, `/builder/apps/${a.id}`);
       // (sprint 172, WS-8) the catalogue's version is the installed application's
-      assert.equal((await owner.one('select version from meta.app where id = $1', [a.id])).version, '1.0');
+      assert.equal((await owner.one('select version from meta.app where id = $1', [a.id])).version, x.version);
       assert.match((await admin.get('/builder/gallery')).body, new RegExp(`${x.title}</h2>[\\s\\S]*?Installed[\\s\\S]*?href="/builder/apps/${a.id}"`));
       const user = new Browser(app);
       assert.equal((await user.login('demo', 'demo', x.alias)).statusCode, 303, 'the demo account signs in');

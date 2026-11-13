@@ -1218,9 +1218,13 @@ seven more, each with its own query (the same columns as above) and its own sett
 
 Each layer has `name` (shown in the legend, translatable like other texts), `source`, and optionally
 `layer` (`markers`, `heat`, `lines`, `polygons` or `extruded`), `style`, `cluster`, `link`, `hidden` (off until the user switches it on),
-`visible_area` and `tiles`.
+`no_legend`, `visible_area` and `tiles`.
 On a map with more than one layer each layer's places, lines and areas get their own colour, and a
-**Layers** legend in the corner switches them on and off. Without JavaScript the list below the map
+**Layers** legend in the corner switches them on and off. A lines, polygons or extruded layer with a
+colour in its `style` shows that colour in the legend. (sprint 178; APEX: a layer's *Display in Legend*)
+A layer with `"no_legend": true` is left out of the legend: it is always drawn and can't be switched
+off (so `hidden` doesn't apply to it); the region's own layer takes `no_legend` in the region's
+settings. Without JavaScript the list below the map
 has a part per layer. A layer whose query fails shows its error above the map; the other layers are
 still drawn. In the Page Designer the map's settings have a fieldset per layer (and one empty to add
 a layer; emptying a layer's query removes it), and the Advisor checks every layer's query. The HR
