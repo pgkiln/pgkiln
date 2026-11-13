@@ -15746,6 +15746,8 @@ describe('sprint 186 every application runs as a database role of its own (NX-S2
   before(async () => {
     await cleanup();
     await owner.query(`create role ${ROLE} nologin; create role ${BYPASS} nologin bypassrls; create role ${MEMBER} nologin; grant ${BYPASS} to ${MEMBER}`);
+    // the runtime login may SET ROLE to an application's role, as for every application of a shared workspace
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
     await owner.query(`create schema ${S}; create table ${S}.t (a int); insert into ${S}.t values (1)`);
     await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
     await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing`, [DEV]);
