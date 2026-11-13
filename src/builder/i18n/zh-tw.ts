@@ -7696,4 +7696,11 @@ export const zhTW: BuilderMessages = {
   'whk.attempts': '嘗試次數',
   'whk.attempts_help': '在事件判為失敗之前執行該區塊的次數。',
   'whk.e.credential': 'Web 認證 {name} 在此應用程式及其工作區中不存在。',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': '{name} 的 REST 模組',
+  'apip.modules_ph': 'REST 模組：整個應用程式',
+  'apip.modules_help': '留空表示整個應用程式。填寫 REST 模組名稱（以逗號分隔）後，該用戶端的權杖僅適用於這些模組：不能用於 AutoREST 和資料 API。模組：{modules}',
+  'apip.modules_saved': '{name} 僅限於這些 REST 模組：{modules}。',
+  'apip.modules_all': '{name} 可以再次呼叫整個應用程式。',
+  'apip.modules_unknown': '此應用程式沒有名為 {names} 的 REST 模組。',
 };

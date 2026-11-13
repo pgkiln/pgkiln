@@ -7696,4 +7696,11 @@ export const ko: BuilderMessages = {
   'whk.attempts': '시도 횟수',
   'whk.attempts_help': '이벤트를 실패로 처리하기 전에 블록을 실행하는 횟수.',
   'whk.e.credential': '웹 자격 증명 {name}이(가) 이 애플리케이션이나 그 작업 공간에 없습니다.',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': '{name}의 REST 모듈',
+  'apip.modules_ph': 'REST 모듈: 애플리케이션 전체',
+  'apip.modules_help': '비워 두면 애플리케이션 전체입니다. REST 모듈 이름(쉼표로 구분)을 입력하면 클라이언트의 토큰은 해당 모듈에서만 유효합니다(AutoREST와 데이터 API는 불가). 모듈: {modules}',
+  'apip.modules_saved': '{name}은(는) 다음 REST 모듈로 제한됩니다: {modules}.',
+  'apip.modules_all': '{name}은(는) 다시 애플리케이션 전체를 호출할 수 있습니다.',
+  'apip.modules_unknown': '이 애플리케이션에는 {names}(이)라는 REST 모듈이 없습니다.',
 };

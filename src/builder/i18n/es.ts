@@ -7696,4 +7696,11 @@ export const es: BuilderMessages = {
   'whk.attempts': 'Intentos',
   'whk.attempts_help': 'Cuántas veces se ejecuta el bloque antes de dar el evento por fallido.',
   'whk.e.credential': 'La credencial web {name} no existe en esta aplicación ni en su espacio de trabajo.',
+  // ------------------------------------------------------------ sprint 178: OAuth clients limited to REST modules
+  'apip.aria_modules': 'Módulos REST de {name}',
+  'apip.modules_ph': 'Módulos REST: toda la aplicación',
+  'apip.modules_help': 'Déjelo en blanco para toda la aplicación. Con nombres de módulos REST (separados por comas), los tokens del cliente solo sirven para esos módulos: sin AutoREST ni API de datos. Módulos: {modules}',
+  'apip.modules_saved': '{name} queda limitado a estos módulos REST: {modules}.',
+  'apip.modules_all': '{name} puede volver a llamar a toda la aplicación.',
+  'apip.modules_unknown': 'Esta aplicación no tiene ningún módulo REST llamado {names}.',
 };

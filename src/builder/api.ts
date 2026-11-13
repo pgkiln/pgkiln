@@ -46,13 +46,15 @@ interface NewSecret {
 async function clientsRegion(s: Session, a: any, secret?: NewSecret, usable = true) {
   const clients = (
     await owner.query(
-      `select id, name, description, client_id, roles, token_minutes, active, secret_changed_at, last_used_at,
+      `select id, name, description, client_id, roles, rest_modules, token_minutes, active, secret_changed_at, last_used_at,
               previous_valid_until > now() as grace, previous_valid_until
          from meta.api_client where app_id = $1 order by name`,
       [a.id],
     )
   ).rows;
   const hints = (await roleHints([a.id])).get(a.id) ?? [];
+  // (sprint 178) the application's REST modules: a client can be limited to some of them
+  const modules = (await owner.query<{ name: string }>('select name from meta.rest_module where app_id = $1 order by name', [a.id])).rows.map((m) => m.name);
   const tokenUrl = `${publicUrl()}/oauth/token`;
   const when = (d: Date | string | null) => (d ? (d instanceof Date ? d.toISOString() : String(d)).slice(0, 16).replace('T', ' ') : '');
   const action = (c: any, path: string, label: string, extra: Raw | '' = '', cls = 'btn') =>
@@ -83,7 +85,10 @@ async function clientsRegion(s: Session, a: any, secret?: NewSecret, usable = tr
             ${clients.map((c) => html`<tr${c.active ? '' : raw(' class="muted"')}>
               <td data-label="${tx('apip.client')}"><strong>${c.name}</strong>${c.active ? '' : html` <span class="tag">revoked</span>`}<br><code class="small">${c.client_id}</code>${c.description ? html`<br><small class="help">${c.description}</small>` : ''}</td>
               <td data-label="${tx('apip.roles')}"><form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/roles" class="search roles-form u-m0 u-mwnone">${csrf(s)}
-                <input name="roles" value="${c.roles.join(', ')}" aria-label="${tx('apip.aria_roles', { name: c.name })}" placeholder="${tx('apip.no_roles')}"><button class="btn btn-sm">${tx('apip.save')}</button>${roleHintsHtml(hints, tx('apip.add'))}</form></td>
+                <input name="roles" value="${c.roles.join(', ')}" aria-label="${tx('apip.aria_roles', { name: c.name })}" placeholder="${tx('apip.no_roles')}"><button class="btn btn-sm">${tx('apip.save')}</button>${roleHintsHtml(hints, tx('apip.add'))}</form>
+                ${modules.length || c.rest_modules ? html`<form method="post" action="${BASE}/apps/${a.id}/api/clients/${c.id}/modules" class="search roles-form u-m0 u-mwnone u-mt1">${csrf(s)}
+                <input name="modules" value="${(c.rest_modules ?? []).join(', ')}" aria-label="${tx('apip.aria_modules', { name: c.name })}" placeholder="${tx('apip.modules_ph')}"><button class="btn btn-sm">${tx('apip.save')}</button>
+                <small class="help">${tx('apip.modules_help', { modules: modules.join(', ') || '–' })}</small></form>` : ''}</td>
               <td class="num" data-label="${tx('apip.token')}">${tx('apip.minutes', { n: c.token_minutes })}</td>
               <td data-label="${tx('apip.secret_changed')}">${when(c.secret_changed_at)}${c.grace ? html`<br><small class="help">${tx('apip.old_valid_until', { when: when(c.previous_valid_until) })}</small>` : ''}</td>
               <td data-label="${tx('apip.last_used')}">${when(c.last_used_at) || html`<span class="muted">${tx('apip.never')}</span>`}</td>
@@ -247,6 +252,17 @@ export async function apiRoutes(app: FastifyInstance) {
     } else if (op === 'roles') {
       await owner.query('update meta.api_client set roles = $2 where id = $1', [c.id, splitRoles(req.body?.roles ?? '')]);
       flash(s, tx('apip.roles_saved', { name: c.name }));
+    } else if (op === 'modules') {
+      // (sprint 178, migration 162) limit the client to REST modules of this application (blank: no limit)
+      const names = [...new Set(String(req.body?.modules ?? '').split(/[\s,]+/).map((x) => x.trim().toLowerCase()).filter(Boolean))].slice(0, 50);
+      const known = new Set((await owner.query<{ name: string }>('select name from meta.rest_module where app_id = $1', [req.params.id])).rows.map((m) => m.name));
+      const unknown = names.filter((n) => !known.has(n));
+      if (unknown.length) {
+        flash(s, tx('apip.modules_unknown', { names: unknown.join(', ').slice(0, 200) }), 'error');
+        return back(reply, s, `${BASE}/apps/${req.params.id}/api`);
+      }
+      await owner.query('update meta.api_client set rest_modules = $2 where id = $1', [c.id, names.length ? names : null]);
+      flash(s, names.length ? tx('apip.modules_saved', { name: c.name, modules: names.join(', ') }) : tx('apip.modules_all', { name: c.name }));
     } else if (op === 'delete') {
       await owner.query('delete from meta.api_client where id = $1', [c.id]);
       flash(s, `${c.name} deleted.`);

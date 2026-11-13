@@ -14753,3 +14753,112 @@ describe('sprint 177 the web request outbox and inbound webhooks', () => {
     assert.doesNotMatch(doc, /sec177 my body|webhook_event"/);
   });
 });
+
+describe('sprint 178 OAuth clients limited to REST modules', () => {
+  let hr = 0;
+  let cid = 0;
+  let clientId = '';
+  let bearer = '';
+  const get = (url: string, token = bearer) => app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+  const limit = (modules: string[] | null) => owner.query('update meta.api_client set rest_modules = $2 where id = $1', [cid, modules]);
+  /** The data API's token check, the way PostgREST runs it for a verified token. */
+  const dataApi = async (token: string) => {
+    const { decodeJwt } = await import('jose');
+    const claims = decodeJwt(token);
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'hr_api', ...claims })]);
+      await c.query('set local role hr_api');
+      await c.query('select meta.api_check()');
+      return 'ok';
+    } catch (e) {
+      return (e as Error).message;
+    } finally {
+      await c.query('rollback').catch(() => {});
+      c.release();
+    }
+  };
+
+  before(async () => {
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec178%'`, [hr]);
+    await owner.query(`delete from meta.api_client where name = 'sec178-client'`);
+    for (const m of ['sec178a', 'sec178b'])
+      await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, $2, $2, $3)`,
+        [hr, m, JSON.stringify([{ method: 'GET', path: 'who', type: 'sql', source: `select meta.app_user() as who, '${m}' as module` }])]);
+    const c = (await owner.one(`select * from meta.oauth_create_client('hr', 'sec178-client', '{manager}', 'sprint 178', 15)`))!;
+    clientId = c.client_id;
+    cid = (await owner.one('select id from meta.api_client where client_id = $1', [clientId]))!.id;
+    const { clientToken } = await import('../src/oauth.ts');
+    bearer = (await clientToken(clientId, c.client_secret)).access_token;
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.rest_module where app_id = $1 and name like 'sec178%'`, [hr]);
+    await owner.query(`delete from meta.api_client where name = 'sec178-client'`);
+  });
+
+  test('without a limit the client calls every module, AutoREST and the data API, as before', async () => {
+    assert.equal((await get('/a/hr/rest/sec178a/who')).statusCode, 200);
+    assert.equal((await get('/a/hr/rest/sec178b/who')).statusCode, 200);
+    assert.equal((await get('/a/hr/autorest/dept/')).statusCode, 200);
+    assert.equal(await dataApi(bearer), 'ok');
+  });
+
+  test('a limit applies to a token issued before it: its modules only, no AutoREST, no data API', async () => {
+    await limit(['sec178a']);
+    const a = await get('/a/hr/rest/sec178a/who');
+    assert.equal(a.statusCode, 200, a.body);
+    assert.match(a.body, /client:sec178-client/);
+    const b = await get('/a/hr/rest/sec178b/who');
+    assert.equal(b.statusCode, 403);
+    assert.doesNotMatch(b.body, /sec178b"|client:sec178/);
+    assert.equal((await get('/a/hr/autorest/dept/')).statusCode, 403);
+    assert.equal((await get('/a/hr/autorest/openapi.json')).statusCode, 403);
+    assert.match(await dataApi(bearer), /limited to REST modules/);
+    // the limit is not a grant: the module's and the handler's roles still apply
+    await owner.query(`update meta.rest_module set roles = '{nobody_has_this}' where app_id = $1 and name = 'sec178a'`, [hr]);
+    assert.equal((await get('/a/hr/rest/sec178a/who')).statusCode, 403);
+    await owner.query(`update meta.rest_module set roles = '{}' where app_id = $1 and name = 'sec178a'`, [hr]);
+  });
+
+  test('a new token of a limited client carries no database role', async () => {
+    const { decodeJwt } = await import('jose');
+    const { clientToken } = await import('../src/oauth.ts');
+    const secret = (await owner.one(`select meta.oauth_rotate_secret($1, make_interval(hours => 0)) as s`, [clientId]))!.s;
+    const t = (await clientToken(clientId, secret)).access_token;
+    assert.equal(decodeJwt(t).role, undefined);
+    assert.equal((await get('/a/hr/rest/sec178a/who', t)).statusCode, 200);
+    assert.equal((await get('/a/hr/rest/sec178b/who', t)).statusCode, 403);
+    await limit(null);
+    assert.equal((await get('/a/hr/rest/sec178b/who', t)).statusCode, 200);
+    assert.equal(decodeJwt((await clientToken(clientId, secret)).access_token).role, 'hr_api');
+  });
+
+  test('the builder limits a client to modules of its own application; CSRF and a developer are needed', async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const page = await dev.get(`/builder/apps/${hr}/api`);
+    assert.match(page.body, new RegExp(`/api/clients/${cid}/modules`));
+    const url = `/builder/apps/${hr}/api/clients/${cid}/modules`;
+    assert.equal((await dev.post(url, { __csrf: 'forged', modules: 'sec178a' })).statusCode, 403);
+    assert.equal((await app.inject({ method: 'POST', url, payload: { modules: 'sec178a' } })).statusCode, 302);
+    const mods = async () => (await owner.one('select rest_modules from meta.api_client where id = $1', [cid]))!.rest_modules;
+    assert.equal(await mods(), null);
+    // a module of no application, and markup: refused and escaped
+    await dev.post(url, { __csrf: dev.lastCsrf, modules: 'sec178a, <b>nope</b>' });
+    assert.equal(await mods(), null);
+    const refused = await dev.get(`/builder/apps/${hr}/api`);
+    assert.doesNotMatch(refused.body, /<b>nope<\/b>/);
+    await dev.post(url, { __csrf: dev.lastCsrf, modules: 'SEC178A sec178b, sec178a' });
+    assert.deepEqual(await mods(), ['sec178a', 'sec178b']);
+    // a client of another application is not found through this one's URL
+    const other = (await owner.one(`select id from meta.app where alias <> 'hr' order by id limit 1`))!.id;
+    assert.equal((await dev.post(`/builder/apps/${other}/api/clients/${cid}/modules`, { __csrf: dev.lastCsrf, modules: '' })).statusCode, 404);
+    assert.deepEqual(await mods(), ['sec178a', 'sec178b']);
+    await dev.post(url, { __csrf: dev.lastCsrf, modules: '' });
+    assert.equal(await mods(), null);
+  });
+});

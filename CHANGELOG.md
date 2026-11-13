@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **OAuth clients limited to REST modules** (sprint 178, DA-11 leftover; migration 162
+  `meta.api_client.rest_modules`): an OAuth client of an application can be limited to some of its REST modules
+  (App → REST API → OAuth clients → *REST modules*). Its tokens then work for the handlers of those modules only:
+  other modules, AutoREST and the data API answer 403, and new tokens carry no database role. The limit is read at
+  every request, so it applies to tokens already issued. Blank is the whole application, as before.
+
 ## [0.93.0] - 2026-11-13
 
 ### Added
