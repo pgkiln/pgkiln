@@ -65,6 +65,8 @@ src/
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
                            PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
+  gallery-remote.ts        (sprint 181, migration 164) the App Gallery's remote catalogues: parseCatalogue (blueprints only, checked
+                           and cut to size), refreshSource (guarded webRequest), remoteBlueprint (fetched on Install)
   ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
   static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
   session.ts               sessions (hashed tokens), activity log, login throttling
@@ -370,6 +372,7 @@ src/
     language.ts            (migration 127) the status bar's language menu (POST /builder/language), the sign-in page's
                            language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
+                           (sprint 183, CD-2: the Pages report's Conditions column, conditions.ts serverCondition/conditionWords)
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
     create-page.ts         (137) Create page: the grid of page types with SVG previews (tabs Component / Feature / Copy), the table step,
                            Create page as copy (step per app and page, shared components mapped or copied → meta.copy_page)
@@ -486,6 +489,7 @@ src/
     db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL
                            roles with highlights, create/edit (review the masked SQL, then Apply in one transaction), drop with
                            reassigning; pgkiln's own roles read-only, roles of applications and workspaces not dropped
+                           (sprint 183) a role's Isolated workspace panel, POST /role/:name/workspace → workspaces.ts changeWorkspaceRole
     scheduling.ts          (sprint 101, DA-12) SQL Workshop → Scheduling (/builder/sql/scheduling, administrators only): pg_cron jobs
                            with next runs, create/edit with a schedule builder and preview (review the SQL, then Apply), disable,
                            run now, unschedule, run history and purge; without pg_cron the install note and pgkiln's automations
@@ -516,6 +520,8 @@ src/
     changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
                            downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded);
                            (sprint 175) POST /sql/changes/:id/rollback (the rollback block; never run)
+                           (sprint 180, migration 163) captureState(), the panel and POST /capture: the event
+                           triggers meta.change_log_ddl / change_log_drop that record DDL of other tools (source external)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
                            connection's usable schemas), About Database; read only, with a timeout; /sql/utilities/monitor redirects to the SQL Monitor
     login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
@@ -565,7 +571,8 @@ src/
     gallery.ts             the App Gallery (sprint 61, 120): examples/gallery/gallery.json, sample apps (administrators: migrate --example,
                            or one SQL file of examples/ or examples/gallery/samples/ in one transaction), starter and utility apps
                            (blueprints of starters/ and utilities/ → openBlueprint's review), custom apps (the workspace's boilerplates);
-                           four tabs with counts, ?q= search
+                           four tabs with counts, ?q= search; (sprint 181) remote catalogues: the administrators' panel,
+                           POST /gallery/sources[/:id/refresh|toggle|delete], /gallery/remote/:id/:kind/:key (fetch → review)
     app-groups.ts          application groups (092): a workspace's groups, a group per application (the App Builder home filters)
     cross-app.ts           Cross Application Reports (sprint 61): REPORTS (one SQL per topic over the workspace's applications)
     workspaces.ts          workspaces (064): loadWorkspaces/appAllowed (checked in ui.ts developer() for every /apps/:id and /pages/:pid

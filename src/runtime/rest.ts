@@ -250,6 +250,23 @@ async function match(req: FastifyRequest): Promise<Matched> {
   return { a, mod, on, m: on ? matchHandler(mod!.handlers ?? [], req.method, sub) : null };
 }
 
+/** (sprint 180) Refused webhook requests per handler: the first of a minute is logged, the rest counted. */
+const refused = new Map<string, { at: number; quiet: number }>();
+export const REFUSAL_LOG_MS = 60_000;
+
+/** null: don't log (counted); otherwise log, with the number of refusals that were not logged since the last row. */
+export function refusalLog(key: string, now = Date.now()): number | null {
+  const r = refused.get(key);
+  if (r && now - r.at < REFUSAL_LOG_MS) {
+    r.quiet++;
+    return null;
+  }
+  if (refused.size >= 1000 && !r) for (const [k, v] of refused) if (now - v.at >= REFUSAL_LOG_MS) refused.delete(k);
+  if (refused.size >= 1000 && !r) refused.delete(refused.keys().next().value!);
+  refused.set(key, { at: now, quiet: 0 });
+  return r?.quiet ?? 0;
+}
+
 /** (sprint 177) A webhook: signature first, then the event is stored and the request answered; processing follows (src/webhooks.ts). */
 async function handleWebhook(req: FastifyRequest, reply: FastifyReply, a: App, name: string, h: Handler, contentType: string | undefined) {
   const refusal = availabilityRefusal(a, { username: null, developer: false });
@@ -260,8 +277,11 @@ async function handleWebhook(req: FastifyRequest, reply: FastifyReply, a: App, n
     return got.stored ? reply.code(h.status ?? 202).send({ status: 'accepted' }) : reply.code(200).send({ status: 'duplicate' });
   } catch (e) {
     if (!(e instanceof WebhookRefused)) throw e;
-    // the reason only (never the signature, the secret or the body)
-    await logActivity({ appId: a.id, username: 'nobody', event: 'webhook_refused', ip: clientIp(req), detail: `REST POST ${name}/${h.path}: ${e.reason}`.slice(0, 500) }).catch(() => {});
+    // the reason only (never the signature, the secret or the body); (sprint 180) at most one row per handler a minute
+    const quiet = refusalLog(`${a.id}\0${name}\0${h.path}`);
+    if (quiet !== null)
+      await logActivity({ appId: a.id, username: 'nobody', event: 'webhook_refused', ip: clientIp(req),
+        detail: `REST POST ${name}/${h.path}: ${e.reason}${quiet ? ` (${quiet} more refused since the last row)` : ''}`.slice(0, 500) }).catch(() => {});
     return reply.code(e.status).send({ error: e.message });
   }
 }

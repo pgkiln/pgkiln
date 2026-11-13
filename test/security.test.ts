@@ -14905,6 +14905,260 @@ describe('sprint 179 the SQL Workshop tour', () => {
   });
 });
 
+describe('sprint 180 the Change Log records DDL of other tools (DA-17)', () => {
+  const DEV = 'sec180_dev';
+  const PW = 'Sec180-dev-password!';
+  const S = 'sec180x';
+  const pg = async () => (await import('pg')).default;
+  /** DDL from another tool: its own connection, not one of pgkiln's (application_name psql) */
+  const psql = async (sql: string, appName = 'psql') => {
+    const c = new (await pg()).Client({ connectionString: process.env.DATABASE_URL, application_name: appName });
+    await c.connect();
+    try {
+      return await c.query(sql);
+    } finally {
+      await c.end();
+    }
+  };
+  const external = async () => (await owner.query(`select name, author, source, object_name, sql from meta.change_set where schema_name = $1 order by seq`, [S])).rows;
+  const triggers = async () => (await owner.query(`select evtname from pg_event_trigger where evtname like 'pgkiln_change_log%' order by 1`)).rows.map((r) => r.evtname);
+  const superuser = async () => !!(await owner.one(`select rolsuper from pg_roles where rolname = current_user`))!.rolsuper;
+  const clean = async () => {
+    await owner.query(`drop event trigger if exists pgkiln_change_log_ddl`);
+    await owner.query(`drop event trigger if exists pgkiln_change_log_drop`);
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`delete from meta.change_set where schema_name = $1`, [S]);
+    await owner.query(`delete from meta.change_set_counter where schema_name = $1`, [S]);
+  };
+  const admin = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder/sql/changes');
+    return b;
+  };
+
+  before(async () => {
+    await clean();
+    await owner.query(`create schema ${S}`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, PW]);
+  });
+  after(async () => {
+    await clean();
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+  });
+
+  test('the functions run as pgkiln\'s owner with a fixed search_path; nobody else may call them', async () => {
+    const fns = (await owner.query(
+      `select p.proname, p.prosecdef, p.proconfig, has_function_privilege('pgkiln_runtime', p.oid, 'execute') as runtime_may
+         from pg_proc p where p.pronamespace = 'meta'::regnamespace and p.proname in ('change_log_ddl', 'change_log_drop', 'change_log_record') order by 1`)).rows;
+    assert.equal(fns.length, 3);
+    for (const f of fns) {
+      assert.equal(f.prosecdef, true, `${f.proname}: never as the superuser who runs the DDL`);
+      assert.match(String(f.proconfig), /search_path=pg_catalog, pg_temp/, f.proname);
+      assert.equal(f.runtime_may, false, f.proname);
+    }
+  });
+
+  test('only an administrator turns it on, with the CSRF token, and only when pgkiln connects as a superuser', async (t) => {
+    if (!(await superuser())) return t.skip('pgkiln does not connect as a superuser here');
+    const d = new FileBrowser(app);
+    await d.get('/builder/login');
+    await d.post('/builder/login', { __csrf: d.lastCsrf, username: DEV, password: PW });
+    const page = await d.get('/builder/sql/changes');
+    assert.equal(page.statusCode, 200);
+    assert.doesNotMatch(page.body, /action="\/builder\/sql\/changes\/capture"/, 'no button for a developer');
+    assert.match(page.body, /create event trigger pgkiln_change_log_ddl/, 'the statements instead');
+    assert.equal((await d.submit('/builder/sql/changes/capture', { on: '1' })).statusCode, 403);
+    const a = await admin();
+    assert.equal((await a.post('/builder/sql/changes/capture', { __csrf: 'forged', on: '1' })).statusCode, 403);
+    assert.deepEqual(await triggers(), []);
+    assert.match((await a.get('/builder/sql/changes')).body, /action="\/builder\/sql\/changes\/capture"/);
+    assert.equal((await a.submit('/builder/sql/changes/capture', { on: '1' })).statusCode, 303);
+    assert.deepEqual(await triggers(), ['pgkiln_change_log_ddl', 'pgkiln_change_log_drop']);
+    assert.match((await a.get('/builder/sql/changes')).body, /DDL run outside pgkiln/);
+  });
+
+  test('DDL of another tool is recorded as data; pgkiln\'s own, rolled back and opted-out DDL is not', async (t) => {
+    if (!(await superuser())) return t.skip('pgkiln does not connect as a superuser here');
+    if ((await triggers()).length < 2) await owner.query(`create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+      create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop()`);
+    await psql(`create table ${S}.t (id int)`);
+    // a name and a comment that look like SQL are kept as text, not run
+    await psql(`create table ${S}."x'); drop table ${S}.t; --" (a int)`);
+    await psql(`comment on table ${S}.t is '</pre><script>alert(1)</script>'`);
+    await psql(`begin; create table ${S}.rolled_back (a int); rollback;`).catch(() => {});
+    await psql(`set pgkiln.change_log = 'off'; create table ${S}.quiet (a int);`);
+    await psql(`create table ${S}.spoofed (a int)`, 'pgkiln-anything');
+    await owner.query(`create table ${S}.own (a int)`);
+    await psql(`drop table ${S}.t`);
+    const rows = await external();
+    assert.deepEqual(rows.map((r) => r.name), ['create_table_t', 'create_table_x_drop_table_sec180x_t', 'comment_t', 'drop_table_t']);
+    for (const r of rows) assert.equal(r.source, 'external');
+    assert.equal(rows[0].author, (await owner.one('select session_user as u'))!.u);
+    assert.equal(rows[1].sql, `create table ${S}."x'); drop table ${S}.t; --" (a int)`);
+    assert.ok((await owner.one(`select to_regclass('${S}.quiet') as r`))!.r, 'opted-out DDL still ran');
+    // the page shows the SQL escaped
+    const body = (await (await admin()).get(`/builder/sql/changes?schema=${S}`)).body;
+    assert.match(body, /Another tool/);
+    assert.ok(!body.includes('<script>alert(1)</script>'));
+    assert.match(body, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  });
+
+  test('turned off from the builder: the triggers are gone and nothing more is recorded', async (t) => {
+    if (!(await superuser())) return t.skip('pgkiln does not connect as a superuser here');
+    if ((await triggers()).length < 2) await owner.query(`create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+      create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop()`);
+    const a = await admin();
+    assert.equal((await a.submit('/builder/sql/changes/capture', { on: '0' })).statusCode, 303);
+    assert.deepEqual(await triggers(), []);
+    const before = (await external()).length;
+    await psql(`create table ${S}.after_off (a int)`);
+    assert.equal((await external()).length, before);
+  });
+});
+
+describe('sprint 181 remote catalogues for the App Gallery (WS-8)', () => {
+  const DEV = 'sec181_dev';
+  const PW = 'Sec181-dev-password!';
+  const rows = async () => (await owner.query(`select * from meta.gallery_source where name like 'SEC181%' order by id`)).rows;
+  const login = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password });
+    await b.get('/builder/gallery?tab=starters');
+    return b;
+  };
+  let saved: string | undefined;
+  before(async () => {
+    saved = process.env.PGKILN_REST_ALLOWED_HOSTS;
+    delete process.env.PGKILN_REST_ALLOWED_HOSTS;
+    await owner.query(`delete from meta.gallery_source where name like 'SEC181%'`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, PW]);
+  });
+  after(async () => {
+    if (saved !== undefined) process.env.PGKILN_REST_ALLOWED_HOSTS = saved;
+    await owner.query(`delete from meta.gallery_source where name like 'SEC181%'`);
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+  });
+
+  test('only administrators add, refresh, switch off and remove catalogues; the CSRF token is needed', async () => {
+    const d = await login(DEV, PW);
+    assert.doesNotMatch((await d.get('/builder/gallery?tab=starters')).body, /action="\/builder\/gallery\/sources"/, 'no form for a developer');
+    assert.equal((await d.submit('/builder/gallery/sources', { name: 'SEC181 dev', url: 'https://example.com/g.json' })).statusCode, 403);
+    assert.equal((await rows()).length, 0);
+    const id = (await owner.one(`insert into meta.gallery_source (name, url) values ('SEC181 seeded', 'https://example.com/seed.json') returning id`))!.id;
+    for (const action of ['refresh', 'toggle', 'delete'])
+      assert.equal((await d.submit(`/builder/gallery/sources/${id}/${action}`, {})).statusCode, 403, action);
+    const a = await login('admin', 'admin');
+    assert.equal((await a.post('/builder/gallery/sources', { __csrf: 'forged', name: 'SEC181 forged', url: 'https://example.com/f.json' })).statusCode, 403);
+    assert.equal((await a.post(`/builder/gallery/sources/${id}/delete`, { __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await rows()).length, 1);
+    assert.equal((await a.submit(`/builder/gallery/sources/${id}/other`, {})).statusCode, 404);
+    assert.equal((await a.submit('/builder/gallery/sources/x1/refresh', {})).statusCode, 404);
+    await owner.query(`delete from meta.gallery_source where id = $1`, [id]);
+  });
+
+  test('only http(s) URLs without credentials; hosts must be on the server\'s allow-list; entries of another catalogue are not reachable', async () => {
+    const a = await login('admin', 'admin');
+    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'https://user:pw@example.com/g.json', 'not a url'])
+      await a.submit('/builder/gallery/sources', { name: 'SEC181 bad', url });
+    assert.equal((await rows()).length, 0, 'none of them stored');
+    // with no allow-list the server fetches nothing: the catalogue is kept with the reason, and lists no app
+    await a.submit('/builder/gallery/sources', { name: 'SEC181 local', url: 'http://127.0.0.1:9/gallery.json' });
+    const [src] = await rows();
+    assert.match(src.error, /allow-list/);
+    assert.deepEqual(src.catalogue, {});
+    // an entry key that is not in this catalogue, or a path in the key: 404, nothing fetched
+    await owner.query(`update meta.gallery_source set catalogue = $2 where id = $1`, [src.id, JSON.stringify({ starters: [{ key: 'k', title: 'K', icon: 'package', description: '', version: '', url: 'http://127.0.0.1:9/k.json' }] })]);
+    const d = await login(DEV, PW);
+    assert.equal((await d.submit(`/builder/gallery/remote/${src.id}/starters/other`, {})).statusCode, 404);
+    assert.equal((await d.submit(`/builder/gallery/remote/${src.id}/utilities/k`, {})).statusCode, 404);
+    assert.equal((await d.submit(`/builder/gallery/remote/${src.id}/starters/..%2Fk`, {})).statusCode, 404);
+    // a developer may install a listed one: the fetch is refused by the allow-list, with a message
+    const res = await d.submit(`/builder/gallery/remote/${src.id}/starters/k`, {});
+    assert.equal(res.statusCode, 303);
+    assert.match((await d.get(res.headers.location as string)).body, /could not be fetched: The host 127\.0\.0\.1:9 is not on the server&#39;s allow-list/);
+  });
+});
+
+describe('sprint 183 Database Users links a role to an isolated workspace (DA-13)', async () => {
+  const { ownerUrl, runtimeUrl } = await import('../src/db.ts');
+  const { workspacesChanged } = await import('../src/workspace-db.ts');
+  const WS = 'SEC183 Iso';
+  const ROLE = 'sec183_reader';
+  const POWER = 'sec183_power';
+  let ws = 0;
+  let plain = 0;
+  const inWs = async () => (await owner.query(`select workspace_id from meta.workspace_role where role_name = $1`, [ROLE])).rows.map((r) => r.workspace_id);
+  const cleanup = async () => {
+    await owner.query(`delete from meta.workspace_role where role_name in ($1, $2)`, [ROLE, POWER]);
+    await owner.query(`update meta.workspace set isolated = false where name = $1`, [WS]);
+    await owner.query(`delete from meta.workspace where name in ($1, 'SEC183 Plain')`, [WS]);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`drop role if exists ${POWER}`);
+    await workspacesChanged();
+  };
+  const admin = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    return b;
+  };
+
+  before(async () => {
+    await cleanup();
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`create role ${POWER} nologin bypassrls`);
+    plain = (await owner.one(`insert into meta.workspace (name) values ('SEC183 Plain') returning id`))!.id;
+    if (runtimeUrl === ownerUrl) return;
+    ws = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WS]))!.id;
+    const a = await admin();
+    await a.get(`/builder/workspaces/${ws}`);
+    assert.equal((await a.submit(`/builder/workspaces/${ws}/isolation`, { isolated: 'true' })).statusCode, 303);
+  });
+  after(cleanup);
+
+  test('an administrator links a role to an isolated workspace and takes it out again; the page says where it belongs', { skip: runtimeUrl === ownerUrl && 'needs RUNTIME_DATABASE_URL' }, async () => {
+    const a = await admin();
+    let page = (await a.get(`/builder/db-users/role/${ROLE}`)).body;
+    assert.match(page, /Isolated workspace/);
+    assert.match(page, new RegExp(`<option value="${ws}">SEC183 Iso</option>`));
+    assert.doesNotMatch(page, new RegExp(`<option value="${plain}">`), 'only isolated workspaces are offered');
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(ws) })).statusCode, 303);
+    assert.deepEqual(await inWs(), [ws]);
+    page = (await a.get(`/builder/db-users/role/${ROLE}`)).body;
+    assert.match(page, /belongs to the isolated workspace <a href="\/builder\/workspaces\/\d+">SEC183 Iso<\/a>/);
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(ws), action: 'remove' })).statusCode, 303);
+    assert.deepEqual(await inWs(), []);
+  });
+
+  test('refused: a developer who is not an administrator, no CSRF token, a workspace that is not isolated, a powerful role', async () => {
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec183_dev', meta.hash_password('Sec183-dev-password!'), false) on conflict do nothing`);
+    try {
+      const d = new FileBrowser(app);
+      await d.get('/builder/login');
+      await d.post('/builder/login', { __csrf: d.lastCsrf, username: 'sec183_dev', password: 'Sec183-dev-password!' });
+      await d.get('/builder/home');
+      assert.equal((await d.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(ws || plain) })).statusCode, 403);
+    } finally {
+      await owner.query(`delete from meta.developer where username = 'sec183_dev'`);
+    }
+    const a = await admin();
+    await a.get(`/builder/db-users/role/${ROLE}`);
+    assert.equal((await a.post(`/builder/db-users/role/${ROLE}/workspace`, { __csrf: 'forged', workspace: String(ws || plain) })).statusCode, 403);
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: String(plain) })).statusCode, 404, 'not isolated');
+    assert.equal((await a.submit(`/builder/db-users/role/${ROLE}/workspace`, { workspace: 'x' })).statusCode, 404);
+    assert.equal((await a.submit(`/builder/db-users/role/no_such_role_183/workspace`, { workspace: String(ws || plain) })).statusCode, 404);
+    if (ws) {
+      assert.doesNotMatch((await a.get(`/builder/db-users/role/${POWER}`)).body, /Link to workspace/, 'no form for a role that bypasses RLS');
+      assert.equal((await a.submit(`/builder/db-users/role/${POWER}/workspace`, { workspace: String(ws) })).statusCode, 403);
+    }
+    assert.deepEqual(await inWs(), []);
+    assert.equal((await owner.query(`select 1 from meta.workspace_role where role_name = $1`, [POWER])).rowCount, 0);
+  });
+});
+
 describe('sprint 182 the APEX importer (CD-1/CD-4 leftover)', () => {
   const ALIAS = 'sec182-apex';
   const DEV2 = 'sec182_dev';

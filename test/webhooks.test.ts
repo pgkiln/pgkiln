@@ -278,6 +278,77 @@ describe('sprint 177: a webhook handler receives first and processes later', () 
   });
 });
 
+describe('sprint 180: webhook review points', () => {
+  test('a disabled module\'s events wait, are not due, and are processed once it is enabled again', async () => {
+    const body = '{"ref": "held-1"}';
+    assert.equal((await github(body, { 'x-github-delivery': 'held-1' })).statusCode, 202);
+    await owner.query(`update meta.rest_module set enabled = false where app_id = $1 and name = 'in'`, [appId]);
+    try {
+      assert.deepEqual(await wh.webhookTick(), [], 'nothing processed while disabled');
+      const [ev] = await events();
+      assert.equal(ev.state, 'received');
+      assert.equal(ev.attempts, 0, 'no attempt used');
+      // a retry of a disabled module that is past due does not make the runner spin
+      await owner.query(`update meta.webhook_event set state = 'retry', next_attempt_at = now() - interval '1 minute' where id = $1`, [ev.id]);
+      const { webhookNextDueS } = wh;
+      const next = await webhookNextDueS();
+      assert.ok(next === null || next > 0, `next due: ${next}`);
+      // the builder says why it waits
+      const dev = new Browser(app);
+      await dev.get('/builder/login');
+      await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+      assert.match((await dev.get(`/builder/sql/rest/events?path=github`)).body, /Waits: the module is disabled/);
+    } finally {
+      await owner.query(`update meta.rest_module set enabled = true where app_id = $1 and name = 'in'`, [appId]);
+    }
+    assert.equal((await wh.webhookTick()).length, 1);
+    assert.equal((await events())[0].state, 'done');
+    assert.equal((await seen())[0].ref, 'held-1');
+  });
+
+  test('refused requests: one activity row per handler a minute, the next one counts the rest', async () => {
+    const { refusalLog, REFUSAL_LOG_MS } = await import('../src/runtime/rest.ts');
+    const rows = async () => (await owner.query(`select detail from meta.activity_log where app_id = $1 and event = 'webhook_refused' order by id`, [appId])).rows.map((r) => r.detail as string);
+    await owner.query(`delete from meta.activity_log where app_id = $1 and event = 'webhook_refused'`, [appId]);
+    for (let i = 0; i < 5; i++) assert.equal((await post('github', `{"n": ${i}}`, { 'x-hub-signature-256': 'sha256=00' })).statusCode, 401);
+    assert.equal((await rows()).length, 1, 'one row for five refusals');
+    assert.doesNotMatch((await rows())[0], /more refused/);
+    // another handler has its own minute
+    assert.equal((await post('stripe', '{}', { 'stripe-signature': 't=1,v1=00' })).statusCode, 401);
+    assert.equal((await rows()).length, 2);
+    // the helper: counted while quiet, the count given with the next row
+    const t = 1_000_000;
+    assert.equal(refusalLog('k', t), 0);
+    assert.equal(refusalLog('k', t + 1), null);
+    assert.equal(refusalLog('k', t + 2), null);
+    assert.equal(refusalLog('k', t + REFUSAL_LOG_MS), 2);
+    assert.equal(refusalLog('k', t + REFUSAL_LOG_MS + 1), null);
+  });
+
+  test('a pass that ends at its cap is followed by another at once, not at the next poll', async () => {
+    const { startQueueRunner } = await import('../src/queue-runner.ts');
+    let left = 5;
+    let ticks = 0;
+    const q = await startQueueRunner({
+      channel: 'pgkiln_test_more_s180',
+      label: 'test queue',
+      tick: async () => {
+        ticks++;
+        const n = Math.min(2, left);
+        left -= n;
+        return n;
+      },
+      more: (r) => r === 2,
+      pollS: 3600,
+    });
+    const t0 = Date.now();
+    while (left > 0 && Date.now() - t0 < 2000) await new Promise((x) => setTimeout(x, 10));
+    await q.stop();
+    assert.equal(left, 0, 'all work done without a poll');
+    assert.equal(ticks, 3);
+  });
+});
+
 describe('sprint 177: the builder edits webhook handlers and lists events', () => {
   test('a webhook handler is saved from the form; the events page lists and re-processes', async () => {
     const dev = new Browser(app);

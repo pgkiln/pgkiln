@@ -631,6 +631,11 @@ end
 
 ### Server-side conditions
 
+(sprint 183) The application's **Pages report** (the application's home) has a *Conditions* column: per page, how
+many of its regions, items, buttons, validations, processes and dynamic actions have a server-side condition, and,
+opened, each of them with its condition in words (the same words as the Page Designer's badges). Pages without one
+show a dash.
+
 Every component has the same server-side condition (sprint 154; APEX: *Server-side Condition*):
 regions, items, buttons, dynamic actions, validations, processes, computations, branches and
 application computations. In the Page Designer it is the **Server-side condition** group:

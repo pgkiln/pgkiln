@@ -9,6 +9,7 @@ import {
 } from '../dbroles.ts';
 import { administrator, back, BASE, csrf, flash, region, send, shell, type Body, type Req } from './ui.ts';
 import { tr, type BuilderTranslate } from './i18n.ts';
+import { changeWorkspaceRole } from './workspaces.ts';
 
 // (sprint 99, Database Actions DA-13) Administration → Database Users: the PostgreSQL roles of this cluster with
 // their sign-in, attributes, expiry, memberships and what they own; create, change and drop roles. Administrators
@@ -306,6 +307,29 @@ function detailRegion(tx: BuilderTranslate, r: RoleRow, d: { owned: string[]; me
   </dl>`);
 }
 
+/**
+ * (sprint 183, DA-13) The isolated workspace a role belongs to, and a form to put it in one or take it out. The
+ * forms post to the workspace's own roles route (its checks and the database's guards apply) and come back here.
+ */
+async function workspaceRegion(s: Session, tx: BuilderTranslate, r: RoleRow) {
+  if (r.pgkiln || r.superuser || r.bypassrls || r.createrole || r.replication) return '';
+  const current = await owner.one<{ id: number; name: string }>(
+    `select w.id, w.name from meta.workspace_role x join meta.workspace w on w.id = x.workspace_id where x.role_name = $1`, [r.name]);
+  const hidden = csrf(s);
+  const action = `${roleUrl(r.name)}/workspace`;
+  if (current)
+    return region(tx('dbu.ws.title'), html`<p class="u-mt0">${tx.rich('dbu.ws.in', { ws: html`<a href="${BASE}/workspaces/${current.id}">${current.name}</a>` })}</p>
+      <form method="post" action="${action}" class="buttons">${hidden}<input type="hidden" name="workspace" value="${current.id}"><input type="hidden" name="action" value="remove">
+        <button class="btn">${tx('dbu.ws.remove', { ws: current.name })}</button></form>`);
+  const isolated = (await owner.query<{ id: number; name: string }>('select id, name from meta.workspace where isolated order by lower(name)')).rows;
+  if (!isolated.length) return region(tx('dbu.ws.title'), html`<p class="muted u-mt0">${tx.rich('dbu.ws.none', { link: html`<a href="${BASE}/workspaces">${tx('dbu.ws.workspaces')}</a>` })}</p>`);
+  return region(tx('dbu.ws.title'), html`<p class="muted u-mt0">${tx('dbu.ws.intro')}</p>
+    <form method="post" action="${action}" class="search u-mwnone">${hidden}
+      <div class="field"><label class="label" for="f_dbu_ws">${tx('dbu.ws.workspace')}</label>
+        <select id="f_dbu_ws" name="workspace">${isolated.map((w) => html`<option value="${w.id}">${w.name}</option>`)}</select></div>
+      <button class="btn u-selfend">${tx('dbu.ws.add')}</button></form>`);
+}
+
 /** Can this role be changed here? A message when not. */
 const protectedMessage = (tx: BuilderTranslate, r: RoleRow) => r.pgkiln ? tx('dbu.protected', { name: r.name }) : '';
 
@@ -327,6 +351,7 @@ async function rolePage(reply: FastifyReply, s: Session, name: string | null, o:
     ${msg ? html`<div class="alert alert-info" role="status">${msg}</div>` : ''}
     ${!msg && r.used_by.length ? html`<div class="alert alert-info" role="status">${tx(r.used_by.length === 1 ? 'dbu.used_change_only_one' : 'dbu.used_change_only', { users: r.used_by.join(', ') })}</div>` : ''}
     ${detailRegion(tx, r, d)}
+    ${await workspaceRegion(s, tx, r)}
     ${before ? roleForm(s, o.spec ?? before, { isNew: false, before, grantable, errors: o.errors ?? [] }) : ''}`;
   return send(reply, s, shell(s, tx('dbu.role_title', { name: r.name }), crumbs(tx, [r.name]), main, 'users'));
 }
@@ -471,6 +496,18 @@ export async function dbUserRoutes(app: FastifyInstance) {
     const s = await administrator(req, reply, TITLE);
     if (s) return dropPage(req, reply, s, req.params.name, { to: req.query.to });
   });
+  // (sprint 183, DA-13) put the role in an isolated workspace, or take it out
+  app.post(`${URL_BASE}/role/:name/workspace`, async (req: Req, reply) => {
+    const s = await administrator(req, reply, TITLE);
+    if (!s) return;
+    const r = await oneRole(String(req.params.name));
+    const ws = /^\d{1,9}$/.test(String(req.body?.workspace)) ? Number(req.body?.workspace) : 0;
+    if (!r || !ws || !(await owner.one('select 1 as ok from meta.workspace where id = $1 and isolated', [ws]))) return reply.code(404).send('Not found');
+    if (r.pgkiln || r.superuser || r.bypassrls || r.createrole || r.replication) return reply.code(403).send(tr(s)('dbu.ws.refused'));
+    await changeWorkspaceRole(s, clientIp(req), ws, r.name, req.body?.action === 'remove');
+    return back(reply, s, roleUrl(r.name));
+  });
+
   app.post(`${URL_BASE}/drop`, async (req: Req, reply) => {
     const s = await administrator(req, reply, TITLE);
     if (s) return drop(req, reply, s);

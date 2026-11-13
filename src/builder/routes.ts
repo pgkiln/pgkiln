@@ -31,7 +31,7 @@ import { apexImportRoutes } from './apex-import.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
-import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
+import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage, type BuilderKey } from './i18n.ts';
 import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeyByCredential, passkeySignin, passkeysOf, trustBrowser, trustDays, usePasskey, userHandle } from '../mfa.ts';
 import { isIP } from 'node:net';
 import { giveChallenge, takeChallenge } from './security.ts';
@@ -42,6 +42,7 @@ import { builderDirectory, builderProvider, builderSources, linkDeveloper, resol
 import { ldapAuthenticate, LdapError } from '../ldap.ts';
 import { onBuilderSso, SsoError, startSignIn } from '../sso.ts';
 import { startSamlSignIn } from '../saml.ts';
+import { conditionWords, serverCondition } from './conditions.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -675,6 +676,30 @@ export async function builderRoutes(app: FastifyInstance) {
     const appLock = locks.get(0);
     const issues = await appIssues(a.id);
     const tx = tr(s);
+    // (sprint 183, CD-2) the server-side conditions of each page's components, in words (as the Page Designer's badges)
+    const conditionsPerPage = new Map<number, { kind: string; name: string; words: string }[]>();
+    for (const r of (await owner.query<{ page_no: number; kind: string; name: string; row: Record<string, unknown> }>(
+      `select p.page_no, x.kind, x.name, x.row from meta.page p cross join lateral (
+          select 'region' as kind, r.title as name, to_jsonb(r) as row, r.seq as seq from meta.region r where r.page_id = p.id
+          union all select 'item', i.name, to_jsonb(i), i.seq from meta.item i where i.page_id = p.id
+          union all select 'button', b.name, to_jsonb(b), b.seq from meta.button b where b.page_id = p.id
+          union all select 'validation', v.name, to_jsonb(v), v.seq from meta.validation v where v.page_id = p.id
+          union all select 'process', pr.name, to_jsonb(pr), pr.seq from meta.process pr where pr.page_id = p.id
+          union all select 'da', d.name, to_jsonb(d) - 'condition_type' - 'condition_value', d.seq from meta.dynamic_action d where d.page_id = p.id) x
+        where p.app_id = $1 order by p.page_no, x.kind, x.seq`, [a.id])).rows) {
+      const c = serverCondition(r.row);
+      if (!c) continue;
+      const list = conditionsPerPage.get(r.page_no) ?? [];
+      list.push({ kind: r.kind, name: r.name ?? '', words: conditionWords(tx, c) });
+      conditionsPerPage.set(r.page_no, list);
+    }
+    const KIND_LABEL: Record<string, BuilderKey> = { region: 'app.cond.region', item: 'app.cond.item', button: 'app.cond.button', validation: 'app.cond.validation', process: 'app.cond.process', da: 'app.cond.da' };
+    const conditionsCell = (n: number) => {
+      const list = conditionsPerPage.get(n);
+      if (!list?.length) return html`<span class="muted">—</span>`;
+      return html`<details class="page-conds"><summary>${tx(list.length === 1 ? 'app.conditions_one' : 'app.conditions', { n: list.length })}</summary>
+        <ul class="u-m0">${list.map((x) => html`<li><span class="muted small">${tx(KIND_LABEL[x.kind])}</span> <b>${x.name}</b>: ${x.words}</li>`)}</ul></details>`;
+    };
 
     const main = html`
       ${appHeader(a, 'pages', s, [`${BASE}/apps/${a.id}/create-page`, tx('app.create_page'), 'plus'])}
@@ -695,10 +720,10 @@ export async function builderRoutes(app: FastifyInstance) {
           : ''}${icons
           ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${modeLabel(p.mode)}, ${tx(p.regions === 1 ? 'app.regions_one' : 'app.regions', { n: p.regions })}</small></a></li>`)}</ul>`
           : html`<div class="table-wrap"><table class="report">
-          <thead><tr><th class="num">${tx('app.col.page')}</th><th>${tx('ab.col.name')}</th>${grouped ? html`<th>${tx('app.col.group')}</th>` : ''}<th>${tx('app.col.mode')}</th><th class="num">${tx('app.col.regions')}</th><th class="num">${tx('app.col.items')}</th><th class="num">${tx('app.col.das')}</th><th class="num">${tx('app.col.processes')}</th><th>${tx('app.col.authz')}</th><th>${tx('app.col.protection')}</th><th>${tx('app.col.lock')}</th><th></th></tr></thead>
+          <thead><tr><th class="num">${tx('app.col.page')}</th><th>${tx('ab.col.name')}</th>${grouped ? html`<th>${tx('app.col.group')}</th>` : ''}<th>${tx('app.col.mode')}</th><th class="num">${tx('app.col.regions')}</th><th class="num">${tx('app.col.items')}</th><th class="num">${tx('app.col.das')}</th><th class="num">${tx('app.col.processes')}</th><th>${tx('app.col.conditions')}</th><th>${tx('app.col.authz')}</th><th>${tx('app.col.protection')}</th><th>${tx('app.col.lock')}</th><th></th></tr></thead>
           <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
             <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="${tx('app.dev_comments')}">${tx(commentsPerPage.get(p.page_no) === 1 ? 'app.comments_one' : 'app.comments', { n: commentsPerPage.get(p.page_no) })}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? ''}</td>` : ''}<td>${modeLabel(p.mode)}</td>
-            <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td>
+            <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td><td>${conditionsCell(p.page_no)}</td>
             <td>${p.requires_auth ? (p.authz ?? '—') : tx('app.public')}</td><td>${p.protection}</td>
             <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? tx('app.you') : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
             <td><a href="/a/${a.alias}/${p.page_no}" target="_blank" rel="noopener">${tx('common.run')} ▸</a></td></tr>`)}</tbody>

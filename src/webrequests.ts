@@ -360,10 +360,13 @@ export async function callbackTick(): Promise<string[]> {
  * One pass: claim the requests that are due and make them, a few at a time, until none is left (so the requests
  * of one ordering key follow each other at once); then the callbacks. Returns the ids of the requests attempted.
  */
+/** Claims per pass; (sprint 180) a full pass is followed by another at once. */
+const ROUNDS = 20;
+
 export async function webRequestTick(): Promise<string[]> {
   const made: string[] = [];
   await releaseExpired();
-  for (let round = 0; round < 20; round++) {
+  for (let round = 0; round < ROUNDS; round++) {
     const queue = await claim();
     if (!queue.length) break;
     made.push(...queue.map((r) => r.id));
@@ -402,7 +405,7 @@ let runner: QueueRunner | undefined;
  */
 export async function startWebRequestRunner() {
   if (process.env.AUTOMATIONS === 'off' || runner) return;
-  runner = await startQueueRunner({ channel: 'pgkiln_web_request', label: 'web requests', tick: webRequestTick, nextDueS, pollS: 15 });
+  runner = await startQueueRunner({ channel: 'pgkiln_web_request', label: 'web requests', tick: webRequestTick, more: (r) => (r as string[]).length >= ROUNDS * PER_PASS, nextDueS, pollS: 15 });
 }
 
 export async function stopWebRequestRunner() {

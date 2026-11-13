@@ -6,7 +6,8 @@ import { owner } from './db.ts';
 // lists them per schema and writes them as migration files: plain SQL, a Liquibase formatted SQL changelog
 // (--liquibase formatted sql, --changeset author:id) or Flyway versioned migrations (V0001__add_bonus.sql).
 
-export type ChangeSource = 'worksheet' | 'table' | 'compare';
+/** (sprint 180) external: DDL of another tool, recorded by the event triggers of migration 163 */
+export type ChangeSource = 'worksheet' | 'table' | 'compare' | 'external';
 
 export interface ChangeSet {
   id: number;

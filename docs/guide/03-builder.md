@@ -678,6 +678,27 @@ version says *Installed: v…*.
   values query another application uses), **Release Notes** (the releases of your applications and their changes)
   and **Announcements** (maintenance, outages and releases for the workspace, with the query that shows the current
   ones in another application).
+- **Remote catalogues** (sprint 181; APEX: a gallery from a remote URL): starter and utility apps from outside
+  pgkiln, listed next to the shipped ones with the catalogue's name under their title. An administrator adds a
+  catalogue at the bottom of the Starter Apps or Utility Apps tab (*Remote catalogues*: a name and the URL of a
+  JSON document) and can **Refresh**, **Switch off** or **Remove** it. The document has the format of
+  `examples/gallery/gallery.json`, with `starters` and `utilities` only:
+
+  ```json
+  {"starters": [{"key": "field-visits", "title": "Field Visits", "version": "1.0", "icon": "map-pin",
+                 "description": "Visits planned and reported by the field team.", "url": "blueprints/field-visits.json"}]}
+  ```
+
+  `url` names the app's [blueprint](#creating-an-application-from-a-blueprint), relative to the catalogue or
+  absolute. pgkiln fetches the catalogue when it is added and on Refresh, and keeps the checked entries. Fetching
+  uses the same rules as REST data sources: only hosts on the server's allow-list `PGKILN_REST_ALLOWED_HOSTS`, no
+  private addresses (unless `PGKILN_REST_PRIVATE_HOSTS`), at most 1 MB and 10 seconds. At most 100 apps of each
+  kind are listed. An entry without a valid key, title or http(s) URL is left out, an unknown icon becomes a package,
+  and the catalogue's row says what was left out. When a refresh fails, the apps of the last successful fetch stay
+  listed and the row shows why. **Install** fetches the blueprint at that moment, also through the workspace's
+  [network access list](#network-access), and opens it in the review, so nothing is created before the developer
+  confirms. A remote catalogue can't list **sample apps**: those run SQL as pgkiln's owner, so they only come with
+  pgkiln itself.
 - **Custom Apps**: the workspace's boilerplate applications (Application type *Boilerplate*): *Create from it* opens
   Create with that boilerplate chosen.
 
@@ -2489,6 +2510,26 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   into the migration files: `--rollback` lines after the change set in the Liquibase changelog, a Flyway undo
   migration (`U0001__add_bonus.sql`, in the zip and as a button next to the change set's own file) and a comment in
   the plain script. pgkiln never runs a rollback itself.
+  (sprint 180) **DDL from other tools**: the Change Log can also record DDL run outside pgkiln: with psql, a
+  migration tool or another IDE. Two event triggers do this, and only a superuser can create them, so it is off
+  until someone turns it on. The panel *DDL from other tools* at the bottom of the page shows whether it is on. An
+  administrator gets a button for it when pgkiln connects as a superuser; everyone else sees the two statements a
+  superuser runs:
+
+  ```sql
+  create event trigger pgkiln_change_log_ddl on ddl_command_end execute function meta.change_log_ddl();
+  create event trigger pgkiln_change_log_drop on sql_drop execute function meta.change_log_drop();
+  ```
+
+  Each statement is recorded once per schema it changes, in that schema's log, with the source *Another tool* and
+  the session user as its author. The change set is part of the statement's transaction, so a rollback removes it
+  too. Not recorded: pgkiln's own sessions (their `application_name` starts with `pgkiln`; the builder records its
+  own DDL, and migrations are pgkiln's), sessions that run `set pgkiln.change_log = 'off'` (a migration tool whose
+  files you already keep), system schemas, `meta`, temporary objects and objects of an extension. Statements on
+  schemas themselves (`create schema`, `drop schema`) are not recorded either. A schema owned by an isolated
+  workspace's role is logged in that workspace; any other schema in the default workspace. The functions run as
+  pgkiln's owner (`security definer`), never as the superuser who runs the DDL. If recording fails, the statement
+  still runs and gets a warning. pgkiln proposes no rollback for these change sets.
 - **JavaScript (MLE)**: not planned. Database Actions has a JavaScript tool for Oracle's Multilingual Engine;
   PostgreSQL runs JavaScript in the database only through the [plv8](15-extensions.md) extension. Where plv8 is
   installed, write `create function … language plv8` in the SQL Worksheet like any other function: the navigator,
@@ -2557,6 +2598,12 @@ the connection limit, **valid until** (with *in N days* or *expired*), the roles
 (schemas, objects in this database, objects elsewhere). PostgreSQL doesn't record when a role was created.
 The tiles on top filter the list: roles that can sign in, **passwords that expire within 30 days**, roles with
 **BYPASSRLS**, roles **without sign-in that own objects**, and pgkiln's own roles; a search field filters by name.
+
+(sprint 183; APEX: assign a schema to a workspace) A role's page has an **Isolated workspace** panel: link the role
+to an [isolated workspace](#workspaces) (its applications may then run as that role, and only the workspace's logins
+have it), or take it out again. This is the same as adding the role on the workspace's page, with the same checks: a
+role belongs to one workspace at most, a role that an application of the workspace runs as can't be taken out, and
+superusers, roles that create roles, bypass row-level security or replicate, and pgkiln's own roles are never offered.
 
 **Create database user** (or a role's page) is a form: name, *Can sign in* (LOGIN), the password (*No password* /
 *Set a password*; for an existing role *Keep*, *Set a new password* or *Remove*), **valid until** (a date; empty: no
