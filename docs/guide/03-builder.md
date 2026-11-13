@@ -678,6 +678,27 @@ version says *Installed: v…*.
   values query another application uses), **Release Notes** (the releases of your applications and their changes)
   and **Announcements** (maintenance, outages and releases for the workspace, with the query that shows the current
   ones in another application).
+- **Remote catalogues** (sprint 181; APEX: a gallery from a remote URL): starter and utility apps from outside
+  pgkiln, listed next to the shipped ones with the catalogue's name under their title. An administrator adds a
+  catalogue at the bottom of the Starter Apps or Utility Apps tab (*Remote catalogues*: a name and the URL of a
+  JSON document) and can **Refresh**, **Switch off** or **Remove** it. The document has the format of
+  `examples/gallery/gallery.json`, with `starters` and `utilities` only:
+
+  ```json
+  {"starters": [{"key": "field-visits", "title": "Field Visits", "version": "1.0", "icon": "map-pin",
+                 "description": "Visits planned and reported by the field team.", "url": "blueprints/field-visits.json"}]}
+  ```
+
+  `url` names the app's [blueprint](#creating-an-application-from-a-blueprint), relative to the catalogue or
+  absolute. pgkiln fetches the catalogue when it is added and on Refresh, and keeps the checked entries. Fetching
+  uses the same rules as REST data sources: only hosts on the server's allow-list `PGKILN_REST_ALLOWED_HOSTS`, no
+  private addresses (unless `PGKILN_REST_PRIVATE_HOSTS`), at most 1 MB and 10 seconds. At most 100 apps of each
+  kind are listed. An entry without a valid key, title or http(s) URL is left out, an unknown icon becomes a package,
+  and the catalogue's row says what was left out. When a refresh fails, the apps of the last successful fetch stay
+  listed and the row shows why. **Install** fetches the blueprint at that moment, also through the workspace's
+  [network access list](#network-access), and opens it in the review, so nothing is created before the developer
+  confirms. A remote catalogue can't list **sample apps**: those run SQL as pgkiln's owner, so they only come with
+  pgkiln itself.
 - **Custom Apps**: the workspace's boilerplate applications (Application type *Boilerplate*): *Create from it* opens
   Create with that boilerplate chosen.
 

@@ -15017,3 +15017,67 @@ describe('sprint 180 the Change Log records DDL of other tools (DA-17)', () => {
     assert.equal((await external()).length, before);
   });
 });
+
+describe('sprint 181 remote catalogues for the App Gallery (WS-8)', () => {
+  const DEV = 'sec181_dev';
+  const PW = 'Sec181-dev-password!';
+  const rows = async () => (await owner.query(`select * from meta.gallery_source where name like 'SEC181%' order by id`)).rows;
+  const login = async (username: string, password: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password });
+    await b.get('/builder/gallery?tab=starters');
+    return b;
+  };
+  let saved: string | undefined;
+  before(async () => {
+    saved = process.env.PGKILN_REST_ALLOWED_HOSTS;
+    delete process.env.PGKILN_REST_ALLOWED_HOSTS;
+    await owner.query(`delete from meta.gallery_source where name like 'SEC181%'`);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, PW]);
+  });
+  after(async () => {
+    if (saved !== undefined) process.env.PGKILN_REST_ALLOWED_HOSTS = saved;
+    await owner.query(`delete from meta.gallery_source where name like 'SEC181%'`);
+    await owner.query(`delete from meta.developer where username = $1`, [DEV]);
+  });
+
+  test('only administrators add, refresh, switch off and remove catalogues; the CSRF token is needed', async () => {
+    const d = await login(DEV, PW);
+    assert.doesNotMatch((await d.get('/builder/gallery?tab=starters')).body, /action="\/builder\/gallery\/sources"/, 'no form for a developer');
+    assert.equal((await d.submit('/builder/gallery/sources', { name: 'SEC181 dev', url: 'https://example.com/g.json' })).statusCode, 403);
+    assert.equal((await rows()).length, 0);
+    const id = (await owner.one(`insert into meta.gallery_source (name, url) values ('SEC181 seeded', 'https://example.com/seed.json') returning id`))!.id;
+    for (const action of ['refresh', 'toggle', 'delete'])
+      assert.equal((await d.submit(`/builder/gallery/sources/${id}/${action}`, {})).statusCode, 403, action);
+    const a = await login('admin', 'admin');
+    assert.equal((await a.post('/builder/gallery/sources', { __csrf: 'forged', name: 'SEC181 forged', url: 'https://example.com/f.json' })).statusCode, 403);
+    assert.equal((await a.post(`/builder/gallery/sources/${id}/delete`, { __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await rows()).length, 1);
+    assert.equal((await a.submit(`/builder/gallery/sources/${id}/other`, {})).statusCode, 404);
+    assert.equal((await a.submit('/builder/gallery/sources/x1/refresh', {})).statusCode, 404);
+    await owner.query(`delete from meta.gallery_source where id = $1`, [id]);
+  });
+
+  test('only http(s) URLs without credentials; hosts must be on the server\'s allow-list; entries of another catalogue are not reachable', async () => {
+    const a = await login('admin', 'admin');
+    for (const url of ['file:///etc/passwd', 'javascript:alert(1)', 'https://user:pw@example.com/g.json', 'not a url'])
+      await a.submit('/builder/gallery/sources', { name: 'SEC181 bad', url });
+    assert.equal((await rows()).length, 0, 'none of them stored');
+    // with no allow-list the server fetches nothing: the catalogue is kept with the reason, and lists no app
+    await a.submit('/builder/gallery/sources', { name: 'SEC181 local', url: 'http://127.0.0.1:9/gallery.json' });
+    const [src] = await rows();
+    assert.match(src.error, /allow-list/);
+    assert.deepEqual(src.catalogue, {});
+    // an entry key that is not in this catalogue, or a path in the key: 404, nothing fetched
+    await owner.query(`update meta.gallery_source set catalogue = $2 where id = $1`, [src.id, JSON.stringify({ starters: [{ key: 'k', title: 'K', icon: 'package', description: '', version: '', url: 'http://127.0.0.1:9/k.json' }] })]);
+    const d = await login(DEV, PW);
+    assert.equal((await d.submit(`/builder/gallery/remote/${src.id}/starters/other`, {})).statusCode, 404);
+    assert.equal((await d.submit(`/builder/gallery/remote/${src.id}/utilities/k`, {})).statusCode, 404);
+    assert.equal((await d.submit(`/builder/gallery/remote/${src.id}/starters/..%2Fk`, {})).statusCode, 404);
+    // a developer may install a listed one: the fetch is refused by the allow-list, with a message
+    const res = await d.submit(`/builder/gallery/remote/${src.id}/starters/k`, {});
+    assert.equal(res.statusCode, 303);
+    assert.match((await d.get(res.headers.location as string)).body, /could not be fetched: The host 127\.0\.0\.1:9 is not on the server&#39;s allow-list/);
+  });
+});
