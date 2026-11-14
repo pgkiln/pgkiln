@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- **Browser security per application** (sprint 188, NX-S4; migration 168): like APEX's *Security Attributes → Browser
+  Security*, **Settings → Security → Browser security** chooses, for the responses of `/a/<alias>/`: who may show the
+  application in a frame (pages of this server, the default; never; or up to 10 listed https origins, as CSP
+  `frame-ancestors`, with `X-Frame-Options` where it applies), the referrer policy (`same-origin`, the default,
+  `strict-origin-when-cross-origin`, `strict-origin` or `no-referrer`), whether search engines may index the pages
+  (*Automatic*: `X-Robots-Tag: noindex, nofollow` when the application needs a sign-in) and up to 20 extra response
+  headers. Headers pgkiln sets for security or the protocol needs (CSP, `Set-Cookie`, `Cache-Control`, CORS …) and
+  values with line breaks are refused; a stored value that is not allowed (an import, a hand edit) is never sent,
+  and the Advisor warns about it. Pages keep `Cache-Control: no-store`, the builder keeps its own headers, and the
+  Security checklist lists the headers an application's pages send. HR example part 88. **Upgrading**: every
+  application keeps today's headers, except that an application needing a sign-in now also sends
+  `X-Robots-Tag: noindex, nofollow`.
+
 ## [0.97.0] - 2026-11-14
 
 ### Added

@@ -29,3 +29,13 @@ alter table meta.app add column browser_security jsonb not null default '{}'::js
   check (jsonb_typeof(browser_security) = 'object' and length(browser_security::text) <= 20000);
 comment on column meta.app.browser_security is
   'Browser security per application (168): embed, embed_origins, referrer, robots, headers; {} = the defaults';
+
+-- an export made before 168 has no browser_security key: import_app inserts NULL (see 054, 154)
+create function meta.app_browser_security_default() returns trigger
+language plpgsql set search_path = pg_catalog as $$
+begin
+  new.browser_security := coalesce(new.browser_security, '{}'::jsonb);
+  return new;
+end $$;
+create trigger app_browser_security_default before insert or update on meta.app
+  for each row execute function meta.app_browser_security_default();

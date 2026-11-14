@@ -5,6 +5,7 @@ import { applyBinds, splitStatements } from '../binds.ts';
 import { owner, runtime, type Db } from '../db.ts';
 import { appIsolated, devDbForApp } from '../workspace-db.ts';
 import { roleProblem } from '../app-role.ts';
+import { check } from '../browser-security.ts';
 import { settingFrom } from '../instance.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -696,6 +697,12 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
       message: roleState === 'missing'
         ? 'The application has no database role of its own (APEX: parsing schema), so it runs only for its developers from the builder. Give it one in Settings → Security, where pgkiln can create app_<alias> with rights on a schema.'
         : `The application runs as ${app.db_role}, a superuser, a role that bypasses row level security, creates roles or owns pgkiln's schemas (or a member of one), so it doesn't run. Give it a role of its own in Settings → Security.` });
+
+  // ---- (sprint 188, NX-S4) browser security values the server can't send (an import, a hand edit): it leaves them out
+  const bs = check({ ...(app.browser_security ?? {}), headers: Array.isArray(app.browser_security?.headers) ? app.browser_security.headers : [] });
+  if (bs.problems.length)
+    findings.push({ severity: 'warning', entry: null, field: 'browser security',
+      message: `Settings → Security → Browser security: ${bs.problems.join(' ')} The server ignores these values and sends the defaults for them.` });
 
   // ---- (117) REST modules refuse (403) to run as a superuser, a role that bypasses RLS or a member of pgkiln's
   // owner: say so here before the endpoints fail. Without a db_role the runtime connection's own user is the role.
