@@ -7913,4 +7913,8 @@ export const de: BuilderMessages = {
   'ss.err.idle': 'Die maximale Leerlaufzeit beträgt 1 bis 1440 Minuten oder bleibt leer.',
   'ss.err.max': 'Die maximale Sitzungsdauer beträgt 1 bis 720 Stunden oder bleibt leer.',
   'ss.err.page': 'Die Seite nach Sitzungsablauf muss eine Seite dieser Anwendung ohne Anmeldung sein.',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': 'Produktionsbereitschaft: {ok} von {n} bereit',
+  'ins.production_intro': 'PUBLIC_URL ist eine https-Adresse, daher wird diese Installation als Live-Installation geprüft. {cmd} prüft dasselbe und lässt eine Deploy-Pipeline fehlschlagen, wenn eine Zeile nicht bereit ist.',
+  'ins.lockout': 'Aussperr-Prüfungen',
 };

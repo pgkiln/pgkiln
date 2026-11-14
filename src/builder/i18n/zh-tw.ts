@@ -7913,4 +7913,8 @@ export const zhTW: BuilderMessages = {
   'ss.err.idle': '最長閒置時間為 1 到 1440 分鐘，或留空。',
   'ss.err.max': '最長工作階段時間為 1 到 720 小時，或留空。',
   'ss.err.page': '工作階段逾時後的頁面必須是此應用程式中無須登入的頁面。',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': '生產就緒：{n} 項中 {ok} 項就緒',
+  'ins.production_intro': 'PUBLIC_URL 是 https 位址，因此此安裝依正式環境檢查。{cmd} 檢查相同內容，並在有未就緒項目時使部署管線失敗。',
+  'ins.lockout': '鎖定檢查',
 };

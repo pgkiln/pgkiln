@@ -1,3 +1,4 @@
+import { roleProblem } from './app-role.ts';
 import { owner } from './db.ts';
 import { breakGlassAdmins } from './devsso.ts';
 import { mfaPolicy } from './mfa.ts';
@@ -43,10 +44,69 @@ export async function defaultPasswords(): Promise<string[]> {
 }
 
 export interface Check {
-  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role' | 'default_password' | 'admin_mfa';
+  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role' | 'default_password' | 'admin_mfa'
+    | 'prod_https' | 'prod_cookies' | 'prod_rest_hosts' | 'prod_key' | 'prod_mfa' | 'prod_passwords' | 'prod_app_roles' | 'prod_debug';
   level: Level;
   title: string;
   detail: string;
+  /** (sprint 191, NX-S6) a line of the production readiness group */
+  group?: 'production';
+}
+
+/**
+ * (sprint 191, NX-S6) Production readiness is checked when PUBLIC_URL is an https address of a public host, or when
+ * asked (pgkiln admin check --production): what is fine on a developer's own machine but not on a live installation.
+ */
+export function productionInstance(url = process.env.PUBLIC_URL): boolean {
+  return !!url && URL.canParse(url) && new URL(url).protocol === 'https:' && publicInstance(url);
+}
+
+/** (sprint 191, NX-S6) The production readiness group: every line is ok or an error, nothing in between. */
+export async function productionChecks(url = process.env.PUBLIC_URL): Promise<Check[]> {
+  const out: Check[] = [];
+  const line = (key: Check['key'], ok: boolean, title: string, good: string, bad: string) =>
+    out.push({ key, group: 'production', level: ok ? 'ok' : 'error', title, detail: ok ? good : bad });
+  const https = !!url && URL.canParse(url) && new URL(url).protocol === 'https:';
+  line('prod_https', https && publicInstance(url), 'Public https address',
+    `PUBLIC_URL is ${url}.`,
+    url ? `PUBLIC_URL is ${url}: a live installation is reached over https at its public name (passkeys, links in e-mails and single sign-on use it).`
+      : 'PUBLIC_URL is not set: set it to the https address users open (links in e-mails, passkeys and single sign-on use it).');
+  line('prod_cookies', process.env.COOKIE_SECURE === 'true', 'Secure cookies and HSTS',
+    'COOKIE_SECURE is true: session cookies are sent over https only, with Strict-Transport-Security.',
+    'COOKIE_SECURE is not true: session cookies may travel over plain http and no Strict-Transport-Security header is sent. Set COOKIE_SECURE=true behind https.');
+  const hosts = (process.env.PGKILN_REST_ALLOWED_HOSTS ?? '').trim();
+  line('prod_rest_hosts', !!hosts, 'Outbound hosts listed',
+    `PGKILN_REST_ALLOWED_HOSTS limits the hosts REST data sources, web requests and AI services may call: ${hosts.slice(0, 200)}.`,
+    'PGKILN_REST_ALLOWED_HOSTS is empty: applications may call any public host. List the hosts they need (comma separated, *.example.com for a domain).');
+  const backup = secretKeyConfigured() ? await keyBackup() : null;
+  const fp = secretKeyConfigured() ? keyFingerprint() : null;
+  line('prod_key', !!fp && !!backup && backup.fingerprint === fp, 'Instance key set and backed up',
+    `PGKILN_SECRET_KEY is set and a copy was confirmed${backup ? ` by ${backup.by} on ${backup.at.slice(0, 10)}` : ''}.`,
+    !fp ? 'PGKILN_SECRET_KEY is not set: nothing can be stored encrypted (authenticator apps, web credentials, mail and AI keys). Set one of at least 32 characters.'
+      : 'The instance key is not confirmed as backed up: keep a copy outside this server, then confirm it under Lockout checks or with pgkiln admin key-backed-up.');
+  const { policy } = await mfaPolicy();
+  line('prod_mfa', policy === 'admins' || policy === 'all', 'Two-factor sign-in for administrators',
+    `Two-factor sign-in is required for ${policy === 'all' ? 'every developer' : 'administrators'}.`,
+    'Administrators may sign in with a password alone: require two-factor sign-in (Instance settings → Two-factor sign-in, or pgkiln admin set-2fa-policy admins).');
+  const weak = await defaultPasswords();
+  line('prod_passwords', !weak.length, 'No default passwords',
+    'No developer signs in with a default password.',
+    `${weak.join(', ')} still sign${weak.length === 1 ? 's' : ''} in with the default password ("admin" or the user name).`);
+  const apps = (await owner.query<{ alias: string; db_role: string | null; debug: boolean; debug_level: number }>(
+    'select alias, db_role, debug, coalesce(debug_level, 0) as debug_level from meta.app order by alias')).rows;
+  const roleless: string[] = [];
+  for (const a of apps) {
+    const problem = await roleProblem(owner, a.db_role);
+    if (problem) roleless.push(`${a.alias} (${problem === 'missing' ? 'no role' : `${a.db_role}, too powerful`})`);
+  }
+  line('prod_app_roles', !roleless.length, 'Every application runs as a role of its own',
+    apps.length ? `All ${apps.length} applications have a database role of their own.` : 'There are no applications yet.',
+    `${roleless.join(', ')}: give ${roleless.length === 1 ? 'it' : 'them'} a role of ${roleless.length === 1 ? 'its' : 'their'} own (Settings → Security). Such an application doesn't run outside development mode.`);
+  const debugging = apps.filter((a) => a.debug || a.debug_level > 0).map((a) => `${a.alias} (${[a.debug ? 'debug mode' : '', a.debug_level > 0 ? `debug messages level ${a.debug_level}` : ''].filter(Boolean).join(', ')})`);
+  line('prod_debug', !debugging.length, 'Debug off in every application',
+    'No application shows error details or records debug messages.',
+    `${debugging.join(', ')}: debug mode shows error details to users and debug messages record session data; turn them off (Settings → Security).`);
+  return out;
 }
 
 /** Every column that holds a secret encrypted with the instance key ("v1:…"). */
@@ -152,8 +212,10 @@ export async function passkeysElsewhere(rpId: string): Promise<PasskeyDomain[]> 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** All checks; rpId: the RP ID passkeys must have (from PUBLIC_URL or the request; null skips that check). */
-export async function instanceChecks(rpId: string | null): Promise<Check[]> {
+export async function instanceChecks(rpId: string | null, opts: { production?: boolean } = {}): Promise<Check[]> {
   const checks: Check[] = [];
+  // (sprint 191, NX-S6) production readiness first: on a live installation it is what matters most
+  if (opts.production || productionInstance()) checks.push(...(await productionChecks()));
 
   // the instance key
   const status = await secretStatus();
@@ -199,8 +261,9 @@ export async function instanceChecks(rpId: string | null): Promise<Check[]> {
 
   // (sprint 185, NX-S1) DATABASE_URL as a superuser
   checks.push(ownerRoleCheck(await ownerRole()));
-  // (NX-S3) a public installation: no default passwords, and a second factor for administrators
-  if (publicInstance()) {
+  // (NX-S3) a public installation: no default passwords, and a second factor for administrators (the production
+  // readiness group has both as its own lines)
+  if (publicInstance() && !(opts.production || productionInstance())) {
     const weak = await defaultPasswords();
     if (weak.length)
       checks.push({ key: 'default_password', level: 'error', title: 'Default passwords on a public installation',

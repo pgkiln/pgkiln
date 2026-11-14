@@ -7913,4 +7913,8 @@ export const fr: BuilderMessages = {
   'ss.err.idle': 'La durée d\'inactivité maximale est de 1 à 1440 minutes, ou vide.',
   'ss.err.max': 'La durée de session maximale est de 1 à 720 heures, ou vide.',
   'ss.err.page': 'La page après expiration de la session doit être une page de cette application sans connexion.',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': 'Prêt pour la production : {ok} sur {n} prêts',
+  'ins.production_intro': 'PUBLIC_URL est une adresse https : cette installation est vérifiée comme une installation en production. {cmd} vérifie la même chose et fait échouer un pipeline de déploiement quand une ligne n\'est pas prête.',
+  'ins.lockout': 'Contrôles de verrouillage',
 };

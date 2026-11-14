@@ -7913,4 +7913,8 @@ export const nl: BuilderMessages = {
   'ss.err.idle': 'De maximale inactieve tijd is 1 tot 1440 minuten, of leeg.',
   'ss.err.max': 'De maximale sessieduur is 1 tot 720 uur, of leeg.',
   'ss.err.page': 'De pagina na een verlopen sessie moet een pagina van deze applicatie zonder aanmelden zijn.',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': 'Klaar voor productie: {ok} van {n} in orde',
+  'ins.production_intro': 'PUBLIC_URL is een https-adres, dus deze installatie wordt gecontroleerd als een live installatie. {cmd} controleert hetzelfde en laat een deploy-pipeline falen als een regel niet in orde is.',
+  'ins.lockout': 'Lockout-controles',
 };

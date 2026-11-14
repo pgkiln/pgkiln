@@ -7917,4 +7917,8 @@ export const en = {
   'ss.err.idle': 'The maximum idle time is 1 to 1440 minutes, or empty.',
   'ss.err.max': 'The maximum session length is 1 to 720 hours, or empty.',
   'ss.err.page': 'The page after a session timeout must be a page of this application without sign-in.',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': 'Production readiness: {ok} of {n} ready',
+  'ins.production_intro': 'PUBLIC_URL is an https address, so this installation is checked as a live one. {cmd} checks the same and fails a deploy pipeline when a line isn\'t ready.',
+  'ins.lockout': 'Lockout checks',
 } as const;

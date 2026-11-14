@@ -7913,4 +7913,8 @@ export const pt: BuilderMessages = {
   'ss.err.idle': 'O tempo máximo de inatividade é de 1 a 1440 minutos, ou vazio.',
   'ss.err.max': 'A duração máxima da sessão é de 1 a 720 horas, ou vazia.',
   'ss.err.page': 'A página após o fim da sessão deve ser uma página desta aplicação sem login.',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': 'Pronto para produção: {ok} de {n} prontos',
+  'ins.production_intro': 'PUBLIC_URL é um endereço https, então esta instalação é verificada como uma instalação em produção. {cmd} verifica o mesmo e faz falhar um pipeline de deploy quando uma linha não está pronta.',
+  'ins.lockout': 'Verificações de bloqueio',
 };

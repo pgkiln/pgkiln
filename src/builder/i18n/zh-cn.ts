@@ -7913,4 +7913,8 @@ export const zhCN: BuilderMessages = {
   'ss.err.idle': '最长空闲时间为 1 到 1440 分钟，或留空。',
   'ss.err.max': '最长会话时长为 1 到 720 小时，或留空。',
   'ss.err.page': '会话超时后的页面必须是此应用程序中无需登录的页面。',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': '生产就绪：{n} 项中 {ok} 项就绪',
+  'ins.production_intro': 'PUBLIC_URL 是 https 地址，因此此安装按生产环境检查。{cmd} 检查相同内容，并在有未就绪项时使部署流水线失败。',
+  'ins.lockout': '锁定检查',
 };

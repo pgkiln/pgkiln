@@ -7913,4 +7913,8 @@ export const ja: BuilderMessages = {
   'ss.err.idle': '最大アイドル時間は 1 から 1440 分、または空欄です。',
   'ss.err.max': '最大セッション期間は 1 から 720 時間、または空欄です。',
   'ss.err.page': 'セッション・タイムアウト後のページは、このアプリケーションのサインイン不要のページである必要があります。',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': '本番環境の準備: {n} 項目中 {ok} 項目が完了',
+  'ins.production_intro': 'PUBLIC_URL が https アドレスのため、このインストールは本番環境としてチェックされます。{cmd} も同じ内容をチェックし、未完了の項目があるとデプロイ・パイプラインを失敗させます。',
+  'ins.lockout': 'ロックアウト・チェック',
 };
