@@ -16023,6 +16023,8 @@ describe('sprint 186 a clear message when row level security refuses the develop
     assert.match(ld.body, /row-level security policy/);
     assert.match(ld.body, HINT);
     assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from ${T}`))!.n, 1, 'nothing more was inserted');
+  });
+});
 
 describe('sprint 187 issues from an APEX import (NX-F1)', () => {
   test('made in the application\'s own workspace only; component names with markup are text', async () => {
