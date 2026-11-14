@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.97.0 (November 2026): every application runs as a database role of its own (NX-S2), no default password on a public installation (NX-S3), the APEX importer rewrites common Oracle SQL and files the hand work as Team Development issues (NX-F1), a clearer message when row level security refuses the SQL Workshop.
+- **Current release:** 0.98.0 (November 2026): browser security per application (NX-S4), session limits, deep linking and Expire bookmarks per application (NX-S5), a production readiness check with `pgkiln admin check --production` (NX-S6), and the APEX importer on real APEX 26.2 exports (charts, cards, calendars, faceted search and lists).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
