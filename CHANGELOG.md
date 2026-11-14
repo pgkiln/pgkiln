@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-11-14
+
 ### Added
 - **The APEX importer reads real APEX 26.2 exports** (sprint 190, NX-F1 follow-up), tested in CI on the export of the
   sample application *Demonstration - HR* (app 77536, 46 pages; the owner's e-mail and workspace replaced):
