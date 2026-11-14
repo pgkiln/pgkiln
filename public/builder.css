@@ -1194,7 +1194,7 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .settings-tabs a:hover { color: var(--text); }
 .settings-tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--hot); }
 .settings-body { display: grid; gap: 1rem; max-width: 64rem; }
-.settings-form { display: grid; gap: 1rem; }
+.settings-form { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); } /* (sprint 186) its column shrinks on a phone: a long option or a role name never widens the page */
 
 /* (sprint 74) the application home: search, view and Create page above the pages; Tasks on the right */
 .app-home { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: 1rem; align-items: start; }
@@ -1780,3 +1780,5 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 
 /* (sprint 186) the hint after a refusal by row level security: its form stacks, so it fits a phone */
 .rls-hint .rls-owner .field input { width: 100%; min-width: 0; box-sizing: border-box; }
+.settings-form select, .settings-form input { max-width: 100%; min-width: 0; }
+.settings-form code, .checklist code, #make-role .btn { overflow-wrap: anywhere; white-space: normal; }
