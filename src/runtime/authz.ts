@@ -94,6 +94,8 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
   for (const r of ctx.page.regions)
     if ((await isAuthorized(ctx, r.authz)) && (await conditionHolds(ctx, conditionOf(r), `condition of region "${r.title ?? r.id}"`)))
       vis.regions.add(r.id);
+  // (172) a sub region shows only where its parent shows (its authorization, condition and build option)
+  for (const r of ctx.page.regions) if (r.parent_id != null && !vis.regions.has(r.parent_id)) vis.regions.delete(r.id);
 
   for (const i of ctx.page.items) {
     if (i.region_id !== null && !vis.regions.has(i.region_id)) continue;

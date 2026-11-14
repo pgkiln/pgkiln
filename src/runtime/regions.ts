@@ -310,10 +310,47 @@ async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>)
   const cacheKeyOf = setting ? cacheKey(ctx, r, setting) : null;
   if (cacheKeyOf && !ctx.cacheRefresh) body = useCached(ctx, cacheKeyOf);
   if (body) dbg(ctx, 6, 'region', 'from the region cache');
-  if (!body && lazyOf(r) && ctx.loadNow !== r.id && !ctx.params.has(`r${r.id}_load`)) body = lazyPlaceholder(ctx, r);
+  let placeholder = false;
+  if (!body && lazyOf(r) && ctx.loadNow !== r.id && !ctx.params.has(`r${r.id}_load`)) {
+    body = lazyPlaceholder(ctx, r);
+    placeholder = true;
+  }
   if (!body)
     body = setting ? await renderCaching(ctx, r, setting, cacheKeyOf!, () => renderBody(ctx, r, hidden)) : await renderBody(ctx, r, hidden);
+  // (172) the sub regions, each with its own cache and lazy settings, after the region's own content (a lazy
+  // container loads them with itself)
+  if (!placeholder) {
+    const children = await renderChildren(ctx, r, hidden);
+    if (children) body = html`${body}${children}`;
+  }
   return regionShell(ctx, r, hidden, body);
+}
+
+/** (172) The sub regions of a region, in sequence (one level: a sub region has none). */
+export const childrenOf = (ctx: PageContext, r: Region) => (r.parent_id == null ? ctx.page.regions.filter((x) => x.parent_id === r.id) : []);
+
+/**
+ * (172, APEX: sub regions) A container's sub regions as its template shows them: tabs_container one tab per sub region
+ * (a list of links to them without JavaScript, app.js makes them ARIA tabs), flex_container side by side, any other
+ * template a 12-column grid. Sub regions that are not shown (authorization, condition) leave no tab behind. Without
+ * JavaScript every panel shows, under a heading when the sub region's own template (plain) has none.
+ */
+async function renderChildren(ctx: PageContext, r: Region, hidden: Set<string>): Promise<Raw | ''> {
+  const shown: [Region, Raw][] = [];
+  for (const c of childrenOf(ctx, r)) {
+    const out = await renderRegion(ctx, c, hidden);
+    if (out) shown.push([c, out as Raw]);
+  }
+  if (!shown.length) return '';
+  if (r.template === 'flex_container') return html`<div class="region-children region-flex">${shown.map(([, out]) => out)}</div>`;
+  if (r.template !== 'tabs_container') return html`<div class="t-regions region-children">${shown.map(([, out]) => out)}</div>`;
+  const label = (c: Region) => c.title || `${ctx.locale.t('rds.region')} ${c.id}`;
+  return html`<div class="region-tabs" data-region-tabs="${r.id}">
+    <ul class="region-tablist" aria-label="${r.title || ctx.locale.t('rds.label')}">
+      ${shown.map(([c]) => html`<li><a class="region-tab" id="R${r.id}_tab${c.id}" href="#R${c.id}" data-tab-panel="R${r.id}_panel${c.id}">${label(c)}</a></li>`)}
+    </ul>
+    ${shown.map(([c, out]) => html`<div class="region-tabpanel" id="R${r.id}_panel${c.id}">${c.template === 'plain' ? html`<h3 class="region-tabpanel-title">${label(c)}</h3>` : ''}${out}</div>`)}
+  </div>`;
 }
 
 /** Region types that place their items themselves (and login, whose fields post to a form of their own). */
@@ -445,7 +482,7 @@ const LEFT_SLOTS = new Set(['previous', 'close', 'delete']);
 
 async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw) {
   const slotted = [...ctx.vis!.buttons.values()].some((b) => b.region_id === r.id && b.slot && b.slot !== 'region');
-  if (slotted && (r.template === 'standard' || r.template === 'collapsible' || r.template === 'plain')) return slottedShell(ctx, r, hidden, body);
+  if (slotted && (r.template === 'standard' || r.template === 'collapsible' || r.template === 'plain' || r.template === 'tabs_container' || r.template === 'flex_container')) return slottedShell(ctx, r, hidden, body);
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
@@ -455,7 +492,8 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   // (0.31) the region's static id, for CSS and JavaScript (the element id stays R<id>)
   const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';
 
-  if (r.template === 'plain')
+  // (172) a flexbox container is a frame-less layout: its sub regions side by side
+  if (r.template === 'plain' || r.template === 'flex_container')
     return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
       ${buttonsOnTop && buttons ? html`<div class="region-toolbar">${buttons}</div>` : ''}
       ${body}
@@ -529,7 +567,7 @@ async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, bo
   const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';
   const titleId = `R${r.id}_title`;
   const footer = left || right ? html`<footer class="region-footer region-footer-split"><div class="region-footer-start">${left}</div><div class="region-footer-end">${right}</div></footer>` : '';
-  if (r.template === 'plain')
+  if (r.template === 'plain' || r.template === 'flex_container')
     return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
       ${top ? html`<div class="region-toolbar">${top}</div>` : ''}${body}${footer}</section>`;
   const header = html`<h2 id="${titleId}">${r.title}</h2>${top}`;

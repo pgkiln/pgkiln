@@ -188,7 +188,7 @@ export interface Region {
   pk_column: string | null;
   pk_item: string | null;
   columns: number;
-  template: 'standard' | 'plain' | 'collapsible' | 'hero' | 'title_bar' | 'buttons_container' | 'inline_dialog' | 'inline_drawer' | 'wizard';
+  template: 'standard' | 'plain' | 'collapsible' | 'hero' | 'title_bar' | 'buttons_container' | 'inline_dialog' | 'inline_drawer' | 'wizard' | 'tabs_container' | 'flex_container';
   condition: string | null;
   /** (147) the condition's type (null: `condition` is SQL) and value */
   condition_type?: ConditionType | null;
@@ -201,6 +201,8 @@ export interface Region {
   template_options?: string[];
   /** (099) where the region shows: banner, breadcrumb, left, body (null), right or footer */
   position?: 'banner' | 'breadcrumb' | 'left' | 'body' | 'right' | 'footer' | null;
+  /** (172) the region this one sits in (a sub region, one level deep); it shows only where its parent shows */
+  parent_id?: number | null;
 }
 
 export type ItemType =

@@ -16720,3 +16720,65 @@ end;`);
     assert.match(page, /<code>x(&#39;|&#x27;|')\); drop table meta\.app; --<\/code>/, 'the name is text');
   });
 });
+
+describe('sprint 195 sub regions (NX-F2)', () => {
+  const hrRegion = async (title: string) => (await owner.one<{ id: number }>(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 53 and r.title = $2`, [appId, title]))!.id;
+
+  test("HR page 53: a container's condition and a sub region's authorization decide what shows, and what can be pressed", async () => {
+    const allen = await as('allen');
+    // no department chosen: the containers' condition (item not null) leaves out every sub region, their items and buttons
+    const empty = await allen.get('/a/hr/53');
+    assert.equal(empty.statusCode, 200);
+    assert.doesNotMatch(empty.body, /data-region-tabs|name="P53_DNAME"|data-button="SAVE"/);
+    assert.equal((await allen.post('/a/hr/53', { __csrf: allen.lastCsrf, __request: 'SAVE', P53_DNAME: 'FORGED' })).statusCode, 403, 'a button of a hidden sub region');
+    assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from hr.dept where dname = 'FORGED'`))!.n, 0);
+    assert.equal((await allen.get(`/a/hr/53/region/${await hrRegion('Employees')}`)).statusCode, 403);
+    // a department chosen (a signed link): the tabs, without the administrators' tab for allen
+    const shown = await allen.get(link('allen', 53, { P53_DEPTNO: '20' }));
+    assert.equal(shown.statusCode, 200);
+    assert.match(shown.body, /data-region-tabs="\d+"[\s\S]*?>Employees<\/a>[\s\S]*?>Edit department<\/a>/);
+    assert.doesNotMatch(shown.body, />Administration<\/a>|Only administrators see this tab/);
+    const king = await as('king');
+    assert.match((await king.get(link('king', 53, { P53_DEPTNO: '20' }))).body, />Administration<\/a>[\s\S]*Only administrators see this tab/);
+    // the partial refresh of a sub region renders that region only, for the current department
+    const da = (await owner.one<{ id: number }>(`select d.id from meta.dynamic_action d join meta.page p on p.id = d.page_id where p.app_id = $1 and p.page_no = 53 and d.name = 'Refresh the employees'`, [appId]))!.id;
+    await allen.get('/a/hr/53');
+    const refreshed = JSON.parse((await allen.post(`/a/hr/53/da/${da}`, { __csrf: allen.lastCsrf })).body);
+    const employees = await hrRegion('Employees');
+    assert.match(refreshed.regions[employees], new RegExp(`^<section class="region region-report region-plain col-12" id="R${employees}"`));
+    assert.match(refreshed.regions[employees], />Smith</);
+  });
+
+  test('the Page Designer: parents on other pages, a second level and forged ids are refused', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    const page = async (no: number) => (await owner.one<{ id: number }>('select id from meta.page where app_id = $1 and page_no = $2', [appId, no]))!.id;
+    const p53 = await page(53);
+    const p44 = await page(44);
+    await b.get(`/builder/apps/${appId}/pages/53`);
+    const elsewhere = (await owner.one<{ id: number }>(`select id from meta.region where page_id = $1 order by id limit 1`, [p44]))!.id;
+    const choose = await hrRegion('Choose a department');
+    const tabs = await hrRegion('Department');
+    const employees = await hrRegion('Employees');
+    const layout = (op: string, form: Record<string, string>) => b.post(`/builder/pages/${p53}/layout/${op}`, { __csrf: b.lastCsrf, ...form });
+    for (const [form, msg] of [
+      [{ kind: 'region', id: String(choose), parent: String(elsewhere) }, /not on this page/],
+      [{ kind: 'region', id: String(choose), parent: `${tabs} or 1=1` }, /not on this page/],
+      [{ kind: 'region', id: String(choose), parent: String(employees) }, /nest one level deep/],
+      [{ kind: 'region', id: String(tabs), parent: String(choose) }, /nest one level deep/],
+    ] as const) {
+      const res = await layout('move', form);
+      assert.equal(res.statusCode, 400, JSON.stringify(form));
+      assert.match(res.body, msg);
+    }
+    assert.equal((await layout('create', { kind: 'region', type: 'static', parent: String(elsewhere) })).statusCode, 400);
+    assert.equal((await layout('create', { kind: 'region', type: 'no_such_container' })).statusCode, 400);
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.region where page_id = $1 and parent_id is not null and parent_id not in (select id from meta.region where page_id = $1)', [p53]))!.n, 0);
+    // a region of another page cannot be deleted through this page (its sub regions are not touched either)
+    const before = (await owner.one<{ n: number }>('select count(*)::int as n from meta.region where page_id = $1', [p44]))!.n;
+    await b.post(`/builder/pages/${p53}/c/region/${elsewhere}/delete`, { __csrf: b.lastCsrf });
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.region where page_id = $1', [p44]))!.n, before);
+    assert.equal((await owner.one<{ parent_id: number }>('select parent_id from meta.region where id = $1', [employees]))!.parent_id, tabs, 'nothing moved');
+  });
+});

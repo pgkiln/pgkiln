@@ -61,6 +61,17 @@ export const BUTTON_LABELS: Record<string, [string, string]> = {
   submit: ['Submit Page', 'button'], redirect: ['Redirect to Page', 'button'], da: ['Dynamic Action', 'bolt'], document: ['Download Document', 'download'],
 };
 
+/**
+ * (172, APEX: the gallery's container regions) Gallery entries that make a static region with a container template:
+ * its sub regions are dropped into it. Created like a region type (data-type), they are not region types themselves.
+ */
+export const CONTAINER_LABELS: Record<string, [string, string]> = {
+  tabs_container: ['Tabs Container', 'layers'], flex_container: ['Flexbox Container', 'grid'], collapsible_container: ['Collapsible', 'region'],
+};
+const CONTAINER_TEMPLATE: Record<string, string> = { tabs_container: 'tabs_container', flex_container: 'flex_container', collapsible_container: 'collapsible' };
+/** (172) The templates that exist to hold sub regions: the layout always offers their sub region slot. */
+export const CONTAINER_TEMPLATES = new Set(['tabs_container', 'flex_container', 'collapsible']);
+
 /** A working starting point per region type, so a new region renders straight away. */
 const NEW_REGION_SOURCE: Record<string, string | null> = {
   report: "select 1 as id, 'Edit the query of this region' as name",
@@ -77,7 +88,7 @@ const NEW_REGION_SOURCE: Record<string, string | null> = {
 
 interface Snap {
   // position and slot (099) are missing from snapshots taken before them: those leave them as they are
-  region: { id: number; seq: number; columns: number; position?: string | null }[];
+  region: { id: number; seq: number; columns: number; position?: string | null; parent_id?: number | null }[];
   item: { id: number; seq: number; region_id: number | null }[];
   button: { id: number; seq: number; region_id: number | null; slot?: string | null }[];
 }
@@ -93,7 +104,7 @@ type Q = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; ro
 
 async function snapshot(c: Q, pid: number): Promise<Snap> {
   // one after the other: a transaction's client runs one query at a time
-  const region = await c.query('select id, seq, columns, position from meta.region where page_id = $1 order by id', [pid]);
+  const region = await c.query('select id, seq, columns, position, parent_id from meta.region where page_id = $1 order by id', [pid]);
   const item = await c.query('select id, seq, region_id from meta.item where page_id = $1 order by id', [pid]);
   const button = await c.query('select id, seq, region_id, slot from meta.button where page_id = $1 order by id', [pid]);
   return { region: region.rows, item: item.rows, button: button.rows };
@@ -102,8 +113,14 @@ async function snapshot(c: Q, pid: number): Promise<Snap> {
 /** Puts the layout of a snapshot back; components deleted since are skipped, regions that are gone become "no region". */
 async function restore(c: Q, pid: number, snap: Snap) {
   const regions = new Set((await c.query('select id from meta.region where page_id = $1', [pid])).rows.map((r) => r.id));
+  // (172) sub regions leave their parents first, then go into theirs (one level deep at every step)
+  for (const r of snap.region)
+    if ('parent_id' in r && r.parent_id == null) await c.query('update meta.region set parent_id = null where id = $1 and page_id = $2 and parent_id is not null', [r.id, pid]);
   for (const r of snap.region)
     await c.query('update meta.region set seq = $3, columns = $4, position = case when $5 then $6 else position end where id = $1 and page_id = $2', [r.id, pid, r.seq, r.columns, 'position' in r, r.position ?? null]);
+  for (const r of snap.region)
+    if (r.parent_id != null && regions.has(r.parent_id))
+      await c.query('update meta.region set parent_id = $3 where id = $1 and page_id = $2 and parent_id is distinct from $3', [r.id, pid, r.parent_id]);
   for (const r of snap.item)
     await c.query('update meta.item set seq = $3, region_id = $4 where id = $1 and page_id = $2', [r.id, pid, r.seq, r.region_id !== null && regions.has(r.region_id) ? r.region_id : null]);
   for (const r of snap.button)
@@ -148,6 +165,20 @@ async function targetRegion(c: Q, pid: number, value: string): Promise<number | 
 }
 
 /**
+ * (172) The region a region goes into: '' is the page (a display position), otherwise a region of this page that is
+ * not a sub region itself, and not the region; a region with sub regions stays at page level (one level of nesting).
+ */
+async function targetParent(c: Q, pid: number, id: number, value: string): Promise<number | null> {
+  if (value === '') return null;
+  const parent = int(value);
+  const row = parent === null ? null : (await c.query('select id, parent_id from meta.region where id = $1 and page_id = $2', [parent, pid])).rows[0];
+  if (!row) throw new LayoutError(400, tx('arr.that_region_is_not_on'));
+  if (row.id === id || row.parent_id !== null) throw new LayoutError(400, tx('arr.sub_region_holds_none'));
+  if ((await c.query('select 1 from meta.region where parent_id = $1', [id])).rowCount) throw new LayoutError(400, tx('arr.container_stays_on_page'));
+  return row.id;
+}
+
+/**
  * Moves a region, item or button. `dir` moves it one place up or down among
  * its neighbours; otherwise it goes before `before` (an id in the target
  * container, or '' for the end) in `region` (items and buttons; '' = page level),
@@ -155,7 +186,7 @@ async function targetRegion(c: Q, pid: number, value: string): Promise<number | 
  * button position, '' = with the region's other buttons).
  * Sequences in the target container are renumbered 10, 20, 30…
  */
-export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: number, o: { dir?: string; region?: string; before?: string; position?: string; slot?: string }) {
+export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: number, o: { dir?: string; region?: string; before?: string; position?: string; slot?: string; parent?: string }) {
   const table = COMPONENTS[kind].table;
   const row = (await c.query(`select * from ${table} where id = $1 and page_id = $2`, [id, pid])).rows[0];
   if (!row) throw new LayoutError(404, `${COMPONENTS[kind].label} not found on this page.`);
@@ -164,14 +195,19 @@ export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: num
   // the container: a region's display position; a button's region and position in it (page-level buttons have none)
   let place: string = kind === 'region' ? (row.position ?? 'body') : kind === 'button' && region !== null ? (row.slot ?? 'region') : '';
   if (kind === 'region' && o.position !== undefined && !o.dir) place = o.position || 'body';
+  // (172) a region's parent region (sub regions are ordered among their siblings, and take the parent's position)
+  let parent: number | null = kind === 'region' ? row.parent_id ?? null : null;
+  if (kind === 'region' && o.parent !== undefined && !o.dir) parent = await targetParent(c, pid, id, o.parent);
+  if (kind === 'region' && parent !== null)
+    place = (await c.query('select position from meta.region where id = $1', [parent])).rows[0].position ?? 'body';
   if (kind === 'button' && o.slot !== undefined && !o.dir) place = o.slot || 'region';
   if (kind === 'button' && region === null) place = '';
   if (kind === 'region' && !POSITIONS().includes(place)) throw new LayoutError(400, tx('arr.unknown_position'));
   if (kind === 'button' && place && !SLOTS().includes(place)) throw new LayoutError(400, tx('arr.unknown_button_position'));
-  const scope = kind === 'region' ? " and coalesce(position, 'body') = $2"
+  const scope = kind === 'region' ? " and parent_id is not distinct from $3 and (parent_id is not null or coalesce(position, 'body') = $2)"
     : kind === 'button' ? " and region_id is not distinct from $2 and (region_id is null or coalesce(slot, 'region') = $3)"
     : ' and region_id is not distinct from $2';
-  const params = kind === 'region' ? [pid, place] : kind === 'button' ? [pid, region, place] : [pid, region];
+  const params = kind === 'region' ? [pid, place, parent] : kind === 'button' ? [pid, region, place] : [pid, region];
   const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, params)).rows.map((r) => r.id);
   const others = list.filter((x) => x !== id);
   let at: number;
@@ -190,10 +226,30 @@ export async function moveComponent(c: Q, pid: number, kind: LayoutKind, id: num
   others.splice(at, 0, id);
   const stored = place === 'body' || place === 'region' || place === '' ? null : place;
   for (const [i, x] of others.entries()) {
-    if (kind === 'region') await c.query(`update ${table} set seq = $3, position = case when id = $4 then $5::text else position end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, stored]);
+    if (kind === 'region') await c.query(`update ${table} set seq = $3, position = case when id = $4 then $5::text else position end, parent_id = case when id = $4 then $6::int else parent_id end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, stored, parent]);
     else if (kind === 'button') await c.query(`update ${table} set seq = $3, region_id = case when id = $4 then $5::int else region_id end, slot = case when id = $4 then $6::text else slot end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, region, stored]);
     else await c.query(`update ${table} set seq = $3, region_id = case when id = $4 then $5::int else region_id end where id = $1 and page_id = $2`, [x, pid, (i + 1) * 10, id, region]);
   }
+  // (172) a container's sub regions go to its new position with it
+  if (kind === 'region') await c.query('update meta.region set position = $3 where parent_id = $1 and page_id = $2 and position is distinct from $3', [id, pid, stored]);
+}
+
+/**
+ * (172) Deletes a region; its sub regions are kept: they move up to the page, into the deleted region's position and
+ * place (in their order). Returns false when the region is not on the page.
+ */
+export async function deleteRegion(c: Q, pid: number, id: number): Promise<boolean> {
+  const row = (await c.query('select id, seq, position, parent_id from meta.region where id = $1 and page_id = $2', [id, pid])).rows[0];
+  if (!row) return false;
+  const kids: number[] = (await c.query('select id from meta.region where parent_id = $1 order by seq, id', [id])).rows.map((r) => r.id);
+  if (kids.length) {
+    const list: number[] = (await c.query("select id from meta.region where page_id = $1 and parent_id is null and coalesce(position, 'body') = coalesce($2, 'body') order by seq, id", [pid, row.position])).rows.map((r) => r.id);
+    list.splice(list.indexOf(id), 1, ...kids);
+    await c.query('update meta.region set parent_id = null, position = $2 where parent_id = $1', [id, row.position]);
+    for (const [i, x] of list.entries()) await c.query('update meta.region set seq = $2 where id = $1', [x, (i + 1) * 10]);
+  }
+  await c.query('delete from meta.region where id = $1 and page_id = $2', [id, pid]);
+  return true;
 }
 
 /** Sets a region's column span (1–12), or widens / narrows it by one column. */
@@ -207,14 +263,20 @@ export async function spanRegion(c: Q, pid: number, id: number, o: { columns?: s
 }
 
 /** A new component from the gallery, with a working default; placed like moveComponent. Returns its id. */
-export async function createComponent(c: Q, pid: number, kind: LayoutKind, type: string, o: { region?: string; before?: string; position?: string; slot?: string }) {
+export async function createComponent(c: Q, pid: number, kind: LayoutKind, type: string, o: { region?: string; before?: string; position?: string; slot?: string; parent?: string }) {
   const page = (await c.query('select page_no from meta.page where id = $1', [pid])).rows[0];
   if (!page) throw new LayoutError(404, tx('arr.page_not_found'));
   let id: number;
   if (kind === 'region') {
-    if (!REGION_TYPES().includes(type)) throw new LayoutError(400, tx('arr.unknown_region_type'));
-    id = (await c.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 999999, $2, $3, $4) returning id`,
-      [pid, `New ${REGION_LABELS[type]?.[0].toLowerCase() ?? type}`, type, NEW_REGION_SOURCE[type] ?? null])).rows[0].id;
+    // (172) a container from the gallery is a static region with a container template
+    const container = CONTAINER_TEMPLATE[type];
+    if (!REGION_TYPES().includes(type) && !container) throw new LayoutError(400, tx('arr.unknown_region_type'));
+    const parentTemplate = o.parent ? (await c.query('select template from meta.region where id = $1 and page_id = $2', [int(o.parent) ?? 0, pid])).rows[0]?.template : null;
+    id = (await c.query(`insert into meta.region (page_id, seq, title, type, source, template) values ($1, 999999, $2, $3, $4, $5) returning id`,
+      [pid, container ? CONTAINER_LABELS[type][0] : `New ${REGION_LABELS[type]?.[0].toLowerCase() ?? type}`, container ? 'static' : type,
+       container ? null : NEW_REGION_SOURCE[type] ?? null,
+       // a tab shows the sub region's title: its own frame and heading would repeat it
+       container ?? (parentTemplate === 'tabs_container' ? 'plain' : 'standard')])).rows[0].id;
     // (140) a breadcrumb goes in the breadcrumb bar, without a frame of its own (unless it is dropped elsewhere)
     if (type === 'breadcrumb') {
       await c.query(`update meta.region set template = 'plain', title = 'Breadcrumb' where id = $1`, [id]);
@@ -237,7 +299,7 @@ export async function createComponent(c: Q, pid: number, kind: LayoutKind, type:
       id = (await c.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 999999, $3, 'New button', $4) returning id`, [pid, region, name, type])).rows[0].id;
     }
   }
-  await moveComponent(c, pid, kind, id, { region: o.region ?? '', before: o.before ?? '', position: o.position ?? '', slot: o.slot ?? '' });
+  await moveComponent(c, pid, kind, id, { region: o.region ?? '', before: o.before ?? '', position: o.position ?? '', slot: o.slot ?? '', ...(kind === 'region' ? { parent: o.parent ?? '' } : {}) });
   return id;
 }
 
@@ -275,19 +337,27 @@ export async function duplicateComponent(c: Q, pid: number, kind: LayoutKind, id
   const copyChild = async (k: 'item' | 'button', x: any, regionId: number | null) =>
     copyRow(c, k, x.id, { page_id: toPid, region_id: regionId, name: await freeName(c, k, toPid, rename(x.name)), ...(k === 'button' && regionId === null ? { slot: null } : {}) });
   // where the copy goes: after the original in its container, or at the end of the other page
-  let place: { region?: string; position?: string; slot?: string; before: string } = { before: '' };
+  let place: { region?: string; position?: string; slot?: string; parent?: string; before: string } = { before: '' };
   if (same) {
-    const scope = kind === 'region' ? " and coalesce(position, 'body') = coalesce($2, 'body')" : ' and region_id is not distinct from $2';
-    const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, [pid, kind === 'region' ? row.position : row.region_id])).rows.map((r) => r.id);
+    const scope = kind === 'region' ? " and parent_id is not distinct from $3 and (parent_id is not null or coalesce(position, 'body') = coalesce($2, 'body'))" : ' and region_id is not distinct from $2';
+    const list: number[] = (await c.query(`select id from ${table} where page_id = $1${scope} order by seq, id`, kind === 'region' ? [pid, row.position, row.parent_id] : [pid, row.region_id])).rows.map((r) => r.id);
     const next = list[list.indexOf(id) + 1];
-    place = { region: String(row.region_id ?? ''), position: row.position ?? '', slot: row.slot ?? '', before: next ? String(next) : '' };
-  } else place = { region: '', position: row.position ?? '', slot: '', before: '' };
+    place = { region: String(row.region_id ?? ''), position: row.position ?? '', slot: row.slot ?? '', before: next ? String(next) : '', ...(kind === 'region' ? { parent: String(row.parent_id ?? '') } : {}) };
+  } else place = { region: '', position: row.position ?? '', slot: '', before: '', ...(kind === 'region' ? { parent: '' } : {}) };
   let copy: number;
   if (kind === 'region') {
     const staticId = row.static_id && !same && !(await c.query('select 1 from meta.region where page_id = $1 and static_id = $2', [toPid, row.static_id])).rowCount ? row.static_id : null;
-    copy = await copyRow(c, 'region', id, { page_id: toPid, static_id: staticId });
-    for (const k of ['item', 'button'] as const)
-      for (const x of (await c.query(`select id, name from ${COMPONENTS[k].table} where region_id = $1 order by seq, id`, [id])).rows) await copyChild(k, x, copy);
+    // (172) a sub region copied to another page goes to its page level; a container brings its sub regions along
+    copy = await copyRow(c, 'region', id, { page_id: toPid, static_id: staticId, parent_id: same ? row.parent_id : null });
+    const copyRegion = async (from: number, to: number) => {
+      for (const k of ['item', 'button'] as const)
+        for (const x of (await c.query(`select id, name from ${COMPONENTS[k].table} where region_id = $1 order by seq, id`, [from])).rows) await copyChild(k, x, to);
+    };
+    await copyRegion(id, copy);
+    for (const sub of (await c.query('select id, static_id from meta.region where parent_id = $1 order by seq, id', [id])).rows) {
+      const subStatic = sub.static_id && !(await c.query('select 1 from meta.region where page_id = $1 and static_id = $2', [toPid, sub.static_id])).rowCount ? sub.static_id : null;
+      await copyRegion(sub.id, await copyRow(c, 'region', sub.id, { page_id: toPid, static_id: subStatic, parent_id: copy, position: row.position }));
+    }
   } else copy = await copyChild(kind, row, same ? row.region_id : null);
   await moveComponent(c, toPid, kind, copy, place);
   return copy;
@@ -338,7 +408,7 @@ export async function arrangeRoutes(app: FastifyInstance) {
     const kind = b.kind;
     const id = int(b.id);
     if (!isKind(kind) || id === null) throw new LayoutError(400, tx('arr.unknown_component'));
-    await recorded(s, pid, `Move ${await describe(kind, id)}`, (c) => moveComponent(c, pid, kind, id, { dir: b.dir, region: b.region, before: b.before, position: b.position, slot: b.slot }));
+    await recorded(s, pid, `Move ${await describe(kind, id)}`, (c) => moveComponent(c, pid, kind, id, { dir: b.dir, region: b.region, before: b.before, position: b.position, slot: b.slot, parent: b.parent }));
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} moved.` };
   });
 
@@ -355,7 +425,7 @@ export async function arrangeRoutes(app: FastifyInstance) {
   route('create', async (s, pid, b) => {
     const kind = b.kind;
     if (!isKind(kind)) throw new LayoutError(400, tx('arr.unknown_component_type'));
-    const id = await owner.tx((c) => createComponent(c, pid, kind, b.type ?? '', { region: b.region, before: b.before, position: b.position, slot: b.slot }));
+    const id = await owner.tx((c) => createComponent(c, pid, kind, b.type ?? '', { region: b.region, before: b.before, position: b.position, slot: b.slot, parent: b.parent }));
     keep(s, { pid, undo: [], redo: [] }); // earlier layout steps no longer line up with the new component
     return { sel: `${kind}-${id}`, message: `${COMPONENTS[kind].label} created; set its properties on the right.` };
   });

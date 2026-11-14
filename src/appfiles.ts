@@ -8,7 +8,7 @@
 // - No database ids anywhere: components are named by a *static id*, a
 //   key derived from their name (or title) that is unique among their
 //   siblings. A file is named <seq>-<key>.json; references between
-//   components (an item's region, a facet region's report, a navigation
+//   components (an item's region, a facet region's report, (172) a sub region's parent, a navigation
 //   entry's parent) use keys instead of ids.
 // - Long or multi-line code (SQL, PL/pgSQL, templates) moves to a sibling
 //   file <base>.<column>.<ext>; the column is then left out of the JSON.
@@ -348,9 +348,11 @@ function writePage(w: Writer, page: any) {
   w.json(`${dir}/page.json`, meta);
 
   regions.forEach((r, i) => {
-    const { id, ...row } = r;
+    const { id, parent_id, ...row } = r;
     if (row.config && typeof row.config === 'object' && typeof row.config.report === 'number' && keyOf.has(row.config.report))
       row.config = { ...row.config, report: keyOf.get(row.config.report) };
+    // (172) a sub region names its parent by static id; a region at page level has no "parent"
+    if (parent_id != null) row.parent = ref(parent_id);
     w.record(`${dir}/regions`, `${seqPrefix(r.seq)}-${rkeys[i]}`, 'region', row);
   });
   for (const [section, sub, table, key] of PAGE_PARTS.slice(1)) {
@@ -535,10 +537,10 @@ export function filesToDoc(files: FileMap): Doc {
         return id;
       };
       page.regions = regions.map((rec) => {
-        const row = mergeCode(rec);
+        const { parent, ...row } = mergeCode(rec);
         if (row.config && typeof row.config.report === 'string')
           row.config = { ...row.config, report: deref(rec.file, row.config.report) };
-        return { id: idOf.get(keyFromBase(rec.base)), ...row };
+        return { id: idOf.get(keyFromBase(rec.base)), ...row, parent_id: deref(rec.file, parent) };
       });
       for (const [section, sub] of PAGE_PARTS.slice(1))
         page[section] = readRecords(files, `${dir}/${sub}`)

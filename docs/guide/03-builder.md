@@ -1295,11 +1295,21 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   validation, process, computation or branch) out of the page without deleting it: it gets the
   [build option](#shared-components) `COMMENTED_OUT`, made with the status *Exclude* when first needed, and is struck
   through in the tree; **Uncomment** takes it off again (another build option of the component is left alone).
-  APEX's *Create Sub Region* is not there: pgkiln has no nested regions.
+  (sprint 195) A region at page level also has **Create sub region** (APEX's *Create Sub Region*), and *Create region
+  below* on a [sub region](04-pages-and-regions.md#sub-regions) creates one in the same container. A region's sub
+  regions are a **Sub regions** branch under it in the tree.
 - **Middle: the Layout**: the page template's display positions as labelled zones (Banner, Breadcrumb bar,
   the side column of a side-column template beside the Body, Footer), each with its regions on the 12-column
   grid, each region with its items and its buttons in their button positions, as they will be placed on the page; under it a **gallery** of region types, item types
-  and button actions. The middle pane also has a **Page search** tab (searches the application)
+  and button actions. (sprint 195) A region with sub regions, or with the template `tabs_container`, `flex_container`
+  or `collapsible`, has a **Sub regions** slot in the layout: a grid of its own where its
+  [sub regions](04-pages-and-regions.md#sub-regions) are, to drag regions into (and out of: onto the page's grid) or to
+  create one with its *+ Sub region* link. The gallery's **Containers** make a static region with such a template:
+  *Tabs Container*, *Flexbox Container* and *Collapsible*; a region dropped into a tabs container gets the `plain`
+  template (the tab shows its title). Nesting is one level: a sub region has no slot, and a region with sub regions
+  stays on the page. Without drag and drop, a region's **Parent region** property and its Arrange bar's *Move into*
+  list put it into another region or back on the page. Deleting a region with sub regions moves them up to the page,
+  where it was. The middle pane also has a **Page search** tab (searches the application)
   a **Lock and comments** tab ([below](#page-locks-and-comments)) and a **Help** tab (layout keys and the substitution cheat sheet). Zoom in, zoom out and
   maximize (hides the side panes) are above the layout.
 - **Right: the property editor** for the selected component, grouped (Identification, Source,

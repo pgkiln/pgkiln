@@ -118,7 +118,8 @@ told from yours.
 
 The files are the [directory format](18-cli.md#the-directory-format) of the command line, in the
 [text style](18-cli.md#text-files-apexlang): one YAML file per component, with SQL, PL/pgSQL and
-templates inline, so a region and its query are one file an agent reads top to bottom. An import with
+templates inline, so a region and its query are one file an agent reads top to bottom (a
+[sub region](04-pages-and-regions.md#sub-regions) names its container with `parent: <static id>`). An import with
 `replace` is [the same as the command line's](18-cli.md#updating-an-application-in-place): one transaction,
 users, sessions and saved reports kept, supporting objects and plug-in install SQL never run.
 

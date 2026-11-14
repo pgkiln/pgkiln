@@ -129,7 +129,8 @@ hr/
   the JSON; the column is then left out of the JSON. Short values stay inline. Either way imports.
 - **No database ids.** Components refer to each other by **static id**: an item, button or process
   says `"region": "employees"`, a dynamic action `"affected_region": "…"`, a facet or map region
-  `"report": "employees"` in its settings. Navigation entries are nested instead of pointing at
+  `"report": "employees"` in its settings, (sprint 195) a [sub region](04-pages-and-regions.md#sub-regions)
+  `"parent": "details"` (a region at page level has no `parent`). Navigation entries are nested instead of pointing at
   parent ids. A directory exported from two installations of the same application is identical.
 - **Binary values** (a report layout's logo, the PWA icon) are written as image files, and
   static application files as themselves under `static/` (listed in `static/files.json`).

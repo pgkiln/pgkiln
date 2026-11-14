@@ -386,6 +386,16 @@ async function referenceFindings(x: AppRows, ext: {
     if (kind === 'region' && row.type === 'grid' && !all.some((x) => x.kind === 'process' && x.row.type === 'grid_dml' && x.row.region_id === row.id))
       missing(e, 'Source', 'No grid_dml process saves this grid, so it is read-only.', 'info');
     if (kind === 'region' && row.type === 'form' && row.pk_item && !items.has(String(row.pk_item).toUpperCase())) missing(e, 'Primary key item', `Item ${row.pk_item} doesn't exist.`);
+    // (172) sub regions: the parent is a region of the same page at page level; a container template holds sub regions
+    if (kind === 'region' && row.parent_id != null) {
+      const parent = all.find((x) => x.kind === 'region' && x.row.id === row.parent_id)?.row;
+      if (!parent || parent.page_id !== row.page_id) missing(e, 'Parent region', `Region ${row.parent_id} doesn't exist on this page.`);
+      else if (parent.parent_id != null) missing(e, 'Parent region', `Region "${parent.title ?? parent.type}" is a sub region itself: regions nest one level deep.`);
+      else if (parent.template === 'tabs_container' && !String(row.title ?? '').trim()) missing(e, 'Title', 'A sub region of a tabs container has no title, so its tab reads "Region".', 'warning');
+    }
+    if (kind === 'region' && (row.template === 'tabs_container' || row.template === 'flex_container') && row.parent_id == null
+        && !all.some((x) => x.kind === 'region' && x.row.parent_id === row.id))
+      missing(e, 'Template', `A ${row.template} shows its sub regions, and this region has none: drop regions into it in the Page Designer (or set their Parent region).`, 'warning');
     // (140) a list item (select list, radio group, shuttle, select one or many …) shows no choices without a list of values
     if (kind === 'item' && LOV_CHECKED.has(row.type) && !String(row.lov ?? '').trim())
       missing(e, 'List of values', `A ${row.type} item needs a list of values: it has no choices, and no value passes the check on submit.`, 'warning');

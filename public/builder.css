@@ -1270,6 +1270,11 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pd-dragging-button .pd-slot-spare { display: flex; }
 .pd-canvas:not(.pd-dragging-button) .pd-slots:not(:has(> .pd-slot:not(.pd-slot-spare))) { display: none; }
 @media (max-width: 640px) { .pd-canvas .pd-columns:has(> .pd-zone) { grid-template-columns: minmax(0, 1fr); } }
+/* (172) a region's sub regions: a grid of their own inside it */
+.pd-sub { display: grid; gap: 0.3em; padding: 0.35em; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--canvas) 60%, transparent); }
+.pd-sub-label { color: var(--muted); font-size: 0.74em; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
+.pd-sub-label small { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.pd-subgrid > .pd-grid-end { padding: 0.3em; }
 
 /* (sprint 77) the rendering tree's context menu, the Copy to other page dialog, component colours */
 .pd-menu { position: fixed; z-index: 60; min-width: 13rem; padding: 4px; background: var(--surface, #fff); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-lg); font-size: 13px; }

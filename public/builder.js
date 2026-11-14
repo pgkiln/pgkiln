@@ -265,7 +265,10 @@
       if (kind === 'region') {
         list.push(['Create page item', go(`new=item&region=${id}`)], ['Create button', go(`new=button&region=${id}`)],
           ['Create dynamic action', go('new=dynamic_action')],
-          ['Create region below', () => submit(`${base}/layout/create`, { kind: 'region', type: 'static', position: node.dataset.position ?? '', before: node.dataset.next ?? '' })], null);
+          ['Create region below', () => submit(`${base}/layout/create`, { kind: 'region', type: 'static', position: node.dataset.position ?? '', parent: node.dataset.parent ?? '', before: node.dataset.next ?? '' })]);
+        // (172, APEX: Create Sub Region) a region at page level can hold regions (one level)
+        if (node.hasAttribute('data-container')) list.push(['Create sub region', () => submit(`${base}/layout/create`, { kind: 'region', type: 'static', parent: id })]);
+        list.push(null);
       }
       list.push(['Duplicate', () => submit(`${base}/layout/duplicate`, { kind, id })], ['Copy to other page…', copyDialog]);
       if (kind !== 'region') list.push(['Create dynamic action', go('new=dynamic_action')]);
@@ -634,8 +637,9 @@
       if (drag.kind === 'region') {
         const grid = e.target.closest('.pd-grid');
         if (!grid || !canvas.contains(grid)) return null;
+        // (172) a sub region grid lies inside its container: only the regions of the grid itself are places
         const over = e.target.closest('.pd-region');
-        if (over) {
+        if (over && over.parentElement === grid) {
           const r = over.getBoundingClientRect();
           // the right half of a region drops after it
           const after = e.clientX > r.left + r.width / 2;
@@ -674,7 +678,8 @@
       const before = t.before ? t.before.dataset.id : '';
       const region = d.kind === 'region' ? '' : t.zone.dataset.region;
       // a region's display position, a button's position in its region
-      const place = d.kind === 'region' ? { position: t.zone.dataset.position ?? '' } : d.kind === 'button' ? { slot: t.zone.dataset.slot ?? '' } : {};
+      // (172) and a region's parent region ('' = the page)
+      const place = d.kind === 'region' ? { position: t.zone.dataset.position ?? '', parent: t.zone.dataset.parent ?? '' } : d.kind === 'button' ? { slot: t.zone.dataset.slot ?? '' } : {};
       if (d.isNew) post('create', { kind: d.kind, type: d.type, region, before, ...place });
       else if (before !== d.id || t.zone !== canvas.querySelector(`[data-kind="${d.kind}"][data-id="${d.id}"]`)?.closest('.pd-grid, .pd-slot')) post('move', { kind: d.kind, id: d.id, region, before, ...place });
     });
