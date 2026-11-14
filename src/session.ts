@@ -44,6 +44,8 @@ export interface Session {
   devbar_hash?: string | null;
   /** (085) when the session started, in ms since the epoch (its maximum length counts from here) */
   created_ms?: number;
+  /** (sprint 189) made for a request whose session cookie belonged to a session that has ended */
+  timedOut?: boolean;
 }
 
 // instance settings (src/instance.ts): the builder's value, else SESSION_* environment variables, else 60 minutes / 8 hours
@@ -52,8 +54,14 @@ const MAX_HOURS = () => instanceSetting('session_max_hours');
 const secure = () => process.env.COOKIE_SECURE === 'true';
 
 export const cookieName = (appId: number | null) => (appId === null ? 'pgkiln_dev' : `pgkiln_app_${appId}`);
-/** The idle and maximum session length (minutes, hours), for lookups outside this file. */
-export const sessionLimits = () => ({ idleMinutes: IDLE_MINUTES(), maxHours: MAX_HOURS() });
+/**
+ * The idle and maximum session length (minutes, hours), for lookups outside this file. (sprint 189, NX-S5) With an
+ * application: its own limits (meta.app.session_idle_minutes / session_max_hours), never longer than the instance's.
+ */
+export const sessionLimits = (app?: { session_idle_minutes?: number | null; session_max_hours?: number | null }) => ({
+  idleMinutes: Math.min(IDLE_MINUTES(), app?.session_idle_minutes || Infinity),
+  maxHours: Math.min(MAX_HOURS(), app?.session_max_hours || Infinity),
+});
 
 /** A live session of the token; touch (the default): the request counts as activity (last_seen). */
 async function find(token: string | undefined, appId: number | null, touch = true) {
@@ -61,8 +69,9 @@ async function find(token: string | undefined, appId: number | null, touch = tru
   return runtime.one<Session>(
     `update meta.session set last_seen = ${touch ? 'now()' : 'last_seen'}
       where token_hash = $1 and app_id is not distinct from $2
-        and last_seen > now() - make_interval(mins => $3)
-        and created_at > now() - make_interval(hours => $4)
+        -- (sprint 189) an application's own limits, never longer than the instance's
+        and last_seen > now() - make_interval(mins => least($3, coalesce((select a.session_idle_minutes from meta.app a where a.id = $2), $3)))
+        and created_at > now() - make_interval(hours => least($4, coalesce((select a.session_max_hours from meta.app a where a.id = $2), $4)))
      returning id, app_id, username, csrf_token, state, roles, devbar_hash, (extract(epoch from created_at) * 1000)::float8 as created_ms`,
     [hashToken(token), appId, IDLE_MINUTES(), MAX_HOURS()],
   );
@@ -94,9 +103,11 @@ export async function createSession(reply: FastifyReply, appId: number | null, p
 export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string): Promise<Session>;
 export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string, opts: { touch: false }): Promise<Session | null>;
 export async function getSession(req: FastifyRequest, reply: FastifyReply, appId: number | null, path: string, opts?: { touch: false }) {
-  const found = await find(req.cookies[cookieName(appId)], appId, !opts);
+  const cookie = req.cookies[cookieName(appId)];
+  const found = await find(cookie, appId, !opts);
   if (found || opts) return found ?? null;
-  return createSession(reply, appId, path);
+  // (sprint 189) the browser still had a session cookie: that session has ended (idle or too long), not a first visit
+  return { ...(await createSession(reply, appId, path)), timedOut: !!cookie };
 }
 
 export async function saveState(s: Session) {

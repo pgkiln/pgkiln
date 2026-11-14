@@ -363,7 +363,7 @@ export const clientTexts = (ctx: PageContext) => Object.fromEntries(CLIENT_TEXTS
 function sessionMeta(ctx: PageContext) {
   const warn = Number(ctx.app.session_warning_seconds ?? 120);
   if (!warn || ctx.dialog || !ctx.session.username || ctx.app.authentication === 'none' || ctx.app.authentication === 'header') return null;
-  const { idleMinutes, maxHours } = sessionLimits();
+  const { idleMinutes, maxHours } = sessionLimits(ctx.app);
   return { idle: idleMinutes * 60, maxEnd: ctx.session.created_ms ? Math.round(ctx.session.created_ms + maxHours * 3600_000) : null, warn, extend: `${ctx.base}/session/extend` };
 }
 

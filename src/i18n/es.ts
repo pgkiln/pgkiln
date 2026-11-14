@@ -633,6 +633,7 @@ export const es: Record<MessageKey, string> = {
   'error.unexpected': 'Se ha producido un error inesperado.',
   'error.not_authorized': 'No está autorizado para acceder a esta página.',
   'error.checksum': 'Este enlace no es válido o ha sido manipulado (error de suma de control).',
+  'error.link_expired': "Este enlace ha caducado: los enlaces de esta aplicación creados antes de cierta fecha ya no funcionan. Abra la página desde el menú.",
   'error.report_unavailable': 'Ese informe no está disponible.',
   'error.action_unavailable': 'Esa acción no está disponible para usted.',
   'error.session_changed_title': 'Sesión caducada',

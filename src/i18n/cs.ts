@@ -672,6 +672,7 @@ export const cs: Record<MessageKey, string> = {
   'error.unexpected': "Došlo k neočekávané chybě.",
   'error.not_authorized': "Nemáte oprávnění k této stránce.",
   'error.checksum': "Tento odkaz je neplatný nebo byl pozměněn (chyba kontrolního součtu).",
+  'error.link_expired': "Platnost tohoto odkazu vypršela: odkazy této aplikace vytvořené před určitým datem již nefungují. Otevřete stránku z nabídky.",
   'error.report_unavailable': "Tato sestava není k dispozici.",
   'error.action_unavailable': "Tato akce pro vás není k dispozici.",
   'error.session_changed_title': "Relace vypršela",

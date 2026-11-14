@@ -18,6 +18,15 @@ All notable changes to this project are documented here. The format follows
   Security checklist lists the headers an application's pages send. HR example part 88. **Upgrading**: every
   application keeps today's headers, except that an application needing a sign-in now also sends
   `X-Robots-Tag: noindex, nofollow`.
+- **Session limits, deep linking and Expire bookmarks per application** (sprint 189, NX-S5; migration 169): like
+  APEX's Session Management, Settings → *Errors and sessions* sets an application's own maximum idle time and
+  session length (never longer than the instance's: the shorter applies, also to the timeout warning), a page
+  without sign-in that opens when a user comes back after the session ended (APEX: Session Timeout URL), and
+  *Deep linking* (off: every sign-in goes to the home page, `next=` is ignored). **Expire bookmarks** (APEX: Session
+  State Protection) raises the application's `url_epoch`, part of every URL checksum in the server and in
+  `meta.url_checksum`: links made before fail with *This link has expired* (new runtime text in the 22 languages),
+  tampered links still get the checksum error. HR example part 89 (page 52 *Session ended*). **Upgrading**: nothing
+  changes until an application sets them; existing links keep working.
 
 ### Fixed
 - A sign-in right after signing out could be refused with *Your session expired* in an application that keeps its

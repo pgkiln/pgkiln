@@ -672,6 +672,7 @@ export const uk: Record<MessageKey, string> = {
   'error.unexpected': "Сталася неочікувана помилка.",
   'error.not_authorized': "Ви не маєте права на цю сторінку.",
   'error.checksum': "Посилання недійсне або змінене (помилка контрольної суми).",
+  'error.link_expired': "Термін дії цього посилання минув: посилання цього застосунку, створені до певної дати, більше не працюють. Відкрийте сторінку з меню.",
   'error.report_unavailable': "Цей звіт недоступний.",
   'error.action_unavailable': "Ця дія вам недоступна.",
   'error.session_changed_title': "Сеанс закінчився",

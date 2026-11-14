@@ -672,6 +672,7 @@ export const pl: Record<MessageKey, string> = {
   'error.unexpected': "Wystąpił nieoczekiwany błąd.",
   'error.not_authorized': "Nie masz uprawnień do tej strony.",
   'error.checksum': "Ten link jest nieprawidłowy lub został zmieniony (błąd sumy kontrolnej).",
+  'error.link_expired': "Ten link wygasł: linki tej aplikacji utworzone przed określoną datą już nie działają. Otwórz stronę z menu.",
   'error.report_unavailable': "Ten raport jest niedostępny.",
   'error.action_unavailable': "Ta akcja jest dla ciebie niedostępna.",
   'error.session_changed_title': "Sesja wygasła",

@@ -672,6 +672,7 @@ export const ru: Record<MessageKey, string> = {
   'error.unexpected': "Произошла непредвиденная ошибка.",
   'error.not_authorized': "У вас нет прав на эту страницу.",
   'error.checksum': "Ссылка недействительна или была изменена (ошибка контрольной суммы).",
+  'error.link_expired': "Срок действия этой ссылки истёк: ссылки этого приложения, созданные до определённой даты, больше не работают. Откройте страницу из меню.",
   'error.report_unavailable': "Этот отчёт недоступен.",
   'error.action_unavailable': "Это действие вам недоступно.",
   'error.session_changed_title': "Сеанс истёк",

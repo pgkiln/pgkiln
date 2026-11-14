@@ -13,7 +13,7 @@ import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
-import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash } from '../session.ts';
+import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, sessionLimits, takeFlash } from '../session.ts';
 import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
 import { APP_COLORS, appHeader, back, BASE, brandMark, designerUrl, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
@@ -835,6 +835,8 @@ export async function builderRoutes(app: FastifyInstance) {
     const roleSchemas = roleState ? (await owner.query<{ n: string }>(
       `select nspname as n from pg_namespace where nspname <> 'information_schema' and nspname !~ '^(pg_|pgkiln)' and nspname <> 'meta' order by nspname`)).rows.map((r) => r.n).filter((n) => !reservedSchema(n)) : [];
     const lists = (await owner.query('select name from meta.list where app_id = $1 order by name', [a.id])).rows.map((r) => r.name as string);
+    // (sprint 189) pages a session timeout may open: pages without sign-in
+    const publicPages = (await owner.query<{ page_no: number; name: string }>('select page_no, name from meta.page where app_id = $1 and not requires_auth order by page_no', [a.id])).rows;
     const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, tx('st.missing', { name: v })] as [string, string]] : [])];
     // (sprint 74) tabs like APEX's Edit Application Definition and Security Attributes: every tab of the
     // main form is in the page (the others hidden), so Save keeps all of them; without JavaScript the tabs are links
@@ -955,7 +957,23 @@ export async function builderRoutes(app: FastifyInstance) {
             ${input('session_warning_seconds', tx('st.warning'), a.session_warning_seconds ?? 120, { type: 'number',
               help: tx('st.warning_help') })}
           </div>
+          <h3 id="session-management">${tx('ss.title')}</h3>
+          <input type="hidden" name="session_settings" value="1">
+          <div class="form-grid">
+            ${input('session_idle_minutes', tx('ss.idle'), a.session_idle_minutes ?? '', { type: 'number', placeholder: String(sessionLimits().idleMinutes),
+              help: tx('ss.idle_help', { n: sessionLimits().idleMinutes }) })}
+            ${input('session_max_hours', tx('ss.max'), a.session_max_hours ?? '', { type: 'number', placeholder: String(sessionLimits().maxHours),
+              help: tx('ss.max_help', { n: sessionLimits().maxHours }) })}
+            ${select('session_timeout_page', tx('ss.timeout_page'), a.session_timeout_page ?? '',
+              [['', tx('ss.timeout_signin')], ...publicPages.map((p): [string, string] => [String(p.page_no), `${p.page_no} · ${p.name}`])], tx('ss.timeout_page_help'))}
+          </div>
+          <div class="field"><label class="check"><input type="checkbox" name="deep_linking" value="true"${a.deep_linking !== false ? raw(' checked') : ''}> ${tx('ss.deep_linking')}</label>
+            <small class="help">${tx('ss.deep_linking_help')}</small></div>
           <div class="buttons"><button class="btn">${tx('st.save')}</button></div></form>`)}${end}
+        ${panel('errors')}${region(tx('ss.bookmarks'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/expire-bookmarks" id="expire-bookmarks">${csrf(s)}
+          <p class="u-mt0">${tx('ss.bookmarks_text')}</p>
+          <p class="muted">${a.bookmarks_expired_at ? tx('ss.bookmarks_last', { when: new Date(a.bookmarks_expired_at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' }) : tx('ss.bookmarks_never')}</p>
+          <div class="buttons"><button class="btn btn-danger" data-confirm="${tx('ss.bookmarks_confirm')}">${tx('ss.bookmarks_button')}</button></div></form>`)}${end}
         ${panel('pwa')}${region(tx('st.tab.pwa'), await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}${end}
         ${roleState ? html`${panel('security')}${region(tx('st.make_role'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/role" id="make-role">${csrf(s)}
           <p class="u-mt0"><b class="text-danger">${tx(roleState === 'missing' ? 'st.ck.no_role' : 'st.ck.powerful')}</b></p>
@@ -992,13 +1010,27 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     const fn = String(b.error_function ?? '').trim();
     const seconds = Number(b.session_warning_seconds ?? 120);
+    // (sprint 189, NX-S5) session limits per application: empty is the instance's
+    const optInt = (v: unknown) => (String(v ?? '').trim() === '' ? null : Number(v));
+    const idle = optInt(b.session_idle_minutes);
+    const maxHours = optInt(b.session_max_hours);
+    const timeoutPage = optInt(b.session_timeout_page);
     try {
       if (fn && !/^[A-Za-z_][A-Za-z0-9_$]{0,62}\.[A-Za-z_][A-Za-z0-9_$]{0,62}$/.test(fn)) throw new Error(tr(s)('st.err.fn_shape'));
       if (fn && !(await owner.one(`select 1 as ok from pg_proc p join pg_namespace n on n.oid = p.pronamespace
                                     where n.nspname = $1 and p.proname = $2 and p.pronargs = 1 and p.proargtypes[0] = 'jsonb'::regtype and p.prorettype = 'jsonb'::regtype`, fn.split('.'))))
         throw new Error(tr(s)('st.err.no_fn', { fn }));
       if (!Number.isInteger(seconds) || seconds < 0 || seconds > 3600) throw new Error(tr(s)('st.err.warning'));
-      await owner.query('update meta.app set error_function = $2, session_warning_seconds = $3, updated_at = now() where id = $1', [req.params.id, fn || null, seconds]);
+      if (idle !== null && !(Number.isInteger(idle) && idle >= 1 && idle <= 1440)) throw new Error(tr(s)('ss.err.idle'));
+      if (maxHours !== null && !(Number.isInteger(maxHours) && maxHours >= 1 && maxHours <= 720)) throw new Error(tr(s)('ss.err.max'));
+      if (timeoutPage !== null && !(Number.isInteger(timeoutPage) && (await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = $2 and not requires_auth', [req.params.id, timeoutPage]))))
+        throw new Error(tr(s)('ss.err.page'));
+      // (sprint 189) the session fields only when the form had them: a post without them (an older client) changes nothing there
+      if (b.session_settings === '1')
+        await owner.query(`update meta.app set error_function = $2, session_warning_seconds = $3, session_idle_minutes = $4, session_max_hours = $5,
+                                  session_timeout_page = $6, deep_linking = $7, updated_at = now() where id = $1`,
+          [req.params.id, fn || null, seconds, idle, maxHours, timeoutPage, b.deep_linking === 'true']);
+      else await owner.query('update meta.app set error_function = $2, session_warning_seconds = $3, updated_at = now() where id = $1', [req.params.id, fn || null, seconds]);
       flash(s, tr(s)('st.saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');
@@ -1090,6 +1122,18 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, e instanceof AppRoleError ? e.message : tr(s)('st.make_role_failed', { message: (e as Error).message }), 'error');
     }
     return back(reply, s, `${BASE}/apps/${req.params.id}/settings?tab=security`);
+  });
+
+  // (sprint 189, NX-S5) Expire bookmarks (APEX: Session State Protection → Expire Bookmarks): a new url_epoch, so every
+  // checksummed link of the application made before now fails with "This link has expired"
+  app.post(`${BASE}/apps/:id/settings/expire-bookmarks`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await owner.one<{ id: number }>('update meta.app set url_epoch = url_epoch + 1, bookmarks_expired_at = now(), updated_at = now() where id = $1 returning id', [Number(req.params.id) || 0]);
+    if (!a) return reply.code(404).send('Not found');
+    await logActivity({ appId: a.id, username: s.username, event: 'expire_bookmarks', ip: clientIp(req) });
+    flash(s, tr(s)('ss.bookmarks_done'));
+    return back(reply, s, `${BASE}/apps/${a.id}/settings?tab=errors#expire-bookmarks`);
   });
 
   app.post(`${BASE}/apps/:id/delete`, async (req: Req, reply) => {

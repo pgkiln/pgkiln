@@ -672,6 +672,7 @@ export const ko: Record<MessageKey, string> = {
   'error.unexpected': "예기치 않은 오류가 발생했습니다.",
   'error.not_authorized': "이 페이지에 액세스할 권한이 없습니다.",
   'error.checksum': "이 링크가 올바르지 않거나 변조되었습니다(체크섬 오류).",
+  'error.link_expired': "이 링크는 만료되었습니다. 특정 날짜 이전에 만든 이 애플리케이션의 링크는 더 이상 작동하지 않습니다. 메뉴에서 페이지를 여세요.",
   'error.report_unavailable': "그 보고서는 사용할 수 없습니다.",
   'error.action_unavailable': "그 작업은 사용할 수 없습니다.",
   'error.session_changed_title': "세션 만료",

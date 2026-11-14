@@ -21,14 +21,33 @@ export async function loadSecrets() {
  * Every name and value carries its length in bytes, so a value containing
  * "&NAME=" can't stand for two items.
  */
-export function urlChecksum(appId: number, pageNo: number, user: string, items: Record<string, string>) {
+export function urlChecksum(appId: number, pageNo: number, user: string, items: Record<string, string>, epoch = urlEpochs.get(appId) ?? 0) {
   const norm = Object.fromEntries(Object.entries(items).map(([k, v]) => [k.toUpperCase(), v ?? '']));
   const part = (s: string) => `${Buffer.byteLength(s)}:${s}`;
   const canonical = Object.keys(norm)
     .sort()
     .map((k) => `${part(k)}=${part(norm[k])}`)
     .join('&');
-  return createHmac('sha256', urlSecret).update(`v2:${appId}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
+  // (169) after Expire bookmarks the application's epoch is part of the text; 0 keeps the checksums of before
+  return createHmac('sha256', urlSecret).update(`v2:${appId}${epoch > 0 ? `.${epoch}` : ''}:${pageNo}:${user.toLowerCase()}:${canonical}`).digest('hex').slice(0, 32);
+}
+
+/**
+ * (sprint 189, NX-S5; migration 169) Each application's url_epoch, raised by Expire bookmarks. loadApp() remembers it
+ * for every request, so urlChecksum() signs with the current one; cross-application links remember the target's.
+ */
+const urlEpochs = new Map<number, number>();
+export function rememberUrlEpoch(appId: number, epoch: unknown) {
+  const n = Number(epoch);
+  urlEpochs.set(appId, Number.isInteger(n) && n > 0 ? n : 0);
+}
+
+/** A checksum that fails today but was valid before the latest Expire bookmarks (a link made before it): true. */
+export function checksumExpired(appId: number, pageNo: number, user: string, items: Record<string, string>, given: string | undefined) {
+  const epoch = urlEpochs.get(appId) ?? 0;
+  if (!given) return false;
+  for (let e = epoch - 1; e >= Math.max(0, epoch - 20); e--) if (checksumValid(urlChecksum(appId, pageNo, user, items, e), given)) return true;
+  return false;
 }
 
 /** A signature for a value the server hands out in a URL and reads back (e.g. a report's keyset position). */

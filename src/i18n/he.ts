@@ -672,6 +672,7 @@ export const he: Record<MessageKey, string> = {
   'error.unexpected': "אירעה שגיאה לא צפויה.",
   'error.not_authorized': "אין לך הרשאה לדף זה.",
   'error.checksum': "הקישור אינו תקין או ששונה (שגיאת סכום ביקורת).",
+  'error.link_expired': "תוקף הקישור פג: קישורים של יישום זה שנוצרו לפני תאריך מסוים כבר לא פועלים. פתחו את הדף מהתפריט.",
   'error.report_unavailable': "הדוח הזה אינו זמין.",
   'error.action_unavailable': "הפעולה הזו אינה זמינה לך.",
   'error.session_changed_title': "תוקף ההפעלה פג",

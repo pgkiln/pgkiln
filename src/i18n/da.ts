@@ -672,6 +672,7 @@ export const da: Record<MessageKey, string> = {
   'error.unexpected': "Der opstod en uventet fejl.",
   'error.not_authorized': "Du har ikke adgang til denne side.",
   'error.checksum': "Linket er ugyldigt eller er blevet ændret (kontrolsumfejl).",
+  'error.link_expired': "Dette link er udløbet: links til denne applikation oprettet før en bestemt dato virker ikke længere. Åbn siden fra menuen i stedet.",
   'error.report_unavailable': "Den rapport er ikke tilgængelig.",
   'error.action_unavailable': "Den handling er ikke tilgængelig for dig.",
   'error.session_changed_title': "Sessionen er udløbet",

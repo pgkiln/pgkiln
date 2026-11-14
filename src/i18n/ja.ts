@@ -672,6 +672,7 @@ export const ja: Record<MessageKey, string> = {
   'error.unexpected': "予期しないエラーが発生しました。",
   'error.not_authorized': "このページにアクセスする権限がありません。",
   'error.checksum': "このリンクは無効か改ざんされています (チェックサムエラー)。",
+  'error.link_expired': "このリンクは期限切れです。特定の日付より前に作成されたこのアプリケーションのリンクは使用できません。メニューからページを開いてください。",
   'error.report_unavailable': "そのレポートは利用できません。",
   'error.action_unavailable': "その操作は利用できません。",
   'error.session_changed_title': "セッションの有効期限切れ",

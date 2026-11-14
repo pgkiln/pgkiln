@@ -290,8 +290,8 @@ async function otherApp(ctx: PageContext, b: Branch): Promise<string | null> {
   const page = b.target_page;
   // pgkiln's runtime connection reads the metadata (the app's role may not)
   const row = page
-    ? await runtime.one<{ id: number; alias: string }>(
-        `select a.id, a.alias from meta.app a join meta.page p on p.app_id = a.id
+    ? await runtime.one<{ id: number; alias: string; url_epoch: number }>(
+        `select a.id, a.alias, a.url_epoch from meta.app a join meta.page p on p.app_id = a.id
           where a.alias = $1 and p.page_no = $2 and meta.build_option_on(a.id, p.build_option)`,
         [alias, page],
       )
@@ -303,7 +303,8 @@ async function otherApp(ctx: PageContext, b: Branch): Promise<string | null> {
   const values = Object.fromEntries(Object.entries(b.target_items ?? {}).map(([k, v]) => [k.toUpperCase(), substitute(String(v), ctx, (x) => x)]));
   const params = new URLSearchParams();
   for (const k of Object.keys(values).sort()) params.set(k, values[k]);
-  if (Object.keys(values).length) params.set('cs', urlChecksum(row.id, page, ctx.user, values));
+  // (sprint 189) signed with that application's current epoch (its Expire bookmarks)
+  if (Object.keys(values).length) params.set('cs', urlChecksum(row.id, page, ctx.user, values, Number(row.url_epoch) || 0));
   const q = params.toString();
   return `/a/${encodeURIComponent(row.alias)}/${page}${q ? `?${q}` : ''}`;
 }
