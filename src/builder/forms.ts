@@ -72,7 +72,8 @@ export function iconPicker(id: string, name: string, label: string, current: str
     </details>${help}</div>`;
 }
 
-/** Property editor for one component, grouped like APEX's property editor. */
+/** Property editor for one component, grouped like APEX's property editor. `submit` '' leaves the button out
+ *  ((sprint 197, NX-U5) the Page Designer's toolbar Save submits the form through form=). */
 export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups, action: string, s: Session, submit: string, opts: { id?: string } = {}) {
   const field = (f: Field) => {
     const v = row?.[f.name];
@@ -172,7 +173,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
   return html`<form method="post" action="${action}" class="component-form"${opts.id ? html` id="${opts.id}"` : ''}>
     ${csrf(s)}
     ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${spec.fields.filter((f) => (f.group ?? '') === g).map(shown)}</div></fieldset>`)}
-    <div class="buttons"><button class="btn btn-hot">${submit}</button></div>
+    ${submit ? html`<div class="buttons"><button class="btn btn-hot">${submit}</button></div>` : ''}
   </form>`;
 }
 

@@ -107,3 +107,25 @@ describe('one heading and one primary action per page (UX-5), what needs attenti
     else assert.doesNotMatch(body, /wh-attention/);
   });
 });
+
+describe('the Page Designer has one Save (sprint 197, NX-U5)', () => {
+  test('the toolbar Save submits the property editor; no Save page or Save at the foot of the form', async () => {
+    const b = await admin();
+    const one = (body: string, what: string) => {
+      // the property editor's form, from its start to its end
+      const at = body.indexOf('id="pd-form"');
+      assert.ok(at > 0, `${what}: the form`);
+      const form = body.slice(body.lastIndexOf('<form', at), body.indexOf('</form>', at));
+      assert.doesNotMatch(form, /<button(?![^>]*type="button")[^>]*>/, `${what}: no submit button inside the form`);
+      assert.equal((body.match(/class="btn btn-sm tb-save" form="pd-form"/g) ?? []).length, 1, `${what}: one toolbar Save`);
+      assert.doesNotMatch(body, /Save page/);
+    };
+    const page = await b.get('/builder/apps/1/pages/3');
+    assert.equal(page.statusCode, 200);
+    one(page.body, 'page');
+    assert.match(page.body, /title="Save the properties \(Ctrl\+S\)"/);
+    const region = /data-kind="region" data-id="(\d+)"/.exec(page.body)?.[1];
+    assert.ok(region);
+    one((await b.get(`/builder/apps/1/pages/3?c=region-${region}`)).body, 'region');
+  });
+});

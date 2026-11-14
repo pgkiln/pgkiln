@@ -28,7 +28,7 @@ import { browserSecurityChecklist, browserSecurityRoutes, browserSecuritySection
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { notificationSettings, saveNotificationSettings } from './notification-settings.ts';
-import { kindLabel, WIZARD_KINDS, wizardRoutes, wizardTables } from './wizards.ts';
+import { wizardRoutes } from './wizards.ts';
 import { createPageRoutes } from './create-page.ts';
 import { featureRoutes } from './features.ts';
 import { apexImportRoutes } from './apex-import.ts';
@@ -655,13 +655,10 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     rememberApp(s, a.id);
-    const [pages, tables, report] = await Promise.all([
-      owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1', [a.id]),
-      wizardTables(a.db_role),
-      // (sprint 193, NX-F3) the Pages report: Alias, Type, Updated, Updated by, filters and the column chooser (pages-report.ts)
-      pagesReport(s, a, req.query),
-    ]);
-    const nextPage = Math.max(0, ...pages.rows.map((p) => p.page_no)) + 1;
+    // (sprint 193, NX-F3) the Pages report: Alias, Type, Updated, Updated by, filters and the column chooser (pages-report.ts)
+    // (sprint 197, NX-U4) nothing below it: Create pages from a table and Create blank page are on Create page (create-page.ts),
+    // the lock and comments in the side column under Tasks
+    const report = await pagesReport(s, a, req.query);
     const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
     const appLock = locks.get(0);
     const issues = await appIssues(a.id);
@@ -673,31 +670,8 @@ export async function builderRoutes(app: FastifyInstance) {
       <div class="app-home">
       <div class="app-home-main">
       ${report}
-      <div id="app-lock">${region(tx('app.lock_region'), await lockPanel(s, a.id, 0, { headings: true }))}</div>
-      <div class="columns" id="create-page">
-        ${region(tx('app.from_table'), html`
-          <p class="muted u-mt0">${tx('app.from_table_text')}</p>
-          <form method="get" action="${BASE}/apps/${a.id}/wizard">
-            <div class="form-grid">
-              ${select('kind', tx('app.page_type'), 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, kindLabel(k, label)]))}
-              ${select('table', tx('app.table_or_view'), '', tables.map((t): [string, string] => [t.t, t.access ? t.t : tx('app.no_access', { table: t.t, role: a.db_role })]))}
-            </div>
-            <div class="buttons"><button class="btn">${tx('common.next')}</button></div>
-          </form>
-          <p><a href="${BASE}/apps/${a.id}/create-page">${tx('app.all_page_types')} ▸</a></p>
-          <p><a href="${BASE}/apps/${a.id}/ai-pages">${tx('app.ai_pages')} ▸</a> <span class="muted">${tx('app.ai_pages_note')}</span></p>`)}
-        ${region(tx('app.blank'), html`
-          <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
-            <div class="form-grid">
-              ${input('page_no', tx('app.page_number'), nextPage, { type: 'number', required: true })}
-              ${input('name', tx('ab.col.name'), '', { required: true })}
-              ${select('mode', tx('app.col.mode'), 'normal', [['normal', tx('pdz.normal')], ['modal', tx('pdz.modal_dialog')]])}
-              ${input('parent_page', tx('app.parent'), a.home_page, { type: 'number' })}
-            </div>
-            <div class="buttons"><button class="btn">${tx('app.create_page')}</button></div>
-          </form>`)}
       </div>
-      </div>
+      <div class="app-side">
       <aside class="app-tasks region region-standard" aria-labelledby="app-tasks-h"><header class="region-header"><h2 id="app-tasks-h">${tx('common.tasks')}</h2></header>
         <ul class="sc-links">
           <li><a href="${BASE}/apps/${a.id}/create-page?tab=feature">${icon('puzzle')} ${tx('app.task.add_feature')}</a></li>
@@ -708,6 +682,8 @@ export async function builderRoutes(app: FastifyInstance) {
           <li><a href="#app-lock">${icon('lock')} ${tx('app.task.lock')}</a></li>
           ${issues.task}
         </ul></aside>
+      <div id="app-lock">${region(tx('app.lock_region'), await lockPanel(s, a.id, 0, { headings: true }))}</div>
+      </div>
       </div>`;
     return send(reply, s, shell(s, a.name, [[tx('rte.app_builder'), BASE], [a.name]], main));
   });
@@ -725,7 +701,8 @@ export async function builderRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/pages/${p.id}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
-      return back(reply, s, `${BASE}/apps/${req.params.id}`);
+      // (sprint 197, NX-U4) the blank page form is on Create page
+      return back(reply, s, `${BASE}/apps/${req.params.id}/create-page`);
     }
   });
 

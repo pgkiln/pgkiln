@@ -422,6 +422,7 @@ src/
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
     create-page.ts         (137) Create page: the grid of page types with SVG previews (tabs Component / Feature / Copy), the table step,
                            Create page as copy (step per app and page, shared components mapped or copied → meta.copy_page)
+                           (sprint 197, NX-U4) the quick forms Create pages from a table and Create blank page above the grid
     features.ts            (137) Add feature: review (what it adds) and install, once, of Access control, Activity reporting,
                            Configuration options, E-mail reporting, Feedback, About, Login page, Theme style selection, Push
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
@@ -796,6 +797,8 @@ test/
   e2e/item-region-types.test.ts (sprint 140) the shuttle (buttons, keyboard, order) and Select One / Many in a browser; without JavaScript; 390 px
   e2e/sub-regions.test.ts  (sprint 195) HR page 53: ARIA tabs (keys, refresh inside a tab, remembered), flexbox at 360 px, without
                            JavaScript; a tabs container with a report and a form built by drag and drop
+  e2e/app-home.test.ts     (sprint 197, NX-U4/U5) the app home is the Pages report and the side column, the quick forms on Create
+                           page, the Page Designer's one Save at 360 and 1366 px, with and without JavaScript
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
   e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone

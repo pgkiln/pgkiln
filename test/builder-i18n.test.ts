@@ -182,7 +182,10 @@ describe('choosing the builder language', () => {
     assert.ok(ab.includes(`placeholder="${esc(de['bar.search_placeholder'])}"`));
     // an application's home: tabs, toolbar, tasks
     const appHome = (await b.get(`/builder/apps/${appId}`)).body;
-    for (const k of ['app.tab.pages', 'app.tab.shared', 'app.tab.settings', 'app.create_page', 'app.from_table'] as BuilderKey[]) assert.ok(appHome.includes(esc(de[k])), k);
+    for (const k of ['app.tab.pages', 'app.tab.shared', 'app.tab.settings', 'app.create_page', 'app.lock_region'] as BuilderKey[]) assert.ok(appHome.includes(esc(de[k])), k);
+    // (sprint 197, NX-U4) the quick forms are on Create page
+    const createPage = (await b.get(`/builder/apps/${appId}/create-page`)).body;
+    for (const k of ['app.from_table', 'app.blank'] as BuilderKey[]) assert.ok(createPage.includes(esc(de[k])), k);
 
     // the Page Designer: toolbar menus, tree headings, gallery
     const pd = (await b.get(`/builder/apps/${appId}/pages/${pageNo}`)).body;

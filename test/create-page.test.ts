@@ -118,6 +118,38 @@ describe('the Create page grid (tab Component)', () => {
     assert.match(home, /create-page\?tab=copy/);
   });
 
+  test('(sprint 197, NX-U4) the app home is the Pages report and the side column; the quick forms are on Create page', async () => {
+    const b = await builder();
+    const home = (await b.get(`/builder/apps/${appId}`)).body;
+    // nothing under the report: no form of its own in the main column, the lock and comments under Tasks
+    const main = home.slice(home.indexOf('class="app-home-main"'), home.indexOf('class="app-side"'));
+    assert.ok(main.length > 0);
+    assert.doesNotMatch(main, new RegExp(`action="/builder/apps/${appId}/(wizard|pages|lock|comments)"`));
+    assert.doesNotMatch(home, /Create pages from a table|Create blank page/);
+    const side = home.slice(home.indexOf('class="app-side"'));
+    assert.ok(side.indexOf('class="app-tasks') < side.indexOf('id="app-lock"'), 'the lock under Tasks');
+    assert.match(side, new RegExp(`action="/builder/apps/${appId}/lock"`));
+    assert.match(side, new RegExp(`action="/builder/apps/${appId}/comments"`));
+    // Create page, tab Component: both forms above the grid, posting where they always did
+    const cp = (await b.get(`/builder/apps/${appId}/create-page`)).body;
+    assert.ok(cp.indexOf('Create pages from a table') > 0 && cp.indexOf('Create pages from a table') < cp.indexOf('class="cp-grid"'));
+    assert.match(cp, new RegExp(`<form method="get" action="/builder/apps/${appId}/wizard">`));
+    assert.match(cp, new RegExp(`<option value="${SCHEMA}.node">`));
+    assert.match(cp, /<h3 id="cp-blank-h">Create blank page<\/h3>/);
+    assert.match(cp, new RegExp(`<form method="post" action="/builder/apps/${appId}/pages">`));
+    assert.match(cp, /name="page_no"[^>]*value="\d+"/);
+    assert.doesNotMatch(cp, /style="/);
+    assert.doesNotMatch((await b.get(`/builder/apps/${appId}/create-page?tab=feature`)).body, /Create blank page/);
+    // a blank page made there opens in the Page Designer; a refused one goes back to Create page
+    const no = 9100 + Math.floor(Math.random() * 800);
+    const made = await b.submit(`/builder/apps/${appId}/pages`, { page_no: String(no), name: 'Quick blank', mode: 'normal', parent_page: '' });
+    assert.equal(made.statusCode, 303);
+    assert.match(made.headers.location as string, /^\/builder\/pages\/\d+$/);
+    const again = await b.submit(`/builder/apps/${appId}/pages`, { page_no: String(no), name: 'Twice', mode: 'normal', parent_page: '' });
+    assert.equal(again.headers.location, `/builder/apps/${appId}/create-page`);
+    await owner.query('delete from meta.page where app_id = $1 and page_no = $2', [appId, no]);
+  });
+
   test('wizardOptions of the new types', () => {
     assert.deepEqual(wizardOptions('tree', { id_column: 'id', parent_column: 'parent_id', label_column: 'name', expanded: '2', form_page: '' }),
       { label: null, icon: null, nav: false, id_column: 'id', parent_column: 'parent_id', label_column: 'name', expanded: 2, form_page: null });

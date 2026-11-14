@@ -1106,7 +1106,11 @@ creates the application in your workspace with the alias and the schema of the t
 (sprint 74) Above the pages: a **search** by page name or number (the rows filter while you type),
 **Report** and **Icons** views, and **Create page** (the page wizards below). **Tasks** on the right: run the
 application, create pages (also with AI), (sprint 137) **Add feature page** and **Create page as copy**, Shared
-Components, page groups, export, backups, supporting objects and lock the application. (UX-9) The report shows a
+Components, page groups, export, backups, supporting objects and lock the application. (sprint 197, NX-U4; APEX: the
+application home is the page report with Create Page in its toolbar) The dashboard is the Pages report and the side
+column, nothing below the report: under Tasks comes **Application lock and comments** (on a phone both follow the
+report), and the quick forms *Create pages from a table* and *Create blank page* are on **Create page**, tab
+Component. (UX-9) The report shows a
 page's mode in the property editor's words (*Normal*, *Modal dialog*), and Group stays empty for a page without one.
 (UX-6) Deleting the application is not a task: it is the **Danger zone** at the bottom of Settings → Definition,
 where you type the application's alias to confirm (the server checks it too). Its pages, shared components,
@@ -1160,13 +1164,14 @@ The migration filled it from the change history (Utilities → Change history) w
   Calendar, Cards, Chart, Comments, Content row, Dashboard, Data loading, Faceted search, Form, Interactive grid,
   Interactive report, Map, Master detail, Media list, Report and form, Search page, Smart filters, Timeline, Tree,
   Unified task list, Wizard, Workflow console) and **Create pages with AI**. A type that works on a table asks
-  for the table first; the others go to their options at once.
+  for the table first; the others go to their options at once. (sprint 197) Above the grid, two quick forms:
+  **Create pages from a table** (a page type and a table, then the options step) and **Create blank page**.
 - **Feature**: [features](#add-feature) to add to the application.
 - **Copy**: [a page of this or another application](#create-page-as-copy) under a new number.
 
 The wizards are plain forms (they work without JavaScript). Choose a
 **page type** and a **table or view** (tables the app's database role can't read are marked) and
-press **Next** (the App home's *Create pages from a table* form still does the same in one step). The second step proposes everything from the database catalog: the columns, the
+press **Next** (the *Create pages from a table* form above the grid does the same in one step). The second step proposes everything from the database catalog: the columns, the
 primary key, date and number columns, positions and foreign keys. Change what you like, choose the
 page number, name and menu icon, and press **Create page**: the builder opens the new page in the
 page designer. An error (a page number in use, a column that doesn't fit) shows on the second
@@ -1251,8 +1256,8 @@ could read. From SQL: `meta.copy_page(from_app, page, to_app, new_page, name, ma
 
 ### Create a blank page
 
-Give a page number, name, mode (normal or modal dialog) and breadcrumb parent, then add
-components in the page designer.
+**Create page → Blank page**, or the *Create blank page* form above the grid (sprint 197): give a page number,
+name, mode (normal or modal dialog) and breadcrumb parent, then add components in the page designer.
 
 ### Page groups
 
@@ -1276,8 +1281,10 @@ side by side; on phones and portrait tablets they are tabs (**Tree**, **Layout**
 choosing a component opens the Properties tab.
 
 (UX-2) From 1024 pixels wide the designer is fixed to the window: only the panes scroll, so the toolbar
-with **Save**, Undo / Redo and the page navigator stays in view, and the property editor's own save button
-stays at the bottom of its pane. **Ctrl+S** (Cmd+S) saves. A change not saved yet puts a dot on Save, and
+with **Save**, Undo / Redo and the page navigator stays in view. **Ctrl+S** (Cmd+S) saves. (sprint 197, NX-U5; APEX:
+one Save in the toolbar) The toolbar's **Save** is the designer's only save button: the property editor has none at
+its foot. It submits the property editor's form without JavaScript too, Enter in a field does the same, and on a
+phone it stays in the toolbar as its icon. A change not saved yet puts a dot on Save, and
 leaving the page with one asks first. On a window under 800 pixels high the gallery under the layout is only
 its tabs (*Regions*, *Items*, *Buttons*): choose one to open it, choose the open one to fold it again; the
 designer remembers which you prefer.
@@ -1353,7 +1360,7 @@ process, branch, or a new page), a **Utilities** menu (Advisor, search, shared c
 
 APEX's page locks and developer comments, for teams. In the page designer's **Lock and comments**
 tab a developer **locks** the page (with an optional note); on the application's page (**Pages**,
-under the list) they can lock the **whole application**. While it is locked, other developers' changes
+in the side column under Tasks) they can lock the **whole application**. While it is locked, other developers' changes
 to it are refused (with a message, or `423` for JSON requests) and the designer says who locked it
 and since when; the page list shows a lock column. Locking an application refuses changes to every
 page, the settings, shared components and deleting it. Only the developer who locked it or an

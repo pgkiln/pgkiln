@@ -360,6 +360,7 @@ export async function designerRoutes(app: FastifyInstance) {
     let heading: Raw;
     let props: Raw;
     let arrange: Raw | '' = '';
+    // (sprint 197, NX-U5) the toolbar's Save is the only save button: it submits this form (form=), also without JavaScript
     const formId = 'pd-form';
     let hasForm = true;
     const peTabs = (panels: Raw[]) => html`<div class="pd-tabs" data-tabs="pd-right" data-tabs-remember aria-label="${tx('pd.properties')}">${panels}</div>`;
@@ -384,7 +385,7 @@ export async function designerRoutes(app: FastifyInstance) {
         heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${kindLabel(kind)}: ${spec.summary(row)}</span>`;
         const settings = kind === 'region' ? await regionSettingsForm(p.id, p.app_id, row, s) : '';
         props = html`${peTabs([
-          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, tx('common.save'), { id: formId }), true),
+          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, '', { id: formId }), true),
           ...(settings ? [tab('pd-r-attrs', tx('pd.attributes'), settings)] : []),
           ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', tx('pd.jobs'), await processJobsPanel(row.id))] : []),
         ])}
@@ -444,7 +445,6 @@ export async function designerRoutes(app: FastifyInstance) {
               <textarea id="f_help" name="help" rows="5" maxlength="20000">${p.help ?? ''}</textarea>
               <small class="help">${tx('pdz.markdown_with_amp_item_substitutions')}</small></div>
           </div></fieldset>
-          <div class="buttons"><button class="btn btn-hot">${tx('pd.save_page')}</button></div>
         </form>`, true)])}
         ${await usedInPanel(p.app_id, 'page', p)}`;
     }
@@ -480,7 +480,7 @@ export async function designerRoutes(app: FastifyInstance) {
           ${['region', 'item', 'button', 'dynamic_action', 'computation', 'validation', 'process', 'branch'].map((k) =>
             html`<a href="${url(`new=${k}`)}">${icon(COMPONENTS[k].icon)} ${k === 'item' ? tx('pd.menu.page_item') : kindLabel(k)}</a>`)}
         </div><div class="menu-section menu-links">
-          <a href="${BASE}/apps/${p.app_id}#create-page">${icon('file')} ${tx('pd.menu.page')}</a>
+          <a href="${BASE}/apps/${p.app_id}/create-page">${icon('file')} ${tx('pd.menu.page')}</a>
         </div></div></details>`;
     const utilMenu = html`<details class="menu tb-menu">
         <summary class="tb-btn" title="${tx('pd.menu.utilities')}">${bicon('wrench')}${bicon('down', 'icon tb-caret')}<span class="sr-only">${tx('pd.menu.utilities')}</span></summary>
