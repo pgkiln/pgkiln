@@ -89,6 +89,7 @@ directory or `.zip`) becomes a pgkiln application in one step:
 
 ```sh
 pgkiln import-apex f100.sql --dry-run            # the report only
+pgkiln import-apex f100.sql --check --schema sales   # the report and the tables, columns … the database lacks
 pgkiln import-apex f100.sql --alias sales --schema sales
 pgkiln import-apex f100.sql --out apps/sales     # the application files, to edit, then: pgkiln import apps/sales
 ```
@@ -98,8 +99,8 @@ alias and the schema, Import). The file is **read as text and never run**: the i
 `wwv_flow_imp…` calls (named arguments, `q'[…]'` quotes, `wwv_flow_string.join` lines, `unistr`,
 `wwv_flow_imp.id` ids) and builds the same document `meta.export_app()` writes, which
 `meta.import_app()` imports like any export. The tables, views and packages of the parsing schema
-are not in an application export: create them in PostgreSQL first (`--schema` names the schema
-unqualified tables are in; the default is the parsing schema in lower case). (sprint 186) Without `--db-role`
+are not in an application export: create them in PostgreSQL first, with ora2pg ([below](#from-oracle-to-pgkiln);
+`--schema` names the schema unqualified tables are in; the default is the parsing schema in lower case). (sprint 186) Without `--db-role`
 the application gets the role `app_<alias>`, with rights on that schema when it exists (the builder's import and
 `--schema`), else without rights yet: grant it what the pages need, or name a role of your own with `--db-role`.
 
@@ -121,6 +122,8 @@ validations, conditions, computations, authorization schemes and Set Value actio
 | `orders_seq.nextval`, `.currval` | `nextval('orders_seq')`, `currval('orders_seq')` |
 | `v('P1_X')`, `nv('P1_X')` | `:P1_X` |
 | `… minus select …` | `… except select …` |
+| `"ORDER_TOTAL"`, `"OEHR_ORDERS"` (quoted, upper case) | `order_total`, `oehr_orders`: the same name in Oracle as unquoted, and lower case as ora2pg makes it; a PostgreSQL key word stays quoted (`"ORDER"` → `"order"`) (sprint 192) |
+| `from orders` (no schema) | `from sales.orders`: the `--schema` (sprint 192). An application's role has no search path of its own, and in APEX an unqualified name is the parsing schema's. APEX's views (`apex_…`) are left as they are |
 
 What changes the meaning or the shape of a query stays as it is and is named in the report as **needs porting**:
 `rownum`, `(+)` outer joins, `connect by`, `listagg`, `instr`, `to_number` without a format, `substr` from the end,
@@ -137,7 +140,8 @@ out. At most 300 are made per import; one more issue lists the rest.
 **APEX 26.2 exports** (sprint 190) write a component's settings as `p_attributes=>wwv_flow_t_plugin_attributes(…)`
 key/value pairs instead of `p_attribute_01` …, leave out `p_list_id` and `p_region_id` on list entries and region
 columns (they belong to the list or region written before them), and write classic reports as
-`create_report_region`. The importer reads both forms. It is tested in CI on a real 26.2.1 export, the sample
+`create_report_region`. The importer reads both forms; (sprint 192) a form item without `p_source_type` (26.2's
+default, a column of the form's region) is a column of the form. It is tested in CI on a real 26.2.1 export, the sample
 application *Demonstration - HR* (46 pages, `test/fixtures/apex/f77536.sql`): every page but the global page is
 imported and opens; what's left is the application's own PL/SQL and APEX's built-in administration pages.
 
@@ -196,6 +200,82 @@ calendars, maps, trees and faceted search, lists other than the navigation menu,
 processes and computations, shared component types beyond lists of values and authorization
 schemes, translations, page JavaScript and CSS, plug-ins, and the APEXlang (`.apx`) and YAML
 exports.
+
+## From Oracle to pgkiln
+
+(Sprint 192.) An APEX export has the pages, not the database: its tables, views, sequences, packages and data stay in
+Oracle. [ora2pg](https://ora2pg.darold.net/) moves them to PostgreSQL; pgkiln checks the result against the
+application and imports it on top. The recipe below is what `scripts/oracle-e2e.sh` runs (manually, and weekly in
+`.github/workflows/oracle-e2e.yml`) with Oracle Database Free, ora2pg 25.0 and APEX's sample application
+*Demonstration - HR* (`test/fixtures/apex/f77536.sql`, its OEHR tables in `test/fixtures/apex/oehr-oracle.sql`):
+afterwards every OEHR page shows the rows that were in Oracle.
+
+**1. ora2pg: the schema.** An `ora2pg.conf` with the Oracle connection, the schema and the PostgreSQL schema to
+create (ora2pg needs Perl's DBD::Oracle and the Instant Client: the Docker image `georgmoser/ora2pg` has both):
+
+```
+ORACLE_HOME        /usr/lib/oracle/19.26/client64
+ORACLE_DSN         dbi:Oracle:host=oracle.example.com;service_name=ORCLPDB1;port=1521
+ORACLE_USER        sales
+ORACLE_PWD         …
+SCHEMA             SALES           # the APEX application's parsing schema
+EXPORT_SCHEMA      1               # into a PostgreSQL schema …
+PG_SCHEMA          sales           # … of this name (pgkiln import-apex --schema sales)
+PRESERVE_CASE      0               # the default: EMP becomes emp, as pgkiln's import expects
+PACKAGE_AS_SCHEMA  1               # the default: package PKG's function F becomes pkg.f (0: pkg_f)
+FILE_PER_FKEYS     1               # foreign keys in a file of their own, loaded after the data
+FORCE_OWNER        pgkiln          # the PostgreSQL role that owns what is created
+PG_DSN             dbi:Pg:dbname=pgkiln;host=localhost;port=5432   # for COPY straight into PostgreSQL
+PG_USER            pgkiln
+PG_PWD             …
+```
+
+```sh
+for t in TABLE SEQUENCE VIEW; do ora2pg -c ora2pg.conf -t $t -o ${t,,}.sql && psql -f ${t,,}.sql; done
+ora2pg -c ora2pg.conf -t COPY            # the data, straight into PostgreSQL (PG_DSN)
+psql -f FKEYS_table.sql                  # then the foreign keys
+ora2pg -c ora2pg.conf -t PACKAGE -o package.sql   # also PROCEDURE, FUNCTION, TRIGGER: a first pass, to review
+```
+
+The data export reads `v$database`: the Oracle user needs `grant select on v_$database`. Use COPY rather than INSERT
+for the data: ora2pg 25.0's INSERT export writes INTERVAL values without quotes. `NUMBER` columns become `smallint`,
+`integer`, `bigint` or `numeric` by their precision (`PG_INTEGER_TYPE`, `DEFAULT_NUMERIC`); `DATE` becomes
+`timestamp(0)`. Converted PL/SQL is a first pass: read it before you run it.
+
+**2. `pgkiln import-apex --check`.** Before the import, with the database ora2pg filled:
+
+```sh
+pgkiln import-apex f100.sql --check --schema sales
+```
+
+prints the import report and then every database object the application uses that the schema doesn't have:
+**tables and views** (region sources, table-based regions, forms, grids, lists of values, chart series, cards,
+calendars, DML in PL/SQL), **columns** where the importer knows them (form items, grid columns, lists of values on a
+table, chart, card, calendar and facet columns of a query on one table), **sequences** (`seq.nextval`) and **PL/SQL
+routines** (Invoke API processes, `pkg.proc(…)` calls). Oracle's upper-case names are looked up in lower case. It only
+reads the catalogue (`pg_catalog`): nothing of the export runs. It imports nothing and exits with 1 when something is
+missing (0 when nothing is), so a migration script can stop there; `--json` gives the report with `check.missing`.
+**APEX views** (`apex_applications`, `apex_collections` …) are listed apart: ora2pg doesn't move them, rebuild what
+uses them on your own tables or pgkiln's.
+
+A PL/SQL routine the application calls that already exists in PostgreSQL is named with the function found: package
+`SALES_PKG`'s `RECALCULATE` as `sales_pkg.recalculate` (`PACKAGE_AS_SCHEMA 1`) or as `sales.sales_pkg_recalculate`
+(`PACKAGE_AS_SCHEMA 0`), with its arguments, so the hand work is to check ora2pg's conversion, not to write it.
+
+The builder's **Import → From Oracle APEX** shows the same check as **Database objects** above the report, for the
+schema in the form (with the workspace's developer login). The import itself (command line and builder) checks too:
+a component whose objects are missing gets a note "missing in PostgreSQL: …", and its Team Development issue lists
+them.
+
+**3. The import**, with the schema ora2pg filled; the application's role gets the rights on it (sprint 186):
+
+```sh
+pgkiln import-apex f100.sql --schema sales --alias sales
+```
+
+**4. Afterwards**: open the [Advisor](03-builder.md#advisor) (or `pgkiln advise sales`): it runs every query of the
+application as its role and lists what fails, among them the PL/SQL left to port and the APEX views. Work through the
+Team Development issues labelled *APEX import*, and run `pgkiln import-apex --check` again after each ora2pg run.
 
 ## Users per application
 

@@ -1,0 +1,44 @@
+# (sprint 192, NX-F5) From Oracle to pgkiln, end to end: Oracle Database Free with the OEHR tables, ora2pg into
+# PostgreSQL, pgkiln import-apex --check and the import of APEX's sample application (test/fixtures/apex/f77536.sql),
+# every page opened as a user (scripts/oracle-e2e.sh). Too heavy for every push (a 1.5 GB Oracle image): by hand and
+# weekly only. The main CI (ci.yml) is not changed by it.
+name: Oracle to pgkiln (e2e)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'   # Mondays 04:17 UTC
+
+jobs:
+  oracle-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pgkiln
+          POSTGRES_PASSWORD: pgkiln
+          POSTGRES_DB: pgkiln
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pgkiln"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
+      RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
+      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/migrate.ts --example hr
+      - name: Pull Oracle Database Free and ora2pg
+        run: docker pull gvenzl/oracle-free:23-slim-faststart && docker pull georgmoser/ora2pg:latest
+      - run: scripts/oracle-e2e.sh
