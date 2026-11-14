@@ -16070,10 +16070,11 @@ describe('sprint 189 session limits, deep linking and expiring bookmarks per app
   let saved: Record<string, unknown>;
   const COLS = 'session_idle_minutes, session_max_hours, session_timeout_page, deep_linking';
   before(async () => { saved = (await owner.one(`select ${COLS} from meta.app where alias = 'hr'`))!; });
-  after(async () => {
-    await owner.query(`update meta.app set session_idle_minutes = $1, session_max_hours = $2, session_timeout_page = $3, deep_linking = $4 where alias = 'hr'`,
-      [saved.session_idle_minutes, saved.session_max_hours, saved.session_timeout_page, saved.deep_linking]);
-  });
+  const restore = () => owner.query(`update meta.app set session_idle_minutes = $1, session_max_hours = $2, session_timeout_page = $3, deep_linking = $4 where alias = 'hr'`,
+    [saved.session_idle_minutes, saved.session_max_hours, saved.session_timeout_page, saved.deep_linking]);
+  // every test puts HR back, also when it fails: later tests (and files) depend on deep linking and the limits
+  afterEach(restore);
+  after(restore);
   const age = (user: string, col: 'last_seen' | 'created_at', minutes: number) =>
     owner.query(`update meta.session set ${col} = now() - make_interval(mins => $3) where app_id = $1 and username = $2`, [appId, user, minutes]);
   const devBrowser = async () => {
