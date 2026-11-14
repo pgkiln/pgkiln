@@ -15700,6 +15700,7 @@ describe('NX-S3 a default password on a public installation changes nothing unti
       else process.env.PUBLIC_URL = keep;
     }
   });
+});
 
 describe('sprint 186 every application runs as a database role of its own (NX-S2)', async () => {
   const { AppRoleRefused, setAppRole, rolesChanged } = await import('../src/app-role.ts');
