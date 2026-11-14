@@ -672,6 +672,7 @@ export const zh: Record<MessageKey, string> = {
   'error.unexpected': "发生意外错误。",
   'error.not_authorized': "您无权访问此页面。",
   'error.checksum': "此链接无效或已被篡改（校验和错误）。",
+  'error.link_expired': "此链接已过期：此应用程序在某个日期之前创建的链接已失效。请从菜单打开该页面。",
   'error.report_unavailable': "该报表不可用。",
   'error.action_unavailable': "您无法使用该操作。",
   'error.session_changed_title': "会话已过期",

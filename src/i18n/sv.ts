@@ -672,6 +672,7 @@ export const sv: Record<MessageKey, string> = {
   'error.unexpected': "Ett oväntat fel inträffade.",
   'error.not_authorized': "Du har inte behörighet till den här sidan.",
   'error.checksum': "Länken är ogiltig eller har manipulerats (kontrollsummefel).",
+  'error.link_expired': "Den här länken har gått ut: länkar till det här programmet som skapades före ett visst datum fungerar inte längre. Öppna sidan från menyn i stället.",
   'error.report_unavailable': "Den rapporten är inte tillgänglig.",
   'error.action_unavailable': "Den åtgärden är inte tillgänglig för dig.",
   'error.session_changed_title': "Sessionen har gått ut",

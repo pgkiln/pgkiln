@@ -672,6 +672,7 @@ export const it: Record<MessageKey, string> = {
   'error.unexpected': "Si è verificato un errore imprevisto.",
   'error.not_authorized': "Non sei autorizzato ad accedere a questa pagina.",
   'error.checksum': "Questo link non è valido o è stato manomesso (errore di checksum).",
+  'error.link_expired': "Questo link è scaduto: i link di questa applicazione creati prima di una certa data non funzionano più. Apri la pagina dal menu.",
   'error.report_unavailable': "Quel report non è disponibile.",
   'error.action_unavailable': "Quell'azione non è disponibile per te.",
   'error.session_changed_title': "Sessione scaduta",

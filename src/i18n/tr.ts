@@ -672,6 +672,7 @@ export const tr: Record<MessageKey, string> = {
   'error.unexpected': "Beklenmeyen bir hata oluştu.",
   'error.not_authorized': "Bu sayfaya erişim yetkiniz yok.",
   'error.checksum': "Bu bağlantı geçersiz veya değiştirilmiş (sağlama toplamı hatası).",
+  'error.link_expired': "Bu bağlantının süresi doldu: bu uygulamanın belirli bir tarihten önce oluşturulan bağlantıları artık çalışmıyor. Sayfayı menüden açın.",
   'error.report_unavailable': "Bu rapor kullanılamıyor.",
   'error.action_unavailable': "Bu eylem sizin için kullanılamıyor.",
   'error.session_changed_title': "Oturum süresi doldu",

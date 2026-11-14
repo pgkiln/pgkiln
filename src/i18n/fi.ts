@@ -672,6 +672,7 @@ export const fi: Record<MessageKey, string> = {
   'error.unexpected': "Tapahtui odottamaton virhe.",
   'error.not_authorized': "Sinulla ei ole oikeutta tälle sivulle.",
   'error.checksum': "Linkki on virheellinen tai sitä on muutettu (tarkistussummavirhe).",
+  'error.link_expired': "Tämä linkki on vanhentunut: tämän sovelluksen ennen tiettyä päivää luodut linkit eivät enää toimi. Avaa sivu valikosta.",
   'error.report_unavailable': "Raportti ei ole saatavilla.",
   'error.action_unavailable': "Toiminto ei ole käytettävissäsi.",
   'error.session_changed_title': "Istunto vanhentunut",

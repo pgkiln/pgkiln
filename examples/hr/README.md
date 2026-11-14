@@ -52,6 +52,7 @@ Then open http://127.0.0.1:3100/a/hr and sign in as `king`, `blake`, `jones`, `a
 | `hr_86_web_request_outbox.sql` | `meta.web_request` as an outbox: page 35 *Fetch in the background* queues a request with a callback (`hr.contacts_fetched`), an ordering key and three attempts; the server sends it after the commit, retries, and the callback notes the outcome in `hr.contact_fetch` |
 | `hr_87_webhook.sql` | An inbound webhook: `POST events/crm` in the REST module `hr` (type `webhook`) checks an HMAC-SHA256 signature with the secret of the web credential `HR_WEBHOOK`, stores the event and processes it afterwards into `hr.crm_event` |
 | `hr_88_browser_security.sql` | Browser security (Settings → Security): frames from this server only, referrer policy `strict-origin-when-cross-origin`, never indexed, and an extra response header `X-Content-Owner` |
+| `hr_89_session_management.sql` | Session management (Settings → Errors and Sessions): sessions of at most 8 hours, and page 52 *Session ended* (no sign-in) after a session has ended |
 
 The files run in order, each once (recorded in `public.pgkiln_seed`), so new ones can be added
 later. pgkiln's own tests use this application as their fixture (`npm test` installs it first).

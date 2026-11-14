@@ -16066,6 +16066,16 @@ describe('sprint 188 browser security per application (NX-S4)', () => {
     await owner.query(`update meta.app set browser_security = $1::jsonb where alias = 'hr'`, [JSON.stringify(v)]);
     browserSecurityChanged();
   };
+describe('sprint 189 session limits, deep linking and expiring bookmarks per application (NX-S5)', () => {
+  let saved: Record<string, unknown>;
+  const COLS = 'session_idle_minutes, session_max_hours, session_timeout_page, deep_linking';
+  before(async () => { saved = (await owner.one(`select ${COLS} from meta.app where alias = 'hr'`))!; });
+  after(async () => {
+    await owner.query(`update meta.app set session_idle_minutes = $1, session_max_hours = $2, session_timeout_page = $3, deep_linking = $4 where alias = 'hr'`,
+      [saved.session_idle_minutes, saved.session_max_hours, saved.session_timeout_page, saved.deep_linking]);
+  });
+  const age = (user: string, col: 'last_seen' | 'created_at', minutes: number) =>
+    owner.query(`update meta.session set ${col} = now() - make_interval(mins => $3) where app_id = $1 and username = $2`, [appId, user, minutes]);
   const devBrowser = async () => {
     const b = new FileBrowser(app);
     await b.get('/builder/login');
@@ -16166,5 +16176,94 @@ describe('sprint 188 browser security per application (NX-S4)', () => {
     const page = (await dev.get(url.replace('/browser', '?tab=security'))).body;
     assert.match(page, /X-Frame-Options: DENY/);
     assert.match(page, /X-Team: sales/);
+
+  test('an application\'s idle time and maximum length end its sessions, never later than the instance\'s', async () => {
+    await owner.query(`update meta.app set session_idle_minutes = 5, session_max_hours = null, session_timeout_page = null where alias = 'hr'`);
+    let allen = await as('allen');
+    await age('allen', 'last_seen', 10);
+    let res = await allen.get('/a/hr/1');
+    assert.equal(res.statusCode, 302);
+    assert.match(String(res.headers.location), /^\/a\/hr\/login/, 'idle 10 minutes > the application\'s 5');
+    // longer than the instance's (60 minutes by default): the instance's still applies
+    await owner.query(`update meta.app set session_idle_minutes = 1440 where alias = 'hr'`);
+    allen = await as('allen');
+    await age('allen', 'last_seen', 24 * 60 - 5);
+    assert.match(String((await allen.get('/a/hr/1')).headers.location), /^\/a\/hr\/login/);
+    // the maximum length
+    await owner.query(`update meta.app set session_idle_minutes = null, session_max_hours = 1 where alias = 'hr'`);
+    allen = await as('allen');
+    await age('allen', 'created_at', 90);
+    assert.match(String((await allen.get('/a/hr/1')).headers.location), /^\/a\/hr\/login/);
+    allen = await as('allen');
+    assert.equal((await allen.get('/a/hr/1')).statusCode, 200);
+  });
+
+  test('a session that has ended opens the timeout page, which must be a page without sign-in', async () => {
+    const pid = (await owner.one(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 9189, 'Ended', 'Ended', false) returning id`, [appId]))!.id;
+    try {
+      await owner.query(`update meta.app set session_idle_minutes = 5, session_timeout_page = 9189 where alias = 'hr'`);
+      const allen = await as('allen');
+      await age('allen', 'last_seen', 10);
+      const res = await allen.get('/a/hr/3');
+      assert.equal(res.headers.location, '/a/hr/9189');
+      assert.equal((await allen.get('/a/hr/9189')).statusCode, 200);
+      // once: the next request is an ordinary visit without a session
+      assert.match(String((await allen.get('/a/hr/3')).headers.location), /^\/a\/hr\/login/);
+      // a first visit (no cookie) goes to the sign-in page, not the timeout page
+      assert.match(String((await new Browser().get('/a/hr/3')).headers.location), /^\/a\/hr\/login/);
+      // the builder refuses a page that needs a sign-in
+      const dev = await devBrowser();
+      await dev.get(`/builder/apps/${appId}/settings?tab=errors`);
+      await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_warning_seconds: '120', session_timeout_page: '1', deep_linking: 'true' });
+      assert.equal((await owner.one(`select session_timeout_page from meta.app where id = $1`, [appId]))!.session_timeout_page, 9189, 'page 1 needs a sign-in: refused');
+      await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_warning_seconds: '120', session_idle_minutes: '0', deep_linking: 'true' });
+      assert.equal((await owner.one(`select session_idle_minutes from meta.app where id = $1`, [appId]))!.session_idle_minutes, 5, '0 minutes: refused');
+    } finally {
+      await owner.query(`update meta.app set session_timeout_page = null where alias = 'hr'`);
+      await owner.query('delete from meta.page where id = $1', [pid]);
+    }
+  });
+
+  test('deep linking off: the sign-in page gets no address, and a posted one is ignored', async () => {
+    await owner.query(`update meta.app set session_idle_minutes = null, session_max_hours = null, deep_linking = false where alias = 'hr'`);
+    const b = new Browser();
+    assert.equal((await b.get('/a/hr/8')).headers.location, '/a/hr/login');
+    await b.get('/a/hr/login?next=/a/hr/8');
+    const res = await b.post('/a/hr/login', { __csrf: b.lastCsrf, username: 'allen', password: 'allen', next: '/a/hr/8' });
+    assert.equal(res.statusCode, 303);
+    const home = (await owner.one(`select home_page from meta.app where alias = 'hr'`))!.home_page;
+    assert.equal(res.headers.location, `/a/hr/${home}`);
+    await owner.query(`update meta.app set deep_linking = true where alias = 'hr'`);
+    assert.match(String((await new Browser().get('/a/hr/8')).headers.location), /next=%2Fa%2Fhr%2F8/);
+  });
+
+  test('Expire bookmarks: links made before fail with "expired", new ones work, SQL and the server agree', async () => {
+    const before = link('king', 3, { P3_EMPNO: '7839' });
+    const king = await as('king');
+    assert.equal((await king.get(before)).statusCode, 200);
+    const dev = await devBrowser();
+    await dev.get(`/builder/apps/${appId}/settings?tab=errors`);
+    const epoch0 = (await owner.one('select url_epoch from meta.app where id = $1', [appId]))!.url_epoch;
+    // a developer with the CSRF token only
+    await dev.post(`/builder/apps/${appId}/settings/expire-bookmarks`, {});
+    await new FileBrowser(app).post(`/builder/apps/${appId}/settings/expire-bookmarks`, {});
+    assert.equal((await owner.one('select url_epoch from meta.app where id = $1', [appId]))!.url_epoch, epoch0, 'without the token, or signed out: nothing');
+    await dev.post(`/builder/apps/${appId}/settings/expire-bookmarks`, { __csrf: dev.lastCsrf });
+    assert.equal((await owner.one('select url_epoch from meta.app where id = $1', [appId]))!.url_epoch, epoch0 + 1);
+    const old = await king.get(before);
+    assert.equal(old.statusCode, 403);
+    assert.match(old.body, /This link has expired/);
+    // a tampered link is still a checksum error, not "expired"
+    const forged = await king.get(before.replace('7839', '7934'));
+    assert.equal(forged.statusCode, 403);
+    assert.match(forged.body, /checksum error/);
+    // links made now (the server remembered the new epoch on the page request above) work, and SQL makes the same
+    const fresh = link('king', 3, { P3_EMPNO: '7839' });
+    assert.notEqual(fresh, before);
+    assert.equal((await king.get(fresh)).statusCode, 200);
+    const sql = (await owner.one(`select meta.url_checksum($1, 3, 'king', '{"P3_EMPNO": "7839"}') as cs`, [appId]))!.cs;
+    assert.equal(new URL(fresh, 'http://x').searchParams.get('cs'), sql);
+    // the settings page says when
+    assert.match((await dev.get(`/builder/apps/${appId}/settings?tab=errors`)).body, /Last expired: \d{4}-\d\d-\d\d \d\d:\d\d UTC/);
   });
 });

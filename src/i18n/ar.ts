@@ -672,6 +672,7 @@ export const ar: Record<MessageKey, string> = {
   'error.unexpected': "حدث خطأ غير متوقع.",
   'error.not_authorized': "ليست لديك صلاحية الوصول إلى هذه الصفحة.",
   'error.checksum': "هذا الرابط غير صالح أو تم العبث به (خطأ في المجموع الاختباري).",
+  'error.link_expired': "انتهت صلاحية هذا الرابط: روابط هذا التطبيق التي أُنشئت قبل تاريخ معيّن لم تعد تعمل. افتح الصفحة من القائمة بدلاً من ذلك.",
   'error.report_unavailable': "هذا التقرير غير متاح.",
   'error.action_unavailable': "هذا الإجراء غير متاح لك.",
   'error.session_changed_title': "انتهت الجلسة",

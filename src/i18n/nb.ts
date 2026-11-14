@@ -672,6 +672,7 @@ export const nb: Record<MessageKey, string> = {
   'error.unexpected': "Det oppstod en uventet feil.",
   'error.not_authorized': "Du har ikke tilgang til denne siden.",
   'error.checksum': "Lenken er ugyldig eller har blitt endret (kontrollsumfeil).",
+  'error.link_expired': "Denne lenken har utløpt: lenker til denne applikasjonen laget før en bestemt dato virker ikke lenger. Åpne siden fra menyen i stedet.",
   'error.report_unavailable': "Den rapporten er ikke tilgjengelig.",
   'error.action_unavailable': "Den handlingen er ikke tilgjengelig for deg.",
   'error.session_changed_title': "Økten er utløpt",

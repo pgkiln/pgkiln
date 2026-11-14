@@ -633,6 +633,7 @@ export const fr: Record<MessageKey, string> = {
   'error.unexpected': 'Une erreur inattendue s’est produite.',
   'error.not_authorized': 'Vous n’êtes pas autorisé à accéder à cette page.',
   'error.checksum': 'Ce lien n’est pas valide ou a été falsifié (erreur de somme de contrôle).',
+  'error.link_expired': "Ce lien a expiré : les liens de cette application créés avant une certaine date ne fonctionnent plus. Ouvrez plutôt la page depuis le menu.",
   'error.report_unavailable': 'Ce rapport n’est pas disponible.',
   'error.action_unavailable': 'Cette action ne vous est pas disponible.',
   'error.session_changed_title': 'Session expirée',

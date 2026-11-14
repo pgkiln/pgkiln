@@ -418,6 +418,25 @@ dialog says when the session ends and offers **Stay signed in**, which marks the
 only save their work; when the session has ended the dialog offers to sign in again and comes back
 to the page.
 
+### Session limits per application
+
+(sprint 189) Settings → *Errors and sessions* → **Session management** (APEX: Security Attributes → Session
+Management):
+
+- **Maximum idle time** (1–1440 minutes) and **Maximum session length** (1–720 hours): empty uses the
+  instance's. An application can only be stricter than the instance: the shorter of the two applies, so a payroll
+  application can end idle sessions after 10 minutes while the others keep 60. The timeout warning uses the same
+  limits.
+- **Page after a session timeout** (APEX: Session Timeout URL): a page of the application without sign-in. A request
+  that brings the cookie of a session that has ended opens it, once, instead of the sign-in page. A first visit
+  without a cookie goes to the sign-in page as before. Only pages of the application can be chosen, so it can't
+  redirect elsewhere.
+- **Deep linking** (on by default): off sends every sign-in to the home page. The sign-in page then gets no
+  `next=` address, and one in a link or a posted form is ignored.
+
+The values are `meta.app.session_idle_minutes`, `session_max_hours`, `session_timeout_page` and `deep_linking`
+(migration 169), exported with the application.
+
 ### Keep me signed in
 
 Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the
@@ -820,6 +839,14 @@ host allow-list, the workspace's network access list and the private address che
   `move` SQL as literals. Your function still decides who may move what (e.g. only the organizer).
 - **Chart and calendar links** (drill-down, create on click) are checksummed like report links.
 - **CSRF**: every POST carries a per-session token.
+
+**Expire bookmarks** (sprint 189; APEX: Session State Protection → Expire Bookmarks): Settings → *Errors and
+sessions* → **Expire bookmarks** raises the application's `url_epoch`, which is part of every checksum the
+application makes (`meta.url_checksum` and the server use it alike). Every checksummed link made before stops
+working: bookmarks, links in e-mails, notifications and push messages. A user who opens one sees *This link has
+expired* instead of the checksum error that a tampered link gets. Pages open in a browser at that moment need to be
+opened again, because their grid rows and selections are signed too. The settings page shows when it was last done,
+and the activity log records who did it (`expire_bookmarks`).
 
 Checksums prevent tampering but aren't a substitute for RLS. A user who legitimately received a
 link for record 7839 can open it. Whether they may see record 7839 at all is the database's

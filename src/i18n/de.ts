@@ -633,6 +633,7 @@ export const de: Record<MessageKey, string> = {
   'error.unexpected': 'Ein unerwarteter Fehler ist aufgetreten.',
   'error.not_authorized': 'Sie sind nicht berechtigt, auf diese Seite zuzugreifen.',
   'error.checksum': 'Dieser Link ist ungültig oder wurde manipuliert (Prüfsummenfehler).',
+  'error.link_expired': "Dieser Link ist abgelaufen: Links dieser Anwendung, die vor einem bestimmten Datum erstellt wurden, funktionieren nicht mehr. Öffnen Sie die Seite stattdessen über das Menü.",
   'error.report_unavailable': 'Dieser Bericht ist nicht verfügbar.',
   'error.action_unavailable': 'Diese Aktion steht Ihnen nicht zur Verfügung.',
   'error.session_changed_title': 'Sitzung abgelaufen',

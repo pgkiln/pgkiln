@@ -19,8 +19,9 @@ import { languagePicker } from './render.ts';
 
 /** Where to go after signing in: a path of this application, else its home page. */
 export const safeNext = (app: App, next: string | undefined) =>
+  // (sprint 189, NX-S5) deep linking off: every sign-in goes to the home page
   // (sprint 165) no dot segments either: /a/<alias>/../../builder stays inside the application
-  next && next.startsWith(`/a/${app.alias}/`) && !/[\\\r\n]/.test(next) && !next.includes('//') && !/\/(\.|%2e){1,2}(\/|$|\?|#)/i.test(next) ? next : `/a/${app.alias}/${app.home_page}`;
+  app.deep_linking !== false && next && next.startsWith(`/a/${app.alias}/`) && !/[\\\r\n]/.test(next) && !next.includes('//') && !/\/(\.|%2e){1,2}(\/|$|\?|#)/i.test(next) ? next : `/a/${app.alias}/${app.home_page}`;
 
 /** "Forgot password?" is offered: turned on, app users with passwords, an enabled mail service. */
 export async function passwordResetAvailable(app: App) {

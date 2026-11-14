@@ -15,7 +15,7 @@ import { documentShell } from '../layout.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
-import { checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
+import { checksumExpired, checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
 import { builderSsoFinish, enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type Provider, type SsoResult } from '../sso.ts';
 import { sessionLimits, clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized, StepUp } from './authz.ts';
@@ -284,9 +284,16 @@ export async function loadContext(
   // (sprint 139, AP-6) the request's trace: which application (its workspace decides where it goes), page and user
   await traceApp({ appId: app.id, alias: app.alias, page: page.page_no, user });
 
+  // (sprint 189, NX-S5) a session that has ended (idle or too long) opens the application's timeout page, a page
+  // without sign-in (APEX: Session Timeout URL); requests of the page's own scripts get the 401 below
+  if (session.timedOut && !json && app.session_timeout_page && app.session_timeout_page !== page.page_no && app.authentication !== 'none'
+      && app.pages.some((p) => p.page_no === app.session_timeout_page && !p.requires_auth)) {
+    reply.redirect(`${base}/${app.session_timeout_page}`);
+    return null;
+  }
   if (app.authentication !== 'none' && (page.requires_auth || fixedPage) && !session.username) {
     if (json) reply.code(401).send({ error: locale.t('error.session_ended') });
-    else reply.redirect(`${base}/login?next=${encodeURIComponent(req.url)}`);
+    else reply.redirect(loginUrl(app, base, req.url));
     return null;
   }
   // debug messages (src/debug.ts): when the application's debug level is on, or (079) the developer
@@ -308,7 +315,7 @@ export async function loadContext(
   if (refusal) {
     if (refusal.signIn) {
       if (json) reply.code(401).send({ error: locale.t('error.session_ended') });
-      else reply.redirect(`${base}/login?next=${encodeURIComponent(req.url)}`);
+      else reply.redirect(loginUrl(app, base, req.url));
       return null;
     }
     const text = refusal.message ?? locale.t(refusal.key);
@@ -354,6 +361,9 @@ async function stepUp(ctx: PageContext, reply: FastifyReply, next: string) {
   return reply.redirect(`${ctx.base}/login/2fa?next=${encodeURIComponent(next)}`, 303);
 }
 
+/** (sprint 189) The sign-in page, with the address asked for unless the application's deep linking is off. */
+const loginUrl = (app: App, base: string, url: string) => (app.deep_linking === false ? `${base}/login` : `${base}/login?next=${encodeURIComponent(url)}`);
+
 async function forbidden(ctx: PageContext, reply: FastifyReply, message: string, detail: string) {
   dbg(ctx, 2, 'access', `refused (403): ${detail}`);
   logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'forbidden', ip: ctx.ip, detail });
@@ -374,12 +384,15 @@ async function forbidden(ctx: PageContext, reply: FastifyReply, message: string,
  * items of the target page, as does ?clear=1. On pages with protection =
  * 'checksum' the values must carry the checksum the runtime generated.
  */
-function applyUrlItems(ctx: PageContext): boolean {
+function applyUrlItems(ctx: PageContext): boolean | 'expired' {
   const names = new Set(ctx.page.items.map((i) => i.name));
   const provided = [...ctx.params.entries()].filter(([k]) => names.has(k.toUpperCase()));
   if (provided.length && ctx.page.protection === 'checksum') {
     const items = Object.fromEntries(provided.map(([k, v]) => [k.toUpperCase(), v]));
-    if (!checksumValid(urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, items), ctx.params.get('cs') ?? undefined)) return false;
+    const cs = ctx.params.get('cs') ?? undefined;
+    if (!checksumValid(urlChecksum(ctx.app.id, ctx.page.page_no, ctx.user, items), cs))
+      // (sprint 189) a link made before the application's latest Expire bookmarks says so
+      return checksumExpired(ctx.app.id, ctx.page.page_no, ctx.user, items, cs) ? 'expired' : false;
   }
   if (!provided.length && !ctx.params.has('clear')) return true;
   clearPageItems(ctx);
@@ -466,7 +479,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (prefetch && (ctx.dialog || ctx.page.processes.some((p) => p.point === 'load')))
       return reply.code(409).header('cache-control', 'no-store').send('Not kept for offline use: this page runs processes when it opens.');
 
-    if (!applyUrlItems(ctx)) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
+    const urlItems = applyUrlItems(ctx);
+    if (urlItems === 'expired') return forbidden(ctx, reply, ctx.locale.t('error.link_expired'), `expired link (Expire bookmarks): ${req.url}`);
+    if (!urlItems) return forbidden(ctx, reply, ctx.locale.t('error.checksum'), `checksum error: ${req.url}`);
     // a master grid's selected row (signed link) into its item
     applyRowSelection(ctx);
     if (!prefetch) {
@@ -701,7 +716,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send({ ok: false });
     const session = await getSession(req, reply, a.id, `/a/${a.alias}`);
     if (!session.username || req.body?.__csrf !== session.csrf_token) return reply.code(401).send({ ok: false });
-    return reply.header('cache-control', 'no-store').send({ ok: true, idle: sessionLimits().idleMinutes * 60 });
+    return reply.header('cache-control', 'no-store').send({ ok: true, idle: sessionLimits(a).idleMinutes * 60 });
   });
 
   // ---------------------------------------------------------------- dynamic actions (AJAX)

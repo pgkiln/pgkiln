@@ -74,9 +74,10 @@ src/
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
                            PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests;
                            (sprint 185, 166) every workspace's developer login: devDbForWorkspace / devDbForApp never return the owner
-  security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
   browser-security.ts      (sprint 188, NX-S4) browser security per application (meta.app.browser_security): check() for the form,
                            settingsOf() what may be sent, headersFor() frame-ancestors and headers, browserSecurityOf() cached per alias
+  security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits; (sprint 189) url_epoch per application
+                           (rememberUrlEpoch from loadApp, checksumExpired for links made before Expire bookmarks)
   gallery-remote.ts        (sprint 181, migration 164) the App Gallery's remote catalogues: parseCatalogue (blueprints only, checked
                            and cut to size), refreshSource (guarded webRequest), remoteBlueprint (fetched on Install)
   ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
