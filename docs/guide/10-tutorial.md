@@ -88,7 +88,7 @@ function, only sees the current user's rows. There is nothing to remember in the
 
 ## Step 4: report and form pages
 
-Open the app and use **Create pages from a table**: page type *Report and form*, table
+Open the app, press **Create page** and use **Create pages from a table** above the page types: page type *Report and form*, table
 `tasks.task`, **Next**, then name `My tasks`, page number `1`, form page `2`, menu icon `check`,
 and **Create page**.
 

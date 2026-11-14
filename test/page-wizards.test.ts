@@ -240,7 +240,8 @@ describe('generate_page', () => {
 describe('builder', () => {
   test('step 1 lists the page types; step 2 proposes the defaults; the POST creates the pages', async () => {
     const b = await builder();
-    const home = (await b.get(`/builder/apps/${appId}`)).body;
+    // (sprint 197, NX-U4) the form is on Create page, no longer on the application home
+    const home = (await b.get(`/builder/apps/${appId}/create-page`)).body;
     assert.match(home, new RegExp(`<form method="get" action="/builder/apps/${appId}/wizard">`));
     for (const k of ['Cards', 'Calendar', 'Chart', 'Map', 'Faceted search', 'Form', 'Master detail', 'Report and form', 'Interactive grid'])
       assert.match(home, new RegExp(`<option value="[a-z_]+"( selected)?>${k}</option>`));

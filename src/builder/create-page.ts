@@ -5,7 +5,7 @@ import { icon } from '../icons.ts';
 import { featHelp, featLabel, featureStates } from './features.ts';
 import { appOr404 } from './forms.ts';
 import { appHeader, back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
-import { kindHelp, kindLabel, NO_TABLE, PAGE_KINDS, wizardTables } from './wizards.ts';
+import { kindHelp, kindLabel, NO_TABLE, PAGE_KINDS, WIZARD_KINDS, wizardTables } from './wizards.ts';
 import { scopedTx as tx } from './i18n.ts';
 
 // (sprint 137, AP-3) Create Page like APEX's: a grid of page types with small previews (tab Component), the
@@ -121,7 +121,31 @@ export async function createPageRoutes(app: FastifyInstance) {
     if (tab === 'component') {
       const href = (g: ReturnType<typeof GRID>[number]) =>
         g.key !== 'blank' && !g.table ? `${BASE}/apps/${a.id}/wizard?kind=${g.key}` : `${BASE}/apps/${a.id}/create-page?type=${g.key}`;
-      body = html`<p class="muted u-mt0">${tx('cpg.choose_a_page_type_types')}</p>
+      // (sprint 197, NX-U4) the two quick forms that were under the application home's Pages report: a page type
+      // and a table straight to the options step, and a blank page in one step
+      const tables = await wizardTables(a.db_role);
+      const quick = html`<div class="columns cp-quick" id="create-page">
+          <section class="cp-quick-form" aria-labelledby="cp-from-table-h"><h3 id="cp-from-table-h">${tx('app.from_table')}</h3>
+            <p class="muted small">${tx('app.from_table_text')}</p>
+            <form method="get" action="${BASE}/apps/${a.id}/wizard">
+              <div class="form-grid">
+                ${select('kind', tx('app.page_type'), 'report_form', WIZARD_KINDS.map(([k, label]): [string, string] => [k, kindLabel(k, label)]))}
+                ${select('table', tx('app.table_or_view'), '', tables.map((t): [string, string] => [t.t, t.access ? t.t : tx('app.no_access', { table: t.t, role: a.db_role })]))}
+              </div>
+              <div class="buttons"><button class="btn">${tx('common.next')}</button></div>
+            </form></section>
+          <section class="cp-quick-form" id="create-blank-page" aria-labelledby="cp-blank-h"><h3 id="cp-blank-h">${tx('app.blank')}</h3>
+            <form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
+              <div class="form-grid">
+                ${input('page_no', tx('app.page_number'), await nextPage(), { type: 'number', required: true })}
+                ${input('name', tx('ab.col.name'), '', { required: true })}
+                ${select('mode', tx('app.col.mode'), 'normal', [['normal', tx('pdz.normal')], ['modal', tx('pdz.modal_dialog')]])}
+                ${input('parent_page', tx('app.parent'), a.home_page ?? '', { type: 'number' })}
+              </div>
+              <div class="buttons"><button class="btn">${tx('app.create_page')}</button></div>
+            </form></section>
+        </div>`;
+      body = html`${quick}<p class="muted">${tx('cpg.choose_a_page_type_types')}</p>
         <ul class="cp-grid">${GRID().map((g) => html`<li><a class="cp-type" href="${href(g)}"><span class="cp-preview">${preview(g.key)}</span><b>${g.label}</b><small>${g.help}</small></a></li>`)}
           <li><a class="cp-type" href="${BASE}/apps/${a.id}/ai-pages"><span class="cp-preview">${preview('ai')}</span><b>${tx('cpg.create_pages_with_ai')}</b><small>${tx('cpg.describe_the_pages_in_your')}</small></a></li></ul>`;
     } else if (tab === 'feature') {

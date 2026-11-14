@@ -1213,6 +1213,11 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .page-icon:hover, .page-icon:focus-visible { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-md); }
 .page-icon-no { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
 .app-tasks .sc-links a { display: inline-flex; align-items: center; gap: 0.45rem; }
+/* (sprint 197, NX-U4) the side column: Tasks, then the application lock and comments */
+.app-side { display: grid; gap: 1rem; min-width: 0; align-content: start; }
+.app-side .region { margin: 0; }
+.app-side .lock-panel .search { flex-wrap: wrap; } /* the note above Lock the application in the narrow column */
+.app-side .lock-panel .search input { flex: 1 1 100%; min-width: 0; }
 /* (sprint 193, NX-F3) the Pages report: filters with counts, the column chooser (kept per developer), the alias */
 .pages-filters { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
 .pages-filters .field { margin: 0; flex: 1 1 7rem; max-width: 12rem; min-width: 0; }
@@ -1645,6 +1650,11 @@ pre.code-sample { background: var(--code-bg); padding: .6rem; font-size: .85rem;
 /* (sprint 137, AP-3) Create page: the grid of page types with small previews, the features, the type's step */
 .cp-tabs { margin-bottom: 0.9rem; flex-wrap: wrap; }
 .cp-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.75rem; }
+/* (sprint 197, NX-U4) Create page's quick forms (from a table, blank page) above the grid */
+.ide .cp-quick { margin: 0 0 1rem; }
+.cp-quick-form { min-width: 0; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.cp-quick-form h3 { margin: 0 0 0.25rem; }
+.cp-quick-form .buttons { margin-bottom: 0; }
 .cp-grid > li { min-width: 0; }
 .cp-type { display: flex; flex-direction: column; gap: 0.35rem; height: 100%; padding: 0.6rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); text-decoration: none; overflow-wrap: anywhere; }
 a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
