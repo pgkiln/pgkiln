@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format follows
   application keeps today's headers, except that an application needing a sign-in now also sends
   `X-Robots-Tag: noindex, nofollow`.
 
+### Fixed
+- A sign-in right after signing out could be refused with *Your session expired* in an application that keeps its
+  pages offline: the service worker's background prefetch, sent without a cookie, started a new session whose
+  cookie replaced the sign-in page's. A prefetch now never starts a session (sprint 188).
+
 ## [0.97.0] - 2026-11-14
 
 ### Added

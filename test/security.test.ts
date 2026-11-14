@@ -16134,6 +16134,16 @@ describe('sprint 188 browser security per application (NX-S4)', () => {
     assert.ok(findings.some((f: { field?: string }) => f.field === 'browser security'));
   });
 
+  test('a background prefetch without a session starts none (it would replace the sign-in page\'s cookie)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/a/hr/1', headers: { 'x-pgkiln-prefetch': '1' } });
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.headers['set-cookie'], undefined, 'no session cookie');
+    // with a session it is served as before
+    const king = await as('king');
+    const ok = await king.request('GET', '/a/hr/1');
+    assert.equal(ok.statusCode, 200);
+  });
+
   test('the builder form refuses what the server would not send, and needs a developer and the CSRF token', async () => {
     await setStored({});
     const url = await bsUrl();

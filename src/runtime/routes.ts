@@ -241,6 +241,10 @@ export async function loadContext(
   const base = `/a/${app.alias}`;
   // (154) touch false: a request the page makes by itself (live badges) neither keeps an idle session
   // alive nor starts one (no sign-in from a remembered browser either)
+  // (sprint 188) the service worker's background prefetch (X-Pgkiln-Prefetch, sprint 168) never starts a session either:
+  // after a sign-out its request without a cookie made a new session whose cookie replaced the sign-in page's, so the
+  // sign-in that followed was refused ("Your session expired")
+  if (req.headers['x-pgkiln-prefetch'] === '1') touch = false;
   const existing = touch ? await getSession(req, reply, app.id, base) : await getSession(req, reply, app.id, base, { touch: false });
   if (!existing) return reply.code(401).send({ error: english('error.session_ended') }), null;
   let session = existing;
