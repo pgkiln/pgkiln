@@ -12,7 +12,7 @@ export const APEX_LABEL = 'APEX import';
 export const MAX_ISSUES = 300;
 
 /** The components of a report that need hand work. */
-export const handWork = (report: ApexReport) => report.entries.filter((e) => e.status === 'not_mapped' || e.port);
+export const handWork = (report: ApexReport) => report.entries.filter((e) => e.status === 'not_mapped' || e.port || e.missing?.length);
 
 const KIND: Record<ReportEntry['kind'], string> = {
   application: 'Application', page: 'Page', region: 'Region', item: 'Item', button: 'Button', validation: 'Validation',
@@ -21,7 +21,7 @@ const KIND: Record<ReportEntry['kind'], string> = {
 };
 
 const title = (e: ReportEntry) =>
-  `${e.status === 'not_mapped' ? 'Not mapped' : 'Port'}: ${KIND[e.kind]} ${e.name}${e.page !== null ? ` (page ${e.page})` : ''}`.slice(0, 200);
+  `${e.status === 'not_mapped' ? 'Not mapped' : e.port ? 'Port' : 'Missing objects'}: ${KIND[e.kind]} ${e.name}${e.page !== null ? ` (page ${e.page})` : ''}`.slice(0, 200);
 
 const body = (e: ReportEntry, alias: string) =>
   [
@@ -30,6 +30,7 @@ const body = (e: ReportEntry, alias: string) =>
     `- APEX type: ${e.apexType}`,
     `- Became: ${e.target ?? 'nothing (not mapped)'}`,
     ...e.notes.map((n) => `- ${n}`),
+    ...(e.missing?.length ? ['', `Missing in PostgreSQL: ${e.missing.join(', ')}`] : []),
   ].join('\n').slice(0, 20000);
 
 /**

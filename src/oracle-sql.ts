@@ -13,6 +13,9 @@
 //   seq.nextval, seq.currval        nextval('seq'), currval('seq')
 //   v('P1_X'), nv('P1_X')           :P1_X  (a bind: pgkiln binds page items by name)
 //   minus (before select or ()       except
+//   "ORDER_TOTAL" (quoted, upper case) order_total  (sprint 192: Oracle folds unquoted names to upper case, so "EMP" is
+//                                   EMP; ora2pg and PostgreSQL fold to lower case. A PostgreSQL keyword stays quoted:
+//                                   "ORDER" → "order". Mixed-case names such as "Series 1" are left as they are.)
 //
 // What stays for a person (oracleisms() in the importer still names it): ROWNUM, (+) outer joins, CONNECT BY,
 // LISTAGG, INSTR, TO_NUMBER without a format, SUBSTR from the end, and the APEX and Oracle packages.
@@ -160,5 +163,28 @@ export function translateOracle(sql: string | null | undefined): { sql: string; 
     for (const [a, b, r] of parts.reverse()) text = text.slice(0, a) + r + text.slice(b);
     if (parts.length) done.add(label);
   }
+  // (sprint 192) "UPPER_CASE" quoted names: the same name as Oracle's unquoted one, lower case as ora2pg makes it
+  {
+    const mask = codeMask(text);
+    const re = /"([A-Z_][A-Z0-9_$#]{0,127})"/g;
+    const parts: [number, number, string][] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+      // a quoted name in code: the mask keeps its quotes and blanks what is between them
+      if (mask[m.index] !== '"' || mask[m.index + m[0].length - 1] !== '"' || mask.slice(m.index + 1, m.index + m[0].length - 1).trim()) continue;
+      const low = m[1].toLowerCase();
+      parts.push([m.index, m.index + m[0].length, /^[a-z_][a-z0-9_]*$/.test(low) && !PG_RESERVED.has(low) ? low : `"${low}"`]);
+    }
+    for (const [a, b, rep] of parts.reverse()) text = text.slice(0, a) + rep + text.slice(b);
+    if (parts.length) done.add('"NAME" → name (lower case)');
+  }
   return { sql: text, done: [...done] };
 }
+
+/** PostgreSQL's reserved key words (and those that can't be a column or table name): kept quoted. */
+const PG_RESERVED = new Set(('all analyse analyze and any array as asc asymmetric authorization binary both case cast check collate collation column ' +
+  'concurrently constraint create cross current_catalog current_date current_role current_schema current_time current_timestamp ' +
+  'current_user default deferrable desc distinct do else end except false fetch for foreign freeze from full grant group having ilike ' +
+  'in initially inner intersect into is isnull join lateral leading left like limit localtime localtimestamp natural not notnull null ' +
+  'offset on only or order outer overlaps placing primary references returning right select session_user similar some symmetric ' +
+  'system_user table tablesample then to trailing true union unique user using variadic verbose when where window with').split(' '));

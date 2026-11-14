@@ -28,6 +28,15 @@ All notable changes to this project are documented here. The format follows
   (Developers → *Builder tokens of all developers*) and automatically when the developer is removed, changes or
   is given a new password, or has their two-factor sign-in reset. Migration 171. See [chapter 3](docs/guide/03-builder.md#builder-tokens) and
   [chapter 20](docs/guide/20-ai-agents.md#remote-with-a-builder-token).
+- **From Oracle to pgkiln** (sprint 192, NX-F5): `pgkiln import-apex --check` and the builder's import report
+  (*Database objects*) list the tables, views, columns, sequences and PL/SQL routines an APEX application uses that
+  the target PostgreSQL schema doesn't have (read from `pg_catalog` only), and point routines to port at what
+  [ora2pg](https://ora2pg.darold.net/) converted (`pkg.proc` or `pkg_proc`). Missing objects also go into the Team
+  Development issues of the import. Quoted upper-case Oracle names become lower case and unqualified tables get the
+  application's schema; APEX 26.2 form items without `p_source_type` are now read as form columns. Chapter 11 has a
+  tested ora2pg recipe ([From Oracle to pgkiln](docs/guide/11-from-apex.md#from-oracle-to-pgkiln)), and
+  `scripts/oracle-e2e.sh` (workflow *oracle-e2e*, weekly and on demand) runs Oracle Database Free, ora2pg and the
+  import of the sample application end to end.
 
 ## [0.98.0] - 2026-11-14
 

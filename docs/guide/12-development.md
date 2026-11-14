@@ -15,6 +15,8 @@ scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 website/                   the website pgkiln.vargar.eu (VitePress): landing page + this guide, synced from docs/ at build time;
                            cd website && npm install && npm run dev; scripts/deploy.sh publishes it (see website/deploy/)
 scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
+scripts/oracle-e2e.sh      (sprint 192) Oracle Free + ora2pg (Docker) → PostgreSQL → import-apex --check and the import of f77536.sql;
+                           scripts/apex-e2e-pages.ts opens every page as a user (.github/workflows/oracle-e2e.yml: manual, weekly)
 scripts/check-sample.ts    (sprint 166) one App Gallery sample: install, sign in as demo, render every page, report errors (--keep)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
@@ -45,6 +47,12 @@ src/
                            import report (mapped / mapped with notes / not mapped, needs porting); the validation, process, item,
                            region, condition and dynamic action type maps; apexSource (.sql or a .zip with limits), reportText
                            (sprint 187) Entry.oracle() returns the SQL rewritten by oracle-sql.ts and notes what was rewritten
+                           (sprint 192) Entry.use()/scan(): the database objects each entry uses (ReportEntry.uses); unqualified
+                           tables qualified with the schema (qualifyTables)
+  apex-check.ts            (sprint 192, NX-F5) sqlObjects (tables, sequences, pkg.proc calls of a SQL/PL/SQL text, statically),
+                           soleTableColumn, qualifyTables; apexCheck: the report's uses looked up in pg_catalog (missing tables,
+                           APEX views, columns, sequences, routines; a routine ora2pg converted as pkg.proc or pkg_proc is a hint),
+                           notes on the entries; checkText for `pgkiln import-apex --check`
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows

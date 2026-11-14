@@ -16690,3 +16690,33 @@ describe('sprint 194 builder tokens for the command line and the MCP server (NX-
     assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.builder_token where username = $1', [DEV]))!.n, before);
   });
 });
+
+describe('sprint 192 the database objects of an APEX import (NX-F5)', () => {
+  test('names from the export reach the catalogue only as parameters, are kept out of the report when not names, and are shown escaped', async () => {
+    const { apexCheck } = await import('../src/apex-check.ts');
+    const { checkHtml } = await import('../src/builder/apex-import.ts');
+    const { apexToDoc } = await import('../src/apeximport.ts');
+    const evil = `x'); drop table meta.app; --`;
+    // the importer records only identifiers: a quoted or odd name in the export never becomes a "use"
+    const { report } = apexToDoc(`begin wwv_flow_imp.create_flow(p_name=>'A', p_owner=>'S');
+wwv_flow_imp_page.create_page(p_id=>1, p_name=>'P');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(1), p_page_id=>1, p_plug_name=>'R', p_plug_source_type=>'NATIVE_SQL_REPORT',
+  p_plug_source=>q'[select * from "${evil}" join t2 on 1=1]', p_query_type=>'TABLE', p_query_table=>q'[${evil}]');
+end;`);
+    const uses = report.entries.flatMap((e) => [...(e.uses?.tables ?? []), ...(e.uses?.columns ?? [])]);
+    assert.ok(uses.every((u) => /^[a-z0-9_$#.]+$/.test(u)), uses.join(' '));
+    // a crafted report (the builder and the CLI only ever pass apexToDoc's): the names are parameters
+    const seen: string[] = [];
+    const db = { query: (sql: string, params?: unknown[]) => (seen.push(sql), owner.query(sql, params)) };
+    const crafted = { application: { schema: 's' }, entries: [{ kind: 'region', page: 1, name: '<img src=x onerror=alert(1)>', notes: [] as string[], port: false,
+      uses: { tables: [evil], columns: [`${evil}.c`], sequences: [evil], routines: [`${evil}.f`] } }] };
+    const c = await apexCheck(db, crafted);
+    assert.ok(seen.every((q) => !q.includes('drop table')), 'no name in the SQL text');
+    assert.ok((await owner.one(`select to_regclass('meta.app') is not null as ok`))!.ok);
+    assert.ok(c.missing.some((m) => m.type === 'table' && m.name === evil), JSON.stringify(c.missing));
+    const page = String(checkHtml(c));
+    assert.ok(!page.includes('<img src=x'), 'used-by names are escaped');
+    assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.match(page, /<code>x(&#39;|&#x27;|')\); drop table meta\.app; --<\/code>/, 'the name is text');
+  });
+});

@@ -302,7 +302,7 @@ const COMMANDS: Record<string, Command> = {
 
   // (sprint 182, CD-1/CD-4 leftover) an Oracle APEX export, translated to a pgkiln/2 document, then the import above
   'import-apex': {
-    usage: 'pgkiln import-apex <f100.sql | dir | zip> [--alias <alias>] [--schema <schema>] [--db-role <role>] [--dry-run | --out <dir>] [--json] [--all]',
+    usage: 'pgkiln import-apex <f100.sql | dir | zip> [--alias <alias>] [--schema <schema>] [--db-role <role>] [--check | --dry-run | --out <dir>] [--json] [--all]',
     summary: 'import an Oracle APEX application export (SQL format) and report what was mapped',
     details:
       'Reads an APEX application export in the SQL format (f100.sql, or a split export as a directory or\n' +
@@ -312,16 +312,20 @@ const COMMANDS: Record<string, Command> = {
       'carried over as it is and marked "needs porting". The report lists every component as mapped,\n' +
       'mapped with notes or not mapped. Unqualified tables are taken to be in --schema (default: the\n' +
       'export\'s parsing schema in lower case). --dry-run only prints the report; --out writes the\n' +
-      'application files (text style) to a directory to edit, then pgkiln import <dir>. The alias must be free.',
+      'application files (text style) to a directory to edit, then pgkiln import <dir>. The alias must be free.\n' +
+      '--check (sprint 192) also lists the tables, views, columns, sequences and PL/SQL routines the application\n' +
+      'uses that the database doesn\'t have (it reads only the catalogue), imports nothing and exits with 1 when\n' +
+      'something is missing: run it after ora2pg moved the schema (chapter 11, From Oracle to pgkiln).',
     options: {
       alias: { type: 'string', short: 'a' }, schema: { type: 'string' }, 'db-role': { type: 'string' },
       'dry-run': { type: 'boolean' }, out: { type: 'string', short: 'o' }, json: { type: 'boolean' }, all: { type: 'boolean' },
-      'no-issues': { type: 'boolean' },
+      'no-issues': { type: 'boolean' }, check: { type: 'boolean' },
     },
     optionHelp: [
       ['-a, --alias <alias>', 'alias of the new application (default: from the APEX alias or name)'],
       ['--schema <schema>', 'schema of unqualified tables (default: the parsing schema, lower case; "" for none)'],
       ['--db-role <role>', 'the application\'s database role (default: none, set it in Settings)'],
+      ['--check', 'the report and the database objects the target schema lacks; import nothing; exit 1 when one is missing'],
       ['--dry-run', 'print the report, import nothing'],
       ['-o, --out <dir>', 'write the application files there instead of importing'],
       ['--json', 'the report as JSON'],
@@ -352,7 +356,16 @@ const COMMANDS: Record<string, Command> = {
         throw e;
       }
       const { doc, report } = result;
-      out(v.json ? stableJson(report) : reportText(report, { all: !!v.all }));
+      // (sprint 192, NX-F5) the database objects the application uses, looked up in the target database's catalogue
+      if (v.check) {
+        if (v['dry-run'] || v.out) throw new UsageError('--check imports nothing: leave out --dry-run and --out');
+        const { apexCheck, checkText } = await import('../apex-check.ts');
+        const check = await withDb((db) => apexCheck(db, report, { schema: report.application.schema }));
+        out(v.json ? stableJson({ ...report, check }) : reportText(report, { all: !!v.all }) + checkText(check));
+        if (!v.json) out(`\nCheck only: nothing was imported.${check.missing.length ? ' Create what is missing (ora2pg, chapter 11), then check again.' : ''}\n`);
+        return check.missing.length ? EXIT.differences : EXIT.ok;
+      }
+      if (v['dry-run'] || v.out) out(v.json ? stableJson(report) : reportText(report, { all: !!v.all }));
       if (v['dry-run']) {
         if (!v.json) out('\nDry run: nothing was imported.\n');
         return EXIT.ok;
@@ -363,8 +376,14 @@ const COMMANDS: Record<string, Command> = {
         err(`Wrote ${w.written} file(s) to ${v.out}. Edit them, then: pgkiln import ${v.out}\n`);
         return EXIT.ok;
       }
+      let missing = 0;
       const r = await withDb(async (db) => {
         if ((await db.query('select 1 from meta.app where alias = $1', [report.application.alias])).rowCount) throw new UsageError(`application ${report.application.alias} exists: choose another --alias`);
+        // (sprint 192) what the database lacks goes into the report (and the issues) before the import
+        const { apexCheck, checkText } = await import('../apex-check.ts');
+        const check = await apexCheck(db, report, { schema: report.application.schema });
+        missing = check.missing.length;
+        out(v.json ? stableJson({ ...report, check }) : reportText(report, { all: !!v.all }) + checkText(check));
         // (sprint 186) without --db-role: app_<alias> with rights on the parsing schema, when it exists here
         const schema = (v.schema as string | undefined)?.trim().toLowerCase() || null;
         const there = schema && (await db.query('select 1 from pg_namespace where nspname = $1', [schema])).rowCount ? schema : null;
@@ -384,7 +403,7 @@ const COMMANDS: Record<string, Command> = {
         }
         return { ...made, issues };
       });
-      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''}${r.issues ? ` ${r.issues} Team Development issue(s) list what needs hand work (label "APEX import").` : ''} Finish what the report lists.\n`);
+      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''}${r.issues ? ` ${r.issues} Team Development issue(s) list what needs hand work (label "APEX import").` : ''}${missing ? ` ${missing} database object(s) are missing: their pages show errors until you create them.` : ''} Finish what the report lists.\n`);
       return EXIT.ok;
     },
   },

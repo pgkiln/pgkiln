@@ -6,6 +6,8 @@
 // document with meta.import_app(), the same path as the JSON import, into the developer's workspace.
 import { importRole } from '../app-role.ts';
 import { apexIssues, handWork } from '../apex-issues.ts';
+import { apexCheck, type CheckResult } from '../apex-check.ts';
+import { devDbForWorkspace } from '../workspace-db.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -69,6 +71,35 @@ export function reportHtml(report: ApexReport): Raw {
       <ul>${skipped.map(([m, n]) => html`<li><code>${m}</code> × ${n}</li>`)}</ul></details>` : ''}`;
 }
 
+/**
+ * (sprint 192, NX-F5) The database objects the application uses that the target schema lacks, read from the catalogue
+ * with the workspace's developer login (never the owner); the entries get the missing objects as notes.
+ */
+async function checkObjects(s: Session, report: ApexReport): Promise<CheckResult | { error: string }> {
+  try {
+    return await apexCheck(await devDbForWorkspace(currentWorkspace(s) > 0 ? currentWorkspace(s) : 1), report, { schema: report.application.schema });
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+/** The check as a page section: what is missing, and the PL/SQL routines that exist in PostgreSQL. */
+export function checkHtml(c: CheckResult | { error: string }): Raw {
+  if ('error' in c) return html`<div class="alert alert-warning" role="status">${tx('apx.objects_error', { message: c.error })}</div>`;
+  const u = c.used;
+  return html`<p class="muted">${tx('apx.objects_intro', { schema: c.schema || '(search_path)' })}</p>
+    ${c.missing.length
+      ? html`<div class="alert alert-warning" role="status" data-apex-missing="${c.missing.length}">${tx('apx.objects_missing', { n: c.missing.length })}</div>
+        <div class="table-wrap"><table class="report report-reflow apx-missing"><thead><tr><th scope="col">${tx('apx.col.type')}</th><th scope="col">${tx('apx.col.object')}</th><th scope="col">${tx('apx.col.used_by')}</th></tr></thead><tbody>
+        ${c.missing.map((m) => html`<tr><td data-label="${tx('apx.col.type')}">${tx(`apx.obj.${m.type}`)}</td><td data-label="${tx('apx.col.object')}"><code>${m.name}</code></td>
+          <td data-label="${tx('apx.col.used_by')}">${m.usedBy.slice(0, 5).join('; ')}${m.usedBy.length > 5 ? ` (+${m.usedBy.length - 5})` : ''}</td></tr>`)}
+        </tbody></table></div>`
+      : html`<div class="alert alert-success" role="status" data-apex-missing="0">${tx('apx.objects_ok', { tables: u.tables, columns: u.columns, sequences: u.sequences, routines: u.routines })}</div>`}
+    ${c.found.length ? html`<h3>${tx('apx.objects_found')}</h3><div class="table-wrap"><table class="report report-reflow apx-found"><thead><tr><th scope="col">${tx('apx.obj.routine')}</th><th scope="col">${tx('apx.col.exists_as')}</th><th scope="col">${tx('apx.col.used_by')}</th></tr></thead><tbody>
+      ${c.found.map((f) => html`<tr><td data-label="${tx('apx.obj.routine')}"><code>${f.name}</code></td><td data-label="${tx('apx.col.exists_as')}"><code>${f.as}</code></td><td data-label="${tx('apx.col.used_by')}">${f.usedBy.slice(0, 5).join('; ')}</td></tr>`)}
+      </tbody></table></div>` : ''}`;
+}
+
 export async function apexImportRoutes(app: FastifyInstance) {
   const page = (s: Session, reply: FastifyReply, main: Raw) =>
     send(reply, s, shell(s, tx('apx.title'), [[tx('aff.app_builder'), BASE], [tx('apx.import'), `${BASE}/import`], [tx('apx.from_apex')]], html`<div class="apx">${main}</div>`));
@@ -124,9 +155,11 @@ export async function apexImportRoutes(app: FastifyInstance) {
     if ('error' in t) return page(s, reply, uploadForm(s, tx('apx.not_an_export', { reason: t.error! })));
     const { report } = t;
     const a = report.application;
+    const check = await checkObjects(s, report);
     return page(s, reply, html`<h1>${tx('apx.report_title', { name: a.name })}</h1>
       <p class="muted">${f.filename}${a.release ? html` · APEX ${a.release}` : ''}${a.id ? html` · ${tx('apx.apex_app', { id: a.id })}` : ''}</p>
       ${message ? html`<div class="alert alert-error" role="alert">${message}</div>` : ''}
+      ${region(tx('apx.objects'), checkHtml(check))}
       ${region(tx('apx.report'), reportHtml(report))}
       ${region(tx('apx.import'), html`<form method="post" action="${BASE}/import/apex/${req.params.id}">${csrf(s)}
         <div class="form-grid">
@@ -167,6 +200,8 @@ export async function apexImportRoutes(app: FastifyInstance) {
     if ((await owner.query('select 1 from meta.app where alias = $1', [alias])).rowCount) return failed(tx('apx.alias_taken', { alias }));
     const t = await translate(f.content, alias, String(b.schema ?? '').trim());
     if ('error' in t) return failed(tx('apx.not_an_export', { reason: t.error! }));
+    // (sprint 192) the missing database objects into the report's entries, so the issues name them
+    await checkObjects(s, t.report);
     let id: number;
     let roleNote: string | null = null;
     let issues = 0;
