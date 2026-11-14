@@ -17,6 +17,7 @@
 // Every component gets a line in the report: mapped, mapped with notes, or not mapped (with its
 // APEX type), so a developer knows what to finish by hand. Unknown things never fail the import.
 
+import { translateOracle } from './oracle-sql.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
 
@@ -67,13 +68,17 @@ class Entry implements ReportEntry {
     this.port = true;
     return this.note(PORT);
   }
-  oracle(sql: string | null | undefined) {
-    const found = oracleisms(sql);
+  /** (sprint 187) The SQL with the common Oracle rewritten (src/oracle-sql.ts), noting what was and what is left. */
+  oracle<T extends string | null | undefined>(sql: T): T {
+    if (!sql) return sql;
+    const t = translateOracle(sql);
+    if (t.done.length) this.note(`Oracle SQL rewritten: ${t.done.join(', ')}`);
+    const found = oracleisms(t.sql);
     if (found.length) {
       this.port = true;
       this.note(`Oracle SQL to check: ${found.join(', ')}`);
     }
-    return this;
+    return t.sql as T;
   }
   notMapped(text: string) {
     this.status = 'not_mapped';
@@ -290,7 +295,7 @@ function condition(type: string | null, e1: string | null, e2: string | null, en
     entry.note(`condition (${t}): ${PORT}`);
   } else if (['sql', 'exists', 'not_exists'].includes(m[0])) {
     if (t === 'EXPRESSION') out.condition_value = null;
-    entry.oracle(out.condition_expr);
+    out.condition_expr = entry.oracle(out.condition_expr);
   }
   if (!conditionOk(out.condition_type, out.condition_expr, out.condition_value)) {
     entry.note(`server-side condition ${t} (${[e1, e2].filter(Boolean).join(' / ')}) does not fit pgkiln's ${m[0]}: not carried over`);
@@ -585,13 +590,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const disp = str(a, 'p_display_column_name') ?? ret;
       if (ret && disp) {
         const sort = str(a, 'p_default_sort_column_name');
-        const where = str(a, 'p_query_where');
+        const where = e.oracle(str(a, 'p_query_where'));
         query = `select ${ident(disp)} as d, ${ident(ret)} as r from ${qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'))}${where ? ` where ${where}` : ''}${sort ? ` order by ${ident(sort)}${/^desc/i.test(str(a, 'p_default_sort_direction') ?? '') ? ' desc' : ''}` : ''}`;
-        e.oracle(where);
       }
     } else if (str(a, 'p_lov_query') && !/^\.\d+\.$/.test(str(a, 'p_lov_query')!)) {
-      query = str(a, 'p_lov_query');
-      e.oracle(query);
+      query = e.oracle(str(a, 'p_lov_query'));
     }
     if (!query) {
       e.notMapped(str(a, 'p_location') === 'WEB_SOURCE' ? 'a list of values on a REST source: give the pgkiln list a REST data source by hand' : 'no query or values found');
@@ -618,11 +621,9 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const e = add(new Entry('authorization', null, apexName, type || '(none)', 'sql'));
     const msg = str(a, 'p_error_message');
     if ((type === 'NATIVE_EXISTS' || type === 'EXISTS') && body) {
-      authzSchemes.push({ name, type: 'sql', value: `exists (${stripSemi(body)})`, error_message: msg });
-      e.oracle(body);
+      authzSchemes.push({ name, type: 'sql', value: `exists (${stripSemi(e.oracle(body))})`, error_message: msg });
     } else if ((type === 'NATIVE_NOT_EXISTS' || type === 'NOT_EXISTS') && body) {
-      authzSchemes.push({ name, type: 'sql', value: `not exists (${stripSemi(body)})`, error_message: msg });
-      e.oracle(body);
+      authzSchemes.push({ name, type: 'sql', value: `not exists (${stripSemi(e.oracle(body))})`, error_message: msg });
     } else if ((type === 'NATIVE_IS_IN_GROUP' || type === 'NATIVE_ACL_ROLE') && body) {
       const groups = body.split(/[,:]/).map((x) => x.trim()).filter(Boolean);
       if (groups.length === 1) {
@@ -777,14 +778,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const tableSource = () => {
       const t = qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'));
       if (!t) return null;
-      const where = str(a, 'p_query_where');
+      const where = e.oracle(str(a, 'p_query_where'));
       const order = str(a, 'p_query_order_by');
-      e.oracle(where);
       return `select * from ${t}${where ? `\n where ${where}` : ''}${order ? `\n order by ${order}` : ''}`;
     };
     const sql = () => {
-      const s = queryType === 'TABLE' ? tableSource() : str(a, 'p_plug_source', 'p_query_sql');
-      if (queryType !== 'TABLE') e.oracle(s);
+      const s = queryType === 'TABLE' ? tableSource() : e.oracle(str(a, 'p_plug_source', 'p_query_sql'));
       return s ? stripSemi(s) : null;
     };
     switch (row.type) {
@@ -890,8 +889,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (!lov) return null;
     const st = /^STATIC2?:([\s\S]*)$/i.exec(lov.trim());
     if (st) return staticLovText(st[1]);
-    e.oracle(lov);
-    return stripSemi(lov);
+    return stripSemi(e.oracle(lov));
   };
   for (const c of itemCalls) {
     const page = pageFor(c);
@@ -1114,7 +1112,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       row.item_name = associated;
       row.expression = v1 ? stripSemi(v1) : null;
       if (m.plsql || (apexType === 'EXPRESSION' && /plsql/i.test(v2 ?? ''))) e.plsql();
-      else e.oracle(row.expression);
+      else row.expression = e.oracle(row.expression);
     }
     if (row.item_name && !isUpperName(row.item_name)) row.item_name = null;
     // #LABEL# is the associated item's label in APEX: fill it in
@@ -1494,8 +1492,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         const how = (at(1) ?? 'STATIC_ASSIGNMENT').toUpperCase();
         if (how === 'STATIC_ASSIGNMENT') code = `select ${sqlString(at(2) ?? '')}`;
         else if (how === 'SQL_STATEMENT') {
-          code = at(3);
-          e.oracle(code);
+          code = e.oracle(at(3));
         } else if (how === 'PLSQL_EXPRESSION' || how === 'FUNCTION_BODY') {
           code = how === 'PLSQL_EXPRESSION' ? `select ${at(4) ?? 'null'}` : at(6);
           e.plsql();
@@ -1652,15 +1649,15 @@ function sourceComputation(item: string, apexType: string, expression: string, l
     }
     case 'QUERY':
     case 'SQL_QUERY':
-      e.oracle(expression);
-      return { ...base, type: 'sql_query', expression: stripSemi(expression) };
+      return { ...base, type: 'sql_query', expression: stripSemi(e.oracle(expression)) };
     case 'SQL_EXPRESSION':
-      e.oracle(expression);
-      return { ...base, type: 'sql_expression' };
+      return { ...base, type: 'sql_expression', expression: e.oracle(expression) };
     case 'EXPRESSION':
-      if (plsqlLang) e.plsql();
-      else e.oracle(expression);
-      return { ...base, type: 'sql_expression' };
+      if (plsqlLang) {
+        e.plsql();
+        return { ...base, type: 'sql_expression' };
+      }
+      return { ...base, type: 'sql_expression', expression: e.oracle(expression) };
     case 'PLSQL_EXPRESSION':
       e.plsql();
       return { ...base, type: 'sql_expression' };

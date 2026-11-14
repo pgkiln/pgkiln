@@ -27,6 +27,8 @@ src/
                            meta.setting secret_key_backup), clock against the database and GitHub's Date header, passkeys of another
                            RP ID, break-glass administrators; rotateKey() re-encrypts every *_enc column in one transaction;
                            used by Instance settings, the Workspace home (cached count), server start-up and `pgkiln admin check`
+  oracle-sql.ts            (sprint 187) translateOracle: nvl, nvl2, decode, sysdate, systimestamp, dual, sequences, v(),
+                           minus rewritten outside literals, q-quotes, quoted names and comments (codeMask)
   release-check.ts         (sprint 109) "pgkiln X is available": meta.setting 'release_check' over PGKILN_RELEASE_CHECK (off by default);
                            GitHub's releases/latest (PGKILN_RELEASE_URL in tests), 5 s timeout, 1 MB, cached a day per process,
                            never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
@@ -35,9 +37,12 @@ src/
   apexparse.ts             (sprint 182) an APEX SQL export read as text, never run: a tokenizer ('' and q'[…]' quotes, unistr,
                            comments, SQL*Plus lines) and every wwv_* call as an ApexCall with its named arguments evaluated
                            (wwv_flow_imp.id → ApexId with every digit, wwv_flow_string.join, ||, nvl); joinSplitExport (install.sql order)
+  apex-issues.ts           (sprint 187) apexIssues: a Team Development issue per component of an APEX import that needs
+                           hand work (label APEX import, app and page); handWork(report)
   apeximport.ts            (sprint 182) apexToDoc: ApexCalls → a pgkiln/2 document (imported by meta.import_app like any export) and the
                            import report (mapped / mapped with notes / not mapped, needs porting); the validation, process, item,
                            region, condition and dynamic action type maps; apexSource (.sql or a .zip with limits), reportText
+                           (sprint 187) Entry.oracle() returns the SQL rewritten by oracle-sql.ts and notes what was rewritten
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows

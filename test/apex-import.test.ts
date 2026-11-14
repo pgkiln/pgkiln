@@ -20,15 +20,19 @@ import { Browser } from './helpers.ts';
 
 const FIX = join(root, 'test/fixtures/apex');
 const F100 = readFileSync(join(FIX, 'f100.sql'), 'utf8');
-const ALIASES = ['apex182-cli', 'apex182-split', 'apex182-builder', 'apex182-db'];
+const ALIASES = ['apex182-cli', 'apex182-split', 'apex182-builder', 'apex182-db', 'apex187-cli', 'apex187-none', 'apex187-builder'];
+/** (sprint 187) issues of these applications go with them (an issue keeps its row when its application is deleted) */
+const dropIssues = () => owner.query(`delete from meta.team_issue where app_id in (select id from meta.app where alias = any($1))`, [ALIASES]);
 const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-apex-'));
 let app: FastifyInstance;
 
 before(async () => {
+  await dropIssues();
   await owner.query('delete from meta.app where alias = any($1)', [ALIASES]);
   app = await buildApp({ logger: false });
 });
 after(async () => {
+  await dropIssues();
   await owner.query('delete from meta.app where alias = any($1)', [ALIASES]);
   rmSync(tmp, { recursive: true, force: true });
   await app.close();
@@ -177,7 +181,7 @@ describe('the mapping of f100.sql', () => {
     assert.equal(v('E-mail looks like an address').expression, '^[^@]+@[^@]+\\.[A-Za-z]{2,}$', 'a q-quote keeps its backslashes');
     assert.equal(v('Status = OPEN').condition_type, 'request_in');
     assert.equal(v('Status = OPEN').condition_value, 'CREATE');
-    assert.equal(v('Code not taken').expression, 'select 1\n  from orders\n where code = :P3_CODE\n   and id <> nvl(:P3_ID, -1)');
+    assert.equal(v('Code not taken').expression, 'select 1\n  from orders\n where code = :P3_CODE\n   and id <> coalesce(:P3_ID, -1)'); // (sprint 187) nvl rewritten
     assert.equal(v('Total positive').item_name, 'P3_TOTAL', 'an associated item shows the message next to it');
     assert.equal(v('Credit check').when_button, 'CREATE');
     assert.equal(v('Shipped orders keep their total').always_execute, true);
@@ -186,7 +190,9 @@ describe('the mapping of f100.sql', () => {
       assert.ok(entry('validation', name).port, `${name} needs porting`);
       assert.match(entry('validation', name).notes.join(), /port it to PL\/pgSQL/);
     }
-    assert.ok(entry('validation', 'Code not taken').port, 'Oracle SQL (nvl)');
+    // (sprint 187) its nvl is rewritten, so nothing is left to port; the report says what was rewritten
+    assert.equal(entry('validation', 'Code not taken').port, false, 'nvl rewritten');
+    assert.match(entry('validation', 'Code not taken').notes.join(), /Oracle SQL rewritten: nvl → coalesce/);
     assert.ok(!entry('validation', 'Customer exists').port);
     for (const [name, type] of [['Legacy PL/SQL error', 'PLSQL_ERROR'], ['Stars plug-in', 'PLUGIN_COM_EXAMPLE_STARS_VALID']]) {
       assert.equal(entry('validation', name).status, 'not_mapped');
@@ -271,7 +277,7 @@ describe('the mapping of f100.sql', () => {
     assert.deepEqual(doc.lovs.map((l: any) => [l.name, l.query]), [
       ['STATUS', 'STATIC:Open;OPEN,Shipped;SHIPPED'],
       ['CUSTOMERS_NAME', 'select name as d, id as r from sales.customers order by name'],
-      ['PRODUCTS', "select name || ' (' || nvl(code, '-') || ')' d, id r from products order by 1"],
+      ['PRODUCTS', "select name || ' (' || coalesce(code, '-') || ')' d, id r from products order by 1"],
     ]);
     assert.deepEqual(doc.authz_schemes.map((a: any) => [a.name, a.type]), [['ADMINISTRATION_RIGHTS', 'sql'], ['CONTRIBUTORS', 'role']]);
     assert.match(doc.authz_schemes[0].value, /^exists \(select 1\n {2}from sales\.staff/);
@@ -380,5 +386,96 @@ describe('importing', () => {
     assert.equal(done.headers.location, `/builder/apps/${a.id}`);
     // the temporary file is gone: the report page sends the developer back to the upload
     assert.equal((await b.get(url)).statusCode, 303);
+  });
+});
+
+describe('sprint 187: common Oracle SQL rewritten (NX-F1)', async () => {
+  const { codeMask, translateOracle } = await import('../src/oracle-sql.ts');
+  const t = (sql: string) => translateOracle(sql).sql;
+
+  test('nvl, nvl2 and decode, nested, with a null that equals null as in Oracle', () => {
+    assert.equal(t('select nvl(a, 0) from t'), 'select coalesce(a, 0) from t');
+    assert.equal(t("select nvl2(b, 'y', 'n') from t"), "select (case when b is not null then 'y' else 'n' end) from t");
+    assert.equal(t("select decode(s, 'A', 'Active', 'I', 'Inactive', 'Other') from t"),
+      "select (case when s is not distinct from 'A' then 'Active' when s is not distinct from 'I' then 'Inactive' else 'Other' end) from t");
+    assert.equal(t("select decode(s, 'A', 1) from t"), "select (case when s is not distinct from 'A' then 1 end) from t");
+    assert.equal(t("select nvl(nvl(a, b), decode(c, null, 'none', c)) from t"),
+      "select coalesce(coalesce(a, b), (case when c is not distinct from null then 'none' else c end)) from t");
+    // a comma inside a call or a literal is not an argument separator
+    assert.equal(t("select nvl(f(a, b), 'x, y') from t"), "select coalesce(f(a, b), 'x, y') from t");
+    // the wrong number of arguments: left as it is
+    assert.equal(t('select nvl(a) from t'), 'select nvl(a) from t');
+  });
+
+  test('sysdate, systimestamp, dual, sequences, v() and minus', () => {
+    assert.equal(t('select sysdate, systimestamp from dual'), 'select localtimestamp(0), current_timestamp');
+    assert.equal(t('select 1 from sys.dual where x = 1'), 'select 1 where x = 1');
+    assert.equal(t('insert into t (id) values (emp_seq.nextval)'), "insert into t (id) values (nextval('emp_seq'))");
+    assert.equal(t('select hr.emp_seq.currval'), "select currval('hr.emp_seq')");
+    assert.equal(t("select * from emp where deptno = v('P1_DEPTNO') and x = nv('p1_n')"), 'select * from emp where deptno = :P1_DEPTNO and x = :P1_N');
+    assert.equal(t('select a from t minus select a from u'), 'select a from t except select a from u');
+    assert.equal(t('select a - b as minus from t'), 'select a - b as minus from t', 'a column called minus stays');
+    assert.equal(t('select my_sysdate, x.sysdate, dual_id from t'), 'select my_sysdate, x.sysdate, dual_id from t');
+  });
+
+  test('literals, q-quotes, quoted names and comments are never changed', () => {
+    const sql = `select 'nvl(x, y) from dual sysdate' a, q'[decode(a, b) it''s]' b, "NVL(x)" c -- nvl(c, d) sysdate\n /* v('P1_X') */ from t`;
+    assert.equal(t(sql), sql);
+    assert.equal(codeMask("a 'b' c").length, 7);
+    assert.deepEqual(translateOracle(sql).done, []);
+  });
+
+  test('the import rewrites them and says so; what is left is still named', () => {
+    const { doc, report } = apexToDoc(readFileSync(new URL('./fixtures/apex/f100.sql', import.meta.url), 'utf8'));
+    const notes = report.entries.flatMap((e) => e.notes);
+    assert.ok(notes.some((n) => /^Oracle SQL rewritten: .*nvl → coalesce/.test(n)), notes.join('\n'));
+    assert.doesNotMatch(JSON.stringify(doc), /\bnvl\(/i);
+  });
+});
+
+describe('sprint 187: Team Development issues for the hand work (NX-F1)', async () => {
+  const { handWork } = await import('../src/apex-issues.ts');
+  const issues = async (alias: string) => (await owner.query(
+    `select i.title, i.body, i.page_no, i.status, i.app_id, (select string_agg(l.name, ',') from meta.team_issue_label il join meta.team_label l on l.id = il.label_id where il.issue_id = i.id) as labels
+       from meta.team_issue i join meta.app a on a.id = i.app_id where a.alias = $1 order by i.id`, [alias])).rows;
+
+  test('pgkiln import-apex makes one per component that needs hand work, linked to its page; --no-issues makes none', async () => {
+    const { report } = apexToDoc(F100);
+    const work = handWork(report);
+    assert.ok(work.length > 3, 'the fixture has hand work');
+    const r = cli('import-apex', join(FIX, 'f100.sql'), '--alias', 'apex187-cli');
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, new RegExp(`${work.length} Team Development issue\\(s\\) list what needs hand work`));
+    const made = await issues('apex187-cli');
+    assert.equal(made.length, work.length);
+    for (const i of made) {
+      assert.equal(i.status, 'open');
+      assert.equal(i.labels, 'APEX import');
+      assert.match(i.title, /^(Not mapped|Port): /);
+      assert.match(i.body, /^From the APEX import of apex187-cli\.\n\n- APEX type: /);
+    }
+    const plsqlError = made.find((i) => /PLSQL_ERROR|PL\/SQL/.test(i.body));
+    assert.ok(plsqlError, 'a PL/SQL component to port');
+    assert.ok(made.some((i) => i.page_no !== null), 'linked to pages');
+    const none = cli('import-apex', join(FIX, 'f100.sql'), '--alias', 'apex187-none', '--no-issues');
+    assert.equal(none.code, 0, none.err);
+    assert.equal((await issues('apex187-none')).length, 0);
+  });
+
+  test('the builder: on by default, off when unticked; the issues show in Team Development', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.get('/builder/import/apex');
+    const up = await b.upload('/builder/import/apex', {}, { file: { name: 'f100.sql', type: 'application/sql', data: Buffer.from(F100) } });
+    const url = up.headers.location as string;
+    const rep = await b.get(url);
+    assert.match(rep.body, /<input type="checkbox" name="issues" value="1" checked> Make a Team Development issue for each component that needs hand work \(\d+\)/);
+    const done = await b.submit(url, { action: 'import', alias: 'apex187-builder', schema: 'sales', issues: '1' });
+    assert.equal(done.statusCode, 303, done.body.slice(0, 300));
+    const made = await issues('apex187-builder');
+    assert.ok(made.length > 3);
+    const team = (await b.get('/builder/team')).body;
+    assert.match(team, /APEX import/);
   });
 });

@@ -16025,3 +16025,36 @@ describe('sprint 186 a clear message when row level security refuses the develop
     assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from ${T}`))!.n, 1, 'nothing more was inserted');
   });
 });
+
+describe('sprint 187 issues from an APEX import (NX-F1)', () => {
+  test('made in the application\'s own workspace only; component names with markup are text', async () => {
+    const { apexIssues } = await import('../src/apex-issues.ts');
+    const ws = (await owner.one(`insert into meta.workspace (name) values ('SEC187 Other') returning id`))!.id;
+    const appRow = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('sec187-apx', 'SEC187', 'none', (select db_role from meta.app where alias = 'hr')) returning id`))!.id;
+    try {
+      await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2) on conflict (app_id) do update set workspace_id = excluded.workspace_id', [appRow, ws]);
+      const report = { application: { id: '1', name: 'x', alias: 'sec187-apx', release: null, schema: 'x' }, skipped: {}, counts: { mapped: 0, notes: 0, not_mapped: 1, port: 0 },
+        entries: [{ kind: 'region' as const, page: 3, name: '<img src=x onerror=alert(1)>', apexType: 'PLUGIN_<b>X</b>', target: null, status: 'not_mapped' as const, port: false, notes: ['<script>alert(2)</script>'] }] };
+      const n = await owner.tx((c) => apexIssues(c, report, { appId: appRow, alias: 'sec187-apx', by: 'admin' }));
+      assert.equal(n, 1);
+      const i = (await owner.one('select workspace_id, title, body from meta.team_issue where app_id = $1', [appRow]))!;
+      assert.equal(i.workspace_id, ws, 'the application\'s workspace, not the default one');
+      assert.match(i.title, /<img src=x onerror=alert\(1\)>/, 'stored as text');
+      // shown escaped in Team Development of that workspace
+      await owner.query(`insert into meta.workspace_member (workspace_id, username) values ($1, 'admin') on conflict do nothing`, [ws]);
+      const b = new FileBrowser(app);
+      await b.get('/builder/login');
+      await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+      await b.get('/builder');
+      await b.post('/builder/workspace', { __csrf: b.lastCsrf, workspace: String(ws) });
+      const team = (await b.get('/builder/team')).body;
+      assert.ok(!team.includes('<img src=x onerror=alert(1)>'));
+      assert.match(team, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    } finally {
+      await owner.query('delete from meta.team_issue where app_id = $1', [appRow]);
+      await owner.query('delete from meta.app where id = $1', [appRow]);
+      await owner.query(`delete from meta.team_label where workspace_id = $1`, [ws]);
+      await owner.query('delete from meta.workspace where id = $1', [ws]);
+    }
+  });
+});

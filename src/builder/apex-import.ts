@@ -5,9 +5,10 @@
 // mapped) with the alias and the schema of the tables; its POST imports the translated pgkiln/2
 // document with meta.import_app(), the same path as the JSON import, into the developer's workspace.
 import { importRole } from '../app-role.ts';
+import { apexIssues, handWork } from '../apex-issues.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
-import { html, type Raw } from '../html.ts';
+import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { apexSource, apexToDoc, MAX_APEX_BYTES, NotAnApexExport, type ApexReport, type ReportEntry } from '../apeximport.ts';
 import { ApexParseError } from '../apexparse.ts';
@@ -132,6 +133,8 @@ export async function apexImportRoutes(app: FastifyInstance) {
           ${input('alias', tx('apx.alias'), a.alias, { required: true, help: tx('apx.alias_help') })}
           ${input('schema', tx('apx.schema'), schema ?? a.schema, { help: tx('apx.schema_help') })}
         </div>
+        <div class="field"><label class="check"><input type="checkbox" name="issues" value="1"${!b || b.issues === '1' ? raw(' checked') : ''}> ${tx('apx.issues', { n: handWork(report).length })}</label>
+          <small class="help">${tx('apx.issues_help')}</small></div>
         <p class="muted">${tx('apx.what_happens')}</p>
         <div class="buttons"><a class="btn" href="${BASE}/import/apex">${tx('apx.another')}</a>
           <button class="btn" name="action" value="preview">${tx('apx.update')}</button>
@@ -166,19 +169,22 @@ export async function apexImportRoutes(app: FastifyInstance) {
     if ('error' in t) return failed(tx('apx.not_an_export', { reason: t.error! }));
     let id: number;
     let roleNote: string | null = null;
+    let issues = 0;
     try {
       id = await owner.tx(async (c) => {
         // (sprint 186, NX-S2) without a parsing schema's role: app_<alias> with rights on the parsing schema
         roleNote = await importRole(c, t.doc as { app?: Record<string, unknown> }, { alias, ws, schema: String(b.schema ?? '').trim() || null });
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(t.doc), alias])).rows[0];
         await placeApp(c, made.id, ws);
+        // (sprint 187) a Team Development issue per component that needs hand work
+        if (b.issues === '1') issues = await apexIssues(c, t.report, { appId: made.id, alias, by: s.username! });
         return made.id as number;
       });
     } catch (e) {
       return failed(tx('apx.import_failed', { message: (e as Error).message }));
     }
     await owner.query('delete from meta.temp_file where id = $1', [req.params.id]);
-    flash(s, `${tx('apx.imported', { alias, port: t.report.counts.port, not_mapped: t.report.counts.not_mapped })}${roleNote ? ` ${roleNote}` : ''}`);
+    flash(s, `${tx('apx.imported', { alias, port: t.report.counts.port, not_mapped: t.report.counts.not_mapped })}${roleNote ? ` ${roleNote}` : ''}${issues ? ` ${tx('apx.issues_made', { n: issues })}` : ''}`);
     return back(reply, s, `${BASE}/apps/${id}`);
   });
 }
