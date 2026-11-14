@@ -31,6 +31,15 @@ All notable changes to this project are documented here. The format follows
   The full form moved to `/builder/create/full` (old `?schema=` and `?boilerplate=` links still open it). Without
   JavaScript, keyboard only and at 360 px.
 
+### Changed
+- **An application's home is the Pages report, and the Page Designer has one Save** (sprint 197, NX-U4, NX-U5; as
+  APEX): nothing comes below the Pages report any more. *Application lock and comments* move to the side column
+  under Tasks, and the quick forms *Create pages from a table* and *Create blank page* move to **Create page**, tab
+  Component, above the grid of page types (their endpoints are unchanged). The Page Designer's toolbar **Save** is
+  its only save button: the property editor's *Save page* and *Save* at its foot are gone. It submits the form
+  without JavaScript too, Enter in a field saves, it stays in view as its icon on a phone, and its title names
+  Ctrl+S in the 11 builder languages.
+
 ## [0.99.0] - 2026-11-14
 
 ### Added
