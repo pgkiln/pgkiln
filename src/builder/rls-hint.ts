@@ -25,8 +25,8 @@ export async function rlsHint(s: Session, to: string, texts: (string | null | un
   const tx = tr(s);
   const admin = await isAdmin(s.username);
   return html`<div class="alert alert-note rls-hint" role="note"><p class="u-m0">${tx('ws.rls_hint')}</p>${admin
-    ? html`<form method="post" action="${BASE}/sql/run-as" class="search u-mwnone u-mt1">${csrf(s)}<input type="hidden" name="as" value="owner"><input type="hidden" name="to" value="${to}">
+    ? html`<form method="post" action="${BASE}/sql/run-as" class="rls-owner u-mt1">${csrf(s)}<input type="hidden" name="as" value="owner"><input type="hidden" name="to" value="${to}">
         <div class="field"><label class="label" for="f_rls_reason">${tx('ws.rls_reason')}</label><input id="f_rls_reason" name="reason" maxlength="${REASON_MAX}" required></div>
-        <button class="btn u-selfend">${tx('ws.rls_owner')}</button></form>`
+        <div class="buttons u-m0"><button class="btn">${tx('ws.rls_owner')}</button></div></form>`
     : html`<p class="u-m0 small">${tx('ws.rls_ask_admin')}</p>`}</div>`;
 }

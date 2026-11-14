@@ -1385,7 +1385,7 @@ describe('sprint 186 an application\'s own role and the RLS hint fit a phone', (
         ta.setSelectionRange(0, 0);
       }, `insert into ${T} values (1)`);
       await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
-      await page.locator('.rls-hint').first().waitFor();
+      await page.locator('.rls-hint:visible').first().waitFor(); // (the Result pane's; the Output pane has one too)
       await check(page, 'worksheet-rls-hint', vp);
       await page.context().close();
     });

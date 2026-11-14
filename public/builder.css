@@ -1777,3 +1777,6 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .sw-owner-chip > span { min-width: 0; overflow-wrap: anywhere; }
 .sw-owner-chip .btn { white-space: normal; max-width: 100%; }
 @media (max-width: 600px) { .sw-owner-chip { border-radius: 12px; } }
+
+/* (sprint 186) the hint after a refusal by row level security: its form stacks, so it fits a phone */
+.rls-hint .rls-owner .field input { width: 100%; min-width: 0; box-sizing: border-box; }
