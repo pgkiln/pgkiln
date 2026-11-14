@@ -379,7 +379,7 @@ export async function enrolmentDue(username: string, isAdmin: boolean): Promise<
   return { due: Date.now() < until.getTime() ? 'grace' : 'enrol', until };
 }
 
-/** Remove every second factor of a developer (an administrator, or the command line) and end their sessions. */
+/** Remove every second factor of a developer (an administrator, or the command line), end their sessions and revoke their builder tokens. */
 export async function resetFactors(username: string): Promise<boolean> {
   return owner.tx(async (c) => {
     const known = (await c.query('select 1 from meta.developer where username = $1', [username])).rowCount;
@@ -388,6 +388,8 @@ export async function resetFactors(username: string): Promise<boolean> {
     await c.query('delete from meta.developer_recovery_code where username = $1', [username]);
     await c.query('delete from meta.developer_trusted_browser where username = $1', [username]);
     await c.query('delete from meta.session where app_id is null and username = $1', [username]);
+    // (sprint 194, SEC-1) their builder tokens too: made with the factors that are gone
+    await c.query(`update meta.builder_token set revoked_at = now(), revoked_by = 'pgkiln', revoked_reason = 'second factors reset' where username = $1 and revoked_at is null`, [username]);
     return true;
   });
 }

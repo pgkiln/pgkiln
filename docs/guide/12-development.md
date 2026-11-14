@@ -62,7 +62,8 @@ src/
                            merge into the main application or refresh the copy, both through cli/replace.ts
   cli/                     the command line: main.ts (commands, help, exit codes), apps.ts (connect, export,
                            read, import), files.ts (directories, zip), diff.ts, replace.ts (import --replace in place),
-                           mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20), only.ts (sprint 116:
+                           mcp.ts (`pgkiln mcp`: the MCP server for AI coding agents, chapter 20; sprint 194: each tool runs
+                           with a ToolContext, LOCAL or the builder API's, and RemoteClient for --url), only.ts (sprint 116:
                            `import --replace --only pages/12`, the named files merged over the application's current export),
                            advise.ts (sprint 144: `pgkiln advise`, the Advisor on an export rolled back, text / JSON / SARIF
                            with each finding at its file), working-copy.ts (sprint 144: working copies and locks for the
@@ -113,6 +114,9 @@ src/
                            Stripe, constant time), receive() (signature, event id, meta.webhook_event), webhookTick() (claim
                            with a lease, the handler's block as the app role, retries), startWebhookRunner(), the purge
   api.ts                   REST API tokens for PostgREST, API role checks
+  builder-tokens.ts        (sprint 194, NX-F4, migration 171) personal builder tokens: createToken (pgkb_ + 256 random bits, sha256
+                           only), tokensOf, revokeToken / revokeTokensOf, checkToken (Bearer header only; expiry, revocation,
+                           workspace membership and the two-factor rule looked up at every request; tokenThrottled per address)
   accounts.ts              account settings and the password policy
   i18n.ts                  pgkiln's own texts (en, nl), translator, Accept-Language
   i18n/                    de, fr, es, it, pt, pl, sv, da, nb, fi, cs, tr, el, ru, uk, ja, zh, ko, ar, he: the built-in texts of
@@ -385,6 +389,12 @@ src/
   builder/
     components.ts          property spec of every component (drives the property editor)
     ui.ts                  IDE shell (icon rail, toolbar, breadcrumb, status bar), builder theme, form helpers, CSRF check, app tabs
+    api-v1.ts              (sprint 194) /builder/api/v1 for `pgkiln mcp --url`: the MCP tools with serverContext (the token's
+                           workspace; the owner pool for pgkiln's tables of its applications, the workspace's developer login for
+                           the database's objects), toolScope (read / write / sql), export, import (lock rules: changedPages,
+                           lockedFor) and advise; every call in the activity log (builder_api)
+    tokens.ts              (sprint 194) Security → Builder tokens (make, shown once, list, revoke), tokenStepUp (a sign-in within
+                           10 minutes with single sign-on / the second factor, else password and code), Developers → all tokens
     i18n.ts                (sprint 121) the builder's own texts: BUILDER_LANGUAGES, tr(s) / translatorFor(lang) → tx(key, params),
                            tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels),
                            (sprint 162) tx.code (`backticks` become <code>), withTranslator / scopedTx (a request-scoped translator)

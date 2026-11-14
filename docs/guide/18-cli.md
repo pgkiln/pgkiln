@@ -24,6 +24,8 @@ docker compose exec pgkiln node bin/pgkiln.js apps       # the Docker installati
 
 It connects with `DATABASE_URL` (the owner role) from the environment or `.env`, the same as
 the server and `npm run db:migrate`; `--db <url>` overrides it. Every command has `--help`.
+(sprint 194) The exception is `pgkiln mcp --url`, which needs no database: it works through the builder's API with
+a developer's [builder token](03-builder.md#builder-tokens), so a developer's own machine never holds the owner connection.
 
 | Exit code | Meaning |
 |---|---|
@@ -50,13 +52,13 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln lock <alias> [--page <n>] [--note <text>]` / `pgkiln unlock <alias> [--page <n>] [--force]` | (0.77) The builder's application and page locks; another developer's lock is broken only with `--force` (logged) |
 | `pgkiln ddl <schema> [--no-comments] [--no-grants] [--out <file>]` | The DDL of a schema's objects, in an order that runs (as SQL Workshop → DDL, [chapter 3](03-builder.md#sql-workshop)) |
 | `pgkiln compare <source> <target> [--script]` | Compares two schemas: `+` only in the source, `-` only in the target, `~` different; exit code 1 when they differ. `--script` writes the script that makes the target like the source (drops commented out); nothing is run |
-| `pgkiln mcp` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md) |
+| `pgkiln mcp [--url <address> [--token-env <variable>]]` | An MCP server on standard input/output for AI coding agents, see [chapter 20](20-ai-agents.md). (sprint 194) With `--url` it acts as the developer whose [builder token](03-builder.md#builder-tokens) is in the environment variable (default `PGKILN_TOKEN`), through the builder's API: no `DATABASE_URL`, only the token's scopes and workspace ([remote, with a builder token](20-ai-agents.md#remote-with-a-builder-token)) |
 | `pgkiln plugin build <dir> [-o <file>]` | Builds a plug-in file (`pgkiln-plugin/2`) from a source directory, see [plug-ins](04-pages-and-regions.md#plug-ins-with-their-own-code) |
 | `pgkiln plugin install <file\|dir> --app <alias> [--replace]` | Adds a plug-in (file or source directory) to an application; its install SQL is not run |
 | `pgkiln users list [--developers]` | Accounts with their applications and roles, or builder developers |
 | `pgkiln users add <username> [--developer] [--app <alias> --roles a,b] [--name …] [--email …]` | Adds an account (optionally with access to an application) or a builder developer |
-| `pgkiln users password <username> [--developer]` | Sets a password and ends that user's sessions |
-| `pgkiln admin reset-2fa <developer> [--reason <text>]` | (0.60) Removes a developer's authenticator apps and recovery codes and ends their builder sessions: [locked out?](03-builder.md#locked-out) |
+| `pgkiln users password <username> [--developer]` | Sets a password and ends that user's sessions; (sprint 194) a developer's [builder tokens](03-builder.md#builder-tokens) are revoked too |
+| `pgkiln admin reset-2fa <developer> [--reason <text>]` | (0.60) Removes a developer's authenticator apps and recovery codes and ends their builder sessions: [locked out?](03-builder.md#locked-out); (sprint 194) and revokes their builder tokens |
 | `pgkiln admin set-2fa-policy off\|admins\|all [--grace <days>]` | (0.60) Sets the builder's [two-factor policy](03-builder.md#two-factor-sign-in); `off` always works (and, 0.62, clears every workspace's own rule), the others need two administrators with an app |
 | `pgkiln admin builder-sign-in password` | (0.63) Turns off every workspace's [single sign-on rule](03-builder.md#single-sign-on-for-developers), so developers may sign in with the pgkiln password again; logged and mailed to the administrators |
 | `pgkiln admin rotate-key [--dry-run]` | (0.67) Re-encrypts every stored secret from `PGKILN_OLD_SECRET_KEY` to `PGKILN_SECRET_KEY` in one transaction ([rotating the instance key](03-builder.md#lockout-checks)); logged and mailed to the administrators |

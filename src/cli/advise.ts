@@ -92,7 +92,9 @@ export async function adviseOffline(target: string): Promise<AdviseResult> {
  * Check an export (path) or an application in the database (alias). Nothing is ever committed: an export is
  * imported under a temporary alias in a transaction that is rolled back.
  */
-export async function adviseTarget(db: Db, target: string): Promise<AdviseResult> {
+export async function adviseTarget(db: Db, target: string, o: { source?: { doc: any; files?: FileMap }; planDb?: import('../db.ts').Db; alias?: boolean } = {}): Promise<AdviseResult> {
+  // (sprint 194) o.source: an export read elsewhere (the builder's API gets it from `pgkiln mcp --url`); o.alias: target is
+  // an alias, never a path on this machine; o.planDb: where SQL is planned (the workspace's developer login)
   const { advise } = await import('../builder/advisor.ts');
   let files: FileMap;
   let dir: string | null = null;
@@ -101,14 +103,14 @@ export async function adviseTarget(db: Db, target: string): Promise<AdviseResult
   let checked = 0;
   const findings: AdviseFinding[] = [];
   const collect = async (appId: number) => {
-    const r = await advise(appId, db);
+    const r = await advise(appId, db, o.planDb ? { db: o.planDb } : {});
     checked = r.checked;
     for (const f of r.findings) findings.push(toAdvise(f));
   };
-  if (existsSync(target)) {
-    const source = await readSource(target);
+  if (o.source || (!o.alias && existsSync(target))) {
+    const source = o.source ?? (await readSource(target));
     files = source.files ?? docToFiles(source.doc);
-    dir = source.files ? target : null;
+    dir = source.files && !o.source ? target : null;
     alias = String(source.doc?.app?.alias ?? 'app');
     // a free alias for the check: the export's own may be taken by the application it came from
     const temp = `advise-${process.pid}-${Date.now().toString(36)}`.slice(0, 40);
@@ -123,7 +125,7 @@ export async function adviseTarget(db: Db, target: string): Promise<AdviseResult
       await db.query('rollback');
     }
   } else {
-    if (/[/\\]|\.(json|zip)$/i.test(target)) throw new UsageError(`${target} not found`);
+    if (!o.alias && /[/\\]|\.(json|zip)$/i.test(target)) throw new UsageError(`${target} not found`);
     alias = target;
     const row = (await db.query('select id from meta.app where alias = $1', [alias])).rows[0];
     if (!row) throw new UsageError(`application ${alias} not found (pgkiln apps lists them), and no file or directory ${alias} exists`);

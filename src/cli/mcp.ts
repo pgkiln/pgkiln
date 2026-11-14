@@ -10,8 +10,9 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { root } from '../env.ts';
-import { docToFiles, stableJson, type FileMap } from '../appfiles.ts';
-import { exportDoc, formatFindings, importDoc, readSource, withDb, type Db } from './apps.ts';
+import { docToFiles, filesToDoc, stableJson, type Doc, type FileMap } from '../appfiles.ts';
+import { exportDoc, formatFindings, importDoc, readSource, withDb, type Db, type ImportCheck, type ImportFinding } from './apps.ts';
+import type { AdviseResult } from './advise.ts';
 
 const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 /** Cap on the text one tool call returns, so a large application does not flood the agent's context. */
@@ -33,17 +34,80 @@ search_docs searches the pgkiln user guide; read it before guessing a property n
 
 // ------------------------------------------------------------------ helpers
 
-type Args = Record<string, unknown>;
-type Tool = {
+export type Args = Record<string, unknown>;
+export type Tool = {
   name: string;
   title: string;
   description: string;
   inputSchema: Record<string, unknown>;
   annotations: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
-  run(args: Args): Promise<string>;
+  run(args: Args, ctx: ToolContext): Promise<string>;
 };
 
-class ToolError extends Error {}
+export class ToolError extends Error {}
+
+/** What an import did (cli/apps.ts importDoc). */
+export interface ImportOutcome {
+  id: number;
+  replaced: boolean;
+  scripts: number;
+  findings: ImportFinding[];
+  committed: boolean;
+  roleNote: string | null;
+}
+
+/** What the Advisor checks: an application in the database, or an export read from disk. */
+export type AdviseTarget = { alias: string } | { source: { doc: Doc; files?: FileMap }; path: string };
+
+/**
+ * (sprint 194, NX-F4) Where a tool's work happens and for whom. Locally (`pgkiln mcp` on the server, LOCAL below)
+ * everything runs on DATABASE_URL, the owner, for every application. On the builder's API (src/builder/api-v1.ts) a
+ * builder token's: pgkiln's tables through the owner but only for the token's workspace, the database's own objects
+ * through the workspace's developer login (never the owner). With `pgkiln mcp --url` (RemoteClient) the tools that
+ * touch files run on the developer's machine and get exports and imports from the API; the others run on the server.
+ */
+export interface ToolContext {
+  /** pgkiln's own tables: exports, pages, the activity log */
+  meta<T>(fn: (db: Db) => Promise<T>): Promise<T>;
+  /** the database's own objects (describe_schema, DDL, run_query); appId: a query as that application's role */
+  sql<T>(fn: (db: Db) => Promise<T>, appId?: number): Promise<T>;
+  /** null: every application (local); else the workspace a token is for */
+  workspace: number | null;
+  /** the developer a token belongs to (locks, working copies, the activity log); null locally */
+  developer: string | null;
+  /** an administrator's token (may break another developer's lock) */
+  admin?: boolean;
+  /** what pgkiln_info says about the caller on the server */
+  info?: Record<string, unknown>;
+  /** refuse an application the caller may not use; its id */
+  app(db: Db, alias: string): Promise<number>;
+  /** refuse a schema the caller may not read */
+  schema(db: Db, name: string): Promise<void>;
+  exportDoc(alias: string): Promise<Doc>;
+  importDoc(doc: Doc, o: { alias: string; replace: boolean; check: ImportCheck }): Promise<ImportOutcome>;
+  advise(target: AdviseTarget): Promise<AdviseResult>;
+}
+
+/** The local server: the owner connection of DATABASE_URL, every application (as before sprint 194). */
+export const LOCAL: ToolContext = {
+  meta: withDb,
+  sql: (fn) => withDb(fn),
+  workspace: null,
+  developer: null,
+  async app(db, alias) {
+    const a = (await db.query('select id from meta.app where alias = $1', [alias])).rows[0];
+    if (!a) throw new ToolError(`application ${alias} not found (list_apps lists them)`);
+    return a.id;
+  },
+  schema: async () => {},
+  exportDoc: (alias) => withDb((db) => exportDoc(db, alias)),
+  importDoc: (doc, o) => withDb((db) => importDoc(db, doc, { ...o, by: 'MCP import_app' })),
+  async advise(target) {
+    const { adviseTarget } = await import('./advise.ts');
+    process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
+    return withDb((db) => adviseTarget(db, 'alias' in target ? target.alias : target.path));
+  },
+};
 
 const str = (a: Args, name: string, required = false): string | undefined => {
   const v = a[name];
@@ -205,8 +269,10 @@ export const TOOLS: Tool[] = [
     description: 'The pgkiln version, the database, the applied migrations, and where the user guide is. Call this first to check the connection.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
-    run: () =>
-      withDb(async (db) => {
+    run: (_a, ctx) =>
+      // (sprint 194) through a builder token: who the token acts as, not the server's database
+      ctx.info ? Promise.resolve(stableJson({ pgkiln: version(), ...ctx.info })) :
+      ctx.meta(async (db) => {
         const r = (
           await db.query(
             `select current_database() as database, current_user as role, split_part(version(), ' ', 2) as postgres,
@@ -229,13 +295,14 @@ export const TOOLS: Tool[] = [
     description: 'The applications in this pgkiln database: id, alias, name, number of pages.',
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
-    run: () =>
-      withDb(async (db) =>
+    run: (_a, ctx) =>
+      ctx.meta(async (db) =>
         table(
           (
             await db.query(
               `select a.id, a.alias, a.name, (select count(*)::int from meta.page p where p.app_id = a.id) as pages
-                 from meta.app a order by a.alias`,
+                 from meta.app a where $1::int is null or meta.app_workspace(a.id) = $1 order by a.alias`,
+              [ctx.workspace],
             )
           ).rows,
         ),
@@ -249,9 +316,10 @@ export const TOOLS: Tool[] = [
       'to pick what to read next with get_page or read_app_files.',
     inputSchema: { type: 'object', properties: aliasProp, required: ['alias'] },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
-      return withDb(async (db) => {
+      return ctx.meta(async (db) => {
+        await ctx.app(db, alias);
         const files = await appFiles(db, alias);
         const pages = (
           await db.query(
@@ -279,10 +347,11 @@ export const TOOLS: Tool[] = [
       required: ['alias', 'page'],
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
       const page = int(a, 'page', 0, 1e9);
-      return withDb(async (db) => {
+      return ctx.meta(async (db) => {
+        await ctx.app(db, alias);
         const files = await appFiles(db, alias);
         const re = new RegExp(`^pages/0*${page}-[^/]*/`);
         const paths = [...files.keys()].filter((p) => re.test(p)).sort((x, y) => (x.endsWith('/page.yaml') ? -1 : y.endsWith('/page.yaml') ? 1 : x < y ? -1 : 1));
@@ -307,12 +376,13 @@ export const TOOLS: Tool[] = [
       required: ['alias'],
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
       const prefix = str(a, 'prefix');
       const wanted = Array.isArray(a.paths) ? a.paths.map(String) : [];
       if (!prefix && !wanted.length) throw new ToolError('give paths or a prefix');
-      return withDb(async (db) => {
+      return ctx.meta(async (db) => {
+        await ctx.app(db, alias);
         const files = await appFiles(db, alias);
         const missing = wanted.filter((p) => !files.has(p));
         if (missing.length) throw new ToolError(`no such file(s): ${missing.join(', ')} (app_overview lists the paths)`);
@@ -339,11 +409,11 @@ export const TOOLS: Tool[] = [
       required: ['alias'],
     },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
       const format = str(a, 'format') ?? 'text';
       if (!['text', 'dir', 'json'].includes(format)) throw new ToolError('format is text, dir or json');
-      const doc = await withDb((db) => exportDoc(db, alias));
+      const doc = await ctx.exportDoc(alias);
       if (format === 'json') {
         const file = resolve(str(a, 'path') ?? `${alias}.pgkiln.json`);
         const { writeFileSync } = await import('node:fs');
@@ -370,14 +440,14 @@ export const TOOLS: Tool[] = [
       required: ['alias'],
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
       const path = resolve(str(a, 'path') ?? join('apps', alias));
       const { compareFiles, unifiedDiff } = await import('./diff.ts');
       const source = await readSource(path);
       const theirs = source.files ?? docToFiles(source.doc);
       const style = [...theirs.keys()].some((p) => p.endsWith('.yaml')) ? 'text' : 'json';
-      const ours = docToFiles(await withDb((db) => exportDoc(db, alias)), style);
+      const ours = docToFiles(await ctx.exportDoc(alias), style);
       const changes = compareFiles(ours, theirs);
       if (!changes.length) return 'No differences.\n';
       return cap(
@@ -406,20 +476,35 @@ export const TOOLS: Tool[] = [
         check: { type: 'boolean', description: 'check the application before committing (default true)' },
         force: { type: 'boolean', description: 'import even when the check finds errors' },
         dry_run: { type: 'boolean', description: 'only check: import, report and roll back' },
+        only: { type: 'array', items: { type: 'string' }, description: 'with replace: only these pages or files of the directory (e.g. "pages/12", "shared/lovs/jobs.yaml"); the rest of the application stays as it is' },
       },
     },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const given = str(a, 'path');
       const aliasArg = str(a, 'alias');
       if (!given && !aliasArg) throw new ToolError('give a path (or an alias to read apps/<alias>)');
       const path = resolve(given ?? join('apps', aliasArg!));
-      const { doc } = await readSource(path);
+      const source = await readSource(path);
+      let doc = source.doc;
       const alias = aliasArg ?? doc?.app?.alias;
       if (!alias) throw new ToolError('the export has no alias: give one');
       const check = a.dry_run === true ? 'dry-run' : a.check === false ? 'off' : a.force === true ? 'force' : 'check';
-      const r = await withDb((db) => importDoc(db, doc, { alias, replace: a.replace === true, check, by: 'MCP import_app' }));
-      const report = check === 'off' ? '' : formatFindings(r.findings);
+      // (sprint 194) a file-level import, as `pgkiln import --replace --only`: the named files over the current export
+      const only = Array.isArray(a.only) ? (a.only as unknown[]).map(String).filter(Boolean) : [];
+      let onlyNote = '';
+      if (only.length) {
+        if (a.replace !== true) throw new ToolError('only needs replace=true: it changes part of an existing application');
+        if (!source.files) throw new ToolError('only needs an export directory or .zip');
+        const { mergeOnly } = await import('./only.ts');
+        const style = [...source.files.keys()].some((p) => p.endsWith('.yaml')) ? 'text' : 'json';
+        const merged = mergeOnly(docToFiles(await ctx.exportDoc(alias), style), source.files, only);
+        if (!merged.changed.length) return `No differences in ${merged.labels.join(', ')}: nothing to import.\n`;
+        doc = filesToDoc(merged.files);
+        onlyNote = `Only ${merged.labels.join(', ')}: ${merged.changed.length} file(s).\n`;
+      }
+      const r = await ctx.importDoc(doc, { alias, replace: a.replace === true, check });
+      const report = onlyNote + (check === 'off' ? '' : formatFindings(r.findings));
       if (!r.committed)
         return report + (check === 'dry-run'
           ? 'Dry run: nothing was imported.\n'
@@ -449,17 +534,24 @@ export const TOOLS: Tool[] = [
       },
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const path = str(a, 'path');
       const alias = str(a, 'alias');
       if (!path && !alias) throw new ToolError('give an alias or a path');
-      const { adviseOffline, adviseTarget, formatText } = await import('./advise.ts');
+      const { adviseOffline, formatText } = await import('./advise.ts');
       if (a.offline === true) {
         if (!path) throw new ToolError('offline needs a path (an export)');
         return cap(formatText(await adviseOffline(resolve(path))));
       }
-      process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
-      return cap(formatText(await withDb((db) => adviseTarget(db, path ? resolve(path) : alias!))));
+      if (!path) return cap(formatText(await ctx.advise({ alias: alias! })));
+      const full = resolve(path);
+      // an existing file or directory is an export; anything else is an alias (as `pgkiln advise`)
+      if (!existsSync(full)) {
+        if (/[/\\]|\.(json|zip)$/i.test(path)) throw new ToolError(`${path} not found`);
+        return cap(formatText(await ctx.advise({ alias: path })));
+      }
+      const r = await ctx.advise({ source: await readSource(full), path: full });
+      return cap(formatText(r));
     },
   },
   {
@@ -484,10 +576,12 @@ export const TOOLS: Tool[] = [
       required: ['action', 'alias'],
     },
     annotations: { readOnlyHint: false, destructiveHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const action = str(a, 'action', true)!;
       const alias = str(a, 'alias', true)!;
-      const by = str(a, 'developer') ?? 'MCP';
+      // (sprint 194) through a builder token: always its developer
+      const by = ctx.developer ?? str(a, 'developer') ?? 'MCP';
+      if (ctx.workspace !== null) await ctx.meta((db) => ctx.app(db, alias));
       const prefer = str(a, 'prefer');
       if (prefer && prefer !== 'copy' && prefer !== 'main') throw new ToolError('prefer: copy or main');
       const take = Array.isArray(a.take) ? (a.take as unknown[]).filter((x): x is string => typeof x === 'string') : [];
@@ -523,10 +617,15 @@ export const TOOLS: Tool[] = [
       required: ['alias'],
     },
     annotations: { readOnlyHint: false },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
       const page = a.page === undefined || a.page === null ? null : int(a, 'page', 1, 1_000_000);
-      const by = str(a, 'developer') ?? 'MCP';
+      const by = ctx.developer ?? str(a, 'developer') ?? 'MCP';
+      if (ctx.workspace !== null) {
+        await ctx.meta((db) => ctx.app(db, alias));
+        // as in the builder: only administrators break another developer's lock
+        if (a.unlock === true && a.force === true && !ctx.admin) throw new ToolError('only administrators break another developer\'s lock');
+      }
       process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL;
       const wc = await import('./working-copy.ts');
       return a.unlock === true ? wc.unlockApp(alias, page, by, a.force === true) : wc.lockApp(alias, page, by, str(a, 'note') ?? null);
@@ -546,13 +645,18 @@ export const TOOLS: Tool[] = [
       },
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const schema = str(a, 'schema');
       const tbl = str(a, 'table');
-      return withDb(async (db) => {
+      return ctx.sql(async (db) => {
+        if (schema) await ctx.schema(db, schema);
         if (tbl) {
-          const rel = (await db.query(`select to_regclass($1)::oid as oid`, [tbl])).rows[0]?.oid;
-          if (!rel) throw new ToolError(`no table or view ${tbl}`);
+          const found = (await db.query(`select c.oid, n.nspname from pg_class c join pg_namespace n on n.oid = c.relnamespace where c.oid = to_regclass($1)`, [tbl])).rows[0];
+          if (!found) throw new ToolError(`no table or view ${tbl}`);
+          await ctx.schema(db, found.nspname).catch(() => {
+            throw new ToolError(`no table or view ${tbl}`);
+          });
+          const rel = found.oid;
           const q = async (sql: string) => (await db.query(sql, [rel])).rows;
           const [info] = await q(
             `select c.oid::regclass::text as name, case c.relkind when 'r' then 'table' when 'p' then 'partitioned table' when 'v' then 'view' when 'm' then 'materialized view' else c.relkind::text end as kind,
@@ -583,14 +687,17 @@ export const TOOLS: Tool[] = [
                from pg_class c join pg_namespace n on n.oid = c.relnamespace
               where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname <> 'information_schema'
                 and (n.nspname = $1 or ($1 is null and n.nspname <> 'meta'))
+                and (not $2 or has_schema_privilege(n.oid, 'USAGE'))
              union all
              select n.nspname, p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')', case p.prokind when 'p' then 'procedure' else 'function' end, false
                from pg_proc p join pg_namespace n on n.oid = p.pronamespace
               where p.prokind in ('f', 'p') and n.nspname !~ '^pg_' and n.nspname <> 'information_schema'
                 and (n.nspname = $1 or ($1 is null and n.nspname <> 'meta'))
+                and (not $2 or has_schema_privilege(n.oid, 'USAGE'))
                 and not exists (select from pg_depend d where d.objid = p.oid and d.deptype = 'e')
               order by 1, 3 desc, 2`,
-            [schema ?? null],
+            // (sprint 194) through a builder token: the schemas the workspace's developer login may use
+            [schema ?? null, ctx.workspace !== null],
           )
         ).rows;
         if (!rows.length) return schema ? `Schema ${schema} has no tables, views or functions.\n` : 'No tables, views or functions outside pgkiln.\n';
@@ -613,11 +720,14 @@ export const TOOLS: Tool[] = [
       'Use it to start a migration script or to see how objects are defined; nothing is run.',
     inputSchema: { type: 'object', properties: { schema: { type: 'string', description: 'the schema, e.g. sales' } }, required: ['schema'] },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const schema = str(a, 'schema');
       if (!schema) throw new ToolError('schema is required');
       const { ddlScript, readSchema } = await import('../ddl.ts');
-      return withDb(async (db) => cap(ddlScript(schema, await readSchema(db, schema))));
+      return ctx.sql(async (db) => {
+        await ctx.schema(db, schema);
+        return cap(ddlScript(schema, await readSchema(db, schema)));
+      });
     },
   },
   {
@@ -632,12 +742,14 @@ export const TOOLS: Tool[] = [
       required: ['source', 'target'],
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const source = str(a, 'source');
       const target = str(a, 'target');
       if (!source || !target) throw new ToolError('source and target are required');
       const { changeScript, compare, readSchema } = await import('../ddl.ts');
-      return withDb(async (db) => {
+      return ctx.sql(async (db) => {
+        await ctx.schema(db, source);
+        await ctx.schema(db, target);
         const [x, y] = [await readSchema(db, source), await readSchema(db, target)];
         const { differences, same } = compare(x, y);
         if (!differences.length) return `The schemas are the same (${same} objects).\n`;
@@ -654,7 +766,8 @@ export const TOOLS: Tool[] = [
       'Use it to look at data and at the meta schema; it cannot change anything. Values of columns named like password, secret, token or hash are hidden. ' +
       'Bind variables (:P1_X) are not replaced: use literals. ' +
       'With alias (and user), the query runs as that application\'s database role for that user, with meta.app_user() and meta.has_role() set: ' +
-      'grants, column privileges, row level security and masking views apply as on the user\'s pages. Without, it runs as pgkiln\'s owner and sees everything.',
+      'grants, column privileges, row level security and masking views apply as on the user\'s pages. Without, it runs as pgkiln\'s owner and sees everything ' +
+      '(through a builder token: as the workspace\'s developer login, which sees what the SQL Workshop sees).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -666,13 +779,18 @@ export const TOOLS: Tool[] = [
       required: ['sql'],
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const sql = str(a, 'sql', true)!;
       const max = int(a, 'max_rows', 50, 500);
       const alias = str(a, 'alias');
       const user = str(a, 'user');
       if (user && !alias) throw new ToolError('user needs alias: the application whose user it is');
-      return withDb(async (db) => cap(stableJson(await readOnlyQuery(db, sql, max, alias ? await queryIdentity(db, alias, user) : undefined))));
+      // the identity is read from pgkiln's tables; the query runs on the connection for the database's objects
+      const as = alias ? await ctx.meta(async (db) => {
+        await ctx.app(db, alias);
+        return queryIdentity(db, alias, user);
+      }) : undefined;
+      return ctx.sql(async (db) => cap(stableJson(await readOnlyQuery(db, sql, max, as))), as?.appId);
     },
   },
   {
@@ -696,18 +814,20 @@ export const TOOLS: Tool[] = [
       properties: { alias: { type: 'string' }, limit: { type: 'integer', description: 'default 20, at most 200' } },
     },
     annotations: { readOnlyHint: true },
-    async run(a) {
+    async run(a, ctx) {
       const alias = str(a, 'alias');
       const limit = int(a, 'limit', 20, 200);
-      return withDb(async (db) =>
+      return ctx.meta(async (db) =>
         table(
           (
             await db.query(
               `select l.at, a.alias, l.page_no as page, l.username, l.event, l.detail
                  from meta.activity_log l left join meta.app a on a.id = l.app_id
                 where l.event in ('error', 'forbidden') and ($1::text is null or a.alias = $1)
+                  -- (sprint 194) a builder token: its workspace's applications only
+                  and ($3::int is null or (a.id is not null and meta.app_workspace(a.id) = $3))
                 order by l.at desc limit $2`,
-              [alias ?? null, limit],
+              [alias ?? null, limit, ctx.workspace],
             )
           ).rows,
         ),
@@ -716,11 +836,92 @@ export const TOOLS: Tool[] = [
   },
 ];
 
+// ------------------------------------------------------------------ remote (sprint 194, NX-F4)
+
+/** Tools that read or write files on the developer's machine: they run here, with exports and imports from the API. */
+const CLIENT_SIDE = new Set(['export_app', 'diff_app', 'import_app', 'search_docs']);
+
+/**
+ * `pgkiln mcp --url https://… --token-env PGKILN_TOKEN`: the MCP server on a developer's machine, acting as the
+ * developer whose builder token it has, through the builder's API (src/builder/api-v1.ts). No DATABASE_URL is used.
+ * The tools that touch files run here; the rest run on the server with the token's scopes and workspace.
+ */
+export class RemoteClient {
+  readonly base: string;
+  constructor(url: string, private readonly token: string) {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      throw new Error(`--url ${url} is not an address (https://pgkiln.example.com)`);
+    }
+    // a token is a password: never over plain http, except to this machine
+    const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(u.hostname);
+    if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) throw new Error(`--url must be https (http only to localhost): ${url}`);
+    if (u.username || u.password || u.search || u.hash) throw new Error('--url takes the server\'s address only (no user, query or fragment)');
+    this.base = `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\/builder$/, '')}`;
+    if (!/^pgkb_[A-Za-z0-9_-]{43}$/.test(token)) throw new Error('the token is not a builder token (pgkb_…): make one on the builder\'s Security page');
+  }
+
+  /** A call to /builder/api/v1/<path>; the server's error (401, 403, 409 …) comes back as a ToolError with its status. */
+  async request(method: 'GET' | 'POST', path: string, body?: unknown): Promise<any> {
+    let res: Response;
+    try {
+      res = await fetch(`${this.base}/builder/api/v1/${path}`, {
+        method,
+        headers: { authorization: `Bearer ${this.token}`, accept: 'application/json', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        // the token goes to this server only, never to where a redirect points
+        redirect: 'manual',
+        signal: AbortSignal.timeout(180_000),
+      });
+    } catch (e) {
+      throw new ToolError(`the pgkiln server at ${this.base} did not answer: ${(e as Error).message}`);
+    }
+    const text = await res.text();
+    let json: any = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      /* not JSON: a proxy's page */
+    }
+    if (res.status >= 300) throw new ToolError(`${res.status} ${res.statusText || ''}`.trim() + `: ${json?.error ?? (text.slice(0, 300) || 'no answer')}`);
+    if (!json) throw new ToolError(`the server at ${this.base} did not answer with JSON: is it a pgkiln server (0.98 or later)?`);
+    return json;
+  }
+
+  async call(name: string, args: Args): Promise<string> {
+    return (await this.request('POST', `tools/${encodeURIComponent(name)}`, args)).text;
+  }
+
+  /** The context of the client-side tools: exports, imports and the Advisor through the API. */
+  context(): ToolContext {
+    const nope = async (): Promise<never> => {
+      throw new ToolError('this tool runs on the server');
+    };
+    return {
+      meta: nope,
+      sql: nope,
+      workspace: -1,
+      developer: null,
+      app: nope,
+      schema: nope,
+      exportDoc: async (alias) => (await this.request('GET', `apps/${encodeURIComponent(alias)}/export`)).doc,
+      importDoc: async (doc, o) => (await this.request('POST', `apps/${encodeURIComponent(o.alias)}/import`, { doc, replace: o.replace, check: o.check })).result,
+      advise: async (target) => {
+        if ('alias' in target) return (await this.request('POST', 'advise', { alias: target.alias })).result;
+        const r: AdviseResult = (await this.request('POST', 'advise', { doc: target.source.doc })).result;
+        return { ...r, dir: target.source.files ? target.path : null };
+      },
+    };
+  }
+}
+
 // ------------------------------------------------------------------ protocol
 
 type Message = { jsonrpc: '2.0'; id?: number | string | null; method?: string; params?: any };
 
-export async function handle(msg: Message): Promise<object | undefined> {
+export async function handle(msg: Message, remote?: RemoteClient): Promise<object | undefined> {
   const reply = (result: unknown) => ({ jsonrpc: '2.0', id: msg.id, result });
   const fail = (code: number, message: string) => ({ jsonrpc: '2.0', id: msg.id ?? null, error: { code, message } });
   if (msg?.jsonrpc !== '2.0' || typeof msg.method !== 'string') return fail(-32600, 'invalid request');
@@ -743,7 +944,13 @@ export async function handle(msg: Message): Promise<object | undefined> {
       const tool = TOOLS.find((t) => t.name === msg.params?.name);
       if (!tool) return fail(-32602, `unknown tool ${msg.params?.name}`);
       try {
-        const text = await tool.run((msg.params?.arguments ?? {}) as Args);
+        const args = (msg.params?.arguments ?? {}) as Args;
+        const text = !remote
+          ? await tool.run(args, LOCAL)
+          // advise_app with an export on disk reads it here; with an alias (or offline) it is the same either way
+          : CLIENT_SIDE.has(tool.name) || (tool.name === 'advise_app' && typeof args.path === 'string' && args.path)
+            ? await tool.run(args, remote.context())
+            : await remote.call(tool.name, args);
         return reply({ content: [{ type: 'text', text }] });
       } catch (e) {
         // a tool error goes back to the agent as a result, so it can correct itself
@@ -755,8 +962,8 @@ export async function handle(msg: Message): Promise<object | undefined> {
   }
 }
 
-export async function serve(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout) {
-  process.stderr.write(`pgkiln ${version()} MCP server on standard input/output\n`);
+export async function serve(input: NodeJS.ReadableStream = process.stdin, output: NodeJS.WritableStream = process.stdout, remote?: RemoteClient) {
+  process.stderr.write(`pgkiln ${version()} MCP server on standard input/output${remote ? `, acting through ${remote.base} with a builder token` : ''}\n`);
   const lines = createInterface({ input, crlfDelay: Infinity });
   const pending = new Set<Promise<unknown>>();
   for await (const line of lines) {
@@ -769,7 +976,7 @@ export async function serve(input: NodeJS.ReadableStream = process.stdin, output
       continue;
     }
     // requests run concurrently; each answer is one line
-    const p: Promise<unknown> = handle(msg)
+    const p: Promise<unknown> = handle(msg, remote)
       .then((r) => {
         if (r) output.write(JSON.stringify(r) + '\n');
       })

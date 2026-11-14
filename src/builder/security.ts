@@ -1,5 +1,5 @@
 import { isIP } from 'node:net';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -15,6 +15,7 @@ import { ALGORITHMS, giveChallenge, relyingParty, takeChallenge, verifyRegistrat
 import { tr } from './i18n.ts';
 import { isAdmin } from './locks.ts';
 import { identitiesRegion } from './builder-sso.ts';
+import { tokenRoutes, tokensRegion } from './tokens.ts';
 import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 
 // (sprint 126, SEC-2 and SEC-6) Developer › Security: a developer's second factors (authenticator apps, TOTP)
@@ -41,6 +42,12 @@ export async function securityRoutes(app: FastifyInstance) {
   app.get(`${BASE}/security`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
+    return securityPage(req, reply, s);
+  });
+  // (sprint 194) builder tokens: making one answers with this page, the token shown once (tokens.ts)
+  await tokenRoutes(app, securityPage);
+
+  async function securityPage(req: Req, reply: FastifyReply, s: Session, made?: { name: string; token: string }) {
     const tx = tr(s);
     const me = s.username!;
     const [factors, left, admin, days, trusted] = await Promise.all([factorsOf(me), codesLeft(me), isAdmin(me), trustDays(), trustedBrowsers(me)]);
@@ -121,9 +128,10 @@ export async function securityRoutes(app: FastifyInstance) {
             <p class="u-mt0">${days ? tx('mfa.trusted_count', { n: trusted, days }) : tx('mfa.trusted_off')}</p>
             ${trusted ? html`<form method="post" action="${BASE}/security/forget-browsers">${csrf(s)}<button class="btn">${tx('mfa.forget_browsers')}</button></form>` : ''}` : ''}`)}
       </div>
-      ${await identitiesRegion(s, typeof req.query?.linked === 'string' ? req.query.linked : undefined)}`;
+      ${await identitiesRegion(s, typeof req.query?.linked === 'string' ? req.query.linked : undefined)}
+      ${await tokensRegion(req, s, made)}`;
     return send(reply, s, shell(s, tx('mfa.title'), [[tx('mfa.title')]], main, 'developers'));
-  });
+  }
 
   app.post(`${BASE}/security/totp/start`, async (req: Req, reply) => {
     const s = await developer(req, reply);

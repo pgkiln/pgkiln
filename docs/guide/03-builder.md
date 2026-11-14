@@ -125,6 +125,60 @@ setting the days to 0 stops every trusted browser at once.
   `2fa_enrolled`, `2fa_recovery_used`), and resets and policy changes are mailed to the administrators when the
   builder has a mail service (*Builder mail*).
 
+### Builder tokens
+
+(sprint 194, NX-F4) A **builder token** lets the command line and the [MCP server](20-ai-agents.md#remote-with-a-builder-token)
+on your own machine (or an AI coding agent there) act as **you**, through the builder's API, with less than you can do
+in the builder: one workspace, the scopes you choose, until a date. Nothing on your machine needs the database's
+owner connection. APEX has no tokens for its builder; pgkiln's are scoped, short-lived and audited.
+
+**Making one.** Security (`/builder/security`) → **Builder tokens**: a **name** (what uses it: *Laptop*, *Claude Code*),
+the **workspace**, the **scopes** and **Expires in (days)** (30 by default, 1 to 365: a token always expires). **Create
+token** shows it once, in a field with a **Copy** button; pgkiln keeps only its SHA-256 hash, so a lost token can't be
+shown again: revoke it and make another. Put it in an environment variable, never in a file in git. Tokens start with
+`pgkb_`, so secret scanners can recognise them.
+
+| Scope | What the token may do |
+|---|---|
+| `read` | list the workspace's applications, read pages and component files, export them, check them with the Advisor; describe tables, generate DDL and compare schemas through the workspace's developer login; recent errors of the workspace's applications |
+| `write` | import over the workspace's applications (or a new one into it), working copies and locks, with the builder's rules: another developer's lock on the application or on a page the import changes refuses it, as does a *Run only* application; only an administrator's token breaks another developer's lock |
+| `sql` | read-only queries (`run_query`) as the workspace's **developer login**, the SQL Workshop's identity ([isolated workspaces](#isolated-workspaces)), or as an application's role; never the owner connection, also for an administrator's token |
+
+**A recent sign-in.** Making a token needs a sign-in in the last **10 minutes** with the factors you must use: through
+the identity provider when a workspace of yours [requires single sign-on](#single-sign-on-for-developers) (the
+page then offers **Sign in again**), and with your second factor when you have one or the
+[policy](#two-factor-sign-in) requires one (a developer who must still set one up gets no token). Later than that, the
+form asks for your password and a code again; wrong ones count with failed sign-ins.
+
+**What a token can do is checked at every request**, not copied into it: you must still be a developer of its
+workspace (or an administrator), and not be held to set up two-factor sign-in. It stops working at once when it
+**expires** or is **revoked**: by you (the list on Security: name, workspace, scopes, expiry, last use with the
+address, **Revoke**), by an administrator (**Developers** → *Builder tokens of all developers*), and by itself when you
+are **removed** as a developer, **change your password**, an administrator **sets your password**
+(`pgkiln users password <name> --developer`) or **resets your two-factor sign-in** (Developers, or
+`pgkiln admin reset-2fa`). Making, using and revoking tokens is in the activity log (`builder_token_created`,
+`builder_api` with the token's name, `builder_token_revoked`; a scope a token lacks: `forbidden`).
+
+**The API** (`/builder/api/v1`) takes the token in the `Authorization: Bearer pgkb_…` header only: cookies don't count
+(a signed-in browser can't call it, and CSRF doesn't apply), nor does the query string. An unknown, expired or revoked
+token gets **401**, a scope the token lacks **403**; failed attempts count as failed sign-ins of the address and are
+throttled like them (**429**), without locking any developer out.
+
+| Request | Scope | Answer |
+|---|---|---|
+| `GET /builder/api/v1/me` | any | the developer, the token's name, scopes, expiry and workspace |
+| `GET /builder/api/v1/tools` | any | the MCP tools and the scope each needs |
+| `POST /builder/api/v1/tools/<name>` | the tool's | an [MCP tool](20-ai-agents.md#tools) with its arguments as the JSON body: `{ "text": … }` |
+| `GET /builder/api/v1/apps/<alias>/export` | `read` | the application's export document: `{ "doc": … }` |
+| `POST /builder/api/v1/apps/<alias>/import` | `write` | `{ "doc": …, "replace": true, "check": "check" }` (or `off`, `force`, `dry-run`): `{ "result": … }` |
+| `POST /builder/api/v1/advise` | `read` with `alias`, `write` with `doc` | the Advisor's findings |
+
+```sh
+curl -s -H "Authorization: Bearer $PGKILN_TOKEN" https://pgkiln.example.com/builder/api/v1/me
+curl -s -H "Authorization: Bearer $PGKILN_TOKEN" -H 'content-type: application/json' \
+  -d '{"alias":"sales","page":3}' https://pgkiln.example.com/builder/api/v1/tools/get_page
+```
+
 ### Single sign-on for developers
 
 (0.63) Developers can sign in to the builder through the organisation's **identity provider** (OpenID Connect or SAML

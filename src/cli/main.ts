@@ -552,20 +552,42 @@ const COMMANDS: Record<string, Command> = {
   },
 
   mcp: {
-    usage: 'pgkiln mcp',
+    usage: 'pgkiln mcp [--url <builder address> [--token-env <variable>]]',
     summary: 'run an MCP server on standard input/output for AI coding agents (Claude Code, Cursor, …)',
     details:
       'Lets an agent list applications, read pages and shared components, describe tables, run read-only\n' +
       'queries, search the user guide, and export, diff and import applications as files.\n' +
       'The repository\'s .mcp.json starts it for Claude Code; elsewhere:\n' +
       '  claude mcp add pgkiln -- /path/to/pgkiln/bin/pgkiln.js mcp\n' +
+      'Without --url it connects to DATABASE_URL (the owner) on this machine. With --url it acts as the developer\n' +
+      'whose builder token is in the environment variable (default PGKILN_TOKEN; make one on the builder\'s\n' +
+      'Security page), through the builder\'s API, with the token\'s scopes and workspace; no database connection:\n' +
+      '  claude mcp add pgkiln -e PGKILN_TOKEN=pgkb_… -- npx -y pgkiln mcp --url https://pgkiln.example.com\n' +
       'See docs/guide/20-ai-agents.md.',
-    options: {},
-    optionHelp: [],
+    options: { url: { type: 'string' }, 'token-env': { type: 'string' } },
+    optionHelp: [
+      ['--url <address>', 'the builder\'s address (https; http only to localhost): act through its API'],
+      ['--token-env <name>', 'the environment variable with the builder token (default PGKILN_TOKEN); never the token itself'],
+    ],
     positionals: [0, 0],
-    async run() {
-      const { serve } = await import('./mcp.ts');
-      await serve();
+    async run(v) {
+      const { RemoteClient, serve } = await import('./mcp.ts');
+      if (v['token-env'] && !v.url) throw new UsageError('--token-env needs --url');
+      if (!v.url) {
+        await serve();
+        return EXIT.ok;
+      }
+      const name = String(v['token-env'] ?? 'PGKILN_TOKEN');
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,99}$/.test(name)) throw new UsageError(`--token-env takes the name of an environment variable, not a token: ${name.slice(0, 8)}…`);
+      const token = process.env[name];
+      if (!token) throw new UsageError(`${name} is not set: make a builder token on the builder's Security page and put it in ${name}`);
+      let remote;
+      try {
+        remote = new RemoteClient(String(v.url), token.trim());
+      } catch (e) {
+        throw new UsageError((e as Error).message);
+      }
+      await serve(process.stdin, process.stdout, remote);
       return EXIT.ok;
     },
   },
@@ -628,7 +650,7 @@ const COMMANDS: Record<string, Command> = {
       'pgkiln users password <username> [--developer]\n\n' +
       'Passwords are read from standard input (first line) or asked for on a terminal, never\n' +
       'taken from the command line, and must meet the password policy. Setting a password ends\n' +
-      "the user's sessions.",
+      "the user's sessions (a developer's builder tokens are revoked too).",
     options: {
       developer: { type: 'boolean' },
       developers: { type: 'boolean' },
@@ -680,6 +702,8 @@ const COMMANDS: Record<string, Command> = {
             const r = await db.query('update meta.developer set password_hash = meta.hash_password($2) where username = $1', [username, password]);
             if (r.rowCount !== 1) throw new Error(`no developer ${username}`);
             await db.query('delete from meta.session where app_id is null and username = $1', [username]);
+            // (sprint 194, SEC-1) and their builder tokens: a password set for someone may mean their account was taken
+            await db.query(`update meta.builder_token set revoked_at = now(), revoked_by = 'pgkiln users password', revoked_reason = 'password set by an administrator' where username = $1 and revoked_at is null`, [username]);
           } else if (action === 'add') {
             const id = (
               await db.query(

@@ -1602,6 +1602,12 @@ pre.wrap-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .mfa-steps { padding-left: 1.25rem; }
 .mfa-codes { columns: 2; column-gap: 2rem; padding-left: 1.5rem; font-size: 1.05em; }
 @media (max-width: 480px) { .mfa-codes { columns: 1; } }
+/* (sprint 194) builder tokens: the new token in a field with a Copy button, the example, the scopes */
+.token-copy { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+.token-copy .token-value { flex: 1 1 18rem; min-width: 0; font-family: var(--mono, ui-monospace, monospace); font-size: .9em; }
+pre.code-sample { background: var(--code-bg); padding: .6rem; font-size: .85rem; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.token-scopes { border: 0; padding: 0; margin: 0 0 .75rem; min-width: 0; }
+.token-scopes .check { display: block; margin: .25rem 0; }
 
 /* Settings → Sign-in: a checkbox under a grid of fields gets room, and long help stays readable */
 .settings-panel[data-tab="signin"] .form-grid + .field { margin-top: 0.75rem; }

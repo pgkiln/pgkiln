@@ -42,6 +42,7 @@ import { reportSettingsRoutes } from './builder/report-settings.ts';
 import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
+import { builderApiRoutes } from './builder/api-v1.ts';
 import { appUpdateHooks } from './builder/app-updates.ts';
 import { historyHooks, utilityRoutes } from './builder/utilities.ts';
 import { dependencyRoutes } from './builder/dependencies.ts';
@@ -236,6 +237,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(restRoutes);
   await app.register(autoRestRoutes); // (sprint 100) AutoREST: /a/:alias/autorest/
   await app.register(builderRoutes);
+  await app.register(builderApiRoutes); // (sprint 194, NX-F4) /builder/api/v1: builder tokens for the CLI and the MCP server
   await app.register(galleryRoutes);
   await app.register(appGroupRoutes);
   await app.register(crossAppRoutes);

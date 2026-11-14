@@ -16419,3 +16419,274 @@ describe('page aliases (sprint 193)', () => {
     }
   });
 });
+
+describe('sprint 194 builder tokens for the command line and the MCP server (NX-F4, SEC-1)', () => {
+  const DEV = 'sec194_dev';
+  const SSO = 'sec194_sso';
+  const MFA = 'sec194_mfa';
+  const PW = 'Sec194-password!';
+  const OTHER_APP = 'hr-sec194-ws';
+  const WS = 'sec194 other ws';
+  const SSO_WS = 'sec194 sso ws';
+  const IP = '10.194.0.7';
+  let wsId = 0;
+  let tok: typeof import('../src/builder-tokens.ts');
+  const api = (t: string | null, method: 'GET' | 'POST', path: string, body?: unknown, headers: Record<string, string> = {}, remoteAddress?: string) =>
+    app.inject({ method, url: `/builder/api/v1/${path}`, headers: { ...(t ? { authorization: `Bearer ${t}` } : {}), ...headers }, ...(remoteAddress ? { remoteAddress } : {}), ...(body === undefined ? {} : { payload: body as object }) });
+  const make = async (scopes: ('read' | 'write' | 'sql')[], username = DEV, workspaceId = 1) =>
+    (await tok.createToken({ username, workspaceId, name: `sec ${Math.random().toString(36).slice(2, 9)}`, scopes, days: 30 })).token;
+  const signIn = async (user: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    const r = await b.submit('/builder/login', { username: user, password: PW });
+    assert.equal(r.statusCode, 303, `sign-in of ${user}`);
+    return b;
+  };
+  /** the session's sign-in, minutes ago */
+  const age = (user: string, minutes: number) =>
+    owner.query(`update meta.session set state = jsonb_set(state, '{__AUTH}', to_jsonb(jsonb_set((state->>'__AUTH')::jsonb, '{at}', to_jsonb((extract(epoch from now()) * 1000)::bigint - $2::bigint * 60000))::text))
+                  where app_id is null and username = $1 and state ? '__AUTH'`, [user, minutes]);
+  const cleanup = async () => {
+    await owner.query('delete from meta.session where app_id is null and username = any($1)', [[DEV, SSO, MFA]]);
+    await owner.query('delete from meta.app where alias = $1', [OTHER_APP]);
+    await owner.query('delete from meta.developer where username = any($1)', [[DEV, SSO, MFA]]);
+    await owner.query('delete from meta.workspace where name = any($1)', [[WS, SSO_WS]]);
+    await owner.query(`delete from meta.activity_log where app_id is null and event in ('login_failed', 'login_locked') and (ip = $1 or detail like 'builder API:%' or detail like 'builder token step-up%')`, [IP]);
+  };
+  before(async () => {
+    tok = await import('../src/builder-tokens.ts');
+    await cleanup();
+    await owner.query('insert into meta.developer (username, password_hash, is_admin) select u, meta.hash_password($2), false from unnest($1::text[]) u', [[DEV, SSO, MFA], PW]);
+    wsId = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
+    // an application of another workspace
+    const doc = (await owner.one(`select meta.export_app('hr') as d`))!.d;
+    const id = (await owner.one<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), OTHER_APP]))!.id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2) on conflict (app_id) do update set workspace_id = excluded.workspace_id', [id, wsId]);
+  });
+  after(cleanup);
+
+  test('only a hash is stored; the token is a 256-bit random string', async () => {
+    const { hashToken } = await import('../src/security.ts');
+    const t = await make(['read']);
+    assert.match(t, /^pgkb_[A-Za-z0-9_-]{43}$/);
+    assert.equal((await owner.one('select count(*)::int as n from meta.builder_token where token_hash = $1', [hashToken(t)]))!.n, 1);
+    const cols = (await owner.query(`select string_agg(t::text, '') as all from meta.builder_token t`)).rows[0].all;
+    assert.ok(!cols.includes(t.slice(5)), 'the token itself is nowhere in the table');
+    // the runtime role and workspace logins can't read the table
+    assert.equal((await owner.one(`select has_table_privilege('pgkiln_runtime', 'meta.builder_token', 'SELECT') as ok`))!.ok, false);
+    const dev = (await owner.one<{ r: string }>('select dev_role as r from meta.workspace where id = 1'))!.r;
+    assert.equal((await owner.one(`select has_table_privilege($1, 'meta.builder_token', 'SELECT') as ok`, [dev]))!.ok, false);
+  });
+
+  test('the Authorization header only: no cookie, no query string, no other scheme; no CSRF token needed', async () => {
+    const t = await make(['read']);
+    const b = await signIn(DEV);
+    const cookie = [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+    assert.equal((await api(null, 'GET', 'me', undefined, { cookie })).statusCode, 401, 'a signed-in browser is not a caller');
+    assert.equal((await api(null, 'GET', `me?token=${t}`)).statusCode, 401);
+    assert.equal((await api(null, 'GET', 'me', undefined, { authorization: `Basic ${Buffer.from(`x:${t}`).toString('base64')}` })).statusCode, 401);
+    const r = await api(null, 'GET', 'me', undefined, { authorization: `Bearer ${t}` });
+    assert.equal(r.statusCode, 200);
+    assert.equal(r.headers['set-cookie'], undefined, 'no session is made');
+    assert.equal(r.headers['access-control-allow-origin'], undefined, 'no CORS: a web page can\'t send the header');
+    // a POST with the token and no CSRF field works (bearer requests aren't a browser's)
+    assert.equal((await api(t, 'POST', 'tools/list_apps', {})).statusCode, 200);
+    assert.match(String((await api(null, 'GET', 'me')).headers['www-authenticate']), /^Bearer/);
+  });
+
+  test('scopes: a read token can\'t write or run SQL; a 403 names the scope', async () => {
+    const t = await make(['read']);
+    const doc = (await api(t, 'GET', 'apps/hr/export')).json().doc;
+    for (const [path, body] of [['apps/hr/import', { doc, replace: true }], ['advise', { doc }], ['tools/run_query', { sql: 'select 1' }], ['tools/lock_app', { alias: 'hr' }],
+      ['tools/working_copy', { action: 'create', alias: 'hr', name: 'x' }]] as const) {
+      const r = await api(t, 'POST', path, body);
+      assert.equal(r.statusCode, 403, path);
+      assert.match(r.json().error, /no (write|sql) scope/, path);
+    }
+    const w = await make(['write']);
+    assert.equal((await api(w, 'POST', 'tools/list_apps', {})).statusCode, 403, 'write alone is not read');
+  });
+
+  test('expired and revoked tokens are refused at once (no cache that outlives a revoke)', async () => {
+    const t = await make(['read']);
+    assert.equal((await api(t, 'GET', 'me')).statusCode, 200);
+    await owner.query(`update meta.builder_token set created_at = now() - interval '2 days', expires_at = now() - interval '1 second' where token_hash = encode(sha256($1::bytea), 'hex')`, [t]);
+    const exp = await api(t, 'GET', 'me');
+    assert.equal(exp.statusCode, 401);
+    assert.match(exp.json().error, /expired/);
+    const t2 = await make(['read']);
+    assert.equal((await api(t2, 'POST', 'tools/list_apps', {})).statusCode, 200);
+    await owner.query(`update meta.builder_token set revoked_at = now() where token_hash = encode(sha256($1::bytea), 'hex')`, [t2]);
+    assert.equal((await api(t2, 'POST', 'tools/list_apps', {})).statusCode, 401);
+  });
+
+  test('a token never grants more than its developer has now: removed from the workspace, removed, held to set up two-factor sign-in', async () => {
+    const t = await make(['read']);
+    await owner.query('delete from meta.workspace_member where workspace_id = 1 and username = $1', [DEV]);
+    try {
+      const r = await api(t, 'GET', 'me');
+      assert.equal(r.statusCode, 403);
+      assert.match(r.json().error, /no longer a developer of workspace Default/);
+    } finally {
+      await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing', [DEV]);
+    }
+    assert.equal((await api(t, 'GET', 'me')).statusCode, 200);
+    // a workspace requires a second factor and the grace period is over
+    await owner.query(`update meta.workspace set mfa_required_since = now() - interval '60 days' where id = 1`);
+    try {
+      assert.equal((await api(t, 'GET', 'me')).statusCode, 403);
+    } finally {
+      await owner.query('update meta.workspace set mfa_required_since = null where id = 1');
+    }
+    // a removed developer: the token goes with them
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec194_gone', meta.hash_password('x'), false)`);
+    const g = await make(['read'], 'sec194_gone');
+    assert.equal((await api(g, 'GET', 'me')).statusCode, 200);
+    await owner.query(`delete from meta.developer where username = 'sec194_gone'`);
+    assert.equal((await api(g, 'GET', 'me')).statusCode, 401);
+  });
+
+  test('workspace boundaries: another workspace\'s application doesn\'t exist for the token', async () => {
+    const t = await make(['read', 'write', 'sql']);
+    assert.doesNotMatch((await api(t, 'POST', 'tools/list_apps', {})).json().text, new RegExp(OTHER_APP));
+    for (const [name, args] of [['get_page', { alias: OTHER_APP, page: 1 }], ['app_overview', { alias: OTHER_APP }], ['read_app_files', { alias: OTHER_APP, prefix: 'shared/' }],
+      ['run_query', { sql: 'select 1', alias: OTHER_APP }], ['lock_app', { alias: OTHER_APP }], ['working_copy', { action: 'list', alias: OTHER_APP }], ['advise_app', { alias: OTHER_APP }]] as const) {
+      const r = await api(t, 'POST', `tools/${name}`, args);
+      assert.equal(r.statusCode, 422, `${name}: ${r.body}`);
+      assert.match(r.json().error, /no application/, name);
+    }
+    assert.equal((await api(t, 'GET', `apps/${OTHER_APP}/export`)).statusCode, 404);
+    const doc = (await api(t, 'GET', 'apps/hr/export')).json().doc;
+    const over = await api(t, 'POST', `apps/${OTHER_APP}/import`, { doc, replace: true, check: 'off' });
+    assert.equal(over.statusCode, 409);
+    assert.match(over.json().error, /another workspace/);
+    assert.equal((await owner.one(`select meta.app_workspace(id) as ws from meta.app where alias = $1`, [OTHER_APP]))!.ws, wsId, 'not moved');
+    // a token for a workspace the developer isn't in (administrators aren't either here) is refused at use
+    const foreign = await make(['read'], DEV, wsId);
+    assert.equal((await api(foreign, 'GET', 'me')).statusCode, 403);
+    // recent_errors: only the workspace's applications
+    const otherId = (await owner.one<{ id: number }>('select id from meta.app where alias = $1', [OTHER_APP]))!.id;
+    await owner.query(`insert into meta.activity_log (app_id, event, detail) values ($1, 'error', 'sec194 secret of another workspace')`, [otherId]);
+    assert.doesNotMatch((await api(t, 'POST', 'tools/recent_errors', { limit: 200 })).json().text, /sec194 secret/);
+  });
+
+  test('no Owner connection, also for an administrator\'s token; queries are read-only', async () => {
+    await owner.query(`update meta.developer set is_admin = true where username = $1`, [DEV]);
+    try {
+      const t = await make(['read', 'sql']);
+      const ownerRole = (await owner.one<{ u: string }>('select current_user as u'))!.u;
+      const r = JSON.parse((await api(t, 'POST', 'tools/run_query', { sql: 'select current_user as u, session_user as s' })).json().text).rows[0];
+      assert.notEqual(r.u, ownerRole);
+      assert.notEqual(r.s, ownerRole);
+      assert.match(r.s, /^pgkiln_ws1_dev_/);
+      for (const sql of ['select * from meta.developer', 'set role pgkiln', `select pg_read_file('/etc/passwd')`, 'commit; delete from hr.emp', 'create table public.sec194 (id int)']) {
+        const q = await api(t, 'POST', 'tools/run_query', { sql });
+        assert.equal(q.statusCode, 422, sql);
+      }
+      // describe_schema / generate_ddl don't reach pgkiln's own schema
+      assert.equal((await api(t, 'POST', 'tools/generate_ddl', { schema: 'meta' })).statusCode, 422);
+      assert.equal((await api(t, 'POST', 'tools/describe_schema', { table: 'meta.builder_token' })).statusCode, 422);
+    } finally {
+      await owner.query(`update meta.developer set is_admin = false where username = $1`, [DEV]);
+    }
+  });
+
+  test('failed token attempts are throttled per address, like sign-ins', async () => {
+    const { loginMaxFailuresPerIp } = await import('../src/security.ts');
+    const good = await make(['read']);
+    for (let i = 0; i < loginMaxFailuresPerIp(); i++)
+      assert.equal((await api(`pgkb_${'x'.repeat(43)}`, 'GET', 'me', undefined, {}, IP)).statusCode, 401);
+    const r = await api(good, 'GET', 'me', undefined, {}, IP);
+    assert.equal(r.statusCode, 429, 'even a valid token, from that address');
+    assert.equal((await api(good, 'GET', 'me')).statusCode, 200, 'another address is not affected');
+    const logged = await owner.one<{ n: number; users: number }>(`select count(*)::int as n, count(username)::int as users from meta.activity_log where ip = $1 and event = 'login_failed'`, [IP]);
+    assert.equal(logged!.users, 0, 'a guessed token locks out no developer');
+    await owner.query(`delete from meta.activity_log where ip = $1`, [IP]);
+  });
+
+  test('making a token needs a recent sign-in with the developer\'s factors (step-up)', async () => {
+    const count = async (u: string) => (await owner.one<{ n: number }>('select count(*)::int as n from meta.builder_token where username = $1', [u]))!.n;
+    const form = { name: 'step', days: '1', scopes: 'read', workspace: '1' };
+    // just signed in with the password (no factor, none required): fine
+    let b = await signIn(DEV);
+    await b.get('/builder/security');
+    const n0 = await count(DEV);
+    assert.equal((await b.submit('/builder/security/tokens', { ...form, name: 'step 1' })).statusCode, 200);
+    assert.equal(await count(DEV), n0 + 1);
+    // eleven minutes later: the password again, a wrong one makes nothing and counts as a failed sign-in
+    await age(DEV, 11);
+    assert.match((await b.get('/builder/security')).body, /name="password"/);
+    await b.submit('/builder/security/tokens', { ...form, name: 'step 2' });
+    await b.get('/builder/security');
+    await b.submit('/builder/security/tokens', { ...form, name: 'step 2', password: 'wrong' });
+    assert.equal(await count(DEV), n0 + 1);
+    assert.ok((await owner.one(`select 1 as ok from meta.activity_log where username = $1 and event = 'login_failed' and detail like 'builder token step-up%'`, [DEV])));
+    await b.get('/builder/security');
+    assert.equal((await b.submit('/builder/security/tokens', { ...form, name: 'step 2', password: PW })).statusCode, 200);
+    assert.equal(await count(DEV), n0 + 2);
+    // a session from before sprint 194 (no sign-in time): the same
+    await owner.query(`update meta.session set state = state - '__AUTH' where app_id is null and username = $1`, [DEV]);
+    await b.get('/builder/security');
+    await b.submit('/builder/security/tokens', { ...form, name: 'step 3' });
+    assert.equal(await count(DEV), n0 + 2);
+
+    // a developer with an authenticator app: password and a code
+    const { addTotp, newTotpSecret, totpAt, unbase32, stepNow } = await import('../src/mfa.ts');
+    const secret = newTotpSecret();
+    await addTotp(MFA, 'phone', secret, stepNow() - 5);
+    b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: MFA, password: PW });
+    await b.get('/builder/login/2fa');
+    assert.equal((await b.submit('/builder/login/2fa', { code: totpAt(unbase32(secret), stepNow()) })).statusCode, 303);
+    await b.get('/builder/security');
+    assert.equal((await b.submit('/builder/security/tokens', { ...form, name: 'mfa 1' })).statusCode, 200, 'just signed in with both');
+    await age(MFA, 11);
+    const page = (await b.get('/builder/security')).body;
+    assert.match(page, /name="password"/);
+    assert.match(page, /name="code"/);
+    await b.submit('/builder/security/tokens', { ...form, name: 'mfa 2', password: PW });
+    assert.equal(await count(MFA), 1, 'the password alone is not enough');
+    await b.get('/builder/security');
+    assert.equal((await b.submit('/builder/security/tokens', { ...form, name: 'mfa 2', password: PW, code: totpAt(unbase32(secret), stepNow() + 1) })).statusCode, 200);
+    assert.equal(await count(MFA), 2);
+
+    // a workspace that requires single sign-on: the password doesn't count, only signing in again through it
+    b = await signIn(SSO);
+    const ssoWs = (await owner.one<{ id: number }>('insert into meta.workspace (name, sso_only) values ($1, true) returning id', [SSO_WS]))!.id;
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ssoWs, SSO]);
+    const sso = (await b.get('/builder/security')).body;
+    assert.match(sso, /action="\/builder\/security\/tokens\/sign-in-again"/);
+    assert.doesNotMatch(sso, /action="\/builder\/security\/tokens"/);
+    await b.submit('/builder/security/tokens', { ...form, name: 'sso', password: PW });
+    assert.equal(await count(SSO), 0);
+    // two-factor sign-in required and none set up yet (grace period): no token
+    await owner.query('delete from meta.workspace where id = $1', [ssoWs]);
+    await owner.query('update meta.workspace set mfa_required_since = now() where id = 1');
+    try {
+      b = await signIn(SSO);
+      assert.match((await b.get('/builder/security')).body, /Set up two-factor sign-in first/);
+      await b.submit('/builder/security/tokens', { ...form, name: 'enrol' });
+      assert.equal(await count(SSO), 0);
+    } finally {
+      await owner.query('update meta.workspace set mfa_required_since = null where id = 1');
+    }
+  });
+
+  test('a developer revokes only their own; scopes and expiry from the form are checked on the server', async () => {
+    const other = await tok.createToken({ username: MFA, workspaceId: 1, name: 'not yours', scopes: ['read'], days: 1 });
+    const b = await signIn(DEV);
+    await b.get('/builder/security');
+    assert.equal((await b.submit(`/builder/security/tokens/${other.id}/revoke`, {})).statusCode, 404);
+    assert.equal((await owner.one('select revoked_at from meta.builder_token where id = $1', [other.id]))!.revoked_at, null);
+    // revoking needs the CSRF token
+    assert.equal((await b.post(`/builder/security/tokens/${other.id}/revoke`, {})).statusCode, 403);
+    const before = (await owner.one<{ n: number }>('select count(*)::int as n from meta.builder_token where username = $1', [DEV]))!.n;
+    await b.submit('/builder/security/tokens', { name: 'bad scope', days: '1', scopes: 'admin', workspace: '1' });
+    await b.get('/builder/security');
+    await b.submit('/builder/security/tokens', { name: 'too long', days: '1000', scopes: 'read', workspace: '1' });
+    await b.get('/builder/security');
+    await b.submit('/builder/security/tokens', { name: 'not my workspace', days: '1', scopes: 'read', workspace: String(wsId) });
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.builder_token where username = $1', [DEV]))!.n, before);
+  });
+});
