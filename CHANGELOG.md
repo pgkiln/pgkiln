@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The APEX importer reads real APEX 26.2 exports** (sprint 190, NX-F1 follow-up), tested in CI on the export of the
+  sample application *Demonstration - HR* (app 77536, 46 pages; the owner's e-mail and workspace replaced):
+  `p_attributes=>wwv_flow_t_plugin_attributes(…).to_clob` (26.2's settings by name instead of `p_attribute_01` …),
+  list entries and region columns without `p_list_id` / `p_region_id`, and classic reports written as
+  `create_report_region`. Charts (kind and a SELECT from the series), cards, calendars, faceted search (checkbox,
+  range and star facets, linked to the report they filter) and list regions (with their shared lists) are now
+  mapped instead of becoming a note; *is in group* authorization schemes, Clear Session State, Invoke API and the
+  other settings read by position work again on 26.2 exports, and APEX's own `APEX_AUTHENTICATION` login processes
+  are left out. On app 77536: not mapped 39 → 9, every imported page opens.
+
 ### Security
 - **Browser security per application** (sprint 188, NX-S4; migration 168): like APEX's *Security Attributes → Browser
   Security*, **Settings → Security → Browser security** chooses, for the responses of `/a/<alias>/`: who may show the
@@ -32,6 +43,8 @@ All notable changes to this project are documented here. The format follows
 - A sign-in right after signing out could be refused with *Your session expired* in an application that keeps its
   pages offline: the service worker's background prefetch, sent without a cookie, started a new session whose
   cookie replaced the sign-in page's. A prefetch now never starts a session (sprint 188).
+- The APEX importer put every list entry of the export in the navigation menu (42 instead of 8 on app 77536), and
+  missed an interactive grid's key column on 26.2 exports.
 
 ## [0.97.0] - 2026-11-14
 

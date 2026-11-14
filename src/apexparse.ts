@@ -320,7 +320,13 @@ class Parser {
       const chain = this.chain();
       if (this.peekOp('(')) {
         const args = this.args();
-        return call(chain, args);
+        let v = call(chain, args);
+        // (sprint 190) APEX 26.2: a method on the value, wwv_flow_t_plugin_attributes(…).to_clob: the value itself
+        while (this.peekOp('.') && this.toks[this.p + 1]?.t === 'id') {
+          this.p += 2;
+          if (this.peekOp('(')) this.args();
+        }
+        return v;
       }
       return UNKNOWN;
     }
