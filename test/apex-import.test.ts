@@ -479,3 +479,23 @@ describe('sprint 187: Team Development issues for the hand work (NX-F1)', async 
     assert.match(team, /APEX import/);
   });
 });
+
+// (sprint 190) A real APEX 26.2.1 export: the sample application "Demonstration - HR" (46 pages), the owner's
+// export with the developer's e-mail, workspace and workspace id replaced. The counts are floors: mapping more
+// raises them, a parser or mapping regression lowers them.
+describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
+  const F77536 = readFileSync(join(FIX, 'f77536.sql'), 'utf8');
+  test('parses (wwv_flow_t_plugin_attributes(…).to_clob) and maps every page but the global page', () => {
+    const { doc, report } = apexToDoc(F77536);
+    assert.equal(doc.app.name, 'Demonstration - HR');
+    assert.equal(doc.pages.length, 45, '46 pages, without page 0');
+    assert.ok(report.counts.mapped >= 283, `mapped ${report.counts.mapped}`);
+    assert.ok(report.counts.mapped + report.counts.notes >= 424, `mapped with or without notes ${report.counts.mapped + report.counts.notes}`);
+    assert.ok(report.counts.not_mapped <= 39, `not mapped ${report.counts.not_mapped}`);
+  });
+  test('a method after a call is the call\'s value', () => {
+    const [c] = parseApexCalls(`begin\nwwv_flow_imp_shared.create_plugin_setting(\n p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2('a', 'b')).to_clob\n,p_x=>1\n);\nend;\n/\n`);
+    assert.deepEqual(c.args.p_attributes, [['a', 'b']]);
+    assert.equal(c.args.p_x, 1);
+  });
+});
