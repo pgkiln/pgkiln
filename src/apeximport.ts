@@ -1818,7 +1818,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const parts = series.map((x, i) => one(x.args, i)).filter((x): x is NonNullable<typeof x> => !!x);
     if (!parts.length) {
       region.row.type = 'static';
-      region.row.source = `<p>APEX chart ${escapeHtml(region.row.title)}: no series with a source, label and value.</p>`;
+      const src = str(apex.a, 'p_plug_source');
+      region.row.source = `<p>APEX chart ${escapeHtml(region.row.title)}: no series with a source, label and value.</p>${src ? `<pre>${escapeHtml(src)}</pre>` : ''}`;
       e.notMapped('no series with a source, label and value');
       continue;
     }
@@ -1835,7 +1836,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (r.row.type !== 'chart' || r.row.source) continue;
     r.row.type = 'static';
     r.row.template = 'plain';
-    r.row.source = `<p>APEX chart ${escapeHtml(r.row.title)}: no chart definition with series was found.</p>`;
+    const src = str(regionApex.get(rid)?.a ?? {}, 'p_plug_source');
+    r.row.source = `<p>APEX chart ${escapeHtml(r.row.title)}: no chart definition with series was found.</p>${src ? `<pre>${escapeHtml(src)}</pre>` : ''}`;
     regionApex.get(rid)?.e.notMapped('no chart definition with series was found');
   }
 
