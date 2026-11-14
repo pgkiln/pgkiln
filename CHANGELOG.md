@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-11-14
+
 ### Added
 - **The APEX importer rewrites common Oracle SQL** (sprint 187, NX-F1): `nvl`, `nvl2`, `decode` (two nulls equal, as
   in Oracle), `sysdate`, `systimestamp`, `from dual`, `seq.nextval` / `currval`, `v('P1_X')` and `minus` become their

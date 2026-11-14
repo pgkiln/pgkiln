@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.96.0 (November 2026): least privilege in the SQL Workshop (it runs as the workspace's developer login; the Owner connection is for administrators, with a reason and an audit), and the fixes from the code review of 0.94.0 (OAuth clients limited to REST modules by link, the map legend in the colours drawn).
+- **Current release:** 0.97.0 (November 2026): every application runs as a database role of its own (NX-S2), no default password on a public installation (NX-S3), the APEX importer rewrites common Oracle SQL and files the hand work as Team Development issues (NX-F1), a clearer message when row level security refuses the SQL Workshop.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
