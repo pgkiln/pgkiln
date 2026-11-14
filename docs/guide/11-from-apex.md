@@ -104,11 +104,35 @@ the application gets the role `app_<alias>`, with rights on that schema when it 
 `--schema`), else without rights yet: grant it what the pages need, or name a role of your own with `--db-role`.
 
 **The import report** lists every component as *mapped*, *mapped with notes* or *not mapped*,
-with its APEX type, and marks what **needs porting**: PL/SQL is carried over as it is (into the
-PL/pgSQL or SQL field of the pgkiln component) and Oracle SQL keeps its `nvl`, `decode`, `sysdate`,
-`dual`, `rownum`, `(+)` and package calls, which the report names. Port them with the table
-[below](#porting-plsql-to-plpgsql); the [Advisor](03-builder.md#advisor) then finds what doesn't
-run yet. Nothing unknown fails the import: it is in the report.
+with its APEX type, and marks what **needs porting**. PL/SQL is carried over as it is (into the
+PL/pgSQL or SQL field of the pgkiln component). Nothing unknown fails the import: it is in the report.
+
+**Oracle SQL is rewritten where the meaning stays the same** (sprint 187): in region and list of values queries,
+validations, conditions, computations, authorization schemes and Set Value actions, outside string literals,
+`q'[…]'` quotes, quoted names and comments. The report says what was rewritten for each component.
+
+| Oracle | Becomes |
+|---|---|
+| `nvl(a, b)` | `coalesce(a, b)` |
+| `nvl2(a, b, c)` | `(case when a is not null then b else c end)` |
+| `decode(e, s1, r1, …, default)` | `(case when e is not distinct from s1 then r1 … else default end)`: like DECODE, two nulls are equal |
+| `sysdate`, `systimestamp` | `localtimestamp(0)`, `current_timestamp` |
+| `select … from dual` | `select …` |
+| `orders_seq.nextval`, `.currval` | `nextval('orders_seq')`, `currval('orders_seq')` |
+| `v('P1_X')`, `nv('P1_X')` | `:P1_X` |
+| `… minus select …` | `… except select …` |
+
+What changes the meaning or the shape of a query stays as it is and is named in the report as **needs porting**:
+`rownum`, `(+)` outer joins, `connect by`, `listagg`, `instr`, `to_number` without a format, `substr` from the end,
+and calls to APEX and Oracle packages. Port them with the table [below](#porting-plsql-to-plpgsql); the
+[Advisor](03-builder.md#advisor) then finds what doesn't run yet.
+
+**Team Development issues for the hand work** (sprint 187): the import makes one open issue in the workspace's
+[Team Development](03-builder.md#team-development) for each component that was not mapped or still needs porting,
+linked to the application and its page and labelled *APEX import*, with the APEX type, what it became and the
+report's notes. The report becomes a list to work through and close. Untick *Make a Team Development issue for
+each component that needs hand work* on the import form, or pass `pgkiln import-apex --no-issues`, to leave them
+out. At most 300 are made per import; one more issue lists the rest.
 
 What maps:
 

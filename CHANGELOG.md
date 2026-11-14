@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The APEX importer rewrites common Oracle SQL** (sprint 187, NX-F1): `nvl`, `nvl2`, `decode` (two nulls equal, as
+  in Oracle), `sysdate`, `systimestamp`, `from dual`, `seq.nextval` / `currval`, `v('P1_X')` and `minus` become their
+  PostgreSQL forms in queries, validations, conditions, computations, authorization schemes and Set Value actions,
+  never inside string literals, `q'[…]'` quotes, quoted names or comments. The report says what was rewritten; what
+  changes a query's meaning (`rownum`, `(+)`, `connect by`, package calls …) is still marked *needs porting*.
+- **Team Development issues from an APEX import** (sprint 187, NX-F1): one open issue per component that was not
+  mapped or needs porting, labelled *APEX import* and linked to the application and its page. On by default in the
+  builder's import form; `pgkiln import-apex --no-issues` leaves them out.
+
 ### Security
 - **Every application runs as a database role of its own** (sprint 186, NX-S2; migration 167): like an APEX
   application's parsing schema, `db_role` is required. An empty role, or a powerful one (a superuser; `BYPASSRLS`,
