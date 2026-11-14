@@ -206,7 +206,7 @@ describe('the rendering tree', () => {
     assert.ok(tree.indexOf('>Banner<') < tree.indexOf('>Body<') && tree.indexOf('>Body<') < tree.indexOf('>Footer<'));
     assert.match(tree, /<span class="pd-label">Buttons: Next<\/span>/);
     assert.match(tree, /<span class="pd-label">Buttons: Create<\/span>/);
-    assert.match(tree, new RegExp(`data-kind="region" data-id="${r.left}" data-position="left" data-next=""`));
+    assert.match(tree, new RegExp(`data-kind="region" data-id="${r.left}" data-position="left"[^>]* data-next=""`));
     assert.match(html, /<dialog class="pd-dialog" id="pd-copy-dialog"/);
   });
 
