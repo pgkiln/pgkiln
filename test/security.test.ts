@@ -16066,17 +16066,6 @@ describe('sprint 188 browser security per application (NX-S4)', () => {
     await owner.query(`update meta.app set browser_security = $1::jsonb where alias = 'hr'`, [JSON.stringify(v)]);
     browserSecurityChanged();
   };
-describe('sprint 189 session limits, deep linking and expiring bookmarks per application (NX-S5)', () => {
-  let saved: Record<string, unknown>;
-  const COLS = 'session_idle_minutes, session_max_hours, session_timeout_page, deep_linking';
-  before(async () => { saved = (await owner.one(`select ${COLS} from meta.app where alias = 'hr'`))!; });
-  const restore = () => owner.query(`update meta.app set session_idle_minutes = $1, session_max_hours = $2, session_timeout_page = $3, deep_linking = $4 where alias = 'hr'`,
-    [saved.session_idle_minutes, saved.session_max_hours, saved.session_timeout_page, saved.deep_linking]);
-  // every test puts HR back, also when it fails: later tests (and files) depend on deep linking and the limits
-  afterEach(restore);
-  after(restore);
-  const age = (user: string, col: 'last_seen' | 'created_at', minutes: number) =>
-    owner.query(`update meta.session set ${col} = now() - make_interval(mins => $3) where app_id = $1 and username = $2`, [appId, user, minutes]);
   const devBrowser = async () => {
     const b = new FileBrowser(app);
     await b.get('/builder/login');
@@ -16177,6 +16166,27 @@ describe('sprint 189 session limits, deep linking and expiring bookmarks per app
     const page = (await dev.get(url.replace('/browser', '?tab=security'))).body;
     assert.match(page, /X-Frame-Options: DENY/);
     assert.match(page, /X-Team: sales/);
+  });
+});
+
+describe('sprint 189 session limits, deep linking and expiring bookmarks per application (NX-S5)', () => {
+  let saved: Record<string, unknown>;
+  const COLS = 'session_idle_minutes, session_max_hours, session_timeout_page, deep_linking';
+  before(async () => { saved = (await owner.one(`select ${COLS} from meta.app where alias = 'hr'`))!; });
+  const restore = () => owner.query(`update meta.app set session_idle_minutes = $1, session_max_hours = $2, session_timeout_page = $3, deep_linking = $4 where alias = 'hr'`,
+    [saved.session_idle_minutes, saved.session_max_hours, saved.session_timeout_page, saved.deep_linking]);
+  // every test puts HR back, also when it fails: later tests (and files) depend on deep linking and the limits
+  afterEach(restore);
+  after(restore);
+  const age = (user: string, col: 'last_seen' | 'created_at', minutes: number) =>
+    owner.query(`update meta.session set ${col} = now() - make_interval(mins => $3) where app_id = $1 and username = $2`, [appId, user, minutes]);
+  const devBrowser = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder');
+    return b;
+  };
 
   test('an application\'s idle time and maximum length end its sessions, never later than the instance\'s', async () => {
     await owner.query(`update meta.app set session_idle_minutes = 5, session_max_hours = null, session_timeout_page = null where alias = 'hr'`);
