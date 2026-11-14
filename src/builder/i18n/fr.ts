@@ -1492,6 +1492,8 @@ export const fr: BuilderMessages = {
   'st.warning_help': 'Les utilisateurs connectés sont avertis ce temps avant la fin de leur session et peuvent rester connectés (0 : pas d’avertissement).',
   'st.save': 'Enregistrer',
   'st.checklist': 'Liste de contrôle de sécurité',
+  'st.rail.on_this_page': 'Sur cette page',
+  'st.rail.see_also': 'Voir aussi',
   'st.ck.role': 'S’exécute sous un rôle de base de données dédié',
   'st.ck.no_role': "Aucun rôle de base de données : l'application ne s'exécute que pour ses développeurs depuis le builder",
   'st.ck.powerful': "Ce rôle a trop de droits (superutilisateur, BYPASSRLS, CREATEROLE ou propre à pgkiln) : l'application ne s'exécute pas",

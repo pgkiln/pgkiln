@@ -1492,6 +1492,8 @@ export const ja: BuilderMessages = {
   'st.warning_help': 'サインイン中のユーザーには、セッション終了のこの秒数前に警告が表示され、サインインを継続できます（0: 警告なし）。',
   'st.save': '保存',
   'st.checklist': 'セキュリティ・チェックリスト',
+  'st.rail.on_this_page': 'このページの内容',
+  'st.rail.see_also': '関連項目',
   'st.ck.role': '専用のデータベース・ロールとして実行',
   'st.ck.no_role': "データベースロールがありません: アプリケーションはビルダーから開発者に対してのみ実行されます",
   'st.ck.powerful': "このロールは権限が多すぎます (スーパーユーザー、BYPASSRLS、CREATEROLE、または pgkiln 自身のロール): アプリケーションは実行されません",

@@ -1220,9 +1220,33 @@ document.querySelectorAll('input[data-filter-rows]').forEach((el) => {
     document.querySelectorAll('[data-settings-tab]').forEach((i) => { i.value = tab; });
     const save = document.querySelector('.settings-save');
     if (save) save.hidden = tab === 'errors' || tab === 'pwa';
+    // (sprint 198) the right rail's parts of the tab: its section links, the checklist on Security and Sign-in
+    document.querySelectorAll('.settings-rail [data-tabs]').forEach((p) => { p.hidden = !p.dataset.tabs.split(' ').includes(tab); });
+    const layout = document.querySelector('.settings-layout');
+    if (layout) layout.dataset.currentTab = tab;
     history.replaceState(null, '', `?tab=${tab}`);
+    watchSections();
   };
   links.forEach((l) => l.addEventListener('click', (e) => { e.preventDefault(); show(l.dataset.tabLink); }));
+  // (sprint 198) the rail's link of the section in view is marked (aria-current="location"): the last section whose
+  // top has passed a third of the window
+  let rail = [];
+  const mark = () => {
+    const line = window.innerHeight / 3;
+    let current = rail[0];
+    for (const r of rail) if (r.target.getBoundingClientRect().top <= line) current = r;
+    if (rail.length && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) current = rail[rail.length - 1];
+    rail.forEach((r) => (r === current ? r.link.setAttribute('aria-current', 'location') : r.link.removeAttribute('aria-current')));
+  };
+  const watchSections = () => {
+    rail = [...document.querySelectorAll('.settings-rail-nav:not([hidden]) [data-rail-link]')]
+      .map((link) => ({ link, target: document.getElementById(link.getAttribute('href').slice(1)) }))
+      .filter((r) => r.target && r.target.getClientRects().length && !r.target.closest('.settings-rail'));
+    mark();
+  };
+  let queued = false;
+  window.addEventListener('scroll', () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; mark(); }); } }, { passive: true });
+  watchSections();
   const auth = document.querySelector('.settings-form select[name="authentication"]');
   auth?.addEventListener('change', () => {
     document.querySelectorAll('.auth-part').forEach((p) => { p.hidden = p.dataset.auth !== auth.value; });

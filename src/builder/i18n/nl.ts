@@ -1492,6 +1492,8 @@ export const nl: BuilderMessages = {
   'st.warning_help': 'Aangemelde gebruikers krijgen zo lang voor het einde van hun sessie een waarschuwing en kunnen aangemeld blijven (0: geen waarschuwing).',
   'st.save': 'Opslaan',
   'st.checklist': 'Beveiligingschecklist',
+  'st.rail.on_this_page': 'Op deze pagina',
+  'st.rail.see_also': 'Zie ook',
   'st.ck.role': 'Draait als een eigen databaserol',
   'st.ck.no_role': "Geen databaserol: de applicatie draait alleen voor haar ontwikkelaars vanuit de builder",
   'st.ck.powerful': "Deze rol heeft te veel rechten (superuser, BYPASSRLS, CREATEROLE of van pgkiln zelf): de applicatie draait niet",

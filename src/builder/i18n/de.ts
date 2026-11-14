@@ -1492,6 +1492,8 @@ export const de: BuilderMessages = {
   'st.warning_help': 'Angemeldete Benutzer werden so lange vor dem Sitzungsende gewarnt und können angemeldet bleiben (0: keine Warnung).',
   'st.save': 'Speichern',
   'st.checklist': 'Sicherheits-Checkliste',
+  'st.rail.on_this_page': 'Auf dieser Seite',
+  'st.rail.see_also': 'Siehe auch',
   'st.ck.role': 'Läuft als eigene Datenbankrolle',
   'st.ck.no_role': "Keine Datenbankrolle: Die Anwendung läuft nur für ihre Entwickler aus dem Builder",
   'st.ck.powerful': "Diese Rolle hat zu viele Rechte (Superuser, BYPASSRLS, CREATEROLE oder pgkilns eigene): Die Anwendung läuft nicht",

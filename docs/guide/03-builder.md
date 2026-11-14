@@ -874,7 +874,8 @@ to start: *Use the full form* (`/builder/create/full`), *From a file*, *From pas
 page with every choice. Links at the top start from a file, pasted data, a blueprint or the App Gallery instead.
 (UX-7) The name comes first, then the data and its pages, features, appearance and sign-in; **Create application**
 and Cancel stay in a footer at the bottom of the window, next to a one-line summary (*12 pages on hr · App users
-(login page) · English*) that follows your choices. The sections:
+(login page) · English*) that follows your choices. (sprint 198) From a window of 1280 px
+the sections are in two columns. The sections:
 
 | Section | Field | Meaning |
 |---|---|---|
@@ -1833,6 +1834,14 @@ on Definition (`?tab=…` opens another). *Save settings* saves the first five t
 you were on. The Security tab shows only the fields of the chosen authentication type (HTTP header, database
 accounts or custom).
 
+(sprint 198) From a window of 1280 px the form uses its width, with a **right rail** that stays in view while the form
+scrolls (APEX's jump links in Security Attributes): *On this page*, the tab's sections as links (plain anchors, also
+without JavaScript; the section you are reading is marked), the **Security checklist** on the Security and Sign-in
+tabs, and *See also*, related sections on other tabs (Security → Two-factor sign-in, Session management, Expire
+bookmarks). The Sign-in tab puts its sections in two columns (methods, sign-in page and staying signed in; two-factor
+sign-in), and the sign-in methods' check boxes side by side. Below 1280 px Settings is one column as before, with the
+checklist under the form of the Security tab.
+
 - **Application**: name, alias, home page, and (sprint 88) the **version** (APEX: Version, e.g. *Release 1.0*): shown
   at the bottom of the application's pages, next to *Back to top*. New applications start at *Release 1.0*; empty: no
   version in the footer.
@@ -1853,7 +1862,7 @@ accounts or custom).
   **Theme Roller** opens the [style variants](14-globalization.md#style-variants-theme-roller): several
   saved styles (colours, font, font size, corners), the default one, and whether users may choose.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.
-- **Security checklist**: whether the app has its own role, debug mode, debug messages, and pages without
+- **Security checklist** (in the right rail from 1280 px, under the form below): whether the app has its own role, debug mode, debug messages, and pages without
   checksum protection or without authentication. (sprint 186) The **Database role (parsing schema)** is required:
   an empty role, or a superuser, a role with `BYPASSRLS` or one of pgkiln's own, is refused when you save. An
   application without one (made before 0.97) shows a red line here and the **Create app_<alias>** form: the role

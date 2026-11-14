@@ -1492,6 +1492,8 @@ export const pt: BuilderMessages = {
   'st.warning_help': 'Usuários conectados são avisados esse tempo antes do fim da sessão e podem continuar conectados (0: sem aviso).',
   'st.save': 'Salvar',
   'st.checklist': 'Lista de verificação de segurança',
+  'st.rail.on_this_page': 'Nesta página',
+  'st.rail.see_also': 'Veja também',
   'st.ck.role': 'Executa com um papel de banco de dados dedicado',
   'st.ck.no_role': "Sem função de banco de dados: a aplicação só é executada para os seus desenvolvedores a partir do construtor",
   'st.ck.powerful': "Esta função tem direitos demais (superusuário, BYPASSRLS, CREATEROLE ou do próprio pgkiln): a aplicação não é executada",

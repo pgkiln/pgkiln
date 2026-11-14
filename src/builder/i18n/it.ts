@@ -1492,6 +1492,8 @@ export const it: BuilderMessages = {
   'st.warning_help': 'Gli utenti connessi vengono avvisati con questo anticipo prima della fine della sessione e possono restare connessi (0: nessun avviso).',
   'st.save': 'Salva',
   'st.checklist': 'Checklist di sicurezza',
+  'st.rail.on_this_page': 'In questa pagina',
+  'st.rail.see_also': 'Vedi anche',
   'st.ck.role': 'Eseguita con un ruolo del database dedicato',
   'st.ck.no_role': "Nessun ruolo di database: l'applicazione viene eseguita solo per i suoi sviluppatori dal builder",
   'st.ck.powerful': "Questo ruolo ha troppi diritti (superutente, BYPASSRLS, CREATEROLE o di pgkiln): l'applicazione non viene eseguita",

@@ -7,7 +7,7 @@ import { appIssues } from './team.ts';
 import { pagesReport, pagesReportRoutes } from './pages-report.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
-import { html, raw } from '../html.ts';
+import { html, raw, type Raw } from '../html.ts';
 import { icon, LUCIDE_VERSION, searchIcons } from '../icons.ts';
 import { appStyles, BASE_STYLES, baseStyleOf } from '../runtime/styles.ts';
 import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
@@ -765,8 +765,31 @@ export async function builderRoutes(app: FastifyInstance) {
     const panel = (k: string) => raw(`<section class="settings-panel" data-tab="${k}"${k === tab ? '' : ' hidden'}>`);
     const end = raw('</section>');
     const authPart = (k: string) => raw(`<div class="auth-part" data-auth="${k}"${a.authentication === k ? '' : ' hidden'}>`);
+    // (sprint 198, NX-U3) the right rail from 1280 px: each tab's sections as real anchors (APEX's jump links), related
+    // sections on other tabs, and the security checklist on Security and Sign-in; below 1280 px only the checklist, under the form
+    type Link = [href: string, label: string];
+    const railLinks: Record<string, Link[]> = {
+      definition: [['#st-definition', tx('st.tab.definition')], ['#st-danger', tx('st.danger_zone')]],
+      security: [['#st-authentication', tx('st.authentication')], ...(roleState ? [['#st-make-role', tx('st.make_role')] as Link] : []),
+        ['#browser-security-region', tx('bs.title')], ['#st-checklist', tx('st.checklist')]],
+      signin: [['#st-methods', tx('st.methods')], ['#st-signin-page', tx('st.signin_page')], ['#st-staying', tx('st.staying')], ['#two-factor', tx('st.two_factor')], ['#st-checklist', tx('st.checklist')]],
+      ui: [['#st-theme', tx('st.theme')], ['#notifications', tx('nfy.heading')]],
+      globalization: [['#st-globalization', tx('st.tab.globalization')], ['#st-time-zone', tx('glob.time_zone')]],
+      errors: [['#st-errors', tx('st.error_fn')], ['#session-management', tx('ss.title')], ['#expire-bookmarks', tx('ss.bookmarks')]],
+      pwa: [['#st-pwa', tx('st.tab.pwa')]],
+    };
+    const railRelated: Record<string, Link[]> = {
+      security: [['?tab=signin#two-factor', tx('st.two_factor')], ['?tab=errors#session-management', tx('ss.title')], ['?tab=errors#expire-bookmarks', tx('ss.bookmarks')]],
+      signin: [['?tab=security#st-authentication', tx('st.authentication')], ['?tab=errors#session-management', tx('ss.title')]],
+      pwa: [['?tab=ui#notifications', tx('nfy.heading')]],
+    };
+    const railPart = (tabs: string[], cls: string, body: Raw) => html`<div class="${cls}" data-tabs="${tabs.join(' ')}"${tabs.includes(tab) ? '' : raw(' hidden')}>${body}</div>`;
+    const railNav = (title: string, links: Record<string, Link[]>, attr: Raw | '' = '') => SETTINGS_TABS.filter(([k]) => links[k]).map(([k]) => railPart([k], 'settings-rail-nav',
+      html`<nav aria-label="${title}"><h2 class="settings-rail-title">${title}</h2>
+        <ul>${links[k].map(([href, label]) => html`<li><a href="${href}"${attr}>${label}</a></li>`)}</ul></nav>`));
     const main = html`${appHeader(a, 'settings', s)}
       <nav class="settings-tabs" aria-label="${tx('st.settings')}">${SETTINGS_TABS.map(([k, label]) => html`<a href="?tab=${k}" data-tab-link="${k}"${k === tab ? raw(' aria-current="page"') : ''}>${tx.dyn(`st.tab.${k}`, label)}</a>`)}</nav>
+      <div class="settings-layout" data-current-tab="${tab}">
       <div class="settings-body">
         <form method="post" action="${BASE}/apps/${a.id}/settings" class="settings-form">${csrf(s)}<input type="hidden" name="tab" value="${tab}" data-settings-tab>
             ${panel('definition')}${region(tx('st.tab.definition'), html`
@@ -777,7 +800,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('home_page', tx('st.home_page'), a.home_page, { type: 'number' })}
               ${select('app_type', tx('st.app_type'), a.app_type ?? 'standard', APP_TYPES.map((t): [string, string] => [t, tx.dyn(`st.type.${t}`, APP_TYPE_LABELS[t])]),
                 tx('st.app_type_help'))}
-            </div>`)}${end}
+            </div>`, '', 'st-definition')}${end}
             ${panel('security')}${region(tx('st.authentication'), html`
             <div class="form-grid">
               ${select('authentication', tx('st.authentication'), a.authentication, (['app_users', 'header', 'database', 'custom', 'none'] as const).map((k): [string, string] => [k, tx(`st.auth.${k}`)]))}
@@ -812,29 +835,30 @@ export async function builderRoutes(app: FastifyInstance) {
             <div class="field" data-wide><label class="label" for="f_custom_auth_post_code">${tx('st.custom_post')}</label>
               <textarea id="f_custom_auth_post_code" name="custom_auth_post_code" class="code" rows="4" spellcheck="false" data-code="plpgsql">${a.custom_auth_post_code ?? ''}</textarea>
               <small class="help">${tx('st.custom_post_help')}</small></div>
-            </div>`)}${end}
-            ${panel('signin')}${region(tx('st.signin'), html`
-            <h3>${tx('st.methods')}</h3>
-            <div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> ${tx('st.local')}</label></div>
+            </div>`, '', 'st-authentication')}${end}
+            ${panel('signin')}${region(tx('st.signin'), html`<div class="st-cols"><div class="st-col">
+            <h3 id="st-methods">${tx('st.methods')}</h3>
+            <div class="st-checks"><div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> ${tx('st.local')}</label></div>
             ${directories.length
               ? html`${directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> ${tx('st.ldap', { name: d.display_name })}${d.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)}
                 <small class="help">${tx('st.ldap_help')}</small>`
               : html`<p class="muted small">${tx.rich('st.no_ldap', { add: html`<a href="${BASE}/users/directories">${tx('st.add_one')}</a>` })}</p>`}
             ${providers.length
               ? providers.map((pr) => html`<div class="field"><label class="check"><input type="checkbox" name="sso_providers" value="${pr.name}"${a.sso_providers.includes(pr.name) ? raw(' checked') : ''}> ${tx('st.sso', { name: pr.display_name })}${pr.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)
-              : html`<p class="muted small">${tx.rich('st.no_sso', { add: html`<a href="${BASE}/users/providers">${tx('st.add_one')}</a>` })}</p>`}
-            <h3>${tx('st.signin_page')}</h3>
+              : html`<p class="muted small">${tx.rich('st.no_sso', { add: html`<a href="${BASE}/users/providers">${tx('st.add_one')}</a>` })}</p>`}</div>
+            <h3 id="st-signin-page">${tx('st.signin_page')}</h3>
             ${signinFields.page}
-            <h3>${tx('st.staying')}</h3>
+            <h3 id="st-staying">${tx('st.staying')}</h3>
             <div class="form-grid">
               ${input('remember_me_days', tx('st.remember'), a.remember_me_days ?? '', { type: 'number', placeholder: tx('st.remember_ph'), help: tx('st.remember_help') })}
               ${input('session_group', tx('st.session_group'), a.session_group ?? '', { placeholder: tx('st.session_group_ph'), help: tx('st.session_group_help') })}
             </div>
+            </div><div class="st-col">
             <h3 id="two-factor">${tx('st.two_factor')}</h3>
             ${signinFields.twoFactor}
-            `)}${end}
+            </div></div>`, '', 'st-signin')}${end}
             ${panel('ui')}${region(tx('st.tab.ui'), html`
-            <h3>${tx('st.theme')}</h3>
+            <h3 id="st-theme">${tx('st.theme')}</h3>
             <div class="form-grid">
               ${select('base', tx('st.base'), baseStyleOf(a.theme), (['iris', 'lavender', 'standard'] as const).map((k): [string, string] => [k, tx(`st.base.${k}`)]), tx('st.base_help'))}
               ${input('accent', tx('st.accent'), a.theme?.accent ?? BASE_STYLES[baseStyleOf(a.theme)].accent, { type: 'color' })}
@@ -861,7 +885,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('date_format', tx('st.date_format'), a.date_format, { placeholder: tx('st.date_format_ph'), help: tx('st.date_format_help') })}
               ${input('timestamp_format', tx('st.ts_format'), a.timestamp_format, { placeholder: tx('st.ts_format_ph') })}
             </div>
-            ${await timeZoneSettings(a)}`)}${end}
+            <div id="st-time-zone">${await timeZoneSettings(a)}</div>`, '', 'st-globalization')}${end}
             <div class="buttons settings-save"${['errors', 'pwa'].includes(tab) ? raw(' hidden') : ''}><button class="btn btn-hot">${tx('st.save_settings')}</button></div>
           </form>
           ${panel('definition')}<section class="danger-zone danger-box" aria-labelledby="st-danger"><h2 id="st-danger">${tx('st.danger_zone')}</h2>
@@ -890,12 +914,12 @@ export async function builderRoutes(app: FastifyInstance) {
           </div>
           <div class="field"><label class="check"><input type="checkbox" name="deep_linking" value="true"${a.deep_linking !== false ? raw(' checked') : ''}> ${tx('ss.deep_linking')}</label>
             <small class="help">${tx('ss.deep_linking_help')}</small></div>
-          <div class="buttons"><button class="btn">${tx('st.save')}</button></div></form>`)}${end}
+          <div class="buttons"><button class="btn">${tx('st.save')}</button></div></form>`, '', 'st-errors')}${end}
         ${panel('errors')}${region(tx('ss.bookmarks'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/expire-bookmarks" id="expire-bookmarks">${csrf(s)}
           <p class="u-mt0">${tx('ss.bookmarks_text')}</p>
           <p class="muted">${a.bookmarks_expired_at ? tx('ss.bookmarks_last', { when: new Date(a.bookmarks_expired_at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' }) : tx('ss.bookmarks_never')}</p>
           <div class="buttons"><button class="btn btn-danger" data-confirm="${tx('ss.bookmarks_confirm')}">${tx('ss.bookmarks_button')}</button></div></form>`)}${end}
-        ${panel('pwa')}${region(tx('st.tab.pwa'), await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}${end}
+        ${panel('pwa')}${region(tx('st.tab.pwa'), await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s), '', 'st-pwa')}${end}
         ${roleState ? html`${panel('security')}${region(tx('st.make_role'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/role" id="make-role">${csrf(s)}
           <p class="u-mt0"><b class="text-danger">${tx(roleState === 'missing' ? 'st.ck.no_role' : 'st.ck.powerful')}</b></p>
           <p>${tx.rich('st.make_role_text', { role: html`<code>${appRoleName(a.alias)}</code>` })}</p>
@@ -903,9 +927,11 @@ export async function builderRoutes(app: FastifyInstance) {
             ${select('schema', tx('st.make_role_schema'), roleSchemas.includes(a.alias.replace(/-/g, '_')) ? a.alias.replace(/-/g, '_') : '',
               [['', tx('st.make_role_none')], ...roleSchemas.map((n): [string, string] => [n, n])], tx('st.make_role_schema_help'))}
           </div>
-          <div class="buttons"><button class="btn btn-hot">${tx('st.make_role_button', { role: appRoleName(a.alias) })}</button></div></form>`)}${end}` : ''}
+          <div class="buttons"><button class="btn btn-hot">${tx('st.make_role_button', { role: appRoleName(a.alias) })}</button></div></form>`, '', 'st-make-role')}${end}` : ''}
         ${panel('security')}${browserSecuritySection(a, s, tx)}${end}
-        ${panel('security')}${region(tx('st.checklist'), html`<ul class="checklist">
+      </div>
+      <div class="settings-rail">${railNav(tx('st.rail.on_this_page'), railLinks, raw(' data-rail-link'))}
+        ${railPart(['security', 'signin'], 'settings-rail-checklist', region(tx('st.checklist'), html`<ul class="checklist">
           ${roleState
             ? html`<li class="ck-error">✗ ${tx('st.ck.role')} ${roleState === 'missing' ? html`<b>${tx('st.ck.no_role')}</b>` : html`(<code>${a.db_role}</code>) <b>${tx('st.ck.powerful')}</b>`}</li>`
             : html`<li>✓ ${tx('st.ck.role')} (<code>${a.db_role}</code>)</li>`}
@@ -919,7 +945,9 @@ export async function builderRoutes(app: FastifyInstance) {
           <li>${tx('st.ck.unprotected', { n: (await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n })}</li>
           ${browserSecurityChecklist(a, tx)}
           <li>${tx('st.ck.public_pages', { n: (await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n })}</li>
-        </ul>`)}${end}
+        </ul>`, '', 'st-checklist'))}
+        ${railNav(tx('st.rail.see_also'), railRelated)}
+      </div>
       </div>`;
     return send(reply, s, shell(s, tx('st.title', { app: a.name }), [[tx('rte.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('rte.settings')]], main));
   });

@@ -415,6 +415,8 @@ src/
                            language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
                            (sprint 183, CD-2: the Pages report's Conditions column, conditions.ts serverCondition/conditionWords)
+                           (sprint 198, NX-U3) Settings' right rail (.settings-layout / .settings-rail: railLinks per tab, railRelated,
+                           the checklist with data-tabs="security signin"; builder.js shows the tab's parts and marks the section in view)
     pages-report.ts        (sprint 193, NX-F3) the app home's Pages report: Alias, Type, Updated, Updated by (meta.page_change),
                            filters with counts (filterPages, a facet without its own filter), sortPages, the column chooser
                            (PAGE_COLUMNS, meta.developer.page_columns, POST /builder/page-columns)
@@ -785,6 +787,8 @@ test/
                            as the HR example's hr.policy_embedding
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/settings-layout.test.ts (sprint 198, NX-U3) Settings' right rail: Sign-in in two screens and the checklist in view at
+                           1456 × 836, real anchors (also without JavaScript), one column below 1280 px, 360/1366 px, axe
   e2e/builder-i18n.test.ts (sprint 121) Deutsch on the sign-in page, the status bar's language menu, German screens at 390 px, CSP
   e2e/gallery.test.ts      (sprint 120) the gallery's sample apps: every page at 4 widths, CSP, axe; dynamic actions; the four tabs at 390 px
   e2e/admin-mail-network.test.ts (sprint 118) Mail queue, Network access and a workspace's mail service at 390 px without JavaScript
