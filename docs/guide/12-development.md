@@ -75,6 +75,8 @@ src/
                            PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests;
                            (sprint 185, 166) every workspace's developer login: devDbForWorkspace / devDbForApp never return the owner
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits
+  browser-security.ts      (sprint 188, NX-S4) browser security per application (meta.app.browser_security): check() for the form,
+                           settingsOf() what may be sent, headersFor() frame-ancestors and headers, browserSecurityOf() cached per alias
   gallery-remote.ts        (sprint 181, migration 164) the App Gallery's remote catalogues: parseCatalogue (blueprints only, checked
                            and cut to size), refreshSource (guarded webRequest), remoteBlueprint (fetched on Install)
   ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
@@ -499,6 +501,7 @@ src/
     querybuilder.ts        SQL Workshop → Query Builder: catalog, joins by foreign key or drawn, functions/group by, buildQuery() from the URL; the canvas is in builder.js
     users.ts               user directory and identity providers
     builder-sso.ts         (sprint 129) a provider's or directory's Builder sign-in region, Security's identities, unlink, break-glass
+    browser-security-settings.ts (sprint 188, NX-S4) Settings → Security → Browser security: the form, POST …/settings/browser, the checklist lines
     datapump.ts            (sprint 103, DA-16) SQL Workshop → Schema Export / Import (/builder/sql/data-pump, administrators only):
                            jobs, export form, upload (streamed to PGKILN_DUMP_DIR), archive preview and import options, job log, download
     db-users.ts            (sprint 99, DA-13) Administration → Database Users (/builder/db-users, administrators only): PostgreSQL

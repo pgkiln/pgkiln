@@ -16058,3 +16058,113 @@ describe('sprint 187 issues from an APEX import (NX-F1)', () => {
     }
   });
 });
+
+describe('sprint 188 browser security per application (NX-S4)', () => {
+  const bsUrl = async () => `/builder/apps/${(await owner.one(`select id from meta.app where alias = 'hr'`))!.id}/settings/browser`;
+  const setStored = async (v: unknown) => {
+    const { browserSecurityChanged } = await import('../src/browser-security.ts');
+    await owner.query(`update meta.app set browser_security = $1::jsonb where alias = 'hr'`, [JSON.stringify(v)]);
+    browserSecurityChanged();
+  };
+  const devBrowser = async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await b.get('/builder');
+    return b;
+  };
+  let original: unknown = {};
+  before(async () => { original = (await owner.one(`select browser_security from meta.app where alias = 'hr'`))!.browser_security; });
+  after(() => setStored(original));
+
+  test('the check refuses headers pgkiln sets, line breaks and origins that are not plain https origins', async () => {
+    const { check, settingsOf } = await import('../src/browser-security.ts');
+    for (const headers of ['Content-Security-Policy: default-src *', 'set-cookie: a=b', 'X-Frame-Options: ALLOWALL', 'Cache-Control: public', 'Access-Control-Allow-Origin: *', 'X-Robots-Tag: all', 'Bad Name: x', 'X-A: 1\nX-A: 2'])
+      assert.ok(check({ headers }).problems.length, headers);
+    assert.ok(check({ headers: [{ name: 'X-Team', value: 'a\r\nSet-Cookie: x=y' }] }).problems.length, 'CRLF in a value');
+    for (const o of ['http://portal.example.com', 'https://portal.example.com/path', 'https://*.example.com', 'https://user@portal.example.com', "https://x.example.com 'unsafe-inline'", 'javascript:alert(1)', '*'])
+      assert.ok(check({ embed: 'origins', embed_origins: o }).problems.length, o);
+    assert.ok(check({ embed: 'origins', embed_origins: '' }).problems.length, 'origins without any origin');
+    assert.ok(check({ embed: 'allowall' }).problems.length);
+    assert.ok(check({ referrer: 'unsafe-url' }).problems.length, 'unsafe-url is not offered');
+    const ok = check({ embed: 'origins', embed_origins: 'https://Portal.example.com/\nhttps://intra.example.org:8443', referrer: 'no-referrer', robots: 'index', headers: 'X-Team: sales' });
+    assert.deepEqual(ok.problems, []);
+    assert.deepEqual(ok.settings.embed_origins, ['https://portal.example.com', 'https://intra.example.org:8443']);
+    // a stored value the check would refuse (an import, a hand edit) is left out, never sent
+    const s = settingsOf({ embed: 'origins', embed_origins: ["https://a.example.com 'unsafe-inline'"], referrer: 'unsafe-url', headers: [{ name: 'Set-Cookie', value: 'x=y' }, { name: 'X-Ok', value: 'a\nb' }] });
+    assert.deepEqual(s, { embed: 'same_origin', embed_origins: [], referrer: 'same-origin', robots: 'auto', headers: [] });
+  });
+
+  test('the application\'s pages send its choices; the builder keeps the defaults', async () => {
+    await setStored({ embed: 'deny', referrer: 'no-referrer', robots: 'auto', headers: [{ name: 'X-Team', value: 'sales' }] });
+    let res = await (await as('demo')).get('/a/hr/1');
+    assert.equal(res.headers['x-frame-options'], 'DENY');
+    assert.match(String(res.headers['content-security-policy']), /frame-ancestors 'none'/);
+    assert.equal(res.headers['referrer-policy'], 'no-referrer');
+    assert.equal(res.headers['x-team'], 'sales');
+    assert.equal(res.headers['x-robots-tag'], 'noindex, nofollow', 'auto: HR needs a sign-in');
+    assert.equal(res.headers['cache-control'], 'no-store', 'pages are never cached');
+    const builder = await new FileBrowser(app).get('/builder/login');
+    assert.equal(builder.headers['x-frame-options'], 'SAMEORIGIN');
+    assert.equal(builder.headers['referrer-policy'], 'same-origin');
+    assert.equal(builder.headers['x-team'], undefined);
+    assert.match(String(builder.headers['content-security-policy']), /frame-ancestors 'self'/);
+
+    await setStored({ embed: 'origins', embed_origins: ['https://portal.example.com'], robots: 'index' });
+    res = await (await as('demo')).get('/a/hr/1');
+    assert.equal(res.headers['x-frame-options'], undefined, 'X-Frame-Options cannot list origins');
+    assert.match(String(res.headers['content-security-policy']), /frame-ancestors 'self' https:\/\/portal\.example\.com;/);
+    assert.equal(res.headers['x-robots-tag'], undefined);
+  });
+
+  test('stored values the server must not send are left out (an import or a hand edit)', async () => {
+    await setStored({ embed: 'origins', embed_origins: ["https://a.example.com; script-src *"], referrer: 'unsafe-url',
+      headers: [{ name: 'Content-Security-Policy', value: 'default-src *' }, { name: 'Set-Cookie', value: 'pgkiln_sid=x' }, { name: 'X-Inject', value: 'a\r\nSet-Cookie: x=y' }] });
+    const res = await (await as('demo')).get('/a/hr/1');
+    assert.equal(res.headers['x-frame-options'], 'SAMEORIGIN');
+    assert.match(String(res.headers['content-security-policy']), /script-src 'self'/);
+    assert.doesNotMatch(String(res.headers['content-security-policy']), /a\.example\.com|default-src \*/);
+    assert.equal(res.headers['referrer-policy'], 'same-origin');
+    assert.equal(res.headers['x-inject'], undefined);
+    assert.ok(![res.headers['set-cookie']].flat().some((c) => /pgkiln_sid=x|^x=y/.test(String(c))));
+    // the Advisor says so
+    const { advise } = await import('../src/builder/advisor.ts');
+    const hrId = (await owner.one(`select id from meta.app where alias = 'hr'`))!.id;
+    const { findings } = await advise(hrId);
+    assert.ok(findings.some((f: { field?: string }) => f.field === 'browser security'));
+  });
+
+  test('a background prefetch without a session starts none (it would replace the sign-in page\'s cookie)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/a/hr/1', headers: { 'x-pgkiln-prefetch': '1' } });
+    assert.equal(res.statusCode, 401);
+    assert.equal(res.headers['set-cookie'], undefined, 'no session cookie');
+    // with a session it is served as before
+    const king = await as('king');
+    const ok = await king.request('GET', '/a/hr/1');
+    assert.equal(ok.statusCode, 200);
+  });
+
+  test('the builder form refuses what the server would not send, and needs a developer and the CSRF token', async () => {
+    await setStored({});
+    const url = await bsUrl();
+    const dev = await devBrowser();
+    await dev.get(url.replace('/browser', '?tab=security'));
+    const stored = async () => (await owner.one(`select browser_security from meta.app where alias = 'hr'`))!.browser_security;
+    await dev.post(url, { __csrf: dev.lastCsrf, embed: 'same_origin', referrer: 'same-origin', robots: 'auto', headers: 'Set-Cookie: pgkiln_sid=x', embed_origins: '' });
+    assert.deepEqual(await stored(), {}, 'a reserved header is refused');
+    await dev.post(url, { __csrf: dev.lastCsrf, embed: 'origins', referrer: 'same-origin', robots: 'auto', headers: '', embed_origins: "https://a.example.com 'unsafe-inline'" });
+    assert.deepEqual(await stored(), {}, 'a CSP source that is not an origin is refused');
+    await dev.post(url, { embed: 'deny', referrer: 'same-origin', robots: 'auto', headers: '', embed_origins: '' });
+    assert.deepEqual(await stored(), {}, 'without the CSRF token');
+    const anon = new FileBrowser(app);
+    await anon.post(url, { embed: 'deny', referrer: 'same-origin', robots: 'auto', headers: '', embed_origins: '' });
+    assert.deepEqual(await stored(), {}, 'not signed in');
+    await dev.get(url.replace('/browser', '?tab=security'));
+    await dev.post(url, { __csrf: dev.lastCsrf, embed: 'deny', referrer: 'strict-origin', robots: 'noindex', headers: 'X-Team: sales', embed_origins: '' });
+    assert.deepEqual(await stored(), { embed: 'deny', embed_origins: [], referrer: 'strict-origin', robots: 'noindex', headers: [{ name: 'X-Team', value: 'sales' }] });
+    // the checklist shows the headers the pages send, escaped
+    const page = (await dev.get(url.replace('/browser', '?tab=security'))).body;
+    assert.match(page, /X-Frame-Options: DENY/);
+    assert.match(page, /X-Team: sales/);
+  });
+});

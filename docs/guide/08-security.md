@@ -825,6 +825,38 @@ Checksums prevent tampering but aren't a substitute for RLS. A user who legitima
 link for record 7839 can open it. Whether they may see record 7839 at all is the database's
 decision.
 
+## Browser security
+
+(sprint 188) Like APEX's *Security Attributes → Browser Security*, **Settings → Security → Browser security** chooses
+what browsers may do with an application's pages. It applies to every response under `/a/<alias>/`; the builder and
+the rest of the server keep pgkiln's defaults. The values are stored in `meta.app.browser_security` (migration 168)
+and travel with the application's export.
+
+| Setting | Choices | Sent as |
+|---|---|---|
+| **Embed in frames** | *Only pages of this server* (default), *Never*, *This server and the origins below* | CSP `frame-ancestors 'self'` + `X-Frame-Options: SAMEORIGIN`; `'none'` + `DENY`; `'self' https://portal.example.com …` without `X-Frame-Options` (it can't list origins) |
+| **Origins that may embed the application** | up to 10 https origins (`https://host` or `https://host:port`, no path, no wildcard) | in `frame-ancestors` |
+| **Referrer policy** | `same-origin` (default), `strict-origin-when-cross-origin`, `strict-origin`, `no-referrer` | `Referrer-Policy` |
+| **Search engines** | *Automatic* (default: not indexed when the application needs a sign-in), *May index*, *Never index* | `X-Robots-Tag: noindex, nofollow` |
+| **Extra response headers** | up to 20 lines `Name: value` | as given |
+
+What can't be weakened per application: pages always carry pgkiln's Content-Security-Policy (only `frame-ancestors`
+changes), `nosniff`, the `Permissions-Policy` and `Cache-Control: no-store` (a page holds the session's CSRF token).
+Extra headers may not be one pgkiln sets for security or one the protocol needs (`Content-Security-Policy`,
+`X-Frame-Options`, `Referrer-Policy`, `X-Robots-Tag`, `Set-Cookie`, `Cache-Control`, `Strict-Transport-Security`,
+`Access-Control-*`, `Cross-Origin-*`, `Content-Type`, `Location` …), and a value has no line breaks. `unsafe-url`
+isn't offered as a referrer policy, since it would send the page's address, with its checksummed item values, to
+other sites.
+
+The form refuses such values. A value that reaches the database another way (an import, a hand edit) is left out
+when the pages are sent, with the default in its place, and the **Advisor** warns about it. The **Settings →
+Security checklist** lists the headers the application's pages send.
+
+Embedding and sign-in: session cookies are `SameSite=Lax`, which browsers send to a frame only when the portal and
+pgkiln are the same *site* (e.g. `portal.example.com` framing `apps.example.com`). A portal on another site can embed
+public pages; pages that need a sign-in show the sign-in page there and the session never reaches the frame. Single
+sign-on providers usually refuse to be framed, too.
+
 ## Checklist for a new application
 
 1. A dedicated `db_role` with minimal grants (required since sprint 186; never a superuser or a role with `BYPASSRLS`).
@@ -834,4 +866,5 @@ decision.
 5. Business rules in constraints, triggers or functions, not only in validations.
 6. Debug mode and debug messages off.
 7. [Two-factor sign-in](#two-factor-sign-in) required at least for administrators (the Advisor checks it).
-8. Review the app's **Settings → Security checklist** and **Activity** monitor now and then.
+8. [Browser security](#browser-security): embedding only where a portal needs it.
+9. Review the app's **Settings → Security checklist** and **Activity** monitor now and then.

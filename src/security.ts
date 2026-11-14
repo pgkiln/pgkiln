@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { browserSecurityOf, headersFor } from './browser-security.ts';
 import type { FastifyInstance } from 'fastify';
 import { instanceSetting } from './instance.ts';
 import { owner } from './db.ts';
@@ -93,6 +94,17 @@ export function securityHeaders(app: FastifyInstance) {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('Referrer-Policy', 'same-origin');
     reply.header('X-Frame-Options', 'SAMEORIGIN');
+    // (sprint 188, NX-S4) an application's own browser security (frame embedding, referrer policy, search engines,
+    // extra headers) for its responses; the builder and everything else keep the defaults above
+    let frameAncestors = "'self'";
+    const alias = /^\/a\/([a-z0-9][a-z0-9_-]{0,99})(?:[/?#]|$)/.exec(req.url)?.[1];
+    const own = alias ? await browserSecurityOf(alias) : null;
+    if (own) {
+      const h = headersFor(own.settings, own.signIn);
+      frameAncestors = h.frameAncestors;
+      if (!('X-Frame-Options' in h.headers)) reply.removeHeader('X-Frame-Options');
+      for (const [name, value] of Object.entries(h.headers)) reply.header(name, value);
+    }
     // the app's own pages may use the camera (photos, scanning) and the position (location items); nothing else may
     reply.header('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
     const type = String(reply.getHeader('content-type') ?? '');
@@ -106,7 +118,7 @@ export function securityHeaders(app: FastifyInstance) {
         `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:${MAP_TILES ? ` ${MAP_TILES}` : ''}${req.imgSrc?.size ? ` ${[...req.imgSrc].join(' ')}` : ''}; ` +
           // (078) a page with URL regions may frame exactly their origins (literal https origins, see url-region.ts)
           (req.frameSrc?.size ? `frame-src 'self' ${[...req.frameSrc].join(' ')}; ` : '') +
-          "frame-ancestors 'self'; form-action 'self'; base-uri 'none'; object-src 'none'",
+          `frame-ancestors ${frameAncestors}; form-action 'self'; base-uri 'none'; object-src 'none'`,
       );
       // Pages contain user data: never cache them (e.g. back button after sign-out).
       reply.header('Cache-Control', 'no-store');

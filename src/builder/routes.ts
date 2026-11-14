@@ -23,6 +23,7 @@ import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './works
 import { AppRoleError, appRoleName, importRole, makeAppRole, reservedSchema, roleProblem } from '../app-role.ts';
 import { workspacesChanged } from '../workspace-db.ts';
 import { securityRoutes } from './security.ts';
+import { browserSecurityChecklist, browserSecurityRoutes, browserSecuritySection } from './browser-security-settings.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
 import { notificationSettings, saveNotificationSettings } from './notification-settings.ts';
@@ -588,6 +589,7 @@ export async function builderRoutes(app: FastifyInstance) {
   await workspaceRoutes(app);
   await instanceRoutes(app);
   await securityRoutes(app);
+  await browserSecurityRoutes(app);
   await builderSsoRoutes(app);
   await wizardRoutes(app);
   // (137) Create page: the grid of page types, features and copy (create-page.ts, features.ts)
@@ -963,6 +965,7 @@ export async function builderRoutes(app: FastifyInstance) {
               [['', tx('st.make_role_none')], ...roleSchemas.map((n): [string, string] => [n, n])], tx('st.make_role_schema_help'))}
           </div>
           <div class="buttons"><button class="btn btn-hot">${tx('st.make_role_button', { role: appRoleName(a.alias) })}</button></div></form>`)}${end}` : ''}
+        ${panel('security')}${browserSecuritySection(a, s, tx)}${end}
         ${panel('security')}${region(tx('st.checklist'), html`<ul class="checklist">
           ${roleState
             ? html`<li class="ck-error">✗ ${tx('st.ck.role')} ${roleState === 'missing' ? html`<b>${tx('st.ck.no_role')}</b>` : html`(<code>${a.db_role}</code>) <b>${tx('st.ck.powerful')}</b>`}</li>`
@@ -975,6 +978,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li>${a.debug ? `✗ ${tx('st.ck.debug_on')}` : `✓ ${tx('st.ck.debug_off')}`}</li>
           <li>${a.debug_level ? `✗ ${tx('st.ck.msgs_on', { level: a.debug_level })}` : `✓ ${tx('st.ck.msgs_off')}`}</li>
           <li>${tx('st.ck.unprotected', { n: (await owner.one("select count(*)::int as n from meta.page where app_id = $1 and protection = 'unrestricted'", [a.id])).n })}</li>
+          ${browserSecurityChecklist(a, tx)}
           <li>${tx('st.ck.public_pages', { n: (await owner.one('select count(*)::int as n from meta.page where app_id = $1 and not requires_auth', [a.id])).n })}</li>
         </ul>`)}${end}
       </div>`;
