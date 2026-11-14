@@ -652,6 +652,7 @@ export const tr: Record<MessageKey, string> = {
   'app.unavailable': 'Bu uygulama şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin.',
   'app.developers_only': 'Bu uygulama şu anda yalnızca geliştiricilerine açıktır.',
   'app.restricted': 'Bu uygulama şu anda hesabınız için kullanılamıyor.',
+  'app.role_refused': 'Bu uygulama çalışamıyor: kendine ait bir veritabanı rolü yok veya rolünün yetkileri çok fazla. Bir geliştirici bunu Ayarlar → Güvenlik bölümünden belirler.',
   'region.url_frame': 'Gömülü sayfa',
   'region.url_open': 'Yeni sekmede aç',
   'page.unsaved_changes': 'Kaydedilmemiş değişiklikleriniz var. Yine de bu sayfadan çıkılsın mı?',

@@ -28,8 +28,8 @@ before(async () => {
   hrId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   saved = (await owner.one('select component_settings from meta.app where id = $1', [hrId])).component_settings;
   await owner.query(`delete from meta.app where alias like $1`, [`${P}%`]);
-  lib = (await owner.one(`insert into meta.app (alias, name, app_type) values ($1, 'CG library', 'library') returning id`, [`${P}-lib`])).id;
-  user = (await owner.one(`insert into meta.app (alias, name) values ($1, 'CG user') returning id`, [`${P}-user`])).id;
+  lib = (await owner.one(`insert into meta.app (alias, name, app_type, db_role) values ($1, 'CG library', 'library', 'hr_app') returning id`, [`${P}-lib`])).id;
+  user = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'CG user', 'hr_app') returning id`, [`${P}-user`])).id;
   await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'COLOURS', 'select ''red'' as d, 1 as r')`, [lib]);
   await owner.query(`insert into meta.authz_scheme (app_id, name, type, value, error_message) values ($1, 'MANAGERS', 'role', 'manager', 'Managers only.')`, [lib]);
 });
@@ -111,7 +111,7 @@ describe('component groups', () => {
     assert.deepEqual(subs, [{ kind: 'authz_scheme', name: 'MANAGERS', master_app_id: lib }, { kind: 'lov', name: 'COLOURS', master_app_id: lib }]);
     assert.ok(await owner.one(`select 1 from meta.lov where app_id = $1 and name = 'COLOURS'`, [user]), 'copied');
     // a group of a standard application (or a forged one) is refused
-    const std = (await owner.one(`insert into meta.app (alias, name) values ($1, 'CG standard') returning id`, [`${P}-std`])).id;
+    const std = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'CG standard', 'hr_app') returning id`, [`${P}-std`])).id;
     await owner.query(`insert into meta.component_group (app_id, name, members) values ($1, 'Mine', '{}')`, [std]);
     await dev.submit(`/builder/apps/${user}/subscriptions/group`, { group: `${std}|Mine` });
     assert.match((await dev.get(`/builder/apps/${user}/subscriptions`)).body, /Choose a component group/);

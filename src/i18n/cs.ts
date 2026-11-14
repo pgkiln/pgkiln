@@ -652,6 +652,7 @@ export const cs: Record<MessageKey, string> = {
   'app.unavailable': 'Tato aplikace momentálně není dostupná. Zkuste to prosím později.',
   'app.developers_only': 'Tato aplikace je momentálně dostupná pouze svým vývojářům.',
   'app.restricted': 'Tato aplikace momentálně není dostupná pro váš účet.',
+  'app.role_refused': 'Tuto aplikaci nelze spustit: nemá vlastní databázovou roli, nebo má roli s příliš velkými právy. Vývojář ji nastaví v Nastavení → Zabezpečení.',
   'region.url_frame': 'Vložená stránka',
   'region.url_open': 'Otevřít na nové kartě',
   'page.unsaved_changes': 'Máte neuložené změny. Opravdu chcete stránku opustit?',

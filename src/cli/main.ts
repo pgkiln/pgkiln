@@ -293,6 +293,7 @@ const COMMANDS: Record<string, Command> = {
       out(r.replaced
         ? `Replaced ${alias} (application ${r.id}).\n`
         : `Imported ${alias} (application ${r.id}). Check its database role and grant access in the builder.\n`);
+      if (r.roleNote) out(`${r.roleNote}\n`);
       // supporting objects never run on import: the developer reviews and runs them in the builder
       if (r.scripts) out(`It has ${r.scripts} supporting object script(s); they were not run. Review and run them in the builder: Shared Components → Supporting objects.\n`);
       return EXIT.ok;
@@ -362,9 +363,12 @@ const COMMANDS: Record<string, Command> = {
       }
       const r = await withDb(async (db) => {
         if ((await db.query('select 1 from meta.app where alias = $1', [report.application.alias])).rowCount) throw new UsageError(`application ${report.application.alias} exists: choose another --alias`);
-        return importDoc(db, doc, { alias: report.application.alias, replace: false, by: `pgkiln import-apex (${userInfo().username})` });
+        // (sprint 186) without --db-role: app_<alias> with rights on the parsing schema, when it exists here
+        const schema = (v.schema as string | undefined)?.trim().toLowerCase() || null;
+        const there = schema && (await db.query('select 1 from pg_namespace where nspname = $1', [schema])).rowCount ? schema : null;
+        return importDoc(db, doc, { alias: report.application.alias, replace: false, by: `pgkiln import-apex (${userInfo().username})`, schema: there });
       });
-      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}). Set its database role, then finish what the report lists.\n`);
+      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''} Finish what the report lists.\n`);
       return EXIT.ok;
     },
   },

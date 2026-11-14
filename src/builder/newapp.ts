@@ -1,5 +1,6 @@
 import pg from 'pg';
 import { owner, type Client } from '../db.ts';
+import { grantSchema, reservedSchema } from '../app-role.ts';
 import { passwordProblem } from '../accounts.ts';
 import { replaceApp } from '../cli/replace.ts';
 import { placeApp } from './workspaces.ts';
@@ -213,7 +214,7 @@ export interface CheckedApp {
 }
 
 /** pgkiln's and the system's schemas never become an application's parsing schema. */
-export const reservedSchema = (schema: string) => /^pg_/i.test(schema) || ['meta', 'information_schema'].includes(schema.toLowerCase());
+export { reservedSchema };
 
 /** Validate the form (outside the transaction: the password check may look up the account). Throws an Error with a message for the developer. */
 export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<CheckedApp> {
@@ -274,13 +275,7 @@ export async function createApp(c: Client, a: CheckedApp): Promise<{ id: number;
     // a name the workspace lists already (an application deleted, its role dropped) is its own; another workspace's is refused
     await c.query('insert into meta.workspace_role (workspace_id, role_name) values ($1, $2) on conflict (workspace_id, role_name) do nothing', [a.workspaceId, a.role]);
   } else await c.query(`grant ${R} to pgkiln_runtime`);
-  await c.query(`grant usage on schema ${S} to ${R}`);
-  await c.query(`grant select, insert, update, delete on all tables in schema ${S} to ${R}`);
-  await c.query(`grant usage, select on all sequences in schema ${S} to ${R}`);
-  await c.query(`grant execute on all functions in schema ${S} to ${R}`);
-  await c.query(`alter default privileges in schema ${S} grant select, insert, update, delete on tables to ${R}`);
-  await c.query(`alter default privileges in schema ${S} grant usage, select on sequences to ${R}`);
-  await c.query(`alter default privileges in schema ${S} grant execute on functions to ${R}`);
+  await grantSchema(c, a.schema, a.role);
 
   // new applications start with the newest base style (Iris), light (users may switch to dark); existing ones keep theirs
   // (sprint 73) the wizard's appearance: base style, menu at the top, an own accent colour

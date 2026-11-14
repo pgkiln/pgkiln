@@ -4,6 +4,7 @@
 // text. Step 2 shows the import report (what each component becomes, what needs porting, what is not
 // mapped) with the alias and the schema of the tables; its POST imports the translated pgkiln/2
 // document with meta.import_app(), the same path as the JSON import, into the developer's workspace.
+import { importRole } from '../app-role.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
 import { html, type Raw } from '../html.ts';
@@ -164,8 +165,11 @@ export async function apexImportRoutes(app: FastifyInstance) {
     const t = await translate(f.content, alias, String(b.schema ?? '').trim());
     if ('error' in t) return failed(tx('apx.not_an_export', { reason: t.error! }));
     let id: number;
+    let roleNote: string | null = null;
     try {
       id = await owner.tx(async (c) => {
+        // (sprint 186, NX-S2) without a parsing schema's role: app_<alias> with rights on the parsing schema
+        roleNote = await importRole(c, t.doc as { app?: Record<string, unknown> }, { alias, ws, schema: String(b.schema ?? '').trim() || null });
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(t.doc), alias])).rows[0];
         await placeApp(c, made.id, ws);
         return made.id as number;
@@ -174,7 +178,7 @@ export async function apexImportRoutes(app: FastifyInstance) {
       return failed(tx('apx.import_failed', { message: (e as Error).message }));
     }
     await owner.query('delete from meta.temp_file where id = $1', [req.params.id]);
-    flash(s, tx('apx.imported', { alias, port: t.report.counts.port, not_mapped: t.report.counts.not_mapped }));
+    flash(s, `${tx('apx.imported', { alias, port: t.report.counts.port, not_mapped: t.report.counts.not_mapped })}${roleNote ? ` ${roleNote}` : ''}`);
     return back(reply, s, `${BASE}/apps/${id}`);
   });
 }

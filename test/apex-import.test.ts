@@ -312,7 +312,7 @@ describe('the mapping of f100.sql', () => {
 
 describe('importing', () => {
   test('the document imports with meta.import_app() and exports again', async () => {
-    const { doc } = apexToDoc(F100, { alias: 'apex182-db' });
+    const { doc } = apexToDoc(F100, { alias: 'apex182-db', dbRole: 'hr_app' }); // (sprint 186) meta.app needs a role
     const id = (await owner.one<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), 'apex182-db']))!.id;
     const back = (await owner.one<{ d: any }>('select meta.export_app($1) as d', ['apex182-db']))!.d;
     assert.equal(back.app.name, "Order's Desk");
@@ -375,6 +375,8 @@ describe('importing', () => {
     const a = await owner.one<{ id: number; ws: number | null }>(`select a.id, w.workspace_id as ws from meta.app a left join meta.workspace_app w on w.app_id = a.id where a.alias = 'apex182-builder'`);
     assert.ok(a);
     assert.ok(a.ws, 'placed in the developer\'s workspace');
+    // (sprint 186) no --db-role: app_<alias>, here without rights (there is no schema sales)
+    assert.equal((await owner.one<{ r: string }>('select db_role as r from meta.app where id = $1', [a.id]))!.r, 'app_apex182_builder');
     assert.equal(done.headers.location, `/builder/apps/${a.id}`);
     // the temporary file is gone: the report page sends the developer back to the upload
     assert.equal((await b.get(url)).statusCode, 303);

@@ -114,6 +114,9 @@ export async function adviseTarget(db: Db, target: string): Promise<AdviseResult
     const temp = `advise-${process.pid}-${Date.now().toString(36)}`.slice(0, 40);
     await db.query('begin');
     try {
+      // (sprint 186) a file without a role checks as app_<alias> (made in this transaction, which is rolled back)
+      const { importRole } = await import('../app-role.ts');
+      await importRole(db, source.doc, { alias: temp });
       id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(source.doc), temp])).rows[0].id;
       await collect(id);
     } finally {

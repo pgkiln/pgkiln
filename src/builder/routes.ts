@@ -20,6 +20,8 @@ import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
 import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
+import { AppRoleError, appRoleName, importRole, makeAppRole, reservedSchema, roleProblem } from '../app-role.ts';
+import { workspacesChanged } from '../workspace-db.ts';
 import { securityRoutes } from './security.ts';
 import { instanceRoutes } from './instance.ts';
 import { saveTimeZoneSettings, timeZoneSettings } from './globalization.ts';
@@ -606,7 +608,10 @@ export async function builderRoutes(app: FastifyInstance) {
       const ws = currentWorkspace(s);
       if (ws < 1) throw new Error(tx('rte.you_are_not_a_developer'));
       const doc = JSON.parse(req.body?.doc ?? '');
+      let roleNote: string | null = null;
       const r = await owner.tx(async (c) => {
+        // (sprint 186, NX-S2) a file without a database role gets app_<alias>, never the owner's or the runtime's
+        roleNote = await importRole(c, doc, { alias: req.body?.alias?.trim() || String(doc?.app?.alias ?? ''), ws });
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
         await placeApp(c, made.id, ws);
         // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
@@ -624,7 +629,7 @@ export async function builderRoutes(app: FastifyInstance) {
       const servers = (await owner.query<{ server: string }>(
         `select distinct x.server from meta.rest_source x where x.app_id = $1 and x.server is not null
             and not exists (select 1 from meta.remote_server r where r.workspace_id = meta.app_workspace($1) and r.static_id = x.server) order by 1`, [r.id])).rows.map((x) => x.server);
-      flash(s, `Application imported. Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}${servers.length ? ` Its REST data sources use remote server${servers.length > 1 ? 's' : ''} ${servers.join(', ')}, which this workspace doesn't have: add ${servers.length > 1 ? 'them' : 'it'} under Workspace utilities → Remote servers.` : ''}`);
+      flash(s, `Application imported. ${roleNote ? `${roleNote} ` : ''}Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}${servers.length ? ` Its REST data sources use remote server${servers.length > 1 ? 's' : ''} ${servers.join(', ')}, which this workspace doesn't have: add ${servers.length > 1 ? 'them' : 'it'} under Workspace utilities → Remote servers.` : ''}`);
       return back(reply, s, scripts ? `${BASE}/apps/${r.id}/supporting-objects?imported=1` : `${BASE}/apps/${r.id}`);
     } catch (e) {
       flash(s, `Import failed: ${(e as Error).message}`, 'error');
@@ -823,6 +828,10 @@ export async function builderRoutes(app: FastifyInstance) {
     const providers = (await owner.query('select name, display_name, enabled from meta.auth_provider order by display_name')).rows;
     const directories = (await owner.query('select name, display_name, enabled from meta.ldap_directory order by display_name')).rows;
     const signinFields = await loginSettingsFields(a);
+    // (sprint 186, NX-S2) the application's role: none, or one too powerful to run as
+    const roleState = await roleProblem(owner, a.db_role);
+    const roleSchemas = roleState ? (await owner.query<{ n: string }>(
+      `select nspname as n from pg_namespace where nspname <> 'information_schema' and nspname !~ '^(pg_|pgkiln)' and nspname <> 'meta' order by nspname`)).rows.map((r) => r.n).filter((n) => !reservedSchema(n)) : [];
     const lists = (await owner.query('select name from meta.list where app_id = $1 order by name', [a.id])).rows.map((r) => r.name as string);
     const listChoices = (v: string | null, none: string): [string, string][] => [['', none], ...lists.map((n): [string, string] => [n, n]), ...(v && !lists.includes(v) ? [[v, tx('st.missing', { name: v })] as [string, string]] : [])];
     // (sprint 74) tabs like APEX's Edit Application Definition and Security Attributes: every tab of the
@@ -946,8 +955,18 @@ export async function builderRoutes(app: FastifyInstance) {
           </div>
           <div class="buttons"><button class="btn">${tx('st.save')}</button></div></form>`)}${end}
         ${panel('pwa')}${region(tx('st.tab.pwa'), await pwaSection({ ...a, has_icon: !!(await owner.one('select pwa_icon is not null as h from meta.app where id = $1', [a.id]))?.h }, s))}${end}
+        ${roleState ? html`${panel('security')}${region(tx('st.make_role'), html`<form method="post" action="${BASE}/apps/${a.id}/settings/role" id="make-role">${csrf(s)}
+          <p class="u-mt0"><b class="text-danger">${tx(roleState === 'missing' ? 'st.ck.no_role' : 'st.ck.powerful')}</b></p>
+          <p>${tx.rich('st.make_role_text', { role: html`<code>${appRoleName(a.alias)}</code>` })}</p>
+          <div class="form-grid">
+            ${select('schema', tx('st.make_role_schema'), roleSchemas.includes(a.alias.replace(/-/g, '_')) ? a.alias.replace(/-/g, '_') : '',
+              [['', tx('st.make_role_none')], ...roleSchemas.map((n): [string, string] => [n, n])], tx('st.make_role_schema_help'))}
+          </div>
+          <div class="buttons"><button class="btn btn-hot">${tx('st.make_role_button', { role: appRoleName(a.alias) })}</button></div></form>`)}${end}` : ''}
         ${panel('security')}${region(tx('st.checklist'), html`<ul class="checklist">
-          <li>${a.db_role ? '✓' : '✗'} ${tx('st.ck.role')} ${a.db_role ? html`(<code>${a.db_role}</code>)` : html`<b>${tx('st.ck.runtime')}</b>`}</li>
+          ${roleState
+            ? html`<li class="ck-error">✗ ${tx('st.ck.role')} ${roleState === 'missing' ? html`<b>${tx('st.ck.no_role')}</b>` : html`(<code>${a.db_role}</code>) <b>${tx('st.ck.powerful')}</b>`}</li>`
+            : html`<li>✓ ${tx('st.ck.role')} (<code>${a.db_role}</code>)</li>`}
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? tx('st.ck.signin') : tx('st.ck.public')}</li>
           ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>${tx('rte.refused_pgkiln_auth_header_proxies')}</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
           ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>${tx('rte.no_roles_allowed')}</b>`})</li>` : ''}
@@ -988,6 +1007,9 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
+      // (sprint 186, NX-S2) a role of its own, never empty or powerful (meta.app refuses them too: migration 167)
+      const problem = await roleProblem(owner, b.db_role);
+      if (problem) throw new Error(tr(s)(problem === 'missing' ? 'st.err.role_required' : 'st.err.role_powerful', { role: String(b.db_role ?? '').trim() }));
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7,
                 -- (053) the Theme Roller's styles stay: only the keys of this form are replaced
@@ -1042,6 +1064,28 @@ export async function builderRoutes(app: FastifyInstance) {
     // (sprint 74) back to the tab the form was saved from
     const tab = /^[a-z]{1,20}$/.test(String(b.tab ?? '')) ? `?tab=${b.tab}` : '';
     return back(reply, s, `${BASE}/apps/${req.params.id}/settings${tab}`);
+  });
+
+  // (sprint 186, NX-S2) Settings → Security: make app_<alias> with rights on a schema and run the application as it
+  app.post(`${BASE}/apps/:id/settings/role`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const a = await appOr404(req.params.id);
+    if (!a) return reply.code(404).send('Not found');
+    try {
+      const schema = String(req.body?.schema ?? '').trim() || null;
+      const made = await owner.tx(async (c) => {
+        const r = await makeAppRole(c, { alias: a.alias, ws: (await c.query('select meta.app_workspace($1::int) as ws', [a.id])).rows[0].ws, schema, appId: a.id });
+        await c.query('update meta.app set db_role = $2, updated_at = now() where id = $1', [a.id, r.role]);
+        return r;
+      });
+      await workspacesChanged();
+      await logActivity({ appId: a.id, username: s.username, event: 'app_role', ip: clientIp(req), detail: `${made.created ? 'created' : 'reused'} ${made.role}${schema ? ` on ${schema}` : ''}` });
+      flash(s, tr(s)('st.make_role_done', { role: made.role }));
+    } catch (e) {
+      flash(s, e instanceof AppRoleError ? e.message : tr(s)('st.make_role_failed', { message: (e as Error).message }), 'error');
+    }
+    return back(reply, s, `${BASE}/apps/${req.params.id}/settings?tab=security`);
   });
 
   app.post(`${BASE}/apps/:id/delete`, async (req: Req, reply) => {

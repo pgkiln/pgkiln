@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { rlsHint } from './rls-hint.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -350,6 +351,7 @@ export async function scriptRoutes(app: FastifyInstance) {
         tx('scr.results_of', { name: run.script_name }),
         html`<p class="muted">${tx('scr.run_by', { user: run.run_by, time: when(run.started_at), ms: run.elapsed_ms, options })}</p>
           ${runSummary(tx, run)}
+          ${await rlsHint(s, `${BASE}/sql/scripts`, (run.results as { error?: string | null }[]).map((r) => r.error))}
           ${resultsHtml(run.results, tx)}
           ${exists ? html`<div class="buttons u-mt1"><a class="btn" href="${BASE}/sql/scripts/${run.script_id}">${icon('edit')} ${tx('scr.edit')}</a></div>` : ''}`,
       ),

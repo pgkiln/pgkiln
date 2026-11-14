@@ -9,6 +9,7 @@ import type { Session } from './session.ts';
 import { publicError, type PageContext } from './runtime/context.ts';
 import { assignable, ProcessFailed, runChain } from './runtime/engine.ts';
 import { resolveLocale, translateApp, translatePage } from './runtime/locale.ts';
+import { setAppRole } from './app-role.ts';
 
 // Background execution chains (APEX: "Execute in background"). A chain
 // process with {"background": true} is queued in meta.process_job by the
@@ -94,7 +95,7 @@ async function runJobIn(job: Job) {
                 set_config('pgkiln.tenant_id', $6, true)`,
         [job.app_user, String(app.id), job.id, job.statement_timeout, locale.lang, job.tenant_id],
       );
-      if (app.db_role) await c.query(`set local role ${pg.escapeIdentifier(app.db_role)}`);
+      await setAppRole(c, app.db_role, { app: app.alias }); // (sprint 186) none or a powerful one: refused
       ctx.client = c;
       return runChain(ctx, chain, assignable(ctx), 0, async (kid) => {
         await owner.query('update meta.process_job set current = $2, steps_done = $3, updated_at = now() where id = $1', [job.id, kid.name, done++]);

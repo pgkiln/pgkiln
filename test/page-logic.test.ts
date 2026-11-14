@@ -280,7 +280,7 @@ describe('branches', () => {
   });
 
   test('to another application: only one that exists, items signed for that application, page and user', async () => {
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('logic-other', 'Other') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('logic-other', 'Other', 'hr_app') returning id`)).id;
     await owner.query(`insert into meta.page (app_id, page_no, name, protection) values ($1, 1, 'Start', 'checksum')`, [other]);
     await temp(
       `insert into meta.branch (page_id, seq, name, when_button, target_type, target_app, target_page, target_items)

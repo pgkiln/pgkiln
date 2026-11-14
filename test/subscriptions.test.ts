@@ -17,7 +17,7 @@ let lib: number, theme: number, user: number;
 
 const P = 'sub-t';
 const blank = async (alias: string, type = 'standard') =>
-  (await owner.one(`insert into meta.app (alias, name, app_type) values ($1, $2, $3) returning id`, [alias, `App ${alias}`, type])).id as number;
+  (await owner.one(`insert into meta.app (alias, name, app_type, db_role) values ($1, $2, $3, 'hr_app') returning id`, [alias, `App ${alias}`, type])).id as number;
 const lovQuery = async (appId: number, name: string) => (await owner.one('select query from meta.lov where app_id = $1 and name = $2', [appId, name]))?.query;
 
 before(async () => {

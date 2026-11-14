@@ -409,7 +409,7 @@ describe('runs from SQL: meta.run_automation()', () => {
   test('only automations of the current application; recursion is refused', async () => {
     await assert.rejects(asApp((c) => c.query(`select meta.run_automation('no such automation')`)), /does not exist in this application/);
     await assert.rejects(runtime.query(`select meta.run_automation('Remind managers')`), /no current application/);
-    const other = (await owner.one(`insert into meta.app (alias, name) values ('test-automation-other', 'Other') returning id`)).id;
+    const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('test-automation-other', 'Other', 'hr_app') returning id`)).id;
     try {
       await owner.query(`insert into meta.automation (app_id, name, code) values ($1, 'test other', 'select 1')`, [other]);
       await assert.rejects(asApp((c) => c.query(`select meta.run_automation('test other')`)), /does not exist in this application/);

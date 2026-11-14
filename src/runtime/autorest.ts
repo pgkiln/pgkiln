@@ -7,6 +7,7 @@ import { clientIp } from '../session.ts';
 import { availabilityRefusal } from './availability.ts';
 import { publicError } from './context.ts';
 import { caller, moduleLimit, RestError, restServicesOn } from './rest.ts';
+import { setAppRole, AppRoleRefused } from '../app-role.ts';
 
 // (sprint 100, Database Actions DA-11 part 1) AutoREST: a table or view that SQL Workshop › RESTful Services
 // enabled (meta.rest_object, migration 113), served through an application:
@@ -161,7 +162,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
         const ok = (await c.query('select bool_or(meta.has_role(r)) as ok from unnest($1::text[]) r', [o.roles])).rows[0].ok;
         if (!ok) throw new RestError(403, 'You do not have a role this endpoint needs.');
       }
-      await c.query(`set local role ${ident(a.db_role!)}`);
+      await setAppRole(c, a.db_role, { app: a.alias }).catch((e) => { throw e instanceof AppRoleRefused ? new RestError(503, e.message) : e; }); // (sprint 186)
       await checkRole(c, o);
       const cols = await describeColumns(c, o.schema_name, o.object_name, a.db_role!);
       const readable = cols.filter((x) => x.readable);

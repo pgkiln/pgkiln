@@ -348,3 +348,10 @@ details.menu.obj-menu > summary::before, details.menu.obj-menu > summary::after 
 .ws-owner-reason input { font-size: 12.5px; padding: 1px 6px; min-height: 0; width: 14rem; max-width: 40vw; }
 .ws-owner-reason.ws-owner-reason-open, .ws-status:has(select[name=as_app] option[value=owner]:checked) .ws-owner-reason { display: inline-flex; }
 .ws-owner-error { color: var(--danger); font-size: 12.5px; }
+
+/* (sprint 186) Run as on a phone: an application's long name doesn't widen the page; the chip shrinks, the select
+   fills what is left (applications have roles now, so the list holds every application of the workspace) */
+@media (max-width: 480px) {
+  .ws-runas-chip { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+  .ws-runas-chip select { min-width: 0; max-width: 100%; width: 100%; text-overflow: ellipsis; }
+}

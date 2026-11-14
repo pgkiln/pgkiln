@@ -21,7 +21,7 @@ const setTheme = (theme: object) => owner.query('update meta.app set theme = $2 
 before(async () => {
   app = await buildApp({ logger: false });
   await owner.query('delete from meta.app where alias = $1', [alias]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Pillar test', 'none') returning id`, [alias])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Pillar test', 'none', 'hr_app') returning id`, [alias])).id;
   for (const [no, name, parent] of [[1, 'Home', null], [2, 'Employees', 1], [3, 'Employee', 2]] as const)
     await owner.query('insert into meta.page (app_id, page_no, name, requires_auth, parent_page) values ($1, $2, $3, false, $4)', [appId, no, name, parent]);
   const people = (await owner.one(`insert into meta.nav_entry (app_id, seq, label) values ($1, 20, 'People') returning id`, [appId])).id;
@@ -159,7 +159,7 @@ describe('Theme Roller', () => {
     await setTheme({ appearance: 'pillar_light', strip: '#e8590c' });
     const dev = await login();
     await dev.get(`/builder/apps/${appId}/settings`);
-    await dev.submit(`/builder/apps/${appId}/settings`, { name: 'Pillar test', alias, home_page: '1', authentication: 'none', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' });
+    await dev.submit(`/builder/apps/${appId}/settings`, { name: 'Pillar test', alias, home_page: '1', authentication: 'none', db_role: 'hr_app', nav: 'side', mode: 'auto', local_login: 'true', language: 'en', language_from: 'browser' });
     const t = (await owner.one('select theme from meta.app where id = $1', [appId])).theme;
     assert.equal(t.appearance, 'pillar_light');
     assert.equal(t.strip, '#e8590c');

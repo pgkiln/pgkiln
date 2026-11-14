@@ -652,6 +652,7 @@ export const nb: Record<MessageKey, string> = {
   'app.unavailable': 'Applikasjonen er ikke tilgjengelig akkurat nå. Prøv igjen senere.',
   'app.developers_only': 'Applikasjonen er for øyeblikket bare tilgjengelig for utviklerne.',
   'app.restricted': 'Applikasjonen er ikke tilgjengelig for kontoen din akkurat nå.',
+  'app.role_refused': 'Applikasjonen kan ikke kjøre: den har ingen egen databaserolle, eller en med for mange rettigheter. En utvikler angir en under Innstillinger → Sikkerhet.',
   'region.url_frame': 'Innebygd side',
   'region.url_open': 'Åpne i en ny fane',
   'page.unsaved_changes': 'Du har endringer som ikke er lagret. Vil du forlate siden likevel?',

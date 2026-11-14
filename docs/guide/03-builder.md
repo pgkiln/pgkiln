@@ -1706,7 +1706,10 @@ accounts or custom).
   saved styles (colours, font, font size, corners), the default one, and whether users may choose.
 - **Globalization**: primary language, translated languages, how the language is chosen, date formats.
 - **Security checklist**: whether the app has its own role, debug mode, debug messages, and pages without
-  checksum protection or without authentication.
+  checksum protection or without authentication. (sprint 186) The **Database role (parsing schema)** is required:
+  an empty role, or a superuser, a role with `BYPASSRLS` or one of pgkiln's own, is refused when you save. An
+  application without one (made before 0.97) shows a red line here and the **Create app_<alias>** form: the role
+  with rights on the schema you choose ([chapter 8](08-security.md#the-applications-own-database-role)).
 - **Delete application**: removes the definition (not your tables).
 
 **Progressive Web App** (in Settings): installable, offline pages, forms sent offline, the icon ([chapter 17](17-mobile.md)).
@@ -2233,6 +2236,15 @@ run on it go to **`meta.owner_sql_audit`**: each statement of the SQL Worksheet 
 and time, and the statements that change something which the other tools send. Only the owner can read that table.
 A developer who isn't an administrator never sees the option, and a forged `as_app=owner` or `/builder/sql/run-as`
 post is refused (403).
+
+**When row level security refuses the developer login** (sprint 186). The developer login doesn't own the tables
+pgkiln's owner made (a migration, an example, an earlier release's SQL Workshop), so an insert, update or delete into
+a table with row level security, or into one it has no grant on, fails with PostgreSQL's own message (`new row
+violates row-level security policy for table "…"`, `permission denied for table …`). **SQL Commands** (the
+worksheet), **SQL Scripts**, **Sample Data** and **Load Data** keep that message and add a hint below it: why it
+happens, and what to do: add a policy or a grant for the developer login, or run it on the Owner connection. An
+administrator gets the Owner connection right there (a reason, then *Switch to the Owner connection*, which returns
+to the same tool); other developers are told to ask one. On the Owner connection the hint isn't shown.
 
 (sprint 75) The tools are tabs: Home, SQL Worksheet, Object Browser, SQL Scripts and Utilities; **More** opens the
 others (Quick SQL, Query Builder, Load and Unload Data, Sample Data, DDL, Compare, Data Modeler, AI), and the open one is a tab too.

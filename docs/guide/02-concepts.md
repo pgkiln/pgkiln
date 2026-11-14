@@ -225,6 +225,11 @@ inside a transaction that does `SET LOCAL ROLE <db_role>`, so:
 When you create an application in the builder, pgkiln creates the role `app_<alias>` with
 privileges on one schema, including default privileges for tables you create later.
 
+(sprint 186, NX-S2) **The role is required.** Like an APEX application, which can't exist without a parsing
+schema, no application can be saved without one: the settings form, every import and `meta.app` itself refuse an
+empty role, and a role that is too powerful to run as. See
+[chapter 8](08-security.md#the-applications-own-database-role) for the rules and for applications made before 0.97.
+
 ## Visibility
 
 Before rendering, and again before accepting a submit, pgkiln decides what exists for the

@@ -78,12 +78,15 @@ export type ImportCheck = 'off' | 'check' | 'force' | 'dry-run';
  * it replaced one, its number of supporting object scripts (never run), the
  * Advisor's findings (with a check) and whether it was committed.
  */
-export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off', by = null }: { alias: string; replace: boolean; check?: ImportCheck; by?: string | null }) {
+export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off', by = null, schema = null }: { alias: string; replace: boolean; check?: ImportCheck; by?: string | null; schema?: string | null }) {
   await db.query('begin');
   try {
     const exists = (await db.query('select id from meta.app where alias = $1', [alias])).rows[0];
     let id: number;
     if (exists && !replace) throw new UsageError(`application ${alias} exists: use --replace to update it, or --alias for a copy`);
+    // (sprint 186, NX-S2) a file without a database role: the installed application's, or a new app_<alias>
+    const { importRole } = await import('../app-role.ts');
+    const roleNote = await importRole(db, doc as { app?: Record<string, unknown> }, { alias, schema });
     if (exists) {
       const { replaceApp } = await import('./replace.ts');
       id = await replaceApp(db, doc, alias, { backup: { reason: 'import', user: by } });
@@ -101,11 +104,11 @@ export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off
       }));
       if (check === 'dry-run' || (check === 'check' && findings.some((f) => f.severity === 'error'))) {
         await db.query('rollback');
-        return { id, replaced: !!exists, scripts, findings, committed: false };
+        return { id, replaced: !!exists, scripts, findings, committed: false, roleNote };
       }
     }
     await db.query('commit');
-    return { id, replaced: !!exists, scripts, findings, committed: true };
+    return { id, replaced: !!exists, scripts, findings, committed: true, roleNote };
   } catch (e) {
     await db.query('rollback').catch(() => {});
     throw e;

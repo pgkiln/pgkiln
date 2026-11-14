@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Security
+- **Every application runs as a database role of its own** (sprint 186, NX-S2; migration 167): like an APEX
+  application's parsing schema, `db_role` is required. An empty role, or a powerful one (a superuser; `BYPASSRLS`,
+  `CREATEROLE`, `CREATEDB` or `REPLICATION`; pgkiln's or PostgreSQL's own roles; the owner of pgkiln's schemas; or a
+  member of any of these, `meta.role_is_powerful`, which the developer logins of sprint 185 now use too) is refused by
+  Settings → Security, by every import and by `meta.app` itself, and again whenever the application runs (pages,
+  REST modules, AutoREST, automations, workflows, webhooks, background jobs, MCP queries). An import of a file
+  without a role keeps the replaced application's role or gets `app_<alias>` (rights on the parsing schema when the
+  import names one, else none yet), with a note in the import's result; it never falls back to the owner or the
+  runtime login. **Upgrading**: nothing is granted and no application changes. An application without a role
+  (or with a powerful one) gets an Advisor error and a red line in the security checklist, and runs only in
+  development mode: for a developer of the application signed in to the builder in the same browser (the developer
+  toolbar), and only when the runtime login doesn't bypass row level security; everyone else gets a clear 503 page.
+  Settings → Security offers *Create app_<alias>* with the Create Application wizard's rights on a schema you choose.
 - **No default password on a public installation** (NX-S3): when `PUBLIC_URL` names another computer, the server
   refuses to start while a developer still signs in with a default password (`admin`, or the user name), and names
   them (`pgkiln users password <name> --developer` sets a new one). A developer who signs in with one anyway sees only
@@ -13,6 +26,12 @@ All notable changes to this project are documented here. The format follows
   administrators* until the policy requires it of them. The default-password warning can no longer be dismissed.
 
 ### Changed
+- **A clearer message when row level security refuses the SQL Workshop** (sprint 186): since sprint 185 the SQL
+  Workshop runs as the workspace's developer login, which doesn't own the tables pgkiln's owner made. When row level
+  security or a missing grant refuses it (`new row violates row-level security policy …`, `permission denied for
+  table …`), SQL Commands, SQL Scripts, Sample Data and Load Data keep PostgreSQL's message and add a translated hint
+  after it: why, and what to do (a policy or grant for the developer login, or the Owner connection). Administrators
+  can switch to the Owner connection from the hint, with a reason, and come back to the same tool.
 - (NX-U2) Settings → Sign-in: the *Login page* list offers only pages that can be one (public, with a Login region),
   says how many were left out, and keeps a current choice that no longer qualifies with the reason.
 

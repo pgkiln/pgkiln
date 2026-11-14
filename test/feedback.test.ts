@@ -90,7 +90,7 @@ describe('feedback', () => {
       const row = await owner.one('select status, response, responded_by from meta.feedback where id = $1', [f.id]);
       assert.deepEqual(row, { status: 'in_progress', response: `Looking into it ${MARK}`, responded_by: 'admin' });
       // feedback of another application is not reachable through this one
-      const other = (await owner.one(`insert into meta.app (alias, name) values ('fb-other', 'Other') returning id`)).id;
+      const other = (await owner.one(`insert into meta.app (alias, name, db_role) values ('fb-other', 'Other', 'hr_app') returning id`)).id;
       try {
         await dev.submit(`/builder/apps/${other}/feedback/${f.id}`, { status: 'declined', response: 'no' });
         assert.equal((await owner.one('select status from meta.feedback where id = $1', [f.id])).status, 'in_progress');

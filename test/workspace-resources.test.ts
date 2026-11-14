@@ -65,7 +65,7 @@ before(async () => {
   ws = (await owner.one(`insert into meta.workspace (name) values ($1) returning id`, [WS])).id;
   await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($1, $3, false)', [ws, ADMIN, DEV]);
   for (const alias of ['s141a', 's141b']) {
-    const id = (await owner.one(`insert into meta.app (alias, name, authentication, home_page) values ($1, $1, 'none', 1) returning id`, [alias])).id;
+    const id = (await owner.one(`insert into meta.app (alias, name, authentication, home_page, db_role) values ($1, $1, 'none', 1, 'hr_app') returning id`, [alias])).id;
     const page = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [id])).id;
     await owner.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Logo', 'static', '<img src="#WORKSPACE_FILES#logo.png" alt="Logo"> <a href="#APP_FILES#guide.pdf">Guide</a>')`, [page]);
     await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [id, ws]);

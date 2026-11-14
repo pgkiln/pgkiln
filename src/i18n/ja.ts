@@ -652,6 +652,7 @@ export const ja: Record<MessageKey, string> = {
   'app.unavailable': 'このアプリケーションは現在利用できません。しばらくしてからもう一度お試しください。',
   'app.developers_only': 'このアプリケーションは現在、開発者のみが利用できます。',
   'app.restricted': 'このアプリケーションは現在、お使いのアカウントでは利用できません。',
+  'app.role_refused': 'このアプリケーションは実行できません。専用のデータベース・ロールがないか、権限が多すぎるロールが設定されています。開発者が「設定」→「セキュリティ」で設定してください。',
   'region.url_frame': '埋め込みページ',
   'region.url_open': '新しいタブで開く',
   'page.unsaved_changes': '保存されていない変更があります。このページから移動しますか?',

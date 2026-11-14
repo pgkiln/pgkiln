@@ -652,6 +652,7 @@ export const da: Record<MessageKey, string> = {
   'app.unavailable': 'Programmet er ikke tilgængeligt lige nu. Prøv igen senere.',
   'app.developers_only': 'Programmet er lige nu kun tilgængeligt for dets udviklere.',
   'app.restricted': 'Programmet er ikke tilgængeligt for din konto lige nu.',
+  'app.role_refused': 'Programmet kan ikke køre: det har ingen egen databaserolle, eller en med for mange rettigheder. En udvikler angiver en under Indstillinger → Sikkerhed.',
   'region.url_frame': 'Indlejret side',
   'region.url_open': 'Åbn i en ny fane',
   'page.unsaved_changes': 'Du har ændringer, der ikke er gemt. Vil du forlade siden alligevel?',

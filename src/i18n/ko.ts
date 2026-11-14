@@ -652,6 +652,7 @@ export const ko: Record<MessageKey, string> = {
   'app.unavailable': '이 애플리케이션은 현재 사용할 수 없습니다. 나중에 다시 시도하십시오.',
   'app.developers_only': '이 애플리케이션은 현재 개발자만 사용할 수 있습니다.',
   'app.restricted': '이 애플리케이션은 현재 사용자 계정에서 사용할 수 없습니다.',
+  'app.role_refused': '이 애플리케이션을 실행할 수 없습니다. 자체 데이터베이스 역할이 없거나 권한이 너무 많은 역할이 지정되어 있습니다. 개발자가 설정 → 보안에서 지정합니다.',
   'region.url_frame': '포함된 페이지',
   'region.url_open': '새 탭에서 열기',
   'page.unsaved_changes': '저장하지 않은 변경 사항이 있습니다. 그래도 이 페이지를 나가시겠습니까?',

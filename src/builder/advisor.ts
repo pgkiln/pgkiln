@@ -4,6 +4,7 @@ import pg from 'pg';
 import { applyBinds, splitStatements } from '../binds.ts';
 import { owner, runtime, type Db } from '../db.ts';
 import { appIsolated, devDbForApp } from '../workspace-db.ts';
+import { roleProblem } from '../app-role.ts';
 import { settingFrom } from '../instance.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
@@ -687,6 +688,14 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
     workspace: { servers: wsServers, credentials: wsCredentials },
     otherAppPage: async (alias, pageNo) => !!(await one('select 1 as ok from meta.app a join meta.page p on p.app_id = a.id where a.alias = $1 and p.page_no = $2', [alias, pageNo])),
   })));
+
+  // ---- (sprint 186, NX-S2) every application runs as a database role of its own (APEX: parsing schema)
+  const roleState = await roleProblem(owner, app.db_role);
+  if (roleState)
+    findings.push({ severity: 'error', entry: null, field: 'database role',
+      message: roleState === 'missing'
+        ? 'The application has no database role of its own (APEX: parsing schema), so it runs only for its developers from the builder. Give it one in Settings → Security, where pgkiln can create app_<alias> with rights on a schema.'
+        : `The application runs as ${app.db_role}, a superuser, a role that bypasses row level security, creates roles or owns pgkiln's schemas (or a member of one), so it doesn't run. Give it a role of its own in Settings → Security.` });
 
   // ---- (117) REST modules refuse (403) to run as a superuser, a role that bypasses RLS or a member of pgkiln's
   // owner: say so here before the endpoints fail. Without a db_role the runtime connection's own user is the role.

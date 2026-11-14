@@ -155,6 +155,9 @@ export async function replaceApp(db: Db, doc: unknown, alias: string, opts: Repl
   if (inTx) await ensureSnapshot(old, db as pg.ClientBase);
   const backup = opts.backup === undefined ? { reason: 'import' as const } : opts.backup;
   if (backup) await db.query('select meta.backup_app($1, $2, $3, $4)', [old, backup.reason, backup.user ?? null, backup.note ?? null]);
+  // (sprint 186, NX-S2) a document without a database role keeps the installed application's
+  const { importRole } = await import('../app-role.ts');
+  await importRole(db, doc as { app?: Record<string, unknown> }, { alias });
   const tmpAlias = `pgkiln-replace-${randomBytes(6).toString('hex')}`;
   const neu = (await db.query<{ id: number }>('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), tmpAlias])).rows[0].id;
 

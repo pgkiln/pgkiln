@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import pg from 'pg';
+import { setAppRole } from './app-role.ts';
 
 // Keep dates/timestamps as the strings Postgres sends: no timezone surprises
 // and they round-trip into <input type=date> unchanged.
@@ -108,6 +109,8 @@ export interface AppContext {
   appId: number;
   alias: string;
   dbRole: string | null;
+  /** (sprint 186) development mode: a developer's page request (the developer toolbar); an application without a role runs only then */
+  developer?: boolean;
   appUser: string;
   sessionId: string;
   /** language of the request (meta.app_language()) */
@@ -170,7 +173,8 @@ async function appTxInner<T>(ctx: AppContext, fn: (c: Client) => Promise<T>): Pr
        (process.env.PUBLIC_URL ?? `http://127.0.0.1:${process.env.PORT ?? 3100}`).replace(/\/+$/, ''), ctx.timeZone ?? null,
        String(ctx.debug?.level ?? 0), UUID.test(ctx.sessionId) ? ctx.sessionId : null],
     );
-    if (ctx.dbRole) await c.query(`set local role ${pg.escapeIdentifier(ctx.dbRole)}`);
+    // (sprint 186) the application's role; none, or a powerful one, is refused (src/app-role.ts)
+    await setAppRole(c, ctx.dbRole, { developer: ctx.developer, app: ctx.alias });
     if (!ctx.debug) return fn(c);
     const debug = ctx.debug;
     const listener = (msg: { message?: string; detail?: string; hint?: string; severity?: string }) => debug.notice(msg);

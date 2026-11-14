@@ -14,6 +14,7 @@ import { publicError, writeOut } from './context.ts';
 import { DO_TAG, HandlerInputError, mediaResponse, runPlpgsql, setBinds } from './rest-handlers.ts';
 import { logActivity } from '../session.ts';
 import { MAX_BODY, receive, webhookProblems, WebhookRefused, type WebhookConfig } from '../webhooks.ts';
+import { setAppRole, AppRoleRefused } from '../app-role.ts';
 
 // REST modules (APEX: RESTful Services): handlers defined in the builder (Shared Components, or (sprint 104)
 // SQL Workshop › RESTful Services › Modules as templates and handlers; plpgsql and media types: rest-handlers.ts),
@@ -355,7 +356,8 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
         if (!ok) throw new RestError(403, 'You do not have a role this endpoint needs.');
       }
       if (h.type === 'plpgsql') await setBinds(c, binds);
-      if (a.db_role) await c.query(`set local role ${pg.escapeIdentifier(a.db_role)}`);
+      // (sprint 186) the application's role; none or a powerful one is refused
+      await setAppRole(c, a.db_role, { app: a.alias }).catch((e) => { throw e instanceof AppRoleRefused ? new RestError(503, e.message) : e; });
       // (117) handlers run as a constrained role: never a superuser, a role that bypasses row level security, or
       // pgkiln's owner (a runtime connection without RUNTIME_DATABASE_URL is the owner's)
       const role = (await c.query(

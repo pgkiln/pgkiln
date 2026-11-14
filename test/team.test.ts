@@ -32,7 +32,7 @@ before(async () => {
   ws2 = (await owner.one(`insert into meta.workspace (name) values ('Team113 copy') returning id`)).id;
   await owner.query('delete from meta.workspace_member where username = any($1::text[])', [[DEV, OUTSIDER]]);
   await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2), ($3, $2)', [ws, DEV, ws2]);
-  appId = (await owner.one(`insert into meta.app (alias, name, authentication) values ($1, 'Team 113 app', 'none') returning id`, [ALIAS])).id;
+  appId = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Team 113 app', 'none', 'hr_app') returning id`, [ALIAS])).id;
   await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2)', [appId, ws]);
   await owner.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Home', 'Home'), ($1, 12, 'Twelve', 'Twelve')`, [appId]);
   hrId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
