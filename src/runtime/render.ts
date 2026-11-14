@@ -387,6 +387,8 @@ export async function renderPage(ctx: PageContext) {
   const side = ctx.page.page_template === 'left_side_column' ? 'left' : ctx.page.page_template === 'right_side_column' ? 'right' : null;
   const at: Record<string, Raw[]> = { banner: [], breadcrumb: [], side: [], body: [], footer: [] };
   for (const r of ctx.page.regions) {
+    // (172) a sub region is rendered inside its parent (regions.ts renderChildren)
+    if (r.parent_id != null) continue;
     const pos = r.position ?? 'body';
     const into = pos === 'left' || pos === 'right' ? (pos === side ? 'side' : 'body') : pos in at ? pos : 'body';
     // a region its condition or authorization leaves out ('') leaves no empty position behind

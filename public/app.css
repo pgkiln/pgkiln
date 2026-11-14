@@ -422,6 +422,26 @@ dialog.region-inline_drawer:target { inset: 0 0 0 auto; }
 .wizard-step.is-done::before, .wizard-step.is-current::before { border-top-color: var(--accent); }
 .wizard-step.is-current .wizard-step-no { background: var(--accent); border-color: var(--accent); color: var(--accent-text, #fff); }
 .wizard-step.is-current .wizard-step-label { font-weight: 600; }
+/* (172) sub regions: a grid under the region's own content, side by side (flex_container), or tabs (tabs_container) */
+.region-tabs_container { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.region-children:not(:first-child), .region-tabs:not(:first-child) { margin-top: 1rem; }
+.region-flex { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+.region-flex > .region { flex: 1 1 16rem; min-width: 0; }
+.region-tablist { list-style: none; margin: 0 0 1rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--border); }
+.region-tab { display: inline-block; padding: 0.5rem 0.9rem; text-decoration: none; color: var(--text); border-bottom: 3px solid transparent; margin-bottom: -1px; border-radius: var(--radius) var(--radius) 0 0; }
+.region-tab:hover { background: var(--surface-2); }
+.region-tab.is-current { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+.region-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.region-tabpanel + .region-tabpanel { margin-top: 1rem; }
+.region-tabs.is-tabs > .region-tabpanel { margin-top: 0; }
+.region-tabpanel:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.region-tabpanel[hidden] { display: none; }
+.region-tabpanel-title { margin: 0 0 0.5rem; font-size: 1rem; }
+.region-tabs.is-tabs .region-tabpanel-title { display: none; }
+@media (max-width: 640px) {
+  .region-tablist { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  .region-tab { white-space: nowrap; padding: 0.5rem 0.7rem; }
+}
 .region-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 50px; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
 .region-collapsible summary.region-header { cursor: pointer; list-style: none; }
 .region-collapsible summary.region-header::-webkit-details-marker { display: none; }

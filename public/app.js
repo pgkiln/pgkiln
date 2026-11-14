@@ -2202,6 +2202,72 @@ document.querySelectorAll('[data-rds]').forEach((nav) => {
   }
 });
 
+// (172) Tabs container (a region with template tabs_container): the links to its sub regions become ARIA tabs
+// (automatic activation: arrow keys, Home, End), one sub region shown at a time. The tab follows #R<id> of a sub
+// region in the URL and is remembered for the browser session. A refreshed sub region is replaced inside its
+// panel (the panel keeps its state); a refreshed container is set up again.
+function enhanceRegionTabs(root) {
+  const boxes = root.matches?.('[data-region-tabs]') ? [root] : [...(root.querySelectorAll?.('[data-region-tabs]') ?? [])];
+  boxes.forEach(regionTabs);
+}
+function regionTabs(box) {
+  if (box.dataset.enhanced) return;
+  box.dataset.enhanced = '1';
+  const list = box.querySelector(':scope > .region-tablist');
+  const tabs = [...list.querySelectorAll('.region-tab')];
+  const panelOf = (tab) => document.getElementById(tab.dataset.tabPanel);
+  if (!tabs.length || tabs.some((t) => !panelOf(t))) return;
+  const key = `pgkiln.tabs.${location.pathname}.${box.dataset.regionTabs}`;
+  list.setAttribute('role', 'tablist');
+  box.classList.add('is-tabs');
+  tabs.forEach((tab) => {
+    tab.parentElement.setAttribute('role', 'presentation');
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', tab.dataset.tabPanel);
+    const p = panelOf(tab);
+    p.setAttribute('role', 'tabpanel');
+    p.setAttribute('aria-labelledby', tab.id);
+    p.tabIndex = 0;
+  });
+  const show = (tab, focus) => {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      t.classList.toggle('is-current', on);
+      panelOf(t).hidden = !on;
+    });
+    try { sessionStorage.setItem(key, tab.id); } catch {}
+    if (focus) tab.focus();
+    // maps and charts in a panel that was hidden measure themselves again
+    window.dispatchEvent(new Event('resize'));
+  };
+  const byHash = (h) => (h ? tabs.find((t) => t.getAttribute('href') === `#${h}` || t.id === h) : null);
+  let stored = null;
+  try { stored = sessionStorage.getItem(key); } catch {}
+  show(byHash(location.hash.slice(1)) || tabs.find((t) => t.id === stored) || tabs[0], false);
+  list.addEventListener('click', (e) => {
+    const tab = e.target.closest('.region-tab');
+    if (!tab) return;
+    e.preventDefault();
+    show(tab, true);
+  });
+  list.addEventListener('keydown', (e) => {
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    const next = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    show(tabs[(next + tabs.length) % tabs.length], true);
+  });
+  window.addEventListener('hashchange', () => {
+    const tab = byHash(location.hash.slice(1));
+    if (tab && box.isConnected) show(tab, false);
+  });
+}
+document.addEventListener('pgkiln:replaced', (e) => e.detail && enhanceRegionTabs(e.detail));
+enhanceRegionTabs(document);
+
 // Popup list of values: the select (which works without JavaScript) is hidden
 // behind a read-only field and a button that opens a dialog searching the
 // item's list of values on the server, page by page (loaded as the list scrolls).

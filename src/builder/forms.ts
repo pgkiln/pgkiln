@@ -10,7 +10,7 @@ import { codeAttrs } from './code-editor.ts';
 // component property form and saving it.
 
 export interface Lookups {
-  regions: { id: number; title: string | null; type: string }[];
+  regions: { id: number; title: string | null; type: string; parent_id: number | null }[];
   pages: { page_no: number; name: string }[];
   authz: string[];
   nav: { id: number; label: string }[];
@@ -24,7 +24,7 @@ export interface Lookups {
 
 export async function lookups(appId: number, pageId?: number): Promise<Lookups> {
   const [regions, pages, authz, nav, buildOptions, rest, lists, listEntries, automations, pageGroups] = await Promise.all([
-    pageId ? owner.query('select id, title, type from meta.region where page_id = $1 order by seq, id', [pageId]) : Promise.resolve({ rows: [] }),
+    pageId ? owner.query('select id, title, type, parent_id from meta.region where page_id = $1 order by seq, id', [pageId]) : Promise.resolve({ rows: [] }),
     owner.query('select page_no, name from meta.page where app_id = $1 order by page_no', [appId]),
     owner.query('select name from meta.authz_scheme where app_id = $1 order by name', [appId]),
     owner.query('select id, label from meta.nav_entry where app_id = $1 order by seq, id', [appId]),
@@ -98,7 +98,9 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       case 'icon':
         return iconPicker(id, f.name, f.label, String(v ?? ''), help);
       case 'region':
-        control = opts([['', '- none (page level) -'], ...lk.regions.map((r): [string, string] => [String(r.id), `${r.title ?? '(untitled)'} (${r.type})`])]);
+        // (172) a region's parent: another region of the page that is not a sub region itself
+        control = opts([['', '- none (page level) -'], ...lk.regions.filter((r) => f.name !== 'parent_id' || (r.id !== row?.id && r.parent_id == null))
+          .map((r): [string, string] => [String(r.id), `${r.title ?? '(untitled)'} (${r.type})`])]);
         break;
       case 'page':
         control = opts([['', '- none -'], ...lk.pages.map((p): [string, string] => [String(p.page_no), `${p.page_no}. ${p.name}`])]);

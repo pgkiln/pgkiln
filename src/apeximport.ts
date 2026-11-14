@@ -902,7 +902,6 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const point = (str(a, 'p_plug_display_point') ?? 'BODY').toUpperCase();
     if (point === 'REGION_POSITION_01') row.position = 'breadcrumb';
     else if (point !== 'BODY' && point !== 'AFTER_HEADER') e.note(`display position ${point} became the body`);
-    if (ref(a, 'p_plug_parent_id', 'p_parent_plug_id')) e.note('a sub region: pgkiln places it on the page after its parent');
     const queryType = (str(a, 'p_query_type') ?? '').toUpperCase();
     const tableSource = () => {
       const t = qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'));
@@ -1058,6 +1057,45 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (id) regionDoc.set(id, { id: row.id, page, row });
   }
   const regionId = (id: string | null) => (id ? regionDoc.get(id)?.id ?? null : null);
+
+  // ---- (sprint 195, NX-F2) sub regions: p_parent_plug_id becomes the region's parent. pgkiln nests one level deep, so a
+  // region deeper down goes into its top-most ancestor (after that ancestor's own sub regions, by sequence), with a note.
+  // A parent with Universal Theme's tabs (t-TabsRegion…) becomes a tabs container; is-collapsed / is-expanded a collapsible.
+  const plugs = new Map<string, Args>();
+  for (const c of [...by('create_page_plug'), ...by('create_report_region')]) {
+    const id = ref(c.args, 'p_id');
+    if (id) plugs.set(id, c.args);
+  }
+  const parentOf = (id: string) => {
+    const a = plugs.get(id);
+    return a ? ref(a, 'p_plug_parent_id', 'p_parent_plug_id') : null;
+  };
+  for (const [id, r] of regionDoc) {
+    let up = parentOf(id);
+    if (!up) continue;
+    const e = regionApex.get(id)?.e;
+    const seen = new Set([id]);
+    let depth = 1;
+    for (let next = parentOf(up); next && !seen.has(next) && regionDoc.has(next); next = parentOf(up)) {
+      seen.add(up);
+      up = next;
+      depth++;
+    }
+    const parent = regionDoc.get(up);
+    if (!parent || parent.page !== r.page) {
+      e?.note('its parent region was not imported: it is on the page itself');
+      continue;
+    }
+    r.row.parent_id = parent.id;
+    r.row.position = parent.row.position;
+    if (depth > 1) e?.note(`nested ${depth} levels deep in APEX: pgkiln nests one level, so it is a sub region of "${parent.row.title}"`);
+  }
+  for (const [id, r] of regionDoc) {
+    const options = str(plugs.get(id) ?? {}, 'p_region_template_options') ?? '';
+    if (r.row.template !== 'standard') continue;
+    if (/\bt-TabsRegion/.test(options) && [...regionDoc.values()].some((x) => x.row.parent_id === r.id)) r.row.template = 'tabs_container';
+    else if (/\bis-(collapsed|expanded)\b/.test(options)) r.row.template = 'collapsible';
+  }
 
   // ---- items
   const itemName = new Map<string, string>();

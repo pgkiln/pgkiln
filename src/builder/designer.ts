@@ -18,7 +18,7 @@ import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
-import { arrangeRoutes, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
+import { arrangeRoutes, CONTAINER_LABELS, CONTAINER_TEMPLATES, deleteRegion, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
 
 /** (sprint 193) why an alias was refused, in the builder's words */
 const ALIAS_PROBLEM: Record<AliasProblem, BuilderKey> = { length: 'pdz.alias_length', format: 'pdz.alias_format', numeric: 'pdz.alias_numeric', reserved: 'pdz.alias_reserved' };
@@ -134,19 +134,23 @@ export async function designerRoutes(app: FastifyInstance) {
     const none = (text: string) => html`<li class="pd-empty">${text}</li>`;
     const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, i.type);
     const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, b.action);
-    const regionLeaf = (r: any, next: any) => {
+    const subsOf = (r: any) => (r.parent_id == null ? rows.region.filter((x) => x.parent_id === r.id) : []);
+    const regionLeaf = (r: any, next: any): Raw => {
       const items = rows.item.filter((i) => i.region_id === r.id);
+      // (172, APEX: Sub Regions) a container's sub regions, a branch of their own
+      const subs = subsOf(r);
       const buttons = rows.button.filter((b) => b.region_id === r.id);
       // (sprint 77, APEX: region slots) buttons by their position in the region
       const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
-      const kids = [...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
+      const kids = [...(subs.length ? [folder(tx('pd.tree.sub_regions'), subs.map((x, i) => regionLeaf(x, subs[i + 1])))] : []),
+        ...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
         ...bySlot.map(([sl, list]) => folder(sl === 'region' ? tx('pd.tree.buttons') : tx('pd.tree.buttons_at', { slot: slotLabel(sl) }), list.map(buttonLeaf)))];
-      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${r.type})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${r.type})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
     const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
     const regionFolders = ['banner', 'breadcrumb', 'left', 'body', 'right', 'footer'].map((pos) => {
-      const list = rows.region.filter((r) => (r.position ?? 'body') === pos);
+      const list = rows.region.filter((r) => r.parent_id == null && (r.position ?? 'body') === pos);
       if (!list.length && pos !== 'body' && pos !== treeSide) return '';
       return folder(posLabel(pos), list.length ? list.map((r, i) => regionLeaf(r, list[i + 1])) : none(tx(pos === 'body' ? 'pd.tree.no_regions_yet' : 'pd.tree.no_regions')), list.length > 0);
     });
@@ -242,7 +246,19 @@ export async function designerRoutes(app: FastifyInstance) {
       const row = (list: string[], cls: string) => html`<div class="pd-slots ${cls}">${list.map((sl) => slot('button', r.id, at(sl), sl))}</div>`;
       return html`${row(TOP_SLOTS, 'pd-slots-top')}${slot('button', r.id, at('region'), 'region')}${row(BOTTOM_SLOTS, 'pd-slots-bottom')}`;
     };
-    const block = (r: any) => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
+    // (172, APEX: the Sub Regions slot) a region's sub regions: a grid of their own inside it, for a container template
+    // or when it has sub regions (other regions take sub regions through their Parent region or Arrange → Move into)
+    const subGrid = (r: any) => {
+      const subs = subsOf(r);
+      if (!subs.length && !CONTAINER_TEMPLATES.has(r.template)) return '';
+      return html`<div class="pd-sub">
+          <div class="pd-sub-label">${tx('pd.tree.sub_regions')}${r.template === 'tabs_container' ? html` <small>${tx('pd.sub_tabs')}</small>` : ''}</div>
+          <div class="pd-grid pd-subgrid" data-drop="region" data-position="${r.position ?? 'body'}" data-parent="${r.id}">
+            ${subs.map(block)}
+            <div class="pd-grid-end" data-end><a href="${url(`new=region&parent=${r.id}`)}">${icon('plus')} ${tx('pd.sub_region')}<span class="sr-only"> ${tx('pd.in_region', { region: regionTitle(r) })}</span></a></div>
+          </div></div>`;
+    };
+    const block = (r: any): Raw => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
         <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
           <span class="pd-grip" title="${tx('pd.drag_move')}">${bicon('grip')}</span>
           <a class="pd-region-link" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} aria-describedby="pd-kbd">${bicon(regionIcon(r.type))}<span>${regionTitle(r)}</span></a>
@@ -253,13 +269,14 @@ export async function designerRoutes(app: FastifyInstance) {
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
           ${buttonSlots(r)}
+          ${r.parent_id == null ? subGrid(r) : ''}
         </div>
         <span class="pd-resize" title="${tx('pd.drag_span')}" aria-hidden="true"></span>
       </div>`;
     // (sprint 77, APEX: the page template's display positions) a drop zone per position of the page template, and
     // for any other position that has regions (they show in the body when the page runs)
     const side = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
-    const byPos = (pos: string) => rows.region.filter((r) => (r.position ?? 'body') === pos);
+    const byPos = (pos: string) => rows.region.filter((r) => r.parent_id == null && (r.position ?? 'body') === pos);
     const zone = (pos: string) => {
       const list = byPos(pos);
       const off = (pos === 'left' || pos === 'right') && pos !== side;
@@ -275,8 +292,8 @@ export async function designerRoutes(app: FastifyInstance) {
       <div class="pd-columns${side ? ` pd-columns-${side}` : ''}">
         ${side === 'left' || extra('left') ? zone('left') : ''}${zone('body')}${side === 'right' || extra('right') ? zone('right') : ''}
       </div>${zone('footer')}`;
-    const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>) =>
-      html`<ul class="pd-gallery-list" aria-label="${tx.dyn(`comp.${k}.plural`, COMPONENTS[k].plural)}">${types.map((t) => {
+    const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>, listLabel?: 'pd.gallery.containers') =>
+      html`<ul class="pd-gallery-list" aria-label="${listLabel ? tx(listLabel) : tx.dyn(`comp.${k}.plural`, COMPONENTS[k].plural)}">${types.map((t) => {
         const name = tx.dyn(`gallery.${k}.${t}`, labels[t]?.[0] ?? t);
         return html`<li><a class="pd-gal" href="${url(`new=${k}&type=${t}`)}" draggable="true" data-new="${k}" data-type="${t}" title="${tx('pd.gallery_title', { name })}">${bicon(labels[t]?.[1] ?? k)}<span>${name}</span></a></li>`;
       })}</ul>`;
@@ -298,7 +315,7 @@ export async function designerRoutes(app: FastifyInstance) {
       </div>
       <div class="pd-gallery">
         <div class="pd-tabs" data-tabs="pd-gallery" data-tabs-remember aria-label="${tx('pd.gallery')}">
-          ${tab('pd-g-regions', tx('pd.gallery.regions'), gallery('region', REGION_TYPES(), REGION_LABELS), true)}
+          ${tab('pd-g-regions', tx('pd.gallery.regions'), html`${gallery('region', Object.keys(CONTAINER_LABELS), CONTAINER_LABELS, 'pd.gallery.containers')}${gallery('region', REGION_TYPES(), REGION_LABELS)}`, true)}
           ${tab('pd-g-items', tx('pd.tree.items'), gallery('item', ITEM_TYPES(), ITEM_LABELS))}
           ${tab('pd-g-buttons', tx('pd.tree.buttons'), gallery('button', BUTTON_ACTIONS(), BUTTON_LABELS))}
         </div>
@@ -354,7 +371,10 @@ export async function designerRoutes(app: FastifyInstance) {
       const typeField = newKind === 'button' ? 'action' : 'type';
       const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') ? { [typeField]: req.query.type } : {};
       const presetPlace = newKind === 'region' && POSITIONS().includes(req.query.position ?? '') ? { position: req.query.position } : {};
-      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, ...presetPlace, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
+      // (172) a sub region: the region it goes in (the Sub regions slot's link)
+      const presetParent = newKind === 'region' && /^\d{1,9}$/.test(req.query.parent ?? '') && rows.region.some((r) => String(r.id) === req.query.parent && r.parent_id == null)
+        ? { parent_id: Number(req.query.parent) } : {};
+      const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, ...presetPlace, ...presetParent, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
       heading = html`${icon(spec.icon)}<span>${tx.dyn(`pd.new.${newKind}`, `New ${spec.label.toLowerCase()}`)}</span>`;
       props = peTabs([tab('pd-r-props', kindLabel(newKind), componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, tx.dyn(`pd.create.${newKind}`, `Create ${spec.label.toLowerCase()}`), { id: formId }), true)]);
     } else if (kind && kind !== 'page' && PAGE_KINDS.includes(kind)) {
@@ -378,7 +398,8 @@ export async function designerRoutes(app: FastifyInstance) {
             ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="up">`, html`${bicon('arrow-up')}<span class="sr-only">${tx('pd.arrange.up')}</span>`, tx('pd.arrange.up_title'))}
             ${moveForm(kind, row.id, html`<input type="hidden" name="dir" value="down">`, html`${bicon('arrow-down')}<span class="sr-only">${tx('pd.arrange.down')}</span>`, tx('pd.arrange.down_title'))}
             ${kind === 'region'
-              ? html`<form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="${tx('pd.arrange.narrower_title')}"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">${tx('pd.arrange.narrower')}</span></button></form>
+              ? html`${moveForm(kind, row.id, html`<label class="sr-only" for="pe-move-parent">${tx('pd.arrange.to_parent')}</label><select id="pe-move-parent" name="parent"><option value="">${tx('pd.arrange.page_level')}</option>${rows.region.filter((r) => r.id !== row.id && r.parent_id == null).map((r) => html`<option value="${r.id}"${row.parent_id === r.id ? raw(' selected') : ''}>${regionTitle(r)}</option>`)}</select>`, html`<span>${tx('pd.arrange.move')}</span>`, tx('pd.arrange.move_parent_title'))}
+                <form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="-1"><button class="tb-btn" title="${tx('pd.arrange.narrower_title')}"${row.columns <= 1 ? raw(' disabled') : ''}>${bicon('narrow')}<span class="sr-only">${tx('pd.arrange.narrower')}</span></button></form>
                 <span class="pe-span" title="${tx('pd.arrange.span')}">${row.columns}/12</span>
                 <form method="post" action="${post}/layout/span" class="pe-arrange-form">${csrf(s)}<input type="hidden" name="id" value="${row.id}"><input type="hidden" name="delta" value="1"><button class="tb-btn" title="${tx('pd.arrange.wider_title')}"${row.columns >= 12 ? raw(' disabled') : ''}>${bicon('wide')}<span class="sr-only">${tx('pd.arrange.wider')}</span></button></form>`
               : moveForm(kind, row.id, html`<label class="sr-only" for="pe-move-region">${tx('pd.arrange.to_region')}</label><select id="pe-move-region" name="region">${regionOptions}</select>`, html`<span>${tx('pd.arrange.move')}</span>`, tx('pd.arrange.move_title'))}
@@ -586,7 +607,10 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!s) return;
     const { pid, kind, cid } = req.params;
     if (!PAGE_KINDS.includes(kind)) return reply.code(404).send('Unknown component type');
-    await owner.query(`delete from ${COMPONENTS[kind].table} where id = $1 and page_id = $2`, [cid, pid]);
+    // (172) a region's sub regions are kept: they move up to the page, where the region was
+    if (kind === 'region') {
+      if (/^\d{1,9}$/.test(cid) && /^\d{1,9}$/.test(pid)) await owner.tx((c) => deleteRegion(c, Number(pid), Number(cid)));
+    } else await owner.query(`delete from ${COMPONENTS[kind].table} where id = $1 and page_id = $2`, [cid, pid]);
     flash(s, tr(s).dyn(`pd.deleted.${kind}`, `${COMPONENTS[kind].label} deleted.`));
     return back(reply, s, `${BASE}/pages/${pid}`);
   });

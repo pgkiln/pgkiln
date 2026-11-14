@@ -99,8 +99,9 @@ Button Position):
 | `next` | At the right end of the bottom bar, after every other button there |
 | `region` (or empty) | With the region's other buttons, as before: the header of reports and charts, the bottom of forms and static content (in the bottom bar, before `next`) |
 
-Positions apply to the `standard`, `collapsible` and `plain` templates; the other templates place every
-button where they always do. Page-level buttons have no position.
+Positions apply to the `standard`, `collapsible`, `plain`, `tabs_container` and `flex_container` templates (so
+also to [sub regions](#sub-regions) with them); the other templates place every button where they always do.
+Page-level buttons have no position.
 
 ### Dialogs and drawers
 
@@ -137,6 +138,8 @@ Region **templates**:
 | `inline_dialog` | Hidden until opened, then a dialog over the page with a close button; Esc and a click beside it close it too (APEX: Inline Dialog) |
 | `inline_drawer` | The same, as a panel docked to the right edge (APEX: Inline Drawer) |
 | `wizard` | A narrow, centred card for one step of a wizard; a [list](#list-lists) region with template `wizard_progress` above it shows the steps (APEX: Wizard Container) |
+| `tabs_container` | (sprint 195) A card whose [sub regions](#sub-regions) are tabs: one tab per sub region, its title as the tab's label (APEX: Tabs Container) |
+| `flex_container` | (sprint 195) No frame: its [sub regions](#sub-regions) side by side, as many as fit, wrapping to one under the other on narrow screens (APEX: the gallery's Flex Container) |
 
 An inline dialog or drawer opens with the dynamic action **Open region** (and closes with **Close
 region**), e.g. on the click of a button with action *Defined by dynamic action*, or with a link to
@@ -147,6 +150,46 @@ region (`{"style": "carousel"}`). The HR example's page 44 (*Region templates*) 
 Every region also has `seq` (order), a [server-side condition](06-processing.md#server-side-conditions)
 (`condition_type`, `condition` as its expression, `condition_value`; without a type `condition` is a SQL
 boolean expression; the region renders only when it holds) and `authz` (an authorization scheme).
+
+### Sub regions
+
+(sprint 195; APEX: Sub Regions, Parent Region) A region can sit **inside another region** of its page: set its
+**Parent region** (Page Designer → region → Layout; `parent_id` in the `meta.region` row, `parent` in the
+[exported files](18-cli.md#the-directory-format)), or drop it into the region's *Sub regions* slot in the Page Designer.
+Nesting is **one level** deep: a sub region holds no regions, and a region with sub regions can't go inside another.
+The parent's template decides how its sub regions show:
+
+| Parent's `template` | Its sub regions |
+|---|---|
+| `tabs_container` | One **tab** per sub region, labelled with the sub region's title, one shown at a time. The tabs follow the ARIA tabs pattern: <kbd>Tab</kbd> reaches the current tab, the arrow keys, <kbd>Home</kbd> and <kbd>End</kbd> move between them; the tab chosen is remembered for the browser session, and a link to `#R<id>` of a sub region opens its tab. On a phone the tabs scroll sideways. Without JavaScript the tabs are links to the sub regions, which all show |
+| `flex_container` | Side by side, each at least about 16 rem wide, wrapping to one under the other on a phone; their column span is not used |
+| `collapsible` | In the region's body, under its own content: they collapse with it |
+| any other | On a 12-column grid of their own under the region's own content, by their column span (two per row on tablets, one on phones, as on the page) |
+
+A sub region is an ordinary region with its own type, template, source, items, buttons (and their button
+positions), caching and lazy loading. Give the sub regions of a tabs container the `plain` template: the tab
+already shows their title (without JavaScript a plain sub region gets its title as a heading over its panel).
+A sub region's own display position is not used: it shows where its parent does.
+
+- **The parent decides first.** A sub region shows only where its parent shows: the parent's authorization,
+  server-side condition and build option apply to its sub regions too, and with them to their items and buttons
+  (a button or item of a sub region that isn't shown can't be pressed or set by a forged request). A sub region's
+  own authorization and condition apply as well: a sub region of a tabs container that isn't shown leaves no
+  tab behind.
+- **Partial refresh.** A dynamic action *Refresh region* on a sub region renders only that region; it is replaced
+  inside its tab or grid, which keeps its state (the tab stays open). A refreshed parent renders its sub regions
+  with it.
+- **Deleting** a region with sub regions in the Page Designer keeps them: they move up to the page, into the
+  deleted region's display position and place, in their order. A region deleted by SQL leaves its sub regions at
+  page level too (`on delete set null`), in their own position.
+- **Export and import** keep the tree (`meta.export_app` / `meta.import_app`, the directory files, *Copy page*,
+  *Duplicate* and *Copy to other page*, which copy a container with its sub regions). A parent that is missing from
+  a file leaves the region at page level.
+
+The HR example's page 53 (*Department overview*) has a tabs container with a report (with a *Refresh* button that
+refreshes only it), a form (its *Save* at the end of the bottom bar) and a chart, a tab for administrators only, a
+flexbox container with three key figures and a collapsible region with two sub regions; the containers are shown
+once a department is chosen (their condition applies to all their sub regions).
 
 ### Template options
 

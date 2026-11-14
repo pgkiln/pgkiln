@@ -294,6 +294,9 @@ src/
                            (Pillar Light / Dark), navAppearance() → the <body> classes nav-pillar-*, the header strip (--strip)
     template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges; (124) menu entries {action} → data-menu-entry for menu_entry dynamic actions)
+                           (sprint 195, migration 172) sub regions: childrenOf, renderChildren (tabs_container: tab links + panels that app.js
+                           makes ARIA tabs; flex_container; a 12-column grid), after the region's own (cached) body; render.ts skips sub
+                           regions at page level, authz.ts computeVisibility drops a sub region whose parent isn't shown
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
@@ -483,7 +486,9 @@ src/
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar;
                            (sprint 86) GET /builder/apps/:app/pages/:no, /builder/pages/:id redirects browsers there (designerUrl in ui.ts)
     errors.ts              (sprint 86) the builder's HTML 404 and 500 pages for browsers (wantsHtml, a not-found handler and an onSend hook)
-    arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo
+    arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo;
+                           (sprint 195) sub regions: moveComponent's parent (targetParent: one level), CONTAINER_LABELS (the gallery's
+                           containers), duplicate and copy with sub regions, deleteRegion (sub regions move up to the page)
     sql.ts                 SQL Workshop: the home and the session's schema
     sql-tour.ts            (sprint 179) GET /builder/sql/tour: the guided tour of the SQL Workshop's tools (a step per tool, no script)
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
@@ -675,6 +680,8 @@ test/
   files.test.ts            file items: storage, limits, downloads, temporary files
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   item-region-types.test.ts (sprint 140) shuttle, select one/many, classic report, breadcrumb and help text: gallery, runtime, export, Advisor, HR page 50
+  sub-regions.test.ts      (sprint 195) sub regions: the one-level rule, tabs/flex/grid rendering, the parent's condition, partial refresh,
+                           export/import and files, copy page, the Page Designer (create, move, undo, duplicate, delete), Advisor, APEX import
   dataload.test.ts         parsing, Load Data, the data_load process
   sampledata.test.ts       Sample Data: CHECK parsing, proposals, option errors, seeds and streams, preview/insert/rollback, parents first, downloads, saved generators
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming
@@ -785,6 +792,8 @@ test/
                            (107) transaction mode: badge, reload, Rollback, closing a tab, Autocommit switch, beforeunload
   e2e/items.test.ts        sprint 26 item types in a browser: editors, tags, stars, dates, reveal; without JavaScript
   e2e/item-region-types.test.ts (sprint 140) the shuttle (buttons, keyboard, order) and Select One / Many in a browser; without JavaScript; 390 px
+  e2e/sub-regions.test.ts  (sprint 195) HR page 53: ARIA tabs (keys, refresh inside a tab, remembered), flexbox at 360 px, without
+                           JavaScript; a tabs container with a report and a form built by drag and drop
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
   e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone

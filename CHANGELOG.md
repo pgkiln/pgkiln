@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Sub regions** (sprint 195, NX-F2; APEX: Parent Region): a region can sit inside another region of its page, one
+  level deep, and the parent's template decides how they show: **Tabs Container** (new; one tab per sub region, the
+  ARIA tabs pattern with arrow keys, Home and End, the chosen tab kept for the session, `#R<id>` opens its tab, links
+  with every panel shown without JavaScript), **Flexbox Container** (new; side by side, wrapping on phones),
+  **Collapsible**, or any other template on a 12-column grid. A parent's authorization, condition and build option
+  apply to its sub regions and their items and buttons; *Refresh region* on a sub region replaces only that region.
+  In the Page Designer: a Containers group in the gallery, a Sub regions slot in the layout (drag in and out, or
+  *+ Sub region*), a branch in the tree with *Create sub region*, a Parent region property and Arrange → Move into;
+  Duplicate, Copy to other page and undo/redo keep the tree. Deleting a container moves its sub regions up to the
+  page, in its position and place. Export/import, `copy_page`, the application files (`parent: <static id>`) and
+  `diff_app` keep the tree; the APEX importer maps `p_parent_plug_id` instead of flattening (`t-TabsRegion` becomes a
+  tabs container, `is-collapsed` / `is-expanded` collapsible; deeper nesting goes under the top-most ancestor, with a
+  note). The Advisor flags a missing or nested parent, an empty container and a tab without a title. HR page 53
+  *Department overview* shows it all. Migration 172.
+
 ## [0.99.0] - 2026-11-14
 
 ### Added
