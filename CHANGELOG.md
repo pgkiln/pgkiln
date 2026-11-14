@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **The Pages report and page aliases** (sprint 193, NX-F3): the application home's Pages report gets the columns
+  **Alias**, **Type** (worked out from the page's regions: Interactive Report, Form, Faceted Search, Dashboard, Login,
+  Blank, …), **Updated** and **Updated by**; facet-like filters above it (Group, Mode, Type, Authorization, Lock,
+  Updated by) with a count per value, applied at once, kept in the URL (bookmarkable) and cleared with *Clear filters*;
+  sortable columns (kept for the session); and a **Columns** chooser per developer (the region / item / DA / process
+  counts are now hidden by default). Every page has an **alias**: `/a/<app>/<alias>` opens it exactly like
+  `/a/<app>/<number>` (same sign-in, authorization, protection and checksums). It is set in the Page Designer under
+  Identification → Alias, taken from the page name when left empty, unique in the application and never one of the
+  runtime's own paths; *Run ▸* uses it. Aliases travel in exports (older exports and copied pages get one), and the
+  APEX importer keeps APEX page aliases. Updated / Updated by come from the change history (`meta.page_change`, kept
+  per installation, not exported, kept by `import --replace`). Migration 170.
+
 ## [0.98.0] - 2026-11-14
 
 ### Added

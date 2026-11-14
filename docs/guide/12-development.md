@@ -245,11 +245,17 @@ src/
                            <meta name="pgkiln-trace"> in layout.ts and relay() of what app.js reports). Spans come from
                            webclient.ts (outgoing calls, traceparent), ai/service.ts logUsage, runtime/ai-agents.ts logToolCall,
                            mail/mail.ts sendOne, workflow.ts runWorkflow; logs from session.ts logActivity
+  page-alias.ts            (sprint 193, NX-F3) page aliases: RESERVED_PAGE_ALIASES (the runtime's own segments of /a/<app>/…, the
+                           same list as migration 170's meta.page_alias_reserved; test/page-alias.test.ts scans the routes),
+                           pageAliasProblem(), aliasFromName() (= meta.page_alias_slug), pageOfSegment() (loadContext: a number
+                           or the alias of one of the app's pages)
   history.ts               (sprint 138, AP-5) change history and checksums: meta.app_snapshot (the export after the last recorded
                            change), recordHistory() (export again, workingcopy.ts components() of both, each added/changed/deleted
                            component with its files before and after into meta.component_change; called by app-updates.ts onSend,
                            the upgrade page and cli/replace.ts replaceApp), ensureSnapshot() (before a first change), diffDocs(),
-                           appChecksum() / pageChecksums() (SHA-256 of the text layout without the alias), CHANGE_HISTORY_DAYS
+                           appChecksum() / pageChecksums() (SHA-256 of the text layout without the alias), CHANGE_HISTORY_DAYS;
+                           (sprint 193) notePageChanges(): meta.page_change (who changed a page last) for the pages a change touched,
+                           and (builder/app-updates.ts) every page of a new application (Create, Import)
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     signin.ts              the sign-in form (built-in page and the login region of an application's own login page), safeNext, passwordResetAvailable
@@ -388,6 +394,10 @@ src/
                            language links (?lang=, a cookie), meta.developer.language
     routes.ts              sign-in, app home, settings, activity, developers, create (POST, via newapp.ts)/import (POST)
                            (sprint 183, CD-2: the Pages report's Conditions column, conditions.ts serverCondition/conditionWords)
+    pages-report.ts        (sprint 193, NX-F3) the app home's Pages report: Alias, Type, Updated, Updated by (meta.page_change),
+                           filters with counts (filterPages, a facet without its own filter), sortPages, the column chooser
+                           (PAGE_COLUMNS, meta.developer.page_columns, POST /builder/page-columns)
+    page-type.ts           (sprint 193) pageType(): a page's type from its regions (the main region rule), pageTypeKey()
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
     create-page.ts         (137) Create page: the grid of page types with SVG previews (tabs Component / Feature / Copy), the table step,
                            Create page as copy (step per app and page, shared components mapped or copied → meta.copy_page)

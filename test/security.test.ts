@@ -14,7 +14,7 @@ import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/ru
 import { maxRows } from '../src/runtime/report.ts';
 import { lovMax } from '../src/runtime/items.ts';
 import { loadWithDefinition } from '../src/dataload.ts';
-import { Browser as FileBrowser, gridForm } from './helpers.ts';
+import { Browser as FileBrowser, formFields as pageFormFields, gridForm } from './helpers.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -16286,5 +16286,136 @@ describe('sprint 189 session limits, deep linking and expiring bookmarks per app
     assert.equal(new URL(fresh, 'http://x').searchParams.get('cs'), sql);
     // the settings page says when
     assert.match((await dev.get(`/builder/apps/${appId}/settings?tab=errors`)).body, /Last expired: \d{4}-\d\d-\d\d \d\d:\d\d UTC/);
+  });
+});
+
+// (sprint 193, NX-F3) page aliases: /a/<app>/<alias> opens a page as its number does, through the same checks
+describe('page aliases (sprint 193)', () => {
+  test('an alias is checked as its page number: sign-in, authorization schemes, checksums', async () => {
+    const aliasOf = async (n: number) => (await owner.one<{ alias: string }>('select alias from meta.page where app_id = $1 and page_no = $2', [appId, n]))!.alias;
+    const [employees, form, audit] = [await aliasOf(2), await aliasOf(3), await aliasOf(9)];
+    // signed out: the sign-in page, as for the number
+    const anon = await new Browser().get(`/a/hr/${employees}`);
+    assert.equal(anon.statusCode, 302);
+    assert.match(String(anon.headers.location), /^\/a\/hr\/login\?next=/);
+    const allen = await as('allen');
+    assert.equal((await allen.get(`/a/hr/${employees}`)).statusCode, 200);
+    assert.equal((await allen.get(`/a/hr/${form}`)).statusCode, 403, 'the employee form needs MANAGER under its alias too');
+    assert.equal((await allen.get(`/a/hr/${audit}`)).statusCode, 403, 'the audit trail needs ADMIN under its alias too');
+    // a link with item values signed for page 3 works under the alias (checksums are made with the page number)
+    const blake = await as('blake');
+    const signed = link('blake', 3, { P3_EMPNO: '7499' });
+    const byAlias = signed.replace('/a/hr/3?', `/a/hr/${form}?`);
+    const ok = await blake.get(byAlias);
+    assert.equal(ok.statusCode, 200);
+    assert.match(ok.body, /value="7499"/);
+    // tampered: a checksum error, as for the number
+    const forged = await blake.get(byAlias.replace('7499', '7521'));
+    assert.equal(forged.statusCode, 403);
+    assert.match(forged.body, /checksum error/);
+    // a link signed for another page: what its number gives
+    assert.equal((await blake.get(signed.replace('/a/hr/3?', `/a/hr/${employees}?`))).statusCode, (await blake.get(signed.replace('/a/hr/3?', '/a/hr/2?'))).statusCode);
+  });
+
+  test("an alias only reaches its own application's pages; reserved words, odd and injected paths are 404 or the runtime's own", async () => {
+    await owner.query(`delete from meta.app where alias = 's193-other'`);
+    const other = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('s193-other', 'S193 other', 'none', 'hr_app') returning id`))!.id;
+    try {
+      await owner.query(`insert into meta.page (app_id, page_no, name, alias) values ($1, 1, 'Secret', 's193-secret')`, [other]);
+      const king = await as('king');
+      assert.equal((await king.get('/a/hr/s193-secret')).statusCode, 404, "another application's alias");
+      assert.equal((await new Browser().get('/a/s193-other/s193-secret')).statusCode, 200, 'in its own application it opens');
+      // reserved words never become an alias (the database refuses them; the runtime's routes keep theirs)
+      await assert.rejects(owner.query(`update meta.page set alias = 'login' where app_id = $1`, [other]), /page_alias_check/);
+      await assert.rejects(owner.query(`update meta.page set alias = '42' where app_id = $1`, [other]), /page_alias_check/);
+      await assert.rejects(owner.query(`update meta.page set alias = 'a b' where app_id = $1`, [other]), /page_alias_check/);
+      assert.equal((await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 2, 'Login') returning alias`, [other]))!.alias, 'login-page');
+      assert.match((await new Browser().get('/a/hr/login')).body, /<form method="post" action="\/a\/hr\/login"/, '/login stays the sign-in page');
+      for (const path of [`/a/hr/employees'%20or%20'1'='1`, '/a/hr/employees%00', '/a/hr/EMPLOYEES', '/a/hr/employees-', '/a/hr/-1', '/a/hr/0',
+        '/a/hr/..%2Fs193-other%2Fs193-secret', `/a/hr/${'x'.repeat(65)}`, '/a/hr/%E2%80%AEemployees', '/a/hr/1e1', '/a/hr/0x2'])
+        assert.equal((await king.get(path)).statusCode, 404, path);
+      // the 404 page escapes what was asked for
+      const res = await king.get('/a/hr/%3Cscript%3Ex');
+      assert.equal(res.statusCode, 404);
+      assert.doesNotMatch(res.body, /<script>x/);
+    } finally {
+      await owner.query('delete from meta.app where id = $1', [other]);
+    }
+  });
+
+  test('the Page Designer refuses an alias that is malformed, numeric, reserved or taken, and needs the CSRF token', async () => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const page = (await owner.one<{ id: number; alias: string; name: string; page_no: number }>('select id, alias, name, page_no from meta.page where app_id = $1 and page_no = 6', [appId]))!;
+    const follow = async (url: string) => {
+      let res = await b.get(url);
+      for (let i = 0; i < 5 && res.statusCode >= 300 && res.statusCode < 400; i++) res = await b.get(String(res.headers.location));
+      return res;
+    };
+    const form = async () => {
+      const body = (await follow(`/builder/pages/${page.id}?c=page`)).body;
+      const markup = new RegExp(`<form method="post" action="/builder/pages/${page.id}" class="component-form"[\\s\\S]*?</form>`).exec(body)?.[0];
+      assert.ok(markup, 'the page form');
+      return pageFormFields(markup);
+    };
+    try {
+      for (const [alias, message] of [['Bad alias!', /only lower case letters/], ['1234', /not only digits/], ['rest', /a path the runtime uses itself/],
+        ['employees', /already another page/], ['x'.repeat(70), /1 to 64 characters/]] as [string, RegExp][]) {
+        const res = await b.submit(`/builder/pages/${page.id}`, { ...(await form()), page_alias: alias });
+        assert.equal(res.statusCode, 303);
+        assert.match((await follow(String(res.headers.location))).body, message, alias);
+        assert.equal((await owner.one('select alias from meta.page where id = $1', [page.id]))!.alias, page.alias, `${alias}: unchanged`);
+      }
+      // without the token: refused
+      const fields = await form();
+      delete fields.__csrf;
+      assert.equal((await b.post(`/builder/pages/${page.id}`, { ...fields, page_alias: 'no-token' })).statusCode, 403);
+      // upper case and spaces around are made lower case; empty takes one from the name
+      await b.submit(`/builder/pages/${page.id}`, { ...(await form()), page_alias: '  Time-Off ' });
+      assert.equal((await owner.one('select alias from meta.page where id = $1', [page.id]))!.alias, 'time-off');
+      await b.submit(`/builder/pages/${page.id}`, { ...(await form()), page_alias: '' });
+      assert.equal((await owner.one('select alias from meta.page where id = $1', [page.id]))!.alias, page.alias);
+    } finally {
+      await owner.query('update meta.page set alias = $2 where id = $1', [page.id, page.alias]);
+    }
+  });
+
+  test("the Pages report's column chooser: signed in, the CSRF token, known columns only, only the report's own query string back", async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    assert.equal((await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    await dev.get(`/builder/apps/${appId}`);
+    const cols = async () => (await owner.one<{ page_columns: string[] | null }>(`select page_columns from meta.developer where username = 'admin'`))!.page_columns;
+    try {
+      await owner.query(`update meta.developer set page_columns = null where username = 'admin'`);
+      // signed out, or without the token: nothing changes
+      const anon = await new Browser().post('/builder/page-columns', { app: String(appId), col: 'regions' });
+      assert.ok([302, 303, 403].includes(anon.statusCode), String(anon.statusCode));
+      assert.equal((await dev.post('/builder/page-columns', { app: String(appId), col: 'regions' })).statusCode, 403);
+      assert.equal(await cols(), null);
+      // unknown or injected column names are dropped; the stored list is the report's own names in their order
+      await dev.get(`/builder/apps/${appId}`);
+      const res = await dev.post('/builder/page-columns', { __csrf: dev.lastCsrf, app: String(appId), col: ['items', "x'); drop table meta.page; --", 'regions', '<script>', 'alias'],
+        back: 'https://evil.example/' });
+      assert.equal(res.statusCode, 303);
+      assert.equal(res.headers.location, `/builder/apps/${appId}`, 'never another URL');
+      assert.deepEqual(await cols(), ['alias', 'regions', 'items']);
+      for (const back of ['//evil.example', '?a=1#x', '?q=<b>', '/\\evil.example', '?x=1\r\nSet-Cookie:a=b']) {
+        await dev.get(`/builder/apps/${appId}`);
+        const r = await dev.post('/builder/page-columns', { __csrf: dev.lastCsrf, app: String(appId), col: 'alias', back });
+        assert.equal(r.headers.location, `/builder/apps/${appId}`, back);
+      }
+      await dev.get(`/builder/apps/${appId}`);
+      const notApp = await dev.post('/builder/page-columns', { __csrf: dev.lastCsrf, app: 'x/../../evil', col: 'alias', back: '?sort=page' });
+      assert.equal(notApp.headers.location, '/builder/apps');
+      // the database refuses anything but column names too
+      await assert.rejects(owner.query(`update meta.developer set page_columns = array['bad name'] where username = 'admin'`), /check/);
+      // the filters' values are escaped where the report shows them back
+      const body = (await dev.get(`/builder/apps/${appId}?type=%22%3E%3Cscript%3Ex&by=%3Cb%3Ey&group=%3Cimg%3E&q=%3Cb%3Ez`)).body;
+      assert.doesNotMatch(body, /<script>x|<b>y|<img>|<b>z/);
+    } finally {
+      await owner.query(`update meta.developer set page_columns = null where username = 'admin'`);
+    }
   });
 });

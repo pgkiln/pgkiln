@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { owner } from '../db.ts';
-import { recordHistory } from '../history.ts';
+import { notePageChanges, recordHistory } from '../history.ts';
 import type { Session } from '../session.ts';
 import { BASE } from './ui.ts';
 
@@ -53,6 +53,8 @@ export function appUpdateHooks(app: FastifyInstance) {
     await recordChange(appId, n.s.username).catch((err) => req.log.warn({ err }, 'app_change not recorded'));
     // (sprint 138) what changed, per component (src/history.ts)
     await recordHistory(appId, n.s.username).catch((err) => req.log.warn({ err }, 'change history not recorded'));
+    // (sprint 193) a Create or an Import: every page of the new application is its developer's (Pages report: Updated by)
+    if (n.appId === null) await notePageChanges(owner, appId, null, n.s.username, 'builder').catch((err) => req.log.warn({ err }, 'page_change not recorded'));
     return payload;
   });
 }
