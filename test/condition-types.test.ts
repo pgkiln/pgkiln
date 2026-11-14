@@ -194,7 +194,9 @@ describe('the builder and the Advisor', () => {
   });
 
   test('the Advisor offers the declarative type for a SQL condition that is one', async () => {
-    const found = (await advise(appId)).findings.filter((f) => f.field === 'Server-side condition');
+    // the order of the findings follows the rows, which an upgraded database may return the other way round
+    const found = (await advise(appId)).findings.filter((f) => f.field === 'Server-side condition')
+      .sort((x, y) => String(x.entry?.label).localeCompare(String(y.entry?.label)));
     assert.deepEqual(found.map((f) => [f.severity, f.entry?.label]), [['info', 'plain-sql'], ['info', 'plain-sql-false']]);
     assert.match(found[0].message, /The SQL condition :P1_JOB = 'CLERK' can be the condition type item_equals \(expression P1_JOB, value CLERK\)/);
   });
