@@ -32,6 +32,8 @@ export interface PageSummary {
   /** (065) modal pages: a centred dialog or a drawer from an edge, and its size */
   dialog_position?: 'center' | 'left' | 'right' | 'top' | 'bottom';
   dialog_size?: 'small' | 'medium' | 'large';
+  /** (sprint 193, migration 170) /a/<app>/<alias> opens the page */
+  alias?: string;
 }
 
 /** (068) a static application file a page loads: its name and a version (for the browser cache) */
@@ -474,7 +476,7 @@ async function loadAppRow(alias: string) {
             coalesce((select jsonb_agg(jsonb_build_object('name', l.name, 'query', l.query, 'rest_source', l.rest_source)) from meta.lov l where l.app_id = a.id), '[]') as lovs,
             coalesce((select jsonb_agg(jsonb_build_object('page_no', p.page_no, 'name', p.name, 'title', p.title,
                        'parent_page', p.parent_page, 'mode', p.mode, 'authz', p.authz, 'requires_auth', p.requires_auth,
-                       'dialog_position', p.dialog_position, 'dialog_size', p.dialog_size))
+                       'dialog_position', p.dialog_position, 'dialog_size', p.dialog_size, 'alias', p.alias))
                         from meta.page p where p.app_id = a.id and meta.build_option_on(a.id, p.build_option)), '[]') as pages,
             ${agg('meta.nav_entry', 'app_id', 'a', 'a.id')} as nav,
             coalesce((select jsonb_agg(jsonb_build_object('name', s.name, 'type', s.type, 'value', s.value, 'error_message', s.error_message, 'mfa_minutes', s.mfa_minutes))
@@ -513,7 +515,7 @@ export async function loadPage(appId: number, pageNo: number) {
 
 function loadPageRows(appId: number, pageNo: number) {
   return runtime.one<Page>(
-    `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode,
+    `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode, p.alias,
             p.protection, p.authz, p.warn_unsaved, p.page_template, p.help,
             ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
             ${agg('meta.item', 'page_id', 'p', 'p.app_id')} as items,

@@ -2,7 +2,7 @@
 
 ## Pages
 
-A page has a number (unique in the app), a name, a title, and these behaviours:
+A page has a number (unique in the app), a name, a title, an [alias](#page-alias), and these behaviours:
 
 | Property | Values | Effect |
 |---|---|---|
@@ -15,6 +15,32 @@ A page has a number (unique in the app), a name, a title, and these behaviours:
 | `protection` | `checksum`, `unrestricted` | Whether URL item values need a checksum |
 | `warn_unsaved` | boolean | Ask before the user leaves the page with unsaved changes, see [below](#warn-on-unsaved-changes) |
 | `help` | Markdown | (140; APEX: Page → Help Text) The page's help text, with `&ITEM.` substitutions; a [`help_text` region](#breadcrumb-and-help_text) shows it. At most 20,000 characters |
+| `alias` | `a-z`, `0-9`, `-` | (193) `/a/<app>/<alias>` opens the page; from the name when empty, see [Page alias](#page-alias) |
+
+### Page alias
+
+(sprint 193, migration 170; APEX: Page → Identification → Alias) A page's **alias** gives it a readable URL:
+`/a/hr/employees` opens the page with alias `employees` exactly as `/a/hr/2` does, through the same sign-in,
+authorization scheme, page protection and checksums. Links with item values are signed with the page number,
+so a signed link works under either address: `/a/hr/employees-form?P3_EMPNO=7499&cs=…` and
+`/a/hr/3?P3_EMPNO=7499&cs=…` carry the same checksum. The URLs pgkiln makes itself (menu entries, branches,
+`meta.page_url`, links of reports) keep the page number; write the alias where you link by hand.
+
+An alias is lower case letters `a`–`z`, digits and single hyphens between them (`leave-requests`, `q3-report`),
+at most 64 characters, not only digits (a number is a page number), unique in the application, and not one of the
+runtime's own paths of `/a/<app>/…`: `account`, `autorest`, `login`, `logout`, `notifications`, `offline`,
+`password`, `push`, `reports`, `rest`, `session`, `sso`, `static`, `tasks`, `telemetry`, `tz`, `workflows`,
+`workspace-files`. An alias only ever reaches a page of its own application: `/a/hr/<alias of another app's page>`
+is *Page not found*, as is any other text.
+
+Every page has one. A new page takes one from its name (*Leave requests* → `leave-requests`; accents dropped,
+other characters a hyphen); a name that gives nothing usable takes `page-<number>`, a reserved word gets `-page`
+(*Login* → `login-page`) and a taken one the next free number (`employees-2`). Edit it in the Page Designer under
+**Identification → Alias**; empty takes one from the name again. Changing an alias changes the page's URL: links
+to the old alias stop working. Exports carry the alias; an export made before migration 170 imports with aliases
+from the page names, a copied page gets the next free variant, and an APEX import keeps APEX's page aliases
+(`LEAVE_REQUESTS` → `leave-requests`) where pgkiln can use them. The HR sample's pages have the aliases the
+migration gave them from their names: `/a/hr/dashboard`, `/a/hr/employees`, `/a/hr/leave-calendar`, …
 
 ### Warn on unsaved changes
 

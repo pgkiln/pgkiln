@@ -1041,9 +1041,42 @@ working copies and backups go with it, so export it first if you may need it aga
 The **default-password** warning shows on the Workspace home, the App Builder home and Developers until the password is
 changed; (NX-S3) it can no longer be dismissed. The avatar keeps a red dot until then too.
 
-Open an application to see its pages, with region/item/dynamic-action/process counts,
-authorization and protection. The tabs under its name lead to **Shared Components**, **Activity**,
+Open an application to see its pages. The tabs under its name lead to **Shared Components**, **Activity**,
 **REST API**, **Settings**, **Search** and **Advisor**; **Export** and **Run** are on the right.
+
+### The Pages report
+
+(sprint 193; APEX: the Pages report with Alias, Type, Updated and Updated By, and Browse by Facets) Each page
+shows its number and name, and these columns:
+
+| Column | What it shows |
+|---|---|
+| **Alias** | The page's [alias](04-pages-and-regions.md#page-alias): `/a/<app>/<alias>` opens it. **Run ▸** at the end of the row uses it |
+| **Type** | What kind of page it is, from its regions (pgkiln keeps no type on a page): *Blank* without regions; *Login* with a login region; *Faceted Search* or *Smart Filters* when such a region filters a report, cards or a map on the page; *Dashboard* when the page has two charts or more and its first content region is a chart, cards, dynamic content or a template component; otherwise the type of its **main region**: the first one by sequence that is not a breadcrumb, help text, region display selector or static content (*Interactive Report*, *Interactive Grid*, *Form*, *Calendar*, *Map*, …), and *Static Content* when there is nothing else |
+| **Group**, **Mode** | The page group (only when the application has groups) and *Normal* or *Modal dialog* |
+| **Updated**, **Updated by** | When the page was changed last, and by which developer (*you* for yourself). Every change the change history records counts: a Page Designer save, a region, item, button, process or dynamic action added, changed or deleted on the page, an alias edited, and an **import**: the pages an `import --replace`, a restore or an upgrade changed (*import* when the command line gave no developer), and every page of an application a **Create** or **Import** made, with the developer who made it. A dash: no change recorded since the application was installed |
+| **Conditions**, **Authorization**, **Lock**, **Protection** | The server-side conditions in words (sprint 183), the page's authorization scheme (*public* without sign-in), its lock and its protection |
+| **Regions**, **Items**, **DAs**, **Processes** | The counts: hidden until you choose them |
+
+Click a column heading to sort by it (Page, Name, Alias, Group, Type, Updated by: ascending; **Updated**: newest
+first, pages without a recorded change last); the sort is kept for the session. "Who changed page 12 yesterday?":
+sort by Updated, or choose the developer in the **Updated by** filter.
+
+**Columns** opens the column chooser: tick the columns you want and **Save**; **Default columns** goes back to the
+default set. The choice is kept for you as a developer (`meta.developer.page_columns`), in every application
+and session; other developers keep their own.
+
+Above the report, the **filters** narrow it like APEX's facets: **Group**, **Mode**, **Type**, **Authorization**
+(*public*, *Signed-in users* for pages that need a sign-in without a scheme, or a scheme), **Lock** (*Locked*,
+*Not locked*) and **Updated by** (a developer, or *Not recorded*). Each value shows how many pages it would
+leave with the other filters applied, a choice applies at once (without JavaScript: **Show**), and **Clear
+filters** removes them all. The search box (number, name or alias) works together with the filters; filters
+and sort are part of the URL, so a filtered report can be bookmarked or sent to a colleague. The **Icons** view
+shows the same pages with their type.
+
+Who changed a page last is kept in `meta.page_change` (migration 170), one row per page number: builder state of
+this installation like the application's own Updated by, not part of an export, kept by `pgkiln import --replace`.
+The migration filled it from the change history (Utilities → Change history) where there is one.
 
 ### Create pages from a table (wizards)
 

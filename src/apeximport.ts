@@ -18,6 +18,7 @@
 // APEX type), so a developer knows what to finish by hand. Unknown things never fail the import.
 
 import { translateOracle } from './oracle-sql.ts';
+import { pageAliasProblem } from './page-alias.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
 
@@ -744,9 +745,13 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const help = str(a, 'p_help_text');
     const prot = (str(a, 'p_protection_level') ?? 'C').toUpperCase();
     if (prot === 'D' || prot === 'B') e.note(`page access protection ${prot === 'D' ? 'No URL Access' : 'Arguments must have checksum'} became "checksum"`);
+    // (sprint 193) APEX's page alias (EMPLOYEES, LEAVE_REQUESTS) as pgkiln's (employees, leave-requests); one pgkiln
+    // can't use is left out, and the page gets one from its name (migration 170)
+    const apexPageAlias = (str(a, 'p_alias') ?? '').toLowerCase().replace(/_/g, '-');
     const page = {
       page_no: no,
       name,
+      ...(apexPageAlias && !pageAliasProblem(apexPageAlias) ? { alias: apexPageAlias } : {}),
       title: str(a, 'p_step_title') ?? name,
       mode: mode === 'NORMAL' ? 'normal' : 'modal',
       requires_auth: !yes(a, 'p_page_is_public_y_n') && !/^(PUBLIC|NOT_REQUIRED)$/i.test(str(a, 'p_authentication') ?? ''),

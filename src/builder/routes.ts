@@ -4,6 +4,7 @@ import { appLocks, isAdmin, lockPanel, lockText } from './locks.ts';
 import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import { appIssues } from './team.ts';
+import { pagesReport, pagesReportRoutes } from './pages-report.ts';
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw } from '../html.ts';
@@ -15,7 +16,7 @@ import { documentShell } from '../layout.ts';
 import { passwordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, sessionLimits, takeFlash } from '../session.ts';
 import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
-import { APP_COLORS, appHeader, back, BASE, brandMark, designerUrl, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, brandMark, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
 import { homeRoutes, rememberApp } from './home.ts';
@@ -34,7 +35,7 @@ import { apexImportRoutes } from './apex-import.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
-import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage, type BuilderKey } from './i18n.ts';
+import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
 import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeyByCredential, passkeySignin, passkeysOf, trustBrowser, trustDays, usePasskey, userHandle } from '../mfa.ts';
 import { isIP } from 'node:net';
 import { giveChallenge, takeChallenge } from './security.ts';
@@ -45,7 +46,6 @@ import { builderDirectory, builderProvider, builderSources, linkDeveloper, resol
 import { ldapAuthenticate, LdapError } from '../ldap.ts';
 import { onBuilderSso, SsoError, startSignIn } from '../sso.ts';
 import { startSamlSignIn } from '../saml.ts';
-import { conditionWords, serverCondition } from './conditions.ts';
 
 // Builder pages: sign-in, workspace and app home, settings, activity and
 // developers. Shared Components, the page designer and the SQL Workshop
@@ -585,6 +585,7 @@ export async function builderRoutes(app: FastifyInstance) {
 
   // the workspace pages (App Builder home, Create, Import, Dashboard, Utilities) are in home.ts
   await homeRoutes(app);
+  await pagesReportRoutes(app);
   await languageRoutes(app);
   await workspaceRoutes(app);
   await instanceRoutes(app);
@@ -648,87 +649,24 @@ export async function builderRoutes(app: FastifyInstance) {
     const a = await appOr404(req.params.id);
     if (!a) return reply.code(404).send('Not found');
     rememberApp(s, a.id);
-    const [pages, tables] = await Promise.all([
-      owner.query(
-        `select p.*, (select count(*) from meta.region r where r.page_id = p.id)::int as regions,
-                (select count(*) from meta.item i where i.page_id = p.id)::int as items,
-                (select count(*) from meta.dynamic_action d where d.page_id = p.id)::int as das,
-                (select count(*) from meta.process x where x.page_id = p.id)::int as processes
-           from meta.page p where p.app_id = $1 order by p.page_no`,
-        [a.id],
-      ),
+    const [pages, tables, report] = await Promise.all([
+      owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1', [a.id]),
       wizardTables(a.db_role),
+      // (sprint 193, NX-F3) the Pages report: Alias, Type, Updated, Updated by, filters and the column chooser (pages-report.ts)
+      pagesReport(s, a, req.query),
     ]);
     const nextPage = Math.max(0, ...pages.rows.map((p) => p.page_no)) + 1;
-    // (089) page groups: a column and a filter (?group=name, or "-" for pages without one)
-    const groups = (await owner.query<{ name: string }>('select name from meta.page_group where app_id = $1 order by name', [a.id])).rows.map((g) => g.name);
-    const grouped = groups.length > 0 || pages.rows.some((p) => p.page_group);
-    // (UX-9) the property editor's words for a page's mode
-    const modeLabel = (m: string) => (m === 'modal' ? tx('pdz.modal_dialog') : tx('pdz.normal'));
-    const groupFilter = typeof req.query?.group === 'string' ? req.query.group : '';
-    // (sprint 74) search by name or number, and a report or icon view (APEX: the application home)
-    const q = typeof req.query?.q === 'string' ? req.query.q.trim().slice(0, 100) : '';
-    const icons = req.query?.view === 'icons';
-    const shownPages = pages.rows.filter((p) => (!groupFilter || (groupFilter === '-' ? !p.page_group : p.page_group === groupFilter))
-      && (!q || String(p.page_no) === q || String(p.name).toLowerCase().includes(q.toLowerCase())));
-    const keep = (extra: Record<string, string>) => `?${new URLSearchParams({ ...(q ? { q } : {}), ...(groupFilter ? { group: groupFilter } : {}), ...extra })}`;
     const locks = new Map((await appLocks(a.id)).map((l) => [l.page_no, l]));
-    const commentsPerPage = new Map((await owner.query('select page_no, count(*)::int as n from meta.dev_comment where app_id = $1 group by 1', [a.id])).rows.map((r) => [r.page_no, r.n]));
     const appLock = locks.get(0);
     const issues = await appIssues(a.id);
     const tx = tr(s);
-    // (sprint 183, CD-2) the server-side conditions of each page's components, in words (as the Page Designer's badges)
-    const conditionsPerPage = new Map<number, { kind: string; name: string; words: string }[]>();
-    for (const r of (await owner.query<{ page_no: number; kind: string; name: string; row: Record<string, unknown> }>(
-      `select p.page_no, x.kind, x.name, x.row from meta.page p cross join lateral (
-          select 'region' as kind, r.title as name, to_jsonb(r) as row, r.seq as seq from meta.region r where r.page_id = p.id
-          union all select 'item', i.name, to_jsonb(i), i.seq from meta.item i where i.page_id = p.id
-          union all select 'button', b.name, to_jsonb(b), b.seq from meta.button b where b.page_id = p.id
-          union all select 'validation', v.name, to_jsonb(v), v.seq from meta.validation v where v.page_id = p.id
-          union all select 'process', pr.name, to_jsonb(pr), pr.seq from meta.process pr where pr.page_id = p.id
-          union all select 'da', d.name, to_jsonb(d) - 'condition_type' - 'condition_value', d.seq from meta.dynamic_action d where d.page_id = p.id) x
-        where p.app_id = $1 order by p.page_no, x.kind, x.seq`, [a.id])).rows) {
-      const c = serverCondition(r.row);
-      if (!c) continue;
-      const list = conditionsPerPage.get(r.page_no) ?? [];
-      list.push({ kind: r.kind, name: r.name ?? '', words: conditionWords(tx, c) });
-      conditionsPerPage.set(r.page_no, list);
-    }
-    const KIND_LABEL: Record<string, BuilderKey> = { region: 'app.cond.region', item: 'app.cond.item', button: 'app.cond.button', validation: 'app.cond.validation', process: 'app.cond.process', da: 'app.cond.da' };
-    const conditionsCell = (n: number) => {
-      const list = conditionsPerPage.get(n);
-      if (!list?.length) return html`<span class="muted">—</span>`;
-      return html`<details class="page-conds"><summary>${tx(list.length === 1 ? 'app.conditions_one' : 'app.conditions', { n: list.length })}</summary>
-        <ul class="u-m0">${list.map((x) => html`<li><span class="muted small">${tx(KIND_LABEL[x.kind])}</span> <b>${x.name}</b>: ${x.words}</li>`)}</ul></details>`;
-    };
 
     const main = html`
       ${appHeader(a, 'pages', s, [`${BASE}/apps/${a.id}/create-page`, tx('app.create_page'), 'plus'])}
       ${appLock && appLock.locked_by !== s.username ? html`<div class="alert alert-error" role="status">${icon('key')} ${lockText(appLock)} ${tx('app.lock_refused')}</div>` : ''}
       <div class="app-home">
       <div class="app-home-main">
-      <div class="pages-bar">
-        <form method="get" class="search u-mwnone" role="search">${groupFilter ? html`<input type="hidden" name="group" value="${groupFilter}">` : ''}${icons ? html`<input type="hidden" name="view" value="icons">` : ''}
-          <label class="sr-only" for="f_pq">${tx('app.search_pages')}</label><input id="f_pq" name="q" type="search" value="${q}" placeholder="${tx('app.search_placeholder')}" data-filter-rows="pages-rows">
-          <button class="btn">${icon('search')}<span class="sr-only">${tx('common.search')}</span></button></form>
-        <div class="seg view-toggle" role="group" aria-label="${tx('ab.view')}">
-          <a href="${keep({})}"${icons ? '' : raw(' aria-current="true"')}>${icon('list')} ${tx('ab.view_report')}</a><a href="${keep({ view: 'icons' })}"${icons ? raw(' aria-current="true"') : ''}>${icon('grid')} ${tx('app.view_icons')}</a></div>
-      </div>
-      ${region(tx('app.tab.pages'), html`${grouped
-          ? html`<form method="get" class="search u-mwnone u-mb1"><div class="field"><label class="label" for="f_group">${tx('app.page_group')}</label>
-              <select id="f_group" name="group">${[['', tx('app.all_pages')], ...groups.map((g) => [g, g]), ['-', tx('app.no_group')]].map(([v, l]) => html`<option value="${v}"${v === groupFilter ? raw(' selected') : ''}>${l}</option>`)}</select></div>
-              <button class="btn u-selfend">${tx('common.show')}</button></form>`
-          : ''}${icons
-          ? html`<ul class="page-icons" id="pages-rows">${shownPages.map((p) => html`<li><a href="${designerUrl(a.id, p.page_no)}" class="page-icon"><span class="page-icon-no">${p.page_no}</span><b>${p.name}</b><small class="muted">${modeLabel(p.mode)}, ${tx(p.regions === 1 ? 'app.regions_one' : 'app.regions', { n: p.regions })}</small></a></li>`)}</ul>`
-          : html`<div class="table-wrap"><table class="report">
-          <thead><tr><th class="num">${tx('app.col.page')}</th><th>${tx('ab.col.name')}</th>${grouped ? html`<th>${tx('app.col.group')}</th>` : ''}<th>${tx('app.col.mode')}</th><th class="num">${tx('app.col.regions')}</th><th class="num">${tx('app.col.items')}</th><th class="num">${tx('app.col.das')}</th><th class="num">${tx('app.col.processes')}</th><th>${tx('app.col.conditions')}</th><th>${tx('app.col.authz')}</th><th>${tx('app.col.protection')}</th><th>${tx('app.col.lock')}</th><th></th></tr></thead>
-          <tbody id="pages-rows">${shownPages.map((p) => html`<tr>
-            <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="${tx('app.dev_comments')}">${tx(commentsPerPage.get(p.page_no) === 1 ? 'app.comments_one' : 'app.comments', { n: commentsPerPage.get(p.page_no) })}</span>` : ''}${issues.tag(p.page_no)}</td>${grouped ? html`<td>${p.page_group ?? ''}</td>` : ''}<td>${modeLabel(p.mode)}</td>
-            <td class="num">${p.regions}</td><td class="num">${p.items}</td><td class="num">${p.das}</td><td class="num">${p.processes}</td><td>${conditionsCell(p.page_no)}</td>
-            <td>${p.requires_auth ? (p.authz ?? '—') : tx('app.public')}</td><td>${p.protection}</td>
-            <td>${((l) => (l ? html`<span class="lock-tag" title="${lockText(l)}">${icon('key')}<span>${l.locked_by === s.username ? tx('app.you') : l.locked_by}</span></span>` : '—'))(locks.get(p.page_no))}</td>
-            <td><a href="/a/${a.alias}/${p.page_no}" target="_blank" rel="noopener">${tx('common.run')} ▸</a></td></tr>`)}</tbody>
-        </table></div>`}${q && !shownPages.length ? html`<p class="muted">${tx('app.no_match', { q })}</p>` : ''}`)}
+      ${report}
       <div id="app-lock">${region(tx('app.lock_region'), await lockPanel(s, a.id, 0, { headings: true }))}</div>
       <div class="columns" id="create-page">
         ${region(tx('app.from_table'), html`

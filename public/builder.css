@@ -1209,6 +1209,20 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .page-icon:hover, .page-icon:focus-visible { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: var(--shadow-md); }
 .page-icon-no { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
 .app-tasks .sc-links a { display: inline-flex; align-items: center; gap: 0.45rem; }
+/* (sprint 193, NX-F3) the Pages report: filters with counts, the column chooser (kept per developer), the alias */
+.pages-filters { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
+.pages-filters .field { margin: 0; flex: 1 1 7rem; max-width: 12rem; min-width: 0; }
+.pages-filters select { width: 100%; max-width: 100%; }
+.pages-filters-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-left: auto; }
+.pages-columns > summary { display: inline-flex; align-items: center; gap: 0.35rem; }
+.pages-columns .menu-panel { inset-inline-start: auto; inset-inline-end: 0; min-width: 15rem; max-width: calc(100vw - var(--rail-w, 56px) - 32px); padding: 0.5rem 0.75rem; }
+/* on a phone it stays a dropdown beside the rail (not app.css's bottom sheet, which the rail would cover) */
+.ide details.pages-columns[open] > .menu-panel { position: absolute; top: calc(100% + 6px); bottom: auto; left: auto; right: 0; min-width: min(15rem, calc(100vw - var(--rail-w, 56px) - 32px)); }
+.pages-columns fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.pages-columns .check { display: flex; gap: 0.4rem; align-items: center; margin: 0; }
+.pages-columns .buttons { margin-top: 0.5rem; }
+.pages-report code.page-alias { white-space: nowrap; }
+.pages-report .nowrap { white-space: nowrap; }
 
 /* (sprint 75) SQL Workshop: main tools as tabs and a More menu (no horizontal scrolling); the Object Browser */
 .sw-tabs { overflow: visible; flex-wrap: wrap; }

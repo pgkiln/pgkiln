@@ -43,8 +43,9 @@ describe('page groups', () => {
     assert.match(designer, /<option value="PG test admin">PG test admin<\/option>/);
     await owner.query(`update meta.page set page_group = 'PG test admin' where app_id = $1 and page_no in (9, 10)`, [appId]);
     const list = (await dev.get(`/builder/apps/${appId}`)).body;
-    assert.match(list, /<th>Group<\/th>/);
-    assert.match(list, /<option value="PG test admin">PG test admin<\/option>/);
+    // (sprint 193) a sortable column and a filter with counts
+    assert.match(list, /<th><a href="\?sort=group">Group<\/a><\/th>/);
+    assert.match(list, /<option value="PG test admin">PG test admin \(2\)<\/option>/);
     const filtered = (await dev.get(`/builder/apps/${appId}?group=${encodeURIComponent('PG test admin')}`)).body;
     const rows = [...filtered.matchAll(/<tr>\s*<td class="num">(\d+)<\/td>/g)].map((m) => Number(m[1]));
     assert.deepEqual(rows, [9, 10]);

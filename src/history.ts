@@ -99,11 +99,14 @@ export async function recordHistory(appId: number, changedBy: string | null, sou
     const now = await exportDoc(c, appId);
     if (!now) return 0;
     if (!snap) {
+      // a first snapshot: what changed is not known (app-updates.ts notes every page of an application a Create or an
+      // Import made with notePageChanges)
       await c.query('insert into meta.app_snapshot (app_id, doc) values ($1, $2) on conflict (app_id) do update set doc = excluded.doc, taken_at = now()', [appId, now]);
       return 0;
     }
     const changes = diffDocs(snap.doc, now);
     if (!changes.length) return 0;
+    await notePageChanges(c, appId, [...new Set(changes.map((x) => x.page).filter((n): n is number => typeof n === 'number' && n > 0))], changedBy, source);
     await c.query(
       `insert into meta.component_change (app_id, component, label, page_no, op, before, after, changed_by, source)
        select $1, x.component, x.label, x.page, x.op, x.before, x.after, $2, $3
@@ -127,6 +130,21 @@ export async function recordHistory(appId: number, changedBy: string | null, sou
     }
   }
   return owner.tx(run);
+}
+
+/**
+ * (sprint 193, migration 170) Who changed a page last: meta.page_change for the pages a recorded change touched (null:
+ * every page of the application), and no row for a page number the application no longer has.
+ */
+export async function notePageChanges(c: Db, appId: number, pages: number[] | null, changedBy: string | null, source: string) {
+  if (pages && !pages.length) return;
+  await c.query(
+    `insert into meta.page_change (app_id, page_no, updated_by, updated_at, source)
+     select p.app_id, p.page_no, $3, now(), $4 from meta.page p where p.app_id = $1 and ($2::int[] is null or p.page_no = any ($2))
+     on conflict (app_id, page_no) do update set updated_by = excluded.updated_by, updated_at = excluded.updated_at, source = excluded.source`,
+    [appId, pages, changedBy?.slice(0, 200) || null, source],
+  );
+  await c.query('delete from meta.page_change x where x.app_id = $1 and not exists (select 1 from meta.page p where p.app_id = x.app_id and p.page_no = x.page_no)', [appId]);
 }
 
 /** SHA-256 of a set of files (paths and contents, in path order). */

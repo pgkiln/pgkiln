@@ -12,6 +12,7 @@ import { appTx, runtime, savepoint } from '../db.ts';
 import { withAppDb } from '../workspace-db.ts';
 import { html } from '../html.ts';
 import { documentShell } from '../layout.ts';
+import { pageOfSegment } from '../page-alias.ts';
 import { accountRoles, loadApp, loadPage, type App, type Page, type Region } from '../metadata.ts';
 import { passwordDaysLeft, passwordProblem } from '../accounts.ts';
 import { english, type Translate } from '../i18n.ts';
@@ -276,8 +277,9 @@ export async function loadContext(
     session = s;
   }
   if (locale.lang !== app.language) translateApp(app, locale.tr);
-  const pageNo = fixedPage === 'home' ? app.home_page : Number(req.params.page);
-  const page = Number.isInteger(pageNo) && pageNo > 0 ? await loadPage(app.id, pageNo) : undefined;
+  // (sprint 193) a page number, or the alias of one of this application's pages (src/page-alias.ts)
+  const pageNo = fixedPage === 'home' ? app.home_page : pageOfSegment(String(req.params.page ?? ''), app.pages);
+  const page = pageNo !== undefined && Number.isInteger(pageNo) && pageNo > 0 ? await loadPage(app.id, pageNo) : undefined;
   if (!page) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('error.page_not_found', { page: req.params.page, app: app.name }), base, locale), null;
   if (locale.lang !== app.language) translatePage(page, locale.tr);
   const user = app.authentication === 'none' ? 'nobody' : (session.username ?? 'nobody');

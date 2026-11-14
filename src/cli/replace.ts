@@ -86,6 +86,8 @@ export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'save
   'workflow_migration',
   // (125) who changed the application last in the builder (App Builder list: Updated by)
   'app_change',
+  // (170) who changed each page last (by page number): builder state, like app_change
+  'page_change',
   // (126) outgoing calls the network access lists refused (Administration → Network access; a log, 7 days)
   'network_refusal',
   // (136) rows queued for their embeddings (the vector providers travel in meta.app)

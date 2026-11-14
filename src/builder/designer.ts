@@ -12,11 +12,16 @@ import type { Session } from '../session.ts';
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
 import { regionConfigHelp } from './region-help.ts';
 import { parseIncludes } from './static-files.ts';
+import { pageAliasProblem, type AliasProblem } from '../page-alias.ts';
+import type { BuilderKey } from './i18n.ts';
 import { regionSettingsForm } from './region-settings.ts';
 import { usedInPanel } from './search.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
 import { arrangeRoutes, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
+
+/** (sprint 193) why an alias was refused, in the builder's words */
+const ALIAS_PROBLEM: Record<AliasProblem, BuilderKey> = { length: 'pdz.alias_length', format: 'pdz.alias_format', numeric: 'pdz.alias_numeric', reserved: 'pdz.alias_reserved' };
 
 // Page designer, laid out like APEX's Page Designer: the component tree on
 // the left (Rendering / Dynamic actions / Processing / Shared components),
@@ -80,7 +85,7 @@ export async function designerRoutes(app: FastifyInstance) {
   });
 
   async function pageDesigner(req: Req, reply: FastifyReply, s: Session, pid: number | string) {
-    const p = await owner.one('select p.*, a.alias, a.name as app_name from meta.page p join meta.app a on a.id = p.app_id where p.id = $1', [pid]);
+    const p = await owner.one('select p.*, p.alias as page_alias, a.alias, a.name as app_name from meta.page p join meta.app a on a.id = p.app_id where p.id = $1', [pid]);
     if (!p) return reply.code(404).send('Not found');
     const rows: Record<string, any[]> = {};
     for (const kind of PAGE_KINDS) rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where page_id = $1 order by seq, id`, [p.id])).rows;
@@ -392,6 +397,7 @@ export async function designerRoutes(app: FastifyInstance) {
             ${input('page_no', tx('pdz.page_number'), p.page_no, { type: 'number', required: true })}
             ${input('name', tx('pdz.name'), p.name, { required: true })}
             ${input('title', tx('pdz.title'), p.title, { help: tx('pdz.title_help') })}
+            ${input('page_alias', tx('pdz.alias'), p.page_alias, { help: tx('pdz.alias_help', { url: `/a/${p.alias}/${p.page_alias}` }) })}
           </div></fieldset>
           <fieldset class="prop-group"><legend>${tx('pdz.appearance')}</legend><div class="form-grid">
             ${select('mode', tx('pdz.page_mode'), p.mode, [['normal', tx('pdz.normal')], ['modal', tx('pdz.modal_dialog')]])}
@@ -517,13 +523,21 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
-      const before = await owner.one('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
+      const before = await owner.one('select app_id, page_no, alias from meta.page where id = $1', [req.params.pid]);
+      // (sprint 193) the page alias: empty takes one from the name (migration 170), else checked here for a readable message
+      const alias = typeof b.page_alias === 'string' ? b.page_alias.trim().toLowerCase() : before?.alias ?? '';
+      if (alias && before && alias !== before.alias) {
+        const problem = pageAliasProblem(alias);
+        if (problem) throw new Error(tr(s)(ALIAS_PROBLEM[problem], { alias }));
+        if (await owner.one('select 1 as x from meta.page where app_id = $1 and alias = $2 and id <> $3', [before.app_id, alias, req.params.pid]))
+          throw new Error(tr(s)('pdz.alias_taken', { alias }));
+      }
       await owner.query(
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
-                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16, help = $17 where id = $1`,
+                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16, help = $17, alias = $18 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
          ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', ['minimal', 'left_side_column', 'right_side_column'].includes(b.page_template ?? '') ? b.page_template : 'standard', b.page_group?.trim() || null,
-         typeof b.help === 'string' && b.help.trim() ? b.help.replace(/\r\n?/g, '\n').trim().slice(0, 20000) : null],
+         typeof b.help === 'string' && b.help.trim() ? b.help.replace(/\r\n?/g, '\n').trim().slice(0, 20000) : null, alias || null],
       );
       // the page's lock and comments follow a new page number
       if (before && before.page_no !== Number(b.page_no))
