@@ -721,7 +721,7 @@ const COMMANDS: Record<string, Command> = {
       'pgkiln admin builder-sign-in password\n' +
       'pgkiln admin rotate-key [--dry-run]\n' +
       'pgkiln admin key-backed-up\n' +
-      'pgkiln admin check [--url <public url>]\n\n' +
+      'pgkiln admin check [--url <public url>] [--production]\n\n' +
       "reset-2fa removes the developer's authenticator apps and recovery codes and ends their builder\n" +
       'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works\n' +
       "(and clears the workspaces' own two-factor rules); admins and all need at least two administrators\n" +
@@ -734,7 +734,7 @@ const COMMANDS: Record<string, Command> = {
       'check prints the lockout checks of Instance settings (instance key, clock, passkey domain,\n' +
       'break-glass administrators); --url shows which passkeys a move to that address would break.\n' +
       'Exit code 1 when a check needs attention.',
-    options: { reason: { type: 'string' }, grace: { type: 'string' }, 'dry-run': { type: 'boolean' }, url: { type: 'string' } },
+    options: { reason: { type: 'string' }, grace: { type: 'string' }, 'dry-run': { type: 'boolean' }, url: { type: 'string' }, production: { type: 'boolean' } },
     optionHelp: [
       ['--reason <text>', 'reset-2fa: why (in the activity log and the mail)'],
       ['--grace <days>', 'set-2fa-policy: days developers have to set up an app (0 to 90, default 7)'],
@@ -818,8 +818,17 @@ const COMMANDS: Record<string, Command> = {
             if (!URL.canParse(url) || !/^https?:$/.test(new URL(url).protocol)) throw new UsageError('--url takes an http(s) address');
             rpId = (await import('../webauthn.ts')).rpIdOf(new URL(url).origin);
           }
-          const list = await checks.instanceChecks(rpId);
-          for (const c of list) out(`${c.level.toUpperCase().padEnd(7)}  ${c.title}\n         ${c.detail}\n`);
+          // (sprint 191, NX-S6) --production: the production readiness group even without an https PUBLIC_URL; any line
+          // that isn't ok makes the exit code 1, so a deploy pipeline stops
+          const production = !!v.production || checks.productionInstance(url);
+          const list = await checks.instanceChecks(rpId, { production });
+          const prod = list.filter((c) => c.group === 'production');
+          if (prod.length) {
+            out(`Production readiness (${prod.filter((c) => c.level === 'ok').length} of ${prod.length} ready)\n`);
+            for (const c of prod) out(`${c.level.toUpperCase().padEnd(7)}  ${c.title}\n         ${c.detail}\n`);
+            out('\nLockout checks\n');
+          }
+          for (const c of list.filter((x) => x.group !== 'production')) out(`${c.level.toUpperCase().padEnd(7)}  ${c.title}\n         ${c.detail}\n`);
           if (!rpId) out('(passkey domain not checked: set PUBLIC_URL or pass --url)\n');
           return checks.attention(list) ? EXIT.differences : EXIT.ok;
         }

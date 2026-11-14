@@ -7913,4 +7913,8 @@ export const ko: BuilderMessages = {
   'ss.err.idle': '최대 유휴 시간은 1~1440분이거나 비워 둡니다.',
   'ss.err.max': '최대 세션 기간은 1~720시간이거나 비워 둡니다.',
   'ss.err.page': '세션 시간 초과 후 페이지는 로그인이 필요 없는 이 애플리케이션의 페이지여야 합니다.',
+  // ------------------------------------------------------------ Instance settings → Production readiness (sprint 191)
+  'ins.production': '프로덕션 준비: {n}개 중 {ok}개 준비됨',
+  'ins.production_intro': 'PUBLIC_URL이 https 주소이므로 이 설치는 운영 설치로 검사됩니다. {cmd}도 같은 내용을 검사하며, 준비되지 않은 항목이 있으면 배포 파이프라인을 실패시킵니다.',
+  'ins.lockout': '잠금 검사',
 };

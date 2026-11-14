@@ -27,6 +27,8 @@ src/
                            meta.setting secret_key_backup), clock against the database and GitHub's Date header, passkeys of another
                            RP ID, break-glass administrators; rotateKey() re-encrypts every *_enc column in one transaction;
                            used by Instance settings, the Workspace home (cached count), server start-up and `pgkiln admin check`
+                           (sprint 191, NX-S6) productionChecks(): the production readiness group (productionInstance: an https
+                           PUBLIC_URL of a public host, or pgkiln admin check --production); every line ok or error
   oracle-sql.ts            (sprint 187) translateOracle: nvl, nvl2, decode, sysdate, systimestamp, dual, sequences, v(),
                            minus rewritten outside literals, q-quotes, quoted names and comments (codeMask)
   release-check.ts         (sprint 109) "pgkiln X is available": meta.setting 'release_check' over PGKILN_RELEASE_CHECK (off by default);

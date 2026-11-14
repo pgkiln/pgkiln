@@ -61,7 +61,7 @@ any (see [what is not exported](03-builder.md#export-format)).
 | `pgkiln admin builder-sign-in password` | (0.63) Turns off every workspace's [single sign-on rule](03-builder.md#single-sign-on-for-developers), so developers may sign in with the pgkiln password again; logged and mailed to the administrators |
 | `pgkiln admin rotate-key [--dry-run]` | (0.67) Re-encrypts every stored secret from `PGKILN_OLD_SECRET_KEY` to `PGKILN_SECRET_KEY` in one transaction ([rotating the instance key](03-builder.md#lockout-checks)); logged and mailed to the administrators |
 | `pgkiln admin key-backed-up` | (0.67) Records that a copy of the current `PGKILN_SECRET_KEY` is kept outside the server |
-| `pgkiln admin check [--url <address>]` | (0.67) Prints the [lockout checks](03-builder.md#lockout-checks); `--url` checks passkeys against a new public address. Exit code 1 when one needs attention |
+| `pgkiln admin check [--url <address>] [--production]` | (0.67) Prints the [lockout checks](03-builder.md#lockout-checks); `--url` checks passkeys against a new public address. Exit code 1 when one needs attention. (sprint 191) `--production` adds the [production readiness](03-builder.md#production-readiness) group (shown anyway when `PUBLIC_URL` is an https address), for a deploy pipeline |
 
 `users` reads the password from standard input (the first line, e.g. from a secret store:
 `printf '%s\n' "$PW" | pgkiln users add ops --developer`) or asks for it twice on a terminal. It is

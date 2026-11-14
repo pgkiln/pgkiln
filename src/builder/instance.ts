@@ -31,12 +31,18 @@ async function checksRegion(s: Session, rpId: string) {
   const tx = tr(s);
   const checks = await instanceChecks(rpId);
   const n = attention(checks);
+  // (sprint 191, NX-S6) the production readiness group, when PUBLIC_URL is an https address
+  const prod = checks.filter((c) => c.group === 'production');
+  const list = (cs: typeof checks) => html`<ul class="hits findings">${cs.map((c) => html`<li class="finding-${c.level}"><strong>${c.title}</strong><span></span>
+      <span class="tag tag-${c.level}">${tx(`ins.level.${c.level}` as 'ins.level.ok')}</span><span class="hit-snippet">${c.detail}</span>
+      ${(c.key === 'key_backup' && c.level === 'warning') || (c.key === 'prod_key' && c.level === 'error' && /not confirmed/.test(c.detail)) ? html`<form method="post" action="${BASE}/instance/key-backup" class="u-mt0">${csrf(s)}
+        <button class="btn btn-sm">${tx('ins.have_copy')}</button></form>` : ''}</li>`)}</ul>`;
   return region(tx('ins.checks'), html`<p class="muted u-mt0">${n ? tx(n === 1 ? 'ins.attention_one' : 'ins.attention', { n }) : tx('ins.nothing')}
       ${tx.rich('ins.checks_cli', { cmd: html`<code>pgkiln admin check</code>`, url: html`<code>--url</code>` })}</p>
-    <ul class="hits findings">${checks.map((c) => html`<li class="finding-${c.level}"><strong>${c.title}</strong><span></span>
-      <span class="tag tag-${c.level}">${tx(`ins.level.${c.level}` as 'ins.level.ok')}</span><span class="hit-snippet">${c.detail}</span>
-      ${c.key === 'key_backup' && c.level === 'warning' ? html`<form method="post" action="${BASE}/instance/key-backup" class="u-mt0">${csrf(s)}
-        <button class="btn btn-sm">${tx('ins.have_copy')}</button></form>` : ''}</li>`)}</ul>`, '', 'lockout-checks');
+    ${prod.length ? html`<h3 id="production-readiness">${tx('ins.production', { ok: prod.filter((c) => c.level === 'ok').length, n: prod.length })}</h3>
+      <p class="muted u-mt0">${tx.rich('ins.production_intro', { cmd: html`<code>pgkiln admin check --production</code>` })}</p>
+      ${list(prod)}<h3>${tx('ins.lockout')}</h3>` : ''}
+    ${list(checks.filter((c) => c.group !== 'production'))}`, '', 'lockout-checks');
 }
 
 

@@ -15,6 +15,12 @@ All notable changes to this project are documented here. The format follows
   mapped instead of becoming a note; *is in group* authorization schemes, Clear Session State, Invoke API and the
   other settings read by position work again on 26.2 exports, and APEX's own `APEX_AUTHENTICATION` login processes
   are left out. On app 77536: not mapped 39 → 9, every imported page opens.
+- **Production readiness** (sprint 191, NX-S6; beyond APEX): when `PUBLIC_URL` is an https address of a public host,
+  Instance settings → Lockout checks starts with *Production readiness: n of 8 ready*: a public https address, secure
+  cookies and HSTS (`COOKIE_SECURE`), outbound hosts listed (`PGKILN_REST_ALLOWED_HOSTS`), the instance key set and
+  backed up, two-factor sign-in required for administrators, no default passwords, every application with a role of
+  its own, and debug off in every application. Each line is ready or an error. `pgkiln admin check --production`
+  prints the group anywhere and exits with code 1 until every line is ready, for deploy pipelines.
 
 ### Security
 - **Browser security per application** (sprint 188, NX-S4; migration 168): like APEX's *Security Attributes → Browser

@@ -203,14 +203,38 @@ found before it happens. The Workspace home tells administrators how many need a
 | Instance key backed up | No administrator confirmed a copy of the current key (*I have a copy of this key*, or `pgkiln admin key-backed-up`). The confirmation is kept per key fingerprint, so a new key asks again |
 | Clock | The server's clock is 10 seconds or more off the database's, or GitHub's when the [release check](#workspace-home) is on; from 30 seconds authenticator codes fail |
 | Passkey domain | Passkeys were made for another domain than `PUBLIC_URL` (or `PGKILN_RP_ID`) gives, with the number of people who have no other factor |
-| Default passwords (NX-S3) | `PUBLIC_URL` is a public address and a developer still signs in with `admin` or their user name (an error: the server doesn't start like this) |
-| Two-factor sign-in for administrators (NX-S3) | `PUBLIC_URL` is a public address and the two-factor policy doesn't require it of administrators |
+| Default passwords (NX-S3) | `PUBLIC_URL` is a public address and a developer still signs in with `admin` or their user name (an error: the server doesn't start like this). On an https address it is a line of *Production readiness* |
+| Two-factor sign-in for administrators (NX-S3) | `PUBLIC_URL` is a public address and the two-factor policy doesn't require it of administrators. On an https address it is a line of *Production readiness* |
 | Break-glass administrators | A workspace requires single sign-on and there is no break-glass administrator, or one without a second factor while two-factor sign-in is required |
 
 The server writes the same problems to its log when it starts, and `pgkiln admin check` prints them on the server
 (exit code 1 when one needs attention). **Before moving to another address**, run `pgkiln admin check --url
 https://new.example.com`: it lists the passkeys that won't work there and who has no other factor, so they can add an
 authenticator app or keep their recovery codes at hand first.
+
+#### Production readiness
+
+(sprint 191, NX-S6; beyond APEX) When `PUBLIC_URL` is an https address of a public host, the lockout checks start with
+**Production readiness: n of 8 ready**: what is fine on a developer's own machine but not on a live installation. Every
+line is either ready or an error:
+
+| Line | Ready when |
+|---|---|
+| Public https address | `PUBLIC_URL` is an https address of a public host (links in e-mails, passkeys and single sign-on use it) |
+| Secure cookies and HSTS | `COOKIE_SECURE=true`: session cookies only over https, with `Strict-Transport-Security` |
+| Outbound hosts listed | `PGKILN_REST_ALLOWED_HOSTS` names the hosts REST data sources, web requests and AI services may call |
+| Instance key set and backed up | `PGKILN_SECRET_KEY` is set and an administrator confirmed a copy of it |
+| Two-factor sign-in for administrators | The two-factor policy requires it of administrators (or everyone) |
+| No default passwords | No developer signs in with `admin` or their user name |
+| Every application runs as a role of its own | No application without a database role, or with one that is too powerful ([chapter 8](08-security.md#the-applications-own-database-role)) |
+| Debug off in every application | No application has debug mode or debug messages on |
+
+`pgkiln admin check --production` prints the same group, also without an https `PUBLIC_URL`, and exits with code 1
+until every line is ready, so a deploy pipeline stops before a half-configured installation goes live:
+
+```sh
+pgkiln admin check --production || exit 1
+```
 
 **Rotating the instance key.** Authenticator apps of developers and app users, web credentials, mail and AI keys and
 the push key are encrypted with `PGKILN_SECRET_KEY`; passkeys and recovery codes are not. To change the key, stop the
