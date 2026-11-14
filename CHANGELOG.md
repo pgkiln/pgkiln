@@ -32,7 +32,6 @@ All notable changes to this project are documented here. The format follows
   JavaScript, keyboard only and at 360 px.
 
 ### Changed
-### Changed
 - **An application's home is the Pages report, and the Page Designer has one Save** (sprint 197, NX-U4, NX-U5; as
   APEX): nothing comes below the Pages report any more. *Application lock and comments* move to the side column
   under Tasks, and the quick forms *Create pages from a table* and *Create blank page* move to **Create page**, tab
