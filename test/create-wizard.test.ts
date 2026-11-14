@@ -111,7 +111,7 @@ describe('the Create Application wizard', () => {
 
   test('a blank application: Home, About; a type a table can\'t have is refused', async () => {
     const b = await builder();
-    const blank = formFields(/<form method="post" action="\/builder\/apps"[\s\S]*?<\/form>/.exec((await b.get('/builder/create')).body)![0]);
+    const blank = formFields(/<form method="post" action="\/builder\/apps"[\s\S]*?<\/form>/.exec((await b.get('/builder/create/full')).body)![0]);
     assert.equal((await b.submit('/builder/apps', { ...blank, name: 'CW blank', alias: 'cw73-blank', authentication: 'none' })).statusCode, 303);
     const a = await appOf('cw73-blank');
     assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((r) => r.page_no), [1, 9000]);
@@ -169,5 +169,107 @@ describe('the Create Application wizard (sprint 87, WIZ-4)', () => {
     } finally {
       await owner.query(`drop policy emp_mine on ${SRC}.emp; alter table ${SRC}.emp disable row level security; alter table ${SRC}.note disable row level security`);
     }
+  });
+});
+
+describe('(sprint 196, NX-U1) Create application in one field', () => {
+  const QUICK = ['cw196-full', 'cw196-quick', 'cw196-quick-2', 'cw196-taken-2', 'cw196-mine'];
+  let hadAccount = false;
+  before(async () => {
+    for (const a of [...QUICK, 'cw196-taken']) await dropApp(a);
+    hadAccount = !!(await owner.one(`select 1 as ok from meta.account where lower(username) = 'admin'`));
+    if (hadAccount) await owner.query(`update meta.account set username = 'admin-cw196-away' where lower(username) = 'admin'`);
+  });
+  after(async () => {
+    for (const a of [...QUICK, 'cw196-taken']) await dropApp(a);
+    await owner.query(`delete from meta.account where lower(username) = 'admin'`);
+    if (hadAccount) await owner.query(`update meta.account set username = 'admin' where username = 'admin-cw196-away'`);
+  });
+
+  test('the short screen: a name, an optional alias and Create; the full form and the other sources under it', async () => {
+    const b = await builder();
+    const page = (await b.get('/builder/create')).body;
+    const form = /<form method="post" action="\/builder\/create" class="aw-quick"[\s\S]*?<\/form>/.exec(page)![0];
+    assert.match(form, /<input id="f_name" name="name" value="" required maxlength="200" autocomplete="off" autofocus>/);
+    assert.match(form, /<input id="f_alias" name="alias" value="" pattern=/);
+    assert.doesNotMatch(form, /id="f_alias"[^>]* required/, 'the alias is optional');
+    assert.match(form, /name="__csrf"/);
+    // the developer has no account in Users yet: the one other field is its password
+    assert.match(form, /<label class="label" for="f_admin_password">Password for your account admin<\/label>\s*<input id="f_admin_password" name="admin_password" type="password" required/);
+    assert.match(form, /A new application with its own schema · App users \(login page\) · English · Home\./);
+    assert.match(form, /<button class="btn btn-hot">Create application<\/button>/);
+    assert.doesNotMatch(page, /class="aw-form"/, 'not the full form');
+    for (const href of ['/builder/create/full', '/builder/create/file', '/builder/create/paste', '/builder/blueprints', '/builder/gallery'])
+      assert.match(page, new RegExp(`<a class="create-source" href="${href}">`), href);
+    assert.ok(page.indexOf('class="aw-quick"') < page.indexOf('href="/builder/create/full"'), 'the links under the form');
+    assert.match(page, /Use the full form/);
+    // the full form: its own address, and the earlier addresses with a schema or a boilerplate
+    const full = (await b.get('/builder/create/full')).body;
+    assert.match(full, /<form method="post" action="\/builder\/apps" class="aw-form"/);
+    assert.match(full, /<form method="get" action="\/builder\/create\/full" class="create-schema" id="aw-schema-get">/);
+    assert.match(full, /<a href="\/builder\/create">Create<\/a>/, 'Create in the breadcrumbs leads back to the short screen');
+    for (const url of [`/builder/create?schema=${SRC}`, '/builder/create?schema=', '/builder/create?boilerplate=1', `/builder/create/full?schema=${SRC}`])
+      assert.match((await b.get(url)).body, /class="aw-form"/, url);
+    assert.match((await b.get(`/builder/create/full?schema=${SRC}`)).body, /name="t_\d+" value="emp"/);
+  });
+
+  test('a name and Create: the full form\'s defaults (new schema, role, App users with the developer, English, Home)', async () => {
+    const b = await builder();
+    await b.get('/builder/create');
+    // errors come back to the short screen with the name kept
+    const noName = await b.submit('/builder/create', { name: '  ' });
+    assert.equal(noName.statusCode, 422);
+    assert.match(noName.body, /Enter a name for the application/);
+    assert.match(noName.body, /class="aw-quick"/);
+    const noPassword = await b.submit('/builder/create', { name: 'CW196 Quick' });
+    assert.equal(noPassword.statusCode, 422);
+    assert.match(noPassword.body, /Passwords need at least/);
+    assert.match(noPassword.body, /<input id="f_name" name="name" value="CW196 Quick"/);
+    assert.ok(!(await appOf('cw196-quick')), 'nothing created');
+    const res = await b.submit('/builder/create', { name: 'CW196 Quick', alias: '', admin_password: 'quick-start-196' });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    const a = await appOf('cw196-quick');
+    assert.equal(res.headers.location, `/builder/apps/${a.id}`, 'opens the new application');
+    assert.deepEqual([a.name, a.authentication, a.db_role, a.language, a.version], ['CW196 Quick', 'app_users', 'app_cw196_quick', 'en', 'Release 1.0']);
+    // what the full form makes with the same choices (its defaults, the developer as the first user)
+    const blank = formFields(/<form method="post" action="\/builder\/apps"[\s\S]*?<\/form>/.exec((await b.get('/builder/create/full')).body)![0]);
+    assert.equal((await b.submit('/builder/apps', { ...blank, name: 'CW196 Quick', alias: 'cw196-full', admin_user: 'admin' })).statusCode, 303);
+    const full = await appOf('cw196-full');
+    const shape = async (id: number) => owner.one(
+      `select a.theme, a.language, a.authentication, a.version, a.home_page,
+              (select json_agg(json_build_object('no', p.page_no, 'name', p.name, 'regions', (select json_agg(r.type || ':' || coalesce(r.template, '') order by r.seq) from meta.region r where r.page_id = p.id)) order by p.page_no) from meta.page p where p.app_id = a.id) as pages,
+              (select json_agg(n.label order by n.seq, n.label) from meta.nav_entry n where n.app_id = a.id) as nav,
+              (select json_agg(z.name order by z.name) from meta.authz_scheme z where z.app_id = a.id) as schemes
+         from meta.app a where a.id = $1`, [id]);
+    assert.deepEqual(await shape(a.id), await shape(full.id));
+    assert.deepEqual(a.theme, { mode: 'light', base: 'iris' });
+    assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((r) => r.page_no), [1, 9000]);
+    const r = await owner.one(
+      `select (select nspowner::regrole::text from pg_namespace where nspname = 'cw196_quick') is not null as schema,
+              pg_has_role('pgkiln_runtime', 'app_cw196_quick', 'MEMBER') as runtime,
+              (select x.roles from meta.app_access x join meta.account c on c.id = x.account_id where x.app_id = $1 and c.username = 'admin') as roles,
+              (select workspace_id from meta.workspace_app where app_id = $1) as ws`, [a.id]);
+    assert.deepEqual(r, { schema: true, runtime: true, roles: ['admin'], ws: 1 });
+    // the same name again: the next free alias; the account exists now, so no password
+    const page = (await b.get('/builder/create')).body;
+    assert.doesNotMatch(page, /name="admin_password"/);
+    assert.match(page, /You sign in to it as admin, with the admin role\./);
+    assert.equal((await b.submit('/builder/create', { name: 'CW196 Quick' })).statusCode, 303);
+    assert.equal((await appOf('cw196-quick-2'))?.name, 'CW196 Quick');
+    // a schema of that name exists already: the alias skips it, so the application gets a new schema
+    await owner.query('create schema cw196_taken');
+    try {
+      assert.equal((await b.submit('/builder/create', { name: 'CW196 Taken' })).statusCode, 303);
+      assert.equal((await appOf('cw196-taken-2'))?.db_role, 'app_cw196_taken_2');
+    } finally {
+      await owner.query('drop schema cw196_taken');
+    }
+    // an alias given is used as it is; a taken one is refused with the name kept
+    assert.equal((await b.submit('/builder/create', { name: 'Mine', alias: 'cw196-mine' })).statusCode, 303);
+    const taken = await b.submit('/builder/create', { name: 'Mine again', alias: 'cw196-mine' });
+    assert.equal(taken.statusCode, 422);
+    assert.match(taken.body, /An application with the alias cw196-mine already exists/);
+    assert.match(taken.body, /value="Mine again"/);
+    assert.match(taken.body, /<input id="f_alias" name="alias" value="cw196-mine"/);
   });
 });

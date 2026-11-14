@@ -262,7 +262,7 @@ describe('create an application from existing tables', () => {
   test('lists the tables and views of a schema; refuses pgkiln and system schemas', async () => {
     const b = await builder();
     // (sprint 73) one page: choosing a schema lists its tables and views with a page type each
-    const first = await b.get('/builder/create');
+    const first = await b.get('/builder/create/full');
     assert.equal(first.statusCode, 200);
     assert.doesNotMatch(first.body, /<option value="meta"|<option value="pg_catalog"|<option value="information_schema"/);
     const page = await b.get(`/builder/create?schema=${SOURCE}`);

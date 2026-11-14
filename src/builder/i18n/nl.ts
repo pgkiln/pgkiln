@@ -7741,6 +7741,16 @@ export const nl: BuilderMessages = {
   'aw.sum_on': '{n} pagina\'s op {schema}',
   'aw.sum_on_1': '{n} pagina op {schema}',
   'aw.sum_new': 'Een nieuwe applicatie met een eigen schema',
+  'aw.alias_optional': 'Alias (URL), optioneel',
+  'aw.alias_optional_help': 'Leeg: gemaakt van de naam (Café Orders → /a/cafe-orders), met een nummer als die bezet is',
+  'aw.quick_password': 'Wachtwoord voor je account {user}',
+  'aw.quick_password_help': 'Je bent de eerste gebruiker van de applicatie. Gebruikers heeft nog geen account {user}: het wordt met dit wachtwoord aangemaakt.',
+  'aw.quick_account': 'Je meldt je erin aan als {user}, met de rol admin.',
+  'aw.quick_new_account': 'Je meldt je erin aan als {user}, met de rol admin (een nieuw account).',
+  'aw.creating': 'De applicatie wordt gemaakt…',
+  'aw.full_form': 'Volledig formulier',
+  'aw.src.full': 'Het volledige formulier gebruiken',
+  'aw.srch.full': 'Pagina\'s op bestaande tabellen, functies, uiterlijk en aanmelden',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Sluiten',
   // ------------------------------------------------------------ sprint 172: parity leftovers

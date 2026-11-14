@@ -850,11 +850,31 @@ you like. `meta.reporting_app_count(workspace_id)` counts a workspace's reportin
 
 ### Creating an application
 
-**Create** (the App Builder's primary button, or `/builder/create`) is one page, like APEX's Create Application
-wizard. Links at the top start from a file, pasted data, a blueprint or the App Gallery instead. (UX-7) The name
-comes first, then the data and its pages, features, appearance and sign-in; **Create application** and Cancel stay
-in a footer at the bottom of the window, next to a one-line summary (*12 pages on hr · App users (login page) ·
-English*) that follows your choices. The sections:
+**Create** (the App Builder's primary button, or `/builder/create`) opens a short screen, like APEX 26.2's
+*Create an Application* (sprint 196): a **Name**, an optional **Alias** and **Create application**. Type a name and
+press Enter: the application is created and opens in the builder. It gets what the full form gives with the same
+choices:
+
+- a **new schema** of its own and the database role `app_<alias>` (see below; in an
+  [isolated workspace](#isolated-workspaces) both belong to the workspace);
+- the **alias** you typed, or one made from the name (*Café Orders* → `cafe-orders`, shown as the field's
+  placeholder), with `-2`, `-3` … until the alias, the schema named after it and its role are all free;
+- **App users** sign-in (a login page) with **you as the first user**, with the `admin` role: your account in
+  **Users** when one with your developer name exists, otherwise a new one. Then the screen has one more field,
+  the new account's password (only the first time: the next application reuses the account);
+- **English** as the primary language, the Home page, and the full form's default features (About page, theme
+  style selection) and appearance (Iris, side menu).
+
+A problem (an alias that is taken, a role that exists in an isolated workspace, a schema the database won't let
+pgkiln create, no workspace) comes back on the short screen with the name kept. Under the form are the other ways
+to start: *Use the full form* (`/builder/create/full`), *From a file*, *From pasted data*, *From a blueprint* and
+*From the App Gallery*. It works without JavaScript and at a phone's width.
+
+**The full form** (`/builder/create/full`; earlier links with `?schema=` or `?boilerplate=` still open it) is one
+page with every choice. Links at the top start from a file, pasted data, a blueprint or the App Gallery instead.
+(UX-7) The name comes first, then the data and its pages, features, appearance and sign-in; **Create application**
+and Cancel stay in a footer at the bottom of the window, next to a one-line summary (*12 pages on hr · App users
+(login page) · English*) that follows your choices. The sections:
 
 | Section | Field | Meaning |
 |---|---|---|
@@ -953,7 +973,7 @@ most 4 MB of text; upload larger data as a file.
 
 ### Creating an application from existing tables
 
-**Create**, then a schema under *Data* (`/builder/create?schema=…`; pgkiln's `meta`,
+**Create → Use the full form**, then a schema under *Data* (`/builder/create/full?schema=…`; pgkiln's `meta`,
 `information_schema` and the `pg_*` schemas aren't offered): each table and view gets a page type
 under *Pages* (above), or *No page*. The application gets that schema as its parsing schema and a role
 `app_<alias>` with the grants of a blank application on the schema (so **all** tables of the schema,

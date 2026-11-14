@@ -216,6 +216,31 @@ export interface CheckedApp {
 /** pgkiln's and the system's schemas never become an application's parsing schema. */
 export { reservedSchema };
 
+/**
+ * (sprint 196, NX-U1) The alias of an application named only by its name (the short Create screen):
+ * "Café Orders" → cafe-orders, as the full form's script proposes it (public/builder.js slug), with -2, -3 …
+ * until the alias, the schema named after it and its role app_<alias> are all free, so the application
+ * gets a new schema of its own.
+ */
+export async function aliasFromName(name: string): Promise<string> {
+  let alias = name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'app';
+  if (!/^[a-z]/.test(alias)) alias = `app-${alias}`.slice(0, 40);
+  const stem = alias.replace(/-+$/, '');
+  // compared with - for _ (cafe_orders is the schema of cafe-orders); _ in LIKE matches either
+  const like = `${stem.replace(/-/g, '_')}%`;
+  const taken = new Set(
+    (await owner.query<{ name: string }>(
+      `select replace(alias, '_', '-') as name from meta.app where alias like $1
+        union select replace(nspname, '_', '-') from pg_namespace where nspname like $1
+        union select replace(substr(rolname, 5), '_', '-') from pg_roles where rolname like 'app\\_' || $1`,
+      [like],
+    )).rows.map((r) => r.name),
+  );
+  let free = stem;
+  for (let n = 2; taken.has(free); n++) free = `${stem}-${n}`;
+  return free;
+}
+
 /** Validate the form (outside the transaction: the password check may look up the account). Throws an Error with a message for the developer. */
 export async function checkNewApp(b: NewAppInput, workspaceId: number): Promise<CheckedApp> {
   if (!(workspaceId > 0)) throw new Error(tx('nwa.no_workspace'));

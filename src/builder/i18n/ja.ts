@@ -7741,6 +7741,16 @@ export const ja: BuilderMessages = {
   'aw.sum_on': '{schema} の {n} ページ',
   'aw.sum_on_1': '{schema} の {n} ページ',
   'aw.sum_new': '独自のスキーマを持つ新しいアプリケーション',
+  'aw.alias_optional': 'エイリアス (URL)、任意',
+  'aw.alias_optional_help': '空の場合は名前から作成されます (Café Orders → /a/cafe-orders)。使用済みの場合は番号が付きます',
+  'aw.quick_password': 'アカウント {user} のパスワード',
+  'aw.quick_password_help': 'あなたがアプリケーションの最初のユーザーです。ユーザーにはまだアカウント {user} がないため、このパスワードで作成されます。',
+  'aw.quick_account': '{user} として admin ロールでサインインします。',
+  'aw.quick_new_account': '{user} として admin ロールでサインインします (新しいアカウント)。',
+  'aw.creating': 'アプリケーションを作成しています…',
+  'aw.full_form': '完全なフォーム',
+  'aw.src.full': '完全なフォームを使用',
+  'aw.srch.full': '既存の表のページ、機能、外観、サインイン',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '閉じる',
   // ------------------------------------------------------------ sprint 172: parity leftovers

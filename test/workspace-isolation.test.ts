@@ -16,7 +16,8 @@ import { Browser } from './helpers.ts';
 const DEV = 'iso_test_dev';
 const DEV_PW = 'Iso-test-dev-password!';
 const WS = ['ISO Test A', 'ISO Test B'];
-const ALIASES = ['iso-test-a', 'iso-test-b', 'iso-test-imp'];
+const ALIASES = ['iso-test-a', 'iso-test-b', 'iso-test-imp', 'iso-quick', 'iso-quick-2'];
+let adminAccountMade = false;
 const isolatedRuntime = runtimeUrl !== ownerUrl;
 
 let app: FastifyInstance;
@@ -37,6 +38,7 @@ async function cleanup() {
     await owner.query(`drop role if exists ${'app_' + n}`);
   }
   await owner.query('delete from meta.developer where username = $1', [DEV]);
+  if (adminAccountMade) await owner.query(`delete from meta.account where username = 'admin'`);
   await owner.query(`delete from meta.sql_script where name like 'iso test %'`);
   await workspacesChanged();
 }
@@ -113,6 +115,31 @@ describe('isolated workspaces', { skip: !isolatedRuntime && 'needs RUNTIME_DATAB
     await admin.submit('/builder/apps', { name: 'ISO test B', alias: 'iso-test-b', authentication: 'none' });
     assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'iso-test-b'`)));
     await owner.query('drop role app_iso_test_b');
+    // (sprint 196) the short Create screen takes the same path: an alias given whose role exists is refused, and
+    // an alias made from the name skips it, so the application gets a new role and schema of the workspace's own
+    adminAccountMade = !(await owner.one(`select 1 as ok from meta.account where lower(username) = 'admin'`));
+    await owner.query('create role app_iso_quick nologin');
+    try {
+      await admin.get('/builder/create');
+      const refused = await admin.submit('/builder/create', { name: 'ISO quick', alias: 'iso-quick', admin_password: 'Iso-quick-196!' });
+      assert.equal(refused.statusCode, 422);
+      assert.match(refused.body, /app_iso_quick/);
+      assert.match(refused.body, /value="ISO quick"/);
+      assert.equal((await admin.submit('/builder/create', { name: 'ISO quick', admin_password: 'Iso-quick-196!' })).statusCode, 303);
+      const q = await owner.one(
+        `select (select workspace_id from meta.workspace_app w join meta.app a on a.id = w.app_id where a.alias = 'iso-quick-2') as ws,
+                pg_has_role('pgkiln_runtime', 'app_iso_quick_2', 'MEMBER') as shared,
+                (select nspowner::regrole::text from pg_namespace where nspname = 'iso_quick_2') as schema_owner`);
+      assert.deepEqual(q, { ws: wsA, shared: false, schema_owner: 'app_iso_quick_2' });
+    } finally {
+      // the later tests count the workspace's applications
+      await owner.query(`delete from meta.app where alias = 'iso-quick-2'`);
+      await owner.query(`delete from meta.workspace_role where role_name = 'app_iso_quick_2'`);
+      await owner.query('drop schema if exists iso_quick_2 cascade');
+      await owner.query('drop owned by app_iso_quick_2 cascade').catch(() => {});
+      await owner.query('drop role if exists app_iso_quick_2');
+      await owner.query('drop role app_iso_quick');
+    }
     await admin.submit('/builder/workspace', { workspace: '1' });
   });
 
