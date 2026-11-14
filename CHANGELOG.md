@@ -17,6 +17,17 @@ All notable changes to this project are documented here. The format follows
   runtime's own paths; *Run ▸* uses it. Aliases travel in exports (older exports and copied pages get one), and the
   APEX importer keeps APEX page aliases. Updated / Updated by come from the change history (`meta.page_change`, kept
   per installation, not exported, kept by `import --replace`). Migration 170.
+- **Builder tokens for the command line and the MCP server** (sprint 194, NX-F4, SEC-1; beyond APEX): Security →
+  **Builder tokens** makes a personal token with a name, one workspace, scopes (`read`, `write`, `sql`) and an expiry
+  (30 days by default, at most 365; a token always expires). It is shown once and only its SHA-256 hash is kept;
+  making one needs a sign-in in the last 10 minutes with the developer's factors. The new API `/builder/api/v1` takes
+  it as `Authorization: Bearer pgkb_…` only (cookies don't count), checks the developer's rights at every request,
+  throttles failures like failed sign-ins and logs every call. `pgkiln mcp --url https://… [--token-env VAR]` runs the
+  MCP tools as the developer through that API, without `DATABASE_URL`; `sql` runs read-only queries as the
+  workspace's developer login, never the owner connection. Tokens are revoked by their developer, by an administrator
+  (Developers → *Builder tokens of all developers*) and automatically when the developer is removed, changes or
+  is given a new password, or has their two-factor sign-in reset. Migration 171. See [chapter 3](docs/guide/03-builder.md#builder-tokens) and
+  [chapter 20](docs/guide/20-ai-agents.md#remote-with-a-builder-token).
 
 ## [0.98.0] - 2026-11-14
 
