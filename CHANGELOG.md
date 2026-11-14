@@ -20,6 +20,16 @@ All notable changes to this project are documented here. The format follows
   tabs container, `is-collapsed` / `is-expanded` collapsible; deeper nesting goes under the top-most ancestor, with a
   note). The Advisor flags a missing or nested parent, an empty container and a tab without a title. HR page 53
   *Department overview* shows it all. Migration 172.
+- **Create application in one field** (sprint 196, NX-U1): **Create** (`/builder/create`) opens a short screen like
+  APEX 26.2's *Create an Application*: a Name, an optional Alias and **Create application**; a name and Enter creates
+  the application and opens it. It gives what the full form gives for the same choices: a new schema and role
+  `app_<alias>` (owned by the workspace in an isolated workspace), App users sign-in with you as the first user
+  (admin role), English, the Home and About pages. An empty Alias is made from the name (*Café Orders* →
+  `cafe-orders`, then `-2`, `-3` … until the alias, schema and role are free). Your account in Users is reused; the
+  first time, the screen also asks for that account's password. Errors come back on the short screen with the name
+  kept. Under it: *Use the full form*, *From a file*, *From pasted data*, *From a blueprint*, *From the App Gallery*.
+  The full form moved to `/builder/create/full` (old `?schema=` and `?boilerplate=` links still open it). Without
+  JavaScript, keyboard only and at 360 px.
 
 ## [0.99.0] - 2026-11-14
 
