@@ -21,6 +21,7 @@ import { translateOracle } from './oracle-sql.ts';
 import { pageAliasProblem } from './page-alias.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
+import { emptyUses, qualifyTables, soleTableColumn, sqlObjects, type Uses } from './apex-check.ts';
 
 // ------------------------------------------------------------------ report
 
@@ -41,6 +42,12 @@ export interface ReportEntry {
   /** PL/SQL or Oracle SQL to port */
   port: boolean;
   notes: string[];
+  /** (sprint 192) the database objects it uses (src/apex-check.ts): tables, columns, sequences, PL/SQL routines */
+  uses?: Uses;
+  /** (sprint 192) what the target database doesn't have (set by apexCheck: "table hr.emp") */
+  missing?: string[];
+  /** (sprint 192) PL/SQL routines it calls that exist in PostgreSQL (set by apexCheck) */
+  hints?: string[];
 }
 
 export interface ApexReport {
@@ -56,23 +63,51 @@ export class NotAnApexExport extends Error {}
 const PORT = 'PL/SQL carried over as it is: port it to PL/pgSQL (chapter 11, Porting PL/SQL to PL/pgSQL)';
 
 class Entry implements ReportEntry {
+  /** (sprint 192) the schema of unqualified tables, for the apexToDoc call that runs (it is synchronous) */
+  static schema = '';
   status: ReportStatus = 'mapped';
   port = false;
   notes: string[] = [];
+  uses?: Uses;
+  missing?: string[];
+  hints?: string[];
   constructor(public kind: ReportKind, public page: number | null, public name: string, public apexType: string, public target: string | null = null) {}
   note(text: string) {
     if (!this.notes.includes(text)) this.notes.push(text);
     if (this.status === 'mapped') this.status = 'notes';
     return this;
   }
-  plsql() {
+  plsql(code?: string | null) {
     this.port = true;
+    this.scan(code);
     return this.note(PORT);
+  }
+  /** (sprint 192) a database object it uses */
+  use(kind: keyof Uses, name: string | null | undefined) {
+    if (!name || /[^a-z0-9_$#.]/.test(name)) return this;
+    this.uses ??= emptyUses();
+    if (!this.uses[kind].includes(name)) this.uses[kind].push(name);
+    return this;
+  }
+  /** (sprint 192) the tables, sequences and routines a SQL or PL/SQL text names */
+  scan(sql: string | null | undefined) {
+    const o = sqlObjects(sql);
+    for (const t of o.tables) this.use('tables', t);
+    for (const q of o.sequences) this.use('sequences', q);
+    for (const r of o.routines) this.use('routines', r);
+    return this;
   }
   /** (sprint 187) The SQL with the common Oracle rewritten (src/oracle-sql.ts), noting what was and what is left. */
   oracle<T extends string | null | undefined>(sql: T): T {
     if (!sql) return sql;
+    this.scan(sql);
     const t = translateOracle(sql);
+    // (sprint 192) unqualified tables are the parsing schema's: an application's role has no search_path of its own
+    const q = qualifyTables(t.sql, Entry.schema);
+    if (q.n) {
+      t.sql = q.sql;
+      t.done.push(`table → ${Entry.schema}.table`);
+    }
     if (t.done.length) this.note(`Oracle SQL rewritten: ${t.done.join(', ')}`);
     const found = oracleisms(t.sql);
     if (found.length) {
@@ -339,6 +374,7 @@ function condition(type: string | null, e1: string | null, e2: string | null, en
   if (t === 'PLSQL_EXPRESSION' || (t === 'EXPRESSION' && /plsql/i.test(e2 ?? '')) || m[0] === 'function_body') {
     if (t === 'EXPRESSION') out.condition_value = null;
     entry.port = true;
+    entry.scan(e1);
     entry.note(`condition (${t}): ${PORT}`);
   } else if (['sql', 'exists', 'not_exists'].includes(m[0])) {
     if (t === 'EXPRESSION') out.condition_value = null;
@@ -587,9 +623,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   const alias = opts.alias?.trim() || apexAlias(str(fa, 'p_alias'), appName, appId);
   const owner = str(fa, 'p_owner') ?? str(begin?.args ?? {}, 'p_default_owner');
   const schema = opts.schema !== undefined && opts.schema !== null ? opts.schema.trim().toLowerCase() : owner ? ident(owner) : '';
+  Entry.schema = schema;
   const qualified = (table: string | null, tableOwner?: string | null) => {
     if (!table) return null;
     if (table.includes('.')) return table.split('.').map(ident).join('.');
+    if (/^apex_/i.test(table)) return ident(table); // (sprint 192) APEX's own views are in no schema here
     const sch = tableOwner && opts.schema == null ? ident(tableOwner) : schema;
     return sch ? `${sch}.${ident(table)}` : ident(table);
   };
@@ -642,6 +680,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const ret = str(a, 'p_return_column_name');
       const disp = str(a, 'p_display_column_name') ?? ret;
       if (ret && disp) {
+        const lt = qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'));
+        e.use('tables', lt).use('columns', `${lt}.${ident(ret)}`).use('columns', `${lt}.${ident(disp)}`);
         const sort = str(a, 'p_default_sort_column_name');
         const where = e.oracle(str(a, 'p_query_where'));
         query = `select ${ident(disp)} as d, ${ident(ret)} as r from ${qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'))}${where ? ` where ${where}` : ''}${sort ? ` order by ${ident(sort)}${/^desc/i.test(str(a, 'p_default_sort_direction') ?? '') ? ' desc' : ''}` : ''}`;
@@ -685,8 +725,10 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         e.target = 'role';
       } else authzSchemes.push({ name, type: 'sql', value: groups.map((g) => `meta.has_role(${sqlString(g)})`).join(yes(a, 'p_attribute_02') || /^all$/i.test(at.match ?? '') ? ' and ' : ' or '), error_message: msg });
       e.note('APEX groups or roles became pgkiln application roles of the same name: assign them under Access control');
-    } else
+    } else {
+      e.scan(body);
       e.notMapped(`${type || 'this type'} is not mapped: create a role or SQL scheme named ${name} by hand; until then the components that use it are denied (fail closed)`);
+    }
   }
   const authz = (a: Args, e: Entry): string | null => {
     const raw = str(a, 'p_security_scheme', 'p_required_role', 'p_authorization_scheme');
@@ -865,6 +907,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const tableSource = () => {
       const t = qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'));
       if (!t) return null;
+      e.use('tables', t);
       const where = e.oracle(str(a, 'p_query_where'));
       const order = str(a, 'p_query_order_by');
       return `select * from ${t}${where ? `\n where ${where}` : ''}${order ? `\n order by ${order}` : ''}`;
@@ -881,6 +924,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const base = sql();
       if (!base) return null;
       const sel = cols.filter(([, c]) => c).map(([alias, c]) => `${ident(columnOf(c!, e))} as ${alias}`);
+      for (const [, c] of cols) if (c) e.use('columns', soleTableColumn(base, ident(columnOf(c, e)), (t) => t));
       return `select ${[...sel, 'q.*'].join(', ')}\n  from (${base}) q`;
     };
     switch (row.type) {
@@ -953,7 +997,10 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
           row.source = `<div class="alert alert-info"><p>APEX region <strong>${escapeHtml(title)}</strong> (${escapeHtml(what)}, ${escapeHtml(apexType)}) was not imported: rebuild it with a pgkiln region.</p>${src ? `<pre>${escapeHtml(src)}</pre>` : ''}</div>`;
           row.template = 'plain';
           e.notMapped(`${what} regions are not mapped: a static region with a note (and the APEX source) stands in for it`);
-          if (apexType === 'NATIVE_PLSQL') e.port = true;
+          if (apexType === 'NATIVE_PLSQL') {
+            e.port = true;
+            e.scan(src);
+          }
         }
         break;
       }
@@ -968,7 +1015,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         break;
       }
       case 'form': {
-        if (queryType === 'TABLE' || str(a, 'p_query_table')) row.table_name = qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'));
+        if (queryType === 'TABLE' || str(a, 'p_query_table')) e.use('tables', (row.table_name = qualified(str(a, 'p_query_table'), str(a, 'p_query_owner'))));
         else e.note('a form on a SQL query or another source: pgkiln forms edit one table: set its table by hand');
         break;
       }
@@ -985,6 +1032,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         if (pk) row.pk_column = ident(str(pk.args, 'p_source_expression', 'p_name') ?? '');
         else e.note('no primary key column found: set the grid\'s key column by hand');
         const dbCols = cols.filter((x) => /^DB_COLUMN$/i.test(str(x.args, 'p_source_type') ?? '') && str(x.args, 'p_source_expression'));
+        // (sprint 192) the grid saves into its table: its key and its database columns are that table's
+        if (row.table_name) {
+          e.use('tables', row.table_name);
+          for (const x of queryType === 'TABLE' ? dbCols : pk ? [pk] : []) e.use('columns', `${row.table_name}.${ident(str(x.args, 'p_source_expression', 'p_name') ?? '')}`);
+        }
         if (queryType === 'TABLE' && dbCols.length) row.source = `select ${dbCols.map((x) => ident(str(x.args, 'p_source_expression')!)).join(', ')}\n  from ${row.table_name}`;
         if (!row.source) row.source = row.table_name ? `select * from ${row.table_name}` : null;
         if (!row.source || !row.table_name) {
@@ -1123,7 +1175,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (type === 'hidden' && /^n$/i.test(attributeAt(a, apexType, 1) ?? '')) config.value_protected = false;
     e.target = type;
     const sourceType = (str(a, 'p_source_type') ?? '').toUpperCase();
-    const fromColumn = sourceType === 'REGION_SOURCE_COLUMN' || sourceType === 'DB_COLUMN';
+    // (sprint 192) APEX 26.2 leaves out p_source_type for a column of the item's source region (its default)
+    const fromColumn = sourceType === 'REGION_SOURCE_COLUMN' || sourceType === 'DB_COLUMN' || (!sourceType && !!ref(a, 'p_item_source_plug_id') && !!str(a, 'p_source'));
     const regionApexId = fromColumn ? ref(a, 'p_item_source_plug_id') ?? ref(a, 'p_item_plug_id') : ref(a, 'p_item_plug_id');
     const region = regionApexId ? regionDoc.get(regionApexId) : null;
     if (regionApexId && !region) e.note('its region was not imported: the item is at page level');
@@ -1132,6 +1185,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (fromColumn && region && !['form', 'grid'].includes(region.row.type)) {
       if (sourceType === 'DB_COLUMN') e.note('a column of a legacy APEX form (automatic row fetch): turn the region into a form region');
     }
+    if (sourceColumn && region && ['form', 'grid'].includes(region.row.type) && region.row.table_name) e.use('columns', `${region.row.table_name}.${sourceColumn}`);
     if (sourceColumn && region?.row.type === 'form' && (a.p_is_primary_key === true || yes(a, 'p_is_primary_key')) && !region.row.pk_column) {
       region.row.pk_column = sourceColumn;
       region.row.pk_item = name;
@@ -1279,6 +1333,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       continue;
     }
     if (!m) {
+      e.scan(str(a, 'p_validation'));
       e.notMapped(apexType === 'PLSQL_ERROR' ? 'PL/SQL Error validations are not mapped: raise the error in a function_body validation or a PL/pgSQL function' : `validation type ${apexType || '(none)'} is not mapped`);
       continue;
     }
@@ -1306,7 +1361,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     } else {
       row.item_name = associated;
       row.expression = v1 ? stripSemi(v1) : null;
-      if (m.plsql || (apexType === 'EXPRESSION' && /plsql/i.test(v2 ?? ''))) e.plsql();
+      if (m.plsql || (apexType === 'EXPRESSION' && /plsql/i.test(v2 ?? ''))) e.plsql(row.expression);
       else row.expression = e.oracle(row.expression);
     }
     if (row.item_name && !isUpperName(row.item_name)) row.item_name = null;
@@ -1385,7 +1440,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       case 'PLSQL': {
         row.type = 'sql';
         row.code = plsqlCode();
-        e.plsql();
+        e.plsql(row.code);
         if (!row.code) e.notMapped('no code found');
         break;
       }
@@ -1484,6 +1539,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
               return `${ident(str(p.args, 'p_name') ?? 'p')} => ${v.item ? `:${v.item}` : v.value !== undefined ? sqlString(v.value) : 'null'}`;
             });
           if (!target) e.notMapped('no PL/SQL package or procedure found');
+          else if (!/^(apex_|wwv_|dbms_|utl_|htp\.|htf\.|owa)/.test(target)) e.use('routines', target);
           row.code = `call ${target || 'todo'}(${args.join(', ')})`;
           e.port = true;
           e.note(`calls the PL/SQL API ${target || '(unknown)'}: create a PostgreSQL function or procedure ${target || ''} (a schema for the package)${params.some((p) => /out/i.test(str(p.args, 'p_direction') ?? '')) ? '; OUT parameters: return columns named like the items instead' : ''}`);
@@ -1596,7 +1652,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       row.target_type = 'function';
       row.target_function = action;
       e.target = 'function';
-      e.plsql();
+      e.plsql(action);
       e.note('pgkiln\'s function returns a path inside the application (a page number, or 12?view=month), not an f?p URL');
       if (!action.trim()) {
         e.notMapped('no function body found');
@@ -1695,7 +1751,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
           code = e.oracle(at(3));
         } else if (how === 'PLSQL_EXPRESSION' || how === 'FUNCTION_BODY') {
           code = how === 'PLSQL_EXPRESSION' ? `select ${at(4) ?? 'null'}` : at(6);
-          e.plsql();
+          e.plsql(code);
         } else {
           e.note(`set value by ${how} is not mapped`);
           continue;
@@ -1704,7 +1760,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       } else if (act === 'NATIVE_EXECUTE_PLSQL_CODE') {
         code = at(1);
         itemsToSubmit = at(2);
-        e.plsql();
+        e.plsql(code);
         if (at(3)) e.note('items to return: return columns named like the items from the SQL instead');
       } else if (act === 'NATIVE_REFRESH') {
         if (affType === 'ITEM') action = 'refresh_item';
@@ -1763,8 +1819,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       target.type = 'report';
       f.e.note(`the classic report it filters (${target.title}) became an interactive report: pgkiln's facets filter interactive reports`);
     }
-    if (target && target.type === 'report') f.row.config.report = target.id;
-    else {
+    if (target && target.type === 'report') {
+      f.row.config.report = target.id;
+      // (sprint 192) a facet filters a column of the report's query: checked when that query reads one table
+      for (const fc of f.row.config.facets as { column: string }[]) f.e.use('columns', soleTableColumn(target.source, fc.column, (t) => t));
+    } else {
       f.row.type = 'static';
       f.row.source = `<p>APEX faceted search ${escapeHtml(f.row.title)}: the region it filters ${target ? `(${escapeHtml(target.type)}) is not a report` : 'was not imported'}.</p>`;
       f.row.config = {};
@@ -1805,12 +1864,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         const tbl = qualified(str(sa, 'p_query_table'), str(sa, 'p_query_owner'));
         const where = e.oracle(str(sa, 'p_query_where'));
         from = tbl ? `${tbl}${where ? ` where ${where}` : ''}` : null;
-      } else if (st === 'SQL') {
-        const q = e.oracle(str(sa, 'p_data_source'));
-        from = q ? `(${stripSemi(q)}) q` : null;
+        if (tbl) e.use('tables', tbl).use('columns', label ? `${tbl}.${ident(columnOf(label, e))}` : null).use('columns', value ? `${tbl}.${ident(columnOf(value, e))}` : null);
       } else {
-        const q = apex.sql();
-        from = q ? `(${q}) q` : null;
+        const q = st === 'SQL' ? e.oracle(str(sa, 'p_data_source')) : apex.sql();
+        from = q ? `(${stripSemi(q)}) q` : null;
+        for (const c of [label, value]) if (c && q) e.use('columns', soleTableColumn(q, ident(columnOf(c, e)), (t) => t));
       }
       if (!from || !label) return null;
       const name = (str(sa, 'p_name') ?? `Series ${i + 1}`).replace(/"/g, '');
@@ -1954,7 +2012,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     doc,
     report: {
       application: { id: appId, name: appName, alias, release: str(begin?.args ?? {}, 'p_release'), schema },
-      entries: entries.map((e) => ({ kind: e.kind, page: e.page, name: e.name, apexType: e.apexType, target: e.target, status: e.status, port: e.port, notes: e.notes })),
+      entries: entries.map((e) => ({ kind: e.kind, page: e.page, name: e.name, apexType: e.apexType, target: e.target, status: e.status, port: e.port, notes: e.notes, ...(e.uses ? { uses: e.uses } : {}) })),
       skipped,
       counts,
     },
@@ -1986,16 +2044,16 @@ function sourceComputation(item: string, apexType: string, expression: string, l
       return { ...base, type: 'sql_expression', expression: e.oracle(expression) };
     case 'EXPRESSION':
       if (plsqlLang) {
-        e.plsql();
+        e.plsql(expression);
         return { ...base, type: 'sql_expression' };
       }
       return { ...base, type: 'sql_expression', expression: e.oracle(expression) };
     case 'PLSQL_EXPRESSION':
-      e.plsql();
+      e.plsql(expression);
       return { ...base, type: 'sql_expression' };
     case 'FUNCTION_BODY':
     case 'PLSQL_FUNCTION_BODY':
-      e.plsql();
+      e.plsql(expression);
       return { ...base, type: 'function_body' };
     default:
       if (e.kind === 'computation') e.notMapped(`computation type ${t || '(none)'} is not mapped`);

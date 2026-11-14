@@ -17,6 +17,7 @@ import { closePools, owner } from '../src/db.ts';
 import { ApexId, ApexParseError, joinSplitExport, parseApexCalls, unistr } from '../src/apexparse.ts';
 import { apexSource, apexSourceFromDir, apexToDoc, attributeAt, conditionOk, MAPPED_PROCESS_TYPES, MAPPED_VALIDATION_TYPES, NotAnApexExport, oracleisms, parseFp, reportText, type ReportEntry } from '../src/apeximport.ts';
 import { Browser } from './helpers.ts';
+import { apexCheck, checkText, qualifyTables, soleTableColumn, sqlObjects } from '../src/apex-check.ts';
 
 const FIX = join(root, 'test/fixtures/apex');
 const F100 = readFileSync(join(FIX, 'f100.sql'), 'utf8');
@@ -181,7 +182,7 @@ describe('the mapping of f100.sql', () => {
     assert.equal(v('E-mail looks like an address').expression, '^[^@]+@[^@]+\\.[A-Za-z]{2,}$', 'a q-quote keeps its backslashes');
     assert.equal(v('Status = OPEN').condition_type, 'request_in');
     assert.equal(v('Status = OPEN').condition_value, 'CREATE');
-    assert.equal(v('Code not taken').expression, 'select 1\n  from orders\n where code = :P3_CODE\n   and id <> coalesce(:P3_ID, -1)'); // (sprint 187) nvl rewritten
+    assert.equal(v('Code not taken').expression, 'select 1\n  from sales.orders\n where code = :P3_CODE\n   and id <> coalesce(:P3_ID, -1)'); // (sprint 187) nvl rewritten
     assert.equal(v('Total positive').item_name, 'P3_TOTAL', 'an associated item shows the message next to it');
     assert.equal(v('Credit check').when_button, 'CREATE');
     assert.equal(v('Shipped orders keep their total').always_execute, true);
@@ -278,7 +279,7 @@ describe('the mapping of f100.sql', () => {
     assert.deepEqual(doc.lovs.map((l: any) => [l.name, l.query]), [
       ['STATUS', 'STATIC:Open;OPEN,Shipped;SHIPPED'],
       ['CUSTOMERS_NAME', 'select name as d, id as r from sales.customers order by name'],
-      ['PRODUCTS', "select name || ' (' || coalesce(code, '-') || ')' d, id r from products order by 1"],
+      ['PRODUCTS', "select name || ' (' || coalesce(code, '-') || ')' d, id r from sales.products order by 1"],
     ]);
     assert.deepEqual(doc.authz_schemes.map((a: any) => [a.name, a.type]), [['ADMINISTRATION_RIGHTS', 'sql'], ['CONTRIBUTORS', 'role']]);
     assert.match(doc.authz_schemes[0].value, /^exists \(select 1\n {2}from sales\.staff/);
@@ -289,7 +290,7 @@ describe('the mapping of f100.sql', () => {
       ['change', 'P3_STATUS', 'show', 'equals', 'SHIPPED', 'P3_NOTE'],
       ['change', 'P3_STATUS', 'hide', 'not_equals', 'SHIPPED', 'P3_NOTE'],
     ]);
-    assert.deepEqual(da('Fill the total').map((x: any) => [x.action, x.code, x.items_to_submit]), [['set_value', 'select credit_limit from customers where id = :P3_CUSTOMER_ID', 'P3_CUSTOMER_ID']]);
+    assert.deepEqual(da('Fill the total').map((x: any) => [x.action, x.code, x.items_to_submit]), [['set_value', 'select credit_limit from sales.customers where id = :P3_CUSTOMER_ID', 'P3_CUSTOMER_ID']]);
     assert.deepEqual(da('Cancel Dialog').map((x: any) => [x.event, x.trigger_element, x.action]), [['click', 'CANCEL', 'cancel_dialog']]);
     const refresh = page(2).dynamic_actions.find((x: any) => x.name === 'Refresh after dialog');
     assert.deepEqual([refresh.event, refresh.action, refresh.affected_region_id], ['dialog_closed', 'refresh_region', r(2, 'Orders').id]);
@@ -443,6 +444,8 @@ describe('sprint 187: Team Development issues for the hand work (NX-F1)', async 
 
   test('pgkiln import-apex makes one per component that needs hand work, linked to its page; --no-issues makes none', async () => {
     const { report } = apexToDoc(F100);
+    // (sprint 192) the import checks the database first: a component whose tables are missing is hand work too
+    await apexCheck(owner, report);
     const work = handWork(report);
     assert.ok(work.length > 3, 'the fixture has hand work');
     const r = cli('import-apex', join(FIX, 'f100.sql'), '--alias', 'apex187-cli');
@@ -453,7 +456,7 @@ describe('sprint 187: Team Development issues for the hand work (NX-F1)', async 
     for (const i of made) {
       assert.equal(i.status, 'open');
       assert.equal(i.labels, 'APEX import');
-      assert.match(i.title, /^(Not mapped|Port): /);
+      assert.match(i.title, /^(Not mapped|Port|Missing objects): /);
       assert.match(i.body, /^From the APEX import of apex187-cli\.\n\n- APEX type: /);
     }
     const plsqlError = made.find((i) => /PLSQL_ERROR|PL\/SQL/.test(i.body));
@@ -549,5 +552,129 @@ describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
     const [c] = parseApexCalls(`begin\nwwv_flow_imp_shared.create_plugin_setting(\n p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2('a', 'b')).to_clob\n,p_x=>1\n);\nend;\n/\n`);
     assert.deepEqual(c.args.p_attributes, [['a', 'b']]);
     assert.equal(c.args.p_x, 1);
+  });
+});
+
+// (sprint 192, NX-F5) From Oracle to pgkiln: the database objects an APEX application uses, checked against the target
+// schema's catalogue (`pgkiln import-apex --check`, the builder's report), and the PL/SQL that ora2pg already converted.
+// test/fixtures/apex/oehr-postgres.sql is ora2pg's output for oehr-oracle.sql (scripts/oracle-e2e.sh makes it again).
+describe('sprint 192: from Oracle to pgkiln (NX-F5)', () => {
+  const F77536 = readFileSync(join(FIX, 'f77536.sql'), 'utf8');
+  const SCHEMAS = ['apex192_oehr', 'apex192_sales', 'sales_pkg'];
+  before(async () => {
+    await owner.query(`drop schema if exists ${SCHEMAS.join(', ')} cascade`);
+    await owner.query('create schema apex192_oehr');
+    const ddl = readFileSync(join(FIX, 'oehr-postgres.sql'), 'utf8');
+    await owner.tx(async (c) => {
+      await c.query(`set local search_path = apex192_oehr`);
+      await c.query(ddl);
+    });
+  });
+  after(async () => {
+    await owner.query(`drop schema if exists ${SCHEMAS.join(', ')} cascade`);
+  });
+
+  test('the objects a SQL or PL/SQL text names: FROM lists, joins, DML, sequences, package calls', () => {
+    assert.deepEqual(sqlObjects(`select a.x, extract(year from a.d) y, trim(both ' ' from b.n) from emp a, dept b join "LOC" l on l.id = b.id
+       left join hr.jobs j using (job_id) where exists (select 1 from dual) and seq_x.nextval > pkg.f(1)`),
+    { tables: ['emp', 'dept', 'loc', 'hr.jobs'], sequences: ['seq_x'], routines: ['pkg.f'] });
+    assert.deepEqual(sqlObjects(`with t as (select * from s) select * from t`).tables, ['s'], 'a WITH name is not a table');
+    assert.deepEqual(sqlObjects(`begin insert into audit_log (x) values (1); update emp set x = 1; delete from dept;
+       select count(*) into v from jobs for update; app_pkg.after_save(:P3_ID); hr.app_pkg.notify; apex_util.set_session_state('X', 1); end;`),
+    { tables: ['audit_log', 'emp', 'dept', 'jobs'], sequences: [], routines: ['app_pkg.after_save', 'app_pkg.notify'] });
+    assert.deepEqual(sqlObjects(`select 'from x' a /* from y */ -- from z\n from t`).tables, ['t'], 'literals and comments are not code');
+    assert.deepEqual(qualifyTables('select * from emp e join "DEPT" d on d.id = e.d, hr.jobs where x in (select 1 from dual)', 'oehr'),
+      { sql: 'select * from oehr.emp e join oehr.dept d on d.id = e.d, hr.jobs where x in (select 1 from dual)', n: 2 });
+    assert.equal(soleTableColumn('select * from emp', 'ename', (t) => `s.${t}`), 's.emp.ename');
+    assert.equal(soleTableColumn('select ename || job as label from emp', 'label', (t) => t), null, 'an alias is not a column');
+    assert.equal(soleTableColumn('select * from emp join dept using (d)', 'x', (t) => t), null, 'two tables: not checked');
+  });
+
+  test('the importer records what each component uses; quoted upper-case names become lower case; unqualified tables get the schema', () => {
+    const { doc, report } = apexToDoc(F77536) as { doc: any; report: any };
+    const uses = (k: 'tables' | 'columns') => new Set(report.entries.flatMap((e: any) => e.uses?.[k] ?? []));
+    for (const t of ['countries', 'customers', 'departments', 'employees', 'jobs', 'locations', 'orders', 'order_items', 'products', 'product_information', 'regions', 'warehouses'])
+      assert.ok(uses('tables').has(`wksp_demo.oehr_${t}`), t);
+    for (const c of ['oehr_customers.cust_last_name', 'oehr_orders.order_total', 'oehr_order_items.unit_price', 'oehr_jobs.job_title', 'oehr_products.product_status'])
+      assert.ok(uses('columns').has(`wksp_demo.${c}`), c);
+    // APEX 26.2 leaves out p_source_type of a form's column items: the form knows its columns and key
+    const p4 = doc.pages.find((p: any) => p.page_no === 4);
+    assert.equal(p4.items.find((i: any) => i.name === 'P4_CUST_LAST_NAME').source_column, 'cust_last_name');
+    assert.equal(p4.regions.find((r: any) => r.type === 'form').pk_column, 'customer_id');
+    const sql = JSON.stringify(doc.pages.flatMap((p: any) => p.regions.map((r: any) => r.source)));
+    assert.doesNotMatch(sql, /\\"OEHR_|\\"ORDER_TOTAL\\"/, '"OEHR_ORDERS" is oehr_orders');
+    assert.doesNotMatch(sql, /from oehr_/, 'every table has the schema');
+  });
+
+  test('pgkiln import-apex --check: without the OEHR tables, every one is missing (exit 1); with them only APEX views are left', () => {
+    const none = cli('import-apex', join(FIX, 'f77536.sql'), '--check', '--schema', 'apex192_none', '--json');
+    assert.equal(none.code, 1, none.err);
+    const j = JSON.parse(none.out);
+    const missing = (t: string) => j.check.missing.filter((m: any) => m.type === t).map((m: any) => m.name);
+    assert.equal(j.check.schema, 'apex192_none');
+    assert.deepEqual(missing('table').filter((n: string) => /oehr_/.test(n)).length, 12);
+    assert.ok(missing('table').includes('apex192_none.oehr_employees'));
+    assert.ok(missing('apex_view').includes('apex_workspace_apex_users'));
+    assert.deepEqual(missing('column'), [], 'columns of a missing table are not listed again');
+    const entry = j.entries.find((e: any) => e.kind === 'region' && e.name === 'Employees' && e.page === 8);
+    assert.deepEqual(entry.missing, ['table apex192_none.oehr_employees']);
+    assert.ok(entry.notes.some((n: string) => /^missing in PostgreSQL: table or view apex192_none\.oehr_employees/.test(n)));
+
+    const ok = cli('import-apex', join(FIX, 'f77536.sql'), '--check', '--schema', 'apex192_oehr');
+    assert.equal(ok.code, 1, 'APEX views are still missing');
+    assert.match(ok.out, /Database objects \(schema apex192_oehr\): the application uses \d+ table\(s\) or view\(s\), \d+ column\(s\)/);
+    assert.doesNotMatch(ok.out, /^ {2}table +apex192_oehr\.oehr_/m);
+    assert.doesNotMatch(ok.out, /^ {2}column /m, 'every column the importer knows is there');
+    assert.match(ok.out, /^ {2}apex view +apex_workspace_apex_users/m);
+    assert.match(ok.out, /Check only: nothing was imported/);
+    assert.equal((cli('import-apex', join(FIX, 'f77536.sql'), '--check', '--dry-run')).code, 2, '--check imports nothing anyway');
+  });
+
+  test('a column the database lacks; sequences; PL/SQL that ora2pg converted (package as schema, or pkg_proc)', async () => {
+    await owner.query('alter table apex192_oehr.oehr_orders rename column order_total to total');
+    try {
+      const { report } = apexToDoc(F77536, { schema: 'apex192_oehr' });
+      const c = await apexCheck(owner, report);
+      assert.deepEqual(c.missing.filter((m) => m.type === 'column').map((m) => m.name), ['apex192_oehr.oehr_orders.order_total']);
+    } finally {
+      await owner.query('alter table apex192_oehr.oehr_orders rename column total to order_total');
+    }
+    // f100: sales_pkg.below_limit (a PL/SQL expression), sales_pkg.check_order (PL/SQL), sales_pkg.recalculate (Invoke API)
+    await owner.query(`create schema apex192_sales; create schema sales_pkg;
+      create function sales_pkg.below_limit(p_total numeric) returns boolean language sql as 'select p_total < 1000';
+      create procedure apex192_sales.sales_pkg_recalculate(p_id int) language sql as 'select 1';
+      create sequence apex192_sales.orders_seq`);
+    const seq = (name: string) => F100.replace("'select code from orders where id = :P3_ID'", `'select ${name}.nextval from dual'`);
+    const other = await apexCheck(owner, apexToDoc(seq('codes_seq'), { schema: 'apex192_sales' }).report);
+    assert.ok(other.missing.some((m) => m.type === 'sequence' && m.name === 'apex192_sales.codes_seq'));
+    const { report } = apexToDoc(seq('orders_seq'), { schema: 'apex192_sales' });
+    const c = await apexCheck(owner, report);
+    assert.equal(c.used.sequences, 1);
+    assert.ok(!c.missing.some((m) => m.type === 'sequence'));
+    assert.deepEqual(c.found.map((f) => [f.name, f.as]), [
+      ['sales_pkg.below_limit', 'sales_pkg.below_limit(p_total numeric)'],
+      ['sales_pkg.recalculate', 'apex192_sales.sales_pkg_recalculate(IN p_id integer)'],
+    ]);
+    assert.ok(c.missing.some((m) => m.type === 'routine' && m.name === 'sales_pkg.credit_error'));
+    const invoke = report.entries.find((e) => e.kind === 'process' && e.name === 'Recalculate')!;
+    assert.ok(invoke.hints?.[0].startsWith('sales_pkg.recalculate exists in PostgreSQL as apex192_sales.sales_pkg_recalculate(IN p_id integer) (as ora2pg converts it)'), invoke.notes.join('\n'));
+    assert.match(checkText(c), /PL\/SQL routines that exist in PostgreSQL:\n {2}sales_pkg\.below_limit → sales_pkg\.below_limit\(p_total numeric\)/);
+  });
+
+  test('the builder shows the check before Import, with the workspace\'s developer login', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    await b.get('/builder/import/apex');
+    const up = await b.upload('/builder/import/apex', {}, { file: { name: 'f77536.sql', type: 'application/sql', data: Buffer.from(F77536) } });
+    const url = up.headers.location as string;
+    assert.ok(url, `${up.statusCode} ${up.body.slice(0, 500)}`);
+    const none = await b.submit(url, { action: 'preview', alias: 'apex192-builder', schema: 'apex192_none' });
+    assert.match(none.body, /<h2[^>]*>Database objects<\/h2>/);
+    assert.match(none.body, /data-apex-missing="(\d+)"/);
+    assert.match(none.body, /<code>apex192_none\.oehr_orders<\/code>/);
+    const ok = await b.submit(url, { action: 'preview', alias: 'apex192-builder', schema: 'apex192_oehr' });
+    assert.doesNotMatch(ok.body, /<code>apex192_oehr\.oehr_orders<\/code>/);
+    assert.match(ok.body, /<code>apex_workspace_apex_users<\/code>/);
   });
 });
