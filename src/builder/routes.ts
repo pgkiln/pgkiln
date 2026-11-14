@@ -35,7 +35,9 @@ import { apexImportRoutes } from './apex-import.ts';
 import { appFromFileRoutes } from './appfromfile.ts';
 import { clearDevbar } from '../runtime/devbar.ts';
 import { EMAIL } from './find-workspace.ts';
-import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage } from './i18n.ts';
+import { scopedTx as tx, cookieLanguage, LANG_COOKIE, tr, translatorFor, validBuilderLanguage, type BuilderKey } from './i18n.ts';
+import { revokeTokensOf } from '../builder-tokens.ts';
+import { adminTokensRegion } from './tokens.ts';
 import { checkSecondFactor, codesLeft, forgetBrowsers, hasFactor, isTrustedBrowser, leavesTooFewAdmins, passkeyByCredential, passkeySignin, passkeysOf, trustBrowser, trustDays, usePasskey, userHandle } from '../mfa.ts';
 import { isIP } from 'node:net';
 import { giveChallenge, takeChallenge } from './security.ts';
@@ -208,11 +210,11 @@ export async function builderRoutes(app: FastifyInstance) {
     // (sprint 126, SEC-2) a developer with a second factor: the password was right, the session comes after the code;
     // (sprint 127) unless this browser was trusted after a second factor, for the instance's number of days
     if ((await hasFactor(dev.username)) && !(await isTrustedBrowser(dev.username, req.cookies?.[TRUST_COOKIE]))) {
-      s.state.__MFA = JSON.stringify({ u: dev.username, ws: ws ? String(ws.id) : null, w: workspace, next, remember: req.body?.remember === '1', weak, at: Date.now() });
+      s.state.__MFA = JSON.stringify({ u: dev.username, ws: ws ? String(ws.id) : null, w: workspace, next, remember: req.body?.remember === '1', weak, at: Date.now(), via: directory ? `ldap:${directory.name}` : null });
       await saveState(s);
       return reply.redirect(`${BASE}/login/2fa`, 303);
     }
-    return finishSignIn(req, reply, s, { username: dev.username, language: dev.language }, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak, picked, detail });
+    return finishSignIn(req, reply, s, { username: dev.username, language: dev.language }, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak, picked, detail, via: directory ? `ldap:${directory.name}` : undefined });
   });
 
   /** A workspace by name, when it is one of the developer's (administrators: any). */
@@ -278,11 +280,11 @@ export async function builderRoutes(app: FastifyInstance) {
     // factor signs in without __SSO, so a 2FA rule makes them add one (ui.ts)
     if (p.local_second_step && (await hasFactor(dev.username))) {
       const ns = await createSession(reply, null, BASE);
-      ns.state.__MFA = JSON.stringify({ u: dev.username, ws: null, w: '', next: safeNext(result.next), remember: false, weak: false, at: Date.now() });
+      ns.state.__MFA = JSON.stringify({ u: dev.username, ws: null, w: '', next: safeNext(result.next), remember: false, weak: false, at: Date.now(), via: p.name });
       await saveState(ns);
       return reply.redirect(`${BASE}/login/2fa`, 303);
     }
-    return finishSignIn(req, reply, null, dev, { ws: null, workspace: '', next: safeNext(result.next), remember: false, weak: false, picked: null, detail: `builder sso:${p.name}${result.mfa ? ' (mfa)' : ''}`, sso: p.local_second_step ? undefined : p.name });
+    return finishSignIn(req, reply, null, dev, { ws: null, workspace: '', next: safeNext(result.next), remember: false, weak: false, picked: null, detail: `builder sso:${p.name}${result.mfa ? ' (mfa)' : ''}`, sso: p.local_second_step ? undefined : p.name, via: p.name, mfa: !p.local_second_step });
   });
 
   // (sprint 128, SEC-2) signing in with a passkey alone: no user name, no password. The browser offers the
@@ -343,7 +345,7 @@ export async function builderRoutes(app: FastifyInstance) {
     }
     const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [who]);
     if (!dev) return back(reply, s, again);
-    return finishSignIn(req, reply, s, dev, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: false, picked, detail: 'builder passkey' });
+    return finishSignIn(req, reply, s, dev, { ws: ws ? String(ws.id) : null, workspace, next, remember: req.body?.remember === '1', weak: false, picked, detail: 'builder passkey', mfa: true });
   });
 
   /**
@@ -351,7 +353,9 @@ export async function builderRoutes(app: FastifyInstance) {
    * or an identity provider, sso: its name; s null: the sign-in page's session is not at hand there).
    */
   async function finishSignIn(req: Req, reply: Parameters<typeof back>[0], s: Awaited<ReturnType<typeof getSession>> | null, dev: { username: string; language: string | null },
-    o: { ws: string | null; workspace: string; next: string; remember: boolean; weak: boolean; picked: ReturnType<typeof validBuilderLanguage>; detail: string; sso?: string }) {
+    o: { ws: string | null; workspace: string; next: string; remember: boolean; weak: boolean; picked: ReturnType<typeof validBuilderLanguage>; detail: string; sso?: string;
+      /** (sprint 194) a second factor was given (or the identity provider decides on it); via: the provider or directory */
+      mfa?: boolean; via?: string | null }) {
     const ip = clientIp(req);
     const { picked, next, workspace } = o;
     if (s) await destroySession(reply, s, BASE);
@@ -369,6 +373,8 @@ export async function builderRoutes(app: FastifyInstance) {
     if (o.weak) ns.state.__WEAK = '1';
     // (sprint 129) the identity provider decided on the second factor: no enrolment in pgkiln (ui.ts)
     if (o.sso) ns.state.__SSO = o.sso;
+    // (sprint 194, SEC-1) when and how the developer signed in: making a builder token needs a recent one (tokens.ts)
+    ns.state.__AUTH = JSON.stringify({ at: Date.now(), mfa: !!o.mfa, via: o.via ?? null });
     await saveState(ns);
     if (o.sso) {
       // the sign-in page's "remember" stays as it was
@@ -395,7 +401,7 @@ export async function builderRoutes(app: FastifyInstance) {
   const pendingMfa = (s: { state: Record<string, any> }) => {
     try {
       const p = JSON.parse(String(s.state.__MFA ?? ''));
-      return p && typeof p.u === 'string' && Date.now() - Number(p.at) < MFA_SECONDS * 1000 ? p as { u: string; ws: string | null; w: string; next: string; remember: boolean; weak: boolean } : null;
+      return p && typeof p.u === 'string' && Date.now() - Number(p.at) < MFA_SECONDS * 1000 ? p as { u: string; ws: string | null; w: string; next: string; remember: boolean; weak: boolean; via?: string | null } : null;
     } catch {
       return null;
     }
@@ -474,10 +480,10 @@ export async function builderRoutes(app: FastifyInstance) {
       await logActivity({ username: p.u, event: '2fa_recovery_used', ip, detail: `${left} left` });
       // to the Security page: one code fewer, maybe time for new ones
       await trustThisBrowser(req, reply, p.u);
-      return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: `${BASE}/security`, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (recovery code)' });
+      return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: `${BASE}/security`, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (recovery code)', mfa: true, via: p.via });
     }
     await trustThisBrowser(req, reply, p.u);
-    return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa' });
+    return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa', mfa: true, via: p.via });
   });
 
   // (sprint 127) the second step with a passkey: options for navigator.credentials.get(), then the browser's answer
@@ -533,7 +539,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const dev = await owner.one<{ username: string; language: string | null }>('select username, language from meta.developer where username = $1', [p.u]);
     if (!dev) return back(reply, s, `${BASE}/login`);
     await trustThisBrowser(req, reply, p.u);
-    return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (passkey)' });
+    return finishSignIn(req, reply, s, dev, { ws: p.ws, workspace: p.w, next: p.next, remember: p.remember, weak: p.weak, picked, detail: 'builder 2fa (passkey)', mfa: true, via: p.via });
   });
 
   app.post(`${BASE}/logout`, async (req: Req, reply) => {
@@ -1186,6 +1192,7 @@ export async function builderRoutes(app: FastifyInstance) {
                 <div class="buttons"><button class="btn btn-hot">${tx('dev.add')}</button></div>
               </form>`
             : html`<p class="muted">${tx('dev.admins_only')}</p>`}`)}
+        ${admin ? await adminTokensRegion(s) : ''}
       </div>`;
     return send(reply, s, shell(s, tx('dev.title'), [[tx('rte.developers')]], main, 'developers'));
   });
@@ -1231,6 +1238,9 @@ export async function builderRoutes(app: FastifyInstance) {
       // End all other builder sessions of this developer, and (sprint 127) forget the browsers they trusted.
       await owner.query('delete from meta.session where app_id is null and username = $1 and id <> $2', [s.username, s.id]);
       await forgetBrowsers(s.username!);
+      // (sprint 194, SEC-1) a new password: the builder tokens made with the old one stop working
+      const revoked = await revokeTokensOf(s.username!, 'password changed', s.username!);
+      if (revoked) await logActivity({ username: s.username, event: 'builder_token_revoked', ip: clientIp(req), detail: `${revoked} token(s): password changed` });
       delete s.state.__WEAK;
       flash(s, tr(s)('dev.pw_changed'));
     } catch (e) {

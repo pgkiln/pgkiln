@@ -58,6 +58,42 @@ The server connects with `DATABASE_URL` (the owner role) from the environment or
 `.env`, like the [command line](18-cli.md). Relative paths in the tools are relative to the
 directory the agent started the server in (the project).
 
+### Remote, with a builder token
+
+(sprint 194, NX-F4) The setups above run on the server, with the owner connection: fine on your own machine against
+your own database, not for a shared or production pgkiln. There, give the agent a **builder token** instead: the MCP
+server runs on your machine and acts as **you**, through the builder's API, with the token's scopes, in one workspace,
+and no database connection at all.
+
+1. In the builder: your account menu → **Security** → **Builder tokens**: a name (*Claude Code on my laptop*), the
+   workspace, the scopes (`read` to look, `write` to import, `sql` for `run_query`) and an expiry (30 days by
+   default, at most a year). It is shown once: copy it. Making one needs a sign-in in the last 10 minutes with your
+   second factor or single sign-on ([chapter 3](03-builder.md#builder-tokens)).
+2. Give it to the agent in an environment variable and point the server at the builder:
+
+```sh
+claude mcp add pgkiln -e PGKILN_TOKEN=pgkb_… -- npx -y pgkiln mcp --url https://pgkiln.example.com
+# another variable: --token-env MY_PGKILN_TOKEN
+```
+
+`--url` must be `https` (plain `http` only to `localhost`); the token is never a command-line argument, so it stays
+out of `ps` and the shell history; keep it out of files in git. The tools are the same, with the same answers:
+
+- `export_app`, `diff_app`, `import_app` (and `advise_app` with a `path`) read and write **files on your machine**; they
+  get the export from the server and send the import to it. `search_docs` searches the guide that came with your copy.
+- every other tool runs **on the server**: only the token's workspace's applications exist for it (another workspace's
+  is *no application*); `describe_schema`, `generate_ddl`, `compare_schemas` and `run_query` run as the workspace's
+  **developer login** (the SQL Workshop's identity), never the owner connection, also for an administrator's token;
+  `lock_app` and `working_copy` act as you, whatever `developer` says.
+- a tool the token's scopes don't cover answers `Error: 403 …: this token has no write scope`; an expired or revoked
+  token `Error: 401 …`, at once: revoking a token on the Security page stops the agent on its next call.
+- `import_app` takes `only` (`["pages/12"]`, with `replace`): only that page or file changes, as
+  `pgkiln import --replace --only` ([chapter 18](18-cli.md#importing-one-page-or-component)). An import keeps the
+  builder's rules: another developer's lock on the application or a page it changes refuses it.
+
+Every call is in the activity log under your name with the token's name (`builder_api`), so an agent's work can be
+told from yours.
+
 ## Tools
 
 | Tool | What it does | Changes anything |
@@ -100,6 +136,9 @@ migration scripts, not in the application files (`run_query` can't change them a
 
 ## Safety
 
+- **Remote: a builder token.** With `--url` the server on your machine has no database connection and can't do more
+  than the token's scopes and your rights in its workspace, checked by the builder at every call (see
+  [above](#remote-with-a-builder-token)). The points below are about the local server.
 - **Read-only queries.** `run_query` runs exactly one statement (the extended query protocol, so
   `commit; delete …` is refused) in a `READ ONLY` transaction that has already taken a snapshot (so
   `set transaction read write` is refused), with a 10-second timeout, and rolls it back. Values of
@@ -137,6 +176,12 @@ Agents read `CLAUDE.md` (Claude Code) or `AGENTS.md` (most others). A few lines 
 ```
 
 ## For pgkiln developers
+
+(sprint 194) Each tool's `run(args, ctx)` gets a `ToolContext`: `LOCAL` (the owner connection of `DATABASE_URL`, every
+application), the builder API's `serverContext` (src/builder/api-v1.ts: the owner pool for the token's workspace's
+applications only, the workspace's developer login for the database's objects), or, for the file tools under
+`--url`, `RemoteClient.context()` (exports and imports over the API). A new tool uses `ctx.meta` / `ctx.sql` and
+`ctx.app(db, alias)` instead of a connection of its own, and gets a scope in `toolScope` (api-v1.ts).
 
 `src/cli/mcp.ts` holds the tools and the JSON-RPC loop (no SDK: newline-delimited JSON-RPC 2.0 on
 stdio, protocol versions 2025-06-18, 2025-03-26 and 2024-11-05). The tools reuse `src/cli/apps.ts`

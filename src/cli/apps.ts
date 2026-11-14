@@ -78,25 +78,39 @@ export type ImportCheck = 'off' | 'check' | 'force' | 'dry-run';
  * it replaced one, its number of supporting object scripts (never run), the
  * Advisor's findings (with a check) and whether it was committed.
  */
-export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off', by = null, schema = null }: { alias: string; replace: boolean; check?: ImportCheck; by?: string | null; schema?: string | null }) {
+export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off', by = null, schema = null, workspace, planDb, guard }: {
+  alias: string; replace: boolean; check?: ImportCheck; by?: string | null; schema?: string | null;
+  /** (sprint 194) the builder's API: only an application of this workspace is replaced, a new one is put in it */
+  workspace?: number;
+  /** (sprint 194) where the Advisor plans SQL (the workspace's developer login) instead of db */
+  planDb?: import('../db.ts').Db;
+  /** (sprint 194) checks before an application is replaced (locks); throws to refuse */
+  guard?: (appId: number) => Promise<void>;
+}) {
   await db.query('begin');
   try {
-    const exists = (await db.query('select id from meta.app where alias = $1', [alias])).rows[0];
+    const exists = (await db.query('select id, meta.app_workspace(id) as ws from meta.app where alias = $1', [alias])).rows[0];
     let id: number;
+    if (exists && workspace !== undefined && exists.ws !== workspace) throw new UsageError(`the alias ${alias} is taken by an application of another workspace`);
     if (exists && !replace) throw new UsageError(`application ${alias} exists: use --replace to update it, or --alias for a copy`);
+    if (exists && guard) await guard(exists.id);
     // (sprint 186, NX-S2) a file without a database role: the installed application's, or a new app_<alias>
     const { importRole } = await import('../app-role.ts');
-    const roleNote = await importRole(db, doc as { app?: Record<string, unknown> }, { alias, schema });
+    const roleNote = await importRole(db, doc as { app?: Record<string, unknown> }, { alias, schema, ...(workspace !== undefined ? { ws: workspace } : {}) });
     if (exists) {
       const { replaceApp } = await import('./replace.ts');
       id = await replaceApp(db, doc, alias, { backup: { reason: 'import', user: by } });
-    } else id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), alias])).rows[0].id;
+    } else {
+      id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), alias])).rows[0].id;
+      if (workspace !== undefined)
+        await db.query(`insert into meta.workspace_app (app_id, workspace_id) values ($1, $2) on conflict (app_id) do update set workspace_id = excluded.workspace_id`, [id, workspace]);
+    }
     const scripts: number = (await db.query('select count(*)::int as n from meta.supporting_script where app_id = $1', [id])).rows[0].n;
     let findings: ImportFinding[] = [];
     if (check !== 'off') {
       // the application as imported, before anything is committed: SQL planned as its role, references
       const { advise } = await import('../builder/advisor.ts');
-      findings = (await advise(id, db)).findings.map((f) => ({
+      findings = (await advise(id, db, planDb ? { db: planDb } : {})).findings.map((f) => ({
         severity: f.severity,
         where: f.entry ? (f.entry.kind === 'page' ? f.entry.label : `${f.entry.pageNo !== null ? `page ${f.entry.pageNo}, ` : ''}${f.entry.kindLabel.toLowerCase()} ${f.entry.label}`) : 'database',
         field: f.field,

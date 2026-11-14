@@ -1434,3 +1434,21 @@ document.querySelectorAll('details.drawer').forEach((d) => {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && d.open) close(); });
   document.addEventListener('click', (e) => { if (d.open && !d.contains(e.target)) d.open = false; });
 });
+
+// (sprint 194) a value shown once (a new builder token): Copy puts it on the clipboard; a click in the field selects it
+document.querySelectorAll('[data-copy-from]').forEach((b) => {
+  const field = document.getElementById(b.dataset.copyFrom);
+  if (!field || !navigator.clipboard) return;
+  b.hidden = false;
+  const label = b.innerHTML;
+  b.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(field.value);
+      b.textContent = b.dataset.copied || 'Copied';
+      setTimeout(() => { b.innerHTML = label; }, 2000);
+    } catch {
+      field.select();
+    }
+  });
+});
+document.querySelectorAll('[data-select-all]').forEach((f) => f.addEventListener('focus', () => f.select()));
