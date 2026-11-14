@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-11-14
+
 ### Added
 - **The Pages report and page aliases** (sprint 193, NX-F3): the application home's Pages report gets the columns
   **Alias**, **Type** (worked out from the page's regions: Interactive Report, Form, Faceted Search, Dashboard, Login,

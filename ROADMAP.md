@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.98.0 (November 2026): browser security per application (NX-S4), session limits, deep linking and Expire bookmarks per application (NX-S5), a production readiness check with `pgkiln admin check --production` (NX-S6), and the APEX importer on real APEX 26.2 exports (charts, cards, calendars, faceted search and lists).
+- **Current release:** 0.99.0 (November 2026): page aliases and a Pages report with type, updated, updated by, filters and a column chooser (NX-F3), builder tokens for the command line and a remote MCP server (NX-F4), and from Oracle to pgkiln with `import-apex --check` and a tested ora2pg recipe (NX-F5).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
