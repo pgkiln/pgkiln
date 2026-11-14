@@ -958,6 +958,7 @@ export async function builderRoutes(app: FastifyInstance) {
               help: tx('st.warning_help') })}
           </div>
           <h3 id="session-management">${tx('ss.title')}</h3>
+          <input type="hidden" name="session_settings" value="1">
           <div class="form-grid">
             ${input('session_idle_minutes', tx('ss.idle'), a.session_idle_minutes ?? '', { type: 'number', placeholder: String(sessionLimits().idleMinutes),
               help: tx('ss.idle_help', { n: sessionLimits().idleMinutes }) })}
@@ -1024,9 +1025,12 @@ export async function builderRoutes(app: FastifyInstance) {
       if (maxHours !== null && !(Number.isInteger(maxHours) && maxHours >= 1 && maxHours <= 720)) throw new Error(tr(s)('ss.err.max'));
       if (timeoutPage !== null && !(Number.isInteger(timeoutPage) && (await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = $2 and not requires_auth', [req.params.id, timeoutPage]))))
         throw new Error(tr(s)('ss.err.page'));
-      await owner.query(`update meta.app set error_function = $2, session_warning_seconds = $3, session_idle_minutes = $4, session_max_hours = $5,
-                                session_timeout_page = $6, deep_linking = $7, updated_at = now() where id = $1`,
-        [req.params.id, fn || null, seconds, idle, maxHours, timeoutPage, b.deep_linking === 'true']);
+      // (sprint 189) the session fields only when the form had them: a post without them (an older client) changes nothing there
+      if (b.session_settings === '1')
+        await owner.query(`update meta.app set error_function = $2, session_warning_seconds = $3, session_idle_minutes = $4, session_max_hours = $5,
+                                  session_timeout_page = $6, deep_linking = $7, updated_at = now() where id = $1`,
+          [req.params.id, fn || null, seconds, idle, maxHours, timeoutPage, b.deep_linking === 'true']);
+      else await owner.query('update meta.app set error_function = $2, session_warning_seconds = $3, updated_at = now() where id = $1', [req.params.id, fn || null, seconds]);
       flash(s, tr(s)('st.saved'));
     } catch (e) {
       flash(s, (e as Error).message, 'error');

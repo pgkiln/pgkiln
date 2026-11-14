@@ -16215,14 +16215,24 @@ describe('sprint 189 session limits, deep linking and expiring bookmarks per app
       // the builder refuses a page that needs a sign-in
       const dev = await devBrowser();
       await dev.get(`/builder/apps/${appId}/settings?tab=errors`);
-      await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_warning_seconds: '120', session_timeout_page: '1', deep_linking: 'true' });
+      await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_settings: '1', session_warning_seconds: '120', session_timeout_page: '1', deep_linking: 'true' });
       assert.equal((await owner.one(`select session_timeout_page from meta.app where id = $1`, [appId]))!.session_timeout_page, 9189, 'page 1 needs a sign-in: refused');
-      await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_warning_seconds: '120', session_idle_minutes: '0', deep_linking: 'true' });
+      await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_settings: '1', session_warning_seconds: '120', session_idle_minutes: '0', deep_linking: 'true' });
       assert.equal((await owner.one(`select session_idle_minutes from meta.app where id = $1`, [appId]))!.session_idle_minutes, 5, '0 minutes: refused');
     } finally {
       await owner.query(`update meta.app set session_timeout_page = null where alias = 'hr'`);
       await owner.query('delete from meta.page where id = $1', [pid]);
     }
+  });
+
+  test('a post of the form without the session fields (an older client) leaves them alone', async () => {
+    await owner.query(`update meta.app set session_idle_minutes = 7, deep_linking = true where alias = 'hr'`);
+    const dev = await devBrowser();
+    await dev.get(`/builder/apps/${appId}/settings?tab=errors`);
+    await dev.post(`/builder/apps/${appId}/settings/behaviour`, { __csrf: dev.lastCsrf, session_warning_seconds: '90' });
+    const row = (await owner.one(`select session_warning_seconds, session_idle_minutes, deep_linking from meta.app where id = $1`, [appId]))!;
+    assert.deepEqual(row, { session_warning_seconds: 90, session_idle_minutes: 7, deep_linking: true });
+    await owner.query(`update meta.app set session_warning_seconds = 120 where id = $1`, [appId]);
   });
 
   test('deep linking off: the sign-in page gets no address, and a posted one is ignored', async () => {
