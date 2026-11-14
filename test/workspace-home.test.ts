@@ -218,6 +218,9 @@ describe('the Workspace home', () => {
   test('versions and release documents', () => {
     assert.ok(newerVersion('0.51.0', '0.50.0'));
     assert.ok(newerVersion('v1.0.0', '0.50.0'));
+    // releases go on as 0.98, 0.99, 0.100 …: numbers, not text
+    assert.ok(newerVersion('0.100.0', '0.99.0'));
+    assert.ok(!newerVersion('0.99.0', '0.100.0'));
     assert.ok(!newerVersion('0.50.0', '0.50.0'));
     assert.ok(!newerVersion('0.9.0', '0.50.0'));
     assert.ok(!newerVersion('1.0.0-rc1', '0.50.0'));
