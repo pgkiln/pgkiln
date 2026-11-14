@@ -136,7 +136,7 @@ describe('subscriptions in the builder', () => {
     const bp = await blank(`${P}-bp`, 'boilerplate');
     await owner.query(`insert into meta.page (app_id, page_no, name, title) values ($1, 1, 'Start', 'Start'), ($1, 7, 'Reports', 'Reports')`, [bp]);
     await owner.query(`insert into meta.lov (app_id, name, query) values ($1, 'STATUS', 'select 1 as d, 1 as r')`, [bp]);
-    const page = await dev.get('/builder/create');
+    const page = await dev.get('/builder/create/full');
     assert.match(page.body, new RegExp(`<option value="${bp}">App ${P}-bp \\(boilerplate\\)</option>`));
     const alias = `${P}-from-bp`;
     try {

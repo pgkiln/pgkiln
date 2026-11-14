@@ -7741,6 +7741,16 @@ export const fr: BuilderMessages = {
   'aw.sum_on': '{n} pages sur {schema}',
   'aw.sum_on_1': '{n} page sur {schema}',
   'aw.sum_new': 'Une nouvelle application avec son propre schéma',
+  'aw.alias_optional': 'Alias (URL), facultatif',
+  'aw.alias_optional_help': 'Vide : formé à partir du nom (Café Orders → /a/cafe-orders), avec un numéro s\'il est pris',
+  'aw.quick_password': 'Mot de passe de votre compte {user}',
+  'aw.quick_password_help': 'Vous êtes le premier utilisateur de l\'application. Utilisateurs n\'a pas encore de compte {user} : il est créé avec ce mot de passe.',
+  'aw.quick_account': 'Vous vous y connectez en tant que {user}, avec le rôle admin.',
+  'aw.quick_new_account': 'Vous vous y connectez en tant que {user}, avec le rôle admin (un nouveau compte).',
+  'aw.creating': 'Création de l\'application…',
+  'aw.full_form': 'Formulaire complet',
+  'aw.src.full': 'Utiliser le formulaire complet',
+  'aw.srch.full': 'Pages sur des tables existantes, fonctionnalités, apparence et connexion',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Fermer',
   // ------------------------------------------------------------ sprint 172: parity leftovers

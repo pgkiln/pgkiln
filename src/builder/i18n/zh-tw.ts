@@ -7741,6 +7741,16 @@ export const zhTW: BuilderMessages = {
   'aw.sum_on': '{schema} 上的 {n} 個頁面',
   'aw.sum_on_1': '{schema} 上的 {n} 個頁面',
   'aw.sum_new': '一個擁有自己結構描述的新應用程式',
+  'aw.alias_optional': '別名 (URL)，選填',
+  'aw.alias_optional_help': '留空：依名稱產生 (Café Orders → /a/cafe-orders)，已被使用時加上編號',
+  'aw.quick_password': '你的帳戶 {user} 的密碼',
+  'aw.quick_password_help': '你是此應用程式的第一位使用者。使用者中還沒有帳戶 {user}：將以此密碼建立。',
+  'aw.quick_account': '你以 {user} 的身分登入，具有 admin 角色。',
+  'aw.quick_new_account': '你以 {user} 的身分登入，具有 admin 角色 (新帳戶)。',
+  'aw.creating': '正在建立應用程式…',
+  'aw.full_form': '完整表單',
+  'aw.src.full': '使用完整表單',
+  'aw.srch.full': '以現有資料表建立的頁面、功能、外觀與登入',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '關閉',
   // ------------------------------------------------------------ sprint 172: parity leftovers

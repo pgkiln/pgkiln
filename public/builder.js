@@ -1267,6 +1267,14 @@ document.querySelectorAll('input[data-filter-tree]').forEach((el) => {
       if (!alias.hasAttribute('data-edited')) alias.value = slug(name.value);
     });
   });
+  // (sprint 196) the short Create screen: an empty alias is made from the name; the placeholder shows it
+  document.querySelectorAll('input[data-placeholder-from]').forEach((alias) => {
+    const name = document.getElementById(alias.dataset.placeholderFrom);
+    if (!name) return;
+    const sync = () => (alias.placeholder = slug(name.value));
+    name.addEventListener('input', sync);
+    sync();
+  });
 
   document.querySelectorAll('select[name="authentication"]').forEach((auth) => {
     const form = auth.form;

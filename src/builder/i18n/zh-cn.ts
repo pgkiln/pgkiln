@@ -7741,6 +7741,16 @@ export const zhCN: BuilderMessages = {
   'aw.sum_on': '{schema} 上的 {n} 个页面',
   'aw.sum_on_1': '{schema} 上的 {n} 个页面',
   'aw.sum_new': '一个拥有自己模式的新应用程序',
+  'aw.alias_optional': '别名 (URL)，可选',
+  'aw.alias_optional_help': '留空：根据名称生成 (Café Orders → /a/cafe-orders)，已被占用时加上编号',
+  'aw.quick_password': '你的账户 {user} 的密码',
+  'aw.quick_password_help': '你是该应用程序的第一个用户。用户中还没有账户 {user}：将使用此密码创建。',
+  'aw.quick_account': '你以 {user} 的身份登录，拥有 admin 角色。',
+  'aw.quick_new_account': '你以 {user} 的身份登录，拥有 admin 角色 (新账户)。',
+  'aw.creating': '正在创建应用程序…',
+  'aw.full_form': '完整表单',
+  'aw.src.full': '使用完整表单',
+  'aw.srch.full': '基于现有表的页面、功能、外观和登录',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '关闭',
   // ------------------------------------------------------------ sprint 172: parity leftovers

@@ -443,7 +443,9 @@ src/
                            step 2 sections, one transaction (tables, rows, foreign keys, report+form per table); addDashboard
                            (a chart per table on one page, also used for existing tables)
     appwizard.ts           Create → From pasted data (kept as a temp file, then the From a file steps) and From existing tables
-                           (a schema's tables/views → report+form or report pages, navigation, dashboard)
+                           (a schema's tables/views → report+form or report pages, navigation, dashboard); (sprint 196) the short Create
+                           screen (GET/POST /create: a name, the full form's defaults, the same create() as the full form at
+                           /create/full and POST /apps; newapp.ts aliasFromName: an alias whose schema and role are free)
     forms.ts               generic component property form (lookups, render, save)
     backups.ts             Application → Backups (migration 082): list, back up now, download, restore (replaceApp), keep N;
                            backupTick() for the scheduler's daily backups of changed applications

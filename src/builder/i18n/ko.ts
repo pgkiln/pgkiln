@@ -7741,6 +7741,16 @@ export const ko: BuilderMessages = {
   'aw.sum_on': '{schema}의 페이지 {n}개',
   'aw.sum_on_1': '{schema}의 페이지 {n}개',
   'aw.sum_new': '자체 스키마를 가진 새 애플리케이션',
+  'aw.alias_optional': '별칭 (URL), 선택 사항',
+  'aw.alias_optional_help': '비워 두면 이름으로 만들어집니다 (Café Orders → /a/cafe-orders). 이미 사용 중이면 번호가 붙습니다',
+  'aw.quick_password': '계정 {user}의 비밀번호',
+  'aw.quick_password_help': '당신이 애플리케이션의 첫 번째 사용자입니다. 사용자에 아직 {user} 계정이 없으므로 이 비밀번호로 만들어집니다.',
+  'aw.quick_account': '{user}(으)로 admin 역할로 로그인합니다.',
+  'aw.quick_new_account': '{user}(으)로 admin 역할로 로그인합니다 (새 계정).',
+  'aw.creating': '애플리케이션을 만드는 중…',
+  'aw.full_form': '전체 양식',
+  'aw.src.full': '전체 양식 사용',
+  'aw.srch.full': '기존 테이블의 페이지, 기능, 모양 및 로그인',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': '닫기',
   // ------------------------------------------------------------ sprint 172: parity leftovers

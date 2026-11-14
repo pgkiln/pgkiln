@@ -16782,3 +16782,88 @@ describe('sprint 195 sub regions (NX-F2)', () => {
     assert.equal((await owner.one<{ parent_id: number }>('select parent_id from meta.region where id = $1', [employees]))!.parent_id, tabs, 'nothing moved');
   });
 });
+
+describe('(sprint 196, NX-U1) Create application in one field', () => {
+  const DEV = 'sec196_dev';
+  const PW = 'Sec196-dev-password!';
+  const ALIASES = ['sec196-quick', 'sec196-nows'];
+  const drop = async () => {
+    for (const a of ALIASES) {
+      const n = a.replace(/-/g, '_');
+      await owner.query('delete from meta.app where alias = $1', [a]);
+      await owner.query(`drop schema if exists ${n} cascade`);
+      await owner.query(`drop owned by app_${n} cascade`).catch(() => {});
+      await owner.query(`drop role if exists app_${n}`);
+    }
+  };
+  const signIn = async (user: string, pw: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password: pw })).statusCode, 303, `sign in as ${user}`);
+    await b.get('/builder');
+    return b;
+  };
+  before(async () => {
+    await drop();
+    await owner.query('delete from meta.account where username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing', [DEV]);
+  });
+  after(async () => {
+    await drop();
+    await owner.query('delete from meta.account where username = $1', [DEV]);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('signed in and with the CSRF token only', async () => {
+    const anon = new FileBrowser(app);
+    const res = await anon.get('/builder/create');
+    assert.equal(res.statusCode, 302);
+    assert.match(String(res.headers.location), /\/builder\/login/);
+    assert.equal((await anon.post('/builder/create', { name: 'Sec196 quick', admin_password: PW })).statusCode, 302);
+    const b = await signIn(DEV, PW);
+    await b.get('/builder/create');
+    assert.equal((await b.post('/builder/create', { name: 'Sec196 quick', admin_password: 'Sec196-app-password!' })).statusCode, 403, 'no CSRF token');
+    assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias like 'sec196%'`)));
+  });
+
+  test('the short screen chooses nothing the form doesn\'t show: posted schema, sign-in, first user and language are ignored', async () => {
+    const b = await signIn(DEV, PW);
+    await b.get('/builder/create');
+    const res = await b.submit('/builder/create', {
+      name: '<script>alert(1)</script> Sec196 quick', alias: 'sec196-quick', admin_password: 'Sec196-app-password!',
+      schema: 'meta', authentication: 'none', admin_user: 'king', language: 'xx', boilerplate: '1', t_0: 'account', tables: '1', base: 'x',
+    });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    const a = await owner.one(`select id, name, authentication, db_role, language from meta.app where alias = 'sec196-quick'`);
+    assert.deepEqual([a.name, a.authentication, a.db_role, a.language], ['<script>alert(1)</script> Sec196 quick', 'app_users', 'app_sec196_quick', 'en']);
+    assert.ok(await owner.one(`select 1 as ok from pg_namespace where nspname = 'sec196_quick'`), 'its own new schema');
+    // the developer is the first user, not the account named in the post
+    const users = (await owner.query(`select c.username from meta.app_access x join meta.account c on c.id = x.account_id where x.app_id = $1`, [a.id])).rows.map((r) => r.username);
+    assert.deepEqual(users, [DEV]);
+    assert.deepEqual((await owner.query('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows.map((r) => r.page_no), [1, 9000]);
+    // a bad alias and a name with markup come back escaped, with the name kept
+    const bad = await b.submit('/builder/create', { name: '<img src=x onerror=alert(1)>', alias: 'x"; drop schema hr; --' });
+    assert.equal(bad.statusCode, 422);
+    assert.match(bad.body, /The alias must start with a letter/);
+    assert.doesNotMatch(bad.body, /<img src=x/);
+    assert.match(bad.body, /value="&lt;img src=x onerror=alert\(1\)&gt;"/);
+  });
+
+  test('a developer of no workspace creates nothing', async () => {
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    try {
+      const b = await signIn(DEV, PW);
+      await b.get('/builder/create');
+      const res = await b.submit('/builder/create', { name: 'Sec196 nows', alias: 'sec196-nows' });
+      assert.equal(res.statusCode, 422);
+      assert.match(res.body, /not a developer of any workspace/);
+      assert.match(res.body, /value="Sec196 nows"/);
+      assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'sec196-nows'`)));
+    } finally {
+      await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing', [DEV]);
+    }
+  });
+});

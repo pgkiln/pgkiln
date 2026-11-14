@@ -7746,6 +7746,16 @@ export const en = {
   'aw.sum_on': '{n} pages on {schema}',
   'aw.sum_on_1': '{n} page on {schema}',
   'aw.sum_new': 'A new application with its own schema',
+  'aw.alias_optional': 'Alias (URL), optional',
+  'aw.alias_optional_help': 'Empty: made from the name (Café Orders → /a/cafe-orders), with a number when it is taken',
+  'aw.quick_password': 'Password for your account {user}',
+  'aw.quick_password_help': 'You are the first user of the application. Users has no account {user} yet: it is created with this password.',
+  'aw.quick_account': 'You sign in to it as {user}, with the admin role.',
+  'aw.quick_new_account': 'You sign in to it as {user}, with the admin role (a new account).',
+  'aw.creating': 'Creating the application…',
+  'aw.full_form': 'Full form',
+  'aw.src.full': 'Use the full form',
+  'aw.srch.full': 'Pages on existing tables, features, appearance and sign-in',
   // ------------------------------------------------------------ A side drawer's Close (UX-8)
   'common.close': 'Close',
   // ------------------------------------------------------------ sprint 172: parity leftovers

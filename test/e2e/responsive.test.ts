@@ -672,6 +672,7 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         home: '/builder',
         home_cards: '/builder?view=grid',
         create: '/builder/create',
+        create_full: '/builder/create/full',
         import: '/builder/import',
         dashboard: '/builder/dashboard',
         utilities: '/builder/utilities',

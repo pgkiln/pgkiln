@@ -53,7 +53,8 @@ the application.
 
 ## Step 2: the application
 
-On the **App Builder** home, fill in *Create application*:
+On the **App Builder** home, click **Create**, then *Use the full form* (a name alone would make you the first
+user; here the first user is `ann`), and fill in:
 
 | Field | Value |
 |---|---|

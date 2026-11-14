@@ -7,7 +7,7 @@ import { LoadError } from '../dataload.ts';
 import type { Session } from '../session.ts';
 import { aliasFor, check, ITEM, type Created } from './appfromfile.ts';
 import { addDashboard, parseBook } from './appsheets.ts';
-import { finishGeneratedApp, checkNewApp, createApp, createAppError, featuresFrom, featureText, FEATURES, reservedSchema, startFromBoilerplate, DEFAULT_APP_ICON, type CheckedApp, type Features } from './newapp.ts';
+import { aliasFromName, finishGeneratedApp, checkNewApp, createApp, createAppError, featuresFrom, featureText, FEATURES, reservedSchema, startFromBoilerplate, DEFAULT_APP_ICON, type CheckedApp, type Features } from './newapp.ts';
 import { currentWorkspace } from './workspaces.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 import { iconPicker } from './forms.ts';
@@ -226,7 +226,18 @@ export async function appWizardRoutes(app: FastifyInstance) {
   // (sprint 73) One page like APEX's: name, icon and description; appearance; the pages (with a schema:
   // a page type per table and view); features; settings; a boilerplate under Advanced. Choosing a schema
   // reloads the page with its tables (a GET form of its own, so nothing typed is sent in a URL).
+  // (sprint 196, NX-U1) GET /create is the short screen (APEX 26.2: Name and Create Application); the full
+  // form is /create/full. A link with ?schema= or ?boilerplate= (the schema picker's earlier address, the
+  // App Gallery's boilerplates) still opens the full form.
   app.get(`${BASE}/create`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const q = req.query as Record<string, unknown>;
+    if (q.schema !== undefined || q.boilerplate !== undefined) return createPage(s, reply, typeof q.schema === 'string' ? q.schema : '', null);
+    return quickPage(s, reply, null);
+  });
+
+  app.get(`${BASE}/create/full`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
     const schema = typeof req.query.schema === 'string' ? req.query.schema : '';
@@ -244,15 +255,29 @@ export async function appWizardRoutes(app: FastifyInstance) {
     return createPage(s, reply, schema, null);
   });
 
-  const create = async (req: Req, reply: FastifyReply, fromTables = false) => {
+  // One code path for the full form (POST /apps), From existing tables (POST /create/tables) and the short
+  // screen (POST /create, sprint 196): the same checks (checkNewApp: workspace, alias, sign-in), the same
+  // createApp (schema, role, isolated workspaces) and the same features.
+  const create = async (req: Req, reply: FastifyReply, mode: 'full' | 'tables' | 'quick' = 'full') => {
     const s = await developer(req, reply);
     if (!s) return;
-    const b = req.body ?? {};
+    const fromTables = mode === 'tables';
+    const posted = req.body ?? {};
+    // the short screen: the full form's defaults for the same choices (a new schema named after the alias,
+    // App users with the developer as the first user, an existing account reused, English, Home and the
+    // default features); the alias, when not given, from the name: free, and so are its schema and role
+    const name = String(posted.name ?? '').trim();
+    const b: Body = mode !== 'quick' ? posted : {
+      name, alias: String(posted.alias ?? '').trim().toLowerCase() || (name ? await aliasFromName(name) : ''),
+      schema: '', authentication: 'app_users', admin_user: s.username ?? '', admin_password: String(posted.admin_password ?? ''), language: 'en',
+    };
     const schema = String(b.schema ?? '');
     const failed = async (message: string) => {
       reply.code(422);
-      return createPage(s, reply, schema, b, html`<div class="alert alert-error" role="alert">${message}</div>`);
+      const alert = html`<div class="alert alert-error" role="alert">${message}</div>`;
+      return mode === 'quick' ? quickPage(s, reply, posted, alert) : createPage(s, reply, schema, b, alert);
     };
+    if (mode === 'quick' && !name) return failed(tx('nwa.enter_name'));
     let built: Created;
     let pushKey = false;
     try {
@@ -303,7 +328,8 @@ export async function appWizardRoutes(app: FastifyInstance) {
     return back(reply, s, `${BASE}/apps/${built.app.id}`);
   };
   app.post(`${BASE}/apps`, (req: Req, reply) => create(req, reply));
-  app.post(`${BASE}/create/tables`, (req: Req, reply) => create(req, reply, true));
+  app.post(`${BASE}/create/tables`, (req: Req, reply) => create(req, reply, 'tables'));
+  app.post(`${BASE}/create`, (req: Req, reply) => create(req, reply, 'quick'));
 }
 
 /** The workspace's boilerplate applications (Advanced → Start from). */
@@ -332,6 +358,43 @@ const rlsBadge = (r: Relation) =>
 const selectFor = (form: string, name: string, label: string, value: string, options: [string, string][], help?: string) =>
   html`<div class="field"><label class="label" for="f_${name}">${label}</label>
     <select id="f_${name}" name="${name}" form="${form}">${options.map(([v, l]) => html`<option value="${v}"${value === v ? raw(' selected') : ''}>${l}</option>`)}</select>${help ? html`<small class="help">${help}</small>` : ''}</div>`;
+
+/**
+ * (sprint 196, NX-U1) The short Create screen, like APEX 26.2's Create an Application: a name, an optional
+ * alias and Create application (Enter in the name creates it), with the full form and the other sources
+ * as links under it. The developer becomes the first user: their account in Users when it exists, else a
+ * new one, which needs a password (the only other field then). Errors come back here with the name kept.
+ */
+async function quickPage(s: Session, reply: FastifyReply, b: Body | null, message: Raw | '' = '') {
+  const user = s.username ?? '';
+  const hasAccount = !!(await owner.one('select 1 from meta.account where lower(username) = lower($1)', [user]));
+  const v = (k: string) => String(b?.[k] ?? '');
+  const summary = [tx('aw.sum_new'), tx('aw.app_users_login_page'), LANGUAGE_NAMES.en, tx('aw.home')].join(' · ');
+  const ways: [string, string, string, string][] = [['create/full', 'list', 'Use the full form', 'Pages on existing tables, features, appearance and sign-in'], ...SOURCES];
+  const main = html`<div class="ab-narrow create-app create-quick">
+    <h1>${tx('aw.create_an_application')}</h1>
+    ${message}
+    ${region(tx('aw.application'), html`<form method="post" action="${BASE}/create" class="aw-quick" data-progress="${tx('aw.creating')}">${csrf(s)}
+      <div class="form-grid">
+        <div class="field"><label class="label" for="f_name">${tx('aw.name')}</label>
+          <input id="f_name" name="name" value="${v('name')}" required maxlength="200" autocomplete="off" autofocus></div>
+        <div class="field"><label class="label" for="f_alias">${tx('aw.alias_optional')}</label>
+          <input id="f_alias" name="alias" value="${v('alias')}" pattern="[a-z][a-z0-9_\-]*" maxlength="50" autocomplete="off" aria-describedby="f_alias_help" data-placeholder-from="f_name">
+          <small class="help" id="f_alias_help">${tx('aw.alias_optional_help')}</small></div>
+        ${hasAccount ? '' : html`<div class="field"><label class="label" for="f_admin_password">${tx('aw.quick_password', { user })}</label>
+          <input id="f_admin_password" name="admin_password" type="password" required autocomplete="new-password" aria-describedby="f_admin_password_help">
+          <small class="help" id="f_admin_password_help">${tx('aw.quick_password_help', { user })}</small></div>`}
+      </div>
+      <p class="aw-summary muted">${summary}. ${hasAccount ? tx('aw.quick_account', { user }) : tx('aw.quick_new_account', { user })}</p>
+      <div class="buttons"><button class="btn btn-hot">${tx('aw.create_application')}</button></div>
+    </form>`)}
+    <h2 class="create-more">${tx('aw.other_ways_to_start')}</h2>
+    <nav class="create-sources" aria-label="${tx('aw.other_ways_to_start')}">${ways.map(
+      ([path, ic, label, help]) => html`<a class="create-source" href="${BASE}/${path}">${icon(ic)}<span><b>${tx.dyn(`aw.src.${path.replace(/^create\//, '')}`, label)}</b><small class="muted">${tx.dyn(`aw.srch.${path.replace(/^create\//, '')}`, help)}</small></span></a>`,
+    )}</nav>
+  </div>`;
+  return send(reply, s, shell(s, tx('aw.create_application'), [[tx('aw.app_builder'), BASE], [tx('aw.create')]], main));
+}
 
 async function createPage(s: Session, reply: FastifyReply, schema: string, b: Body | null, message: Raw | '' = '') {
   const schemas = await appSchemas();
@@ -364,7 +427,7 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
     )}</nav>
     ${message}
     ${schema && !known && !message ? html`<div class="alert alert-error" role="alert">${tx('aw.choose_one_of_the_schemas')}</div>` : ''}
-    <form method="get" action="${BASE}/create" class="create-schema" id="aw-schema-get"></form>
+    <form method="get" action="${BASE}/create/full" class="create-schema" id="aw-schema-get"></form>
     <form method="post" action="${BASE}/apps" class="aw-form" data-progress="Creating the application and its pages…">${csrf(s)}
       <input type="hidden" name="features" value="1">
       <div id="aw-schema-fields"><input type="hidden" name="schema" value="${known ? schema : ''}">${known ? html`<input type="hidden" name="tables" value="1">` : ''}</div>
@@ -415,5 +478,5 @@ async function createPage(s: Session, reply: FastifyReply, schema: string, b: Bo
         <div class="buttons"><a class="btn" href="${BASE}">${tx('aw.cancel')}</a><button class="btn btn-hot">${tx('aw.create_application')}</button></div></div>
     </form>
   </div>`;
-  return send(reply, s, shell(s, tx('aw.create_application'), [[tx('aw.app_builder'), BASE], [tx('aw.create')]], main));
+  return send(reply, s, shell(s, tx('aw.create_application'), [[tx('aw.app_builder'), BASE], [tx('aw.create'), `${BASE}/create`], [tx('aw.full_form')]], main));
 }
