@@ -15,7 +15,7 @@ import { root } from '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { ApexId, ApexParseError, joinSplitExport, parseApexCalls, unistr } from '../src/apexparse.ts';
-import { apexSource, apexSourceFromDir, apexToDoc, conditionOk, MAPPED_PROCESS_TYPES, MAPPED_VALIDATION_TYPES, NotAnApexExport, oracleisms, parseFp, reportText, type ReportEntry } from '../src/apeximport.ts';
+import { apexSource, apexSourceFromDir, apexToDoc, attributeAt, conditionOk, MAPPED_PROCESS_TYPES, MAPPED_VALIDATION_TYPES, NotAnApexExport, oracleisms, parseFp, reportText, type ReportEntry } from '../src/apeximport.ts';
 import { Browser } from './helpers.ts';
 
 const FIX = join(root, 'test/fixtures/apex');
@@ -241,7 +241,8 @@ describe('the mapping of f100.sql', () => {
     const r = (n: number, title: string) => page(n).regions.find((x: any) => x.title === title);
     assert.equal(r(1, 'Welcome').source, '<p>Welcome to the <strong>order desk</strong>, &APP_USER.</p>\n<p>Café &amp; more.</p>');
     assert.equal(r(1, 'Sales by Month').type, 'static');
-    assert.match(r(1, 'Sales by Month').source, /was not imported/);
+    // (sprint 190) charts are mapped from their series; this one has none
+    assert.match(r(1, 'Sales by Month').source, /no series with a source, label and value/);
     assert.match(r(1, 'News').source, /<pre>htp\.p\(&#39;&lt;b&gt;|<pre>htp\.p\('&lt;b&gt;/, 'the PL/SQL is kept, escaped');
     assert.equal(r(2, 'Orders').type, 'report');
     assert.equal(r(2, 'Top customers').type, 'classic_report');
@@ -293,7 +294,8 @@ describe('the mapping of f100.sql', () => {
     const refresh = page(2).dynamic_actions.find((x: any) => x.name === 'Refresh after dialog');
     assert.deepEqual([refresh.event, refresh.action, refresh.affected_region_id], ['dialog_closed', 'refresh_region', r(2, 'Orders').id]);
     assert.equal(entry('dynamic_action', 'Highlight rows').status, 'not_mapped');
-    assert.deepEqual(report.skipped, { create_jet_chart: 1, create_worksheet_column: 1 });
+    // (sprint 190) create_jet_chart is read now
+    assert.deepEqual(report.skipped, { create_worksheet_column: 1 });
   });
 
   test('the report as text: not mapped first, with the APEX types and what to port', () => {
@@ -489,9 +491,59 @@ describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
     const { doc, report } = apexToDoc(F77536);
     assert.equal(doc.app.name, 'Demonstration - HR');
     assert.equal(doc.pages.length, 45, '46 pages, without page 0');
-    assert.ok(report.counts.mapped >= 283, `mapped ${report.counts.mapped}`);
-    assert.ok(report.counts.mapped + report.counts.notes >= 424, `mapped with or without notes ${report.counts.mapped + report.counts.notes}`);
-    assert.ok(report.counts.not_mapped <= 39, `not mapped ${report.counts.not_mapped}`);
+    assert.ok(report.counts.mapped >= 300, `mapped ${report.counts.mapped}`);
+    assert.ok(report.counts.mapped + report.counts.notes >= 452, `mapped with or without notes ${report.counts.mapped + report.counts.notes}`);
+    assert.ok(report.counts.not_mapped <= 9, `not mapped ${report.counts.not_mapped}`);
+  });
+
+  test('charts, cards, calendar, faceted search, lists and classic reports of APEX 26.2 become pgkiln regions', () => {
+    const { doc } = apexToDoc(F77536) as { doc: any };
+    const regions = doc.pages.flatMap((p: any) => p.regions.map((r: any) => ({ ...r, page_no: p.page_no })));
+    const byType = (t: string) => regions.filter((r: any) => r.type === t);
+    // charts: kind from create_jet_chart, the SELECT from the series (label, aggregate, table)
+    const modes = regions.find((r: any) => r.title === 'Order Modes');
+    assert.equal(modes.type, 'chart');
+    assert.equal(modes.config.kind, 'pie');
+    assert.match(modes.source, /^select order_mode, count\(\*\) as "Series 1"\n  from \S*oehr_orders\n group by order_mode\n order by 1$/);
+    assert.equal(byType('chart').length, 8);
+    // cards: the card's columns under the names the cards region reads (a list of values' display column is the column)
+    const cards = regions.find((r: any) => r.type === 'cards' && r.page_no === 5);
+    assert.match(cards.source, /customer_id as title, order_date as body, order_mode as badge, q\.\*/);
+    // calendar: p_attributes start_date_column / display_column
+    const cal = byType('calendar')[0];
+    assert.match(cal.source, /order_date as start_date, order_date as title, q\.\*/);
+    // faceted search: its facet items, and the report it filters (a classic report, now interactive)
+    const facets = regions.find((r: any) => r.type === 'facets' && r.page_no === 3);
+    const target = regions.find((r: any) => r.id === facets.config.report);
+    assert.equal(target?.title, 'Customers');
+    assert.equal(target.type, 'report');
+    assert.ok(facets.config.facets.some((f: any) => f.column === 'account_mgr_id' && f.exclude === true));
+    const credit = facets.config.facets.find((f: any) => f.column === 'credit_limit');
+    assert.equal(credit.type, 'range');
+    assert.deepEqual(credit.ranges[0], { to: 300, label: '<300' });
+    assert.deepEqual(credit.ranges[1], { from: 300, to: 1000, label: '300 - 1,000' });
+    assert.ok(!doc.pages.find((p: any) => p.page_no === 3).items.some((i: any) => i.name === 'P3_ACCOUNT_MGR_ID'), 'a facet is not a page item');
+    // lists: the lists list regions show, their entries by position in the file; the navigation menu has its own 8
+    assert.equal(byType('list').length, 8);
+    assert.equal(doc.lists.length, 8);
+    assert.equal(doc.list_entries.length, 24);
+    assert.ok(byType('list').every((r: any) => doc.lists.some((l: any) => l.name === r.config.list)));
+    assert.deepEqual(doc.nav.map((x: any) => x.label).sort(), ['Administration', 'Customers', 'Dashboard', 'Employees', 'Home', 'Order Search', 'Orders', 'Orders Calendar']);
+    // create_report_region: classic reports; an interactive grid's key from its columns (no p_region_id in 26.2)
+    assert.ok(byType('classic_report').length >= 6);
+    assert.ok(byType('grid').every((g: any) => g.pk_column), 'every grid has its key column');
+    // authorization: NATIVE_IS_IN_GROUP from p_attributes
+    assert.deepEqual(doc.authz_schemes.find((x: any) => x.name === 'ADMINISTRATION_RIGHTS'), { name: 'ADMINISTRATION_RIGHTS', type: 'role', value: 'Administrator', error_message: 'Insufficient privileges, user is not an Administrator' });
+    // processes: p_attributes by their 26.2 names; APEX's own login API is pgkiln's sign-in
+    const p9999 = doc.pages.find((p: any) => p.page_no === 9999);
+    assert.deepEqual(p9999.processes.map((x: any) => x.name).filter((n: string) => n === 'Login' || n === 'Set Username Cookie'), [], 'the Invoke API calls of APEX_AUTHENTICATION are left out');
+    assert.ok(p9999.processes.some((x: any) => x.type === 'clear_session_state' && x.config?.pages?.[0] === 9999));
+  });
+  test('attributeAt reads p_attribute_NN, else the 26.2 name', () => {
+    assert.equal(attributeAt({ p_attribute_01: 'EMAIL' }, 'NATIVE_TEXT_FIELD', 1), 'EMAIL');
+    assert.equal(attributeAt({ p_attributes: [['subtype', 'URL']] }, 'NATIVE_TEXT_FIELD', 1), 'URL');
+    assert.equal(attributeAt({ p_attributes: [['package', 'P', 'package_method', 'M']] }, 'NATIVE_INVOKE_API', 4), 'M');
+    assert.equal(attributeAt({ p_attributes: [['x', 'y']] }, 'NATIVE_TEXT_FIELD', 1), null);
   });
   test('a method after a call is the call\'s value', () => {
     const [c] = parseApexCalls(`begin\nwwv_flow_imp_shared.create_plugin_setting(\n p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2('a', 'b')).to_clob\n,p_x=>1\n);\nend;\n/\n`);

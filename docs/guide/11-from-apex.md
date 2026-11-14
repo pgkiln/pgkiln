@@ -134,13 +134,21 @@ report's notes. The report becomes a list to work through and close. Untick *Mak
 each component that needs hand work* on the import form, or pass `pgkiln import-apex --no-issues`, to leave them
 out. At most 300 are made per import; one more issue lists the rest.
 
+**APEX 26.2 exports** (sprint 190) write a component's settings as `p_attributes=>wwv_flow_t_plugin_attributes(…)`
+key/value pairs instead of `p_attribute_01` …, leave out `p_list_id` and `p_region_id` on list entries and region
+columns (they belong to the list or region written before them), and write classic reports as
+`create_report_region`. The importer reads both forms. It is tested in CI on a real 26.2.1 export, the sample
+application *Demonstration - HR* (46 pages, `test/fixtures/apex/f77536.sql`): every page but the global page is
+imported and opens; what's left is the application's own PL/SQL and APEX's built-in administration pages.
+
 What maps:
 
 | APEX | pgkiln |
 |---|---|
 | Application: name, alias, primary language, date format, home page, version | The same; authentication becomes the user directory, themes and templates pgkiln's theme |
 | Pages: number, name, title, normal or modal (non-modal: modal), public, help, authorization | The same. The global page (0) and the login page (with `apex_authentication.login`) are not imported |
-| Regions: Static Content, Classic Report, Interactive Report, Form, Interactive Grid, Breadcrumb, Help Text | `static`, `classic_report`, `report`, `form` (table, key column and item), `grid` (table, key, columns), `breadcrumb`, `help_text`; a table source becomes `select … from schema.table`. Other types (charts, cards, maps, PL/SQL dynamic content, …) become a static region that says what it was, with its source |
+| Regions: Static Content, Classic Report (also `create_report_region`), Interactive Report, Form, Interactive Grid, Breadcrumb, Help Text | `static`, `classic_report`, `report`, `form` (table, key column and item), `grid` (table, key, columns), `breadcrumb`, `help_text`; a table source becomes `select … from schema.table` |
+| (sprint 190) Chart (JET), Cards, Calendar, Faceted Search, List | `chart`: the [kind](04-pages-and-regions.md#chart) from the chart type (bar → `column`, horizontal → `bar`, stacked → `stacked`, dial → `gauge` …) and a SELECT from the series: label column, value column or aggregate (`count`, `sum`, `avg`, `min`, `max`) on the series' table, query or the region's source; series with another source are left out. `cards`: the region's query with the card's title, body and badge columns as `title`, `body`, `badge`. `calendar`: start date, end date and display columns as `start_date`, `end_date`, `title`. `facets`: its facet items (checkbox, range with the `STATIC2` ranges, star rating, search) become `facets[]`, linked to the report it filters (a classic report becomes an interactive report). `list`: the shared list and its entries | Other types (maps, PL/SQL dynamic content, legacy mobile lists, …) become a static region that says what it was, with its source. A list of values' display column (`CUSTOMER_ID_L$1`) becomes the column itself |
 | Page items: text (e-mail, phone, URL), text area, number, date picker, select list, radio group, checkbox(es), switch, hidden, display only, password, popup LOV, shuttle, file, rich text, Markdown, star rating, colour, combobox, Select One / Many, QR code, image upload, display image, percent graph, address, display map | The pgkiln [item type](05-items.md#item-types) of the same name; form columns, primary key, required, help, lists of values (shared, SQL, `STATIC`/`STATIC2`), static defaults. A SQL or PL/SQL default or source becomes a before header [computation](06-processing.md#computations). Plug-in items become text fields |
 | Buttons: submit, redirect to a page of the application (with items), defined by dynamic action | `submit`, `redirect` (target page and items), `da`; position as the slot |
 | Server-side conditions | The [same catalogue](06-processing.md#server-side-conditions): rows returned, expression, function body, request =/in, item null / not null / zero / = / in list, current page, public user, language, never |
@@ -148,7 +156,7 @@ What maps:
 | Branches to a page of the application, function returning a URL | `page` with items, `function` |
 | Dynamic actions: change, click, page load, Dialog Closed, focus, key and mouse events, after refresh, before submit, custom; Show, Hide, Enable, Disable, Set Value, Refresh, Execute Server-side Code, Submit, Close / Cancel Dialog, Alert, Confirm, Set Focus, Add / Remove Class, Clear, Cancel Event | One pgkiln row per action with the event's trigger and client-side condition; *false* actions with the opposite condition |
 | Shared lists of values (SQL, table, static), authorization schemes (exists, not exists, is in group / role) | `lov`, `authz_scheme` (`sql` or `role`); a scheme that isn't mapped is not created, so the components that name it are denied (fail closed) until you add it |
-| Navigation menu | The navigation menu (entries to pages of the application) |
+| Navigation menu, lists | The navigation menu (entries to pages of the application); (sprint 190) the lists that list regions show, with their entries (pages, items, https links) |
 
 Validation types (CD-1):
 

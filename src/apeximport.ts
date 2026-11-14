@@ -138,6 +138,52 @@ function ref(a: Args, ...keys: string[]): string | null {
   return null;
 }
 const yes = (a: Args, k: string) => a[k] === true || /^(y|yes|true)$/i.test(String(a[k] ?? ''));
+/**
+ * (sprint 190) APEX 26.2 writes a component's settings as p_attributes=>wwv_flow_t_plugin_attributes(
+ * wwv_flow_t_varchar2('key', 'value', …)).to_clob instead of p_attribute_01 … : key → value (as text).
+ */
+/**
+ * (sprint 190) The 26.2 names of the attributes the importer reads by position (p_attribute_01 …), per component
+ * type: position → the key names APEX 26.2 writes for it (the first one present wins).
+ */
+const ATTRIBUTE_KEYS: Record<string, Record<number, string[]>> = {
+  NATIVE_SESSION_STATE: { 1: ['type'], 2: ['item_names', 'items'], 3: ['page_numbers', 'pages'] },
+  NATIVE_INVOKE_API: { 1: ['type'], 3: ['package'], 4: ['package_method', 'procedure'] },
+  NATIVE_FORM_DML: { 1: ['target_type'] },
+  NATIVE_IG_DML: { 1: ['target_type'] },
+  NATIVE_CLOSE_WINDOW: { 1: ['items_to_return', 'items'] },
+  NATIVE_EXECUTION_CHAIN: { 1: ['run_in_background', 'background'] },
+  NATIVE_SEND_EMAIL: { 1: ['from'], 2: ['to'], 3: ['cc'], 4: ['bcc'], 5: ['reply_to'], 6: ['subject'], 7: ['body_plain_text', 'body'], 8: ['body_html'] },
+  NATIVE_TEXT_FIELD: { 1: ['subtype'] },
+  NATIVE_HIDDEN: { 1: ['value_protected'] },
+  NATIVE_SET_VALUE: { 1: ['set_type'], 2: ['static_value', 'value'], 3: ['javascript_expression'], 4: ['sql_statement'], 5: ['plsql_expression'], 6: ['plsql_function_body'], 7: ['items_to_submit'] },
+  NATIVE_JAVASCRIPT_CODE: { 1: ['js_code'] },
+  NATIVE_EXECUTE_PLSQL_CODE: { 1: ['plsql_code', 'code'], 2: ['items_to_submit'], 3: ['items_to_return'] },
+  NATIVE_ALERT: { 1: ['text'] },
+  NATIVE_CONFIRM: { 1: ['text'] },
+  NATIVE_ADD_CLASS: { 1: ['css_classes', 'class'] },
+  NATIVE_REMOVE_CLASS: { 1: ['css_classes', 'class'] },
+};
+/** An attribute by position: p_attribute_NN of older exports, else its 26.2 name in p_attributes */
+export function attributeAt(a: Args, type: string, n: number): string | null {
+  const old = str(a, `p_attribute_${String(n).padStart(2, '0')}`);
+  if (old !== null) return old;
+  const at = attributesOf(a);
+  for (const k of ATTRIBUTE_KEYS[type.toUpperCase()]?.[n] ?? []) if (at[k] !== undefined && at[k] !== '') return at[k];
+  return null;
+}
+
+export function attributesOf(a: Args): Record<string, string> {
+  const v = a.p_attributes;
+  const list = Array.isArray(v) ? (v.length === 1 && Array.isArray(v[0]) ? v[0] : v) : [];
+  const out: Record<string, string> = {};
+  for (let i = 0; i + 1 < list.length; i += 2) {
+    const k = list[i];
+    const x = list[i + 1];
+    if (typeof k === 'string' && x !== null && x !== undefined) out[k.toLowerCase()] = Array.isArray(x) ? x.map((y) => String(y ?? '')).join('\n') : String(x);
+  }
+  return out;
+}
 function num(a: Args, ...keys: string[]): number | null {
   for (const k of keys) {
     const v = a[k];
@@ -351,6 +397,12 @@ const REGION_TYPES: Record<string, string> = {
   NATIVE_IG: 'grid',
   NATIVE_BREADCRUMB: 'breadcrumb',
   NATIVE_HELP_TEXT: 'help_text',
+  // (sprint 190) region types read from a real APEX 26.2 export
+  NATIVE_JET_CHART: 'chart',
+  NATIVE_CARDS: 'cards',
+  NATIVE_CSS_CALENDAR: 'calendar',
+  NATIVE_FACETED_SEARCH: 'facets',
+  NATIVE_LIST: 'list',
 };
 const REGION_NAMES: Record<string, string> = {
   NATIVE_JET_CHART: 'chart',
@@ -474,7 +526,7 @@ const DA_ACTIONS: Record<string, string> = {
 const NOISE = /template|theme|^create_icon_bar|^create_user_interface$|^component_(begin|end)$|^import_(begin|end)$|^set_environment$|^remove_|^create_flow$|^create_static_lov_data$|^create_install|^g_|^create_ws_|^create_app_static_file$|^create_language_map$|^set_calling_version$|^create_page_group$|^create_load_table$|^create_password_|^set_/i;
 // methods the importer reads (anything else that is a create_* is counted as "not read")
 const READ = new Set([
-  'create_flow', 'create_page', 'create_page_plug', 'create_page_item', 'create_page_button', 'create_page_validation',
+  'create_flow', 'create_page', 'create_page_plug', 'create_report_region', 'create_card', 'create_jet_chart', 'create_jet_chart_series', 'create_page_item', 'create_page_button', 'create_page_validation',
   'create_page_process', 'create_page_computation', 'create_page_branch', 'create_page_da_event', 'create_page_da_action',
   'create_list_of_values', 'create_static_lov_data', 'create_security_scheme', 'create_list', 'create_list_item',
   'create_region_column', 'create_invokeapi_comp_param', 'create_user_interface', 'create_web_source_module',
@@ -617,7 +669,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const id = ref(a, 'p_id');
     if (id) authzName.set(id, name);
     const type = (str(a, 'p_scheme_type') ?? '').toUpperCase();
-    const body = str(a, 'p_attribute_01', 'p_scheme');
+    const at = attributesOf(a);
+    const body = str(a, 'p_attribute_01', 'p_scheme') ?? at.name ?? at.sql_query ?? at.query ?? null;
     const e = add(new Entry('authorization', null, apexName, type || '(none)', 'sql'));
     const msg = str(a, 'p_error_message');
     if ((type === 'NATIVE_EXISTS' || type === 'EXISTS') && body) {
@@ -629,7 +682,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       if (groups.length === 1) {
         authzSchemes.push({ name, type: 'role', value: groups[0], error_message: msg });
         e.target = 'role';
-      } else authzSchemes.push({ name, type: 'sql', value: groups.map((g) => `meta.has_role(${sqlString(g)})`).join(yes(a, 'p_attribute_02') ? ' and ' : ' or '), error_message: msg });
+      } else authzSchemes.push({ name, type: 'sql', value: groups.map((g) => `meta.has_role(${sqlString(g)})`).join(yes(a, 'p_attribute_02') || /^all$/i.test(at.match ?? '') ? ' and ' : ' or '), error_message: msg });
       e.note('APEX groups or roles became pgkiln application roles of the same name: assign them under Access control');
     } else
       e.notMapped(`${type || 'this type'} is not mapped: create a role or SQL scheme named ${name} by hand; until then the components that use it are denied (fail closed)`);
@@ -726,12 +779,41 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   let nextRegionId = 1;
   const regionDoc = new Map<string, { id: number; page: any; row: any }>();
   const regionColumns = new Map<string, ApexCall[]>();
+  // (sprint 190) a column without p_region_id belongs to the region written just before it (APEX 26.2 exports)
+  const plugsByLine = by('create_page_plug').slice().sort((x, y) => x.line - y.line);
+  const plugAbove = (x: ApexCall) => {
+    let found: ApexCall | null = null;
+    for (const p of plugsByLine) if (p.line < x.line) found = p; else break;
+    return found ? ref(found.args, 'p_id') : null;
+  };
   for (const c of by('create_region_column')) {
-    const r = ref(c.args, 'p_region_id');
+    const r = ref(c.args, 'p_region_id') ?? plugAbove(c);
     if (r) regionColumns.set(r, [...(regionColumns.get(r) ?? []), c]);
   }
   const usedStatic = new Map<any, Set<string>>();
-  for (const c of by('create_page_plug')) {
+  // (sprint 190) faceted search regions (their report is set after the loop), lists that list regions show
+  const facetRegions: { row: any; filtered: string | null; e: Entry }[] = [];
+  const usedLists = new Set<string>();
+  const listName = (l: ApexCall) => upperName(str(l.args, 'p_name'), 'LIST');
+  /** CUSTOMER_ID_L$1 (the display value of a column with a list of values) is the column itself in pgkiln */
+  const columnOf = (c: string, e: Entry) => {
+    const m = /^(.+)_L\$\d+$/i.exec(c.trim());
+    if (m) e.note(`${c} (the display value of a list of values) became the column ${m[1].toLowerCase()} itself: join the lookup table in the query to show its name`);
+    return m ? m[1] : c;
+  };
+  // (sprint 190) what charts, cards and facets need after the loop: the region's APEX arguments, its entry and its SQL
+  const regionApex = new Map<string, { a: Args; e: Entry; sql: () => string | null }>();
+  // (sprint 190) a classic report can also be a create_report_region call, with its own argument names
+  for (const c of by('create_report_region')) {
+    const a = c.args;
+    const alias: [string, string][] = [['p_plug_name', 'p_name'], ['p_plug_display_sequence', 'p_display_sequence'], ['p_plug_source', 'p_source'],
+      ['p_plug_display_point', 'p_display_point'], ['p_plug_grid_column_span', 'p_grid_column_span'], ['p_plug_static_id', 'p_static_id'],
+      ['p_plug_display_condition_type', 'p_display_condition_type'], ['p_plug_display_when_condition', 'p_display_when_condition'],
+      ['p_plug_display_when_cond2', 'p_display_when_cond2'], ['p_plug_source_type', 'p_source_type']];
+    for (const [to, from] of alias) if (a[to] === undefined && a[from] !== undefined) a[to] = a[from];
+    if (a.p_plug_source_type === undefined) a.p_plug_source_type = 'NATIVE_SQL_REPORT';
+  }
+  for (const c of [...by('create_page_plug'), ...by('create_report_region')]) {
     const page = pageFor(c);
     const a = c.args;
     const title = str(a, 'p_plug_name') ?? 'Region';
@@ -786,7 +868,71 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const s = queryType === 'TABLE' ? tableSource() : e.oracle(str(a, 'p_plug_source', 'p_query_sql'));
       return s ? stripSemi(s) : null;
     };
+    const apexRegionId = ref(a, 'p_id');
+    if (apexRegionId) regionApex.set(apexRegionId, { a, e, sql });
+    const at = attributesOf(a);
+    /** the region's query with its columns given the names a pgkiln region reads */
+    const wrap = (cols: [string, string | null | undefined][]) => {
+      const base = sql();
+      if (!base) return null;
+      const sel = cols.filter(([, c]) => c).map(([alias, c]) => `${ident(columnOf(c!, e))} as ${alias}`);
+      return `select ${[...sel, 'q.*'].join(', ')}\n  from (${base}) q`;
+    };
     switch (row.type) {
+      case 'chart': {
+        // the series come after the region (create_jet_chart_series): filled in below
+        row.source = null;
+        break;
+      }
+      case 'cards': {
+        const card = by('create_card').find((x) => ref(x.args, 'p_region_id') === apexRegionId)?.args ?? {};
+        row.source = wrap([['title', str(card, 'p_title_column_name')], ['subtitle', str(card, 'p_sub_title_column_name')],
+          ['body', str(card, 'p_body_column_name')], ['badge', str(card, 'p_badge_column_name')]]);
+        if (/HTML|ADV/i.test(String(card.p_title_adv_formatting ?? '')) || card.p_title_adv_formatting === true || card.p_body_adv_formatting === true)
+          e.note('advanced formatting (HTML expressions) of the card is not carried over: plain column values are shown');
+        if (str(card, 'p_media_source_type') || str(card, 'p_media_url_column_name')) e.note('card media (images) are not carried over');
+        if (!row.source) {
+          row.type = 'static';
+          row.source = `<p>APEX cards ${escapeHtml(title)}: no query found.</p>`;
+          e.notMapped('no query found');
+        }
+        break;
+      }
+      case 'calendar': {
+        const start = at.start_date_column ?? str(a, 'p_attribute_03');
+        row.source = start ? wrap([['start_date', start], ['end_date', at.end_date_column ?? str(a, 'p_attribute_07')], ['title', at.display_column ?? str(a, 'p_attribute_02') ?? start]]) : null;
+        if (!row.source) {
+          row.type = 'static';
+          row.source = `<p>APEX calendar ${escapeHtml(title)}: no query or start date column found.</p>`;
+          e.notMapped('no query or start date column found');
+        } else {
+          const views = (at.additional_calendar_views ?? '').toLowerCase();
+          row.config = { views: ['month', 'week', 'day', 'list'].filter((v) => v === 'month' || views.includes(v)) };
+          if (at.create_link || at.view_edit_link) e.note('the calendar\'s create and edit links are not carried over: set link and create in its settings');
+        }
+        break;
+      }
+      case 'facets': {
+        // facets are page items of this region (below); the report it filters is set after every region is known
+        row.config = { report: null, facets: [] };
+        facetRegions.push({ row, filtered: ref(a, 'p_filtered_region_id'), e });
+        break;
+      }
+      case 'list': {
+        const listId = ref(a, 'p_list_id');
+        const list = listId ? comp('create_list', listId)?.call : null;
+        if (!list) {
+          row.type = 'static';
+          row.source = `<p>APEX list region ${escapeHtml(title)}: its list is not in the export.</p>`;
+          e.notMapped('its list is not in the export');
+        } else {
+          usedLists.add(listId!);
+          const tmpl = (str(a, 'p_list_template_id') ?? '') + ' ' + (str(a, 'p_plug_template') ?? '');
+          row.config = { list: listName(list), template: /card|media/i.test(tmpl) ? 'cards' : 'links' };
+          e.note('the list template became pgkiln\'s links template: choose another (badges, cards, tabs) in the region settings');
+        }
+        break;
+      }
       case 'static': {
         if (REGION_TYPES[apexType]) {
           row.source = str(a, 'p_plug_source');
@@ -891,6 +1037,44 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (st) return staticLovText(st[1]);
     return stripSemi(e.oracle(lov));
   };
+  /** (sprint 190) A facet item (NATIVE_CHECKBOX, NATIVE_RANGE, NATIVE_SEARCH …) into its region's config */
+  const facetOf = (region: any, a: Args, e: Entry) => {
+    const type = (str(a, 'p_display_as') ?? '').toUpperCase();
+    const column = str(a, 'p_source');
+    const label = str(a, 'p_prompt') ?? undefined;
+    if (type === 'NATIVE_SEARCH') {
+      region.config.search = true;
+      e.target = 'facet search';
+      return;
+    }
+    if (!column) {
+      e.notMapped('a facet without a column');
+      return;
+    }
+    const f: Record<string, unknown> = { column: ident(column), ...(label ? { label: stripTags(label) } : {}) };
+    if (type === 'NATIVE_RANGE') {
+      f.type = 'range';
+      const lov = /^STATIC2?:([\s\S]*)$/i.exec((str(a, 'p_lov') ?? '').trim());
+      const n = (x: string | undefined) => (x !== undefined && /^-?\d+(\.\d+)?$/.test(x.trim()) ? Number(x) : /^\d{4}-\d\d-\d\d$/.test(x?.trim() ?? '') ? x!.trim() : undefined);
+      const ranges = (lov?.[1] ?? '').split(',').map((x) => x.split(';')).filter((x) => x.length === 2).map(([l, v]) => {
+        const [from, to] = v.split('|');
+        return { ...(n(from) !== undefined ? { from: n(from) } : {}), ...(n(to) !== undefined ? { to: n(to) } : {}), label: l.replace(/#G#/g, ',').replace(/#D#/g, '.') };
+      }).filter((r) => 'from' in r || 'to' in r).slice(0, 20);
+      if (ranges.length) f.ranges = ranges;
+      if (attributesOf(a).manual_entry === 'Y' || !ranges.length) f.custom = true;
+    } else if (type === 'NATIVE_STAR_RATING') f.type = 'star';
+    else if (type === 'NATIVE_CHECKBOX' || type === 'NATIVE_RADIOGROUP' || type === 'NATIVE_SELECT_LIST') {
+      if (a.p_fc_exclude_allowed === true || yes(a, 'p_fc_exclude_allowed')) f.exclude = true;
+      if (type !== 'NATIVE_CHECKBOX') e.note(`a ${type === 'NATIVE_RADIOGROUP' ? 'radio group' : 'select list'} facet became a checkbox facet`);
+      if (str(a, 'p_named_lov') || str(a, 'p_lov')) e.note('the facet shows the column\'s values, not its list of values\' display values');
+    } else {
+      e.notMapped(`facet type ${type} is not mapped`);
+      return;
+    }
+    if (a.p_fc_show_chart === true && a.p_fc_initial_chart === true) f.chart = 'bar';
+    region.config.facets.push(f);
+    e.target = `facet ${String(f.type ?? 'checkbox')}`;
+  };
   for (const c of itemCalls) {
     const page = pageFor(c);
     const a = c.args;
@@ -899,6 +1083,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const e = add(new Entry('item', pageNum(c), name || '(no name)', apexType, ITEM_TYPES[apexType] ?? 'text'));
     if (!page) {
       e.notMapped('its page was not imported');
+      continue;
+    }
+    // (sprint 190) an item of a faceted search region is a facet of that region, not a page item
+    const facetRegion = regionDoc.get(ref(a, 'p_item_plug_id') ?? '')?.row;
+    if (facetRegion?.type === 'facets') {
+      facetOf(facetRegion, a, e);
       continue;
     }
     if (!isUpperName(name)) {
@@ -920,12 +1110,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       if (/HH|MI/i.test(fmt)) type = 'datetime';
     }
     if (type === 'text') {
-      const sub = (str(a, 'p_attribute_01') ?? '').toUpperCase();
+      const sub = (attributeAt(a, apexType, 1) ?? '').toUpperCase();
       if (sub === 'EMAIL') type = 'email';
       else if (sub === 'TEL' || sub === 'PHONE') type = 'tel';
       else if (sub === 'URL') type = 'url';
     }
-    if (type === 'hidden' && /^n$/i.test(str(a, 'p_attribute_01') ?? '')) config.value_protected = false;
+    if (type === 'hidden' && /^n$/i.test(attributeAt(a, apexType, 1) ?? '')) config.value_protected = false;
     e.target = type;
     const sourceType = (str(a, 'p_source_type') ?? '').toUpperCase();
     const fromColumn = sourceType === 'REGION_SOURCE_COLUMN' || sourceType === 'DB_COLUMN';
@@ -1183,7 +1373,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     };
     const parent = ref(a, 'p_parent_process_id');
     if (parent) row.parent_process = procName.get(parent) ?? null;
-    const at = (n: number) => str(a, `p_attribute_${String(n).padStart(2, '0')}`);
+    const at = (n: number) => attributeAt(a, apexType, n);
     const plsqlCode = () => str(a, 'p_process_sql_clob', 'p_process_sql', 'p_process_clob');
     switch (apexType) {
       case 'NATIVE_PLSQL':
@@ -1272,6 +1462,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
           if (Object.keys(items).length) cfg.items = items;
           row.config = cfg;
           e.note(`create the REST data source ${src ?? '(its name)'} in pgkiln (Shared Components → REST data sources) with the same parameters`);
+        } else if (/^APEX_AUTHENTICATION$/i.test(at(3) ?? str(a, 'p_api_package') ?? '') && /^(LOGIN|SEND_LOGIN_USERNAME_COOKIE|GET_LOGIN_USERNAME_COOKIE|LOGOUT)$/i.test(at(4) ?? str(a, 'p_api_procedure') ?? '')) {
+          // (sprint 190) the processes of APEX's own login page: pgkiln's sign-in does this (and remembers the user name)
+          e.target = null;
+          e.note(`APEX_AUTHENTICATION.${(at(4) ?? str(a, 'p_api_procedure') ?? '').toUpperCase()} is what pgkiln's sign-in does: the process was left out`);
+          continue;
         } else {
           row.type = 'sql';
           const pkg = at(3) ?? str(a, 'p_api_package');
@@ -1483,7 +1678,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       else if (affType === 'REGION') affectedRegion = regionId(ref(xa, 'p_affected_region_id'));
       else if (affType === 'BUTTON') affectedItems = buttonRef(xa, 'p_affected_button_id');
       else if (affType && affType !== 'TRIGGERING_ELEMENT') e.note(`affected elements ${affType} of ${act} are not carried over`);
-      const at = (k: number) => str(xa, `p_attribute_${String(k).padStart(2, '0')}`);
+      const at = (k: number) => attributeAt(xa, act, k);
       let code: string | null = null;
       let message: string | null = null;
       let itemsToSubmit: string | null = null;
@@ -1555,6 +1750,133 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     e.target = [...new Set(targets)].join(', ');
   }
 
+  // ---- (sprint 190) faceted search: the report region it filters
+  for (const f of facetRegions) {
+    const target = f.filtered ? regionDoc.get(f.filtered)?.row : null;
+    if (target?.type === 'classic_report') {
+      // pgkiln's facets filter an interactive report: the classic report it filters becomes one
+      target.type = 'report';
+      f.e.note(`the classic report it filters (${target.title}) became an interactive report: pgkiln's facets filter interactive reports`);
+    }
+    if (target && target.type === 'report') f.row.config.report = target.id;
+    else {
+      f.row.type = 'static';
+      f.row.source = `<p>APEX faceted search ${escapeHtml(f.row.title)}: the region it filters ${target ? `(${escapeHtml(target.type)}) is not a report` : 'was not imported'}.</p>`;
+      f.row.config = {};
+      f.e.notMapped(target ? `it filters a ${target.type} region: pgkiln facets filter a report region` : 'the region it filters was not imported');
+    }
+    if (f.row.type === 'facets' && !f.row.config.facets.length) f.e.note('no facet of it was mapped');
+  }
+
+  // ---- (sprint 190) charts: create_jet_chart (type) and its series (source, label, value, aggregate)
+  const CHART_KINDS: Record<string, string> = {
+    pie: 'pie', donut: 'donut', line: 'line', area: 'area', linewitharea: 'area', scatter: 'scatter', bubble: 'bubble',
+    funnel: 'funnel', pyramid: 'pyramid', polar: 'polar', radar: 'radar', dial: 'gauge', range: 'range', boxplot: 'boxplot',
+    stock: 'stock', gantt: 'gantt', combo: 'combo',
+  };
+  for (const ch of by('create_jet_chart')) {
+    const ca = ch.args;
+    const regionId = ref(ca, 'p_region_id');
+    const region = regionId ? regionDoc.get(regionId) : null;
+    const apex = regionId ? regionApex.get(regionId) : null;
+    if (!region || !apex || region.row.type !== 'chart') continue;
+    const e = apex.e;
+    const t = (str(ca, 'p_chart_type') ?? 'bar').toLowerCase();
+    let kind = CHART_KINDS[t];
+    if (t === 'bar') kind = (str(ca, 'p_stack') ?? 'off') === 'on' ? 'stacked' : (str(ca, 'p_orientation') ?? '').toLowerCase() === 'horizontal' ? 'bar' : 'column';
+    if (!kind) {
+      kind = 'bar';
+      e.note(`chart type ${t} became a bar chart`);
+    }
+    const series = by('create_jet_chart_series').filter((x) => ref(x.args, 'p_chart_id') === ref(ca, 'p_id')).sort((x, y) => (num(x.args, 'p_seq') ?? 0) - (num(y.args, 'p_seq') ?? 0));
+    /** one series as a SELECT of label and value; group: the FROM part, to put several series of one source together */
+    const one = (sa: Args, i: number) => {
+      const label = str(sa, 'p_items_label_column_name');
+      const value = str(sa, 'p_items_value_column_name');
+      const agg = (str(sa, 'p_aggregate_function') ?? '').toUpperCase();
+      const st = (str(sa, 'p_data_source_type') ?? 'REGION_SOURCE').toUpperCase();
+      let from: string | null = null;
+      if (st === 'TABLE') {
+        const tbl = qualified(str(sa, 'p_query_table'), str(sa, 'p_query_owner'));
+        const where = e.oracle(str(sa, 'p_query_where'));
+        from = tbl ? `${tbl}${where ? ` where ${where}` : ''}` : null;
+      } else if (st === 'SQL') {
+        const q = e.oracle(str(sa, 'p_data_source'));
+        from = q ? `(${stripSemi(q)}) q` : null;
+      } else {
+        const q = apex.sql();
+        from = q ? `(${q}) q` : null;
+      }
+      if (!from || !label) return null;
+      const name = (str(sa, 'p_name') ?? `Series ${i + 1}`).replace(/"/g, '');
+      const v = agg && ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'].includes(agg)
+        ? `${agg.toLowerCase()}(${value ? ident(columnOf(value, e)) : '*'})`
+        : value ? ident(columnOf(value, e)) : null;
+      if (!v) return null;
+      return { from, label: ident(columnOf(label, e)), value: `${v} as "${name}"`, grouped: !!agg };
+    };
+    const parts = series.map((x, i) => one(x.args, i)).filter((x): x is NonNullable<typeof x> => !!x);
+    if (!parts.length) {
+      region.row.type = 'static';
+      region.row.source = `<p>APEX chart ${escapeHtml(region.row.title)}: no series with a source, label and value.</p>`;
+      e.notMapped('no series with a source, label and value');
+      continue;
+    }
+    const first = parts[0];
+    const same = parts.filter((x) => x.from === first.from && x.label === first.label && x.grouped === first.grouped);
+    if (same.length < series.length) e.note(`${series.length - same.length} of its ${series.length} series ${series.length - same.length === 1 ? 'has' : 'have'} another source or label and ${series.length - same.length === 1 ? 'was' : 'were'} left out`);
+    region.row.source = `select ${first.label}, ${same.map((x) => x.value).join(', ')}\n  from ${first.from}${first.grouped ? `\n group by ${first.label}` : ''}\n order by 1`;
+    region.row.config = { ...(region.row.config ?? {}), kind };
+    e.target = `chart ${kind}`;
+  }
+
+  // a chart region without a create_jet_chart (or none of whose series could be read): a note instead
+  for (const [rid, r] of regionDoc) {
+    if (r.row.type !== 'chart' || r.row.source) continue;
+    r.row.type = 'static';
+    r.row.template = 'plain';
+    r.row.source = `<p>APEX chart ${escapeHtml(r.row.title)}: no chart definition with series was found.</p>`;
+    regionApex.get(rid)?.e.notMapped('no chart definition with series was found');
+  }
+
+  // ---- (sprint 190) lists that list regions show (the navigation menu's list is the navigation, below)
+  const lists: any[] = [];
+  const listEntries: any[] = [];
+  const allLists = by('create_list');
+  const listAbove = (x: ApexCall) => allLists.filter((l) => l.line < x.line).reduce<ApexCall | null>((m, l) => (!m || l.line > m.line ? l : m), null);
+  let nextListEntry = 1;
+  for (const l of by('create_list')) {
+    const lid = ref(l.args, 'p_id');
+    if (!lid || !usedLists.has(lid)) continue;
+    const name = listName(l);
+    const dynamic = /SQL|PLSQL|FUNCTION/i.test(str(l.args, 'p_list_type') ?? '');
+    lists.push({ name, type: 'static', description: dynamic ? 'Imported from APEX: a dynamic list, rebuild its query by hand' : null });
+    const ids = new Map<string, number>();
+    const mine: any[] = [];
+    // an item without p_list_id belongs to the list written just before it (the export writes a list and its items together)
+    for (const c of by('create_list_item').filter((x) => ref(x.args, 'p_list_id') === lid || (!ref(x.args, 'p_list_id') && listAbove(x) === l))) {
+      const a = c.args;
+      const label = str(a, 'p_list_item_link_text') ?? 'Entry';
+      const e = add(new Entry('navigation', null, `${name}: ${label}`, 'list entry', 'list_entry'));
+      const target = str(a, 'p_list_item_link_target');
+      const fp = parseFp(target);
+      const page = fp ? pageNo(fp.page) : null;
+      const id = nextListEntry++;
+      const cid = ref(a, 'p_id');
+      if (cid) ids.set(cid, id);
+      let url: string | null = null;
+      if (!page && target) {
+        if (/^https?:\/\//i.test(target)) url = target;
+        else e.note(`its link ${target} is not a page of the application: the entry has no target`);
+      }
+      mine.push({ id, list_name: name, parent_id: ref(a, 'p_parent_list_item_id'), seq: int(num(a, 'p_list_item_display_sequence'), 10), label,
+        target_page: page, target_items: fp?.items ?? {}, target_url: url, description: str(a, 'p_list_text_01') ?? null, authz: authz(a, e) });
+    }
+    for (const x of mine) x.parent_id = x.parent_id ? ids.get(x.parent_id) ?? null : null;
+    if (dynamic) add(new Entry('navigation', null, name, 'dynamic list', 'list')).notMapped('a dynamic list (a query): it became an empty static list, rebuild its query by hand');
+    listEntries.push(...mine);
+  }
+
   // ---- navigation menu: the list the user interface names, else one called "Navigation Menu"
   const ui = by('create_user_interface')[0];
   const navListId = ui ? ref(ui.args, 'p_navigation_list_id') : null;
@@ -1564,7 +1886,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const listId = ref(navList.args, 'p_id');
     const navIds = new Map<string, number>();
     let next = 1;
-    for (const c of by('create_list_item').filter((x) => ref(x.args, 'p_list_id') === listId || (!ref(x.args, 'p_list_id') && pageOf.get(x) === pageOf.get(navList)))) {
+    // (sprint 190) an item without p_list_id is the list's when that list is the one written just before it
+    for (const c of by('create_list_item').filter((x) => ref(x.args, 'p_list_id') === listId || (!ref(x.args, 'p_list_id') && listAbove(x) === navList))) {
       const a = c.args;
       const label = str(a, 'p_list_item_link_text') ?? 'Entry';
       const e = add(new Entry('navigation', null, label, 'list entry', 'nav_entry'));
@@ -1612,6 +1935,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     authz_schemes: authzSchemes,
     nav,
     pages,
+    lists,
+    list_entries: listEntries,
   };
   const counts = { mapped: 0, notes: 0, not_mapped: 0, port: 0 };
   for (const e of entries) {
