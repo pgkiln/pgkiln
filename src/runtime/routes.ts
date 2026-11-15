@@ -356,6 +356,7 @@ export async function loadContext(
     detached: [],
     css: new PageCss(),
     nonce: req.cspNonce,
+    passkeyHost: passkeyHost(req),
     frameSrc: req.frameSrc,
     imgSrc: req.imgSrc,
     locale,

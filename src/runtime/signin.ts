@@ -79,10 +79,10 @@ export async function renderLoginRegion(ctx: PageContext, config: { autofocus?: 
   ctx.detached.push(html`<form id="${formId}" method="post" action="/a/${ctx.app.alias}/login"></form>`);
   // (sprint 199) "Sign in with a passkey" posts a form of its own
   const passkeyFormId = 'pgkiln-login-passkey';
-  const pk = passkeyForm(ctx.app, passkeyFormId);
+  const pk = ctx.passkeyHost === false ? '' : passkeyForm(ctx.app, passkeyFormId);
   if (pk) ctx.detached.push(pk);
   const next = safeNext(ctx.app, ctx.params.get('next') ?? undefined);
   const here = `${ctx.base}/${ctx.page.page_no}${ctx.params.get('next') ? `?next=${encodeURIComponent(next)}` : ''}`;
-  return html`<div class="login-region">${await signInForm(ctx.app, ctx.locale, ctx.session, next, { error, username, formId, passkeyFormId, autofocus: config.autofocus !== false })}
+  return html`<div class="login-region">${await signInForm(ctx.app, ctx.locale, ctx.session, next, { error, username, formId, passkeyFormId, host: ctx.passkeyHost, autofocus: config.autofocus !== false })}
     ${languagePicker(ctx.app, ctx.locale, here)}</div>`;
 }
