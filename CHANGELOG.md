@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Recently edited pages and Copy application on the application home** (sprint 203, AX-6; as APEX): the side column
+  lists, under Tasks, the five pages changed last (yours first), each with how long ago (and who, for another
+  developer's change), linking into the Page Designer. Application Utilities → *Recently updated pages* names each page
+  (number and name; a page the application no longer has shows as *Deleted page N (its last recorded name)*, linked to
+  its change history) with relative times, as the Pages report. A new task **Copy application**
+  (`/builder/apps/:id/copy`) makes a new application under a new name and alias from the export, imported again, with
+  no link back: same workspace, database role and access; web credentials keep their secrets; automations and REST
+  data source syncs start off; sessions, saved reports and preferences are not copied.
+- **Shared Components → Templates and Session State Protection** (sprint 203, AX-7): **User Interface → Templates**
+  lists the page, region, button, label, report and list templates read-only, each with a description and **Used by**
+  links into the Page Designer, and links to Template Components and Theme Roller. **Security → Session State
+  Protection** opens Settings → Errors and Sessions at Expire bookmarks. Builder search (Ctrl+K, `/builder/palette`)
+  finds the current application's Shared Components entries by name, in the builder's language or English.
+
 ## [0.101.0] - 2026-11-15
 
 ### Added
