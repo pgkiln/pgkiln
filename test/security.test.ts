@@ -17409,13 +17409,13 @@ describe('sprint 203: Copy application, Templates, the search\'s Shared Componen
     assert.equal((await anon.post('/builder/copy-app', { __csrf: 'x', from: String(appId), name: 'anon', alias: ALIAS })).statusCode, 302);
     await b.get(`/builder/apps/${appId}/copy`);
     assert.equal((await b.post('/builder/copy-app', { __csrf: 'forged', from: String(appId), name: 'forged', alias: ALIAS })).statusCode, 403);
-    for (const [name, alias] of [['ok', 'x"; drop schema hr; --'], ['ok', '../up'], ['ok', 'Upper'], ['ok', 'a'.repeat(51)], ['', ALIAS], ['n'.repeat(101), ALIAS], ['ok', 'hr']]) {
+    for (const [name, alias] of [['ok', 'x"; drop schema hr; --'], ['ok', '../up'], ['ok', '9lives'], ['ok', 'a b'], ['ok', 'a'.repeat(51)], ['', ALIAS], ['n'.repeat(101), ALIAS], ['ok', 'hr']]) {
       const r = await b.post('/builder/copy-app', { __csrf: b.lastCsrf, from: String(appId), name, alias });
       assert.equal(r.statusCode, 303, `${name} ${alias}`);
       assert.equal(r.headers.location, `/builder/apps/${appId}/copy`, `back to the form (${name}, ${alias})`);
       await b.get(`/builder/apps/${appId}/copy`);
     }
-    assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias like 'sec203%' or alias = 'Upper'`)), 'nothing copied');
+    assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias like 'sec203%' or alias in ('9lives', 'a b')`)), 'nothing copied');
     assert.equal((await b.post('/builder/copy-app', { __csrf: b.lastCsrf, from: '1; drop table meta.app', name: 'x', alias: ALIAS })).statusCode, 404);
     assert.equal((await b.get('/builder/apps/x/copy')).statusCode, 404);
     const r = await b.post('/builder/copy-app', { __csrf: b.lastCsrf, from: String(appId), name: '<img src=x onerror=alert(1)>', alias: ALIAS });
