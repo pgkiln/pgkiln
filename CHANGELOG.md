@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **One Save for a region in the Page Designer** (sprint 202, AX-2; APEX: one Save for the whole page): the toolbar's
+  **Save** (and Ctrl+S, also without JavaScript) saves both tabs of a region's property editor at once: the Region tab
+  and the Attributes tab (report, grid, chart, cards, calendar, faceted search, map, tree, template component, AI
+  assistant, Data Reporter, Form Designer settings …), which no longer has a save button of its own (*Save report
+  settings* is gone, as is the sentence about the settings JSON). A setting the Attributes tab refuses is named in an
+  error message beside it. The region's *Attributes (JSON)* field left the Region tab for **Utilities → Show as JSON**:
+  every key of the region's settings, also those with no field yet, editable there and saved by the same Save. No
+  property label in the Page Designer says JSON any more (item Attributes, Set items, Menu entries, Plug-in attributes,
+  AI assistant context queries and tools). The settings routes stay for the API.
+- **Type names instead of codes in the Page Designer** (sprint 202, AX-3): the tree, the layout, the property editor's
+  heading and the Type lists of regions, items, buttons, dynamic actions (event, action), processes, validations and
+  computations, a region's template and position and a button's position show the gallery's names in the builder's
+  language (*Interactive Report*, *Select List*, *Popup LOV*, *Submit Page*, *Set Value* …); stored values and exported
+  files keep the codes.
+
 ## [0.101.0] - 2026-11-15
 
 ### Added
