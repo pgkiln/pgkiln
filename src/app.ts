@@ -110,6 +110,7 @@ import { startTelemetry } from './telemetry/export.ts';
 import { telemetryHooks, telemetryRoutes } from './telemetry/http.ts';
 import { telemetryBuilderRoutes } from './builder/telemetry.ts';
 import { inRequestScope } from './builder/i18n.ts';
+import { replyGuard } from './reply-guard.ts';
 
 export async function buildApp(opts: { logger?: boolean } = {}) {
   // a database older than the code: apply the migrations (MIGRATE_ON_START=true)
@@ -129,6 +130,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     // behind a reverse proxy, set TRUST_PROXY so req.ip is the client (login throttling)
     trustProxy: trustProxySetting(process.env.TRUST_PROXY),
   });
+  // (sprint 200) first: a handler that sent its reply and returns nothing waits for it (src/reply-guard.ts)
+  replyGuard(app);
   securityHeaders(app);
   // (sprint 139) before the workspace scope below, so the request's trace encloses everything
   if (!pending.length) await startTelemetry();

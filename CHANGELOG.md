@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **A page the server sent itself could arrive empty** (sprint 200): a handler that sent its page and returned nothing
+  (a refusal from the session checks, the 404 of an unknown application, the 503 of an application without a database
+  role) made Fastify send the reply a second time while an async `onSend` hook still ran; now and then the empty one
+  won, with the right status and no body. `src/reply-guard.ts` turns such a handler's result into `return reply`.
+- **The service worker's prefetch no longer writes the session's state** (sprint 200): a background prefetch of
+  Feedback, Notifications or My account saved the state it had read at its start, so overlapping a Save it could undo
+  the values just saved, or take a message meant for the next page. A prefetch's session is now read-only.
+- Tests made deterministic (sprint 200): the streamed REST mid-stream failure now always comes after the client has
+  the first batch, and the HR page 50 e2e test (enhanced controls) no longer loses its values to the prefetch above.
+
 ## [0.100.0] - 2026-11-15
 
 ### Added

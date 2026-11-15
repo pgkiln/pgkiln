@@ -93,7 +93,10 @@ src/
                            and cut to size), refreshSource (guarded webRequest), remoteBlueprint (fetched on Install)
   ddl.ts                   Generate DDL and Schema Comparison: readSchema (catalog → one DDL per object, unqualified), ddlScript (order), compare, changeScript
   static-version.ts        the version of app.css, app.js, icons.svg and sw.js (?v= in their URLs, the service worker version): content hash, looked at again when a file changes
-  session.ts               sessions (hashed tokens), activity log, login throttling
+  session.ts               sessions (hashed tokens), activity log, login throttling; (sprint 200) saveState skips a readOnly session
+                           (loadContext marks the service worker's prefetch so)
+  reply-guard.ts           (sprint 200) an async handler that sent its reply and returns nothing waits for it (`return reply`),
+                           instead of Fastify sending it again, empty, while an async onSend hook still runs
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)

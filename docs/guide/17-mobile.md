@@ -59,7 +59,8 @@ The server shows a fetched page **read-only** (the request carries `X-Pgkiln-Pre
 
 - the page's transaction is read-only: an application process or a region query that writes fails
   (the region shows its error in the kept copy) and nothing is changed;
-- the session's state is not kept, and a message waiting for the next page stays there;
+- the session's state is not kept, and a message waiting for the next page stays there (on every page it
+  fetches, also Feedback, Notifications and My account: a fetch that overlaps a Save never undoes it);
 - a page with a process that runs when it opens (point *On load*) is not fetched at all: it is kept
   only when the user opens it, as before. So are dialogs, documents and downloads;
 - each fetch is logged as `page_prefetch`, apart from `page_view`, so activity reports count real visits.

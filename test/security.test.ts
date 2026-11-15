@@ -2432,11 +2432,13 @@ describe('sprint 30', () => {
   });
 
   test('streamed REST collections: authentication, roles and limits as before; a failure mid-stream cuts the response', async () => {
+    const FAIL_LOCK = 30030;
     const handlers = [
       { method: 'GET', path: 'open', type: 'collection', auth: 'public', source: 'select g as n from generate_series(1, 2000) g order by g' },
       { method: 'GET', path: 'closed', type: 'collection', source: 'select g as n from generate_series(1, 10) g' },
       { method: 'GET', path: 'admins', type: 'collection', roles: ['nobody_has_this_role_30'], source: 'select g as n from generate_series(1, 10) g' },
-      { method: 'GET', path: 'fails', type: 'collection', auth: 'public', source: 'select 1 / (150 - g) as x from generate_series(1, 300) g' },
+      // rows 1 to 149, then a division by zero once the test lets it (its advisory lock): after the first batch went out
+      { method: 'GET', path: 'fails', type: 'collection', auth: 'public', source: `select case when g < 150 then g else 1 / (select 0 from pg_advisory_xact_lock_shared(${FAIL_LOCK})) end as n from generate_series(1, 300) g` },
       { method: 'GET', path: 'broken', type: 'collection', auth: 'public', source: 'select * from no_such_table_30' },
     ];
     await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec30', 'Sprint 30', $2)
@@ -2458,11 +2460,41 @@ describe('sprint 30', () => {
       const broken = await get('broken');
       assert.equal(broken.statusCode, 500);
       assert.doesNotMatch(broken.body, /no_such_table_30/);
-      // past the first batch the response has started: it ends short, never as complete JSON
-      const fails = await get('fails?limit=300').then((r) => r.body, () => null);
-      if (fails !== null) {
+      // past the first batch the response has started: it ends short, never as complete JSON. (sprint 200) Over HTTP, so
+      // the failure comes only after the client has the first batch: the second batch waits for the test's advisory
+      // lock (before, an error that came before Fastify had started the response made a complete JSON error instead)
+      const { default: pg } = await import('pg');
+      const { createServer } = await import('node:http');
+      const lock = new pg.Client({ connectionString: process.env.DATABASE_URL });
+      await lock.connect();
+      const server = createServer((req, res) => app.routing(req, res));
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      try {
+        await lock.query('select pg_advisory_lock($1)', [FAIL_LOCK]);
+        const res = await fetch(`http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}/a/hr/rest/sec30/fails?limit=300`);
+        assert.equal(res.status, 200);
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let fails = '';
+        while (!fails.includes('{"n":100}')) {
+          const { done, value } = await reader.read();
+          assert.ok(!done, `the first batch arrives before the response ends: ${fails.slice(0, 200)}`);
+          fails += decoder.decode(value, { stream: true });
+        }
+        assert.match(fails, /^\{"items":\[\{"n":1\},\{"n":2\},/);
+        // the second batch reaches row 150 now
+        await lock.query('select pg_advisory_unlock($1)', [FAIL_LOCK]);
+        for (;;) {
+          const r = await reader.read().catch(() => ({ done: true, value: undefined }));
+          if (r.done) break;
+          fails += decoder.decode(r.value, { stream: true });
+        }
         assert.throws(() => JSON.parse(fails));
         assert.doesNotMatch(fails, /has_more/);
+        assert.doesNotMatch(fails, /\{"n":150\}|division by zero/);
+      } finally {
+        await lock.end();
+        await new Promise((r) => server.close(r));
       }
     } finally {
       await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec30'`, [appId]);
@@ -16864,6 +16896,64 @@ describe('(sprint 196, NX-U1) Create application in one field', () => {
       assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'sec196-nows'`)));
     } finally {
       await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing', [DEV]);
+    }
+  });
+});
+
+describe('sprint 200 the service worker\'s prefetch never writes the session\'s state', () => {
+  // (sprint 200) the prefetch (X-Pgkiln-Prefetch, sprint 168) of a page that saved the session's state (feedback,
+  // notifications, My account) wrote back what it had read: overlapping a submit, it undid the values just saved
+  test('a prefetch of the notifications page leaves the flash message and an item value written meanwhile', async () => {
+    const king = await as('king');
+    const sid = (await owner.one<{ id: string }>(`select id from meta.session where app_id = $1 and username = 'king' order by created_at desc limit 1`, [appId]))!.id;
+    await owner.query(`update meta.session set state = state || '{"__FLASH": "Sec200 flash", "P50_MEMBERS": "7566:7902"}' where id = $1`, [sid]);
+    const before = (await owner.one<{ s: Record<string, string> }>('select state as s from meta.session where id = $1', [sid]))!.s;
+    king.headers = { 'x-pgkiln-prefetch': '1' };
+    for (const url of ['/a/hr/notifications', '/a/hr/50/feedback', '/a/hr/account', '/a/hr/50'])
+      assert.ok([200, 409].includes((await king.get(url)).statusCode), url);
+    assert.deepEqual((await owner.one<{ s: Record<string, string> }>('select state as s from meta.session where id = $1', [sid]))!.s, before, 'the state as it was');
+    // the user's own request takes the message (and saves)
+    king.headers = {};
+    assert.match((await king.get('/a/hr/notifications')).body, /Sec200 flash/);
+    assert.equal((await owner.one<{ f: string | null }>(`select state->>'__FLASH' as f from meta.session where id = $1`, [sid]))!.f, null);
+    assert.equal((await owner.one<{ m: string | null }>(`select state->>'P50_MEMBERS' as m from meta.session where id = $1`, [sid]))!.m, '7566:7902');
+  });
+});
+
+describe('sprint 200 a refusal or not-found page the server sent itself keeps its body', () => {
+  // (sprint 200) a handler that sent its page and returned nothing made Fastify send the reply a second time, empty,
+  // while the first send's onSend hooks still ran (the browser-security lookup, a database query on a cache miss);
+  // whichever finished first was written: now and then the right status with an empty body (src/reply-guard.ts)
+  const ALIAS = 'sec200-norole';
+  const cleanup = () => owner.query('delete from meta.app where alias = $1', [ALIAS]);
+  before(cleanup);
+  after(cleanup);
+
+  test('concurrent first requests (each one a cache miss): every 404 and every 503 of an application without a role has its page', async () => {
+    const { browserSecurityChanged } = await import('../src/browser-security.ts');
+    const { rolesChanged } = await import('../src/app-role.ts');
+    const stamp = Date.now();
+    const missing = await Promise.all(Array.from({ length: 200 }, (_, i) => app.inject({ method: 'GET', url: `/a/sec200-none-${stamp}-${i}/1` })));
+    for (const r of missing) {
+      assert.equal(r.statusCode, 404);
+      assert.match(r.body, /<h1>Not found<\/h1>/);
+    }
+    // an application made before migration 167, without a role (as in sprint 186's tests)
+    await owner.tx(async (c) => {
+      await c.query('alter table meta.app disable trigger app_role_check');
+      const id = (await c.query(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'SEC200', 'none', null) returning id`, [ALIAS])).rows[0].id;
+      await c.query('set constraints all immediate');
+      await c.query('alter table meta.app enable trigger app_role_check');
+      await c.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false)`, [id]);
+    });
+    rolesChanged();
+    for (let round = 0; round < 10; round++) {
+      browserSecurityChanged();
+      const refused = await Promise.all(Array.from({ length: 20 }, () => new Browser().get(`/a/${ALIAS}/1`)));
+      for (const r of refused) {
+        assert.equal(r.statusCode, 503);
+        assert.match(r.body, /<h1>Not available<\/h1><p>This application can&#39;t run: it has no database role of its own/);
+      }
     }
   });
 });

@@ -46,6 +46,8 @@ export interface Session {
   created_ms?: number;
   /** (sprint 189) made for a request whose session cookie belonged to a session that has ended */
   timedOut?: boolean;
+  /** (sprint 200) a request that must not change the session's state (the service worker's prefetch): saveState skips it */
+  readOnly?: boolean;
 }
 
 // instance settings (src/instance.ts): the builder's value, else SESSION_* environment variables, else 60 minutes / 8 hours
@@ -111,6 +113,7 @@ export async function getSession(req: FastifyRequest, reply: FastifyReply, appId
 }
 
 export async function saveState(s: Session) {
+  if (s.readOnly) return;
   await runtime.query('update meta.session set state = $2 where id = $1', [s.id, s.state]);
 }
 
