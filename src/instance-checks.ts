@@ -44,7 +44,7 @@ export async function defaultPasswords(): Promise<string[]> {
 }
 
 export interface Check {
-  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role' | 'default_password' | 'admin_mfa'
+  key: 'secret_key' | 'key_backup' | 'clock' | 'passkey_domain' | 'break_glass' | 'owner_role' | 'dev_logins' | 'default_password' | 'admin_mfa'
     | 'prod_https' | 'prod_cookies' | 'prod_rest_hosts' | 'prod_key' | 'prod_mfa' | 'prod_passwords' | 'prod_app_roles' | 'prod_debug';
   level: Level;
   title: string;
@@ -261,6 +261,8 @@ export async function instanceChecks(rpId: string | null, opts: { production?: b
 
   // (sprint 185, NX-S1) DATABASE_URL as a superuser
   checks.push(ownerRoleCheck(await ownerRole()));
+  // (sprint 201, SEC-1) the workspaces' developer logins read none of pgkiln's own tables
+  checks.push(devLoginsCheck(await devLoginsReachingMeta()));
   // (NX-S3) a public installation: no default passwords, and a second factor for administrators (the production
   // readiness group has both as its own lines)
   if (publicInstance() && !(opts.production || productionInstance())) {
@@ -306,6 +308,30 @@ export function ownerRoleCheck(r: { name: string; superuser: boolean; bypassrls?
   return r.superuser
     ? { key: 'owner_role', level: 'warning', title: 'DATABASE_URL is a superuser', detail: `pgkiln's owner connection signs in as ${r.name}, a superuser: migrations, the builder and an administrator's Owner connection in the SQL Workshop can read and write files on the server, run programs and change every database of the PostgreSQL server. Make a role that owns pgkiln's database with CREATEROLE but not SUPERUSER, reassign pgkiln's objects to it, and use it in DATABASE_URL (docs/guide/01-installation.md, "A non-superuser owner").` }
     : { key: 'owner_role', level: 'ok', title: 'Owner connection', detail: `pgkiln's owner connection signs in as ${r.name}, not a superuser.` };
+}
+
+/**
+ * (sprint 201, SEC-1) The developer logins (the SQL Workshop's connection, migration 166) that can use one of
+ * pgkiln's own tables, itself or through a role it is a member of (meta.role_reaches_meta): none, unless someone
+ * granted rights in meta by hand. meta.workspace_sync_roles() takes such rights and memberships back.
+ */
+export async function devLoginsReachingMeta() {
+  return (await owner.query<{ login: string; tables: string }>(
+    `select w.dev_role as login,
+            (select string_agg(c.relname, ', ' order by c.relname) from pg_class c
+              where c.relnamespace = 'meta'::regnamespace and c.relkind in ('r', 'p')
+                and (has_table_privilege(l.oid, c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE')
+                     or has_any_column_privilege(l.oid, c.oid, 'SELECT, INSERT, UPDATE'))) as tables
+       from meta.workspace w join pg_roles l on l.rolname = w.dev_role
+      where meta.role_reaches_meta(w.dev_role)
+      order by w.id`)).rows;
+}
+
+export function devLoginsCheck(rows: { login: string; tables: string }[]): Check {
+  return rows.length
+    ? { key: 'dev_logins', level: 'error', title: 'Developer logins can read pgkiln\'s tables',
+      detail: `${rows.map((r) => `${r.login}: meta.${r.tables.split(', ').slice(0, 5).join(', meta.')}${r.tables.split(', ').length > 5 ? ', ...' : ''}`).join('; ')}. The SQL Workshop runs as these logins, so a developer could read password hashes, tokens or another workspace's rows. Someone granted rights in meta to the login or to a role it is a member of: revoke them (pgkiln takes them back at the next change of a workspace or an application's role).` }
+    : { key: 'dev_logins', level: 'ok', title: 'Developer logins', detail: 'The workspaces\' developer logins (the SQL Workshop) have no rights on pgkiln\'s own tables.' };
 }
 
 /** How many checks need attention (warnings and errors). */

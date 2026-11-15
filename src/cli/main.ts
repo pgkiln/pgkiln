@@ -71,13 +71,13 @@ async function readPassword(confirm: boolean): Promise<string> {
   return pw;
 }
 
-/** The instance's password policy (meta.setting), as in the builder. */
-async function checkPassword(password: string, username: string) {
+/** The instance's password policy (meta.setting), as in the builder; (sprint 201) a developer's: at least 12 characters. */
+async function checkPassword(password: string, username: string, developer = false) {
   process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL; // the CLI runs as the owner
-  const { passwordProblem } = await import('../accounts.ts');
+  const { developerPasswordProblem, passwordProblem } = await import('../accounts.ts');
   const { closePools } = await import('../db.ts');
   try {
-    const problem = await passwordProblem(password, { username });
+    const problem = await (developer ? developerPasswordProblem : passwordProblem)(password, { username });
     if (problem) throw new Error(problem);
   } finally {
     await closePools();
@@ -711,7 +711,7 @@ const COMMANDS: Record<string, Command> = {
       if ((v.app || v.roles || v.name || v.email) && (developer || action !== 'add')) throw new UsageError('--app, --roles, --name and --email are for adding an account');
       if (v.roles && !v.app) throw new UsageError('--roles needs --app');
       const password = await readPassword(true);
-      await checkPassword(password, username);
+      await checkPassword(password, username, developer);
       return withDb(async (db) => {
         await db.query('begin');
         try {

@@ -1830,7 +1830,7 @@ export const ko: BuilderMessages = {
   'dev.change_pw': '비밀번호 변경',
   'dev.current': '현재 비밀번호',
   'dev.new': '새 비밀번호',
-  'dev.min8': '8자 이상.',
+  'dev.min_length': '{min}자 이상.',
   'dev.change_btn': '비밀번호 변경',
   'dev.your_email': '내 이메일 주소',
   'dev.email': '이메일 주소',

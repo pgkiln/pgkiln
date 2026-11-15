@@ -39,6 +39,23 @@ export async function passwordProblem(password: string | undefined, { username, 
   return null;
 }
 
+/**
+ * (sprint 201, SEC-3) A builder developer's password: at least this many characters, also when the application
+ * users' policy (password_min_length, Users → Account settings) allows fewer. Applied when one is set or changed;
+ * existing passwords keep working.
+ */
+export const DEVELOPER_PASSWORD_MIN = 12;
+
+/** The minimum length of a developer's new password: the users' policy, but never under DEVELOPER_PASSWORD_MIN. */
+export const developerPasswordMin = async () => Math.max(DEVELOPER_PASSWORD_MIN, (await accountSettings()).minLength);
+
+/** Why a developer's new password is not acceptable, or null (the users' policy, with at least 12 characters). */
+export async function developerPasswordProblem(password: string | undefined, { username, t = english }: { username?: string | null; t?: Translate } = {}) {
+  const min = await developerPasswordMin();
+  if (!password || password.length < min) return t('password.too_short', { min });
+  return passwordProblem(password, { username, t });
+}
+
 /** Days until the account's password expires: 0 = must change now, null = never. */
 export async function passwordDaysLeft(username: string) {
   return (await runtime.one<{ d: number | null }>('select meta.password_days_left($1) as d', [username]))?.d ?? null;

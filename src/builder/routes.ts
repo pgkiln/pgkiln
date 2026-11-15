@@ -13,7 +13,7 @@ import { appStyles, BASE_STYLES, baseStyleOf } from '../runtime/styles.ts';
 import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
-import { passwordProblem } from '../accounts.ts';
+import { developerPasswordMin, developerPasswordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, sessionLimits, takeFlash } from '../session.ts';
 import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
 import { APP_COLORS, appHeader, back, BASE, brandMark, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
@@ -1170,7 +1170,7 @@ export async function builderRoutes(app: FastifyInstance) {
         ${region(tx('dev.change_pw'), html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
           <div class="form-grid">
             ${input('current', tx('dev.current'), '', { type: 'password', required: true, auto: 'current-password' })}
-            ${input('password', tx('dev.new'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min8') })}
+            ${input('password', tx('dev.new'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min_length', { min: String(await developerPasswordMin()) }) })}
           </div>
           <div class="buttons"><button class="btn btn-hot">${tx('dev.change_btn')}</button></div></form>`)}
         ${region(tx('dev.your_email'), html`<form method="post" action="${BASE}/developers/email">${csrf(s)}<input type="hidden" name="username" value="${s.username}">
@@ -1193,7 +1193,7 @@ export async function builderRoutes(app: FastifyInstance) {
           ${admin
             ? html`<h3>${tx('dev.add')}</h3>
               <form method="post" action="${BASE}/developers">${csrf(s)}
-                <div class="form-grid">${input('username', tx('dev.username'), '', { required: true })}${input('password', tx('dev.password'), '', { type: 'password', required: true, auto: 'new-password' })}${input('email', tx('dev.email'), '', { type: 'email', help: tx('dev.optional_email') })}</div>
+                <div class="form-grid">${input('username', tx('dev.username'), '', { required: true })}${input('password', tx('dev.password'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min_length', { min: String(await developerPasswordMin()) }) })}${input('email', tx('dev.email'), '', { type: 'email', help: tx('dev.optional_email') })}</div>
                 <div class="field"><label class="check"><input type="checkbox" name="is_admin" value="true"> ${tx('dev.administrator')}</label></div>
                 <div class="buttons"><button class="btn btn-hot">${tx('dev.add')}</button></div>
               </form>`
@@ -1208,7 +1208,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators add developers.');
     try {
-      const problem = await passwordProblem(req.body?.password);
+      const problem = await developerPasswordProblem(req.body?.password);
       if (problem) throw new Error(problem);
       const ws = currentWorkspace(s);
       await owner.tx(async (c) => {
@@ -1233,7 +1233,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     try {
-      const problem = await passwordProblem(req.body?.password);
+      const problem = await developerPasswordProblem(req.body?.password);
       if (problem) throw new Error(problem);
       const r = await owner.query(
         `update meta.developer set password_hash = meta.hash_password($3)

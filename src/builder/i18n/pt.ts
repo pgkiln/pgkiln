@@ -1830,7 +1830,7 @@ export const pt: BuilderMessages = {
   'dev.change_pw': 'Alterar sua senha',
   'dev.current': 'Senha atual',
   'dev.new': 'Nova senha',
-  'dev.min8': 'Pelo menos 8 caracteres.',
+  'dev.min_length': 'Pelo menos {min} caracteres.',
   'dev.change_btn': 'Alterar senha',
   'dev.your_email': 'Seu endereço de e-mail',
   'dev.email': 'Endereço de e-mail',

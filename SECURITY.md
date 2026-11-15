@@ -161,6 +161,17 @@ A second full review, mainly of what end users and API callers can reach. Regres
 | 11 | **Document templates via `?doc=` on public pages**: anyone could download every template without an authorization scheme. | Low | Users who aren't signed in only get templates the page offers with a visible document button. |
 | 12 | **Bind scanner and PostgreSQL could disagree** on non-ASCII dollar-quote tags, `$` inside identifiers, `\r` ending a comment and `WHERE'…'`. | Low | The scanner follows PostgreSQL's lexer for these cases. |
 
+## Findings of the security probe of 2026-11-15 and their fixes
+
+An authenticated probe of a running 0.100.0 (sprint 201). Regression tests: `test/security.test.ts` ("sprint 201").
+
+| # | Finding | Severity | Fix |
+|---|---|---|---|
+| SEC-1 | **The SQL Workshop's developer login reported able to read `meta.developer`** (password hashes) and other workspaces' rows. Not reproduced on a fresh installation nor on the probed one (the login had no rights in `meta`), but nothing prevented a later grant. | High (if granted) | A role with rights in `meta` is powerful (no app runs as it, no developer login joins it); workspace logins' rights in `meta` are revoked at every sync and before their pool opens; row level security for meta's owner on the secret tables; no PUBLIC rights on `meta` base tables; an allow-list test; lockout check `dev_logins`. Migration 175. |
+| SEC-1b | **A shared workspace's developer login could set `pgkiln.app_id` to another workspace's application** and read its rows through the `meta.*` views or call app functions as it. | Medium | `meta.app_id()` / `meta.app_visible` refuse another workspace's application for a developer login. |
+| SEC-2 | **Owner connection is a superuser** on the probed installation; is `as_app=owner` refused server-side for non-admins? | Info | Already refused (403, `ownerChosen()` re-checks); now tested. The non-superuser owner guide is completed (PostgreSQL 16+ `ADMIN OPTION`). |
+| SEC-3 | **Developer passwords: 8 characters minimum.** | Low | 12 (or the users' minimum when higher) when set or changed. A breached-password check is not done (needs an outbound call). |
+
 ## Things that remain the developer's responsibility
 
 - **Developer SQL is trusted**, as in APEX. It runs as the app role, so the

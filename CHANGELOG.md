@@ -30,6 +30,26 @@ All notable changes to this project are documented here. The format follows
 - Tests made deterministic (sprint 200): the streamed REST mid-stream failure now always comes after the client has
   the first batch, and the HR page 50 e2e test (enhanced controls) no longer loses its values to the prefetch above.
 
+### Security
+- **The SQL Workshop's developer login can't read pgkiln's own tables** (sprint 201, SEC-1, defence in depth): a
+  fresh installation already gave it none, but nothing kept a later grant from widening it. A role with rights on a
+  table in `meta` now counts as powerful (no application runs as it, no developer login is a member of it); rights a
+  workspace login holds in `meta` are taken back at every role sync and before its connections open; the tables with
+  secrets, credentials, sessions or every workspace's rows (developers, builder tokens, workspaces, mail and AI
+  services, account factors, persistent logins, SQL history, the Owner connection's audit, …) get row level security
+  for meta's owner only; no PUBLIC rights remain on `meta` base tables. A test keeps what a developer login may read
+  in `meta` to an allow-list of ten application views. New lockout check *Developer logins can read pgkiln's tables*.
+  Migration 175.
+- **A shared workspace's developer login could act as another workspace's application** (sprint 201): setting
+  `pgkiln.app_id` let it read that application's rows through the `meta.*` views for application code and call the
+  application functions as it. `meta.app_id()` and `meta.app_visible` now refuse another workspace's application.
+- **Owner connection** (sprint 201, SEC-2): tests confirm the server refuses it to developers who aren't
+  administrators (forged form, URL, session state, builder token). The guide's *A non-superuser owner* now covers
+  `ADMIN OPTION` on PostgreSQL 16+, the old owner's default privileges and `DATABASE_URL`.
+- **Developer passwords need at least 12 characters** (sprint 201, SEC-3; or the users' minimum when higher) when set
+  or changed, in the builder and with `pgkiln users --developer`. Existing passwords keep working; application users
+  keep their policy.
+
 ## [0.100.0] - 2026-11-15
 
 ### Added

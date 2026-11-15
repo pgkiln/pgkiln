@@ -117,6 +117,12 @@ function poolFor(role: string, fallback = false): Promise<Db> {
     p = (async () => {
       // the role is pgkiln's own (named by meta.workspace_isolate): set the password it expects
       if (!LOGIN.test(role)) throw new Error(`Not a workspace login role: ${role}`);
+      // (sprint 201, SEC-1) a developer login never reaches pgkiln's own tables: rights someone granted in meta (to
+      // it or a role it is a member of) are taken back first; if that isn't enough, its pool doesn't open
+      if (DEV_LOGIN.test(role) && (await reachesMeta(role))) {
+        await owner.query('select meta.workspace_sync_roles()');
+        if (await reachesMeta(role)) throw new Error(`The developer login ${role} can use pgkiln's own tables (meta); revoke those rights (Instance settings → Lockout checks).`);
+      }
       const password = loginPassword(role, fallback);
       await owner.query(`alter role ${quoteIdent(role)} password ${quoteLiteral(password)}`);
       return makePool(urlFor(role, password), `pgkiln-${role}`, POOL_SIZE);
@@ -133,6 +139,8 @@ onClosePools(async () => {
 });
 
 const LOGIN = /^pgkiln_ws\d{1,9}_(run|dev)_[0-9a-f]{8}$/;
+const DEV_LOGIN = /^pgkiln_ws\d{1,9}_dev_[0-9a-f]{8}$/;
+const reachesMeta = async (role: string) => !!(await owner.one<{ r: boolean }>('select meta.role_reaches_meta($1) as r', [role]))?.r;
 const quoteIdent = (s: string) => `"${s.replace(/"/g, '""')}"`;
 const quoteLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
 

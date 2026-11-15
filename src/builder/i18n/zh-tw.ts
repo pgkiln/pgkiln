@@ -1830,7 +1830,7 @@ export const zhTW: BuilderMessages = {
   'dev.change_pw': '變更您的密碼',
   'dev.current': '目前密碼',
   'dev.new': '新密碼',
-  'dev.min8': '至少 8 個字元。',
+  'dev.min_length': '至少 {min} 個字元。',
   'dev.change_btn': '變更密碼',
   'dev.your_email': '您的電子郵件地址',
   'dev.email': '電子郵件地址',

@@ -85,6 +85,8 @@ src/
   workspace-db.ts          isolated workspaces (090): the isolated applications (cached 5 s), a pool per workspace login (passwords from
                            PGKILN_SECRET_KEY), runtimeForApp/runtimeForAlias, withAppDb, devDbForApp; app.ts scopes /a/:alias requests;
                            (sprint 185, 166) every workspace's developer login: devDbForWorkspace / devDbForApp never return the owner
+                           (sprint 201, 175) a developer login's pool doesn't open while it can use a table in meta (meta.role_reaches_meta;
+                           meta.workspace_sync_roles() takes such rights back first)
   browser-security.ts      (sprint 188, NX-S4) browser security per application (meta.app.browser_security): check() for the form,
                            settingsOf() what may be sent, headersFor() frame-ancestors and headers, browserSecurityOf() cached per alias
   security.ts              URL checksums, password policy, security headers (CSP nonce), throttling limits; (sprint 189) url_epoch per application
@@ -979,6 +981,12 @@ browser enhancements at the end of `public/app.js` (the item must work without t
   `src/cli/replace.ts` (replaced with the application's definition, or kept as installation data);
   `test/cli.test.ts` fails until it is. The directory format ([chapter 18](18-cli.md)) needs no
   change: unknown sections and columns travel along.
+- (sprint 201) Grant a new meta *table* to `pgkiln_runtime` (or nobody), never to `PUBLIC` or an application's role: a
+  role with any right on a meta table is powerful (`meta.role_reaches_meta`), and the workspaces' developer logins
+  read none. A new view for application code granted to `PUBLIC` must show only the rows of `meta.app_id()` (or the
+  session) and be added to the allow-list in `test/security.test.ts` (*sprint 201*), which fails for any other
+  relation in meta a developer login can use. A new table with secrets, credentials or every workspace's rows gets
+  row level security with the `meta_owner_only` policy (`using ((select meta.meta_owner_member()))`, migration 175).
 
 ## Releasing
 

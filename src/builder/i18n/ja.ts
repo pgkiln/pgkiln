@@ -1830,7 +1830,7 @@ export const ja: BuilderMessages = {
   'dev.change_pw': 'パスワードの変更',
   'dev.current': '現在のパスワード',
   'dev.new': '新しいパスワード',
-  'dev.min8': '8 文字以上。',
+  'dev.min_length': '{min} 文字以上。',
   'dev.change_btn': 'パスワードの変更',
   'dev.your_email': '電子メール・アドレス',
   'dev.email': '電子メール・アドレス',
