@@ -78,8 +78,13 @@ application's daily mail limit and show in the activity log (`password_reset_req
 
 ### The login page
 
-`/a/<alias>/login` shows pgkiln's sign-in page: the application's name, the sign-in methods and,
-when the application has several languages, a language picker. To design your own (APEX: the
+`/a/<alias>/login` shows pgkiln's sign-in page: the application's icon and name, the sign-in methods and,
+when the application has several languages, a language picker. (NX-U6) The card takes the application's look: its
+icon (the [PWA icon](17-mobile.md) when the application is installable, else its initial on the accent colour) and the
+theme's colours from **Settings → User Interface** (the header colour behind the card, the accent on the buttons).
+*Keep me signed in* appears when **Settings → Sign-in → Keep me signed in (days)** is set, *Forgot password?* when it is
+turned on and the application has a mail service ([Forgot password](#forgot-password)); *Sign in with a passkey* when
+[users may sign in with a passkey alone](#signing-in-with-a-passkey-alone). To design your own (APEX: the
 login page, usually page 9999), choose **Application settings → Sign-in methods → Create a login
 page**: it adds page 9999 (or the next free number) that doesn't require authentication, with
 page template *Minimal (no navigation)* and a **Login** region, and makes it the application's
@@ -87,7 +92,7 @@ page template *Minimal (no navigation)* and a **Login** region, and makes it the
 sends visitors there.
 
 Edit it like any page: add static content, images, lists of links or any other region around the
-Login region, which is the sign-in form (identity providers, user name and password, *Keep me
+Login region, which is the sign-in form (*Sign in with a passkey*, identity providers, user name and password, *Keep me
 signed in*, *Forgot password?*). The form still posts to `/a/<alias>/login`, so throttling, the
 CSRF check and every sign-in method work as on the built-in page; a failed sign-in comes back to
 the login page with its message and the user name. A login page that requires authentication,
@@ -515,6 +520,36 @@ A passkey works only at the host name it was made for (`PUBLIC_URL`'s host, or `
 and needs JavaScript; codes keep working without either. Passkeys are public keys: they don't need the instance key.
 The first factor a user adds, app or passkey, brings ten recovery codes.
 
+#### Signing in with a passkey alone
+
+Beyond APEX, whose sign-in page has no passkeys: **Settings → Sign-in → Sign-in methods → Users may sign in with a
+passkey alone** (off by default; `meta.app.passkey_signin`, migration 173) puts **Sign in with a passkey** above the
+username and password, on the built-in sign-in page and in the Login region of an application's own login page. A user
+who added a passkey on *My account* taps it, the browser offers the passkeys it holds for the site, the device asks for
+the fingerprint, face or PIN, and the user is signed in, without typing a username.
+
+- Only for the user directory's own accounts (**App users** with *Username and password* on). Identity providers, LDAP
+  directories, database accounts, custom and HTTP header authentication are not covered: they keep their own sign-in.
+- The authenticator must **verify the user** (WebAuthn `userVerification: required`, the UV flag is checked), so a
+  passkey sign-in counts as **both factors**: a user the application requires a [second step](#two-factor-sign-in) of
+  is not asked for one after it, and the session counts as having just had one (for [step-up](#asking-again-before-a-sensitive-page-step-up)).
+  Its method in the Activity monitor is `passkey+2fa`, the sign-in's detail *passkey (user verified)*.
+- The browser finds the passkey without a username (a *discoverable credential*; the server sends an empty allow
+  list). With the setting on, a passkey added on *My account* is made discoverable (`residentKey: required`); one
+  added earlier, or while signing in as a required second step, may not be: it keeps working for the second step, and
+  the user adds a new one on *My account* to sign in with it alone.
+- *My account → Two-step sign-in* shows the passkeys part when the setting is on, also when the application has no
+  second step (authenticator apps are offered only where it has one). The first passkey brings ten recovery codes,
+  which remove a passkey later.
+- The same rules as a password sign-in: the challenge is single-use and kept in the signed-out session (five minutes);
+  origin, relying party, signature and counter are checked as at the second step; the account must be active and may
+  use the application (its access control); the lockout after failed sign-ins applies, also to the right passkey; an
+  expired password is changed with the password first (the page says so); availability modes and authorization apply
+  after sign-in as always. Every failure gives one message (*The passkey did not sign you in*) and is logged as
+  `login_failed` with the reason (*passkey: …*), so it counts for the lockout.
+- Needs JavaScript and a host name (not an IP address). Without either the button is not shown and the password form
+  works unchanged. The setting travels with the application's export and files (an older export imports with it off).
+
 #### A code by e-mail
 
 **Offer a code by e-mail** (same settings) adds *E-mail me a code instead* to the second step, for users who have an
@@ -554,7 +589,8 @@ application users, so nothing to cover there.
 - **Stolen passwords**: [two-factor sign-in](#two-factor-sign-in) asks for a code from an authenticator app or a
   passkey, for every user or for some roles, and again before sensitive pages ([step-up](#asking-again-before-a-sensitive-page-step-up)); with an identity provider ([OpenID Connect](#single-sign-on-openid-connect),
   [SAML](#single-sign-on-saml-20)) the provider asks for its own, and pgkiln
-  [checks that it did](#multi-factor-sign-in-at-the-identity-provider). Developers have
+  [checks that it did](#multi-factor-sign-in-at-the-identity-provider). A [passkey alone](#signing-in-with-a-passkey-alone)
+  replaces the password with a user-verified key that can't be phished or reused on another site. Developers have
   [two-factor sign-in](03-builder.md#two-factor-sign-in) for the builder too.
 
 All sign-ins, failures and lockouts appear in the **Activity** monitor.

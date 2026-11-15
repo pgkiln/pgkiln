@@ -213,6 +213,12 @@ describe('sprint 199 NX-U6: signing in with a passkey alone', () => {
   test('exported and imported with the application; an older export imports with it off', async () => {
     const doc = (await owner.one(`select meta.export_app('hr') as d`)).d;
     assert.equal(doc.app.passkey_signin, true);
+    // the application files (YAML, what export_app and diff_app use): in the application's own file
+    const { docToFiles } = await import('../src/appfiles.ts');
+    const files = docToFiles(doc, 'text');
+    const appFile = [...files].find(([path]) => /^app\.(json|ya?ml)$/.test(path));
+    assert.ok(appFile, [...files.keys()].slice(0, 5).join(', '));
+    assert.match(appFile[1].toString(), /passkey_signin: true|"passkey_signin": true/);
     delete doc.app.passkey_signin;
     await owner.query(`delete from meta.app where alias = 'hr_s199_old'`);
     try {
