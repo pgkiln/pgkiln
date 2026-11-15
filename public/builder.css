@@ -1197,8 +1197,38 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .settings-tabs a { padding: 0.5rem 0.85rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 550; transition: color var(--dur) var(--ease); }
 .settings-tabs a:hover { color: var(--text); }
 .settings-tabs a[aria-current="page"] { color: var(--text); border-bottom-color: var(--hot); }
-.settings-body { display: grid; gap: 1rem; max-width: 64rem; }
+.settings-body { display: grid; gap: 1rem; min-width: 0; }
 .settings-form { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); } /* (sprint 186) its column shrinks on a phone: a long option or a role name never widens the page */
+/* (sprint 198, NX-U3) the right rail: below 1280 px one column as before (the rail's section links hidden, the checklist
+   under the form on Security only); from 1280 px the form gets the window's width and the rail sticks beside it */
+.settings-layout { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); max-width: 64rem; }
+.settings-rail { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+.settings-rail-nav { display: none; }
+.settings-layout:not([data-current-tab="security"]) .settings-rail-checklist { display: none; }
+.settings-body :is(.region, h3, [id]) { scroll-margin-top: calc(var(--bar-h) + 1rem); }
+@media (min-width: 1280px) {
+  .settings-layout { max-width: none; grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); gap: 1.5rem; align-items: start; }
+  .settings-rail { position: sticky; top: calc(var(--bar-h) + 1rem); max-height: calc(100vh - var(--bar-h) - 2rem - 29px); overflow-y: auto; }
+  .settings-rail-nav:not([hidden]) { display: block; }
+  .settings-layout:not([data-current-tab="security"]) .settings-rail-checklist:not([hidden]) { display: block; }
+  .settings-rail-nav ul { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--border); }
+  .settings-rail-nav a { display: block; padding: 0.2rem 0.75rem; margin-left: -1px; border-left: 2px solid transparent; color: var(--muted); text-decoration: none; font-size: 13px; }
+  .settings-rail-nav a:hover { color: var(--text); }
+  .settings-rail-nav a[aria-current] { color: var(--text); border-left-color: var(--hot); font-weight: 600; }
+  .settings-rail-title { margin: 0 0 0.35rem; font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .settings-rail .region-body { padding: 0.75rem 1rem; }
+  .settings-rail .region-header { min-height: 0; padding: 0.4rem 1rem; }
+  .settings-rail .checklist { font-size: 13px; gap: 0.25rem; line-height: 1.35; padding-left: 0; list-style: none; }
+  /* two columns of sections (Sign-in) and of check boxes */
+  .st-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 2rem; align-items: start; }
+  .st-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); gap: 0 1rem; }
+  .st-checks > :is(.help, p) { grid-column: 1 / -1; }
+  /* (sprint 198) Create application: the regions in two columns, the footer across both */
+  .create-app:not(.create-quick) { max-width: 88rem; }
+  .create-app .aw-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
+  .create-app .aw-form > :not(.region) { grid-column: 1 / -1; }
+  .create-app .aw-form > .region { margin-top: 0; }
+}
 
 /* (sprint 74) the application home: search, view and Create page above the pages; Tasks on the right */
 .app-home { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: 1rem; align-items: start; }

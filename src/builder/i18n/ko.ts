@@ -1492,6 +1492,8 @@ export const ko: BuilderMessages = {
   'st.warning_help': '로그인한 사용자는 세션이 끝나기 이 시간 전에 경고를 받고 로그인 상태를 유지할 수 있습니다(0: 경고 없음).',
   'st.save': '저장',
   'st.checklist': '보안 체크리스트',
+  'st.rail.on_this_page': '이 페이지의 내용',
+  'st.rail.see_also': '참고 항목',
   'st.ck.role': '전용 데이터베이스 역할로 실행됨',
   'st.ck.no_role': "데이터베이스 역할 없음: 애플리케이션은 빌더에서 개발자에게만 실행됩니다",
   'st.ck.powerful': "이 역할은 권한이 너무 많습니다(슈퍼유저, BYPASSRLS, CREATEROLE 또는 pgkiln 자체 역할): 애플리케이션이 실행되지 않습니다",

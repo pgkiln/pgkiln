@@ -1496,6 +1496,8 @@ export const en = {
   'st.warning_help': 'Signed-in users are warned this long before their session ends and can stay signed in (0: no warning).',
   'st.save': 'Save',
   'st.checklist': 'Security checklist',
+  'st.rail.on_this_page': 'On this page',
+  'st.rail.see_also': 'See also',
   'st.ck.role': 'Runs as a dedicated database role',
   'st.ck.no_role': "No database role: the application runs only for its developers from the builder",
   'st.ck.powerful': "This role is too powerful (superuser, BYPASSRLS, CREATEROLE or pgkiln's own): the application doesn't run",

@@ -1492,6 +1492,8 @@ export const zhCN: BuilderMessages = {
   'st.warning_help': '已登录用户会在会话结束前这么长时间收到警告，并可保持登录（0：不警告）。',
   'st.save': '保存',
   'st.checklist': '安全检查清单',
+  'st.rail.on_this_page': '本页内容',
+  'st.rail.see_also': '另请参阅',
   'st.ck.role': '以专用数据库角色运行',
   'st.ck.no_role': "没有数据库角色：应用程序只在构建器中为其开发者运行",
   'st.ck.powerful': "此角色权限过大（超级用户、BYPASSRLS、CREATEROLE 或 pgkiln 自己的角色）：应用程序不会运行",

@@ -39,6 +39,17 @@ All notable changes to this project are documented here. The format follows
   its only save button: the property editor's *Save page* and *Save* at its foot are gone. It submits the form
   without JavaScript too, Enter in a field saves, it stays in view as its icon on a phone, and its title names
   Ctrl+S in the 11 builder languages.
+- **Settings use the window's width** (sprint 198, NX-U3): from 1280 px an application's Settings have a right rail
+  beside the form, like the jump links of APEX's Security Attributes: the tab's sections as links (plain anchors that
+  work without JavaScript; the section in view is marked), the security checklist on the Security and Sign-in tabs,
+  and *See also* links to related sections on other tabs (`?tab=…#anchor`). The Sign-in tab puts its sections in two
+  columns and the sign-in methods side by side, so at 1456 × 836 it fits in two screens with the checklist in view;
+  the full Create application form also uses two columns. Below 1280 px nothing changes.
+
+### Fixed
+- The responsive e2e test no longer leaves its subscription test applications behind (on a second run they made
+  `data-security.test.ts` and `e2e/autorest.test.ts` fail) (sprint 198).
+
 
 ## [0.99.0] - 2026-11-14
 

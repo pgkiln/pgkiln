@@ -1492,6 +1492,8 @@ export const es: BuilderMessages = {
   'st.warning_help': 'Los usuarios con sesión iniciada reciben un aviso este tiempo antes de que termine su sesión y pueden seguir conectados (0: sin aviso).',
   'st.save': 'Guardar',
   'st.checklist': 'Lista de comprobación de seguridad',
+  'st.rail.on_this_page': 'En esta página',
+  'st.rail.see_also': 'Véase también',
   'st.ck.role': 'Se ejecuta con un rol de base de datos propio',
   'st.ck.no_role': "Sin rol de base de datos: la aplicación solo se ejecuta para sus desarrolladores desde el constructor",
   'st.ck.powerful': "Este rol tiene demasiados derechos (superusuario, BYPASSRLS, CREATEROLE o uno de pgkiln): la aplicación no se ejecuta",

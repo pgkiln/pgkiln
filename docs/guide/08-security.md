@@ -894,4 +894,7 @@ sign-on providers usually refuse to be framed, too.
 6. Debug mode and debug messages off.
 7. [Two-factor sign-in](#two-factor-sign-in) required at least for administrators (the Advisor checks it).
 8. [Browser security](#browser-security): embedding only where a portal needs it.
-9. Review the app's **Settings → Security checklist** and **Activity** monitor now and then.
+9. Review the app's **Settings → Security checklist** and **Activity** monitor now and then. (sprint 198) On a window of
+   1280 px or wider the checklist stays in view beside the Security and Sign-in tabs, under jump links to their sections
+   (Authentication, Browser security; Sign-in methods, Two-factor sign-in) and to Session management and Expire
+   bookmarks on Errors and Sessions.

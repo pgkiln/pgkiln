@@ -1492,6 +1492,8 @@ export const zhTW: BuilderMessages = {
   'st.warning_help': '已登入的使用者會在階段作業結束前這麼久收到警告，並可選擇保持登入（0：不警告）。',
   'st.save': '儲存',
   'st.checklist': '安全性檢查清單',
+  'st.rail.on_this_page': '本頁內容',
+  'st.rail.see_also': '另請參閱',
   'st.ck.role': '以專用資料庫角色執行',
   'st.ck.no_role': "沒有資料庫角色：應用程式只在建置器中為其開發人員執行",
   'st.ck.powerful': "此角色權限過大（超級使用者、BYPASSRLS、CREATEROLE 或 pgkiln 自己的角色）：應用程式不會執行",

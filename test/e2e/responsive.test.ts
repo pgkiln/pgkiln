@@ -34,9 +34,15 @@ before(async () => {
   base = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
   browser = await chromium.launch();
   close = async () => {
-    await browser.close();
-    await app.close();
-    await closePools();
+    try {
+      // (sprint 198) the subscription apps of 'builder pages fit the screen' run as hr_app: left behind, they would
+      // break data-security.test.ts and e2e/autorest.test.ts on the next run
+      await owner.query(`delete from meta.app where alias in ('e2e-library', 'e2e-subscriber')`);
+    } finally {
+      await browser.close();
+      await app.close();
+      await closePools();
+    }
   };
 });
 after(async () => close());
