@@ -298,10 +298,15 @@ language sql stable security definer set search_path = meta, pg_catalog as $$
   select id from meta.workspace where session_user::text = dev_role or (isolated and session_user::text = run_role)
 $$;
 
--- without isolated workspaces nothing is filtered, except (175) for a workspace's developer login
+-- without isolated workspaces nothing is filtered, except (175) for a workspace's developer login: another
+-- workspace's application is refused. An id no application has (yet: the import check plans an application's SQL
+-- before the owner's transaction that inserts it commits) has no other workspace's rows behind it and passes
 create or replace function meta.app_visible(p_app_id int) returns boolean
 language sql stable security definer set search_path = meta, pg_catalog as $$
-  select (meta.isolation_off() and meta.login_workspace() is null) or p_app_id in (select meta.visible_apps())
+  select (meta.isolation_off() and meta.login_workspace() is null)
+      or p_app_id in (select meta.visible_apps())
+      or (not exists (select 1 from meta.app a where a.id = p_app_id)
+          and exists (select 1 from meta.workspace w where w.dev_role = session_user::text and not w.isolated))
 $$;
 
 create or replace function meta.app_id() returns int
