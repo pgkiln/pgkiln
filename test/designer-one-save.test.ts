@@ -215,7 +215,8 @@ describe('AX-3: type names in the Page Designer', () => {
   for (const no of [2, 3]) {
     test(`HR page ${no}: the tree, the layout and the Type lists show no type codes`, async () => {
       const p = await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no]);
-      const page = (await dev.get(`/builder/apps/${appId}/pages/${no}`)).body;
+      // (sprint 205) a report's column nodes note PostgreSQL data types (numeric, date), not pgkiln type codes
+      const page = (await dev.get(`/builder/apps/${appId}/pages/${no}`)).body.replace(/<a class="pd-node"[^>]*\sdata-kind="column"[\s\S]*?<\/a>/g, '');
       const tree = [...page.matchAll(/<span class="pd-note">([^<]*)<\/span>/g)].map((m) => decode(m[1]));
       const titles = [...page.matchAll(/<a class="pd-node"[^>]*\stitle="([^"]*)"/g)].map((m) => note(decode(m[1])));
       const layout = [...page.matchAll(/<div class="pd-region-type">([^<]*)<\/div>/g)].map((m) => decode(m[1]));

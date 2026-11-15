@@ -17966,3 +17966,109 @@ describe('sprint 206 AX-5 the Page Designer\'s menus on the open page (copy, iss
     assert.match(text, /&lt;img src=x onerror=alert\(206\)&gt;/);
   });
 });
+
+describe('sprint 205 AX-1: the Page Designer\'s column properties', () => {
+  const DEV = 'sec205_dev';
+  const PW = 'Sec205-password!';
+  const WS = 'sec205 other ws';
+  const OTHER = 'sec205-other';
+  let mine = 0;
+  let other = 0;
+  let region = 0;
+  let elsewhere = 0;
+  let foreign = 0;
+  let foreignPage = 0;
+  const config = async (id: number) => (await owner.one<{ config: any }>('select config from meta.region where id = $1', [id]))!.config;
+  const signIn = async (user: string, pw: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password: pw })).statusCode, 303, `sign-in of ${user}`);
+    return b;
+  };
+  const cleanup = async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no in (9305, 9306)', [appId]);
+    await owner.query('delete from meta.app where alias = $1', [OTHER]);
+    await owner.query('delete from meta.session where app_id is null and username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+  };
+  before(async () => {
+    await cleanup();
+    const page = async (no: number) => (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, $2, 'Sec205', true) returning id`, [appId, no]))!.id;
+    [mine, other] = [await page(9305), await page(9306)];
+    const add = async (p: number) => (await owner.one<{ id: number }>(
+      `insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'Sec205', 'report', 'select empno, ename, sal from hr.emp order by empno limit 3', '{"headings": {"sal": "Salary"}}') returning id`, [p]))!.id;
+    [region, elsewhere] = [await add(mine), await add(other)];
+    // an application of another workspace, and a developer who is only in that workspace
+    const ws = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
+    const oa = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, db_role) select $1, 'Sec205 other', db_role from meta.app where id = $2 returning id`, [OTHER, appId]))!.id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2) on conflict (app_id) do update set workspace_id = excluded.workspace_id', [oa, ws]);
+    foreignPage = (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Other') returning id`, [oa]))!.id;
+    foreign = (await owner.one<{ id: number }>(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'Other', 'report', 'select 1 as sal', '{}') returning id`, [foreignPage]))!.id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, DEV]);
+  });
+  after(cleanup);
+
+  test('a column\'s Save needs the CSRF token', async () => {
+    const b = await signIn('admin', 'admin');
+    await b.get(`/builder/apps/${appId}/pages/9305?c=column-${region}&col=sal`);
+    for (const token of [undefined, 'forged']) {
+      const res = await b.request('POST', `/builder/pages/${mine}/region/${region}/columns`, { ...(token ? { __csrf: token } : {}), col: 'sal', heading: 'Hacked', was_heading: 'Salary' });
+      assert.equal(res.statusCode, 403);
+    }
+    assert.deepEqual(await config(region), { headings: { sal: 'Salary' } });
+  });
+
+  test('a region of another page or another application is not reached through this page', async () => {
+    const b = await signIn('admin', 'admin');
+    await b.get(`/builder/apps/${appId}/pages/9305`);
+    const post = (pid: number, rid: number | string) => b.submit(`/builder/pages/${pid}/region/${rid}/columns`, { col: 'sal', heading: 'Hacked', was_heading: 'Salary' });
+    assert.equal((await post(mine, elsewhere)).statusCode, 404);
+    assert.equal((await post(mine, foreign)).statusCode, 404);
+    assert.equal((await post(foreignPage, region)).statusCode, 404);
+    assert.equal((await post(mine, '1 or 1=1')).statusCode, 404);
+    assert.deepEqual(await config(elsewhere), { headings: { sal: 'Salary' } });
+    assert.deepEqual(await config(foreign), {});
+    // in the designer: a column of another page's region is "not found"
+    assert.match((await b.get(`/builder/apps/${appId}/pages/9305?c=column-${elsewhere}&col=sal`)).body, /Component not found\./);
+    // a column name the region's query doesn't return: refused, nothing saved
+    await b.submit(`/builder/pages/${mine}/region/${region}/columns`, { col: ['sal', 'password_hash'], heading: 'x' });
+    assert.deepEqual(await config(region), { headings: { sal: 'Salary' } });
+  });
+
+  test('a developer without access to the application is refused', async () => {
+    const d = await signIn(DEV, PW);
+    assert.equal((await d.get(`/builder/apps/${appId}/pages/9305?c=column-${region}&col=sal`)).statusCode, 404);
+    await d.get('/builder/apps');
+    const res = await d.submit(`/builder/pages/${mine}/region/${region}/columns`, { col: 'sal', heading: 'Hacked', was_heading: 'Salary' });
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(await config(region), { headings: { sal: 'Salary' } });
+    // their own workspace's application: allowed
+    await d.get(`/builder/pages/${foreignPage}?c=column-${foreign}&col=sal`);
+    assert.equal((await d.submit(`/builder/pages/${foreignPage}/region/${foreign}/columns`, { col: 'sal', heading: 'Own', was_heading: '' })).statusCode, 303);
+    assert.deepEqual(await config(foreign), { headings: { sal: 'Own' } });
+  });
+
+  test('HTML in a heading is stored as text and escaped in the tree, the property editor and the report', async () => {
+    const b = await signIn('admin', 'admin');
+    await b.get(`/builder/apps/${appId}/pages/9305?c=column-${region}&col=sal`);
+    const evil = '<img src=x onerror=alert(205)>"\'';
+    await b.submit(`/builder/pages/${mine}/region/${region}/columns`, { col: 'sal', heading: evil, was_heading: 'Salary' });
+    assert.equal((await config(region)).headings.sal, evil);
+    const page = (await b.get(`/builder/apps/${appId}/pages/9305?c=column-${region}&col=sal`)).body;
+    assert.doesNotMatch(page, /<img src=x/);
+    assert.match(page, /<span class="pd-note">&lt;img src=x onerror=alert\(205\)&gt;&quot;&#39; · numeric<\/span>/);
+    assert.match(page, /name="heading" value="&lt;img src=x onerror=alert\(205\)&gt;&quot;&#39;"/);
+    const king = await as('king');
+    const report = (await king.get('/a/hr/9305')).body;
+    assert.doesNotMatch(report, /<img src=x/);
+    assert.match(report, /&lt;img src=x onerror=alert\(205\)&gt;/);
+    // a column name is escaped too (a quoted identifier with HTML in it)
+    await owner.query(`update meta.region set source = 'select 1 as "<b>x</b>"' where id = $1`, [region]);
+    const odd = (await b.get(`/builder/apps/${appId}/pages/9305?c=column-${region}&col=${encodeURIComponent('<b>x</b>')}`)).body;
+    assert.doesNotMatch(odd, /<b>x<\/b>/);
+    assert.match(odd, /data-col="&lt;b&gt;x&lt;\/b&gt;"/);
+  });
+});
