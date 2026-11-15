@@ -35,6 +35,7 @@ export const es: Record<MessageKey, string> = {
   'password.too_short': 'Las contraseñas deben tener al menos {min} caracteres.',
   'password.needs_mixed': 'Las contraseñas deben contener letras y dígitos.',
   'password.contains_username': 'La contraseña no debe contener el nombre de usuario.',
+  'password.breached': "Esta contraseña aparece en filtraciones de datos conocidas: elige otra.",
   'password.same_as_old': 'La nueva contraseña debe ser distinta de la actual.',
   'password.days_left': 'Su contraseña caduca dentro de {days} día(s).',
   // account page

@@ -35,6 +35,7 @@ export const pl: Record<MessageKey, string> = {
   'password.too_short': "Hasło musi mieć co najmniej {min} znaków.",
   'password.needs_mixed': "Hasło musi zawierać litery i cyfry.",
   'password.contains_username': "Hasło nie może zawierać nazwy użytkownika.",
+  'password.breached': "To hasło występuje w znanych wyciekach danych: wybierz inne.",
   'password.same_as_old': "Nowe hasło musi różnić się od obecnego.",
   'password.days_left': "Twoje hasło wygaśnie za {days} dni.",
   // account page

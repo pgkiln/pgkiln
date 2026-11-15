@@ -62,6 +62,7 @@ const en = {
   'password.too_short': 'Passwords need at least {min} characters.',
   'password.needs_mixed': 'Passwords need both letters and digits.',
   'password.contains_username': 'The password must not contain the username.',
+  'password.breached': "This password appears in known data breaches: choose another one.",
   'password.same_as_old': 'The new password must be different from the current one.',
   'password.days_left': 'Your password expires in {days} day(s).',
   // account page
@@ -991,6 +992,7 @@ const nl: Record<MessageKey, string> = {
   'password.too_short': 'Wachtwoorden moeten minstens {min} tekens hebben.',
   'password.needs_mixed': 'Wachtwoorden moeten letters en cijfers bevatten.',
   'password.contains_username': 'Het wachtwoord mag de gebruikersnaam niet bevatten.',
+  'password.breached': "Dit wachtwoord komt voor in bekende datalekken: kies een ander.",
   'password.same_as_old': 'Het nieuwe wachtwoord moet anders zijn dan het huidige.',
   'password.days_left': 'Je wachtwoord verloopt over {days} dag(en).',
   'account.title': 'Mijn account',

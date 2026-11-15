@@ -35,6 +35,7 @@ export const he: Record<MessageKey, string> = {
   'password.too_short': "סיסמה צריכה לכלול לפחות {min} תווים.",
   'password.needs_mixed': "סיסמה צריכה לכלול גם אותיות וגם ספרות.",
   'password.contains_username': "הסיסמה לא יכולה לכלול את שם המשתמש.",
+  'password.breached': "הסיסמה הזו מופיעה בדליפות מידע ידועות: בחרו סיסמה אחרת.",
   'password.same_as_old': "הסיסמה החדשה צריכה להיות שונה מהנוכחית.",
   'password.days_left': "תוקף הסיסמה יפוג בעוד {days} ימים.",
   // account page

@@ -35,6 +35,7 @@ export const pt: Record<MessageKey, string> = {
   'password.too_short': "As palavras-passe precisam de pelo menos {min} caracteres.",
   'password.needs_mixed': "As palavras-passe precisam de letras e algarismos.",
   'password.contains_username': "A palavra-passe não pode conter o nome de utilizador.",
+  'password.breached': "Esta palavra-passe aparece em fugas de dados conhecidas: escolha outra.",
   'password.same_as_old': "A nova palavra-passe tem de ser diferente da atual.",
   'password.days_left': "A sua palavra-passe expira dentro de {days} dia(s).",
   // account page

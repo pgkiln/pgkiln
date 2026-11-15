@@ -35,6 +35,7 @@ export const ko: Record<MessageKey, string> = {
   'password.too_short': "비밀번호는 {min}자 이상이어야 합니다.",
   'password.needs_mixed': "비밀번호에는 문자와 숫자가 모두 있어야 합니다.",
   'password.contains_username': "비밀번호에 사용자 이름을 포함할 수 없습니다.",
+  'password.breached': "이 비밀번호는 알려진 데이터 유출에 포함되어 있습니다. 다른 비밀번호를 선택하세요.",
   'password.same_as_old': "새 비밀번호는 현재 비밀번호와 달라야 합니다.",
   'password.days_left': "비밀번호가 {days}일 후에 만료됩니다.",
   // account page

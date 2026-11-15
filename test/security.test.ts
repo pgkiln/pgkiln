@@ -17384,3 +17384,357 @@ describe('sprint 201 the developer login reads none of pgkiln\'s own tables (SEC
     clearAccountSettings();
   });
 });
+
+describe('sprint 204 a builder token is tied to its developer\'s sign-in rules, and every call is logged', () => {
+  const DEV = 'sec204_dev';
+  const OTHER = 'sec204_other';
+  const PW = 'Sec204-password!';
+  const SSO_WS = 'sec204 sso ws';
+  const DIR = 'sec204dir';
+  let tok: typeof import('../src/builder-tokens.ts');
+  const api = (t: string | null, method: 'GET' | 'POST', path: string, body?: unknown) =>
+    app.inject({ method, url: `/builder/api/v1/${path}`, headers: t ? { authorization: `Bearer ${t}` } : {}, ...(body === undefined ? {} : { payload: body as object }) });
+  const make = async (auth?: { mfa: boolean; sso: boolean; via: string | null }, username = DEV) => {
+    const r = await tok.createToken({ username, workspaceId: 1, name: `sec204 ${Math.random().toString(36).slice(2, 9)}`, scopes: ['read', 'write'], days: 30, auth });
+    return { ...r, row: (await owner.one<{ name: string }>('select name from meta.builder_token where id = $1', [r.id]))! };
+  };
+  const signIn = async (user: string, password = PW) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    const r = await b.submit('/builder/login', { username: user, password });
+    assert.equal(r.statusCode, 303, `sign-in of ${user}`);
+    return b;
+  };
+  const lastLog = async (tokenId: number) =>
+    (await owner.one<{ event: string; username: string; detail: string; app_id: number | null }>(
+      `select event, username, detail, app_id from meta.activity_log where event in ('builder_api', 'forbidden') and detail like $1 order by id desc limit 1`, [`token #${tokenId} %`]));
+  const cleanup = async () => {
+    await owner.query('delete from meta.session where app_id is null and username = any($1)', [[DEV, OTHER]]);
+    await owner.query('delete from meta.developer where username = any($1)', [[DEV, OTHER]]);
+    await owner.query('delete from meta.workspace where name = $1', [SSO_WS]);
+    await owner.query('delete from meta.ldap_directory where name = $1', [DIR]);
+    await owner.query(`delete from meta.activity_log where username = any($1)`, [[DEV, OTHER]]);
+  };
+  before(async () => {
+    tok = await import('../src/builder-tokens.ts');
+    await cleanup();
+    await owner.query('insert into meta.developer (username, password_hash, is_admin) select u, meta.hash_password($2), false from unnest($1::text[]) u', [[DEV, OTHER], PW]);
+  });
+  after(cleanup);
+
+  test('the Security page keeps how the sign-in went with the token it makes', async () => {
+    const b = await signIn(DEV);
+    await b.get('/builder/security');
+    assert.equal((await b.submit('/builder/security/tokens', { name: 'sec204 form', days: '1', scopes: 'read', workspace: '1' })).statusCode, 200);
+    const row = (await owner.one<{ id: number; auth_mfa: boolean; auth_sso: boolean; auth_via: string | null }>(`select id::int, auth_mfa, auth_sso, auth_via from meta.builder_token where username = $1 and name = 'sec204 form'`, [DEV]))!;
+    assert.deepEqual([row.auth_mfa, row.auth_sso, row.auth_via], [false, false, null], 'a password sign-in without a second factor');
+    const created = await owner.one<{ detail: string }>(`select detail from meta.activity_log where username = $1 and event = 'builder_token_created' order by id desc limit 1`, [DEV]);
+    assert.match(created!.detail, new RegExp(`^token #${row.id} sec204 form: read, workspace Default, 1 days; signed in with the password$`));
+    // the token's columns can't be set from the form
+    await b.get('/builder/security');
+    await b.submit('/builder/security/tokens', { name: 'sec204 forged', days: '1', scopes: 'read', workspace: '1', auth_mfa: 'true', auth_sso: 'true', auth_via: 'x', mfa: 'true', via: 'x' });
+    const forged = await owner.one<{ auth_mfa: boolean; auth_sso: boolean; auth_via: string | null }>(`select auth_mfa, auth_sso, auth_via from meta.builder_token where username = $1 and name = 'sec204 forged'`, [DEV]);
+    assert.deepEqual([forged!.auth_mfa, forged!.auth_sso, forged!.auth_via], [false, false, null]);
+  });
+
+  test('a token made without a second factor stops when its developer sets one up or one becomes required', async () => {
+    const plain = await make();
+    const strong = await make({ mfa: true, sso: false, via: null });
+    assert.equal((await api(plain.token, 'GET', 'me')).statusCode, 200);
+    // the instance's or a workspace's requirement, even in its grace period
+    await owner.query(`update meta.workspace set mfa_required_since = now() where id = 1`);
+    try {
+      const r = await api(plain.token, 'GET', 'me');
+      assert.equal(r.statusCode, 403);
+      assert.match(r.json().error, /second factor.*make a new one/);
+      assert.equal((await api(strong.token, 'GET', 'me')).statusCode, 200, 'made with a second factor: fine in the grace period');
+    } finally {
+      await owner.query('update meta.workspace set mfa_required_since = null where id = 1');
+    }
+    assert.equal((await api(plain.token, 'GET', 'me')).statusCode, 200, 'checked at each request, not stored');
+    // the developer sets up an authenticator app
+    const { addTotp, newTotpSecret, stepNow } = await import('../src/mfa.ts');
+    await addTotp(DEV, 'phone', newTotpSecret(), stepNow() - 5);
+    try {
+      const r = await api(plain.token, 'POST', 'tools/list_apps', {});
+      assert.equal(r.statusCode, 403);
+      assert.equal((await api(strong.token, 'POST', 'tools/list_apps', {})).statusCode, 200);
+      // logged under the developer, with the token, as a refusal
+      const log = await lastLog(plain.id);
+      assert.equal(log!.event, 'forbidden');
+      assert.equal(log!.username, DEV);
+      assert.match(log!.detail, new RegExp(`^token #${plain.id} ${plain.row.name}: list_apps: refused \\(.*second factor.*\\) \\(403\\)$`));
+    } finally {
+      await owner.query('delete from meta.developer_factor where username = $1', [DEV]);
+      await owner.query('delete from meta.developer_recovery_code where username = $1', [DEV]);
+    }
+  });
+
+  test('a token made without single sign-on stops when a workspace of its developer requires it; one made through it needs that identity', async () => {
+    const plain = await make();
+    const dirId = (await owner.one<{ id: number }>(`insert into meta.ldap_directory (name, display_name, url, user_base, builder) values ($1, 'SEC204', 'ldap://127.0.0.1:1', 'dc=x', true) returning id`, [DIR]))!.id;
+    const viaSso = await make({ mfa: true, sso: true, via: `ldap:${DIR}` });
+    const wsId = (await owner.one<{ id: number }>('insert into meta.workspace (name, sso_only) values ($1, true) returning id', [SSO_WS]))!.id;
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [wsId, DEV]);
+    const r = await api(plain.token, 'GET', 'me');
+    assert.equal(r.statusCode, 403);
+    assert.match(r.json().error, /single sign-on/);
+    // made through the directory, but the identity isn't linked to the developer (any more)
+    const notLinked = await api(viaSso.token, 'GET', 'me');
+    assert.equal(notLinked.statusCode, 403);
+    assert.match(notLinked.json().error, /no longer linked/);
+    await owner.query('insert into meta.developer_identity (directory_id, subject, username) values ($1, $2, $3)', [dirId, 'uid=sec204', DEV]);
+    assert.equal((await api(viaSso.token, 'GET', 'me')).statusCode, 200);
+    // the directory no longer signs developers in
+    await owner.query('update meta.ldap_directory set builder = false where id = $1', [dirId]);
+    assert.equal((await api(viaSso.token, 'GET', 'me')).statusCode, 403);
+    await owner.query('update meta.ldap_directory set builder = true where id = $1', [dirId]);
+    // the workspace gone: no rule, no refusal
+    await owner.query('delete from meta.workspace where id = $1', [wsId]);
+    assert.equal((await api(plain.token, 'GET', 'me')).statusCode, 200, 'no rule, no refusal');
+  });
+
+  test('the token list marks a token that its developer\'s rules refuse', async () => {
+    const plain = await make();
+    const b = await signIn(DEV);
+    assert.doesNotMatch((await b.get('/builder/security')).body, new RegExp(`${plain.row.name}[\\s\\S]*?Not usable`));
+    await owner.query(`update meta.workspace set mfa_required_since = now() where id = 1`);
+    try {
+      const page = (await b.get('/builder/security')).body;
+      assert.match(page, new RegExp(`${plain.row.name}[\\s\\S]*?Not usable</span> <span class="small">made without a second factor`));
+    } finally {
+      await owner.query('update meta.workspace set mfa_required_since = null where id = 1');
+    }
+  });
+
+  test('every call made with a token is in the activity log: token id and name, developer, call, outcome', async () => {
+    const t = await make();
+    const expect = async (res: Promise<{ statusCode: number }>, status: number, event: string, detail: RegExp) => {
+      assert.equal((await res).statusCode, status, String(detail));
+      const log = await lastLog(t.id);
+      assert.equal(log!.event, event, String(detail));
+      assert.equal(log!.username, DEV);
+      assert.match(log!.detail, detail);
+    };
+    const p = `^token #${t.id} ${t.row.name}: `;
+    await expect(api(t.token, 'GET', 'me'), 200, 'builder_api', new RegExp(`${p}me: ok \\(200\\)$`));
+    await expect(api(t.token, 'GET', 'tools'), 200, 'builder_api', new RegExp(`${p}tools: ok \\(200\\)$`));
+    await expect(api(t.token, 'POST', 'tools/get_page', { alias: 'hr', page: 1 }), 200, 'builder_api', new RegExp(`${p}get_page hr: ok \\(200\\)$`));
+    const hr = await lastLog(t.id);
+    assert.equal(hr!.app_id, appId, 'on the application\'s Activity page');
+    await expect(api(t.token, 'POST', 'tools/get_page', { alias: 'no-such-app', page: 1 }), 422, 'builder_api', new RegExp(`${p}get_page no-such-app: refused \\(no application`));
+    await expect(api(t.token, 'POST', 'tools/no_such_tool', {}), 404, 'builder_api', new RegExp(`${p}no_such_tool: unknown tool \\(404\\)$`));
+    await expect(api(t.token, 'POST', 'tools/export_app', { alias: 'hr' }), 400, 'builder_api', new RegExp(`${p}export_app hr: refused`));
+    await expect(api(t.token, 'POST', 'tools/run_query', { sql: 'select 1' }), 403, 'forbidden', new RegExp(`${p}run_query: refused \\(needs the sql scope\\) \\(403\\)$`));
+    await expect(api(t.token, 'GET', 'apps/no-such-app/export'), 404, 'builder_api', new RegExp(`${p}export no-such-app: refused`));
+    await expect(api(t.token, 'POST', 'apps/hr/import', {}), 400, 'builder_api', new RegExp(`${p}import hr: refused \\(no export document\\) \\(400\\)$`));
+    await expect(api(t.token, 'POST', 'advise', { alias: 'no-such-app' }), 422, 'builder_api', new RegExp(`${p}advise no-such-app: refused`));
+    // a developer removed from the workspace: refused and logged with the token
+    await owner.query('delete from meta.workspace_member where workspace_id = 1 and username = $1', [DEV]);
+    try {
+      await expect(api(t.token, 'GET', 'me'), 403, 'forbidden', new RegExp(`${p}me: refused \\(${DEV} is no longer a developer of workspace Default\\.\\) \\(403\\)$`));
+    } finally {
+      await owner.query('insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing', [DEV]);
+    }
+    // the token itself is never logged; the last use is on the token
+    assert.equal((await owner.one(`select count(*)::int as n from meta.activity_log where detail like '%' || $1 || '%'`, [t.token.slice(5)]))!.n, 0);
+    assert.ok((await owner.one('select last_used_at from meta.builder_token where id = $1', [t.id]))!.last_used_at);
+  });
+
+  test('Calls: a developer sees the calls of their own tokens, an administrator every developer\'s', async () => {
+    const mine = await make();
+    const theirs = await make(undefined, OTHER);
+    await api(mine.token, 'GET', 'me');
+    await api(theirs.token, 'GET', 'me');
+    const b = await signIn(DEV);
+    const own = (await b.get('/builder/security/tokens/calls')).body;
+    assert.match(own, new RegExp(`token #${mine.id} `));
+    assert.doesNotMatch(own, new RegExp(`token #${theirs.id} `), 'not another developer\'s');
+    assert.match((await b.get(`/builder/security/tokens/calls?token=${mine.id}`)).body, new RegExp(`token #${mine.id} `));
+    assert.equal((await b.get(`/builder/security/tokens/calls?token=${theirs.id}`)).statusCode, 404);
+    assert.match((await b.get('/builder/security')).body, new RegExp(`href="/builder/security/tokens/calls\\?token=${mine.id}"`));
+    // an administrator
+    const a = await signIn('admin', 'admin');
+    const all = (await a.get('/builder/security/tokens/calls')).body;
+    assert.match(all, new RegExp(`token #${mine.id} `));
+    assert.match(all, new RegExp(`token #${theirs.id} `));
+    const one = (await a.get(`/builder/security/tokens/calls?token=${theirs.id}`)).body;
+    assert.match(one, new RegExp(`token #${theirs.id} `));
+    assert.doesNotMatch(one, new RegExp(`token #${mine.id} `));
+    assert.match((await a.get('/builder/developers')).body, /href="\/builder\/security\/tokens\/calls"/);
+    // signed out: the sign-in page
+    assert.notEqual((await app.inject({ method: 'GET', url: '/builder/security/tokens/calls' })).statusCode, 200);
+  });
+});
+
+describe('sprint 204 breached passwords (Have I Been Pwned range API, SEC-3)', () => {
+  const DEV = 'sec204_pw_dev';
+  const ACC = 'sec204_pw_user';
+  const PW = 'Sec204-pw-start!';
+  const BREACHED = 'Sec204-breached-1';
+  let bp: typeof import('../src/breached-passwords.ts');
+  let accounts: typeof import('../src/accounts.ts');
+  let calls: { url: string; req: import('../src/webclient.ts').WebRequest }[] = [];
+  /** A range answer with the breached password's suffix, other suffixes and padding (count 0). */
+  const rangeFor = (prefix: string, hit: string | null, count = 42) => {
+    const lines = [`${'0'.repeat(35)}:3`, `${'F'.repeat(35)}:0`];
+    if (hit && bp.rangeKey(hit).prefix === prefix) lines.splice(1, 0, `${bp.rangeKey(hit).suffix}:${count}`);
+    return lines.join('\r\n');
+  };
+  const mock = (hit: string | null, count = 42) =>
+    bp.setBreachTransport(async (url, req) => {
+      calls.push({ url, req });
+      const prefix = url.slice(-5);
+      return { status: 200, headers: {}, body: Buffer.from(rangeFor(prefix, hit, count)), url };
+    });
+  const setCheck = async (on: boolean) => {
+    await owner.query(`insert into meta.setting (name, value) values ('password_breach_check', $1) on conflict (name) do update set value = excluded.value`, [String(on)]);
+    accounts.clearAccountSettings();
+  };
+  const cleanup = async () => {
+    await owner.query('delete from meta.session where app_id is null and username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('delete from meta.account where username = $1', [ACC]);
+    await owner.query(`delete from meta.setting where name = 'password_breach_check'`);
+    await owner.query(`delete from meta.activity_log where event = 'password_check_failed'`);
+    accounts?.clearAccountSettings();
+  };
+  before(async () => {
+    bp = await import('../src/breached-passwords.ts');
+    accounts = await import('../src/accounts.ts');
+    await cleanup();
+    await owner.query('insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)', [DEV, PW]);
+  });
+  afterEach(() => {
+    bp.setBreachTransport(null);
+    calls = [];
+  });
+  after(cleanup);
+
+  test('off by default: nothing is sent', async () => {
+    mock(BREACHED);
+    assert.equal((await accounts.accountSettings()).breachCheck, false);
+    assert.equal(await accounts.passwordProblem(BREACHED), null);
+    assert.equal(calls.length, 0);
+  });
+
+  test('only 5 hexadecimal characters of the SHA-1 go out, with Add-Padding, to one allowed host, with a short time limit', async () => {
+    await setCheck(true);
+    try {
+      mock(BREACHED);
+      assert.match(String(await accounts.passwordProblem(BREACHED)), /data breaches/);
+      assert.equal(calls.length, 1);
+      const { url, req } = calls[0];
+      const sha1 = (await import('node:crypto')).createHash('sha1').update(BREACHED).digest('hex').toUpperCase();
+      assert.equal(url, `https://api.pwnedpasswords.com/range/${sha1.slice(0, 5)}`);
+      assert.ok(!url.includes(sha1.slice(5)) && !url.includes(BREACHED));
+      assert.equal(req.method ?? 'GET', 'GET');
+      assert.equal(req.body, undefined, 'nothing else is sent');
+      assert.equal(req.headers?.['Add-Padding'], 'true');
+      assert.deepEqual(req.hosts, { allowed: ['api.pwnedpasswords.com'], private: [] });
+      assert.ok(req.timeoutMs! > 0 && req.timeoutMs! <= 5000, 'a short time limit');
+      // another password: not in the answer; a padding line (count 0) is no hit
+      assert.equal(await accounts.passwordProblem('Sec204-fine-password-2'), null);
+      assert.equal(bp.countIn(`${bp.rangeKey('x').suffix}:0\n`, bp.rangeKey('x').suffix), 0);
+      // the other rules come first: no request for a password they refuse
+      calls = [];
+      assert.match(String(await accounts.passwordProblem('ab')), /at least/);
+      assert.equal(calls.length, 0);
+    } finally {
+      await setCheck(false);
+    }
+  });
+
+  test('the request goes through the outbound guards: another host and a private address are refused', async () => {
+    const { webRequest, urlProblem } = await import('../src/webclient.ts');
+    await setCheck(true);
+    try {
+      const hosts = { allowed: [bp.PWNED_HOST], private: [] };
+      assert.equal(urlProblem('https://api.pwnedpasswords.com/range/ABCDE', hosts), null);
+      assert.ok(urlProblem('https://evil.example.com/range/ABCDE', hosts));
+      assert.ok(urlProblem('https://127.0.0.1/range/ABCDE', hosts));
+      // the real request function with the module's own options, sent elsewhere: refused before any connection, so fail open
+      bp.setBreachTransport((_url, req) => webRequest('https://169.254.169.254/latest/meta-data', req));
+      assert.equal(await bp.breachCount(BREACHED), null);
+    } finally {
+      await setCheck(false);
+    }
+  });
+
+  test('the service unreachable, slow or answering nonsense: the password is accepted and a warning logged', async () => {
+    await setCheck(true);
+    await owner.query(`delete from meta.activity_log where event = 'password_check_failed'`);
+    const warn = console.warn;
+    const warned: string[] = [];
+    console.warn = (...a: unknown[]) => void warned.push(a.join(' '));
+    try {
+      bp.setBreachTransport(async () => {
+        throw new Error('connect ETIMEDOUT');
+      });
+      assert.equal(await accounts.passwordProblem(BREACHED), null);
+      bp.setBreachTransport(async (url) => ({ status: 503, headers: {}, body: Buffer.from('busy'), url }));
+      assert.equal(await accounts.passwordProblem(BREACHED), null);
+      bp.setBreachTransport(async (url) => ({ status: 200, headers: {}, body: Buffer.from('<html>captive portal</html>'), url }));
+      assert.equal(await accounts.passwordProblem(BREACHED), null);
+      // no transport in a test process: never the network, fails open too
+      bp.setBreachTransport(null);
+      assert.equal(await accounts.passwordProblem(BREACHED), null);
+      assert.equal(warned.filter((w) => /breached-password check unavailable/.test(w)).length, 4);
+      const logged = (await owner.query<{ detail: string }>(`select detail from meta.activity_log where event = 'password_check_failed' order by id`)).rows.map((r) => r.detail);
+      assert.equal(logged.length, 4);
+      assert.match(logged[0], /api\.pwnedpasswords\.com.*unavailable, password accepted: connect ETIMEDOUT/);
+      assert.match(logged[1], /HTTP 503/);
+      assert.match(logged[3], /no network in tests/);
+      assert.ok(!logged.join(' ').includes(BREACHED));
+    } finally {
+      console.warn = warn;
+      await setCheck(false);
+    }
+  });
+
+  test('applies to a developer\'s new password and an application user\'s, not to signing in', async () => {
+    mock(BREACHED);
+    // only an administrator turns it on
+    const dev = await (async () => {
+      const b = new FileBrowser(app);
+      await b.get('/builder/login');
+      assert.equal((await b.submit('/builder/login', { username: DEV, password: PW })).statusCode, 303);
+      return b;
+    })();
+    await dev.get('/builder/users');
+    await dev.submit('/builder/users/settings', { password_min_length: '8', password_lifetime_days: '0', password_breach_check: 'true' });
+    accounts.clearAccountSettings();
+    assert.equal((await accounts.accountSettings()).breachCheck, false, 'a developer who is not an administrator can\'t');
+    const a = new FileBrowser(app);
+    await a.get('/builder/login');
+    await a.submit('/builder/login', { username: 'admin', password: 'admin' });
+    assert.match((await a.get('/builder/users')).body, /name="password_breach_check" value="true" aria-describedby="h_password_breach_check">/);
+    await a.submit('/builder/users/settings', { password_min_length: '8', password_lifetime_days: '0', password_breach_check: 'true' });
+    try {
+      assert.equal((await accounts.accountSettings()).breachCheck, true);
+      assert.match((await a.get('/builder/users')).body, /name="password_breach_check" value="true" aria-describedby="h_password_breach_check" checked>/);
+      // a developer's new password
+      await dev.get('/builder/developers');
+      await dev.submit('/builder/developers/password', { current: PW, password: BREACHED });
+      assert.ok((await owner.one(`select 1 as ok from meta.developer where username = $1 and password_hash = crypt($2, password_hash)`, [DEV, PW])), 'refused: the old password stays');
+      // an application user's
+      await a.get('/builder/users');
+      await a.submit('/builder/users', { username: ACC, password: BREACHED });
+      assert.equal((await owner.one(`select count(*)::int as n from meta.account where username = $1`, [ACC]))!.n, 0, 'refused');
+      await a.get('/builder/users');
+      await a.submit('/builder/users', { username: ACC, password: 'Sec204-fine-password-3' });
+      assert.equal((await owner.one(`select count(*)::int as n from meta.account where username = $1`, [ACC]))!.n, 1);
+      // signing in is never checked, also with a password that a breach has since revealed
+      calls = [];
+      await owner.query('update meta.developer set password_hash = meta.hash_password($2) where username = $1', [DEV, BREACHED]);
+      const b = new FileBrowser(app);
+      await b.get('/builder/login');
+      assert.equal((await b.submit('/builder/login', { username: DEV, password: BREACHED })).statusCode, 303);
+      assert.equal(calls.length, 0);
+      const saved = await owner.one<{ detail: string }>(`select detail from meta.activity_log where event = 'instance_settings' and username = 'admin' order by id desc limit 1`);
+      assert.match(saved!.detail, /breached-password check on/);
+    } finally {
+      await setCheck(false);
+    }
+  });
+});

@@ -42,7 +42,31 @@ The builder and the runtime cover what APEX offers for its accounts:
 | `APEX_UTIL.EXPIRE_END_USER_ACCOUNT` / `UNEXPIRE_…` | **Expire password** / **Unexpire password**, or `meta.expire_password(username)` / `meta.unexpire_password(username)` |
 | *Account Password Lifetime (days)* | **Users → Account settings → Password lifetime** (0 = never). Expired passwords must be changed at sign-in; My account shows the days left |
 | Password complexity rules | Minimum length, *letters and digits*, and never containing the username (Account settings) |
+| — (no APEX equivalent) | **Refuse passwords known from data breaches** (Account settings, off by default): see below |
 | *Maximum Login Failures* / unlock | Sign-in locks for `LOGIN_WINDOW_MINUTES` after `LOGIN_MAX_FAILURES_PER_USER` failures. **Unlock sign-in** on the account lifts it at once |
+
+#### Breached passwords
+
+**Users → Account settings → Refuse passwords known from data breaches** (administrators; also the *Password policy*
+tile of Administration) checks every password that is **set or changed**, for developers (Developers → *Change
+password*, *Add developer*, `pgkiln users password`) and for application users (the builder's Users, My account, an
+expired password, *Forgot password?*, Create Application's administrator; not `meta.set_password` called from SQL),
+against
+[Have I Been Pwned's Pwned Passwords](https://haveibeenpwned.com/Passwords). It is **off by default**. Signing in is
+never checked.
+
+It uses the k-anonymity **range API**: the server computes the password's SHA-1 and sends only its **first 5
+hexadecimal characters** (`GET https://api.pwnedpasswords.com/range/<prefix>`, with `Add-Padding: true`, so the size of
+the answer says nothing either); the answer lists the suffixes of every breached password with that prefix, and the
+server compares them itself. The password and its full hash never leave the server. A password that is on the list is
+refused (*This password appears in known data breaches*).
+
+The request goes through pgkiln's outbound guard (`src/webclient.ts`) with an allow-list of that one host: the address
+it connects to is checked (no private, loopback or link-local address), redirects elsewhere are refused, and the whole
+exchange has a **3-second** time limit. **It fails open**: when the service can't be reached, is slow or answers
+something else, the password is **accepted** and a warning goes to the server's log and the activity log
+(`password_check_failed`). An installation without outbound internet access should leave it off. The rule is the
+instance's, for every application; turning it on or off is logged (`instance_settings`).
 
 The `meta.set_password`/`expire`/`unexpire` functions are owner-only. Grant them to an app role if
 you want to build user administration pages inside an application.

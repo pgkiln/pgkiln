@@ -8,8 +8,15 @@
 // recent sign-in with the factors the developer must use (single sign-on, a second factor; tokenStepUp in
 // src/builder/tokens.ts). Removing a developer removes their tokens (foreign key); a password set by an administrator
 // or on the command line, their own new password and a reset of their second factors revoke them (revokeTokensOf).
+//
+// (sprint 204) A token keeps how the sign-in it was made after went (migration 178: auth_mfa, auth_sso, auth_via), and
+// every request checks that against the developer's rules of that moment (signInProblem): a token made without single
+// sign-on stops when a workspace of the developer starts to require it (or the identity it was made through is
+// unlinked or no longer enabled for the builder), and a token made without a second factor stops when the developer
+// needs one (they set one up, the instance or a workspace requires one). Its developer makes a new one.
 import { owner } from './db.ts';
-import { enrolmentDue } from './mfa.ts';
+import { ssoRequired } from './devsso.ts';
+import { enrolmentDue, hasFactor, requirement } from './mfa.ts';
 import { hashToken, loginMaxFailuresPerIp, loginWindowMinutes } from './security.ts';
 import { randomBytes } from 'node:crypto';
 
@@ -40,14 +47,26 @@ export interface BuilderToken {
   revoked_at: string | null;
   revoked_by: string | null;
   revoked_reason: string | null;
+  /** (178) the sign-in the token was made after: a second factor, single sign-on, through which provider or directory */
+  auth_mfa: boolean;
+  auth_sso: boolean;
+  auth_via: string | null;
   /** live: not revoked and not expired */
   live: boolean;
+}
+
+/** (178) How the sign-in a token is made after went. */
+export interface TokenAuth {
+  mfa: boolean;
+  sso: boolean;
+  /** the identity provider's name, or ldap:<directory> */
+  via: string | null;
 }
 
 export class TokenError extends Error {}
 
 const COLUMNS = `t.id::int as id, t.username, t.workspace_id, w.name as workspace, t.name, t.scopes, t.created_at::text, t.expires_at::text,
-  t.last_used_at::text, t.last_used_ip, t.revoked_at::text, t.revoked_by, t.revoked_reason,
+  t.last_used_at::text, t.last_used_ip, t.revoked_at::text, t.revoked_by, t.revoked_reason, t.auth_mfa, t.auth_sso, t.auth_via,
   (t.revoked_at is null and t.expires_at > now()) as live`;
 
 /** The scopes of a form or a request, in their order; unknown ones are refused. */
@@ -57,8 +76,11 @@ export function parseScopes(given: unknown): TokenScope[] {
   return TOKEN_SCOPES.filter((s) => list.includes(s));
 }
 
-/** Make a token; returns it (the only time it exists outside the caller's hands) with its row. */
-export async function createToken(o: { username: string; workspaceId: number; name: string; scopes: TokenScope[]; days: number }) {
+/**
+ * Make a token; returns it (the only time it exists outside the caller's hands) with its row. `auth`: the sign-in it is
+ * made after (the Security page passes the session's; without it, a password sign-in without a second factor).
+ */
+export async function createToken(o: { username: string; workspaceId: number; name: string; scopes: TokenScope[]; days: number; auth?: TokenAuth }) {
   const name = String(o.name ?? '').trim();
   if (!NAME_RE.test(name)) throw new TokenError('A name of 1 to 60 characters, not starting or ending with a space.');
   if (!o.scopes.length) throw new TokenError('Choose at least one scope.');
@@ -72,9 +94,9 @@ export async function createToken(o: { username: string; workspaceId: number; na
     if ((await c.query(`select 1 from meta.builder_token where username = $1 and lower(name) = lower($2) and revoked_at is null`, [o.username, name])).rowCount)
       throw new TokenError(`You already have a token named ${name}: choose another name, or revoke that one.`);
     const id = (await c.query<{ id: number }>(
-      `insert into meta.builder_token (username, workspace_id, name, token_hash, scopes, expires_at)
-       values ($1, $2, $3, $4, $5, now() + make_interval(days => $6)) returning id::int`,
-      [o.username, o.workspaceId, name, hashToken(token), o.scopes, o.days],
+      `insert into meta.builder_token (username, workspace_id, name, token_hash, scopes, expires_at, auth_mfa, auth_sso, auth_via)
+       values ($1, $2, $3, $4, $5, now() + make_interval(days => $6), $7, $8, $9) returning id::int`,
+      [o.username, o.workspaceId, name, hashToken(token), o.scopes, o.days, !!o.auth?.mfa, !!o.auth?.sso, o.auth?.via ? String(o.auth.via).slice(0, 200) : null],
     )).rows[0].id;
     return { token, id };
   });
@@ -126,7 +148,46 @@ export interface TokenCaller {
   admin: boolean;
 }
 
-export type TokenCheck = { ok: true; caller: TokenCaller } | { ok: false; status: 401 | 403 | 429; error: string; log?: string };
+export type TokenCheck =
+  | { ok: true; caller: TokenCaller }
+  /** token: the token, when it was found (a refusal of a known token is logged with it, under its developer) */
+  | { ok: false; status: 401 | 403 | 429; error: string; log?: string; token?: { id: number; name: string; username: string; workspaceId: number } };
+
+/** (sprint 204) Why a token's sign-in no longer meets its developer's rules. */
+export type SignInProblem = 'sso' | 'sso_source' | 'mfa';
+
+/**
+ * (sprint 204) Does the sign-in a token was made after still meet what its developer must use now? Single sign-on when a
+ * workspace of theirs requires it (through an identity still linked to them and enabled for the builder), and a second
+ * factor when they have one or the instance or a workspace requires one. Null: it does.
+ */
+export async function signInProblem(username: string, admin: boolean, t: Pick<BuilderToken, 'auth_mfa' | 'auth_sso' | 'auth_via'>): Promise<SignInProblem | null> {
+  const [sso, factor, rule] = await Promise.all([ssoRequired(username), hasFactor(username), requirement(username, admin)]);
+  if (sso) {
+    if (!t.auth_sso) return 'sso';
+    if (t.auth_via) {
+      const linked = await owner.one(
+        `select 1 as ok from meta.developer_identity i
+           left join meta.auth_provider p on p.id = i.provider_id
+           left join meta.ldap_directory d on d.id = i.directory_id
+          where i.username = $1 and ((p.name = $2 and p.enabled and p.builder) or ('ldap:' || d.name = $2 and d.enabled and d.builder))`,
+        [username, t.auth_via],
+      );
+      if (!linked) return 'sso_source';
+    }
+  }
+  if ((factor || rule.required) && !t.auth_mfa) return 'mfa';
+  return null;
+}
+
+/** The API's words for a SignInProblem (the builder translates its own). */
+export function signInProblemText(p: SignInProblem, username: string) {
+  return p === 'sso'
+    ? `${username} must now sign in through single sign-on, and this token was made without it: make a new one on the Security page.`
+    : p === 'sso_source'
+      ? `the single sign-on this token was made through is no longer linked to ${username} or enabled for the builder: make a new one on the Security page.`
+      : `${username} now signs in with a second factor, and this token was made without one: make a new one on the Security page.`;
+}
 
 /** The token of an Authorization header ("Bearer pgkb_…"), or null. Nothing else (cookies, the query string) counts. */
 export function bearerOf(header: unknown): string | null {
@@ -154,8 +215,8 @@ export async function checkToken(header: unknown, ip: string): Promise<TokenChec
   const token = bearerOf(header);
   if (!token) return { ok: false, status: 401, error: 'Send a builder token: Authorization: Bearer pgkb_…', log: header ? 'malformed Authorization header' : '' };
   if (!TOKEN_RE.test(token)) return { ok: false, status: 401, error: 'This is not a builder token.', log: 'not a builder token' };
-  const t = await owner.one<{ id: number; name: string; username: string; workspace_id: number; workspace: string; scopes: TokenScope[]; expires_at: string; expired: boolean; revoked: boolean; is_admin: boolean; member: boolean }>(
-    `select t.id::int as id, t.name, t.username, t.workspace_id, w.name as workspace, t.scopes, t.expires_at::text,
+  const t = await owner.one<{ id: number; name: string; username: string; workspace_id: number; workspace: string; scopes: TokenScope[]; expires_at: string; expired: boolean; revoked: boolean; is_admin: boolean; member: boolean; auth_mfa: boolean; auth_sso: boolean; auth_via: string | null }>(
+    `select t.id::int as id, t.name, t.username, t.workspace_id, w.name as workspace, t.scopes, t.expires_at::text, t.auth_mfa, t.auth_sso, t.auth_via,
             t.expires_at <= now() as expired, t.revoked_at is not null as revoked, d.is_admin,
             exists (select 1 from meta.workspace_member m where m.workspace_id = t.workspace_id and m.username = t.username) as member
        from meta.builder_token t join meta.developer d on d.username = t.username join meta.workspace w on w.id = t.workspace_id
@@ -166,8 +227,12 @@ export async function checkToken(header: unknown, ip: string): Promise<TokenChec
   if (t.revoked) return { ok: false, status: 401, error: 'This builder token was revoked.', log: `revoked builder token ${t.name} of ${t.username}` };
   if (t.expired) return { ok: false, status: 401, error: 'This builder token has expired.', log: `expired builder token ${t.name} of ${t.username}` };
   // checked now, not when the token was made
-  if (!t.member && !t.is_admin) return { ok: false, status: 403, error: `${t.username} is no longer a developer of workspace ${t.workspace}.` };
-  if ((await enrolmentDue(t.username, t.is_admin))?.due === 'enrol') return { ok: false, status: 403, error: `${t.username} must set up two-factor sign-in in the builder first.` };
+  const known = { id: t.id, name: t.name, username: t.username, workspaceId: t.workspace_id };
+  if (!t.member && !t.is_admin) return { ok: false, status: 403, error: `${t.username} is no longer a developer of workspace ${t.workspace}.`, token: known };
+  if ((await enrolmentDue(t.username, t.is_admin))?.due === 'enrol') return { ok: false, status: 403, error: `${t.username} must set up two-factor sign-in in the builder first.`, token: known };
+  // (sprint 204) the sign-in it was made after must still meet the developer's rules
+  const problem = await signInProblem(t.username, t.is_admin, t);
+  if (problem) return { ok: false, status: 403, error: signInProblemText(problem, t.username), token: known };
   await owner.query('update meta.builder_token set last_used_at = now(), last_used_ip = $2 where id = $1', [t.id, ip.slice(0, 100)]);
   return { ok: true, caller: { tokenId: t.id, name: t.name, username: t.username, workspaceId: t.workspace_id, workspace: t.workspace, scopes: t.scopes, expiresAt: t.expires_at, admin: t.is_admin } };
 }

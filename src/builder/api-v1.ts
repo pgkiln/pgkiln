@@ -14,7 +14,15 @@
 // pgkiln's tables through the owner pool for that workspace's applications only, the database's own objects through
 // the workspace's developer login (src/workspace-db.ts), never the owner, also for an administrator's token. Imports
 // keep the builder's rules: another developer's lock on the application or a page the import changes refuses it, as
-// does a Run only application. Every call is in the activity log (event builder_api, the developer, the token's name).
+// does a Run only application.
+//
+// (sprint 204) Every request made with a known token is in the activity log under its developer, with the token's id
+// and name, the call (the endpoint or the tool, and the application) and the outcome with the HTTP status:
+//   builder_api  "token #12 laptop: get_page hr: ok (200)", "… import hr: refused (…) (409)", "… nope: unknown tool (404)"
+//   forbidden    "token #12 laptop: import hr: refused (needs the write scope) (403)", and a token whose developer may
+//                no longer use it (left the workspace, must set up or now use a second factor or single sign-on)
+// (the application's Activity page shows those of its application; Security → Builder tokens → Calls shows them per
+// token, administrators every developer's). Unknown, expired and revoked tokens are failed sign-ins of the address.
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { docToFiles, type Doc } from '../appfiles.ts';
 import { checkToken, TokenError, type TokenCaller, type TokenScope } from '../builder-tokens.ts';
@@ -144,6 +152,11 @@ async function appIdOf(alias: unknown, ws: number): Promise<number | null> {
   return (await owner.one<{ id: number }>('select id from meta.app where alias = $1 and meta.app_workspace(id) = $2', [alias, ws]))?.id ?? null;
 }
 
+/** The application a request names: the path's, else the JSON body's alias. */
+const aliasOf = (req: FastifyRequest): unknown => (req.params as Record<string, string> | undefined)?.alias ?? (req.body as Args | undefined)?.alias;
+/** " <alias>" for the log line, or nothing. */
+const aliasText = (alias: unknown) => (typeof alias === 'string' && alias ? ` ${alias.slice(0, 100)}` : '');
+
 /** What a tool error says to the caller: the tool's own message; anything else is the server's problem. */
 function errorText(e: unknown) {
   if (e instanceof ToolError || e instanceof UsageError || e instanceof WorkingCopyError || e instanceof TokenError) return e.message;
@@ -162,32 +175,40 @@ export async function builderApiRoutes(app: FastifyInstance) {
     const r = await checkToken(req.headers.authorization, ip);
     if (!r.ok) {
       if (r.log) await logActivity({ event: 'login_failed', ip, detail: `builder API: ${r.log}` });
+      // a known token its developer may no longer use: under the developer, with the token
+      else if (r.token)
+        await logActivity({ appId: await appIdOf(aliasOf(req), r.token.workspaceId), username: r.token.username, event: 'forbidden', ip,
+          detail: `token #${r.token.id} ${r.token.name}: ${what}${aliasText(aliasOf(req))}: refused (${r.error.slice(0, 300)}) (${r.status})` });
       if (r.status === 401) reply.header('www-authenticate', 'Bearer realm="pgkiln builder"');
       answer(reply, r.status, { error: r.error });
       return null;
     }
     if (scope && !r.caller.scopes.includes(scope)) {
-      await logActivity({ appId: await appIdOf((req.params as Record<string, string>)?.alias ?? (req.body as Args | undefined)?.alias, r.caller.workspaceId), username: r.caller.username, event: 'forbidden', ip,
-        detail: `builder token ${r.caller.name}: ${what} needs the ${scope} scope` });
+      await logActivity({ appId: await appIdOf(aliasOf(req), r.caller.workspaceId), username: r.caller.username, event: 'forbidden', ip,
+        detail: `token #${r.caller.tokenId} ${r.caller.name}: ${what}${aliasText(aliasOf(req))}: refused (needs the ${scope} scope) (403)` });
       answer(reply, 403, { error: `this token has no ${scope} scope (it has ${r.caller.scopes.join(', ')}): ${what} needs it` });
       return null;
     }
     return r.caller;
   }
 
-  const logCall = async (req: FastifyRequest, c: TokenCaller, what: string, alias: unknown, outcome: string) =>
-    logActivity({ appId: await appIdOf(alias, c.workspaceId), username: c.username, event: 'builder_api', ip: clientIp(req), detail: `token ${c.name}: ${what}${typeof alias === 'string' && alias ? ` ${alias.slice(0, 100)}` : ''}${outcome}` });
+  /** One call of a token in the activity log: what, the application, the outcome and the HTTP status. */
+  const logCall = async (req: FastifyRequest, c: TokenCaller, what: string, alias: unknown, outcome: string, status: number) =>
+    logActivity({ appId: await appIdOf(alias, c.workspaceId), username: c.username, event: 'builder_api', ip: clientIp(req),
+      detail: `token #${c.tokenId} ${c.name}: ${what}${aliasText(alias)}: ${outcome.slice(0, 400)} (${status})` });
+  const refused = (e: unknown) => `refused (${(errorText(e) ?? 'server error').slice(0, 300)})`;
 
   app.get(`${API}/me`, async (req, reply) => {
     const c = await caller(req, reply, null, 'me');
     if (!c) return;
-    await logCall(req, c, 'me', null, '');
+    await logCall(req, c, 'me', null, 'ok', 200);
     return answer(reply, 200, { developer: c.username, administrator: c.admin, token: c.name, scopes: c.scopes, expires_at: c.expiresAt, workspace: c.workspace });
   });
 
   app.get(`${API}/tools`, async (req, reply) => {
     const c = await caller(req, reply, null, 'tools');
     if (!c) return;
+    await logCall(req, c, 'tools', null, 'ok', 200);
     return answer(reply, 200, { tools: TOOLS.map((t) => ({ name: t.name, title: t.title, scope: toolScope(t.name, {}), server: toolScope(t.name, {}) !== null })) });
   });
 
@@ -198,16 +219,22 @@ export async function builderApiRoutes(app: FastifyInstance) {
     const scope = tool ? toolScope(name, args) : null;
     const c = await caller(req, reply, scope, name);
     if (!c) return;
-    if (!tool) return answer(reply, 404, { error: `unknown tool ${name}` });
-    if (!scope) return answer(reply, 400, { error: `${name} works with files on your machine: pgkiln mcp --url runs it there (export: GET ${API}/apps/<alias>/export, import: POST ${API}/apps/<alias>/import)` });
+    if (!tool) {
+      await logCall(req, c, name.slice(0, 100), args.alias, 'unknown tool', 404);
+      return answer(reply, 404, { error: `unknown tool ${name}` });
+    }
+    if (!scope) {
+      await logCall(req, c, name, args.alias, 'refused (a tool of files on the developer\'s machine)', 400);
+      return answer(reply, 400, { error: `${name} works with files on your machine: pgkiln mcp --url runs it there (export: GET ${API}/apps/<alias>/export, import: POST ${API}/apps/<alias>/import)` });
+    }
     try {
       const text = await tool.run(args, serverContext(c));
-      await logCall(req, c, name, args.alias, '');
+      await logCall(req, c, name, args.alias, 'ok', 200);
       return answer(reply, 200, { text });
     } catch (e) {
       const message = errorText(e);
       if (message === null) req.log.error({ err: e }, `builder API ${name}`);
-      await logCall(req, c, name, args.alias, `: refused (${(message ?? 'server error').slice(0, 200)})`);
+      await logCall(req, c, name, args.alias, refused(e), message === null ? 500 : 422);
       return answer(reply, message === null ? 500 : 422, { error: message ?? 'The server could not do that: see its log.' });
     }
   });
@@ -217,9 +244,11 @@ export async function builderApiRoutes(app: FastifyInstance) {
     if (!c) return;
     try {
       const doc = await serverContext(c).exportDoc(req.params.alias);
-      await logCall(req, c, 'export', req.params.alias, '');
+      await logCall(req, c, 'export', req.params.alias, 'ok', 200);
       return answer(reply, 200, { doc });
     } catch (e) {
+      if (errorText(e) === null) req.log.error({ err: e }, 'builder API export');
+      await logCall(req, c, 'export', req.params.alias, refused(e), errorText(e) === null ? 500 : 404);
       return answer(reply, errorText(e) === null ? 500 : 404, { error: errorText(e) ?? 'The server could not do that: see its log.' });
     }
   });
@@ -229,16 +258,19 @@ export async function builderApiRoutes(app: FastifyInstance) {
     if (!c) return;
     const b = req.body ?? {};
     const check = (['off', 'check', 'force', 'dry-run'] as const).find((x) => x === b.check) ?? 'check';
-    if (!b.doc || typeof b.doc !== 'object' || Array.isArray(b.doc)) return answer(reply, 400, { error: 'doc: an export document (JSON)' });
+    if (!b.doc || typeof b.doc !== 'object' || Array.isArray(b.doc)) {
+      await logCall(req, c, 'import', req.params.alias, 'refused (no export document)', 400);
+      return answer(reply, 400, { error: 'doc: an export document (JSON)' });
+    }
     try {
       const result = await serverContext(c).importDoc(b.doc, { alias: req.params.alias, replace: b.replace === true, check: check as ImportCheck });
       await logCall(req, c, b.replace === true ? 'import --replace' : 'import', req.params.alias,
-        result.committed ? `: ${result.replaced ? 'replaced' : 'imported'} (${result.findings.filter((f) => f.severity === 'error').length} error(s) found)` : ': not committed');
+        result.committed ? `ok: ${result.replaced ? 'replaced' : 'imported'} (${result.findings.filter((f) => f.severity === 'error').length} error(s) found)` : 'ok: not committed', 200);
       return answer(reply, 200, { result });
     } catch (e) {
       const message = errorText(e);
       if (message === null) req.log.error({ err: e }, 'builder API import');
-      await logCall(req, c, 'import', req.params.alias, `: refused (${(message ?? 'server error').slice(0, 200)})`);
+      await logCall(req, c, 'import', req.params.alias, refused(e), message === null ? 500 : 409);
       return answer(reply, message === null ? 500 : 409, { error: message ?? 'The server could not do that: see its log.' });
     }
   });
@@ -249,14 +281,18 @@ export async function builderApiRoutes(app: FastifyInstance) {
     // an export is imported into a transaction that is rolled back: an import's scope
     const c = await caller(req, reply, withDoc ? 'write' : 'read', 'advise');
     if (!c) return;
-    if (withDoc ? typeof b.doc !== 'object' || Array.isArray(b.doc) : typeof b.alias !== 'string' || !b.alias) return answer(reply, 400, { error: 'alias, or doc: an export document' });
+    if (withDoc ? typeof b.doc !== 'object' || Array.isArray(b.doc) : typeof b.alias !== 'string' || !b.alias) {
+      await logCall(req, c, 'advise', null, 'refused (no alias or export document)', 400);
+      return answer(reply, 400, { error: 'alias, or doc: an export document' });
+    }
     try {
       const result = await serverContext(c).advise(withDoc ? { source: { doc: b.doc! }, path: 'export' } : { alias: b.alias! });
-      await logCall(req, c, 'advise', withDoc ? null : b.alias, '');
+      await logCall(req, c, withDoc ? 'advise (export document)' : 'advise', withDoc ? null : b.alias, 'ok', 200);
       return answer(reply, 200, { result });
     } catch (e) {
       const message = errorText(e);
       if (message === null) req.log.error({ err: e }, 'builder API advise');
+      await logCall(req, c, withDoc ? 'advise (export document)' : 'advise', withDoc ? null : b.alias, refused(e), message === null ? 500 : 422);
       return answer(reply, message === null ? 500 : 422, { error: message ?? 'The server could not do that: see its log.' });
     }
   });

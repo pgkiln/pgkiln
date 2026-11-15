@@ -35,6 +35,7 @@ export const ar: Record<MessageKey, string> = {
   'password.too_short': "يجب ألا تقل كلمة المرور عن {min} أحرف.",
   'password.needs_mixed': "يجب أن تحتوي كلمة المرور على حروف وأرقام.",
   'password.contains_username': "يجب ألا تحتوي كلمة المرور على اسم المستخدم.",
+  'password.breached': "تظهر كلمة المرور هذه في تسريبات بيانات معروفة: اختر كلمة أخرى.",
   'password.same_as_old': "يجب أن تختلف كلمة المرور الجديدة عن الحالية.",
   'password.days_left': "تنتهي صلاحية كلمة المرور بعد {days} يوم.",
   // account page

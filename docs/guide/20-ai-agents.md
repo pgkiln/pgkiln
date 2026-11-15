@@ -91,8 +91,11 @@ out of `ps` and the shell history; keep it out of files in git. The tools are th
   `pgkiln import --replace --only` ([chapter 18](18-cli.md#importing-one-page-or-component)). An import keeps the
   builder's rules: another developer's lock on the application or a page it changes refuses it.
 
-Every call is in the activity log under your name with the token's name (`builder_api`), so an agent's work can be
-told from yours.
+Every call is in the activity log under your name with the token's number and name, the tool, the application and the
+outcome (`builder_api`; refusals `forbidden`), so an agent's work can be told from yours: Security → Builder tokens →
+**Calls** lists them per token, and administrators see every developer's. A token also stays tied to the sign-in it was
+made after: when a workspace of yours starts to require single sign-on or you now need a second factor, a token made
+without it answers `403` until you make a new one ([chapter 3](03-builder.md#builder-tokens)).
 
 ## Tools
 
