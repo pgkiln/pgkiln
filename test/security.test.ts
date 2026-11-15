@@ -17841,3 +17841,128 @@ describe('sprint 203: Copy application, Templates, the search\'s Shared Componen
     }
   });
 });
+
+describe('sprint 206 AX-5 the Page Designer\'s menus on the open page (copy, issue, history, text, checksum, export)', () => {
+  const DEV = 'sec206_dev';
+  const PW = 'Sec206-dev-password!';
+  const WS = 'sec206 other ws';
+  const OTHER = 'sec206other';
+  const PAGE = 9761;
+  let hrId = 0;
+  let otherId = 0;
+  const signIn = async (user: string, pw: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password: pw })).statusCode, 303, `sign in as ${user}`);
+    await b.get('/builder');
+    return b;
+  };
+  const cleanup = async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no = any($2)', [hrId, [PAGE, PAGE + 1, PAGE + 2]]);
+    await owner.query('delete from meta.app where alias = $1', [OTHER]);
+    await owner.query(`delete from meta.team_issue where title like 'sec206 %'`);
+    await owner.query('delete from meta.session where app_id is null and username = $1', [DEV]);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+    await owner.query(`update meta.app set build_status = 'run_and_build' where id = $1 and build_status = 'run_only'`, [hrId]);
+  };
+  before(async () => {
+    hrId = (await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`))!.id;
+    await cleanup();
+    // a new workspace makes its roles: GRANTs that can meet the server's own start-up role sync (tuple concurrently updated)
+    let ws = 0;
+    for (let i = 0; !ws; i++) {
+      try {
+        ws = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
+      } catch (e) {
+        if (i > 4 || !/concurrently/.test((e as Error).message)) throw e;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    }
+    otherId = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, db_role) values ($1, 'Sec206 other', 'hr_app') returning id`, [OTHER]))!.id;
+    await owner.query('insert into meta.workspace_app (workspace_id, app_id) values ($1, $2)', [ws, otherId]);
+    const op = (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec206 other page') returning id`, [otherId, PAGE]))!.id;
+    await owner.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Other', 'report', 'select ''sec206 other secret'' as s')`, [op]);
+    const hp = (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, $2, '<img src=x onerror=alert(206)>') returning id`, [hrId, PAGE + 1]))!.id;
+    await owner.query(`insert into meta.region (page_id, title, type, source) values ($1, '</pre><script>alert(206)</script>', 'report', 'select ''</code></pre><script>alert(206)</script>'' as s')`, [hp]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    // a new developer joins Default (a trigger): this one is a developer of the other workspace only
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, DEV]);
+  });
+  after(cleanup);
+
+  test('another application\'s page number is not this application\'s page', async () => {
+    const a = await signIn('admin', 'admin');
+    for (const url of [`/builder/apps/${hrId}/pages/${PAGE}/text`, `/builder/apps/${hrId}/pages/${PAGE}/export`]) {
+      const r = await a.get(url);
+      assert.equal(r.statusCode, 404, url);
+      assert.doesNotMatch(r.body, /sec206 other secret/, url);
+    }
+    // the copy form names the page of the application in from=, never another's by its number
+    const copy = await a.get(`/builder/apps/${hrId}/copy-page?from=${hrId}&page=${PAGE}`);
+    assert.doesNotMatch(copy.body, /Sec206 other page/);
+  });
+
+  test('a developer without access to the application gets nothing: not the page, its text, export, history, copy or issue', async () => {
+    const d = await signIn(DEV, PW);
+    for (const url of [`/builder/apps/${hrId}/pages/3`, `/builder/apps/${hrId}/pages/3/text`, `/builder/apps/${hrId}/pages/3/export`,
+      `/builder/apps/${hrId}/utilities/history?page=3`, `/builder/apps/${hrId}/copy-page?from=${hrId}&page=3`]) {
+      const r = await d.get(url);
+      assert.equal(r.statusCode, 404, url);
+      assert.doesNotMatch(r.body, /Employees Form|P3_ENAME/i, url);
+    }
+    // copying an HR page into their own application: the source is outside their workspace
+    await d.get(`/builder/apps/${otherId}/copy-page?from=${otherId}`);
+    await d.submit(`/builder/apps/${otherId}/copy-page`, { from: String(hrId), page: '3', new_page: '50', name: 'Sec206 stolen' });
+    assert.equal(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = 50', [otherId]), undefined);
+    // an issue for an HR page from their workspace: the application isn't one of theirs
+    await d.get(`/builder/team/issues/new?app=${hrId}&page=3`);
+    await d.submit('/builder/team/issues', { title: 'sec206 foreign issue', body: '', app: String(hrId), page: '3' });
+    assert.equal(await owner.one(`select 1 as ok from meta.team_issue where title = 'sec206 foreign issue' and app_id = $1`, [hrId]), undefined);
+  });
+
+  test('Copy this page and Issue for this page take the CSRF token', async () => {
+    const a = await signIn('admin', 'admin');
+    await a.get(`/builder/apps/${hrId}/copy-page?from=${hrId}&page=3`);
+    assert.equal((await a.post(`/builder/apps/${hrId}/copy-page`, { from: String(hrId), page: '3', new_page: String(PAGE + 2), name: 'Sec206 no csrf' })).statusCode, 403);
+    assert.equal(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = $2', [hrId, PAGE + 2]), undefined);
+    await a.get(`/builder/team/issues/new?app=${hrId}&page=3`);
+    assert.equal((await a.post('/builder/team/issues', { title: 'sec206 no csrf', body: '', app: String(hrId), page: '3' })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 as ok from meta.team_issue where title = 'sec206 no csrf'`), undefined);
+  });
+
+  test('a Run only application: its page can be viewed as text and exported, not copied', async () => {
+    const a = await signIn('admin', 'admin');
+    await owner.query(`update meta.app set build_status = 'run_only' where id = $1`, [hrId]);
+    try {
+      assert.equal((await a.get(`/builder/apps/${hrId}/pages/3/text`)).statusCode, 200);
+      assert.equal((await a.get(`/builder/apps/${hrId}/pages/3/export`)).statusCode, 200);
+      await a.get(`/builder/apps/${hrId}/copy-page?from=${hrId}&page=3`);
+      await a.submit(`/builder/apps/${hrId}/copy-page`, { from: String(hrId), page: '3', new_page: String(PAGE + 2), name: 'Sec206 run only' });
+      assert.equal(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = $2', [hrId, PAGE + 2]), undefined);
+    } finally {
+      await owner.query(`update meta.app set build_status = 'run_and_build' where id = $1`, [hrId]);
+    }
+  });
+
+  test('Export this page holds the page\'s files of the application\'s export and nothing else; View as text escapes them', async () => {
+    const { docToFiles } = await import('../src/appfiles.ts');
+    const { unzipSync } = await import('fflate');
+    const a = await signIn('admin', 'admin');
+    const res = await a.get(`/builder/apps/${hrId}/pages/3/export`);
+    assert.equal(res.statusCode, 200);
+    const zip = unzipSync(new Uint8Array(res.rawPayload));
+    const all = docToFiles((await owner.one('select meta.export_app($1) as d', ['hr']))!.d, 'text');
+    assert.ok(Object.keys(zip).length > 3);
+    for (const [name, data] of Object.entries(zip)) {
+      assert.match(name, /^hr\/pages\/0003-[^/]+\//, name);
+      assert.ok(all.get(name.slice(3))?.equals(Buffer.from(data)), `${name}: byte for byte the application export's file`);
+    }
+    const text = (await a.get(`/builder/apps/${hrId}/pages/${PAGE + 1}/text`)).body;
+    assert.doesNotMatch(text, /<script>alert\(206\)|<img src=x/);
+    assert.match(text, /&lt;\/code&gt;&lt;\/pre&gt;&lt;script&gt;alert\(206\)/);
+    assert.match(text, /&lt;img src=x onerror=alert\(206\)&gt;/);
+  });
+});

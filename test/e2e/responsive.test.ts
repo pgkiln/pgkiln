@@ -1098,6 +1098,8 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
         // (sprint 142, AP-8) Shared Components → JSON sources (the list, HR's EMP_PROFILE with its arrays and DDL, a new one) and Table Properties › Document view
         json_sources: `/builder/apps/${appId}/json-sources`, json_source: `/builder/apps/${appId}/json-sources/source?name=EMP_PROFILE`,
         json_source_new: `/builder/apps/${appId}/json-sources/source`, document_view: '/builder/sql/objects/document?o=hr.dept',
+        // (sprint 206, AX-5) the Page Designer's Utilities on the open page: View as text with the page checksum, the copy form of the page
+        page_text: `/builder/apps/${appId}/pages/3/text`, page_copy: `/builder/apps/${appId}/copy-page?from=${appId}&page=3`,
       };
       await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by, note) values ($1, 31, 'e2e_other_developer', 'reworking the shortcuts') on conflict do nothing`, [appId]);
       await owner.query(`insert into meta.dev_comment (app_id, page_no, author, body) values ($1, 31, 'e2e_other_developer', $2), ($1, 0, 'e2e_other_developer', 'An application comment')`, [appId, 'A long comment without spaces: ' + 'x'.repeat(120)]);
