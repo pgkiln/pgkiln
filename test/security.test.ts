@@ -2432,11 +2432,13 @@ describe('sprint 30', () => {
   });
 
   test('streamed REST collections: authentication, roles and limits as before; a failure mid-stream cuts the response', async () => {
+    const FAIL_LOCK = 30030;
     const handlers = [
       { method: 'GET', path: 'open', type: 'collection', auth: 'public', source: 'select g as n from generate_series(1, 2000) g order by g' },
       { method: 'GET', path: 'closed', type: 'collection', source: 'select g as n from generate_series(1, 10) g' },
       { method: 'GET', path: 'admins', type: 'collection', roles: ['nobody_has_this_role_30'], source: 'select g as n from generate_series(1, 10) g' },
-      { method: 'GET', path: 'fails', type: 'collection', auth: 'public', source: 'select 1 / (150 - g) as x from generate_series(1, 300) g' },
+      // rows 1 to 149, then a division by zero once the test lets it (its advisory lock): after the first batch went out
+      { method: 'GET', path: 'fails', type: 'collection', auth: 'public', source: `select case when g < 150 then g else 1 / (select 0 from pg_advisory_xact_lock_shared(${FAIL_LOCK})) end as n from generate_series(1, 300) g` },
       { method: 'GET', path: 'broken', type: 'collection', auth: 'public', source: 'select * from no_such_table_30' },
     ];
     await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'sec30', 'Sprint 30', $2)
@@ -2458,11 +2460,41 @@ describe('sprint 30', () => {
       const broken = await get('broken');
       assert.equal(broken.statusCode, 500);
       assert.doesNotMatch(broken.body, /no_such_table_30/);
-      // past the first batch the response has started: it ends short, never as complete JSON
-      const fails = await get('fails?limit=300').then((r) => r.body, () => null);
-      if (fails !== null) {
+      // past the first batch the response has started: it ends short, never as complete JSON. (sprint 200) Over HTTP, so
+      // the failure comes only after the client has the first batch: the second batch waits for the test's advisory
+      // lock (before, an error that came before Fastify had started the response made a complete JSON error instead)
+      const { default: pg } = await import('pg');
+      const { createServer } = await import('node:http');
+      const lock = new pg.Client({ connectionString: process.env.DATABASE_URL });
+      await lock.connect();
+      const server = createServer((req, res) => app.routing(req, res));
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      try {
+        await lock.query('select pg_advisory_lock($1)', [FAIL_LOCK]);
+        const res = await fetch(`http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}/a/hr/rest/sec30/fails?limit=300`);
+        assert.equal(res.status, 200);
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let fails = '';
+        while (!fails.includes('{"n":100}')) {
+          const { done, value } = await reader.read();
+          assert.ok(!done, `the first batch arrives before the response ends: ${fails.slice(0, 200)}`);
+          fails += decoder.decode(value, { stream: true });
+        }
+        assert.match(fails, /^\{"items":\[\{"n":1\},\{"n":2\},/);
+        // the second batch reaches row 150 now
+        await lock.query('select pg_advisory_unlock($1)', [FAIL_LOCK]);
+        for (;;) {
+          const r = await reader.read().catch(() => ({ done: true, value: undefined }));
+          if (r.done) break;
+          fails += decoder.decode(r.value, { stream: true });
+        }
         assert.throws(() => JSON.parse(fails));
         assert.doesNotMatch(fails, /has_more/);
+        assert.doesNotMatch(fails, /\{"n":150\}|division by zero/);
+      } finally {
+        await lock.end();
+        await new Promise((r) => server.close(r));
       }
     } finally {
       await owner.query(`delete from meta.rest_module where app_id = $1 and name = 'sec30'`, [appId]);
