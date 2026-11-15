@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-11-15
+
 ### Added
 - **Sign in to an application with a passkey alone** (sprint 199, NX-U6; beyond APEX, whose sign-in page has no
   passkeys): **Settings → Sign-in → Users may sign in with a passkey alone** (off by default) puts **Sign in with a

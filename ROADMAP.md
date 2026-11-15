@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.100.0 (November 2026): sub regions with tabs and flexbox containers (NX-F2), create an application in one field (NX-U1), the Pages report as the application home and one Save in the Page Designer (NX-U4, NX-U5), and Settings across the window's width with section links and the security checklist beside the form (NX-U3).
+- **Current release:** 0.101.0 (November 2026): application users sign in with a passkey alone, with the application's look on the sign-in card (NX-U6); the SQL Workshop's developer login reads none of pgkiln's own tables and developer passwords need 12 characters (SEC-1 to SEC-3); and fixes for an empty page sent now and then and for the offline prefetch overwriting session state.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
