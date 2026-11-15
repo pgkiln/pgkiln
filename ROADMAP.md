@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.99.0 (November 2026): page aliases and a Pages report with type, updated, updated by, filters and a column chooser (NX-F3), builder tokens for the command line and a remote MCP server (NX-F4), and from Oracle to pgkiln with `import-apex --check` and a tested ora2pg recipe (NX-F5).
+- **Current release:** 0.100.0 (November 2026): sub regions with tabs and flexbox containers (NX-F2), create an application in one field (NX-U1), the Pages report as the application home and one Save in the Page Designer (NX-U4, NX-U5), and Settings across the window's width with section links and the security checklist beside the form (NX-U3).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

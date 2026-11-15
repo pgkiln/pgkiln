@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-11-15
+
 ### Added
 - **Sub regions** (sprint 195, NX-F2; APEX: Parent Region): a region can sit inside another region of its page, one
   level deep, and the parent's template decides how they show: **Tabs Container** (new; one tab per sub region, the
