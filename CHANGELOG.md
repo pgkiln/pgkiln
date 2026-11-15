@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Page Designer: menus for the open page** (sprint 206, AX-5; as APEX's Page Designer Create and Utilities menus):
+  *Create → Copy this page* opens Create page as copy with the page already chosen; *Create → Issue for this page*
+  opens a new Team Development issue with the application and page filled in. *Utilities → History of this page*
+  opens the change history filtered to the page; *Utilities → View as text* shows the page's part of the export in the
+  text layout, read-only, with its *Page checksum*; *Utilities → Export this page* downloads the page's folder of the
+  text export as a zip (to bring it back, replace the page's folder in an application exported with `--format text`
+  and import that application). All entries are links: keyboard and no-JavaScript friendly; access is the
+  application's.
+
+### Added
 - **Recently edited pages and Copy application on the application home** (sprint 203, AX-6; as APEX): the side column
   lists, under Tasks, the five pages changed last (yours first), each with how long ago (and who, for another
   developer's change), linking into the Page Designer. Application Utilities → *Recently updated pages* names each page
