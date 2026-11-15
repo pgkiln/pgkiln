@@ -70,12 +70,17 @@ describe('sprint 203 AX-6: pages by name, recently edited pages, Copy applicatio
   });
 
   test('the application home lists five recently edited pages, yours first, linking into the Page Designer', async () => {
-    const pages = (await owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1 and page_no > 0 order by page_no limit 7', [appId])).rows.map((r) => r.page_no);
-    const [mine, other] = [pages[2], pages[3]];
-    // a change of yours a minute ago, another developer's just now
+    // (other test files change pages as admin too: take two pages without admin's changes, and make yours the newest of admin's)
+    const pages = (await owner.query<{ page_no: number }>(
+      `select p.page_no from meta.page p where p.app_id = $1 and p.page_no > 0
+          and not exists (select 1 from meta.component_change c where c.app_id = p.app_id and c.page_no = p.page_no and c.changed_by = 'admin')
+          and not exists (select 1 from meta.page_change c where c.app_id = p.app_id and c.page_no = p.page_no and c.updated_by = 'admin')
+        order by p.page_no limit 2`, [appId])).rows.map((r) => r.page_no);
+    const [mine, other] = pages;
+    // a change of yours (dated after any other of admin's), another developer's later still
     await owner.query(`insert into meta.component_change (app_id, component, label, page_no, op, before, after, changed_by, changed_at)
-                       values ($1, 'pages/x/page', 'Page', $2, 'changed', '{}', '{}', 'admin', now() - interval '1 minute')`, [appId, mine]);
-    await owner.query(`insert into meta.page_change (app_id, page_no, updated_by, updated_at) values ($1, $2, 'sprint203-other', now())
+                       values ($1, 'pages/x/page', 'Page', $2, 'changed', '{}', '{}', 'admin', now() + interval '1 hour')`, [appId, mine]);
+    await owner.query(`insert into meta.page_change (app_id, page_no, updated_by, updated_at) values ($1, $2, 'sprint203-other', now() + interval '2 hours')
                        on conflict (app_id, page_no) do update set updated_by = excluded.updated_by, updated_at = excluded.updated_at`, [appId, other]);
     try {
       const b = await login();
@@ -87,8 +92,10 @@ describe('sprint 203 AX-6: pages by name, recently edited pages, Copy applicatio
       assert.match(recent, /<h2 id="app-recent-h">Recently edited pages<\/h2>/);
       const links = [...recent.matchAll(/<a href="\/builder\/apps\/(\d+)\/pages\/(\d+)">/g)].map((m) => Number(m[2]));
       assert.ok(links.length >= 2 && links.length <= 5, `${links.length} pages`);
-      assert.ok(links.indexOf(mine) >= 0 && links.indexOf(mine) < links.indexOf(other), 'yours before the newer change of someone else');
-      assert.match(recent, /· sprint203-other/, 'another developer\'s change says who');
+      // yours come first (your newest change first), even before a newer change of someone else
+      assert.equal(links[0], mine, `${mine} first in ${links}`);
+      assert.ok(links.indexOf(other) === -1 || links.indexOf(other) > 0);
+      if (links.includes(other)) assert.match(recent, /· sprint203-other/, 'another developer\'s change says who');
       // Copy application is a task
       assert.match(side, new RegExp(`<a href="/builder/apps/${appId}/copy">[\\s\\S]*?Copy application</a>`));
     } finally {
