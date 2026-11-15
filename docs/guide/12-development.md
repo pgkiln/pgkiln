@@ -477,7 +477,7 @@ src/
                            responses, @mentions, history), labels and groups, milestones, templates, the set-up wizard; Make an issue
                            from feedback and developer comments; pageIssuesNote (Page Designer), appIssues (App Home), teamHomeBlock
                            (Workspace home). Every id from a request is looked up in the current workspace
-    region-help.ts         the Attributes (JSON) help per region type, with links to the guide
+    region-help.ts         the help of a region's settings per region type (Utilities → Show as JSON), with links to the guide
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel);
                            serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118)
@@ -570,6 +570,13 @@ src/
     layouts.ts             report layouts: logo upload, PDF preview
     automations.ts         automations: actions (add, reorder), next run, Run now, run history with errors per row
     report-settings.ts     page designer: report settings form (columns, link, selection, PDF)
+    settings-save.ts       (sprint 202, AX-2) the Attributes tab in the property editor's one form: embedSettings() turns a region's
+                           settings forms into groups of form#pd-form (controls named "<key>:<field>", form="pd-form", no Save of
+                           their own), settingsBodies() takes the post apart, settingsRoute() each form's own route; the savers
+                           (saveReportSettings, saveRegionSettings, …) and saveRegionAttributes() are in the forms' modules
+    type-names.ts          (sprint 202, AX-3) the Page Designer's type names in the builder language: optionName(kind, field, value)
+                           (region/item/button types from the gallery's labels; dynamic action events and actions, process,
+                           validation and computation types, region templates: pd.* keys); componentForm's selects and the tree
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check

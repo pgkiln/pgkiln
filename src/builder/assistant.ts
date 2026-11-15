@@ -6,7 +6,8 @@ import { aiFilterProblems } from '../runtime/ai-filter.ts';
 import { assistantProblems, type AssistantConfig } from '../runtime/assistant.ts';
 import type { Session } from '../session.ts';
 import { agentOptions } from './ai-agents.ts';
-import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { BASE, csrf, type Req } from './ui.ts';
+import { settingsRoute, type SettingsSaver } from './settings-save.ts';
 import { scopedTx as tx } from './i18n.ts';
 
 // Page designer → an AI assistant region → Settings (service, prompts,
@@ -68,14 +69,13 @@ export async function assistantSettingsForm(pageId: number, appId: number, r: { 
       </div>
       <div class="field"><label class="check"><input type="checkbox" name="public" value="true"${cfg.public ? raw(' checked') : ''}> ${tx('asst.also_for_users_who_are')}</label></div></fieldset>
       <fieldset class="prop-group"><legend>${tx('asst.context_and_tools')}</legend>
-        <div class="field"><label class="label" for="${id('context')}">${tx('asst.context_queries_json')}</label>
+        <div class="field"><label class="label" for="${id('context')}">${tx('asst.context_queries')}</label>
           <textarea id="${id('context')}" name="context" rows="5" class="code" spellcheck="false">${json(cfg.context)}</textarea>
           <small class="help">${tx.code('asst.run_before_each_question_their')}</small></div>
-        <div class="field"><label class="label" for="${id('tools')}">${tx('asst.tools_json')}</label>
+        <div class="field"><label class="label" for="${id('tools')}">${tx('asst.tools')}</label>
           <textarea id="${id('tools')}" name="tools" rows="10" class="code" spellcheck="false">${json(cfg.tools)}</textarea>
           <small class="help">${tx.code('asst.the_model_calls_them_when')}</small></div>
       </fieldset>
-      <div class="buttons"><button class="btn btn-hot">${tx('asst.save_ai_assistant_settings')}</button></div>
     </form>`;
 }
 
@@ -151,37 +151,34 @@ export async function aiFilterSettingsForm(pageId: number, appId: number, r: { i
           <input id="${id('placeholder')}" name="placeholder" maxlength="200" value="${cfg.placeholder ?? ''}"></div>
       </div>
       <div class="field"><label class="check"><input type="checkbox" name="public" value="true"${cfg.public ? raw(' checked') : ''}> ${tx('asst.also_for_users_who_are_2')}</label></div>
-      <div class="buttons"><button class="btn">${tx('asst.save')}</button></div>
     </form>`;
 }
 
 export async function assistantBuilderRoutes(app: FastifyInstance) {
-  const regionOf = async (pid: string, rid: string, type: string) =>
-    /^\d{1,9}$/.test(pid) && /^\d{1,9}$/.test(rid)
-      ? owner.one<{ id: number; config: Config; app_id: number }>(
-          `select r.id, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = $3`, [rid, pid, type])
-      : undefined;
+  app.post(`${BASE}/pages/:pid/region/:rid/assistant`, (req: Req, reply) => settingsRoute(req, reply, saveAssistantSettings));
+  app.post(`${BASE}/pages/:pid/region/:rid/ai-filter`, (req: Req, reply) => settingsRoute(req, reply, saveAiFilterSettings));
+}
 
-  app.post(`${BASE}/pages/:pid/region/:rid/assistant`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params as { pid: string; rid: string };
+const regionOf = async (pid: string, rid: string, type: string) =>
+  /^\d{1,9}$/.test(pid) && /^\d{1,9}$/.test(rid)
+    ? owner.one<{ id: number; config: Config; app_id: number }>(
+        `select r.id, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = $3`, [rid, pid, type])
+    : undefined;
+
+/** (sprint 202) the AI assistant settings' save: its own route and the Page Designer's one Save (settings-save.ts) */
+export const saveAssistantSettings: SettingsSaver = async (pid, rid, body) => {
     const r = await regionOf(pid, rid, 'ai_assistant');
-    if (!r) return reply.code(404).send('Not found');
-    const { config, errors } = await mergeAssistantSettings(r.app_id, r.config ?? {}, (req.body ?? {}) as Body);
+    if (!r) return null;
+    const { config, errors } = await mergeAssistantSettings(r.app_id, r.config ?? {}, body as Body);
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    if (errors.length) flash(s, `Saved, but: ${errors.join(' ')}`, 'error');
-    else flash(s, tx('asst.settings_saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
+    return errors.length ? { message: `Saved, but: ${errors.join(' ')}`, error: true } : { message: tx('asst.settings_saved') };
+};
 
-  app.post(`${BASE}/pages/:pid/region/:rid/ai-filter`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params as { pid: string; rid: string };
+/** (sprint 202) a report's "Ask in your own words" settings' save */
+export const saveAiFilterSettings: SettingsSaver = async (pid, rid, body) => {
     const r = await regionOf(pid, rid, 'report');
-    if (!r) return reply.code(404).send('Not found');
-    const b = (req.body ?? {}) as Body;
+    if (!r) return null;
+    const b = body as Body;
     const config: Config = { ...(r.config ?? {}) };
     const service = (b.service ?? '').trim().toUpperCase();
     if (!service) delete config.ai_filter;
@@ -191,11 +188,7 @@ export async function assistantBuilderRoutes(app: FastifyInstance) {
       config.ai_filter = { ...(service === '-' ? {} : { service }), ...(placeholder ? { placeholder } : {}), ...(b.public === 'true' ? { public: true } : {}) };
     }
     const errors = aiFilterProblems(config.ai_filter);
-    if (errors.length) flash(s, errors.join(' '), 'error');
-    else {
-      await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-      flash(s, tx('asst.settings_saved'));
-    }
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
-}
+    if (errors.length) return { message: errors.join(' '), error: true };
+    await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
+    return { message: tx('asst.settings_saved') };
+};

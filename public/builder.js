@@ -83,7 +83,8 @@
     // boxes marked data-tabs-remember reopen the tab used last (the gallery, the centre tabs)
     const remembered = box.hasAttribute('data-tabs-remember') && store.get(`tab.${key}`);
     const r = remembered ? panels.findIndex((p) => p.id === remembered) : -1;
-    if (r >= 0) active = r;
+    // (sprint 202) a panel marked data-tab-force opens even so (the Page Designer's Show as JSON)
+    if (r >= 0 && !panels[active]?.hasAttribute('data-tab-force')) active = r;
     select(Math.max(0, active), false);
     box._untab = () => {
       list.remove();
@@ -508,9 +509,10 @@
     const save = document.querySelector('.tb-save');
     const form = save && document.getElementById(save.getAttribute('form'));
     if (form) {
-      const dirty = () => save.classList.add('is-dirty');
-      form.addEventListener('input', dirty);
-      form.addEventListener('change', dirty);
+      // (sprint 202) the Attributes tab's and Show as JSON's fields belong to the form through form=, outside its element
+      const dirty = (e) => { if (e.target?.form === form) save.classList.add('is-dirty'); };
+      document.addEventListener('input', dirty);
+      document.addEventListener('change', dirty);
       // (UX-2) Ctrl+S saves; leaving with unsaved changes asks first (saving doesn't)
       let submitting = false;
       form.addEventListener('submit', () => (submitting = true));

@@ -14,7 +14,10 @@ import { regionConfigHelp } from './region-help.ts';
 import { parseIncludes } from './static-files.ts';
 import { pageAliasProblem, type AliasProblem } from '../page-alias.ts';
 import type { BuilderKey } from './i18n.ts';
-import { regionSettingsForm } from './region-settings.ts';
+import { regionSettingsForm, saveRegionAttributes } from './region-settings.ts';
+import { embedSettings } from './settings-save.ts';
+import { optionName, typeName } from './type-names.ts';
+import { codeAttrs } from './code-editor.ts';
 import { usedInPanel } from './search.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
@@ -44,8 +47,9 @@ const firstLine = (text: string | null | undefined, max = 90) => {
 };
 
 /** A titled panel that builder.js turns into a tab of the surrounding [data-tabs]. */
-const tab = (id: string, title: Raw | string, body: Raw | Raw[] | string, active = false, ic = '') =>
-  html`<section class="tab-panel" id="${id}" data-tab${active ? raw(' data-tab-active') : ''}><h2 class="tab-title">${ic ? bicon(ic) : ''}<span>${title}</span></h2>${body}</section>`;
+/** active 'force': opened even where the box reopens the tab used last (Utilities → Show as JSON) */
+const tab = (id: string, title: Raw | string, body: Raw | Raw[] | string, active: boolean | 'force' = false, ic = '') =>
+  html`<section class="tab-panel" id="${id}" data-tab${active ? raw(active === 'force' ? ' data-tab-active data-tab-force' : ' data-tab-active') : ''}><h2 class="tab-title">${ic ? bicon(ic) : ''}<span>${title}</span></h2>${body}</section>`;
 
 export async function designerRoutes(app: FastifyInstance) {
   await arrangeRoutes(app);
@@ -121,7 +125,8 @@ export async function designerRoutes(app: FastifyInstance) {
       const words = sc ? conditionWords(tx, sc) : tx('pd.badge.condition');
       return html`<span class="pd-tag" title="${words}" data-condition="${sc?.condition_type ?? ''}">${icon('filter')}<span class="sr-only">${words}</span></span>`;
     };
-    const regionTitle = (r: any) => r.title ?? `(${r.type})`;
+    // (sprint 202, AX-3) types by their names (Interactive Report, Select List, Submit Page …), never their codes
+    const regionTitle = (r: any) => r.title ?? `(${typeName('region', r.type)})`;
 
     // ------------------------------------------------------------ left: component tree
     // (sprint 77) data-kind and data-id: the node's context menu (Duplicate, Copy to other page, Delete…) and icon colour
@@ -132,8 +137,8 @@ export async function designerRoutes(app: FastifyInstance) {
     const folder = (label: string, children: Raw[] | Raw, open = true) =>
       html`<li${open ? '' : raw(' data-collapsed')}><span class="pd-node pd-folder"><span class="pd-label">${label}</span></span><ul>${children}</ul></li>`;
     const none = (text: string) => html`<li class="pd-empty">${text}</li>`;
-    const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, i.type);
-    const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, b.action);
+    const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, typeName('item', i.type));
+    const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, typeName('button', b.action));
     const subsOf = (r: any) => (r.parent_id == null ? rows.region.filter((x) => x.parent_id === r.id) : []);
     const regionLeaf = (r: any, next: any): Raw => {
       const items = rows.item.filter((i) => i.region_id === r.id);
@@ -145,7 +150,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const kids = [...(subs.length ? [folder(tx('pd.tree.sub_regions'), subs.map((x, i) => regionLeaf(x, subs[i + 1])))] : []),
         ...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
         ...bySlot.map(([sl, list]) => folder(sl === 'region' ? tx('pd.tree.buttons') : tx('pd.tree.buttons_at', { slot: slotLabel(sl) }), list.map(buttonLeaf)))];
-      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${r.type})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${r.type}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${typeName('region', r.type)})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${typeName('region', r.type)}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
     const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
@@ -162,7 +167,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const submitComps = rows.computation.filter((x) => x.point !== 'before_header');
     const headerBranches = rows.branch.filter((x) => x.point === 'before_header');
     const branchNote = (b: any) => `${b.when_button ? `${b.when_button}: ` : ''}→ ${b.target_type === 'url' ? b.target_url : tx('pd.page_n', { n: b.target_page ?? p.page_no })}`;
-    const compLeaf = (x: any) => leaf('computation', x, icon('activity'), x.item_name, x.type);
+    const compLeaf = (x: any) => leaf('computation', x, icon('activity'), x.item_name, optionName('computation', 'type', x.type) ?? x.type);
     const branchLeaf = (x: any) => leaf('branch', x, bicon('right'), x.name, branchNote(x));
     const preRendering = [...headerBranches.map(branchLeaf), ...headerComps.map(compLeaf), ...loadProcs.map((x) => leaf('process', x, icon('code'), x.name))];
     const createBar = (links: [string, string][]) =>
@@ -189,7 +194,8 @@ export async function designerRoutes(app: FastifyInstance) {
         </form>
       </dialog>`;
     const events: [string, string][] = [['change', tx('pd.event.change')], ['click', tx('pd.event.click')], ['load', tx('pd.event.load')], ['menu_entry', tx('pd.event.menu_entry')]];
-    const daLeaf = (d: (typeof rows.dynamic_action)[number]) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${d.action}`);
+    const daAction = (d: any) => optionName('dynamic_action', 'action', d.action) ?? d.action;
+    const daLeaf = (d: (typeof rows.dynamic_action)[number]) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.trigger_element ?? ''} → ${daAction(d)}`);
     // (sprint 115) the other events (focus, custom, before_submit, …) in one folder, when there are any
     const others = rows.dynamic_action.filter((d) => !events.some(([ev]) => ev === d.event));
     const dynamicActions = html`${createBar([['dynamic_action', kindLabel('dynamic_action')]])}
@@ -198,7 +204,7 @@ export async function designerRoutes(app: FastifyInstance) {
           const list = rows.dynamic_action.filter((d) => d.event === ev);
           return folder(tx('pd.tree.events', { event: label }), list.length ? list.map(daLeaf) : none(tx('common.none')), list.length > 0);
         })}
-        ${others.length ? folder(tx('pd.tree.events', { event: tx('pd.event.other') }), others.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${d.event}: ${d.trigger_element ?? ''} → ${d.action}`)), true) : ''}
+        ${others.length ? folder(tx('pd.tree.events', { event: tx('pd.event.other') }), others.map((d) => leaf('dynamic_action', d, icon('bolt'), d.name, `${optionName('dynamic_action', 'event', d.event) ?? d.event}: ${d.trigger_element ?? ''} → ${daAction(d)}`)), true) : ''}
       </ul>`;
     // after processing: the branches in sequence, then (when none applies) the pressed button's target page
     const afterBranches = rows.branch.filter((x) => x.point !== 'before_header');
@@ -265,7 +271,7 @@ export async function designerRoutes(app: FastifyInstance) {
           <span class="pd-region-meta">${r.columns}/12</span>
         </div>
         <div class="pd-region-body">
-          <div class="pd-region-type">${tx.dyn(`gallery.region.${r.type}`, REGION_LABELS[r.type]?.[0] ?? r.type)}${r.template !== 'standard' ? ` · ${r.template}` : ''}</div>
+          <div class="pd-region-type">${typeName('region', r.type)}${r.template !== 'standard' ? ` · ${optionName('region', 'template', r.template) ?? r.template}` : ''}</div>
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
           ${buttonSlots(r)}
@@ -382,11 +388,24 @@ export async function designerRoutes(app: FastifyInstance) {
       const spec = COMPONENTS[kind];
       const row = rows[kind].find((r) => String(r.id) === cid);
       if (row) {
-        heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${kindLabel(kind)}: ${spec.summary(row)}</span>`;
-        const settings = kind === 'region' ? await regionSettingsForm(p.id, p.app_id, row, s) : '';
+        heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${kindLabel(kind)}: ${kind === 'region' ? regionTitle(row) : spec.summary(row)}</span>`;
+        // (sprint 202, AX-2) the Attributes tab is part of the property editor's form: the toolbar's Save saves both tabs.
+        // Utilities → Show as JSON shows the region's settings as JSON instead (every key, also those without a field)
+        const asJson = kind === 'region' && req.query.json === '1';
+        const settings = kind === 'region' && !asJson ? embedSettings(await regionSettingsForm(p.id, p.app_id, row, s), formId, row.type) : '';
+        const jsonView = asJson ? (() => {
+          const own = regionConfigHelp(row.type);
+          const text = row.config && typeof row.config === 'object' && Object.keys(row.config).length ? JSON.stringify(row.config, null, 2) : '';
+          return html`<div class="component-form pd-json"><p><a href="${url(`c=region-${row.id}`)}">${tx('pd.json.back')}</a></p>
+            <div class="field" data-wide data-prop="config"><label class="label" for="f_region_config">${tx('pd.json.field')}</label>
+              <textarea id="f_region_config" name="config" form="${formId}" class="code" rows="16" spellcheck="false"${codeAttrs('region', { name: 'config', kind: 'json' }, row)}>${text}</textarea>
+              <small class="help">${own.text}${own.url ? html` <a href="${own.url}" target="_blank" rel="noopener">Guide ▸</a>` : ''}</small>
+              <small class="help">${tx('pd.json.help')}</small></div></div>`;
+        })() : '';
         props = html`${peTabs([
-          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, '', { id: formId }), true),
+          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, '', { id: formId }), !asJson),
           ...(settings ? [tab('pd-r-attrs', tx('pd.attributes'), settings)] : []),
+          ...(jsonView ? [tab('pd-r-json', tx('pd.json.tab'), jsonView, 'force')] : []),
           ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', tx('pd.jobs'), await processJobsPanel(row.id))] : []),
         ])}
           ${await usedInPanel(p.app_id, kind, row)}
@@ -482,9 +501,13 @@ export async function designerRoutes(app: FastifyInstance) {
         </div><div class="menu-section menu-links">
           <a href="${BASE}/apps/${p.app_id}/create-page">${icon('file')} ${tx('pd.menu.page')}</a>
         </div></div></details>`;
+    // (sprint 202, AX-2) Show as JSON: the selected region's settings as JSON, in place of its Attributes tab
+    const selRegion = kind === 'region' && !newKind ? rows.region.find((r) => String(r.id) === cid) : undefined;
     const utilMenu = html`<details class="menu tb-menu">
         <summary class="tb-btn" title="${tx('pd.menu.utilities')}">${bicon('wrench')}${bicon('down', 'icon tb-caret')}<span class="sr-only">${tx('pd.menu.utilities')}</span></summary>
-        <div class="menu-panel align-right"><div class="menu-section menu-links">
+        <div class="menu-panel align-right">
+          ${selRegion ? html`<div class="menu-section menu-links"><a href="${url(`c=region-${selRegion.id}&json=1`)}"${req.query.json === '1' ? raw(' aria-current="true"') : ''}>${icon('code')} ${tx('pd.menu.show_json')}</a></div>` : ''}
+          <div class="menu-section menu-links">
           <a href="${BASE}/apps/${p.app_id}/advisor">${icon('check')} ${tx('app.tab.advisor')}</a>
           <a href="${BASE}/apps/${p.app_id}/search?q=P${p.page_no}_">${icon('search')} ${tx('pd.menu.search_items')}</a>
           <a href="${BASE}/apps/${p.app_id}/shared">${bicon('shapes')} ${tx('pd.tab.shared')}</a>
@@ -592,13 +615,18 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!s) return;
     const { pid, kind, cid } = req.params;
     if (!PAGE_KINDS.includes(kind)) return reply.code(404).send('Unknown component type');
+    // (sprint 202) the Show as JSON view (a region's config without its Attributes tab) stays open after its Save
+    const json = kind === 'region' && cid && typeof req.body?.config === 'string' && !req.body.__settings ? '&json=1' : '';
     try {
       const id = await saveComponent(kind, 'page_id', pid, cid, req.body ?? {});
       flash(s, tr(s).dyn(`pd.saved.${kind}`, `${COMPONENTS[kind].label} saved.`));
-      return back(reply, s, `${BASE}/pages/${pid}?c=${kind}-${id}`);
+      // (sprint 202, AX-2) the toolbar's Save also sends the region's Attributes tab (settings-save.ts)
+      const problems = kind === 'region' && cid ? await saveRegionAttributes(pid, cid, req.body ?? {}, s) : [];
+      if (problems.length) flash(s, problems.join(' '), 'error');
+      return back(reply, s, `${BASE}/pages/${pid}?c=${kind}-${id}${json}`);
     } catch (e) {
       flash(s, (e as Error).message, 'error');
-      return back(reply, s, `${BASE}/pages/${pid}?${cid ? `c=${kind}-${cid}` : `new=${kind}`}`);
+      return back(reply, s, `${BASE}/pages/${pid}?${cid ? `c=${kind}-${cid}${json}` : `new=${kind}`}`);
     }
   });
 
