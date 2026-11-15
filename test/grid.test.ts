@@ -311,7 +311,7 @@ describe('grid regions on HR page 27', () => {
     await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
     const res = await dev.get(`/builder/pages/${pageId}?c=region-${R.Staff}`);
     assert.equal(res.statusCode, 200);
-    assert.match(res.body, /name="aggregates" value="sal=sum,avg,max; ename=count"/);
-    assert.match(res.body, /name="master_item" value="P27_DEPTNO"/);
+    assert.match(res.body, /name="settings:aggregates" value="sal=sum,avg,max; ename=count"/);
+    assert.match(res.body, /name="settings:master_item" value="P27_DEPTNO"/);
   });
 });
