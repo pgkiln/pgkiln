@@ -55,7 +55,7 @@ function detailOf(kind: string, r: any): string {
 
 interface ScItem { label: string; href: string; kind?: string }
 /** (sprint 124) A Shared Components link's text in the builder language: key sc.item.<its English label as a slug>. */
-const itemLabel = (tx: BuilderTranslate, label: string) => tx.dyn(`sc.item.${label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`, label);
+export const itemLabel = (tx: BuilderTranslate, label: string) => tx.dyn(`sc.item.${label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')}`, label);
 /** (sprint 124) A component type's name, singular or plural, in the builder language (comp.<kind>[.plural]). */
 const kindName = (tx: BuilderTranslate, kind: string, plural = false) => tx.dyn(`comp.${kind}${plural ? '.plural' : ''}`, plural ? COMPONENTS[kind].plural : COMPONENTS[kind].label);
 /**
@@ -68,10 +68,10 @@ export function sharedGroups(appId: number): { key: string; title: string; icon:
   const page = (path: string, label: string): ScItem => ({ label, href: `${BASE}/apps/${appId}/${path}` });
   return [
     { key: 'logic', title: 'Application Logic', icon: 'code', items: [t('app_item', 'Application Items'), t('app_process', 'Application Processes'), t('app_computation', 'Application Computations'), t('app_setting', 'Application Settings'), t('build_option', 'Build Options'), page('settings?tab=definition', 'Application Definition')] },
-    { key: 'security', title: 'Security', icon: 'shield', items: [{ label: 'Access Control', href: `${BASE}/apps/${appId}/shared?view=tree`, kind: 'access' }, settings('security', 'Authentication'), t('authz_scheme', 'Authorization Schemes'), settings('security', 'Security Attributes'), settings('signin', 'Sign-in and Session Management')] },
+    { key: 'security', title: 'Security', icon: 'shield', items: [{ label: 'Access Control', href: `${BASE}/apps/${appId}/shared?view=tree`, kind: 'access' }, settings('security', 'Authentication'), t('authz_scheme', 'Authorization Schemes'), settings('security', 'Security Attributes'), settings('signin', 'Sign-in and Session Management'), { label: 'Session State Protection', href: `${BASE}/apps/${appId}/settings?tab=errors#expire-bookmarks` }] },
     { key: 'other', title: 'Other Components', icon: 'layers', items: [t('lov', 'Lists of Values'), t('list', 'Lists'), t('list_entry', 'List Entries'), t('email_template', 'Email Templates'), t('shortcut', 'Shortcuts'), t('component_group', 'Component Groups'), t('supporting_script', 'Supporting Objects'), page('subscriptions', 'Subscriptions')] },
     { key: 'navigation', title: 'Navigation and Search', icon: 'compass', items: [t('nav_entry', 'Navigation Menu'), settings('ui', 'Navigation Bar List'), page('breadcrumbs', 'Breadcrumbs'), t('page_group', 'Page Groups'), t('search_config', 'Search Configurations')] },
-    { key: 'ui', title: 'User Interface', icon: 'grid', items: [page('theme', 'Themes and Theme Roller'), settings('ui', 'User Interface Attributes'), t('template_component', 'Template Components'), page('plugins', 'Plug-ins'), page('component-settings', 'Component Settings'), settings('pwa', 'Progressive Web App')] },
+    { key: 'ui', title: 'User Interface', icon: 'grid', items: [page('theme', 'Themes and Theme Roller'), settings('ui', 'User Interface Attributes'), page('templates', 'Templates'), t('template_component', 'Template Components'), page('plugins', 'Plug-ins'), page('component-settings', 'Component Settings'), settings('pwa', 'Progressive Web App')] },
     { key: 'files', title: 'Files and Reports', icon: 'file', items: [page('static-files', 'Static Application Files'), t('report_layout', 'Report Layouts'), t('report_query', 'Report Queries'), t('document_template', 'Document Templates')] },
     { key: 'data', title: 'Data Sources', icon: 'database', items: [t('rest_source', 'REST Data Sources'), t('web_credential', 'Web Credentials'), t('rest_module', 'RESTful Services'), t('data_load_def', 'Data Load Definitions'), page('json-sources', 'JSON Sources')] },
     { key: 'workflows', title: 'Workflows and Automations', icon: 'activity', items: [t('workflow_definition', 'Workflows'), t('task_definition', 'Task Definitions'), t('automation', 'Automations')] },
