@@ -5803,6 +5803,8 @@ export const de: BuilderMessages = {
   'lgp.minimal': 'Minimal',
   'lgp.create_a_login_page': 'Anmeldeseite erstellen',
   'lgp.offer_forgot_password': '„Passwort vergessen?“ anbieten',
+  'lgp.passkey_signin': "Benutzer dürfen sich nur mit einem Passkey anmelden",
+  'lgp.passkey_signin_help': "Zeigt „Mit einem Passkey anmelden“ über Benutzername und Passwort, für die Konten des Benutzerverzeichnisses (App users mit Benutzername und Passwort; nicht Identity Provider oder LDAP). Benutzer fügen einen Passkey unter {account} hinzu; der Authenticator muss sie verifizieren (Fingerabdruck, Gesicht, PIN), daher zählt der Passkey als beide Faktoren und es folgt kein zweiter Schritt. Erfordert JavaScript und einen Hostnamen, keine IP-Adresse.",
   'lgp.second_step': 'Zweiter Schritt',
   'lgp.my_account': 'Mein Konto',
   'lgp.not_available_yet': 'Noch nicht verfügbar:',

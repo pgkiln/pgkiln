@@ -839,6 +839,7 @@ export async function builderRoutes(app: FastifyInstance) {
             ${panel('signin')}${region(tx('st.signin'), html`<div class="st-cols"><div class="st-col">
             <h3 id="st-methods">${tx('st.methods')}</h3>
             <div class="st-checks"><div class="field"><label class="check"><input type="checkbox" name="local_login" value="true"${a.local_login ? raw(' checked') : ''}> ${tx('st.local')}</label></div>
+            ${signinFields.passkey}
             ${directories.length
               ? html`${directories.map((d) => html`<div class="field"><label class="check"><input type="checkbox" name="ldap_directories" value="${d.name}"${a.ldap_directories.includes(d.name) ? raw(' checked') : ''}> ${tx('st.ldap', { name: d.display_name })}${d.enabled ? '' : ` ${tx('st.disabled')}`}</label></div>`)}
                 <small class="help">${tx('st.ldap_help')}</small>`

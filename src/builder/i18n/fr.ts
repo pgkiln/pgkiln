@@ -5803,6 +5803,8 @@ export const fr: BuilderMessages = {
   'lgp.minimal': 'Minimal',
   'lgp.create_a_login_page': 'Créer une page de connexion',
   'lgp.offer_forgot_password': 'Proposer « Mot de passe oublié ? »',
+  'lgp.passkey_signin': "Les utilisateurs peuvent se connecter avec une clé d'accès seule",
+  'lgp.passkey_signin_help': "Affiche « Se connecter avec une clé d'accès » au-dessus du nom d'utilisateur et du mot de passe, pour les comptes de l'annuaire des utilisateurs (App users avec nom d'utilisateur et mot de passe activés ; pas les fournisseurs d'identité ni LDAP). Les utilisateurs ajoutent une clé d'accès dans {account} ; l'authentificateur doit les vérifier (empreinte, visage, code PIN), la clé compte donc pour les deux facteurs et aucune deuxième étape ne suit. Nécessite JavaScript et un nom d'hôte, pas une adresse IP.",
   'lgp.second_step': 'Seconde étape',
   'lgp.my_account': 'Mon compte',
   'lgp.not_available_yet': 'Pas encore disponible :',

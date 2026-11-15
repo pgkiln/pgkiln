@@ -1,0 +1,14 @@
+-- =====================================================================
+-- HR example, part 91: signing in with a passkey alone (migration 173,
+-- sprint 199; docs/guide/08-security.md "Signing in with a passkey alone")
+--
+-- HR's sign-in page shows "Sign in with a passkey" above the username
+-- and password. A user adds a passkey on My account (Two-step sign-in →
+-- Passkeys); after that one tap on the sign-in page signs them in,
+-- without typing a username: the browser offers the passkeys it holds
+-- for the site and the authenticator verifies the user (fingerprint,
+-- face, PIN), so no second step follows. The card shows HR's icon (its
+-- PWA icon, part 12) on the theme's header colour. Settings → Sign-in
+-- shows the same setting.
+-- =====================================================================
+update meta.app set passkey_signin = true where alias = 'hr';

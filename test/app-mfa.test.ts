@@ -148,7 +148,13 @@ describe('two-factor sign-in for application users', () => {
     const off = new Browser(app);
     await off.login('scott');
     assert.equal(await signedIn(off), true, 'off: no second step, even with an app');
-    assert.doesNotMatch((await off.get('/a/hr/account')).body, /id="two-step"/);
+    // (sprint 199) HR lets users sign in with a passkey alone (part 91): then My account keeps its passkeys part
+    await owner.query('update meta.app set passkey_signin = false where id = $1', [appId]);
+    try {
+      assert.doesNotMatch((await off.get('/a/hr/account')).body, /id="two-step"/);
+    } finally {
+      await owner.query('update meta.app set passkey_signin = true where id = $1', [appId]);
+    }
 
     // removing the app needs a code
     await setMfa('optional');

@@ -5808,6 +5808,8 @@ export const en = {
   'lgp.minimal': 'Minimal',
   'lgp.create_a_login_page': 'Create a login page',
   'lgp.offer_forgot_password': 'Offer "Forgot password?"',
+  'lgp.passkey_signin': "Users may sign in with a passkey alone",
+  'lgp.passkey_signin_help': "Shows “Sign in with a passkey” above the username and password, for the user directory's accounts (App users with username and password on; not identity providers or LDAP). Users add a passkey on {account}; the authenticator must verify them (fingerprint, face, PIN), so the passkey counts as both factors and no second step follows. Needs JavaScript and a host name, not an IP address.",
   'lgp.second_step': 'Second step',
   'lgp.my_account': 'My account',
   'lgp.not_available_yet': 'Not available yet:',

@@ -5803,6 +5803,8 @@ export const zhCN: BuilderMessages = {
   'lgp.minimal': '最简',
   'lgp.create_a_login_page': '创建登录页面',
   'lgp.offer_forgot_password': '提供“忘记密码?”',
+  'lgp.passkey_signin': "用户可以仅用通行密钥登录",
+  'lgp.passkey_signin_help': "在用户名和密码上方显示“使用通行密钥登录”，适用于用户目录中的账户（开启用户名和密码的 App users；不包括身份提供商或 LDAP）。用户在 {account} 中添加通行密钥；验证器必须验证用户（指纹、面容、PIN），因此通行密钥同时算作两个因素，不再需要第二步。需要 JavaScript 和主机名（不能是 IP 地址）。",
   'lgp.second_step': '第二步',
   'lgp.my_account': '我的账户',
   'lgp.not_available_yet': '尚不可用:',

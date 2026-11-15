@@ -5803,6 +5803,8 @@ export const pt: BuilderMessages = {
   'lgp.minimal': 'Mínimo',
   'lgp.create_a_login_page': 'Criar uma página de login',
   'lgp.offer_forgot_password': 'Oferecer «Esqueceu a senha?»',
+  'lgp.passkey_signin': "Os utilizadores podem entrar só com uma chave de acesso",
+  'lgp.passkey_signin_help': "Mostra «Entrar com uma chave de acesso» acima do utilizador e da palavra-passe, para as contas do diretório de utilizadores (App users com utilizador e palavra-passe ativos; não fornecedores de identidade nem LDAP). Os utilizadores adicionam uma chave de acesso em {account}; o autenticador tem de os verificar (impressão digital, rosto, PIN), por isso a chave conta como os dois fatores e não se segue um segundo passo. Requer JavaScript e um nome de anfitrião, não um endereço IP.",
   'lgp.second_step': 'Segundo passo',
   'lgp.my_account': 'Minha conta',
   'lgp.not_available_yet': 'Ainda não disponível:',
