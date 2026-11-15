@@ -1,7 +1,7 @@
 // Security regression tests. They run the real app (in-process, via
 // fastify.inject) against the development database with the HR sample:
 //   npm run setup && npm test
-import { after, afterEach, before, describe, test } from 'node:test';
+import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
@@ -16954,6 +16954,227 @@ describe('sprint 200 a refusal or not-found page the server sent itself keeps it
         assert.equal(r.statusCode, 503);
         assert.match(r.body, /<h1>Not available<\/h1><p>This application can&#39;t run: it has no database role of its own/);
       }
+    }
+  });
+});
+
+describe('sprint 199 NX-U6', () => {
+  // Signing in to an application with a passkey alone (src/runtime/passkey-signin.ts, migration 173): the challenge is
+  // bound to the session and single-use, the origin and RP ID are checked, the authenticator must verify the user, and
+  // the account rules (active, access, lockout) apply as for a password; every refusal gives one message and is logged.
+  type Key = InstanceType<typeof import('./authenticator.ts').Authenticator>;
+  let Authenticator: typeof import('./authenticator.ts').Authenticator;
+  let saved: { passkey_signin: boolean; mfa: string };
+  const USER = 'sec199_user';
+  const OTHER = 'sec199_noaccess';
+  const accounts = [USER, OTHER];
+  const addKey = async (username: string, key: Key) => {
+    const jwk = key.pub.export({ format: 'jwk' });
+    await owner.query(
+      `insert into meta.account_factor (account_id, kind, name, credential_id, public_key, alg, sign_count, rp_id, transports, last_used_at)
+       select id, 'passkey', 'Test', $2, $3, -7, 0, 'localhost', '{}', now() from meta.account where username = $1`,
+      [username, key.id.toString('base64url'), JSON.stringify({ kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y })]);
+  };
+  const failures = async (username: string | null) =>
+    Number((await owner.one(`select count(*) as n from meta.activity_log where app_id = $1 and event = 'login_failed' and username is not distinct from $2 and detail like 'passkey:%' and at > now() - interval '1 minute'`, [appId, username])).n);
+  const options = async (b: FileBrowser) => {
+    const r = await b.request('POST', '/a/hr/login/passkey/options', { __csrf: b.lastCsrf });
+    assert.equal(r.statusCode, 200, r.body);
+    return JSON.parse(r.body) as { challenge: string };
+  };
+  const unlock = () => owner.query(`insert into meta.activity_log (username, event, detail) values ($1, 'login_unlocked', 'test'), ($2, 'login_unlocked', 'test')`, accounts);
+  const signedIn = async (b: FileBrowser) => (await b.get('/a/hr/2')).statusCode === 200;
+
+  before(async () => {
+    ({ Authenticator } = await import('./authenticator.ts'));
+    saved = (await owner.one(`select passkey_signin, mfa from meta.app where id = $1`, [appId]))!;
+    for (const u of accounts) {
+      await owner.query('delete from meta.account where username = $1', [u]);
+      await owner.query(`insert into meta.account (username, password_hash) values ($1, meta.hash_password('Sec199-password!'))`, [u]);
+    }
+    await owner.query(`insert into meta.app_access (app_id, account_id, roles) select $1, id, '{}' from meta.account where username = $2`, [appId, USER]);
+    await owner.query(`update meta.app set passkey_signin = true, mfa = 'off' where id = $1`, [appId]);
+  });
+  beforeEach(async () => {
+    await owner.query(`update meta.app set passkey_signin = true where id = $1`, [appId]);
+    await owner.query(`update meta.account set active = true where username = any($1)`, [accounts]);
+    await owner.query(`delete from meta.account_factor where account_id in (select id from meta.account where username = any($1))`, [accounts]);
+    // each test starts without the failures of the one before (they count for the lockout by user and by address)
+    await owner.query(`delete from meta.activity_log where app_id = $1 and event in ('login_failed', 'login_locked') and (detail like 'passkey%' or username = any($2))`, [appId, accounts]);
+    await unlock();
+  });
+  after(async () => {
+    await owner.query(`delete from meta.activity_log where app_id = $1 and event in ('login_failed', 'login_locked') and (detail like 'passkey%' or username = any($2))`, [appId, accounts]);
+    await owner.query(`update meta.app set passkey_signin = $2, mfa = $3 where id = $1`, [appId, saved.passkey_signin, saved.mfa]);
+    for (const u of accounts) await owner.query('delete from meta.account where username = $1', [u]);
+  });
+
+  test('the right passkey signs in (the baseline the refusals below differ from)', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    const res = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...key.get((await options(b)).challenge) });
+    assert.equal(res.statusCode, 303);
+    assert.equal(await signedIn(b), true);
+  });
+
+  test('a challenge is single-use and bound to its session: a replayed answer and another session\'s challenge are refused', async () => {
+    const key = new Authenticator('es256', false); // a counter of 0 (synced passkeys): only the challenge stops a replay
+    await addKey(USER, key);
+    const a = new FileBrowser(app);
+    await a.get('/a/hr/login');
+    const answer = key.get((await options(a)).challenge);
+    assert.equal((await a.post('/a/hr/login/passkey', { __csrf: a.lastCsrf, ...answer })).statusCode, 303);
+    // the same answer in a new session, which asked for a challenge of its own
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    await options(b);
+    const replay = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...answer });
+    assert.equal(replay.statusCode, 401);
+    assert.match(replay.body, /The passkey did not sign you in/);
+    assert.equal(await signedIn(b), false);
+    // a session's challenge answered twice: the first attempt used it up, even when it failed
+    const c = new FileBrowser(app);
+    await c.get('/a/hr/login');
+    const ch = (await options(c)).challenge;
+    assert.equal((await c.post('/a/hr/login/passkey', { __csrf: c.lastCsrf, ...key.get(ch, 'http://evil.example:80') })).statusCode, 401);
+    assert.equal((await c.post('/a/hr/login/passkey', { __csrf: c.lastCsrf, ...key.get(ch) })).statusCode, 401, 'used up');
+    assert.equal(await signedIn(c), false);
+    // without asking for options at all
+    const d = new FileBrowser(app);
+    await d.get('/a/hr/login');
+    assert.equal((await d.post('/a/hr/login/passkey', { __csrf: d.lastCsrf, ...key.get(ch) })).statusCode, 401);
+  });
+
+  test('a wrong origin or relying party, a bad signature and an old counter are refused', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const other = new Authenticator();
+    const tries: [string, (c: string) => Record<string, string>][] = [
+      ['origin', (c) => key.get(c, 'http://evil.example:80')],
+      ['rp id', (c) => key.get(c, undefined, 'evil.example')],
+      ['signature', (c) => ({ ...other.get(c), credentialId: key.id.toString('base64url') })],
+      ['user handle', (c) => ({ ...key.get(c), userHandle: 'not-the-handle' })],
+      ['cross-origin type', (c) => ({ ...key.get(c), clientDataJSON: Buffer.from(JSON.stringify({ type: 'webauthn.create', challenge: c, origin: 'http://localhost:80' })).toString('base64url') })],
+    ];
+    for (const [what, answer] of tries) {
+      const b = new FileBrowser(app);
+      await b.get('/a/hr/login');
+      const res = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...answer((await options(b)).challenge) });
+      assert.equal(res.statusCode, 401, what);
+      assert.equal(await signedIn(b), false, what);
+    }
+    assert.equal(await failures(USER), tries.length, 'each one logged as a failed sign-in');
+    await unlock();
+    // the counter: an answer whose counter is not above the stored one
+    await owner.query(`update meta.account_factor set sign_count = 1000 where credential_id = $1`, [key.id.toString('base64url')]);
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    assert.equal((await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...key.get((await options(b)).challenge) })).statusCode, 401);
+    assert.equal(await signedIn(b), false);
+  });
+
+  test('the authenticator must verify the user (UV flag): presence alone is not enough', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    const res = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...key.get((await options(b)).challenge, undefined, undefined, 0x01) });
+    assert.equal(res.statusCode, 401);
+    assert.equal(await signedIn(b), false);
+    const log = await owner.one(`select detail from meta.activity_log where app_id = $1 and event = 'login_failed' and username = $2 order by id desc limit 1`, [appId, USER]);
+    assert.equal(log.detail, 'passkey: the authenticator did not verify the user');
+  });
+
+  test('a disabled account, an account without access and an unknown passkey get the same answer', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const stranger = new Authenticator();
+    await addKey(OTHER, stranger);
+    const nobody = new Authenticator();
+    await owner.query(`update meta.account set active = false where username = $1`, [USER]);
+    const bodies: string[] = [];
+    for (const [k, user] of [[key, USER], [stranger, OTHER], [nobody, null]] as [Key, string | null][]) {
+      const b = new FileBrowser(app);
+      await b.get('/a/hr/login');
+      const res = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...k.get((await options(b)).challenge) });
+      assert.equal(res.statusCode, 401, String(user));
+      assert.equal(await signedIn(b), false);
+      bodies.push(/<div class="alert alert-error" role="alert">([^<]*)<\/div>/.exec(res.body)?.[1] ?? '');
+      if (user) assert.equal(await failures(user), 1, `logged for ${user}`);
+    }
+    assert.equal(new Set(bodies).size, 1, 'one message');
+    assert.match(bodies[0], /The passkey did not sign you in/);
+  });
+
+  test('the lockout of failed sign-ins applies, also to the right passkey', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const max = (await import('../src/security.ts')).loginMaxFailuresPerUser();
+    for (let i = 0; i < max; i++)
+      await owner.query(`insert into meta.activity_log (app_id, username, event, ip, detail) values ($1, $2, 'login_failed', '203.0.113.9', 'test')`, [appId, USER]);
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    const res = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...key.get((await options(b)).challenge) });
+    assert.equal(res.statusCode, 429);
+    assert.equal(await signedIn(b), false);
+    await unlock();
+  });
+
+  test('setting off: the options and the sign-in refuse, and the page has no button', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    const ch = (await options(b)).challenge;
+    await owner.query(`update meta.app set passkey_signin = false where id = $1`, [appId]);
+    assert.doesNotMatch((await new FileBrowser(app).get('/a/hr/login')).body, /data-passkey/);
+    assert.equal((await b.request('POST', '/a/hr/login/passkey/options', { __csrf: b.lastCsrf })).statusCode, 404);
+    const res = await b.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...key.get(ch) });
+    assert.equal(res.statusCode, 403);
+    assert.equal(await signedIn(b), false);
+    // nor for other kinds of authentication, even with the column on
+    await owner.query(`update meta.app set passkey_signin = true, local_login = false where id = $1`, [appId]);
+    try {
+      assert.equal((await b.request('POST', '/a/hr/login/passkey/options', { __csrf: b.lastCsrf })).statusCode, 404);
+    } finally {
+      await owner.query(`update meta.app set local_login = true where id = $1`, [appId]);
+    }
+  });
+
+  test('CSRF: the options and the sign-in need the session\'s token; a signed-in session gets no options', async () => {
+    const key = new Authenticator();
+    await addKey(USER, key);
+    const b = new FileBrowser(app);
+    await b.get('/a/hr/login');
+    assert.equal((await b.request('POST', '/a/hr/login/passkey/options', { __csrf: 'wrong' })).statusCode, 403);
+    assert.equal((await b.request('POST', '/a/hr/login/passkey/options', {})).statusCode, 403);
+    const ch = (await options(b)).challenge;
+    const res = await b.post('/a/hr/login/passkey', { __csrf: 'wrong', ...key.get(ch) });
+    assert.equal(res.statusCode, 403);
+    assert.equal(await signedIn(b), false);
+    // a cross-site post without the cookie: a new session, no challenge, no sign-in
+    const other = new FileBrowser(app);
+    assert.equal((await other.post('/a/hr/login/passkey', { __csrf: b.lastCsrf, ...key.get(ch) })).statusCode, 403);
+    // signed in: no options
+    const c = new FileBrowser(app);
+    await c.get('/a/hr/login');
+    await c.post('/a/hr/login/passkey', { __csrf: c.lastCsrf, ...key.get((await options(c)).challenge) });
+    assert.equal(await signedIn(c), true);
+    assert.equal((await c.request('POST', '/a/hr/login/passkey/options', { __csrf: c.lastCsrf })).statusCode, 403);
+  });
+
+  test('the page escapes the application\'s name in the card and carries no inline script or style attribute', async () => {
+    const name = (await owner.one('select name from meta.app where id = $1', [appId])).name;
+    await owner.query(`update meta.app set name = '<img src=x onerror=alert(1)>', pwa = false where id = $1`, [appId]);
+    try {
+      const page = (await new FileBrowser(app).get('/a/hr/login')).body;
+      assert.doesNotMatch(page, /<img src=x/);
+      assert.match(page, /login-mark-letter" aria-hidden="true">&lt;<\/span>/);
+      assert.doesNotMatch(page, /<script>| style="| on[a-z]+="/);
+    } finally {
+      await owner.query(`update meta.app set name = $2, pwa = true where id = $1`, [appId, name]);
     }
   });
 });
