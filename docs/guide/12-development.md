@@ -591,6 +591,12 @@ src/
                            application and page checksums; Change history (filters, diffHtml of a change); the icon browser
                            /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application);
                            (sprint 203) deletedPageNames(): a deleted page's last recorded name (pages/NNNN/page.yaml in the history)
+    page-utilities.ts      (sprint 206, AX-5) the page designer's menus on the open page: pageCreateLinks() (Create → Copy this
+                           page: create-page.ts's copy form with ?from=&page=; Issue for this page: team.ts's new issue with
+                           ?app=&page=), pageUtilityLinks() (History of this page: utilities/history?page=; View as text, Page
+                           checksum, Export this page); GET /builder/apps/:app/pages/:no/text (the page's files of the text layout,
+                           read-only, and pageChecksums()) and …/export (filesToZip of pageFiles(): the page's folder, logged as
+                           page_export); no import of one page (its folder goes into a text export, which is imported)
     dependencies.ts        (sprint 138) Utilities → Database object dependencies: appDependencies() (the Advisor's fragments, each
                            parsed as the app role into a BEGIN ATOMIC temp function, one statement by the extended protocol;
                            pg_depend → tables, views, sequences, functions; missing objects from the parser's errors; privileges
@@ -843,6 +849,8 @@ test/
                            a blueprint drafted and reviewed
   e2e/ai-assistant.test.ts the AI assistant and report questions on HR page 38 in a browser (mock Claude), with and without JavaScript
   e2e/ai.test.ts           Generate text with AI on HR page 37 in a browser (mock Claude): dynamic actions without a submit, errors, no JavaScript
+  e2e/page-menus.test.ts   (206) page 3's Utilities → History of this page and Create → Copy this page with the keyboard, at 360 px and
+                           1366 px and without JavaScript; View as text fits a phone
 ```
 
 ## Builder texts in more languages
