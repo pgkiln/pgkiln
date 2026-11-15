@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- **Builder tokens are tied to their developer's sign-in** (sprint 204, NX-F4): a token keeps whether it was made after a
+  single sign-on (and through which provider or directory) and with a second factor, and is refused (403) once its
+  developer must use single sign-on or a second factor that sign-in did not have, or the identity it was made through is
+  unlinked; the token lists mark such tokens *Not usable*. Tokens made before 0.102 count as made the way the developer
+  signs in now. Migration 178.
+- **Every builder token call is logged** (sprint 204, NX-F4): the activity log keeps each call with the token's number
+  and name, the developer, the endpoint or tool, the application, the outcome and the HTTP status (refusals as
+  `forbidden`); Security → Builder tokens → **Calls** shows them per token, administrators see every developer's.
+- **Breached-password check** (sprint 204, SEC-3): Users → Account settings → *Refuse passwords known from data
+  breaches* (off by default) checks passwords developers and application users set or change against Have I Been
+  Pwned's k-anonymity range API: only 5 hex characters of the SHA-1 leave the server, with `Add-Padding`, through the
+  outbound guard, with a 3-second limit. It fails open with a logged warning and is never applied at sign-in.
+
 ## [0.101.0] - 2026-11-15
 
 ### Added
