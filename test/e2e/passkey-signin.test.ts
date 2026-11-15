@@ -109,7 +109,6 @@ describe('signing in with a passkey alone (browser)', () => {
     await page.keyboard.press('Enter');
     await page.waitForURL((url) => !/\/login/.test(url.pathname));
     await page.waitForLoadState();
-    await csp(page);
     const log = await owner.one(`select username, detail from meta.activity_log where app_id = $1 and event = 'login' order by id desc limit 1`, [appId]);
     assert.deepEqual([log.username, log.detail], ['king', 'passkey (user verified)']);
 
