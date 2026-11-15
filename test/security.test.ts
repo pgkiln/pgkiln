@@ -16900,6 +16900,26 @@ describe('(sprint 196, NX-U1) Create application in one field', () => {
   });
 });
 
+describe('sprint 200 the service worker\'s prefetch never writes the session\'s state', () => {
+  // (sprint 200) the prefetch (X-Pgkiln-Prefetch, sprint 168) of a page that saved the session's state (feedback,
+  // notifications, My account) wrote back what it had read: overlapping a submit, it undid the values just saved
+  test('a prefetch of the notifications page leaves the flash message and an item value written meanwhile', async () => {
+    const king = await as('king');
+    const sid = (await owner.one<{ id: string }>(`select id from meta.session where app_id = $1 and username = 'king' order by created_at desc limit 1`, [appId]))!.id;
+    await owner.query(`update meta.session set state = state || '{"__FLASH": "Sec200 flash", "P50_MEMBERS": "7566:7902"}' where id = $1`, [sid]);
+    const before = (await owner.one<{ s: Record<string, string> }>('select state as s from meta.session where id = $1', [sid]))!.s;
+    king.headers = { 'x-pgkiln-prefetch': '1' };
+    for (const url of ['/a/hr/notifications', '/a/hr/50/feedback', '/a/hr/account', '/a/hr/50'])
+      assert.ok([200, 409].includes((await king.get(url)).statusCode), url);
+    assert.deepEqual((await owner.one<{ s: Record<string, string> }>('select state as s from meta.session where id = $1', [sid]))!.s, before, 'the state as it was');
+    // the user's own request takes the message (and saves)
+    king.headers = {};
+    assert.match((await king.get('/a/hr/notifications')).body, /Sec200 flash/);
+    assert.equal((await owner.one<{ f: string | null }>(`select state->>'__FLASH' as f from meta.session where id = $1`, [sid]))!.f, null);
+    assert.equal((await owner.one<{ m: string | null }>(`select state->>'P50_MEMBERS' as m from meta.session where id = $1`, [sid]))!.m, '7566:7902');
+  });
+});
+
 describe('sprint 200 a refusal or not-found page the server sent itself keeps its body', () => {
   // (sprint 200) a handler that sent its page and returned nothing made Fastify send the reply a second time, empty,
   // while the first send's onSend hooks still ran (the browser-security lookup, a database query on a cache miss);

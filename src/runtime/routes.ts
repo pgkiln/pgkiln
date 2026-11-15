@@ -245,9 +245,13 @@ export async function loadContext(
   // (sprint 188) the service worker's background prefetch (X-Pgkiln-Prefetch, sprint 168) never starts a session either:
   // after a sign-out its request without a cookie made a new session whose cookie replaced the sign-in page's, so the
   // sign-in that followed was refused ("Your session expired")
-  if (req.headers['x-pgkiln-prefetch'] === '1') touch = false;
+  const prefetch = req.headers['x-pgkiln-prefetch'] === '1';
+  if (prefetch) touch = false;
   const existing = touch ? await getSession(req, reply, app.id, base) : await getSession(req, reply, app.id, base, { touch: false });
   if (!existing) return reply.code(401).send({ error: english('error.session_ended') }), null;
+  // (sprint 200) nor does it save the session's state: the feedback page, notifications, My account and the like
+  // saved the state they read at the start, so a prefetch that overlapped a submit undid it (the items just saved)
+  if (prefetch) existing.readOnly = true;
   let session = existing;
   // the session ended, but the browser was remembered: sign in again silently (a new token each time)
   if (touch && app.authentication === 'app_users' && !session.username) {
@@ -275,6 +279,7 @@ export async function loadContext(
     if (!s) return null;
     if (s !== session) locale = await resolveLocale(req, app, s);
     session = s;
+    if (prefetch) session.readOnly = true;
   }
   if (locale.lang !== app.language) translateApp(app, locale.tr);
   // (sprint 193) a page number, or the alias of one of this application's pages (src/page-alias.ts)
