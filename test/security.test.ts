@@ -16899,3 +16899,41 @@ describe('(sprint 196, NX-U1) Create application in one field', () => {
     }
   });
 });
+
+describe('sprint 200 a refusal or not-found page the server sent itself keeps its body', () => {
+  // (sprint 200) a handler that sent its page and returned nothing made Fastify send the reply a second time, empty,
+  // while the first send's onSend hooks still ran (the browser-security lookup, a database query on a cache miss);
+  // whichever finished first was written: now and then the right status with an empty body (src/reply-guard.ts)
+  const ALIAS = 'sec200-norole';
+  const cleanup = () => owner.query('delete from meta.app where alias = $1', [ALIAS]);
+  before(cleanup);
+  after(cleanup);
+
+  test('concurrent first requests (each one a cache miss): every 404 and every 503 of an application without a role has its page', async () => {
+    const { browserSecurityChanged } = await import('../src/browser-security.ts');
+    const { rolesChanged } = await import('../src/app-role.ts');
+    const stamp = Date.now();
+    const missing = await Promise.all(Array.from({ length: 200 }, (_, i) => app.inject({ method: 'GET', url: `/a/sec200-none-${stamp}-${i}/1` })));
+    for (const r of missing) {
+      assert.equal(r.statusCode, 404);
+      assert.match(r.body, /<h1>Not found<\/h1>/);
+    }
+    // an application made before migration 167, without a role (as in sprint 186's tests)
+    await owner.tx(async (c) => {
+      await c.query('alter table meta.app disable trigger app_role_check');
+      const id = (await c.query(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'SEC200', 'none', null) returning id`, [ALIAS])).rows[0].id;
+      await c.query('set constraints all immediate');
+      await c.query('alter table meta.app enable trigger app_role_check');
+      await c.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false)`, [id]);
+    });
+    rolesChanged();
+    for (let round = 0; round < 10; round++) {
+      browserSecurityChanged();
+      const refused = await Promise.all(Array.from({ length: 20 }, () => new Browser().get(`/a/${ALIAS}/1`)));
+      for (const r of refused) {
+        assert.equal(r.statusCode, 503);
+        assert.match(r.body, /<h1>Not available<\/h1><p>This application can&#39;t run: it has no database role of its own/);
+      }
+    }
+  });
+});
