@@ -1207,7 +1207,7 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators add developers.');
     try {
-      const problem = await developerPasswordProblem(req.body?.password, { username: String(req.body?.username ?? '').trim() });
+      const problem = await developerPasswordProblem(req.body?.password);
       if (problem) throw new Error(problem);
       const ws = currentWorkspace(s);
       await owner.tx(async (c) => {
@@ -1232,7 +1232,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const s = await developer(req, reply);
     if (!s) return;
     try {
-      const problem = await developerPasswordProblem(req.body?.password, { username: s.username });
+      const problem = await developerPasswordProblem(req.body?.password);
       if (problem) throw new Error(problem);
       const r = await owner.query(
         `update meta.developer set password_hash = meta.hash_password($3)
