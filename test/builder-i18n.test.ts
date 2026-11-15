@@ -13,6 +13,8 @@ import { BUTTON_ACTIONS, ITEM_TYPES, POSITIONS, REGION_TYPES, SLOTS } from '../s
 import { BUILDER_LANGUAGES, builderMessages, builderTranslator, translatorFor, validBuilderLanguage, type BuilderKey } from '../src/builder/i18n.ts';
 import { en } from '../src/builder/i18n/en.ts';
 import { SQL_TOOLS, TOOL_GROUPS } from '../src/builder/sql-tools.ts';
+import { COMPONENTS } from '../src/builder/components.ts';
+import { TYPE_NAME_LISTS } from '../src/builder/type-names.ts';
 import { Browser } from './helpers.ts';
 
 const DEV = 'i18n_dev';
@@ -98,6 +100,11 @@ describe('builder message files and their coverage', () => {
     const want = [
       ...REGION_TYPES().map((t) => `gallery.region.${t}`), ...ITEM_TYPES().map((t) => `gallery.item.${t}`), ...BUTTON_ACTIONS().map((t) => `gallery.button.${t}`),
       ...POSITIONS().map((p) => `pos.${p}`), ...SLOTS().map((p) => `slot.${p}`),
+      // (sprint 202, AX-3) the Page Designer's type lists (type-names.ts): every value of every list has its name
+      ...Object.entries(TYPE_NAME_LISTS).flatMap(([field, [prefix]]) => {
+        const [kind, name] = field.split('.');
+        return COMPONENTS[kind].fields.find((f) => f.name === name)!.options!.filter(Boolean).map((v) => `${prefix}.${v}`);
+      }),
       ...['region', 'item', 'button'].map((k) => `comp.${k}.plural`),
       ...['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'].flatMap((k) =>
         [`comp.${k}`, `pd.new.${k}`, `pd.create.${k}`, `pd.delete.${k}`, `pd.delete_confirm.${k}`, `pd.saved.${k}`, `pd.deleted.${k}`]),
@@ -389,14 +396,14 @@ describe('choosing the builder language', () => {
       assert.ok(cfr.includes(esc(fr[k])), `fr ${k}`);
     }
     assert.ok(cde.includes('<code>label, start, end</code>') && cde.includes('Gantt-Diagramm'), 'help text with code, in German');
-    for (const k of ['rpt.report_settings', 'rpt.rows_per_page', 'rpt.save_report_settings'] as BuilderKey[]) {
+    for (const k of ['rpt.report_settings', 'rpt.rows_per_page', 'rpt.columns'] as BuilderKey[]) {
       assert.ok(rde.includes(esc(de[k])), `de ${k}`);
       assert.ok(rfr.includes(esc(fr[k])), `fr ${k}`);
     }
-    assert.ok(!rde.includes('>Save report settings<') && !cfr.includes('Gantt chart reads'), 'not English');
+    assert.ok(!rde.includes('>Rows per page<') && !cfr.includes('Gantt chart reads'), 'not English');
     for (const u of [DEV, OTHER]) await owner.query(`update meta.developer set language = null where username = $1`, [u]);
     // English without a choice
-    assert.ok((await (await signIn(OTHER)).get(url(report))).body.includes('>Save report settings<'));
+    assert.ok((await (await signIn(OTHER)).get(url(report))).body.includes('>Rows per page<'));
   });
 
   test('RESTful Services and Load Data follow the language (sprint 162)', async () => {

@@ -1302,7 +1302,9 @@ choosing a component opens the Properties tab.
 with **Save**, Undo / Redo and the page navigator stays in view. **Ctrl+S** (Cmd+S) saves. (sprint 197, NX-U5; APEX:
 one Save in the toolbar) The toolbar's **Save** is the designer's only save button: the property editor has none at
 its foot. It submits the property editor's form without JavaScript too, Enter in a field does the same, and on a
-phone it stays in the toolbar as its icon. A change not saved yet puts a dot on Save, and
+phone it stays in the toolbar as its icon. (sprint 202, AX-2) For a region it saves both tabs of the property editor at
+once: the **Region** tab and the **Attributes** tab (report settings, chart settings, …), which has no save button of its
+own; the message says *Region saved.*, and a setting the Attributes tab refuses is named in an error message beside it. A change not saved yet puts a dot on Save, and
 leaving the page with one asks first. On a window under 800 pixels high the gallery under the layout is only
 its tabs (*Regions*, *Items*, *Buttons*): choose one to open it, choose the open one to fold it again; the
 designer remembers which you prefer.
@@ -1366,11 +1368,17 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   counts the chosen ones; they are saved with the other properties. Under the properties, the **Help** pane (APEX: the Help tab) shows the
   property that has the focus (or the pointer): its help, the name it is stored under in exports and
   application files, and a link to the guide section of the component's type.
+  (sprint 202, AX-3) Types go by their names, as in the gallery, in the builder's language: the tree says
+  *Interactive Report*, *Select List*, *Popup LOV*, *Submit Page* or *P3_JOB → Set Value* beside each component, and the
+  **Type** lists of regions, items, buttons (Action), dynamic actions (Event, Action), processes, validations and
+  computations, a region's Template and Position and a button's position show names; the stored values (and the
+  exported files) keep the codes (`report`, `select`, `popup_lov`, `set_value`, …).
 
 The toolbar has the page switcher (previous, the page number: type or step to one and press Enter, a list of
 all pages, next), **Undo** / **Redo** of
 layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
-process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
+process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export; with a
+region selected also **Show as JSON**, below),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
 (opens the page in a new tab). Changes are live as soon as they are saved.
 
@@ -1468,8 +1476,15 @@ announced as you move through it), and without JavaScript you get the plain fiel
 settings need no JSON: rows per page, search, Actions menu, sorting, saved and public reports,
 and per column its heading, whether it's shown, whether it's printed and its PDF width, plus the
 link column (page and items), row selection (value column and item) and the PDF layout. The columns are read from the region's query
-(run with `limit 0` as the application's role and rolled back). Saving writes the region's
-*Attributes (JSON)* and keeps any other keys there.
+(run with `limit 0` as the application's role and rolled back). The toolbar's **Save** (or Ctrl+S) saves them with the
+Region tab; it writes the keys these fields know into the region's settings and keeps any other keys there.
+
+(sprint 202, AX-2) **Utilities → Show as JSON** (with a region selected) shows the region's settings as JSON in place of
+the Attributes tab: every key, also those no field has yet, with the keys the region type knows in its help and a link
+to the guide. Edit them there and **Save**: the same Save stores the text (checked as JSON, and the region type's
+checks), and the view stays open; while it is open the Attributes tab isn't sent, so nothing overwrites what you
+typed. **Show as fields** goes back to the Attributes tab. The property editor itself has no JSON field for a
+region.
 
 The other region types with settings get a similar form, under the same rules (defaults are left
 out, other keys are kept, columns the query no longer returns stay listed so you can clear them):
@@ -1483,7 +1498,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to, a chart of the counts (bar or pie) and order |
 | `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
-| `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
+| `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools (as JSON, checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
 | `report` (also) | *Ask in your own words (AI)*: off, the built-in phrases or an AI service, and the placeholder of [Ask in your own words](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks; or (sprint 110) a dataset of the workspace), who may share, build and moderate reports, publishing, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 | `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |

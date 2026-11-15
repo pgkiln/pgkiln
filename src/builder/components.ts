@@ -55,6 +55,9 @@ export interface Field {
   group?: string;
   /** shown, not editable (the form still posts it) */
   readonly?: boolean;
+  /** (sprint 202, AX-2) not in the property editor: kept as it is when a form doesn't send it (a region's settings are
+   *  edited on its Attributes tab and in Utilities → Show as JSON) */
+  hidden?: boolean;
   /** (sprint 77) shown with the property editor's "Common" toggle on (a spec without any shows every field) */
   common?: boolean;
   /** (sprint 51) help that depends on the component being edited (wins over `help` when it gives some) */
@@ -151,7 +154,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       ...conditionFields('Server-side condition', 'condition', 'condition_type', 'condition_value', true),
       { name: 'authz', common: true, label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
-      { name: 'config', label: 'Attributes (JSON)', kind: 'json', wide: true, group: 'Attributes',
+      // (sprint 202, AX-2) the Attributes tab's fields write it; Utilities → Show as JSON shows every key
+      { name: 'config', label: 'Settings', kind: 'json', wide: true, group: 'Attributes', hidden: true,
         help: ALL_REGION_CONFIG_HELP, helpBy: (row: any) => regionConfigHelp(row?.type) },
     ],
   },
@@ -182,7 +186,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'readonly_condition', label: 'Read-only condition (SQL)', kind: 'code', group: 'Security', help: 'When true the item is shown read-only and ignored on submit.' },
       { name: 'authz', label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
       buildOption('Security'),
-      { name: 'config', label: 'Attributes (JSON)', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. {"warn_unsaved":false}: a change of this item doesn\'t count for the page\'s "Warn on unsaved changes". Lists of values read at most {"max_rows":5000} rows. File items: {"filename_column":"photo_name","mime_column":"photo_mime","size_column":"photo_size","updated_column":"photo_updated","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). {"crop":"1:1"} lets the user crop a picture before upload (free, 1:1, 4:3, 3:4, 16:9, 3:2, 2:3). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button. Rich text: sanitised HTML; markdown: Markdown text ({"rows":10}). Rating: {"max":5} stars, stored as 1..max. Combobox: free text with list-of-values suggestions, values colon-separated ({"multiple":false} for one value). Shuttle: two lists (available, chosen) with move and order buttons; the chosen values colon-separated in their order. Select One / Select Many: a search field over the list of values (Select Many: chosen values as chips, colon-separated); {"null_label":"- None -"} or false for Select One. Date range: "from:to" (ISO dates; split_part(:P1_X, \':\', 1)). QR code: shows the value as a QR code ({"ecc":"M","size":200,"show_value":true}). Password: {"reveal":true} adds a show/hide button. Image (display image): the value is an https URL, a path or a data:image URL; or {"sql":"select photo, photo_mime from hr.emp where id = :P3_ID"} shows the first column of the first row (a BLOB); {"alt":"Photo of &P3_NAME.","width":160,"height":160}. Address: {"coordinates_item":"P3_LOCATION","country":"nl"} (a "Check address" button where the installation has a geocoder, GEOCODER_URL; the chosen address\'s position goes into the item as "lat,lng"). Hidden items: {"value_protected":false} renders the item as a hidden input that dynamic actions and JavaScript may set; its posted value is user input, like a text field\'s (protected, the default: the value stays on the server). Any item: {"persist":"user"} keeps its value per user across sessions (a user preference named like the item). Number and display items: {"format_mask":"999G999G990D00"} shows the number in the language\'s notation (FML999G990D00 adds the currency) and reads it back on submit. · plugin: {"plugin":"name","attributes":{"NAME":"value"}} (an item plug-in: a text field its JavaScript enhances)' },
+      { name: 'config', label: 'Attributes', kind: 'json', group: 'Attributes', help: '{"submit_on_change":true,"null_label":"- All -","cascade_parents":"P3_DEPTNO","wide":true}. {"warn_unsaved":false}: a change of this item doesn\'t count for the page\'s "Warn on unsaved changes". Lists of values read at most {"max_rows":5000} rows. File items: {"filename_column":"photo_name","mime_column":"photo_mime","size_column":"photo_size","updated_column":"photo_updated","accept":"image/*,.pdf","max_mb":2,"capture":"environment","max_px":1600} (capture opens the camera on phones; max_px makes photos smaller before upload). {"crop":"1:1"} lets the user crop a picture before upload (free, 1:1, 4:3, 3:4, 16:9, 3:2, 2:3). Several files: {"multiple":true,"max_files":5,"table":"doc.attachment","parent_column":"ticket_id","key_column":"id"} with the content column as source (one row per file). Text items: {"scan":true} adds a barcode/QR scan button where the browser can read codes. Location items hold "lat,lng" with a "Use my location" button. Rich text: sanitised HTML; markdown: Markdown text ({"rows":10}). Rating: {"max":5} stars, stored as 1..max. Combobox: free text with list-of-values suggestions, values colon-separated ({"multiple":false} for one value). Shuttle: two lists (available, chosen) with move and order buttons; the chosen values colon-separated in their order. Select One / Select Many: a search field over the list of values (Select Many: chosen values as chips, colon-separated); {"null_label":"- None -"} or false for Select One. Date range: "from:to" (ISO dates; split_part(:P1_X, \':\', 1)). QR code: shows the value as a QR code ({"ecc":"M","size":200,"show_value":true}). Password: {"reveal":true} adds a show/hide button. Image (display image): the value is an https URL, a path or a data:image URL; or {"sql":"select photo, photo_mime from hr.emp where id = :P3_ID"} shows the first column of the first row (a BLOB); {"alt":"Photo of &P3_NAME.","width":160,"height":160}. Address: {"coordinates_item":"P3_LOCATION","country":"nl"} (a "Check address" button where the installation has a geocoder, GEOCODER_URL; the chosen address\'s position goes into the item as "lat,lng"). Hidden items: {"value_protected":false} renders the item as a hidden input that dynamic actions and JavaScript may set; its posted value is user input, like a text field\'s (protected, the default: the value stays on the server). Any item: {"persist":"user"} keeps its value per user across sessions (a user preference named like the item). Number and display items: {"format_mask":"999G999G990D00"} shows the number in the language\'s notation (FML999G990D00 adds the currency) and reads it back on submit. · plugin: {"plugin":"name","attributes":{"NAME":"value"}} (an item plug-in: a text field its JavaScript enhances)' },
     ],
   },
   button: {
@@ -200,9 +204,9 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'action', common: true, label: 'Action', kind: 'select', options: ['submit', 'redirect', 'da', 'document', 'menu'], group: 'Behaviour', help: 'menu = a menu of links and submit requests (Menu entries) · da = "Defined by dynamic action"; document = download a document template (filled with the page\'s values as last loaded or saved)' },
       { name: 'document', label: 'Document template (action document)', kind: 'upper', group: 'Behaviour', help: 'The name of a document template or a report query (Shared Components → Document templates, Report queries).' },
       { name: 'target_page', common: true, label: 'Target / branch page', kind: 'page', group: 'Behaviour' },
-      { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Behaviour', help: '{"P3_ID": "&P2_ID."}' },
+      { name: 'target_items', label: 'Set items', kind: 'json', group: 'Behaviour', help: '{"P3_ID": "&P2_ID."}' },
       { name: 'confirm', label: 'Confirm message', kind: 'text', group: 'Behaviour' },
-      { name: 'menu', label: 'Menu entries (action menu, JSON)', kind: 'json', wide: true, group: 'Behaviour',
+      { name: 'menu', label: 'Menu entries (action menu)', kind: 'json', wide: true, group: 'Behaviour',
         help: '[{"label": "Details", "page": 3, "items": {"P3_ID": "&P2_ID."}}, {"label": "Archive", "request": "ARCHIVE", "confirm": "Archive it?", "authz": "ADMIN", "icon": "inbox"}, {"label": "Export", "action": "EXPORT"}] — a link to a page, a submit with that request (processes and branches see it as the button pressed), or an action: the dynamic actions of event menu_entry with that name (or the menu button\'s name) as trigger. At most 20.' },
       { name: 'hot', common: true, label: 'Primary (hot) button', kind: 'bool', group: 'Appearance' },
       { name: 'template_options', label: 'Template options', kind: 'options', choices: BUTTON_OPTIONS, group: 'Appearance',
@@ -254,7 +258,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'code', label: 'SQL', kind: 'code', wide: true, group: 'Action', help: 'set_value: a SELECT whose columns set the affected items (empty on a component event, grid_* / calendar_* / map_* / tree_selection_change: the event\'s value) · execute_sql: any SQL; returned columns named like items set them · ai_generate: the name of an ai_generate process on this page (its output items are updated; items to submit default to the items its prompts use) · execute_javascript: the name of a function registered with pgkiln.actions.register(name, fn) in a static file the page loads.' },
       { name: 'items_to_submit', label: 'Items to submit', kind: 'upper', group: 'Action' },
       { name: 'message', label: 'Message (alert, confirm, show_success, show_error, wait_popup)', kind: 'text', group: 'Action' },
-      { name: 'config', label: 'Plug-in attributes (JSON)', kind: 'json', group: 'Action', help: 'plugin: {"attributes": {"NAME": "value or &ITEM."}} (Shared Components → Plug-ins lists each plug-in\'s attributes).' },
+      { name: 'config', label: 'Plug-in attributes', kind: 'json', group: 'Action', help: 'plugin: {"attributes": {"NAME": "value or &ITEM."}} (Shared Components → Plug-ins lists each plug-in\'s attributes).' },
       { name: 'css_classes', label: 'CSS classes (add_class, remove_class)', kind: 'text', group: 'Action', help: 'Up to five class names, e.g. is-highlight is-muted (lower case letters, digits, - and _).' },
       ...conditionFields('Server-side condition', 'server_condition_expr', 'server_condition_type', 'server_condition_value'),
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Security' },
@@ -358,7 +362,7 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
         help: 'page: a page of this application · url: a path inside it · function: a PL/pgSQL body returning such a path · app: a page of another application of this installation' },
       { name: 'target_app', label: 'Application (app)', kind: 'text', group: 'Target', help: 'The alias of another application; its own sign-in and authorization apply. The page is the target page there.' },
       { name: 'target_page', label: 'Page', kind: 'int', group: 'Target', help: 'Empty: this page. For app: the page number in that application.' },
-      { name: 'target_items', label: 'Set items (JSON)', kind: 'json', group: 'Target', help: '{"P3_ID": "&P2_ID."} — sent with a checksum.' },
+      { name: 'target_items', label: 'Set items', kind: 'json', group: 'Target', help: '{"P3_ID": "&P2_ID."} — sent with a checksum.' },
       { name: 'target_url', label: 'URL (inside the application)', kind: 'text', group: 'Target', help: 'A path after /a/<alias>/, e.g. 10?tab=open or account; &ITEM. values are URL-encoded. No other sites.' },
       { name: 'target_function', label: 'Function returning a URL (function)', kind: 'code', wide: true, group: 'Target',
         help: 'PL/pgSQL, run as the application\'s role, e.g. begin if :P3_TOTAL::numeric > 1000 then return \'20?P20_ID=\' || :P3_ID; end if; return \'10\'; end — a path inside the application as for URL (checked the same way); null: the next branch.' },
@@ -953,6 +957,8 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
   for (const f of spec.fields) {
     // a repeated field (checkboxes) arrives as an array: only 'options' fields read it as one
     const sent = body[f.name] as unknown;
+    // (sprint 202) a field the form doesn't show keeps its stored value (an insert takes the column's default)
+    if (f.hidden && sent === undefined) continue;
     const raw = Array.isArray(sent) ? (f.kind === 'options' ? undefined : String(sent[0] ?? '')) : (sent as string | undefined);
     const v = raw === undefined || raw.trim() === '' ? '' : raw;
     switch (f.kind) {

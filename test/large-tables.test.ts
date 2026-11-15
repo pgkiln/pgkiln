@@ -199,8 +199,8 @@ describe('builder: report settings for large tables', () => {
     await owner2.get('/builder/login');
     await owner2.submit('/builder/login', { username: 'admin', password: 'admin' });
     const page = (await owner2.get(`/builder/pages/${pageId}?c=region-${regions['All readings']}`)).body;
-    assert.match(page, /name="pagination"[\s\S]*<option value="range" selected>/);
-    assert.match(page, /name="cache_scope"/);
+    assert.match(page, /name="report-settings:pagination"[\s\S]*<option value="range" selected>/);
+    assert.match(page, /name="report-settings:cache_scope"/);
   });
 });
 

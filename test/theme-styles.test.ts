@@ -432,8 +432,8 @@ describe('Theme Roller: dark-mode colours, live preview, items and report column
       assert.doesNotMatch(body, /evil/);
       const dev = await login();
       const designer = (await dev.get(`/builder/pages/${pageId}?c=region-${r.id}`)).body;
-      assert.match(designer, /<select name="opt_1" aria-label="Display of name">/);
-      const n = /name="n" value="(\d+)"/.exec(designer)![1];
+      assert.match(designer, /<select name="report-settings:opt_1" aria-label="Display of name" form="pd-form">/);
+      const n = /name="report-settings:n" value="(\d+)"/.exec(designer)![1];
       await dev.submit(`/builder/pages/${pageId}/region/${r.id}/report-settings`, { n, col_0: 'id', col_1: 'name', shown_0: 'true', shown_1: 'true', opt_0: 'to-col-right', opt_1: 'javascript', page_size: '15' });
       assert.deepEqual((await owner.one('select config from meta.region where id = $1', [r.id])).config.column_options, { id: ['to-col-right'] });
     } finally {

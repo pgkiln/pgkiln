@@ -10,6 +10,7 @@ import { BUILTIN_COMPONENTS, builtinComponents } from '../runtime/builtin-compon
 import type { Session } from '../session.ts';
 import { linkItemsText, parseLinkItems, reportColumns } from './report-settings.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { settingsRoute, type SettingsSaver } from './settings-save.ts';
 import { scopedTx as tx } from './i18n.ts';
 
 // Template components in the builder:
@@ -198,7 +199,6 @@ export async function templateRegionForm(pageId: number, appId: number, r: { id:
   const expected = c ? columnNames(c) : [];
   const missing = cols && 'columns' in cols ? expected.filter((e) => !cols.columns.some((x) => x.toUpperCase() === e)) : [];
   return html`<h3 class="u-mt15">${tx('tpl.template_component_settings')}</h3>
-    <p class="muted u-mt0">${tx('tpl.these_fields_write_the_region')}</p>
     ${cols && 'error' in cols ? html`<div class="alert alert-error" role="alert">The columns could not be read: ${cols.error}</div>` : ''}
     ${cols && 'columns' in cols ? html`<p class="muted">Columns of the query (#NAME# in the template and in attribute values): ${cols.columns.map((x, i) => html`${i ? ', ' : ''}<code>${x}</code>`)}.</p>` : html`<p class="muted">${tx('tpl.no_query_the_component_shows')}</p>`}
     ${missing.length ? html`<p class="muted">Note: the template also uses ${missing.map((m, i) => html`${i ? ', ' : ''}<code>#${m}#</code>`)}, which the query doesn't return.</p>` : ''}
@@ -226,7 +226,6 @@ export async function templateRegionForm(pageId: number, appId: number, r: { id:
           <input id="${id('link_items')}" name="link_items" value="${linkItemsText(cfg.link?.items)}" placeholder="${tx('tpl.p3_id_id')}">
           <small class="help">${tx('tpl.item_column_comma_separated')}</small></div>
       </div></fieldset>
-      <div class="buttons"><button class="btn btn-hot">${tx('tpl.save_template_component_settings')}</button></div>
     </form>`;
 }
 
@@ -287,7 +286,6 @@ export async function columnTemplatesForm(pageId: number, appId: number, r: { id
       ${all.length
         ? html`<div class="table-wrap"><table class="report report-reflow tc-columns"><thead><tr><th>${tx('tpl.column')}</th><th>${tx('tpl.template_component')}</th><th>${tx('tpl.attributes')}</th></tr></thead><tbody>${rows}</tbody></table></div>`
         : html`<p class="muted">${tx('tpl.no_columns_yet')}</p>`}
-      <div class="buttons"><button class="btn btn-hot">${tx('tpl.save_column_templates')}</button></div>
     </form>`;
 }
 
@@ -355,39 +353,36 @@ export async function templateRoutes(app: FastifyInstance) {
     }
   });
 
-  const regionOf = async (pid: string, rid: string, type: string) =>
-    isId(pid) && isId(rid)
-      ? owner.one(`select r.id, r.config, r.source, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = $3`, [rid, pid, type])
-      : undefined;
-
-  app.post(`${BASE}/pages/:pid/region/:rid/template-settings`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params;
-    const r = await regionOf(pid, rid, 'template_component');
-    if (!r) return reply.code(404).send('Not found');
-    const pages = (await owner.query('select page_no from meta.page where app_id = $1', [r.app_id])).rows;
-    const config = mergeTemplateRegionSettings(r.config ?? {}, (req.body ?? {}) as Body, {
-      pages: new Set(pages.map((x) => x.page_no)),
-      components: await appComponents(r.app_id),
-    });
-    await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    flash(s, tx('tpl.template_component_settings_saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
-
-  app.post(`${BASE}/pages/:pid/region/:rid/column-templates`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params;
-    const r = await regionOf(pid, rid, 'report');
-    if (!r) return reply.code(404).send('Not found');
-    const cols = await reportColumns(r.app_id, await designSql(r.app_id, r));
-    // when the query can't be read, the columns already configured stay allowed
-    const names = 'columns' in cols ? cols.columns : Object.keys(r.config?.column_templates ?? {});
-    const config = mergeColumnTemplates(r.config ?? {}, (req.body ?? {}) as Body, names, await appComponents(r.app_id));
-    await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    flash(s, tx('tpl.column_templates_saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
+  app.post(`${BASE}/pages/:pid/region/:rid/template-settings`, (req: Req, reply) => settingsRoute(req, reply, saveTemplateRegionSettings));
+  app.post(`${BASE}/pages/:pid/region/:rid/column-templates`, (req: Req, reply) => settingsRoute(req, reply, saveColumnTemplates));
 }
+
+const regionOf = async (pid: string, rid: string, type: string) =>
+  isId(pid) && isId(rid)
+    ? owner.one(`select r.id, r.config, r.source, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = $3`, [rid, pid, type])
+    : undefined;
+
+/** (sprint 202) a template component region's settings: its own route and the Page Designer's one Save (settings-save.ts) */
+export const saveTemplateRegionSettings: SettingsSaver = async (pid, rid, body) => {
+  const r = await regionOf(pid, rid, 'template_component');
+  if (!r) return null;
+  const pages = (await owner.query('select page_no from meta.page where app_id = $1', [r.app_id])).rows;
+  const config = mergeTemplateRegionSettings(r.config ?? {}, body as Body, {
+    pages: new Set(pages.map((x) => x.page_no)),
+    components: await appComponents(r.app_id),
+  });
+  await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
+  return { message: tx('tpl.template_component_settings_saved') };
+};
+
+/** (sprint 202) a report's column templates */
+export const saveColumnTemplates: SettingsSaver = async (pid, rid, body) => {
+  const r = await regionOf(pid, rid, 'report');
+  if (!r) return null;
+  const cols = await reportColumns(r.app_id, await designSql(r.app_id, r));
+  // when the query can't be read, the columns already configured stay allowed
+  const names = 'columns' in cols ? cols.columns : Object.keys(r.config?.column_templates ?? {});
+  const config = mergeColumnTemplates(r.config ?? {}, body as Body, names, await appComponents(r.app_id));
+  await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
+  return { message: tx('tpl.column_templates_saved') };
+};

@@ -68,12 +68,12 @@ describe('template components', () => {
     const r = await owner.one(`select r.id, r.page_id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 19 and r.type = 'template_component' order by r.seq limit 1`, [appId]);
     try {
       await page.goto(`${base}/builder/pages/${r.page_id}?c=region-${r.id}`);
-      // the settings are on the property editor's Attributes tab, which stays open after a save
+      // the settings are on the property editor's Attributes tab, which stays open after a save; the toolbar's Save saves them (sprint 202)
       await page.click('[data-tabs="pd-right"] [role=tab]:has-text("Attributes")');
       await page.selectOption(`#tc_${r.id}_component`, 'e2e_badge');
-      await Promise.all([page.waitForNavigation(), page.click('button:has-text("Save template component settings")')]);
+      await Promise.all([page.waitForNavigation(), page.click(".tb-save")]);
       await page.fill(`#tc_${r.id}_attr_LABEL`, '#name#');
-      await Promise.all([page.waitForNavigation(), page.click('button:has-text("Save template component settings")')]);
+      await Promise.all([page.waitForNavigation(), page.click(".tb-save")]);
       const cfg = (await owner.one('select config from meta.region where id = $1', [r.id])).config;
       assert.equal(cfg.component, 'e2e_badge');
       assert.deepEqual(cfg.attributes, { LABEL: '#name#' });

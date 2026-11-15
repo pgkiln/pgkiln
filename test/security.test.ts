@@ -16821,6 +16821,45 @@ describe('sprint 195 sub regions (NX-F2)', () => {
   });
 });
 
+describe('(sprint 202, AX-2) the Page Designer\'s one Save sends a region\'s settings with its properties', () => {
+  test('settings of a region of another page, of another type or under a forged key are not saved', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    await owner.query('delete from meta.page where app_id = $1 and page_no in (9302, 9303)', [appId]);
+    const page = async (no: number) => (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec202') returning id`, [appId, no]))!.id;
+    const [mine, other] = [await page(9302), await page(9303)];
+    const region = async (p: number, type: string) => (await owner.one<{ id: number }>(
+      `insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'Sec202', $2, 'select 1 as id', '{"page_size": 5}') returning id`, [p, type]))!.id;
+    const [report, chart, elsewhere] = [await region(mine, 'report'), await region(mine, 'chart'), await region(other, 'report')];
+    const config = async (id: number) => (await owner.one<{ config: any }>('select config from meta.region where id = $1', [id]))!.config;
+    try {
+      await b.get(`/builder/apps/${appId}/pages/9302`);
+      const props = (type: string) => ({ __csrf: b.lastCsrf, title: 'Sec202', type, source: 'select 1 as id', seq: '10', columns: '12', template: 'standard' });
+      const save = (id: number, form: Record<string, string | string[]>) => b.post(`/builder/pages/${mine}/c/region/${id}`, form);
+      // a region of another page through this page's form: refused before any settings are read
+      await save(elsewhere, { ...props('report'), __settings: 'report-settings', __region_type: 'report', 'report-settings:n': '0', 'report-settings:page_size': '50' });
+      assert.deepEqual(await config(elsewhere), { page_size: 5 });
+      // the settings were drawn for another type (the Type changed in the same Save, or a forged one): not applied
+      await save(report, { ...props('report'), __settings: 'report-settings', __region_type: 'chart', 'report-settings:n': '0', 'report-settings:page_size': '50' });
+      assert.deepEqual(await config(report), { page_size: 5 });
+      // a form of another region type (a chart's settings saver for a report) and keys that are no form: nothing
+      await save(report, { ...props('report'), __settings: ['settings', '../x', 'nope', 'REPORT-SETTINGS'], __region_type: 'report', 'settings:kind': 'pie', '../x:page_size': '50' });
+      assert.deepEqual(await config(report), { page_size: 5 });
+      // the savers' own checks still apply: a link to a page that doesn't exist is dropped, the rest is saved
+      await save(chart, { ...props('chart'), __settings: 'settings', __region_type: 'chart', 'settings:kind': 'pie', 'settings:link_page': '99999', 'settings:link_items': 'P1_X=#id#' });
+      assert.deepEqual(await config(chart), { page_size: 5, kind: 'pie' });
+      // without settings the stored ones are kept (the property editor sends no JSON); Show as JSON's text is checked as before
+      await save(report, props('report'));
+      assert.deepEqual(await config(report), { page_size: 5 });
+      await save(report, { ...props('report'), config: '{"formats": "not an object"}' });
+      assert.deepEqual(await config(report), { page_size: 5 });
+    } finally {
+      await owner.query('delete from meta.page where app_id = $1 and page_no in (9302, 9303)', [appId]);
+    }
+  });
+});
+
 describe('(sprint 196, NX-U1) Create application in one field', () => {
   const DEV = 'sec196_dev';
   const PW = 'Sec196-dev-password!';
