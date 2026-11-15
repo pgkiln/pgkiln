@@ -5329,21 +5329,25 @@ document.addEventListener('change', (e) => {
 // application users: a [data-passkey] button asks the server (its URL) for WebAuthn options, calls
 // navigator.credentials.create() (Security, My account, adding one while signing in) or .get() (the second step, a
 // passkey alone on the builder's sign-in page) and posts the answer in its own form, to data-passkey-submit when set.
-// Without WebAuthn or JavaScript the buttons stay hidden; codes keep working.
+// Without WebAuthn or JavaScript the buttons stay hidden; codes keep working. (sprint 199, NX-U6) A passkey alone on an
+// application's sign-in page: the button may belong to its form through the form attribute (a login region inside the
+// page's own form), and the block around it ([data-passkey-block], with the "or" line) is shown with it.
 (() => {
   'use strict';
   if (!window.PublicKeyCredential || !navigator.credentials) return;
   const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const bytes = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
   for (const btn of document.querySelectorAll('[data-passkey]')) {
-    const form = btn.closest('form');
+    const form = btn.form || btn.closest('form');
     if (!form) continue;
+    const block = btn.closest('[data-passkey-block]');
+    if (block) block.hidden = false;
     btn.hidden = false;
     btn.addEventListener('click', async (e) => {
       e.preventDefault();
-      const status = form.querySelector('[data-passkey-status]');
+      const status = (block || form).querySelector('[data-passkey-status]');
       const set = (name, value) => {
-        const field = form.querySelector(`[name="${name}"]`);
+        const field = form.elements.namedItem(name);
         if (field) field.value = value;
       };
       btn.disabled = true;
@@ -5351,7 +5355,7 @@ document.addEventListener('change', (e) => {
       try {
         const res = await fetch(btn.dataset.passkey, {
           method: 'POST', credentials: 'same-origin', headers: { accept: 'application/json' },
-          body: new URLSearchParams({ __csrf: form.querySelector('[name="__csrf"]').value }),
+          body: new URLSearchParams({ __csrf: form.elements.namedItem('__csrf').value }),
         });
         if (!res.ok) throw new Error(String(res.status));
         const o = await res.json();
@@ -5361,7 +5365,7 @@ document.addEventListener('change', (e) => {
             user: { id: bytes(o.user.id), name: o.user.name, displayName: o.user.displayName },
             pubKeyCredParams: o.algs.map((alg) => ({ type: 'public-key', alg })),
             excludeCredentials: o.exclude.map((id) => ({ type: 'public-key', id: bytes(id) })),
-            authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+            authenticatorSelection: { residentKey: o.rk || 'preferred', requireResidentKey: o.rk === 'required', userVerification: o.uv || 'preferred' },
             attestation: 'none', timeout: 120000,
           } });
           set('clientDataJSON', b64(c.response.clientDataJSON));

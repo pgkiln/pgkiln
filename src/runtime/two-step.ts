@@ -4,7 +4,7 @@ import {
   accountCodesLeft, accountFactors, accountHasFactor, accountId, accountMustUseMfa, accountPasskeys, accountUserHandle, addAccountPasskey,
   addAccountTotp, checkAccountCode, confirmAccountCodes, EMAIL_CODE_MINUTES, emailCodeHash, emailCodeMatches, emailCodeTarget, markSecondStep,
   mfaOn, mfaRequired, newAccountCodes, newEmailCode, queueEmailCode, removeAccountFactor, secondStep, secondStepWithin, TOKEN_STEP_MINUTES,
-  useAccountPasskey, withSecondStep,
+  passkeyAlone, passkeysOffered, useAccountPasskey, withSecondStep,
 } from '../account-mfa.ts';
 import { issueApiToken, MAX_TOKEN_HOURS } from '../api.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -455,7 +455,8 @@ export async function twoStepRoutes(app: FastifyInstance) {
     const ctx = await loadContext(req, reply, { pageNo: 'home' });
     if (!ctx) return null;
     const id = await accountId(ctx.user);
-    if (req.body?.__csrf !== ctx.session.csrf_token || !mfaOn(ctx.app) || id === null) {
+    // (sprint 199) also for passkeys when the application lets users sign in with one alone
+    if (req.body?.__csrf !== ctx.session.csrf_token || !passkeysOffered(ctx.app) || id === null) {
       reply.redirect(`${ctx.base}/account`, 303);
       return null;
     }
@@ -470,7 +471,8 @@ export async function twoStepRoutes(app: FastifyInstance) {
   app.post('/a/:alias/account/2fa/start', async (req: Req, reply) => {
     const r = await signedIn(req, reply);
     if (!r) return;
-    if (secretKeyConfigured()) r.ctx.session.state.__TOTP_NEW = JSON.stringify({ secret: newTotpSecret(), at: Date.now() });
+    // (sprint 199) authenticator apps only where the application has a second step
+    if (secretKeyConfigured() && mfaOn(r.ctx.app)) r.ctx.session.state.__TOTP_NEW = JSON.stringify({ secret: newTotpSecret(), at: Date.now() });
     return done(reply, r.ctx);
   });
 
@@ -506,7 +508,7 @@ export async function twoStepRoutes(app: FastifyInstance) {
     const r = await signedIn(req, reply);
     if (!r) return;
     await saveState(r.ctx.session);
-    return reply.header('cache-control', 'no-store').send(await createOptions(req, r.ctx.session, r.ctx.app, r.id, r.ctx.user));
+    return reply.header('cache-control', 'no-store').send(await createOptions(req, r.ctx.session, r.ctx.app, r.id, r.ctx.user, 'account'));
   });
 
   app.post('/a/:alias/account/2fa/passkey', async (req: Req, reply) => {
@@ -591,7 +593,7 @@ export async function twoStepRoutes(app: FastifyInstance) {
 }
 
 /** WebAuthn options for adding a passkey to an account (a one-time challenge kept in the session). */
-async function createOptions(req: FastifyRequest, s: Session, a: App, id: number, username: string) {
+async function createOptions(req: FastifyRequest, s: Session, a: App, id: number, username: string, where: 'account' | 'sign-in' = 'sign-in') {
   const rp = relyingParty(req);
   const challenge = giveChallenge(s, 'create');
   await saveState(s);
@@ -600,6 +602,9 @@ async function createOptions(req: FastifyRequest, s: Session, a: App, id: number
     // a stable handle that isn't the user name (the authenticator may show it, but it says nothing)
     user: { id: accountUserHandle(id), name: username, displayName: username },
     exclude: (await accountPasskeys(id, rp.rpId)).map((k) => k.credential_id),
+    // (sprint 199) on My account, a passkey that can sign in alone must be discoverable (the browser finds it without a
+    // user name); while signing in (a required second step) 'preferred', so an older security key can still be added
+    ...(where === 'account' && passkeyAlone(a) ? { rk: 'required' } : {}),
   };
 }
 
@@ -644,7 +649,9 @@ function takeOnce<T>(s: Session, key: string): T | null {
 
 /** My account → Two-step sign-in (when the application has a second step). */
 export async function twoStepSection(ctx: PageContext, rpId = ''): Promise<Raw | ''> {
-  if (!mfaOn(ctx.app)) return '';
+  // (sprint 199) also when the application lets users sign in with a passkey alone (then only passkeys are added here)
+  if (!passkeysOffered(ctx.app)) return '';
+  const apps = mfaOn(ctx.app);
   const id = await accountId(ctx.user);
   if (id === null) return '';
   const t = ctx.locale.t;
@@ -659,7 +666,8 @@ export async function twoStepSection(ctx: PageContext, rpId = ''): Promise<Raw |
   const when = (v: string | null) => (v ? String(v).slice(0, 10) : '');
   return html`<section class="region region-standard col-6" id="two-step"><header class="region-header"><h2>${t('mfa.step_title')}</h2></header><div class="region-body">
     ${error ? html`<div class="alert alert-error" role="alert">${error}</div>` : ''}
-    <p class="muted u-mt0">${factors.length ? t('mfa.on_any') : required ? t('mfa.required_you') : t('mfa.off')}</p>
+    ${apps ? html`<p class="muted u-mt0">${factors.length ? t('mfa.on_any') : required ? t('mfa.required_you') : t('mfa.off')}</p>` : ''}
+    ${passkeyAlone(ctx.app) ? html`<p class="muted${apps ? '' : ' u-mt0'}">${t('mfa.passkey_alone')}</p>` : ''}
     ${Array.isArray(shown)
       ? html`<h3>${t('mfa.codes_title')}</h3><p>${t('mfa.codes_once')}</p>${codesList(shown)}
         <form method="post" action="${base}/codes/confirm">${csrf}
@@ -685,6 +693,7 @@ export async function twoStepSection(ctx: PageContext, rpId = ''): Promise<Raw |
           <div class="field"><label class="label" for="mfa_code">${t('mfa.code')}</label><input id="mfa_code" name="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="7"></div>
           <div class="buttons"><button class="btn btn-hot">${t('mfa.confirm_app')}</button></div></form>
         <form method="post" action="${base}/cancel">${csrf}<button class="link-button">${t('mfa.cancel')}</button></form>`
+      : !apps ? ''
       : secretKeyConfigured()
         ? html`<form method="post" action="${base}/start">${csrf}<div class="buttons"><button class="btn${factors.length ? '' : ' btn-hot'}">${t('mfa.add_app')}</button></div></form>`
         : html`<p class="alert alert-info" role="status">${t('mfa.no_key')}</p>`}

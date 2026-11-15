@@ -93,6 +93,8 @@ export interface PageContext {
   devbar?: import('./devbar.ts').Devbar | null;
   /** (078) the origins the response may frame (the request's set; security.ts adds them to the CSP) */
   frameSrc?: Set<string> | null;
+  /** (sprint 199) the request's host can have passkeys (a host name, not an IP address): the login region's passkey button */
+  passkeyHost?: boolean;
   /** (086) the https origins of images the response shows (display image items; security.ts adds them to the CSP) */
   imgSrc?: Set<string> | null;
   /** (076) per form region: the checksum of its row when it was fetched (lost update detection) */

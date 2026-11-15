@@ -1398,3 +1398,32 @@ describe('sprint 186 an application\'s own role and the RLS hint fit a phone', (
     });
   }
 });
+
+// (sprint 199, NX-U6) the sign-in card with the application's mark and "Sign in with a passkey" (HR has it on, part 91):
+// the button needs a host name (WebAuthn has no IP relying parties), so these pages are opened at localhost
+describe('the sign-in page with a passkey button (sprint 199)', () => {
+  let was = true;
+  before(async () => {
+    was = (await owner.one(`select passkey_signin from meta.app where alias = 'hr'`))!.passkey_signin;
+    await owner.query(`update meta.app set passkey_signin = true where alias = 'hr'`);
+  });
+  after(async () => {
+    await owner.query(`update meta.app set passkey_signin = $1 where alias = 'hr'`, [was]);
+  });
+  for (const [vp, size] of [['phone-360', { width: 360, height: 780 }], ...Object.entries(VIEWPORTS)] as [string, { width: number; height: number }][]) {
+    test(`at ${vp}`, async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      const host = base.replace('127.0.0.1', 'localhost');
+      await page.goto(`${host}/a/hr/login`);
+      await page.locator('.login-passkey-button').waitFor({ state: 'visible' });
+      assert.ok(await page.locator('.login-card .login-mark').isVisible());
+      await check(page, 'app-login-passkey', vp);
+      // HR's other language
+      await page.goto(`${host}/a/hr/login?lang=nl`);
+      await page.locator('.login-passkey-button').waitFor({ state: 'visible' });
+      assert.match((await page.locator('.login-passkey-button').textContent()) ?? '', /Aanmelden met een passkey/);
+      await check(page, 'app-login-passkey-nl', vp);
+      await page.context().close();
+    });
+  }
+});

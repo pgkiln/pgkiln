@@ -5803,6 +5803,8 @@ export const nl: BuilderMessages = {
   'lgp.minimal': 'Minimaal',
   'lgp.create_a_login_page': 'Een aanmeldpagina maken',
   'lgp.offer_forgot_password': '"Wachtwoord vergeten?" aanbieden',
+  'lgp.passkey_signin': "Gebruikers mogen zich alleen met een passkey aanmelden",
+  'lgp.passkey_signin_help': "Toont “Aanmelden met een passkey” boven gebruikersnaam en wachtwoord, voor de accounts van de gebruikersmap (App users met gebruikersnaam en wachtwoord aan; niet identity providers of LDAP). Gebruikers voegen een passkey toe op {account}; de authenticator moet hen verifiëren (vingerafdruk, gezicht, pincode), dus de passkey telt als beide factoren en er volgt geen tweede stap. Vereist JavaScript en een hostnaam, geen IP-adres.",
   'lgp.second_step': 'Tweede stap',
   'lgp.my_account': 'Mijn account',
   'lgp.not_available_yet': 'Nog niet beschikbaar:',

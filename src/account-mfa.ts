@@ -182,3 +182,37 @@ export async function resetAccountFactors(id: number): Promise<boolean> {
     return true;
   });
 }
+
+// ---------------------------------------------------------------- a passkey alone (sprint 199, NX-U6)
+
+export interface PasskeyAloneApp { authentication: string; local_login?: boolean | null; passkey_signin?: boolean | null }
+
+/**
+ * Whether the application lets its users sign in with a passkey alone (meta.app.passkey_signin, migration 173): only
+ * for the user directory's own accounts, with password sign-in on (not identity providers, LDAP or custom schemes).
+ */
+export const passkeyAlone = (a: PasskeyAloneApp) => a.authentication === 'app_users' && !!a.local_login && !!a.passkey_signin;
+
+/** Whether My account offers passkeys: the application has a second step, or lets users sign in with a passkey alone. */
+export const passkeysOffered = (a: MfaApp & PasskeyAloneApp) => mfaOn(a) || passkeyAlone(a);
+
+export interface AccountPasskey {
+  id: number; credential_id: string; public_key: Record<string, string>; alg: number; sign_count: string;
+  account_id: number; username: string; active: boolean;
+  /** the account may use this application (any user, or listed in its access control) */
+  allowed: boolean;
+}
+
+/** The account passkey with this credential id for this relying party, whose it is, and whether that account may use the app. */
+export async function accountPasskeyByCredential(appId: number, credentialId: string, rpId: string): Promise<AccountPasskey | null> {
+  if (!credentialId || credentialId.length > 1400) return null;
+  return (await owner.one<AccountPasskey>(
+    `select f.id, f.credential_id, f.public_key, f.alg, f.sign_count, ac.id as account_id, ac.username, ac.active,
+            exists (select 1 from meta.app a where a.id = $3 and a.access_control = 'any_user')
+              or exists (select 1 from meta.app_access aa where aa.app_id = $3 and aa.account_id = ac.id) as allowed
+       from meta.account_factor f join meta.account ac on ac.id = f.account_id
+      where f.kind = 'passkey' and f.credential_id = $1 and f.rp_id = $2`, [credentialId, rpId, appId])) ?? null;
+}
+
+/** A sign-in with a passkey alone succeeded: the account's last sign-in, as meta.authenticate() records it. */
+export const markAccountSignIn = (accountIdValue: number) => owner.query('update meta.account set last_login_at = now() where id = $1', [accountIdValue]);

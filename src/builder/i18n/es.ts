@@ -5803,6 +5803,8 @@ export const es: BuilderMessages = {
   'lgp.minimal': 'Mínima',
   'lgp.create_a_login_page': 'Crear una página de inicio de sesión',
   'lgp.offer_forgot_password': 'Ofrecer «¿Olvidó la contraseña?»',
+  'lgp.passkey_signin': "Los usuarios pueden iniciar sesión solo con una clave de acceso",
+  'lgp.passkey_signin_help': "Muestra «Iniciar sesión con una clave de acceso» encima del usuario y la contraseña, para las cuentas del directorio de usuarios (App users con usuario y contraseña activados; no proveedores de identidad ni LDAP). Los usuarios añaden una clave de acceso en {account}; el autenticador debe verificarlos (huella, cara, PIN), así que la clave cuenta como ambos factores y no sigue un segundo paso. Requiere JavaScript y un nombre de host, no una dirección IP.",
   'lgp.second_step': 'Segundo paso',
   'lgp.my_account': 'Mi cuenta',
   'lgp.not_available_yet': 'Todavía no disponible:',

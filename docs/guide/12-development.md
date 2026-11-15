@@ -112,7 +112,8 @@ src/
   account-mfa.ts           (sprint 130) two-factor sign-in for application accounts: the application's rule (off, optional,
                            required, roles), secondStep, carriesSecondStep (remembered/shared sign-ins), resets;
                            (sprint 131) account passkeys, e-mail codes (emailCodeTarget, queueEmailCode), the session's
-                           last second step (__MFA_AT, secondStepWithin) for step-up, accountMustUseMfa (API tokens)
+                           last second step (__MFA_AT, secondStepWithin) for step-up, accountMustUseMfa (API tokens);
+                           (sprint 199) passkeyAlone, passkeysOffered, accountPasskeyByCredential (a passkey alone)
   workflow.ts              workflows: step checks, the runner with parallel branches (NOTIFY + polling), invoke_api steps
                            (the call between two transactions, with a lease), Advisor references, the diagram;
                            (sprint 114) send_mail and draft steps, switch cases on task outcomes, the diagram as a standalone SVG
@@ -274,6 +275,10 @@ src/
   runtime/
     routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
     signin.ts              the sign-in form (built-in page and the login region of an application's own login page), safeNext, passwordResetAvailable
+    passkey-signin.ts      (sprint 199, NX-U6) signing in with a passkey alone (meta.app.passkey_signin): the button above
+                           the password fields (passkeyBlock), /login/passkey/options and /login/passkey (user-verified,
+                           discoverable; the account's rules as for a password; method passkey+2fa), the sign-in card's
+                           mark and theme colours (appMark, signInStyle)
     password-reset.ts      Forgot password: request (same answer either way), the link (token into the session), the new password
     two-step.ts            (sprint 130) the second step of signing in (/login/2fa: a code, or the first app and its recovery
                            codes), passwordSignIn, and My account → Two-factor sign-in; (sprint 131) passkeys at the

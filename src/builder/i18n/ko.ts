@@ -5803,6 +5803,8 @@ export const ko: BuilderMessages = {
   'lgp.minimal': '최소',
   'lgp.create_a_login_page': '로그인 페이지 만들기',
   'lgp.offer_forgot_password': '"비밀번호를 잊으셨나요?" 제공',
+  'lgp.passkey_signin': "사용자가 패스키만으로 로그인할 수 있음",
+  'lgp.passkey_signin_help': "사용자 이름과 비밀번호 위에 “패스키로 로그인”을 표시합니다. 사용자 디렉터리의 계정에만 해당합니다(사용자 이름과 비밀번호가 켜진 App users, ID 공급자나 LDAP 제외). 사용자는 {account}에서 패스키를 추가합니다. 인증기가 사용자를 확인해야 하므로(지문, 얼굴, PIN) 패스키는 두 요소로 인정되며 두 번째 단계가 없습니다. JavaScript와 IP 주소가 아닌 호스트 이름이 필요합니다.",
   'lgp.second_step': '두 번째 단계',
   'lgp.my_account': '내 계정',
   'lgp.not_available_yet': '아직 사용할 수 없음:',

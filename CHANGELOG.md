@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Sign in to an application with a passkey alone** (sprint 199, NX-U6; beyond APEX, whose sign-in page has no
+  passkeys): **Settings → Sign-in → Users may sign in with a passkey alone** (off by default) puts **Sign in with a
+  passkey** above the username and password, on the built-in sign-in page and in the Login region of an application's
+  own login page. One tap, no username: the browser offers the passkeys it holds for the site (discoverable
+  credentials) and the authenticator must verify the user, so the sign-in counts as both factors and no second step
+  follows. Only for the user directory's own accounts; the account must be active and allowed, the lockout after failed
+  sign-ins, availability and an expired password apply as for a password, and every failure is logged as
+  `login_failed`. With the setting on, *My account* offers passkeys (made discoverable) also without a second step.
+  Without JavaScript, or on an IP address, the button stays hidden and the password form works unchanged. The setting
+  travels with exports and the application files (an older export imports with it off). The sign-in card also takes
+  the application's look: its icon (the PWA icon, else its initial on the accent colour) and the theme's colours.
+  HR part 91 turns it on. Migration 173.
+
 ### Fixed
 - **A page the server sent itself could arrive empty** (sprint 200): a handler that sent its page and returned nothing
   (a refusal from the session checks, the 404 of an unknown application, the 503 of an application without a database
