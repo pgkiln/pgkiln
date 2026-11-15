@@ -286,7 +286,13 @@ describe('mail queue and a workspace\'s own mail service', () => {
     assert.equal(m.status, 'error');
     assert.match(m.message, /not on the network access list of workspace S118 Net/);
     assert.equal(mail.smtpHits.length, 0);
-    assert.ok(await owner.one(`select 1 from meta.network_refusal where workspace_id = $1 and what like 'mail service%'`, [wsId]));
+    // the refusal is kept without waiting (src/network-acl.ts: void recordRefusal): wait for its row
+    let kept = null;
+    for (let i = 0; i < 50 && !kept; i++) {
+      kept = await owner.one(`select 1 from meta.network_refusal where workspace_id = $1 and what like 'mail service%'`, [wsId]);
+      if (!kept) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.ok(kept, 'the refusal is kept');
     await restrict([`127.0.0.1:${mail.smtpPort}`]);
     const ok = (await asApp((q) => q(`select meta.send_mail('king@example.com', 'T ws allowed', 'Hello') as id`)))[0].id;
     await mailTick();
