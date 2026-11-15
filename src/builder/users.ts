@@ -159,6 +159,8 @@ export async function usersRoutes(app: FastifyInstance) {
               ${input('password_lifetime_days', tx('us.lifetime'), cfg.lifetimeDays, { type: 'number', help: tx('us.lifetime_help') })}
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="password_require_mixed" value="true"${cfg.requireMixed ? raw(' checked') : ''}> ${tx('us.mixed')}</label></div>
+            <div class="field"><label class="check"><input type="checkbox" id="f_password_breach_check" name="password_breach_check" value="true" aria-describedby="h_password_breach_check"${cfg.breachCheck ? raw(' checked') : ''}> ${tx('us.breach_check')}</label>
+              <small class="help" id="h_password_breach_check">${tx('us.breach_check_help')}</small></div>
             <p class="muted">${tx('us.policy_note', { minutes: loginWindowMinutes(), failures: loginMaxFailuresPerUser() })}</p>
             <div class="buttons"><button class="btn">${tx('us.save_settings')}</button></div>
           </form>`, '', 'account-settings')}
@@ -192,11 +194,13 @@ export async function usersRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     const n = (v: string | undefined, min: number, max: number) => String(Math.min(max, Math.max(min, Math.round(Number(v) || 0))));
     await owner.query(
-      `insert into meta.setting (name, value) values ('password_min_length', $1), ('password_lifetime_days', $2), ('password_require_mixed', $3)
+      `insert into meta.setting (name, value) values ('password_min_length', $1), ('password_lifetime_days', $2), ('password_require_mixed', $3), ('password_breach_check', $4)
        on conflict (name) do update set value = excluded.value`,
-      [n(b.password_min_length, 6, 128), n(b.password_lifetime_days, 0, 3650), b.password_require_mixed === 'true' ? 'true' : 'false'],
+      [n(b.password_min_length, 6, 128), n(b.password_lifetime_days, 0, 3650), b.password_require_mixed === 'true' ? 'true' : 'false', b.password_breach_check === 'true' ? 'true' : 'false'],
     );
     clearAccountSettings();
+    await logActivity({ username: s.username, event: 'instance_settings', ip: clientIp(req),
+      detail: `password policy: minimum length ${n(b.password_min_length, 6, 128)}, lifetime ${n(b.password_lifetime_days, 0, 3650)} days, letters and digits ${b.password_require_mixed === 'true' ? 'on' : 'off'}, breached-password check ${b.password_breach_check === 'true' ? 'on' : 'off'}` });
     flash(s, tr(s)('us.settings_saved'));
     return back(reply, s, `${BASE}/users`);
   });

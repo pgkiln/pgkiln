@@ -158,10 +158,34 @@ form asks for your password and a code again; wrong ones count with failed sign-
 workspace (or an administrator), and not be held to set up two-factor sign-in. It stops working at once when it
 **expires** or is **revoked**: by you (the list on Security: name, workspace, scopes, expiry, last use with the
 address, **Revoke**), by an administrator (**Developers** → *Builder tokens of all developers*), and by itself when you
-are **removed** as a developer, **change your password**, an administrator **sets your password**
-(`pgkiln users password <name> --developer`) or **resets your two-factor sign-in** (Developers, or
-`pgkiln admin reset-2fa`). Making, using and revoking tokens is in the activity log (`builder_token_created`,
-`builder_api` with the token's name, `builder_token_revoked`; a scope a token lacks: `forbidden`).
+are **removed** as a developer (pgkiln has no deactivated developers: removing one is the way), **change your
+password**, an administrator **sets your password** (`pgkiln users password <name> --developer`) or **resets your
+two-factor sign-in** (Developers, or `pgkiln admin reset-2fa`). Removing a workspace removes its tokens.
+
+**A token stays tied to the sign-in it was made after.** pgkiln keeps with each token whether that sign-in went
+through single sign-on (and which identity provider or LDAP directory) and whether it used a second factor (an
+authenticator app, a passkey, a recovery code, or the identity provider's own multi-factor sign-in). Every request
+compares that with your rules *at that moment*, and the token is refused (**403**, until you make a new one) when:
+
+| Now | A token made … |
+|---|---|
+| a workspace of yours [requires single sign-on](#single-sign-on-for-developers) (break-glass administrators excepted) | with the pgkiln password |
+| single sign-on is required, and the identity the token was made through is unlinked from you, or its provider or directory no longer signs developers in | through that identity |
+| you have a second factor (you set one up later), or the instance or a workspace [requires one](#two-factor-sign-in) (also during the grace period) | without a second factor |
+
+The list on Security (and the administrators' list) marks such a token **Not usable** with the reason. Tokens made
+before this check (pgkiln 0.100) are taken to have used single sign-on when you must use it now, and a second factor
+when you have one now or must use single sign-on.
+
+**Every call is logged.** Each request made with a known token is in the activity log under its developer, with the
+token's number and name, the call (the endpoint or MCP tool, and the application), the outcome and the HTTP status:
+`builder_api` (*token #12 Laptop: get_page hr: ok (200)*, *… import hr: refused (…) (409)*) and `forbidden` for
+refusals (a scope the token lacks, a developer who left the workspace or whose rules refuse the token). A call that names
+an application is also on that application's **Activity** page. **Calls** (on each token of the list, and *Calls made
+with your tokens* under it) shows the last 200 of your own tokens; administrators see every developer's
+(**Developers** → *Builder tokens of all developers* → *Calls made with builder tokens*). Unknown, expired and revoked
+tokens are failed sign-ins of the address (no developer's name). Making and revoking tokens is logged too
+(`builder_token_created`, with how the sign-in went; `builder_token_revoked`).
 
 **The API** (`/builder/api/v1`) takes the token in the `Authorization: Bearer pgkb_…` header only: cookies don't count
 (a signed-in browser can't call it, and CSRF doesn't apply), nor does the query string. An unknown, expired or revoked

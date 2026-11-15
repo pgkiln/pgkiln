@@ -130,8 +130,12 @@ src/
   api.ts                   REST API tokens for PostgREST, API role checks
   builder-tokens.ts        (sprint 194, NX-F4, migration 171) personal builder tokens: createToken (pgkb_ + 256 random bits, sha256
                            only), tokensOf, revokeToken / revokeTokensOf, checkToken (Bearer header only; expiry, revocation,
-                           workspace membership and the two-factor rule looked up at every request; tokenThrottled per address)
-  accounts.ts              account settings and the password policy
+                           workspace membership and the two-factor rule looked up at every request; tokenThrottled per address);
+                           (sprint 204, migration 178) the sign-in a token was made after (auth_mfa / auth_sso / auth_via) and
+                           signInProblem: refused when the developer must now use single sign-on or a second factor it lacked
+  accounts.ts              account settings and the password policy (passwordProblem; breachedPasswordProblem, sprint 204)
+  breached-passwords.ts    (sprint 204, SEC-3) Have I Been Pwned range API: 5 hex characters of the SHA-1, Add-Padding, webRequest
+                           with that host only, 3 s, fail open with a warning; setBreachTransport for tests (never the network)
   i18n.ts                  pgkiln's own texts (en, nl), translator, Accept-Language
   i18n/                    de, fr, es, it, pt, pl, sv, da, nb, fi, cs, tr, el, ru, uk, ja, zh, ko, ar, he: the built-in texts of
                            the other languages (English and Dutch are in i18n.ts)
@@ -413,9 +417,11 @@ src/
     api-v1.ts              (sprint 194) /builder/api/v1 for `pgkiln mcp --url`: the MCP tools with serverContext (the token's
                            workspace; the owner pool for pgkiln's tables of its applications, the workspace's developer login for
                            the database's objects), toolScope (read / write / sql), export, import (lock rules: changedPages,
-                           lockedFor) and advise; every call in the activity log (builder_api)
+                           lockedFor) and advise; every call in the activity log (builder_api / forbidden, "token #<id> <name>:
+                           <call>: <outcome> (<status>)", sprint 204)
     tokens.ts              (sprint 194) Security → Builder tokens (make, shown once, list, revoke), tokenStepUp (a sign-in within
-                           10 minutes with single sign-on / the second factor, else password and code), Developers → all tokens
+                           10 minutes with single sign-on / the second factor, else password and code), Developers → all tokens;
+                           (sprint 204) the sign-in kept with the token, Not usable in the lists, Calls (/builder/security/tokens/calls)
     i18n.ts                (sprint 121) the builder's own texts: BUILDER_LANGUAGES, tr(s) / translatorFor(lang) → tx(key, params),
                            tx.rich (markup in a sentence), tx.dyn (keys made at run time), tx.label (known breadcrumb labels),
                            (sprint 162) tx.code (`backticks` become <code>), withTranslator / scopedTx (a request-scoped translator)

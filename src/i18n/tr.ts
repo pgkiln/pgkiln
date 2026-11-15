@@ -35,6 +35,7 @@ export const tr: Record<MessageKey, string> = {
   'password.too_short': "Parolalar en az {min} karakter olmalıdır.",
   'password.needs_mixed': "Parolalar hem harf hem rakam içermelidir.",
   'password.contains_username': "Parola kullanıcı adını içermemelidir.",
+  'password.breached': "Bu parola bilinen veri sızıntılarında geçiyor: başka bir parola seçin.",
   'password.same_as_old': "Yeni parola mevcut paroladan farklı olmalıdır.",
   'password.days_left': "Parolanızın süresi {days} gün içinde dolacak.",
   // account page

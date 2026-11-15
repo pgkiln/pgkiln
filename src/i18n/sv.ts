@@ -35,6 +35,7 @@ export const sv: Record<MessageKey, string> = {
   'password.too_short': "Lösenord måste ha minst {min} tecken.",
   'password.needs_mixed': "Lösenord måste innehålla både bokstäver och siffror.",
   'password.contains_username': "Lösenordet får inte innehålla användarnamnet.",
+  'password.breached': "Lösenordet finns i kända dataläckor: välj ett annat.",
   'password.same_as_old': "Det nya lösenordet måste skilja sig från det nuvarande.",
   'password.days_left': "Ditt lösenord går ut om {days} dag(ar).",
   // account page

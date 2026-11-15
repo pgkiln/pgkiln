@@ -35,6 +35,7 @@ export const ja: Record<MessageKey, string> = {
   'password.too_short': "パスワードは {min} 文字以上にしてください。",
   'password.needs_mixed': "パスワードには英字と数字の両方を含めてください。",
   'password.contains_username': "パスワードにユーザー名を含めることはできません。",
+  'password.breached': "このパスワードは既知のデータ漏えいに含まれています。別のパスワードを選んでください。",
   'password.same_as_old': "新しいパスワードは現在のものと異なる必要があります。",
   'password.days_left': "パスワードの有効期限まであと {days} 日です。",
   // account page

@@ -35,6 +35,7 @@ export const cs: Record<MessageKey, string> = {
   'password.too_short': "Heslo musí mít alespoň {min} znaků.",
   'password.needs_mixed': "Heslo musí obsahovat písmena i číslice.",
   'password.contains_username': "Heslo nesmí obsahovat uživatelské jméno.",
+  'password.breached': "Toto heslo se objevuje ve známých únicích dat: zvolte jiné.",
   'password.same_as_old': "Nové heslo se musí lišit od současného.",
   'password.days_left': "Platnost hesla vyprší za {days} d.",
   // account page

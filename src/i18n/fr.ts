@@ -35,6 +35,7 @@ export const fr: Record<MessageKey, string> = {
   'password.too_short': 'Les mots de passe doivent comporter au moins {min} caractères.',
   'password.needs_mixed': 'Les mots de passe doivent contenir des lettres et des chiffres.',
   'password.contains_username': 'Le mot de passe ne doit pas contenir le nom d’utilisateur.',
+  'password.breached': "Ce mot de passe figure dans des fuites de données connues : choisissez-en un autre.",
   'password.same_as_old': 'Le nouveau mot de passe doit être différent de l’actuel.',
   'password.days_left': 'Votre mot de passe expire dans {days} jour(s).',
   // account page

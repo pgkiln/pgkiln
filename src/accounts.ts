@@ -8,6 +8,8 @@ export interface AccountSettings {
   minLength: number;
   requireMixed: boolean;
   lifetimeDays: number;
+  /** (sprint 204, SEC-3) look new passwords up in Have I Been Pwned's range API (src/breached-passwords.ts) */
+  breachCheck: boolean;
 }
 
 let cache: { at: number; value: AccountSettings } | undefined;
@@ -20,6 +22,7 @@ export async function accountSettings(): Promise<AccountSettings> {
     minLength: Math.max(1, Number(get('password_min_length') ?? 8) || 8),
     requireMixed: get('password_require_mixed') === 'true',
     lifetimeDays: Math.max(0, Number(get('password_lifetime_days') ?? 0) || 0),
+    breachCheck: get('password_breach_check') === 'true',
   };
   cache = { at: Date.now(), value };
   return value;
@@ -30,13 +33,23 @@ export const clearAccountSettings = () => {
   cache = undefined;
 };
 
-/** Why a new password is not acceptable, or null. */
+/**
+ * Why a new password is not acceptable, or null. For every password set or changed (developers and application users),
+ * never at sign-in.
+ */
 export async function passwordProblem(password: string | undefined, { username, t = english }: { username?: string | null; t?: Translate } = {}) {
   const s = await accountSettings();
   if (!password || password.length < s.minLength) return t('password.too_short', { min: s.minLength });
   if (s.requireMixed && !(/\p{L}/u.test(password) && /\d/.test(password))) return t('password.needs_mixed');
   if (username && username.length >= 3 && password.toLowerCase().includes(username.toLowerCase())) return t('password.contains_username');
-  return null;
+  return breachedPasswordProblem(password, s, t);
+}
+
+/** (sprint 204, SEC-3) A password seen in data breaches, when the instance checks that; the service unreachable: none. */
+export async function breachedPasswordProblem(password: string, s: Pick<AccountSettings, 'breachCheck'>, t: Translate = english) {
+  if (!s.breachCheck) return null;
+  const { breachCount } = await import('./breached-passwords.ts');
+  return ((await breachCount(password)) ?? 0) > 0 ? t('password.breached') : null;
 }
 
 /**

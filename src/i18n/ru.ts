@@ -35,6 +35,7 @@ export const ru: Record<MessageKey, string> = {
   'password.too_short': "Пароль должен содержать не менее {min} символов.",
   'password.needs_mixed': "Пароль должен содержать и буквы, и цифры.",
   'password.contains_username': "Пароль не должен содержать имя пользователя.",
+  'password.breached': "Этот пароль встречается в известных утечках данных: выберите другой.",
   'password.same_as_old': "Новый пароль должен отличаться от текущего.",
   'password.days_left': "Срок действия пароля истекает через {days} дн.",
   // account page

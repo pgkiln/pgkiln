@@ -35,6 +35,7 @@ export const zh: Record<MessageKey, string> = {
   'password.too_short': "密码至少需要 {min} 个字符。",
   'password.needs_mixed': "密码必须同时包含字母和数字。",
   'password.contains_username': "密码不能包含用户名。",
+  'password.breached': "此密码出现在已知的数据泄露中：请选择其他密码。",
   'password.same_as_old': "新密码必须与当前密码不同。",
   'password.days_left': "您的密码将在 {days} 天后过期。",
   // account page

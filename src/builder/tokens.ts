@@ -14,10 +14,10 @@ import { icon } from '../icons.ts';
 import { checkSecondFactor, hasFactor, requirement } from '../mfa.ts';
 import { ssoRequired } from '../devsso.ts';
 import { clientIp, destroySession, loginThrottled, logActivity, saveState, type Session } from '../session.ts';
-import { createToken, DEFAULT_TOKEN_DAYS, MAX_TOKEN_DAYS, parseScopes, revokeToken, STEP_UP_MINUTES, TOKEN_SCOPES, TokenError, tokensOf, type BuilderToken } from '../builder-tokens.ts';
+import { createToken, DEFAULT_TOKEN_DAYS, MAX_TOKEN_DAYS, parseScopes, revokeToken, signInProblem, STEP_UP_MINUTES, TOKEN_SCOPES, TokenError, tokensOf, type BuilderToken, type SignInProblem } from '../builder-tokens.ts';
 import { tr } from './i18n.ts';
 import { isAdmin } from './locks.ts';
-import { back, BASE, csrf, developer, flash, input, region, type Req } from './ui.ts';
+import { back, BASE, csrf, developer, flash, input, region, send, shell, type Req } from './ui.ts';
 
 export type StepUp =
   | { ok: true }
@@ -56,6 +56,18 @@ export async function tokenStepUp(s: Session): Promise<StepUp> {
 const when = (v: string | null) => (v ? String(v).slice(0, 16).replace('T', ' ') : '');
 const statusOf = (t: BuilderToken) => (t.revoked_at ? 'revoked' : t.live ? 'active' : 'expired');
 
+/** (sprint 204) Why each live token is refused now (its sign-in no longer meets its developer's rules), by id. */
+async function problemsOf(tokens: BuilderToken[]): Promise<Map<number, SignInProblem>> {
+  const admins = new Map<string, boolean>();
+  const out = new Map<number, SignInProblem>();
+  for (const t of tokens.filter((x) => x.live)) {
+    if (!admins.has(t.username)) admins.set(t.username, await isAdmin(t.username));
+    const p = await signInProblem(t.username, admins.get(t.username)!, t);
+    if (p) out.set(t.id, p);
+  }
+  return out;
+}
+
 /** The public address of the builder, for the example command. */
 const publicBase = (req: Req) => (process.env.PUBLIC_URL || `${req.protocol}://${req.headers.host ?? 'localhost'}`).replace(/\/+$/, '');
 
@@ -63,6 +75,7 @@ const publicBase = (req: Req) => (process.env.PUBLIC_URL || `${req.protocol}://$
 export async function tokensRegion(req: Req, s: Session, made?: { name: string; token: string }): Promise<Raw> {
   const tx = tr(s);
   const [mine, step] = await Promise.all([tokensOf(s.username!), tokenStepUp(s)]);
+  const problems = await problemsOf(mine);
   const workspaces = s.workspaces ?? [];
   const shown = made
     ? html`<div class="alert alert-warning" role="status"><p class="u-mt0"><b>${tx('tok.shown_title', { name: made.name })}</b> ${tx('tok.shown_once')}</p>
@@ -103,22 +116,23 @@ pgkiln mcp --url ${publicBase(req)}</code></pre></div>`
       </form>`;
   const list = mine.length
     ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('tok.col_name')}</th><th>${tx('tok.workspace')}</th><th>${tx('tok.scopes')}</th><th>${tx('tok.col_expires')}</th><th>${tx('tok.col_last_used')}</th><th>${tx('tok.col_status')}</th></tr></thead><tbody>
-        ${mine.map((t) => tokenRow(s, t, false))}</tbody></table></div>`
+        ${mine.map((t) => tokenRow(s, t, false, problems.get(t.id)))}</tbody></table></div>`
     : html`<p class="muted">${tx('tok.none')}</p>`;
-  return region(tx('tok.title'), html`<p class="muted u-mt0">${tx.code('tok.intro')}</p>${shown}${form}<h3>${tx('tok.yours')}</h3>${list}`, '', 'tokens');
+  return region(tx('tok.title'), html`<p class="muted u-mt0">${tx.code('tok.intro')}</p>${shown}${form}<h3>${tx('tok.yours')}</h3>${list}
+    ${mine.length ? html`<p><a href="${BASE}/security/tokens/calls">${icon('list')} ${tx('tok.calls_link')}</a></p>` : ''}`, '', 'tokens');
 }
 
-function tokenRow(s: Session, t: BuilderToken, admin: boolean) {
+function tokenRow(s: Session, t: BuilderToken, admin: boolean, problem?: SignInProblem) {
   const tx = tr(s);
   const st = statusOf(t);
   return html`<tr>
     ${admin ? html`<td data-label="${tx('tok.col_developer')}">${t.username}</td>` : ''}
-    <td data-label="${tx('tok.col_name')}">${icon('key')} ${t.name}</td>
+    <td data-label="${tx('tok.col_name')}">${icon('key')} ${t.name}<br><a class="small" href="${BASE}/security/tokens/calls?token=${t.id}" aria-label="${tx('tok.calls_of', { name: t.name })}">${tx('tok.calls')}</a></td>
     <td data-label="${tx('tok.workspace')}">${t.workspace}</td>
     <td data-label="${tx('tok.scopes')}">${t.scopes.join(', ')}</td>
     <td data-label="${tx('tok.col_expires')}">${when(t.expires_at)}</td>
     <td data-label="${tx('tok.col_last_used')}">${t.last_used_at ? html`${when(t.last_used_at)}<br><span class="muted small">${t.last_used_ip ?? ''}</span>` : html`<span class="muted">${tx('tok.never_used')}</span>`}</td>
-    <td data-label="${tx('tok.col_status')}">${st === 'active'
+    <td data-label="${tx('tok.col_status')}">${problem ? html`<span class="badge badge-warn">${tx('tok.blocked')}</span> <span class="small">${tx(`tok.blocked_${problem}` as 'tok.blocked_mfa')}</span><br>` : ''}${st === 'active'
       ? html`<form method="post" action="${BASE}/security/tokens/${t.id}/revoke" class="u-inline">${csrf(s)}<input type="hidden" name="back" value="${admin ? 'developers' : 'security'}">
           <button class="btn btn-sm btn-danger" data-confirm="${tx('tok.revoke_confirm', { name: t.name })}" aria-label="${tx('tok.revoke_named', { name: t.name })}">${tx('tok.revoke')}</button></form>`
       : html`<span class="badge${st === 'revoked' ? ' badge-warn' : ''}" title="${t.revoked_reason ?? ''}">${tx(st === 'revoked' ? 'tok.revoked' : 'tok.expired')}</span>`}</td>
@@ -129,14 +143,61 @@ function tokenRow(s: Session, t: BuilderToken, admin: boolean) {
 export async function adminTokensRegion(s: Session): Promise<Raw> {
   const tx = tr(s);
   const all = await tokensOf(null);
+  const problems = await problemsOf(all);
   return region(tx('tok.admin_title'), html`<p class="muted u-mt0">${tx('tok.admin_intro')}</p>
     ${all.length
       ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('tok.col_developer')}</th><th>${tx('tok.col_name')}</th><th>${tx('tok.workspace')}</th><th>${tx('tok.scopes')}</th><th>${tx('tok.col_expires')}</th><th>${tx('tok.col_last_used')}</th><th>${tx('tok.col_status')}</th></tr></thead><tbody>
-          ${all.map((t) => tokenRow(s, t, true))}</tbody></table></div>`
-      : html`<p class="muted">${tx('tok.none')}</p>`}`, '', 'tokens');
+          ${all.map((t) => tokenRow(s, t, true, problems.get(t.id)))}</tbody></table></div>`
+      : html`<p class="muted">${tx('tok.none')}</p>`}
+    <p><a href="${BASE}/security/tokens/calls">${icon('list')} ${tx('tok.calls_all')}</a></p>`, '', 'tokens');
+}
+
+/** At most this many calls on the Calls page. */
+const CALLS_SHOWN = 200;
+
+/**
+ * (sprint 204) The calls made with builder tokens, newest first: a developer's own tokens, an administrator's view every
+ * developer's; one token with ?token=<id>. From the activity log (api-v1.ts writes "token #<id> <name>: …").
+ */
+async function callsPage(req: Req, reply: FastifyReply, s: Session) {
+  const tx = tr(s);
+  const admin = await isAdmin(s.username);
+  const raw = String((req.query as Record<string, unknown> | undefined)?.token ?? '');
+  const tokenId = /^\d{1,15}$/.test(raw) ? Number(raw) : null;
+  // a developer sees the calls of their own tokens only (another's token: not found)
+  const token = tokenId === null ? null
+    : await owner.one<{ id: number; name: string; username: string }>('select id::int as id, name, username from meta.builder_token where id = $1 and ($2::text is null or username = $2)', [tokenId, admin ? null : s.username]);
+  if (tokenId !== null && !token) return reply.code(404).send('Not found');
+  const rows = (await owner.query<{ at: string; username: string; event: string; ip: string | null; detail: string; app: string | null }>(
+    `select l.at::text, l.username, l.event, l.ip, l.detail, a.alias as app
+       from meta.activity_log l left join meta.app a on a.id = l.app_id
+      where l.event in ('builder_api', 'forbidden') and l.detail like 'token #%'
+        and ($1::text is null or l.username = $1)
+        and ($2::text is null or l.detail like $2)
+      order by l.id desc limit ${CALLS_SHOWN}`,
+    [admin ? null : s.username, token ? `token #${token.id} %` : null],
+  )).rows;
+  const title = token ? tx('tok.calls_of', { name: token.name }) : admin ? tx('tok.calls_all') : tx('tok.calls_link');
+  const main = html`<h1 class="u-mb1">${title}</h1>
+    <p class="muted u-mt0">${tx('tok.calls_intro', { n: CALLS_SHOWN })}${token ? html` <a href="${BASE}/security/tokens/calls">${tx(admin ? 'tok.calls_all' : 'tok.calls_link')}</a>` : ''}</p>
+    ${rows.length
+      ? html`<div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('tok.col_when')}</th>${admin ? html`<th>${tx('tok.col_developer')}</th>` : ''}<th>${tx('tok.col_call')}</th><th>IP</th></tr></thead><tbody>
+        ${rows.map((r) => html`<tr><td data-label="${tx('tok.col_when')}">${String(r.at).slice(0, 19)}</td>
+          ${admin ? html`<td data-label="${tx('tok.col_developer')}">${r.username}</td>` : ''}
+          <td data-label="${tx('tok.col_call')}" class="cell-break">${r.event === 'forbidden' ? html`<span class="badge badge-warn">${tx('tok.refused')}</span> ` : ''}${r.detail}</td>
+          <td data-label="IP">${r.ip ?? ''}</td></tr>`)}</tbody></table></div>`
+      : html`<p class="muted">${tx('tok.calls_none')}</p>`}
+    <p><a class="btn" href="${BASE}/${admin && !token ? 'developers' : 'security'}#tokens">${icon('arrow-left')} ${tx('tok.title')}</a></p>`;
+  return send(reply, s, shell(s, title, [[tx('mfa.title'), `${BASE}/security`], [title]], main, 'developers'));
 }
 
 export async function tokenRoutes(app: FastifyInstance, render: (req: Req, reply: FastifyReply, s: Session, made?: { name: string; token: string }) => Promise<unknown>) {
+  app.get(`${BASE}/security/tokens/calls`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    return callsPage(req, reply, s);
+  });
+
   app.post(`${BASE}/security/tokens`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
@@ -177,8 +238,12 @@ export async function tokenRoutes(app: FastifyInstance, render: (req: Req, reply
     try {
       const scopes = parseScopes((req.body as Record<string, unknown> | undefined)?.scopes);
       const days = Number(String(req.body?.days ?? DEFAULT_TOKEN_DAYS).trim());
-      made = await createToken({ username: me, workspaceId: ws.id, name, scopes, days });
-      await logActivity({ username: me, event: 'builder_token_created', ip, detail: `${name}: ${scopes.join(', ')}, workspace ${ws.name}, ${days} days` });
+      // (sprint 204) how the sign-in went is kept with the token: every request checks it against the developer's rules then
+      const a = authOf(s);
+      const auth = { mfa: !!a?.mfa, sso: !!a?.via, via: a?.via ?? null };
+      made = await createToken({ username: me, workspaceId: ws.id, name, scopes, days, auth });
+      await logActivity({ username: me, event: 'builder_token_created', ip,
+        detail: `token #${made.id} ${name}: ${scopes.join(', ')}, workspace ${ws.name}, ${days} days; signed in with ${auth.sso ? `single sign-on (${auth.via})` : 'the password'}${auth.mfa ? ' and a second factor' : ''}` });
     } catch (e) {
       if (!(e instanceof TokenError)) throw e;
       flash(s, e.message, 'error');
@@ -198,7 +263,7 @@ export async function tokenRoutes(app: FastifyInstance, render: (req: Req, reply
     // an administrator revokes anyone's; a developer only their own (another's is not found)
     const t = await revokeToken(Number(req.params.id), s.username!, `revoked by ${s.username}`, admin ? null : s.username!);
     if (!t) return reply.code(404).send('Not found');
-    await logActivity({ username: s.username, event: 'builder_token_revoked', ip: clientIp(req), detail: `${t.username}: ${t.name}` });
+    await logActivity({ username: s.username, event: 'builder_token_revoked', ip: clientIp(req), detail: `token #${t.id} ${t.name} of ${t.username}` });
     flash(s, tx('tok.revoked_done', { name: t.name }));
     return back(reply, s, to);
   });

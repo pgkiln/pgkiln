@@ -35,6 +35,7 @@ export const nb: Record<MessageKey, string> = {
   'password.too_short': "Passord må ha minst {min} tegn.",
   'password.needs_mixed': "Passord må inneholde både bokstaver og sifre.",
   'password.contains_username': "Passordet kan ikke inneholde brukernavnet.",
+  'password.breached': "Passordet finnes i kjente datalekkasjer: velg et annet.",
   'password.same_as_old': "Det nye passordet må være forskjellig fra det nåværende.",
   'password.days_left': "Passordet ditt utløper om {days} dag(er).",
   // account page

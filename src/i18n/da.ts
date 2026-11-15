@@ -35,6 +35,7 @@ export const da: Record<MessageKey, string> = {
   'password.too_short': "Adgangskoder skal have mindst {min} tegn.",
   'password.needs_mixed': "Adgangskoder skal indeholde både bogstaver og tal.",
   'password.contains_username': "Adgangskoden må ikke indeholde brugernavnet.",
+  'password.breached': "Adgangskoden findes i kendte datalæk: vælg en anden.",
   'password.same_as_old': "Den nye adgangskode skal være forskellig fra den nuværende.",
   'password.days_left': "Din adgangskode udløber om {days} dag(e).",
   // account page

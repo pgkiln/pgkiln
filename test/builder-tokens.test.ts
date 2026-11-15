@@ -134,9 +134,9 @@ describe('the builder API', () => {
     assert.equal((await tool(t, 'export_app', { alias: 'hr' })).statusCode, 400);
     assert.equal((await tool(t, 'nope')).statusCode, 404);
     // every call is in the activity log with the token's name
-    const log = await owner.one<{ n: number }>(`select count(*)::int as n from meta.activity_log where username = $1 and event = 'builder_api' and detail like 'token %: get_page hr'`, [DEV]);
+    const log = await owner.one<{ n: number }>(`select count(*)::int as n from meta.activity_log where username = $1 and event = 'builder_api' and detail like 'token #% %: get_page hr: ok (200)'`, [DEV]);
     assert.ok(log!.n >= 1);
-    const refused = await owner.one<{ n: number }>(`select count(*)::int as n from meta.activity_log where username = $1 and event = 'forbidden' and detail like '%needs the write scope'`, [DEV]);
+    const refused = await owner.one<{ n: number }>(`select count(*)::int as n from meta.activity_log where username = $1 and event = 'forbidden' and detail like 'token #% %: import hr: refused (needs the write scope) (403)'`, [DEV]);
     assert.ok(refused!.n >= 1);
   });
 

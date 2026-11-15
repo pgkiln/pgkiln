@@ -35,6 +35,7 @@ export const de: Record<MessageKey, string> = {
   'password.too_short': 'Kennwörter müssen mindestens {min} Zeichen lang sein.',
   'password.needs_mixed': 'Kennwörter müssen Buchstaben und Ziffern enthalten.',
   'password.contains_username': 'Das Kennwort darf den Benutzernamen nicht enthalten.',
+  'password.breached': "Dieses Kennwort kommt in bekannten Datenlecks vor: Wählen Sie ein anderes.",
   'password.same_as_old': 'Das neue Kennwort muss sich vom aktuellen unterscheiden.',
   'password.days_left': 'Ihr Kennwort läuft in {days} Tag(en) ab.',
   // account page

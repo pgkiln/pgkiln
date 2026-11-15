@@ -35,6 +35,7 @@ export const fi: Record<MessageKey, string> = {
   'password.too_short': "Salasanassa on oltava vähintään {min} merkkiä.",
   'password.needs_mixed': "Salasanassa on oltava sekä kirjaimia että numeroita.",
   'password.contains_username': "Salasana ei saa sisältää käyttäjätunnusta.",
+  'password.breached': "Tämä salasana esiintyy tunnetuissa tietovuodoissa: valitse toinen.",
   'password.same_as_old': "Uuden salasanan on oltava eri kuin nykyinen.",
   'password.days_left': "Salasanasi vanhenee {days} päivän kuluttua.",
   // account page
