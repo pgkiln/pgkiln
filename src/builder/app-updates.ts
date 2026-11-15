@@ -15,7 +15,7 @@ import { BASE } from './ui.ts';
 /** Builder POSTs under an application that don't change it. */
 const NOT_A_CHANGE = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+|mail\/\d+\/(cancel|retry)|pwa\/push-test|rest-sources\/\d+\/test|shared\/automation\/\d+\/run|working-copies)$|^\/pages\/\d+\/region\/\d+\/ai-filter$/;
 /** Builder POSTs that create an application and redirect to it. */
-const CREATES = /^\/(apps|import|create(\/[a-z]+(\/\d+)?)?|gallery\/(samples|starters)\/[\w-]+|blueprints\/create|working-copies)$/;
+const CREATES = /^\/(apps|import|copy-app|create(\/[a-z]+(\/\d+)?)?|gallery\/(samples|starters)\/[\w-]+|blueprints\/create|working-copies)$/;
 
 const noted = new WeakMap<FastifyRequest, { appId: number | null; s: Session & { username: string }; error: unknown }>();
 

@@ -5,6 +5,7 @@ import { icon, ICON_MODIFIERS, isIcon, lucideNames } from '../icons.ts';
 import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field } from './components.ts';
 import { BASE, csrf, type Body } from './ui.ts';
 import { codeAttrs } from './code-editor.ts';
+import { optionName, typeName } from './type-names.ts';
 
 // Shared helpers of the builder pages: lookups for select lists, the generic
 // component property form and saving it.
@@ -94,14 +95,15 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
           ${(f.choices ?? []).map((c) => html`<label class="check"><input type="checkbox" name="${f.name}" value="${c.cls}"${chosen.includes(c.cls) ? raw(' checked') : ''}> ${c.label} <code>${c.cls}</code></label>`)}${help}</fieldset>`;
       }
       case 'select':
-        control = opts(f.options!.map((o) => [o, o || '- none -']));
+        // (sprint 202, AX-3) a type list shows the types' names (Interactive Report, Popup LOV, Set Value …), not their codes
+        control = opts(f.options!.map((o) => [o, optionName(kind, f.name, o) ?? (o || '- none -')]));
         break;
       case 'icon':
         return iconPicker(id, f.name, f.label, String(v ?? ''), help);
       case 'region':
         // (172) a region's parent: another region of the page that is not a sub region itself
         control = opts([['', '- none (page level) -'], ...lk.regions.filter((r) => f.name !== 'parent_id' || (r.id !== row?.id && r.parent_id == null))
-          .map((r): [string, string] => [String(r.id), `${r.title ?? '(untitled)'} (${r.type})`])]);
+          .map((r): [string, string] => [String(r.id), `${r.title ?? '(untitled)'} (${typeName('region', r.type)})`])]);
         break;
       case 'page':
         control = opts([['', '- none -'], ...lk.pages.map((p): [string, string] => [String(p.page_no), `${p.page_no}. ${p.name}`])]);
@@ -166,13 +168,15 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
     }
     return html`<div class="field" data-prop="${f.name}"${f.wide ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label}</label>${control}${help}</div>`;
   };
-  const groups = [...new Set(spec.fields.map((f) => f.group ?? ''))];
+  // (sprint 202, AX-2) a field the property editor leaves out (a region's settings: Attributes tab, Utilities → Show as JSON)
+  const fields = spec.fields.filter((f) => !f.hidden);
+  const groups = [...new Set(fields.map((f) => f.group ?? ''))];
   // (sprint 77, APEX: Show Common / Show All) the other properties are marked, for the property editor's toggle
-  const marked = spec.fields.some((f) => f.common);
+  const marked = fields.some((f) => f.common);
   const shown = (f: Field) => (marked && !f.common ? html`<div class="pe-more" data-more>${field(f)}</div>` : field(f));
   return html`<form method="post" action="${action}" class="component-form"${opts.id ? html` id="${opts.id}"` : ''}>
     ${csrf(s)}
-    ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${spec.fields.filter((f) => (f.group ?? '') === g).map(shown)}</div></fieldset>`)}
+    ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${fields.filter((f) => (f.group ?? '') === g).map(shown)}</div></fieldset>`)}
     ${submit ? html`<div class="buttons"><button class="btn btn-hot">${submit}</button></div>` : ''}
   </form>`;
 }

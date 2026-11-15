@@ -171,7 +171,8 @@ describe('number format masks (HR page 29)', () => {
     const before = page.config;
     try {
       const form = (await dev.get(`/builder/pages/${page.page_id}?c=region-${r}`)).body;
-      assert.match(form, /name="fmt_\d+" value="FML999G990D00"/);
+      // (sprint 202) the Attributes tab's fields are in the property editor's form: names "<form key>:<field>"
+      assert.match(form, /name="report-settings:fmt_\d+" value="FML999G990D00"/);
       const res = await dev.post(`/builder/pages/${page.page_id}/region/${r}/report-settings`, {
         __csrf: dev.lastCsrf, n: '2', col_0: 'salary', fmt_0: '999G990', shown_0: 'true', print_0: 'true', col_1: 'yearly', fmt_1: 'G9', shown_1: 'true', print_1: 'true',
       });

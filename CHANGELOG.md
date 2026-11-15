@@ -5,6 +5,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Recently edited pages and Copy application on the application home** (sprint 203, AX-6; as APEX): the side column
+  lists, under Tasks, the five pages changed last (yours first), each with how long ago (and who, for another
+  developer's change), linking into the Page Designer. Application Utilities → *Recently updated pages* names each page
+  (number and name; a page the application no longer has shows as *Deleted page N (its last recorded name)*, linked to
+  its change history) with relative times, as the Pages report. A new task **Copy application**
+  (`/builder/apps/:id/copy`) makes a new application under a new name and alias from the export, imported again, with
+  no link back: same workspace, database role and access; web credentials keep their secrets; automations and REST
+  data source syncs start off; sessions, saved reports and preferences are not copied.
+- **Shared Components → Templates and Session State Protection** (sprint 203, AX-7): **User Interface → Templates**
+  lists the page, region, button, label, report and list templates read-only, each with a description and **Used by**
+  links into the Page Designer, and links to Template Components and Theme Roller. **Security → Session State
+  Protection** opens Settings → Errors and Sessions at Expire bookmarks. Builder search (Ctrl+K, `/builder/palette`)
+  finds the current application's Shared Components entries by name, in the builder's language or English.
+
+### Changed
+- **One Save for a region in the Page Designer** (sprint 202, AX-2; APEX: one Save for the whole page): the toolbar's
+  **Save** (and Ctrl+S, also without JavaScript) saves both tabs of a region's property editor at once: the Region tab
+  and the Attributes tab (report, grid, chart, cards, calendar, faceted search, map, tree, template component, AI
+  assistant, Data Reporter, Form Designer settings …), which no longer has a save button of its own (*Save report
+  settings* is gone, as is the sentence about the settings JSON). A setting the Attributes tab refuses is named in an
+  error message beside it. The region's *Attributes (JSON)* field left the Region tab for **Utilities → Show as JSON**:
+  every key of the region's settings, also those with no field yet, editable there and saved by the same Save. No
+  property label in the Page Designer says JSON any more (item Attributes, Set items, Menu entries, Plug-in attributes,
+  AI assistant context queries and tools). The settings routes stay for the API.
+- **Type names instead of codes in the Page Designer** (sprint 202, AX-3): the tree, the layout, the property editor's
+  heading and the Type lists of regions, items, buttons, dynamic actions (event, action), processes, validations and
+  computations, a region's template and position and a button's position show the gallery's names in the builder's
+  language (*Interactive Report*, *Select List*, *Popup LOV*, *Submit Page*, *Set Value* …); stored values and exported
+  files keep the codes.
+
 ### Security
 - **Builder tokens are tied to their developer's sign-in** (sprint 204, NX-F4): a token keeps whether it was made after a
   single sign-on (and through which provider or directory) and with a second factor, and is refused (403) once its

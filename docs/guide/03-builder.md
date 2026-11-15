@@ -599,7 +599,9 @@ Every builder page has the same frame, modelled on an IDE:
   utilities under Administration). *Show labels* puts each entry's name next to its icon (*Hide labels* takes them
   away; kept for your session); without them the name shows when you point at an icon or move to it with the
   keyboard. The search is the field at the top of every page (**Ctrl+K**); an application's own search is its
-  **Search** tab. Your account menu has the
+  **Search** tab. (sprint 203) Inside an application (and, without JavaScript, for the application you opened last)
+  it also finds the Shared Components entries by name, in the builder language or in English: *template* leads to
+  Templates and Template Components, *session state* to Session State Protection. Your account menu has the
   **builder theme** (*Dark*, the default; *Light*; or *System*, which follows the operating system),
   Change password and Sign out. The theme is remembered on this device, also after signing out;
   it only changes the builder, not your applications.
@@ -1139,7 +1141,18 @@ Components, page groups, export, backups, supporting objects and lock the applic
 application home is the page report with Create Page in its toolbar) The dashboard is the Pages report and the side
 column, nothing below the report: under Tasks comes **Application lock and comments** (on a phone both follow the
 report), and the quick forms *Create pages from a table* and *Create blank page* are on **Create page**, tab
-Component. (UX-9) The report shows a
+Component. (sprint 203, AX-6; APEX: Recently Edited Pages) Under Tasks, **Recently edited pages** lists five pages by
+their last change, the ones you changed first, each with how long ago (and who, for another developer's change) and a
+link into the Page Designer.
+
+(sprint 203, AX-6; APEX: Tasks → Copy this Application) **Copy application** (a task; `/builder/apps/:id/copy`) makes
+a new application with everything the application has (pages, shared components, settings, supporting objects) under
+a new name and alias (proposed: *Name (copy)* and a free alias). It is the export imported again, so it is not linked
+to the original: for changes to merge back, make a [working copy](#working-copies) instead. The copy is in the
+original's workspace, runs on the same database role and tables, and the same users may run it with the same roles;
+web credentials keep their secrets. Its automations and REST data source synchronisations are off until you turn them
+on, so the two don't both send the same mail. Sessions, saved reports and user preferences are not copied. A locked
+application can still be copied. (UX-9) The report shows a
 page's mode in the property editor's words (*Normal*, *Modal dialog*), and Group stays empty for a page without one.
 (UX-6) Deleting the application is not a task: it is the **Danger zone** at the bottom of Settings → Definition,
 where you type the application's alias to confirm (the server checks it too). Its pages, shared components,
@@ -1313,7 +1326,9 @@ choosing a component opens the Properties tab.
 with **Save**, Undo / Redo and the page navigator stays in view. **Ctrl+S** (Cmd+S) saves. (sprint 197, NX-U5; APEX:
 one Save in the toolbar) The toolbar's **Save** is the designer's only save button: the property editor has none at
 its foot. It submits the property editor's form without JavaScript too, Enter in a field does the same, and on a
-phone it stays in the toolbar as its icon. A change not saved yet puts a dot on Save, and
+phone it stays in the toolbar as its icon. (sprint 202, AX-2) For a region it saves both tabs of the property editor at
+once: the **Region** tab and the **Attributes** tab (report settings, chart settings, …), which has no save button of its
+own; the message says *Region saved.*, and a setting the Attributes tab refuses is named in an error message beside it. A change not saved yet puts a dot on Save, and
 leaving the page with one asks first. On a window under 800 pixels high the gallery under the layout is only
 its tabs (*Regions*, *Items*, *Buttons*): choose one to open it, choose the open one to fold it again; the
 designer remembers which you prefer.
@@ -1377,11 +1392,17 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   counts the chosen ones; they are saved with the other properties. Under the properties, the **Help** pane (APEX: the Help tab) shows the
   property that has the focus (or the pointer): its help, the name it is stored under in exports and
   application files, and a link to the guide section of the component's type.
+  (sprint 202, AX-3) Types go by their names, as in the gallery, in the builder's language: the tree says
+  *Interactive Report*, *Select List*, *Popup LOV*, *Submit Page* or *P3_JOB → Set Value* beside each component, and the
+  **Type** lists of regions, items, buttons (Action), dynamic actions (Event, Action), processes, validations and
+  computations, a region's Template and Position and a button's position show names; the stored values (and the
+  exported files) keep the codes (`report`, `select`, `popup_lov`, `set_value`, …).
 
 The toolbar has the page switcher (previous, the page number: type or step to one and press Enter, a list of
 all pages, next), **Undo** / **Redo** of
 layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
-process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export),
+process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export; with a
+region selected also **Show as JSON**, below),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
 (opens the page in a new tab). Changes are live as soon as they are saved.
 
@@ -1479,8 +1500,15 @@ announced as you move through it), and without JavaScript you get the plain fiel
 settings need no JSON: rows per page, search, Actions menu, sorting, saved and public reports,
 and per column its heading, whether it's shown, whether it's printed and its PDF width, plus the
 link column (page and items), row selection (value column and item) and the PDF layout. The columns are read from the region's query
-(run with `limit 0` as the application's role and rolled back). Saving writes the region's
-*Attributes (JSON)* and keeps any other keys there.
+(run with `limit 0` as the application's role and rolled back). The toolbar's **Save** (or Ctrl+S) saves them with the
+Region tab; it writes the keys these fields know into the region's settings and keeps any other keys there.
+
+(sprint 202, AX-2) **Utilities → Show as JSON** (with a region selected) shows the region's settings as JSON in place of
+the Attributes tab: every key, also those no field has yet, with the keys the region type knows in its help and a link
+to the guide. Edit them there and **Save**: the same Save stores the text (checked as JSON, and the region type's
+checks), and the view stays open; while it is open the Attributes tab isn't sent, so nothing overwrites what you
+typed. **Show as fields** goes back to the Attributes tab. The property editor itself has no JSON field for a
+region.
 
 The other region types with settings get a similar form, under the same rules (defaults are left
 out, other keys are kept, columns the query no longer returns stay listed so you can clear them):
@@ -1494,7 +1522,7 @@ out, other keys are kept, columns the query no longer returns stay listed so you
 | `facets` | The report region it filters and a search field on/off; per column of that report: facet on/off, label, type (checkboxes, ranges, star rating), values shown, exclude, ranges (`..1000; 1000..3000 = Middle; 3000..`), from/to, a chart of the counts (bar or pie) and order |
 | `smart_filters` | The same per-column facets, the suggestions per facet and the search field's placeholder |
 | `display_selector` | Tabs or a select list, "Show all", remember the choice; per other region of the page: in a tab and the tab name (saved in that region's settings) |
-| `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools as JSON (checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
+| `ai_assistant` | The AI service (those the application may use), system prompt, welcome text, placeholder, error message, tool rounds per question, questions per conversation, public or not, and the context queries and tools (as JSON, checked when saving: query shapes, parameter types, REST data sources and authorization schemes that exist) ([AI assistant](04-pages-and-regions.md#ai_assistant-ai-assistant)) |
 | `report` (also) | *Ask in your own words (AI)*: off, the built-in phrases or an AI service, and the placeholder of [Ask in your own words](04-pages-and-regions.md#ask-in-your-own-words-ai-interactive-reports) |
 | `data_reporter` | Data sources (a table or view each: static id, label, description, offered columns with labels and format masks; or (sprint 110) a dataset of the workspace), who may share, build and moderate reports, publishing, rows per page ([Data Reporter](04-pages-and-regions.md#data_reporter-data-reporter)) |
 | `form_designer` | Who may design forms (an authorization scheme), data sources (a table or view each: static id, label, description, key column, may add / change / delete rows, offered columns with labels and lists of values), rows per page ([Form Designer](04-pages-and-regions.md#form_designer-form-designer)) |
@@ -1706,6 +1734,25 @@ type. A type opens its list (`?type=…`): search by name (the rows filter while
 security attributes, navigation bar list, user interface attributes, PWA, globalization attributes) open the
 right Settings tab. **Breadcrumbs** shows the pages by their breadcrumb parent. **Tree view** (`?view=tree`)
 is the earlier page: every component in one rail, with **Access control** next to it.
+
+(sprint 203, AX-7) **User Interface → Templates** (`/builder/apps/:id/templates`; APEX: Shared Components →
+Templates) lists the templates the application's components can choose, each with a description and **Used by**: the
+pages, regions, buttons or items that use it (a disclosure of links into the Page Designer, at the component):
+
+| Templates | Chosen by |
+|---|---|
+| Page: Standard, Left side column, Right side column, Minimal (no navigation) | the page's Template (Page → Appearance) |
+| Region: Standard, Plain, Collapsible, Hero, Title bar, Buttons container, Inline dialog, Inline drawer, Wizard, Tabs container, Flex container | the region's Template |
+| Button: Text, Text primary (hot), Menu button | the button's *Primary (hot)* setting and its menu entries |
+| Label: Optional, Required, Hidden | the item's *Required* setting and the template option *Hide the label* |
+| Report: Standard (table), Value attribute pairs, Badge list, Media list | a classic report's `report_template` |
+| List: Links, Badge list, Cards, Tabs, Wizard progress | a list region's `template` |
+
+They are part of pgkiln's theme, so the page is read-only: their look changes with Theme Roller and
+[template options](04-pages-and-regions.md), and markup of your own is a **template component**, which the page
+links to (with the number of the application's own and the built-in ones). **Security → Session State Protection**
+opens Settings → Errors and Sessions at **Expire bookmarks** (pgkiln's checksums protect page links; a page's
+*Protection* sets it per page).
 
 | Component | Purpose |
 |---|---|
@@ -1960,7 +2007,10 @@ for CI, with text, JSON or SARIF output: [`pgkiln advise`](18-cli.md#pgkiln-advi
 application's upkeep needs: tiles for the Advisor, Search, Debug messages, Activity, Backups,
 Working copies and Export, and the tools below. It also shows an **application dashboard** (pages,
 regions, items, processes, lists of values, changes in the last 7 days), the **recently updated
-pages** (from the change history) and the checksums.
+pages** (from the change history) and the checksums. (sprint 203, AX-6) Each recently updated page has its number and
+name; a page the application no longer has (deleted, or renumbered: often a page a test or a working copy merge made
+and removed) is *Deleted page 9201 (its last recorded name)*, linked to its change history. Times are relative
+(*3 days ago*, the exact time when you point at it), as in the Pages report.
 
 - **Database object dependencies** (`/builder/apps/:id/utilities/dependencies`): every piece of SQL
   the Advisor plans, plus the tables of form and grid regions, is parsed as the application's

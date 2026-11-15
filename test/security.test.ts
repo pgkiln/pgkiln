@@ -5771,7 +5771,8 @@ describe('sprint 37 workspaces', () => {
   test('applications of other workspaces are not found, for every builder route under /apps and /pages', async () => {
     const page = (await owner.one('select id from meta.page where app_id = $1 order by page_no limit 1', [hr])).id;
     const region = (await owner.one('select id from meta.region where page_id = $1 limit 1', [page]))?.id ?? 1;
-    for (const url of [`/builder/apps/${hr}`, `/builder/apps/${hr}/export`, `/builder/apps/${hr}/shared`, `/builder/apps/${hr}/search?q=emp`, `/builder/apps/${hr}/debug`, `/builder/pages/${page}`])
+    for (const url of [`/builder/apps/${hr}`, `/builder/apps/${hr}/export`, `/builder/apps/${hr}/shared`, `/builder/apps/${hr}/search?q=emp`, `/builder/apps/${hr}/debug`, `/builder/pages/${page}`,
+      `/builder/apps/${hr}/templates`, `/builder/apps/${hr}/copy`])
       assert.equal((await dev.get(url)).statusCode, 404, url);
     await dev.get('/builder');
     for (const url of [`/builder/apps/${hr}/settings`, `/builder/apps/${hr}/delete`, `/builder/pages/${page}/c/region/${region}`, `/builder/pages/${page}/delete`, `/builder/apps/${hr}/lock`])
@@ -5781,6 +5782,11 @@ describe('sprint 37 workspaces', () => {
     // working copies and boilerplates of another workspace by id
     assert.equal((await dev.post('/builder/working-copies', { __csrf: dev.lastCsrf, main_app_id: String(hr), name: 'sec37' })).statusCode, 404);
     assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'hr-sec37'`)));
+    // (sprint 203) Copy application and the search's Shared Components entries of another workspace's application
+    assert.equal((await dev.post('/builder/copy-app', { __csrf: dev.lastCsrf, from: String(hr), name: 'sec37 copy', alias: 'sec37-copy' })).statusCode, 404);
+    assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias = 'sec37-copy'`)));
+    const found = JSON.parse((await dev.get(`/builder/palette?format=json&q=template&app=${hr}`)).body).results as { href: string }[];
+    assert.ok(!found.some((r) => r.href.includes(`/apps/${hr}/`)), 'no entries of another workspace\'s application');
     // the code editor's completions and checks for another workspace's application
     assert.equal((await dev.get(`/builder/code/completions?app=${hr}`)).statusCode, 404);
     assert.equal((await dev.get(`/builder/code/completions?page=${page}`)).statusCode, 404);
@@ -16815,6 +16821,45 @@ describe('sprint 195 sub regions (NX-F2)', () => {
   });
 });
 
+describe('(sprint 202, AX-2) the Page Designer\'s one Save sends a region\'s settings with its properties', () => {
+  test('settings of a region of another page, of another type or under a forged key are not saved', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    assert.equal((await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' })).statusCode, 303);
+    await owner.query('delete from meta.page where app_id = $1 and page_no in (9302, 9303)', [appId]);
+    const page = async (no: number) => (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec202') returning id`, [appId, no]))!.id;
+    const [mine, other] = [await page(9302), await page(9303)];
+    const region = async (p: number, type: string) => (await owner.one<{ id: number }>(
+      `insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'Sec202', $2, 'select 1 as id', '{"page_size": 5}') returning id`, [p, type]))!.id;
+    const [report, chart, elsewhere] = [await region(mine, 'report'), await region(mine, 'chart'), await region(other, 'report')];
+    const config = async (id: number) => (await owner.one<{ config: any }>('select config from meta.region where id = $1', [id]))!.config;
+    try {
+      await b.get(`/builder/apps/${appId}/pages/9302`);
+      const props = (type: string) => ({ __csrf: b.lastCsrf, title: 'Sec202', type, source: 'select 1 as id', seq: '10', columns: '12', template: 'standard' });
+      const save = (id: number, form: Record<string, string | string[]>) => b.post(`/builder/pages/${mine}/c/region/${id}`, form);
+      // a region of another page through this page's form: refused before any settings are read
+      await save(elsewhere, { ...props('report'), __settings: 'report-settings', __region_type: 'report', 'report-settings:n': '0', 'report-settings:page_size': '50' });
+      assert.deepEqual(await config(elsewhere), { page_size: 5 });
+      // the settings were drawn for another type (the Type changed in the same Save, or a forged one): not applied
+      await save(report, { ...props('report'), __settings: 'report-settings', __region_type: 'chart', 'report-settings:n': '0', 'report-settings:page_size': '50' });
+      assert.deepEqual(await config(report), { page_size: 5 });
+      // a form of another region type (a chart's settings saver for a report) and keys that are no form: nothing
+      await save(report, { ...props('report'), __settings: ['settings', '../x', 'nope', 'REPORT-SETTINGS'], __region_type: 'report', 'settings:kind': 'pie', '../x:page_size': '50' });
+      assert.deepEqual(await config(report), { page_size: 5 });
+      // the savers' own checks still apply: a link to a page that doesn't exist is dropped, the rest is saved
+      await save(chart, { ...props('chart'), __settings: 'settings', __region_type: 'chart', 'settings:kind': 'pie', 'settings:link_page': '99999', 'settings:link_items': 'P1_X=#id#' });
+      assert.deepEqual(await config(chart), { page_size: 5, kind: 'pie' });
+      // without settings the stored ones are kept (the property editor sends no JSON); Show as JSON's text is checked as before
+      await save(report, props('report'));
+      assert.deepEqual(await config(report), { page_size: 5 });
+      await save(report, { ...props('report'), config: '{"formats": "not an object"}' });
+      assert.deepEqual(await config(report), { page_size: 5 });
+    } finally {
+      await owner.query('delete from meta.page where app_id = $1 and page_no in (9302, 9303)', [appId]);
+    }
+  });
+});
+
 describe('(sprint 196, NX-U1) Create application in one field', () => {
   const DEV = 'sec196_dev';
   const PW = 'Sec196-dev-password!';
@@ -17735,6 +17780,64 @@ describe('sprint 204 breached passwords (Have I Been Pwned range API, SEC-3)', (
       assert.match(saved!.detail, /breached-password check on/);
     } finally {
       await setCheck(false);
+    }
+  });
+});
+
+describe('sprint 203: Copy application, Templates, the search\'s Shared Components entries', () => {
+  const ALIAS = 'sec203-copy';
+  let b: Browser;
+  const cleanup = () => owner.query(`delete from meta.app where alias like 'sec203%'`);
+  before(async () => {
+    await cleanup();
+    b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+  });
+  after(cleanup);
+
+  test('Copy application needs a developer and the CSRF token; a bad name or alias copies nothing; names are escaped', async () => {
+    const anon = new Browser();
+    assert.equal((await anon.get(`/builder/apps/${appId}/copy`)).statusCode, 302);
+    assert.equal((await anon.post('/builder/copy-app', { __csrf: 'x', from: String(appId), name: 'anon', alias: ALIAS })).statusCode, 302);
+    await b.get(`/builder/apps/${appId}/copy`);
+    assert.equal((await b.post('/builder/copy-app', { __csrf: 'forged', from: String(appId), name: 'forged', alias: ALIAS })).statusCode, 403);
+    for (const [name, alias] of [['ok', 'x"; drop schema hr; --'], ['ok', '../up'], ['ok', '9lives'], ['ok', 'a b'], ['ok', 'a'.repeat(51)], ['', ALIAS], ['n'.repeat(101), ALIAS], ['ok', 'hr']]) {
+      const r = await b.post('/builder/copy-app', { __csrf: b.lastCsrf, from: String(appId), name, alias });
+      assert.equal(r.statusCode, 303, `${name} ${alias}`);
+      assert.equal(r.headers.location, `/builder/apps/${appId}/copy`, `back to the form (${name}, ${alias})`);
+      await b.get(`/builder/apps/${appId}/copy`);
+    }
+    assert.ok(!(await owner.one(`select 1 as ok from meta.app where alias like 'sec203%' or alias in ('9lives', 'a b')`)), 'nothing copied');
+    assert.equal((await b.post('/builder/copy-app', { __csrf: b.lastCsrf, from: '1; drop table meta.app', name: 'x', alias: ALIAS })).statusCode, 404);
+    assert.equal((await b.get('/builder/apps/x/copy')).statusCode, 404);
+    const r = await b.post('/builder/copy-app', { __csrf: b.lastCsrf, from: String(appId), name: '<img src=x onerror=alert(1)>', alias: ALIAS });
+    assert.equal(r.statusCode, 303);
+    const copy = await owner.one(`select id, name from meta.app where alias = $1`, [ALIAS]);
+    assert.equal(copy.name, '<img src=x onerror=alert(1)>', 'kept as text');
+    const home = (await b.get(String(r.headers.location))).body;
+    assert.doesNotMatch(home, /<img src=x/);
+    assert.match(home, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    // the copy runs no automations or synchronisations of its own until switched on
+    assert.ok(!(await owner.one(`select 1 as ok from meta.automation where app_id = $1 and enabled`, [copy.id])));
+    assert.ok(!(await owner.one(`select 1 as ok from meta.rest_source where app_id = $1 and sync_enabled`, [copy.id])));
+  });
+
+  test('Templates is read-only and escapes what it lists; the search\'s app parameter is only a number', async () => {
+    const page1 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    const r = (await owner.one(`insert into meta.region (page_id, seq, title, type, template) values ($1, 997, '<script>x()</script>', 'static', 'hero') returning id`, [page1])).id;
+    try {
+      const res = await b.get(`/builder/apps/${appId}/templates`);
+      assert.equal(res.statusCode, 200);
+      assert.doesNotMatch(res.body, /<script>x\(\)/);
+      assert.match(res.body, /&lt;script&gt;x\(\)&lt;\/script&gt;/);
+      assert.doesNotMatch(/<main[\s\S]*<\/main>/.exec(res.body)![0], /method="post"/, 'nothing to change');
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [r]);
+    }
+    for (const app of ['1 or 1=1', '../1', '-1', '99999999999']) {
+      const res = await b.get(`/builder/palette?format=json&q=template&app=${encodeURIComponent(app)}`);
+      assert.equal(res.statusCode, 200, app);
     }
   });
 });

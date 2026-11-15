@@ -6,7 +6,8 @@ import { RESERVED_SCHEMAS, SOURCE_ID } from '../runtime/data-reporter.ts';
 import { fdSourcesOf, type FdColumn, type FdSource } from '../runtime/form-designer.ts';
 import type { Session } from '../session.ts';
 import { findObject, objectList, type DbObject } from './reporter.ts';
-import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { BASE, csrf, type Req } from './ui.ts';
+import { settingsRoute, type SettingsSaver } from './settings-save.ts';
 import { scopedTx as tx } from './i18n.ts';
 
 // Page designer → a Form Designer region → Settings (sprint 85): the tables
@@ -204,27 +205,24 @@ export async function formDesignerSettingsForm(pageId: number, appId: number, r:
         <div class="field"><label class="label" for="${id('new_label')}">${tx('fdz.label')}</label><input id="${id('new_label')}" name="new_label" maxlength="80"></div>
       </div>
       <small class="help">${tx('fdz.all_columns_are_offered_at')}</small></fieldset>
-      <div class="buttons"><button class="btn btn-hot">${tx('fdz.save_form_designer_settings')}</button></div>
     </form>`;
 }
 
 export async function formDesignerBuilderRoutes(app: FastifyInstance) {
-  app.post(`${BASE}/pages/:pid/region/:rid/form-designer`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params as { pid: string; rid: string };
+  app.post(`${BASE}/pages/:pid/region/:rid/form-designer`, (req: Req, reply) => settingsRoute(req, reply, saveFormDesignerSettings));
+}
+
+/** (sprint 202) a Form Designer region's settings: its own route and the Page Designer's one Save (settings-save.ts) */
+export const saveFormDesignerSettings: SettingsSaver = async (pid, rid, body) => {
     const r = /^\d{1,9}$/.test(pid) && /^\d{1,9}$/.test(rid)
       ? await owner.one<{ id: number; config: Config; app_id: number }>(
           `select r.id, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = 'form_designer'`, [rid, pid])
       : undefined;
-    if (!r) return reply.code(404).send('Not found');
+    if (!r) return null;
     const schemes = (await owner.query<{ name: string }>('select name from meta.authz_scheme where app_id = $1', [r.app_id])).rows;
     const lovs = (await owner.query<{ name: string }>('select name from meta.lov where app_id = $1', [r.app_id])).rows;
-    const { config, errors } = await mergeFormDesignerSettings(r.config ?? {}, (req.body ?? {}) as Body,
+    const { config, errors } = await mergeFormDesignerSettings(r.config ?? {}, body as Body,
       { authz: new Set(schemes.map((x) => x.name.toUpperCase())), lovs: new Set(lovs.map((x) => x.name.toUpperCase())) });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    if (errors.length) flash(s, errors.join(' '), 'error');
-    else flash(s, tx('fdz.settings_saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
-}
+    return errors.length ? { message: errors.join(' '), error: true } : { message: tx('fdz.settings_saved') };
+};

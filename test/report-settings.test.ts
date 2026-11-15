@@ -91,10 +91,10 @@ describe('report settings', () => {
     const page = (await b.get(`/builder/pages/${region.page_id}?c=region-${region.id}`)).body;
     assert.match(page, /Report settings/);
     assert.match(page, /<code>hiredate<\/code>/, 'columns of the query');
-    const n = Number(/name="n" value="(\d+)"/.exec(page)![1]);
+    const n = Number(/name="report-settings:n" value="(\d+)"/.exec(page)![1]);
     const body: Record<string, string> = { ...on, page_size: '10', n: String(n), link_column: 'empno', link_page: '3', link_items: 'P3_EMPNO=#empno#' };
     for (let i = 0; i < n; i++) {
-      const name = new RegExp(`name="col_${i}" value="([^"]+)"`).exec(page)![1];
+      const name = new RegExp(`name="report-settings:col_${i}" value="([^"]+)"`).exec(page)![1];
       body[`col_${i}`] = name;
       if (name !== 'active') body[`shown_${i}`] = 'true';
       body[`print_${i}`] = name === 'active' ? '' : 'true';

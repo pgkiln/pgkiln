@@ -194,7 +194,8 @@ describe('code editor: marked fields', () => {
     assert.match(body, /<link rel="stylesheet" href="\/static\/code-editor\.css">/);
     assert.match(body, /name="source" [^>]*data-code="sql" data-code-switch="type:static=html,form=text,\*=sql" data-code-check="select"/);
     assert.match(body, /name="condition" [^>]*data-code="sql"[^>]*data-code-check="boolean"/);
-    assert.match(body, /name="config" [^>]*data-code="json"/);
+    // (sprint 202) the region's settings as JSON: Utilities → Show as JSON
+    assert.match((await dev.get(`/builder/pages/${page.id}?c=region-${region.id}&json=1`)).body, /name="config" [^>]*data-code="json"/);
     const shared = (await dev.get(`/builder/apps/${appId}/shared?new=document_template`)).body;
     assert.match(shared, /name="template" [^>]*data-code="html"/);
     assert.match((await dev.get('/builder/sql/commands')).body, /name="sql" [^>]*data-code="plpgsql"/);

@@ -26,7 +26,7 @@ const SORTS: Record<Sort, string> = {
 const RECENT_MAX = 8;
 
 /** Remember an application the developer opened (the Recent list on the home page). */
-const recentIds = (s: Session) => String(s.state.__RECENT ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
+export const recentIds = (s: Session) => String(s.state.__RECENT ?? '').split(',').map(Number).filter((n) => Number.isInteger(n) && n > 0);
 export function rememberApp(s: Session, appId: number) {
   s.state.__RECENT = [appId, ...recentIds(s).filter((id) => id !== appId)].slice(0, RECENT_MAX).join(',');
 }
