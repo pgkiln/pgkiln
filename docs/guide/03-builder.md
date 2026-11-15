@@ -1358,6 +1358,31 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
   folder), Enter opens a component.
 
+  (sprint 205, AX-1; APEX: the Columns node) **Columns**: report, classic report, interactive grid, cards and calendar
+  regions have a *Columns* node first under the region, one entry per column of the region's query in the query's
+  order (read as the Attributes tab reads them: the query with `limit 0`, as the application's role, rolled back),
+  then the columns its settings still name that the query no longer returns (marked *not in the query*, so their
+  settings can be cleared). A column's note is its heading and data type. Choose a column to edit it in the property
+  editor; the toolbar's **Save** (or Ctrl+S) saves it:
+
+  | Region type | A column's properties |
+  |-------------|-----------------------|
+  | Interactive report | Heading, Shown, Format mask, Display (bold, muted, no wrapping, monospace, right-aligned, centred), Link (to page, set items: the report's one link moves to this column), In PDF, PDF width |
+  | Classic report | Heading, Shown, Format mask, Display, Link |
+  | Interactive grid | Heading, Shown, Read-only, Required, Edit as (a shared list of values), Valid when and its error message |
+  | Cards | Format mask (title, subtitle, body, badge) |
+  | Calendar | none: what the column is read as (start of the event, end, title, or only for links as `#name#`) |
+
+  **Several columns at once**: Ctrl+click (Cmd+click) a column of the same region to add it or take it out, Shift+click
+  for the columns in between; with the keyboard Ctrl+Space and Shift+Space; without JavaScript **Select several
+  columns** under the properties (tick them, *Select*). The property editor then shows what the columns share: a field
+  whose values differ says *Mixed* and keeps each column's own value unless you change it. Heading, link and validation
+  are a single column's. Only the fields you changed are saved, so a setting changed meanwhile on another tab is kept.
+
+  The settings stay in the region's attributes, where the **Attributes** tab's *Columns* group edits them too
+  (`headings`, `formats`, `column_options`, `hidden`, `pdf`, `link`; a grid's `readonly` and `columns`): exports,
+  application files and `diff_app` are unchanged. A column's name in that group is a link that selects its node.
+
   **Right-click** a region, item or button in the Rendering tree (or press <kbd>Shift</kbd>+<kbd>F10</kbd> or the
   menu key) for its menu (APEX: the tree's context menu): *Create page item*, *Create button* (in the region),
   *Create dynamic action*, *Create region below*, **Duplicate** (a copy right after it; a region comes with its
