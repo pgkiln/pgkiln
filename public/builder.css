@@ -1863,3 +1863,6 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .rls-hint .rls-owner .field input { width: 100%; min-width: 0; box-sizing: border-box; }
 .settings-form select, .settings-form input { max-width: 100%; min-width: 0; }
 .settings-form code, .checklist code, #make-role .btn { overflow-wrap: anywhere; white-space: normal; }
+/* (sprint 206, AX-5) a page as text (page-utilities.ts): each file's path wraps on a phone */
+.pdu-file h3 { margin: 1rem 0 0.3rem; font-size: 0.9rem; }
+.pdu-file h3 code { overflow-wrap: anywhere; }

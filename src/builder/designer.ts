@@ -21,6 +21,7 @@ import { codeAttrs } from './code-editor.ts';
 import { usedInPanel } from './search.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
+import { pageCreateLinks, pageUtilityLinks } from './page-utilities.ts';
 import { arrangeRoutes, CONTAINER_LABELS, CONTAINER_TEMPLATES, deleteRegion, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
 
 /** (sprint 193) why an alias was refused, in the builder's words */
@@ -500,13 +501,14 @@ export async function designerRoutes(app: FastifyInstance) {
             html`<a href="${url(`new=${k}`)}">${icon(COMPONENTS[k].icon)} ${k === 'item' ? tx('pd.menu.page_item') : kindLabel(k)}</a>`)}
         </div><div class="menu-section menu-links">
           <a href="${BASE}/apps/${p.app_id}/create-page">${icon('file')} ${tx('pd.menu.page')}</a>
-        </div></div></details>`;
+        </div>${pageCreateLinks(s, p)}</div></details>`;
     // (sprint 202, AX-2) Show as JSON: the selected region's settings as JSON, in place of its Attributes tab
     const selRegion = kind === 'region' && !newKind ? rows.region.find((r) => String(r.id) === cid) : undefined;
     const utilMenu = html`<details class="menu tb-menu">
         <summary class="tb-btn" title="${tx('pd.menu.utilities')}">${bicon('wrench')}${bicon('down', 'icon tb-caret')}<span class="sr-only">${tx('pd.menu.utilities')}</span></summary>
         <div class="menu-panel align-right">
           ${selRegion ? html`<div class="menu-section menu-links"><a href="${url(`c=region-${selRegion.id}&json=1`)}"${req.query.json === '1' ? raw(' aria-current="true"') : ''}>${icon('code')} ${tx('pd.menu.show_json')}</a></div>` : ''}
+          ${pageUtilityLinks(p)}
           <div class="menu-section menu-links">
           <a href="${BASE}/apps/${p.app_id}/advisor">${icon('check')} ${tx('app.tab.advisor')}</a>
           <a href="${BASE}/apps/${p.app_id}/search?q=P${p.page_no}_">${icon('search')} ${tx('pd.menu.search_items')}</a>

@@ -47,6 +47,7 @@ import { builderRoutes } from './builder/routes.ts';
 import { builderApiRoutes } from './builder/api-v1.ts';
 import { appUpdateHooks } from './builder/app-updates.ts';
 import { historyHooks, utilityRoutes } from './builder/utilities.ts';
+import { pageUtilityRoutes } from './builder/page-utilities.ts';
 import { dependencyRoutes } from './builder/dependencies.ts';
 import { upgradeRoutes } from './builder/upgrade.ts';
 import { uiDefaultRoutes } from './builder/ui-defaults.ts';
@@ -322,6 +323,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(dependencyRoutes);
   await app.register(upgradeRoutes);
   await app.register(uiDefaultRoutes);
+  // (sprint 206, AX-5) the Page Designer's Utilities on the open page: as text, checksum, export
+  await app.register(pageUtilityRoutes);
   // (sprint 139, AP-6) OpenTelemetry: Workspace utilities → OpenTelemetry, a workspace's own, /metrics, the browser relay
   await app.register(telemetryRoutes);
   await app.register(telemetryBuilderRoutes);
