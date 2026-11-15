@@ -11,7 +11,7 @@ import { heading } from '../runtime/items.ts';
 import { positionColumns } from '../runtime/report.ts';
 import { anyBound, MAX_RANGES, type Range } from '../runtime/facet-state.ts';
 import type { Session } from '../session.ts';
-import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm, saveReportSettings } from './report-settings.ts';
+import { columnNodeLink, linkItemsText, parseLinkItems, reportColumns, reportSettingsForm, saveReportSettings } from './report-settings.ts';
 import { BASE, csrf, type Req } from './ui.ts';
 import { columnTemplatesForm, saveColumnTemplates, saveTemplateRegionSettings, templateRegionForm } from './templates.ts';
 import { LIST_TEMPLATES } from '../runtime/lists.ts';
@@ -507,7 +507,7 @@ interface RegionRow {
   config: Config;
 }
 
-async function gridFields(appId: number, r: RegionRow, id: (n: string) => string) {
+async function gridFields(appId: number, r: RegionRow, id: (n: string) => string, pageId: number) {
   const cfg = r.config ?? {};
   const cols = await reportColumns(appId, await designSql(appId, r));
   const lovs = (await owner.query('select name from meta.lov where app_id = $1 order by name', [appId])).rows.map((x) => x.name as string);
@@ -526,7 +526,7 @@ async function gridFields(appId: number, r: RegionRow, id: (n: string) => string
     return html`<select name="lov_${i}" aria-label="${tx('rs.aria_list_of_values_of', { name: n })}">${opt('', tx('rs.text_field'), cur)}${lovs.map((l) => opt(`LOV:${l}`, l, cur?.toUpperCase()))}${custom ? opt(custom, `custom: ${custom.length > 40 ? custom.slice(0, 40) + '…' : custom}`, cur) : ''}</select>`;
   };
   const rows = all.map((n, i) => html`<tr>
-      <td data-label="${tx('rs.column')}"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
+      <td data-label="${tx('rs.column')}">${columnNodeLink(pageId, r.id, n)}${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="${tx('rs.heading')}"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="${tx('rs.aria_heading_of', { name: n })}"></td>
       <td data-label="${tx('rs.shown')}"><input type="checkbox" name="shown_${i}" value="true"${hidden.has(n.toLowerCase()) ? '' : raw(' checked')} aria-label="${tx('rs.aria_show', { name: n })}"></td>
       <td data-label="${tx('rs.read_only')}"><input type="checkbox" name="readonly_${i}" value="true"${readonly.has(n.toLowerCase()) ? raw(' checked') : ''} aria-label="${n} is read-only"></td>
@@ -676,7 +676,7 @@ async function facetsFields(r: RegionRow, pageId: number, appId: number, id: (n:
     const type = f?.type === 'range' || f?.type === 'star' ? f.type : 'checkbox';
     const custom = type === 'range' && (f?.custom === true || (f?.custom !== false && !(Array.isArray(f?.ranges) && f.ranges.length)));
     return html`<tr>
-      <td data-label="${tx('rs.column')}"><code>${n}</code>${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
+      <td data-label="${tx('rs.column')}">${columnNodeLink(pageId, r.id, n)}${staleTag(known, n)}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="${tx('rs.facet')}"><input type="checkbox" name="on_${i}" value="true"${f ? raw(' checked') : ''} aria-label="${tx('rs.aria_facet_on', { name: n })}"></td>
       <td data-label="${tx('rs.label')}"><input name="label_${i}" value="${f?.label ?? ''}" placeholder="${heading(n)}" aria-label="${tx('rs.aria_label_of', { name: n })}"></td>
       <td data-label="${tx('rs.type')}"><select name="type_${i}" aria-label="${tx('rs.aria_type_of_the_facet_on', { name: n })}">${Object.entries(FACET_TYPE_LABELS).map(([k, l]) => opt(k, tx.dyn(`rs.facet.${k}`, l), type))}</select></td>
@@ -798,7 +798,7 @@ async function regionSettingsFormInner(pageId: number, appId: number, r: RegionR
   switch (r.type as SettingsType) {
     case 'grid':
       title = tx('rs.t.grid');
-      body = await gridFields(appId, r, id);
+      body = await gridFields(appId, r, id, pageId);
       break;
     case 'chart':
       title = tx('rs.t.chart');

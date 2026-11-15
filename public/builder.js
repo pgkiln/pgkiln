@@ -344,6 +344,47 @@
     });
   }
 
+  // ---------------------------------------------------------------- (sprint 205, AX-1) several columns of a region
+  // Ctrl+click (or Ctrl+Space) on a column of the tree adds it to the selected columns of its region or takes it out,
+  // Shift+click (Shift+Space) adds the columns between the last one selected and it. The page is the same link with
+  // several col= (without JavaScript: Select several columns in the property editor).
+  function setupColumnSelect(tree) {
+    if (tree.querySelector('.pd-node[data-col]')) tree.setAttribute('aria-multiselectable', 'true');
+    const pick = (node, range) => {
+      const rid = node.dataset.id;
+      const all = [...tree.querySelectorAll(`.pd-node[data-col][data-id="${rid}"]`)];
+      const now = all.filter((n) => n.hasAttribute('aria-current'));
+      let chosen;
+      if (range && now.length) {
+        const a = all.indexOf(now[now.length - 1]);
+        const b = all.indexOf(node);
+        chosen = new Set([...now, ...all.slice(Math.min(a, b), Math.max(a, b) + 1)]);
+      } else {
+        chosen = new Set(now);
+        if (chosen.has(node)) chosen.delete(node);
+        else chosen.add(node);
+      }
+      if (!chosen.size) return;
+      const q = new URLSearchParams();
+      q.set('c', `column-${rid}`);
+      for (const n of all) if (chosen.has(n)) q.append('col', n.dataset.col);
+      window.location.assign(`${window.location.pathname}?${q}`);
+    };
+    tree.addEventListener('click', (e) => {
+      const node = e.target.closest('.pd-node[data-col]');
+      if (!node || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+      e.preventDefault();
+      pick(node, e.shiftKey && !(e.ctrlKey || e.metaKey));
+    });
+    tree.addEventListener('keydown', (e) => {
+      const node = e.target.closest('.pd-node[data-col]');
+      if (!node || e.key !== ' ' || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pick(node, e.shiftKey);
+    }, true);
+  }
+
   // ---------------------------------------------------------------- property editor
   function setupProperties() {
     const pe = document.querySelector('.pe');
@@ -1086,6 +1127,7 @@
       if (pane) new ResizeObserver(() => requestAnimationFrame(fitNotes)).observe(pane);
     }
     for (const tree of document.querySelectorAll('.pd-tree[data-tree-menu]')) setupTreeMenu(tree);
+    for (const tree of document.querySelectorAll('.pd-tree[data-tree-menu]')) setupColumnSelect(tree);
     setupProperties();
     setupCanvas();
   }

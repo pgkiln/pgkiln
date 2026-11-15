@@ -19,6 +19,7 @@ import { embedSettings } from './settings-save.ts';
 import { optionName, typeName } from './type-names.ts';
 import { codeAttrs } from './code-editor.ts';
 import { usedInPanel } from './search.ts';
+import { columnProperties, COLUMN_REGION_TYPES, regionColumns, selectedColumns, type ColumnList } from './region-columns.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
 import { pageCreateLinks, pageUtilityLinks } from './page-utilities.ts';
@@ -104,7 +105,7 @@ export async function designerRoutes(app: FastifyInstance) {
         owner.query('select id, name from meta.app_item where app_id = $1 order by name', [p.app_id]),
       ]).then((r) => r.map((x) => x.rows)),
     ]);
-    const sel = req.query.c ?? '';
+    const sel = typeof req.query.c === 'string' ? req.query.c : '';
     // (sprint 121) the toolbar, menus, tree headings, pane titles and gallery in the builder language; the property
     // editor's fields and their help stay English (docs/guide/12-development.md)
     const tx = tr(s);
@@ -113,6 +114,11 @@ export async function designerRoutes(app: FastifyInstance) {
     const slotLabel = (sl: string) => tx.dyn(`slot.${sl}`, SLOT_LABELS[sl] ?? sl);
     const newKind = PAGE_KINDS.includes(req.query.new ?? '') ? req.query.new : '';
     const [kind, cid] = sel.split('-');
+    // (sprint 205, AX-1) the columns of report, grid, cards and calendar regions (the query's, as the Attributes tab
+    // reads them): the tree's Columns node; ?c=column-<region id>&col=<name> (one or several) selects columns
+    const columnLists = new Map<number, ColumnList>(await Promise.all(rows.region.filter((r) => COLUMN_REGION_TYPES.has(r.type))
+      .map(async (r): Promise<[number, ColumnList]> => [r.id, await regionColumns(p.app_id, r)])));
+    const selColumns = kind === 'column' && columnLists.has(Number(cid)) ? selectedColumns(req.query.col, columnLists.get(Number(cid))!) : [];
     const url = (q: string) => designerUrl(p.app_id, p.page_no, q);
     // the page's forms post to its internal id (a page number can change)
     const post = `${BASE}/pages/${p.id}`;
@@ -141,6 +147,19 @@ export async function designerRoutes(app: FastifyInstance) {
     const itemLeaf = (i: any) => leaf('item', i, bicon(itemIcon(i.type)), i.name, typeName('item', i.type));
     const buttonLeaf = (b: any) => leaf('button', b, bicon('button'), b.name, typeName('button', b.action));
     const subsOf = (r: any) => (r.parent_id == null ? rows.region.filter((x) => x.parent_id === r.id) : []);
+    const colKey = (rid: number, names: string[]) => `c=column-${rid}${names.map((n) => `&col=${encodeURIComponent(n)}`).join('')}`;
+    const columnLeaf = (r: any, c: ColumnList['columns'][number]) => {
+      const on = kind === 'column' && cid === String(r.id) && selColumns.includes(c.name);
+      const head = r.config?.headings?.[c.name];
+      const note = [typeof head === 'string' ? head : '', c.type ?? ''].filter(Boolean).join(' · ');
+      return html`<li><a class="pd-node" href="${url(colKey(r.id, [c.name]))}"${on ? raw(' aria-current="true"') : ''} data-kind="column" data-id="${r.id}" data-col="${c.name}" title="${note ? `${c.name} (${note})` : c.name}">${icon('hash')}<span class="pd-label">${c.name}</span>${c.stale ? html`<span class="pd-tag pd-tag-stale" title="${tx('rs.not_in_query')}">${icon('alert')}<span class="sr-only">${tx('rs.not_in_query')}</span></span>` : ''}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
+    };
+    const columnsFolder = (r: any) => {
+      const list = columnLists.get(r.id);
+      if (!list) return [];
+      const open = kind === 'column' && cid === String(r.id);
+      return [folder(tx('pd.tree.columns'), list.columns.length ? list.columns.map((c) => columnLeaf(r, c)) : none(tx(list.error ? 'pd.tree.columns_unread' : 'pd.tree.no_columns')), open)];
+    };
     const regionLeaf = (r: any, next: any): Raw => {
       const items = rows.item.filter((i) => i.region_id === r.id);
       // (172, APEX: Sub Regions) a container's sub regions, a branch of their own
@@ -148,7 +167,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const buttons = rows.button.filter((b) => b.region_id === r.id);
       // (sprint 77, APEX: region slots) buttons by their position in the region
       const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
-      const kids = [...(subs.length ? [folder(tx('pd.tree.sub_regions'), subs.map((x, i) => regionLeaf(x, subs[i + 1])))] : []),
+      const kids = [...columnsFolder(r), ...(subs.length ? [folder(tx('pd.tree.sub_regions'), subs.map((x, i) => regionLeaf(x, subs[i + 1])))] : []),
         ...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
         ...bySlot.map(([sl, list]) => folder(sl === 'region' ? tx('pd.tree.buttons') : tx('pd.tree.buttons_at', { slot: slotLabel(sl) }), list.map(buttonLeaf)))];
       return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${typeName('region', r.type)})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${typeName('region', r.type)}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
@@ -385,6 +404,20 @@ export async function designerRoutes(app: FastifyInstance) {
       const defaults = { seq: lastSeq + 10, ...spec.defaults, ...presetType, ...presetPlace, ...presetParent, region_id: /^\d+$/.test(req.query.region ?? '') ? Number(req.query.region) : null };
       heading = html`${icon(spec.icon)}<span>${tx.dyn(`pd.new.${newKind}`, `New ${spec.label.toLowerCase()}`)}</span>`;
       props = peTabs([tab('pd-r-props', kindLabel(newKind), componentForm(spec, newKind, defaults, lk, `${BASE}/pages/${p.id}/c/${newKind}`, s, tx.dyn(`pd.create.${newKind}`, `Create ${spec.label.toLowerCase()}`), { id: formId }), true)]);
+    } else if (kind === 'column') {
+      // (sprint 205, AX-1) one column or several of a report, grid, cards or calendar region
+      const region = rows.region.find((r) => String(r.id) === cid);
+      const list = region ? columnLists.get(region.id) : undefined;
+      if (region && list && selColumns.length) {
+        heading = html`${icon('hash')}<span>${selColumns.length === 1 ? tx('pd.column_title', { name: selColumns[0], region: regionTitle(region) }) : tx('pd.columns_title', { n: selColumns.length, region: regionTitle(region) })}</span>`;
+        const cp = await columnProperties({ s, appId: p.app_id, pageId: p.id, pageNo: p.page_no, region, names: selColumns, list, formId });
+        props = peTabs([tab('pd-r-props', selColumns.length === 1 ? tx('pd.column') : tx('pd.columns_n', { n: selColumns.length }), cp.body, true)]);
+        hasForm = cp.hasForm;
+      } else {
+        heading = html`<span>${tx('error.label_not_found')}</span>`;
+        props = html`<p class="muted">${tx('pd.not_found')}</p>`;
+        hasForm = false;
+      }
     } else if (kind && kind !== 'page' && PAGE_KINDS.includes(kind)) {
       const spec = COMPONENTS[kind];
       const row = rows[kind].find((r) => String(r.id) === cid);
@@ -472,6 +505,7 @@ export async function designerRoutes(app: FastifyInstance) {
     const guide = (() => {
       const GUIDE = 'https://pgkiln.vargar.eu/docs';
       const k = newKind || kind;
+      if (k === 'column') return regionConfigHelp(rows.region.find((r: any) => String(r.id) === cid)?.type ?? null).url ?? `${GUIDE}/pages-and-regions#region-types`;
       if (k === 'region') return regionConfigHelp((newKind ? req.query.type : rows.region.find((r: any) => String(r.id) === cid)?.type) ?? null).url ?? `${GUIDE}/pages-and-regions#region-types`;
       return ({ item: `${GUIDE}/items`, button: `${GUIDE}/processing#buttons`, dynamic_action: `${GUIDE}/dynamic-actions`, validation: `${GUIDE}/processing#validations`,
         process: `${GUIDE}/processing#processes`, computation: `${GUIDE}/processing#computations`, branch: `${GUIDE}/processing#branches` } as Record<string, string>)[k] ?? `${GUIDE}/pages-and-regions`;

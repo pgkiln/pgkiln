@@ -41,6 +41,7 @@ import { copyAppRoutes } from './builder/copy-app.ts';
 import { uiTemplateRoutes } from './builder/ui-templates.ts';
 import { subscriptionRoutes } from './builder/subscriptions.ts';
 import { reportSettingsRoutes } from './builder/report-settings.ts';
+import { regionColumnRoutes } from './builder/region-columns.ts';
 import { layoutRoutes } from './builder/layouts.ts';
 import { dataLoadRoutes } from './builder/dataload.ts';
 import { builderRoutes } from './builder/routes.ts';
@@ -269,6 +270,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(workflowBuilderRoutes);
   await app.register(workflowMigrateRoutes);
   await app.register(reportSettingsRoutes);
+  await app.register(regionColumnRoutes); // (sprint 205, AX-1) the Page Designer's report and grid columns
   await app.register(regionSettingsRoutes);
   await app.register(templateRoutes);
   await app.register(webSourceRoutes);
