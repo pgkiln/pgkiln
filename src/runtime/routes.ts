@@ -48,6 +48,7 @@ import { pwaHead } from './pwa.ts';
 import { resolveLocale, THEME_COOKIE, themeCookieOptions, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
 import { LOGIN_ERROR, LOGIN_USER, safeNext, signInForm } from './signin.ts';
+import { appMark, passkeyHost, passkeySigninRoutes, signInStyle, themeColorMeta } from './passkey-signin.ts';
 import { passwordResetRoutes } from './password-reset.ts';
 import { passwordSignIn, twoStepRoutes } from './two-step.ts';
 import { carriesSecondStep, markSecondStep } from '../account-mfa.ts';
@@ -1204,21 +1205,22 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   // ---------------------------------------------------------------- login / logout
-  const loginPage = async (app: App, locale: Locale, session: Session, next: string, error?: string) => {
+  // (sprint 199, NX-U6) the application's icon and theme colours on the card, "Sign in with a passkey" above the fields
+  const loginPage = async (req: FastifyRequest, app: App, locale: Locale, session: Session, next: string, error?: string) => {
     const t = locale.t;
     const nextQs = next ? `?next=${encodeURIComponent(next)}` : '';
     return documentShell(
       `${t('login.title')} · ${app.name}`,
       html`<main class="login">
         <div class="card login-card">
-          <h1>${app.name}</h1>
-          ${await signInForm(app, locale, session, next, { error })}
+          <div class="login-brand">${appMark(app)}<h1>${app.name}</h1></div>
+          ${await signInForm(app, locale, session, next, { error, host: passkeyHost(req) })}
           ${languagePicker(app, locale, `/a/${app.alias}/login${nextQs}`)}
         </div>
       </main>`,
       'login-body',
       {},
-      pwaHead(app),
+      html`${pwaHead(app) || themeColorMeta(app)}${signInStyle(app, session, req.cspNonce)}`,
       rootAttrs(locale),
     );
   };
@@ -1273,7 +1275,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await saveState(session);
         return reply.redirect(`/a/${a.alias}/${own}${next ? `?next=${encodeURIComponent(safeNext(a, next))}` : ''}`, 303);
       }
-      return reply.code(code).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), msg));
+      return reply.code(code).type('text/html').send(await loginPage(req, a, locale, session, safeNext(a, next), msg));
     };
     if (req.body?.__csrf !== session.csrf_token) return (await fail(locale.t('login.expired_session'), 403), null);
     // automatic time zone: app.js filled in the browser's (signIn() keeps it for the new session)
@@ -1292,6 +1294,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     return { a, locale, session, username: username.slice(0, 100), next, ip, fail };
   };
 
+  // (sprint 199, NX-U6) a passkey alone (passkey-signin.ts): the same start as the password form
+  await passkeySigninRoutes(app, { loginRequest: (req, reply) => loginRequest(req as Req, reply), signIn, safeNext });
+
   app.get<{ Params: Params; Querystring: { next?: string } }>('/a/:alias/login', async (req, reply) => {
     const a0 = await loadApp(req.params.alias);
     if (!a0) return simplePage(reply, 404, english('error.not_found'), english('error.app_not_found', { app: req.params.alias }));
@@ -1306,7 +1311,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (own) return reply.redirect(`/a/${a0.alias}/${own}${req.query.next ? `?next=${encodeURIComponent(safeNext(a0, req.query.next))}` : ''}`);
     const session = await getSession(req, reply, a0.id, `/a/${a0.alias}`);
     const { app: a, locale } = (await appWithLocale(req, req.params.alias, session))!;
-    const body = await loginPage(a, locale, session, safeNext(a, req.query.next));
+    const body = await loginPage(req, a, locale, session, safeNext(a, req.query.next));
     await saveState(session);
     return reply.type('text/html').send(body);
   });
@@ -1380,7 +1385,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const r0 = await loginRequest(req, reply);
     if (!r0) return;
     const { a, locale, session, username, next, ip } = r0;
-    if (a.authentication === 'database' || a.authentication === 'custom') return reply.code(403).type('text/html').send(await loginPage(a, locale, session, safeNext(a, next), locale.t('login.method_unavailable')));
+    if (a.authentication === 'database' || a.authentication === 'custom') return reply.code(403).type('text/html').send(await loginPage(req, a, locale, session, safeNext(a, next), locale.t('login.method_unavailable')));
     const b = req.body ?? {};
     const again = (msg: string, code = 422) => reply.code(code).type('text/html').send(expiredPage(a, locale, session, username, safeNext(a, next), msg));
     if (b.new_password !== b.confirm_password) return again(locale.t('password.mismatch'));

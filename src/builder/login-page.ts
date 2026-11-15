@@ -9,7 +9,7 @@ import { scopedTx as tx } from './i18n.ts';
 // Application settings → Sign-in methods (migration 087): the application's
 // own login page (APEX: the login page, usually 9999) and "Forgot password?".
 // "Create login page" adds a minimal public page with a login region and
-// makes it the login page. (sprint 130, SEC-3) Two-factor sign-in for the
+// makes it the login page. (sprint 199, NX-U6) "Users may sign in with a passkey alone". (sprint 130, SEC-3) Two-factor sign-in for the
 // application's users: off, optional, required, or required for some roles. (sprint 131) A code by e-mail.
 
 interface AppRow {
@@ -22,6 +22,7 @@ interface AppRow {
   mfa: AppMfa;
   mfa_roles: string[];
   mfa_email: boolean;
+  passkey_signin?: boolean;
 }
 
 /** The fields in the settings form: the sign-in page, and two-factor sign-in (each placed by the settings page). */
@@ -64,7 +65,10 @@ export async function loginSettingsFields(a: AppRow) {
       <small class="help">${tx('lgp.email_help', { minutes: EMAIL_CODE_MINUTES, per_hour: EMAIL_CODES_PER_HOUR })}
         ${mailOk ? '' : noMail}</small></div>
     <p class="muted small">${tx.rich('lgp.passkeys_note', { mfa: html`<em>${tx('lgp.multi_factor_sign_in')}</em>`, within: html`<em>${tx('lgp.second_step_within_minutes')}</em>` })}</p>`;
-  return { page, twoFactor };
+  // (sprint 199, NX-U6) a passkey alone, user-verified (passkey-signin.ts), under the sign-in methods
+  const passkey = html`<div class="field"><label class="check"><input type="checkbox" name="passkey_signin" value="true" aria-describedby="f_passkey_signin_help"${a.passkey_signin ? raw(' checked') : ''}> ${tx('lgp.passkey_signin')}</label>
+      <small class="help" id="f_passkey_signin_help">${tx.rich('lgp.passkey_signin_help', { account: html`<em>${tx('lgp.my_account')}</em>` })}</small></div>`;
+  return { page, twoFactor, passkey };
 }
 
 const MFA_LABELS = (): Record<AppMfa, string> => ({ off: tx('lgp.off'), optional: tx('lgp.optional_users_may_add_an'), required: tx('lgp.required'), roles: tx('lgp.required_for_some_roles') });
@@ -79,8 +83,8 @@ export async function saveLoginSettings(appId: string, b: Record<string, string 
   if (mfa === 'roles' && !roles.length) throw new Error(tx('lgp.two_factor_sign_in_name'));
   // without the instance key, users could not add an app: requiring one would lock them out
   if ((mfa === 'required' || mfa === 'roles') && !secretKeyConfigured()) throw new Error(tx('lgp.two_factor_sign_in_the'));
-  await owner.query('update meta.app set login_page = $2, password_reset = $3, mfa = $4, mfa_roles = $5, mfa_email = $6 where id = $1',
-    [appId, page, b.password_reset === 'true', mfa, roles, b.mfa_email === 'true']);
+  await owner.query('update meta.app set login_page = $2, password_reset = $3, mfa = $4, mfa_roles = $5, mfa_email = $6, passkey_signin = $7 where id = $1',
+    [appId, page, b.password_reset === 'true', mfa, roles, b.mfa_email === 'true', b.passkey_signin === 'true']);
 }
 
 /** Page 9999 (or the next free number), public, minimal, with a login region, made the login page. (137) Also Add feature → Login page. */

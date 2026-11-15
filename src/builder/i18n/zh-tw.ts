@@ -5803,6 +5803,8 @@ export const zhTW: BuilderMessages = {
   'lgp.minimal': '最簡',
   'lgp.create_a_login_page': '建立登入頁面',
   'lgp.offer_forgot_password': '提供「忘記密碼?」',
+  'lgp.passkey_signin': "使用者可以僅用通行金鑰登入",
+  'lgp.passkey_signin_help': "在使用者名稱和密碼上方顯示「使用通行金鑰登入」，適用於使用者目錄中的帳戶（開啟使用者名稱和密碼的 App users；不包括身分識別提供者或 LDAP）。使用者在 {account} 中新增通行金鑰；驗證器必須驗證使用者（指紋、臉部、PIN），因此通行金鑰同時算作兩個因素，不再需要第二步。需要 JavaScript 和主機名稱（不能是 IP 位址）。",
   'lgp.second_step': '第二步',
   'lgp.my_account': '我的帳戶',
   'lgp.not_available_yet': '尚不可用:',

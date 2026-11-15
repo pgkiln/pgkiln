@@ -5803,6 +5803,8 @@ export const it: BuilderMessages = {
   'lgp.minimal': 'Minimale',
   'lgp.create_a_login_page': 'Crea una pagina di accesso',
   'lgp.offer_forgot_password': 'Offri «Password dimenticata?»',
+  'lgp.passkey_signin': "Gli utenti possono accedere solo con una passkey",
+  'lgp.passkey_signin_help': "Mostra «Accedi con una passkey» sopra nome utente e password, per gli account della directory utenti (App users con nome utente e password attivi; non provider di identità né LDAP). Gli utenti aggiungono una passkey in {account}; l'autenticatore deve verificarli (impronta, volto, PIN), quindi la passkey vale come entrambi i fattori e non segue un secondo passaggio. Richiede JavaScript e un nome host, non un indirizzo IP.",
   'lgp.second_step': 'Secondo passaggio',
   'lgp.my_account': 'Il mio account',
   'lgp.not_available_yet': 'Non ancora disponibile:',

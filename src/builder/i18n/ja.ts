@@ -5803,6 +5803,8 @@ export const ja: BuilderMessages = {
   'lgp.minimal': '最小限',
   'lgp.create_a_login_page': 'ログイン・ページを作成',
   'lgp.offer_forgot_password': '「パスワードを忘れた場合」を提供',
+  'lgp.passkey_signin': "ユーザーがパスキーだけでサインインできる",
+  'lgp.passkey_signin_help': "ユーザー名とパスワードの上に「パスキーでサインイン」を表示します。ユーザーディレクトリのアカウントが対象です（App users でユーザー名とパスワードがオン。ID プロバイダーや LDAP は対象外）。ユーザーは {account} でパスキーを追加します。認証器がユーザーを検証する（指紋、顔、PIN）ため、パスキーは両方の要素として扱われ、2 番目の手順はありません。JavaScript と、IP アドレスではないホスト名が必要です。",
   'lgp.second_step': '2 段階目',
   'lgp.my_account': 'マイ・アカウント',
   'lgp.not_available_yet': 'まだ利用できません:',

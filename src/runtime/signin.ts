@@ -5,10 +5,11 @@ import { takeFlash, type Session } from '../session.ts';
 import { enabledProviders } from '../sso.ts';
 import type { PageContext } from './context.ts';
 import type { Locale } from './locale.ts';
+import { passkeyBlock, passkeyForm } from './passkey-signin.ts';
 import { languagePicker } from './render.ts';
 
-// The sign-in form: the identity providers' buttons, user name and password,
-// "Keep me signed in" and "Forgot password?". The built-in sign-in page
+// The sign-in form: (sprint 199) "Sign in with a passkey" (passkey-signin.ts), the identity providers' buttons,
+// user name and password, "Keep me signed in" and "Forgot password?". The built-in sign-in page
 // (routes.ts) and the "login" region of an application's own login page
 // (migration 087, meta.app.login_page) both show it; it always posts to
 // /a/<alias>/login, whose checks (CSRF, throttling, every sign-in method)
@@ -35,7 +36,7 @@ export const LOGIN_USER = '__LOGIN_USER';
 
 export async function signInForm(
   app: App, locale: Locale, session: Session, next: string,
-  o: { error?: string; username?: string; formId?: string; autofocus?: boolean } = {},
+  o: { error?: string; username?: string; formId?: string; autofocus?: boolean; passkeyFormId?: string; host?: boolean } = {},
 ): Promise<Raw> {
   const t = locale.t;
   // database accounts and custom authentication: the user name and password form only
@@ -56,6 +57,7 @@ export async function signInForm(
     ${forgot ? html`<a class="login-forgot" href="/a/${app.alias}/password/forgot">${t('reset.link')}</a>` : ''}`;
   return html`${o.error ? html`<div class="alert alert-error" role="alert">${o.error}</div>` : ''}
     ${((f) => (f ? html`<div class="alert alert-success" role="status">${f}</div>` : ''))(takeFlash(session))}
+    ${local && !dbAuth ? passkeyBlock(app, locale, session, next, { formId: o.passkeyFormId, host: o.host }) : ''}
     ${providers.length
       ? html`<div class="sso-buttons">${providers.map(
           (pr) => html`<a class="btn${local ? '' : ' btn-hot'}" href="/a/${app.alias}/sso/${pr.name}${nextQs}">${t('login.with', { provider: pr.display_name })}</a>`,
@@ -75,8 +77,12 @@ export async function renderLoginRegion(ctx: PageContext, config: { autofocus?: 
   delete s[LOGIN_USER];
   const formId = 'pgkiln-login';
   ctx.detached.push(html`<form id="${formId}" method="post" action="/a/${ctx.app.alias}/login"></form>`);
+  // (sprint 199) "Sign in with a passkey" posts a form of its own
+  const passkeyFormId = 'pgkiln-login-passkey';
+  const pk = passkeyForm(ctx.app, passkeyFormId);
+  if (pk) ctx.detached.push(pk);
   const next = safeNext(ctx.app, ctx.params.get('next') ?? undefined);
   const here = `${ctx.base}/${ctx.page.page_no}${ctx.params.get('next') ? `?next=${encodeURIComponent(next)}` : ''}`;
-  return html`<div class="login-region">${await signInForm(ctx.app, ctx.locale, ctx.session, next, { error, username, formId, autofocus: config.autofocus !== false })}
+  return html`<div class="login-region">${await signInForm(ctx.app, ctx.locale, ctx.session, next, { error, username, formId, passkeyFormId, autofocus: config.autofocus !== false })}
     ${languagePicker(ctx.app, ctx.locale, here)}</div>`;
 }
