@@ -556,6 +556,11 @@ application users, so nothing to cover there.
   [SAML](#single-sign-on-saml-20)) the provider asks for its own, and pgkiln
   [checks that it did](#multi-factor-sign-in-at-the-identity-provider). Developers have
   [two-factor sign-in](03-builder.md#two-factor-sign-in) for the builder too.
+- **Weak builder passwords** (sprint 201): a developer's new password has at least 12 characters (more when the users'
+  minimum password length is higher), in the builder and with `pgkiln users … --developer`; existing passwords keep
+  working until they are changed. Application users keep their own policy. pgkiln doesn't check passwords against a
+  list of breached passwords (it would send part of a hash to an outside service): use two-factor sign-in, or a
+  password manager's check.
 
 All sign-ins, failures and lockouts appear in the **Activity** monitor.
 
@@ -644,7 +649,9 @@ The role is **required**, and some roles are **refused**:
   `REPLICATION`; pgkiln's own roles (`pgkiln_runtime`, `pgkiln_app_code`, `pgkiln_authenticator`, `pgkiln_anon`, the
   workspaces' logins) and PostgreSQL's (`pg_*`); the owner of pgkiln's schemas; and any role
   that is a member of one of these (it could `SET ROLE` to it) or of `pg_read_all_data`, `pg_write_all_data` or the
-  server file roles. The SQL Workshop's developer logins (sprint 185) use the same check.
+  server file roles; (sprint 201) and a role with any right on one of pgkiln's own tables (a table in `meta`,
+  itself or through its roles: `meta.role_reaches_meta`). The SQL Workshop's developer logins (sprint 185) use the
+  same check.
 
 Both are refused **when the role is saved and when the application runs**: a role granted `BYPASSRLS` later stops
 the application within seconds.
@@ -699,6 +706,26 @@ worksheet's *Run as* (red, with a reason; the choice and every statement are kep
 [chapter 3](03-builder.md#who-the-sql-workshop-runs-as). Developers still read and change their applications' data:
 keep developer accounts to people you trust with it. The lockout checks warn when `DATABASE_URL` is a superuser
 ([chapter 1](01-installation.md#a-non-superuser-owner)).
+
+(sprint 201, SEC-1) **The developer login reads none of pgkiln's own tables.** Not `meta.developer` (password hashes,
+administrators), `meta.workspace`, the mail and AI services, builder tokens, sessions, factors, credentials, the
+SQL history, the Owner connection's audit or another workspace's rows: `select password_hash from meta.developer`
+fails with *permission denied*, also with *Run as* an application and with a builder token's `run_query`. What it
+may read in `meta` is a fixed list, checked by a test that enumerates every relation the login can use: the views for
+application code (`meta.tasks`, `meta.task_events`, `meta.workflows`, `meta.workflow_events`, `meta.my_notifications`,
+`meta.process_jobs`, `meta.saved_reports`, `meta.data_reports`, `meta.user_forms`, `meta.temp_files`), which show the
+rows of the application in `pgkiln.app_id` and of the session in `pgkiln.session_id`. A shared workspace's login can't
+set `pgkiln.app_id` to another workspace's application (`meta.app_id()` refuses it, as for isolated workspaces), so it
+can't use those views or the functions for application code (`meta.send_mail`, `meta.set_app_setting`, ...) as that
+application. Four layers keep it that way: a role with rights on a table in `meta` is powerful (no application runs
+as it, no developer login is a member of it); `meta.workspace_sync_roles()` takes back any right in `meta` granted to
+a workspace login itself (also before the server opens a developer login's connections, which fail when that isn't
+enough); the tables with secrets, credentials, sessions or every workspace's rows (`meta.developer`,
+`meta.developer_factor`, `meta.builder_token`, `meta.workspace*`, `meta.mail_service`, `meta.ai_service`,
+`meta.instance_setting`, `meta.account_factor`, `meta.persistent_login`, `meta.owner_sql_audit`, `meta.sql_history`,
+...; migration 175) have row level security with one policy, *the owner of `meta` and its members*, so a grant that
+slips through shows no row; and the lockout check *Developer logins* (Instance settings) is an error while a
+developer login can use a table in `meta`.
 
 The REST endpoints pgkiln serves (an application's REST modules and the tables and views published with **SQL
 Workshop → RESTful Services**, AutoREST) run as the app role too, never as the owner: these grants, column grants

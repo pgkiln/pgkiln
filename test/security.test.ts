@@ -16957,3 +16957,209 @@ describe('sprint 200 a refusal or not-found page the server sent itself keeps it
     }
   });
 });
+
+describe('sprint 201 the developer login reads none of pgkiln\'s own tables (SEC-1, SEC-2, SEC-3)', () => {
+  const DEV = 'sec201_dev';
+  const PW = 'Sec201-dev-password!';
+  const WS = 'sec201 other ws';
+  let wsId = 0;
+  let hrId = 0;
+  /** What a workspace's developer login may read in meta: the views granted to PUBLIC for application code (they show
+   * the rows of the application in pgkiln.app_id, its own workspace's, and of the session in pgkiln.session_id). No
+   * base table, sequence or other view. A migration that widens this fails here. */
+  const ALLOWED = ['data_reports', 'my_notifications', 'process_jobs', 'saved_reports', 'task_events', 'tasks', 'temp_files',
+    'user_forms', 'workflow_events', 'workflows'];
+  const SECRET_TABLES = ['developer', 'developer_factor', 'builder_token', 'workspace', 'workspace_member', 'workspace_credential',
+    'mail_service', 'ai_service', 'auth_provider', 'ldap_directory', 'account_factor', 'persistent_login', 'push_key',
+    'owner_sql_audit', 'sql_history', 'instance_setting', 'remote_server', 'api_client'];
+  const signIn = async (user: string, pw = PW) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    const r = await b.submit('/builder/login', { username: user, password: pw });
+    assert.equal(r.statusCode, 303, `sign-in of ${user}`);
+    await b.get('/builder/sql/worksheet');
+    return b;
+  };
+  const run = async (b: FileBrowser, sql: string, extra: Record<string, string> = {}) =>
+    (await b.submit('/builder/sql/worksheet', { sql, mode: 'statement', ...extra })).body;
+  /** every meta relation a role may use in any way (itself or through its roles; table or column privileges) */
+  const readable = async (role: string) => (await owner.query<{ relname: string; relkind: string }>(
+    `select c.relname, c.relkind::text from pg_class c
+      where c.relnamespace = 'meta'::regnamespace and c.relkind in ('r', 'p', 'v', 'm', 'f', 'S')
+        and (has_table_privilege($1, c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+             or (c.relkind <> 'S' and has_any_column_privilege($1, c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))
+             or (c.relkind = 'S' and has_sequence_privilege($1, c.oid, 'USAGE, SELECT, UPDATE')))
+      order by 1`, [role])).rows;
+  const devLogin = async (ws: number) => (await owner.one<{ r: string }>('select dev_role as r from meta.workspace where id = $1', [ws]))!.r;
+  const cleanup = async () => {
+    await owner.query('revoke all on meta.developer from hr_app').catch(() => {});
+    await owner.query('delete from meta.session where app_id is null and username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = any($1)', [[DEV, 'sec201_short', 'sec201_long']]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+    await owner.query(`delete from meta.setting where name = 'password_min_length' and value = '14'`);
+  };
+  before(async () => {
+    await cleanup();
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, $1) on conflict do nothing`, [DEV]);
+    wsId = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
+    hrId = (await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`))!.id;
+  });
+  after(async () => {
+    await cleanup();
+    await owner.query('select meta.workspace_sync_roles()');
+    (await import('../src/app-role.ts')).rolesChanged();
+    (await import('../src/accounts.ts')).clearAccountSettings();
+  });
+
+  test('the owner\'s acceptance test: a developer\'s worksheet can\'t read password hashes, workspaces or services', async () => {
+    const d = await signIn(DEV);
+    // (the run's own result: its error count, and the error of the statement; the history lists earlier runs too)
+    const refused = (page: string, table: string, what: string) => {
+      assert.match(page, /class="ws-count is-err"/, what);
+      assert.match(page, new RegExp(`permission denied for table ${table}`), what);
+    };
+    for (const [sql, table] of [['select username, is_admin, password_hash from meta.developer', 'developer'],
+      ['select password_hash from meta.developer where username = current_user', 'developer'], ['select count(*) from meta.workspace', 'workspace'],
+      ['select * from meta.mail_service', 'mail_service'], ['select * from meta.ai_service', 'ai_service'], ['select * from meta.builder_token', 'builder_token'],
+      ['select * from meta.session', 'session'], ['select * from meta.developer_factor', 'developer_factor'], ['select * from meta.owner_sql_audit', 'owner_sql_audit']])
+      refused(await run(d, sql), table, sql);
+    // Run as an application: its role reaches none of them either
+    refused(await run(d, 'select password_hash from meta.developer', { as_app: String(hrId) }), 'developer', 'as hr');
+    refused(await run(d, 'select count(*) from meta.workspace', { as_app: String(hrId) }), 'workspace', 'as hr');
+    // what application code may read still works (the views for the application in pgkiln.app_id)
+    const views = await run(d, 'select count(*) as n from meta.tasks');
+    assert.match(views, /class="ws-count "/);
+    assert.match(views, /<td[^>]*>0<\/td>/);
+  });
+
+  test('every workspace\'s developer login reads exactly the allow-list in meta, a new workspace\'s too', async () => {
+    const logins = (await owner.query<{ id: number; dev_role: string }>('select id, dev_role from meta.workspace where dev_role is not null order by id')).rows;
+    assert.ok(logins.some((l) => l.id === wsId), 'the new workspace has its developer login');
+    for (const l of logins) {
+      const rows = await readable(l.dev_role);
+      assert.deepEqual(rows.filter((r) => r.relkind !== 'v').map((r) => r.relname), [], `${l.dev_role}: no table or sequence of meta`);
+      assert.deepEqual(rows.map((r) => r.relname), ALLOWED, `${l.dev_role}: only the views for application code`);
+      assert.equal((await owner.one(`select meta.role_reaches_meta($1) as r`, [l.dev_role]))!.r, false);
+    }
+    // the roles the applications run as (a developer's Run as) reach no table of meta either
+    for (const r of (await owner.query<{ db_role: string }>(`select distinct a.db_role from meta.app a join pg_roles r on r.rolname = a.db_role`)).rows)
+      assert.deepEqual((await readable(r.db_role)).filter((x) => x.relkind !== 'v').map((x) => x.relname), [], r.db_role);
+    // the lockout check agrees
+    const { instanceChecks } = await import('../src/instance-checks.ts');
+    assert.equal((await instanceChecks(null)).find((c) => c.key === 'dev_logins')!.level, 'ok');
+  });
+
+  test('the tables with secrets or every workspace\'s rows show the owner of meta only, whatever is granted', async () => {
+    for (const t of SECRET_TABLES) {
+      const r = (await owner.one<{ rls: boolean; policy: string | null }>(
+        `select c.relrowsecurity as rls, (select p.polname from pg_policy p where p.polrelid = c.oid and p.polname = 'meta_owner_only') as policy
+           from pg_class c where c.oid = ('meta.' || $1)::regclass`, [t]))!;
+      assert.deepEqual([r.rls, r.policy], [true, 'meta_owner_only'], `meta.${t}`);
+    }
+    // a grant that slips through: a role with it is powerful, the developer login loses it, and it sees no rows
+    await owner.query('grant select on meta.developer to hr_app');
+    try {
+      (await import('../src/app-role.ts')).rolesChanged();
+      assert.equal((await owner.one(`select meta.role_is_powerful('hr_app') as p`))!.p, true);
+      await owner.query('select meta.workspace_sync_roles()');
+      const dev = await devLogin(1);
+      assert.equal((await owner.one(`select pg_has_role($1, 'hr_app', 'MEMBER') as m`, [dev]))!.m, false, 'no longer a member of hr_app');
+      assert.equal((await owner.one(`select has_table_privilege($1, 'meta.developer', 'SELECT') as ok`, [dev]))!.ok, false);
+      const n = await owner.tx(async (c) => {
+        await c.query('set local role hr_app');
+        return (await c.query('select count(*)::int as n from meta.developer')).rows[0].n;
+      });
+      assert.equal(n, 0, 'row level security: no developer for anyone but the owner');
+      const { instanceChecks } = await import('../src/instance-checks.ts');
+      assert.equal((await instanceChecks(null)).find((c) => c.key === 'dev_logins')!.level, 'ok', 'the membership is gone already');
+    } finally {
+      await owner.query('revoke all on meta.developer from hr_app');
+      await owner.query('select meta.workspace_sync_roles()');
+      (await import('../src/app-role.ts')).rolesChanged();
+    }
+    const dev = await devLogin(1);
+    assert.equal((await owner.one(`select pg_has_role($1, 'hr_app', 'MEMBER') as m`, [dev]))!.m, true, 'a member of hr_app again');
+    // a grant to the login itself is taken back at the next synchronisation (and before its pool opens)
+    await owner.query(`grant select on meta.workspace to ${dev}`);
+    const { instanceChecks, devLoginsCheck } = await import('../src/instance-checks.ts');
+    const check = (await instanceChecks(null)).find((c) => c.key === 'dev_logins')!;
+    assert.equal(check.level, 'error');
+    assert.match(check.detail, new RegExp(`${dev}: meta\\.workspace`));
+    await owner.query('select meta.workspace_sync_roles()');
+    assert.equal((await owner.one(`select has_table_privilege($1, 'meta.workspace', 'SELECT') as ok`, [dev]))!.ok, false);
+    assert.equal(devLoginsCheck([]).level, 'ok');
+  });
+
+  test('a shared workspace\'s developer login can\'t act as another workspace\'s application', async () => {
+    const { devDbForWorkspace } = await import('../src/workspace-db.ts');
+    const asApp = async (ws: number, sql: string) => (await devDbForWorkspace(ws)).tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(hrId)]);
+      return (await c.query(sql)).rows[0];
+    });
+    // its own workspace's application: as before
+    assert.equal((await asApp(1, 'select meta.app_id() as id')).id, hrId);
+    // another workspace's: refused, also through the views and functions for application code
+    for (const sql of ['select meta.app_id() as id', 'select count(*) from meta.tasks', 'select count(*) from meta.workflows',
+      `select meta.get_app_setting('x') as v`, 'select meta.checked_app(' + hrId + ') as id'])
+      await assert.rejects(asApp(wsId, sql), /not in this workspace/, sql);
+    assert.equal((await owner.one('select meta.app_visible($1) as v', [hrId]))!.v, true, 'the owner sees every application');
+  });
+
+  test('SEC-2: the Owner connection is refused by the server for a developer who isn\'t an administrator', async () => {
+    const d = await signIn(DEV);
+    const before = (await owner.one<{ n: number }>('select count(*)::int as n from meta.owner_sql_audit'))!.n;
+    assert.equal((await d.submit('/builder/sql/worksheet', { sql: 'select password_hash from meta.developer', mode: 'statement', as_app: 'owner', owner_reason: 'SEC201 forged' })).statusCode, 403);
+    assert.equal((await d.submit('/builder/sql/worksheet', { sql: 'select 1', mode: 'script', as_app: 'owner' })).statusCode, 403);
+    assert.equal((await d.submit('/builder/sql/run-as', { as: 'owner', reason: 'SEC201 forged' })).statusCode, 403);
+    assert.equal((await d.submit('/builder/sql/commands', { sql: 'select 1', as_app: 'owner', owner_reason: 'SEC201 forged' })).statusCode, 403);
+    // a forged session state doesn't help either: ownerChosen checks the administrator on every request
+    await owner.query(`update meta.session set state = state || '{"__OWNER":"SEC201 forged state"}' where app_id is null and username = $1`, [DEV]);
+    assert.match(await run(d, 'select session_user::text as who'), new RegExp(`<td>${await devLogin(1)}</td>`));
+    assert.match(await run(d, 'select password_hash from meta.developer'), /permission denied/);
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.owner_sql_audit'))!.n, before, 'nothing recorded: nothing ran on the owner');
+    // a builder token with the sql scope runs on the developer login too
+    const tok = await import('../src/builder-tokens.ts');
+    const t = (await tok.createToken({ username: DEV, workspaceId: 1, name: 'sec201', scopes: ['read', 'sql'], days: 1 })).token;
+    const api = (sql: string) => app.inject({ method: 'POST', url: '/builder/api/v1/tools/run_query', headers: { authorization: `Bearer ${t}` }, payload: { sql } });
+    assert.match(JSON.parse((await api('select session_user as s')).json().text).rows[0].s, /^pgkiln_ws1_dev_/);
+    const q = await api('select password_hash from meta.developer');
+    assert.equal(q.statusCode, 422);
+    assert.match(q.body, /permission denied/);
+    await owner.query('delete from meta.builder_token where username = $1', [DEV]);
+  });
+
+  test('SEC-3: a developer\'s new password has at least 12 characters; existing ones keep working; app users keep their policy', async () => {
+    const { passwordProblem, developerPasswordProblem, clearAccountSettings } = await import('../src/accounts.ts');
+    clearAccountSettings();
+    // an existing short password still signs in
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ('sec201_short', meta.hash_password('Short-pw8'), false)`);
+    await owner.query(`insert into meta.workspace_member (workspace_id, username) values (1, 'sec201_short') on conflict do nothing`);
+    const d = await signIn('sec201_short', 'Short-pw8');
+    const page = (await d.get('/builder/developers')).body;
+    assert.match(page, /At least 12 characters\./);
+    // changing it: 11 characters are refused, 12 accepted
+    await d.submit('/builder/developers/password', { current: 'Short-pw8', password: 'Elevenchar1' });
+    assert.equal((await owner.one(`select password_hash = crypt('Short-pw8', password_hash) as ok from meta.developer where username = 'sec201_short'`))!.ok, true, 'unchanged');
+    await d.get('/builder/developers');
+    await d.submit('/builder/developers/password', { current: 'Short-pw8', password: 'Twelve-char1' });
+    assert.equal((await owner.one(`select password_hash = crypt('Twelve-char1', password_hash) as ok from meta.developer where username = 'sec201_short'`))!.ok, true, 'changed');
+    // an administrator adding a developer: the same rule
+    const a = await signIn('admin', 'admin');
+    await a.get('/builder/developers');
+    await a.submit('/builder/developers', { username: 'sec201_long', password: 'Elevenchar1' });
+    assert.equal(await owner.one(`select 1 from meta.developer where username = 'sec201_long'`), undefined);
+    await a.get('/builder/developers');
+    await a.submit('/builder/developers', { username: 'sec201_long', password: 'Twelve-char1' });
+    assert.ok(await owner.one(`select 1 from meta.developer where username = 'sec201_long'`));
+    // application users: the configured policy (8 by default), not the developers' minimum
+    assert.equal(await passwordProblem('Eight-c1'), null);
+    assert.match((await developerPasswordProblem('Eight-c1'))!, /at least 12 characters/);
+    // a stricter users' policy applies to developers too
+    await owner.query(`insert into meta.setting (name, value) values ('password_min_length', '14') on conflict (name) do update set value = excluded.value`);
+    clearAccountSettings();
+    assert.match((await developerPasswordProblem('Thirteen-ch1!'))!, /at least 14 characters/);
+    await owner.query(`update meta.setting set value = '8' where name = 'password_min_length'`);
+    clearAccountSettings();
+  });
+});

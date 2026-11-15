@@ -1830,7 +1830,7 @@ export const it: BuilderMessages = {
   'dev.change_pw': 'Modifica la password',
   'dev.current': 'Password attuale',
   'dev.new': 'Nuova password',
-  'dev.min8': 'Almeno 8 caratteri.',
+  'dev.min_length': 'Almeno {min} caratteri.',
   'dev.change_btn': 'Modifica password',
   'dev.your_email': 'Il proprio indirizzo e-mail',
   'dev.email': 'Indirizzo e-mail',

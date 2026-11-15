@@ -1834,7 +1834,7 @@ export const en = {
   'dev.change_pw': 'Change your password',
   'dev.current': 'Current password',
   'dev.new': 'New password',
-  'dev.min8': 'At least 8 characters.',
+  'dev.min_length': 'At least {min} characters.',
   'dev.change_btn': 'Change password',
   'dev.your_email': 'Your e-mail address',
   'dev.email': 'E-mail address',

@@ -120,7 +120,7 @@ pgkiln deliberately uses **two** database logins:
 | Developer logins | *(none: derived from `PGKILN_SECRET_KEY`)* | `pgkiln_ws<id>_dev_<suffix>`, one per workspace (migration 166) | the SQL Workshop and the tools that check a developer's SQL |
 
 (sprint 185) The SQL Workshop doesn't run as the owner: each workspace has a **developer login** with the rights of
-its applications' roles and schemas and none in `meta` (chapter 3, *Who the SQL Workshop runs as*). pgkiln sets its
+its applications' roles and schemas and none on `meta`'s tables (chapter 3, *Who the SQL Workshop runs as*; sprint 201). pgkiln sets its
 password when it first opens a connection, derived from `PGKILN_SECRET_KEY`; without that key a single server
 process uses a password of its own (several processes need the key, or they change each other's password). The
 login connects to the database and host of `RUNTIME_DATABASE_URL`, so `pg_hba.conf` must let it sign in with a
@@ -140,15 +140,42 @@ server, run programs and change every database of the PostgreSQL server. The Doc
 `pgkiln` a superuser (the image's `POSTGRES_USER`); on a server of your own, make an owner without it:
 
 ```sql
+-- as a superuser, in pgkiln's database (stop pgkiln first)
 create role pgkiln_owner login createrole password 'a-long-random-password';
 alter database pgkiln owner to pgkiln_owner;
-reassign owned by pgkiln to pgkiln_owner;   -- as a superuser, in pgkiln's database
+reassign owned by pgkiln to pgkiln_owner;
+-- (PostgreSQL 16+) a CREATEROLE role may only change, grant and set the password of roles it has ADMIN OPTION on;
+-- the roles the old owner made don't give it that: pgkiln's own, the workspaces' logins, the applications' roles
+do $$
+declare r text;
+begin
+  for r in select rolname from pg_roles
+            where rolname in ('pgkiln_runtime', 'pgkiln_app_code', 'pgkiln_authenticator', 'pgkiln_anon')
+               or rolname ~ '^pgkiln_ws[0-9]+_(run|dev)_'
+               or rolname in (select db_role from meta.app union select role_name from meta.workspace_role)
+  loop
+    execute format('grant %I to pgkiln_owner with admin option', r);
+  end loop;
+end $$;
+-- the old owner keeps no power
+alter role pgkiln nosuperuser nologin;
 ```
 
-The owner needs `CREATEROLE` (application roles, workspace logins) and to own the database. A few things then need
-a superuser once (the Change Log's event triggers, `create extension` of an untrusted extension): pgkiln shows the
-statements to run. Splitting the owner into a migration role and a builder role that can't create roles is not done
-yet: `DATABASE_URL` is still used for both.
+Then point `DATABASE_URL` at `pgkiln_owner` and start pgkiln again. Without the `ADMIN OPTION` grants (PostgreSQL 16
+and later) the server can't set the workspace logins' passwords, so the SQL Workshop doesn't connect ("permission
+denied to alter role"), and a new application's role can't be given to the logins. Default privileges the old owner
+set with `ALTER DEFAULT PRIVILEGES` (the application schemas' grants for tables made later) stay the old role's:
+`REASSIGN OWNED` doesn't move them. List them with `select pg_get_userbyid(defaclrole), defaclnamespace::regnamespace,
+defaclacl from pg_default_acl` and repeat them `for role pgkiln_owner`; drop the old role only after that
+(`drop owned by pgkiln; drop role pgkiln;`).
+
+The owner needs `CREATEROLE` (application roles, workspace logins), `ADMIN OPTION` on those roles, and to own the
+database. It must be the owner of the `meta` schema and its tables itself, not a member of that role: row
+level security on pgkiln's tables lets the tables' owner see every workspace's rows, a member only some. A few things then need a superuser once (the Change Log's event triggers,
+`create extension` of an untrusted extension): pgkiln shows the statements to run. Splitting the owner into a
+migration role and a builder role that can't create roles is not done yet: `DATABASE_URL` is still used for both.
+Whichever role it is, the SQL Workshop never runs as it unless an administrator chooses the audited Owner connection:
+a developer who isn't an administrator is refused by the server (403), not only by the form.
 
 The migration creates `pgkiln_runtime` with the password `pgkiln_runtime`. **Change it**:
 

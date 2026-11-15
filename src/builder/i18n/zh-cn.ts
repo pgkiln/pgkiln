@@ -1830,7 +1830,7 @@ export const zhCN: BuilderMessages = {
   'dev.change_pw': '更改您的密码',
   'dev.current': '当前密码',
   'dev.new': '新密码',
-  'dev.min8': '至少 8 个字符。',
+  'dev.min_length': '至少 {min} 个字符。',
   'dev.change_btn': '更改密码',
   'dev.your_email': '您的电子邮件地址',
   'dev.email': '电子邮件地址',

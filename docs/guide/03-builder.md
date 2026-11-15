@@ -25,7 +25,11 @@ administrators set anyone's.
 
 On the **Developers** page you can:
 
-- change your own password (minimum 8 characters; other builder sessions of yours end);
+- change your own password (other builder sessions of yours end). (sprint 201) A developer's new password has at least
+  **12 characters**, or more when the users' policy (*Users → Account settings*, minimum password length) asks for more;
+  the same rule applies when an administrator adds a developer and to `pgkiln users add|password --developer`.
+  Existing passwords keep working until they are changed. Application users keep their own policy (8 characters by
+  default);
 - set your **e-mail address** (optional; *Find my workspace* sends your workspaces to it);
 - as an **administrator**: add developer accounts (developers or administrators, with an e-mail address), change
   their e-mail addresses, make a developer
@@ -2376,13 +2380,28 @@ may do:
   read and change their data as they can), and has `USAGE` and `CREATE` on the schemas those roles use and on
   `public`. The tables, views and functions it creates are its own, with default privileges that give the
   applications' roles the same rights as the owner's (select, insert, update, delete; sequences; execute). It has no
-  rights in `meta`, can't create roles, schemas or databases, and isn't a superuser. Objects the owner created (for
+  rights on `meta`'s tables (see below), can't create roles, schemas or databases, and isn't a superuser. Objects the owner created (for
   example by an earlier release's SQL Workshop or a migration) keep their owner: their data can be changed, their
   structure only with the Owner connection.
 - **An isolated workspace** (see *Isolated workspaces*): its own login, as before.
 
 `RESET ROLE` or `set_config('role', …)` only gets back to that login. A developer who belongs to no workspace has no
 SQL Workshop. Administrators run as the developer login too, by default.
+
+**pgkiln's own tables** (sprint 201, SEC-1). The developer login reads **none** of the tables in `meta`: not the
+developers and their password hashes, workspaces, mail and AI services, tokens, sessions, factors or another
+workspace's rows. `select password_hash from meta.developer` in the worksheet fails with *permission denied*, also
+with *Run as* an application. In `meta` it may only read the views that application code uses (`meta.tasks`,
+`meta.workflows`, `meta.my_notifications`, `meta.saved_reports`, ...), which show the rows of the application in
+`pgkiln.app_id` and of the session in `pgkiln.session_id`, and call the functions application code may call; a login
+of one workspace can't set `pgkiln.app_id` to another workspace's application (*Application … is not in this
+workspace*). This holds however rights are granted later: a role with rights on a table in `meta` counts as
+powerful (`meta.role_is_powerful`), so no application runs as it and no developer login becomes a member of it; rights
+granted to the login itself are taken back whenever pgkiln synchronises the workspaces' roles (and before the
+server opens the login's connections); and the tables with secrets or every workspace's rows have row level security
+that shows them to the owner of `meta` only. *Instance settings → Lockout checks* shows an error when a developer
+login can use a table in `meta` anyway (*Developer logins can read pgkiln's tables*). Builder tokens with the `sql`
+scope run on the same login.
 
 **The Owner connection** (administrators only). The SQL Worksheet's **Run as** chip lists *Developer login* (the
 default), the applications' roles and, for an instance administrator only, **Owner connection**: pgkiln's own rights

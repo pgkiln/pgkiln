@@ -1830,7 +1830,7 @@ export const nl: BuilderMessages = {
   'dev.change_pw': 'Uw wachtwoord wijzigen',
   'dev.current': 'Huidig wachtwoord',
   'dev.new': 'Nieuw wachtwoord',
-  'dev.min8': 'Minstens 8 tekens.',
+  'dev.min_length': 'Minstens {min} tekens.',
   'dev.change_btn': 'Wachtwoord wijzigen',
   'dev.your_email': 'Uw e-mailadres',
   'dev.email': 'E-mailadres',
