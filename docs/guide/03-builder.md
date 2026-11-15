@@ -575,7 +575,9 @@ Every builder page has the same frame, modelled on an IDE:
   utilities under Administration). *Show labels* puts each entry's name next to its icon (*Hide labels* takes them
   away; kept for your session); without them the name shows when you point at an icon or move to it with the
   keyboard. The search is the field at the top of every page (**Ctrl+K**); an application's own search is its
-  **Search** tab. Your account menu has the
+  **Search** tab. (sprint 203) Inside an application (and, without JavaScript, for the application you opened last)
+  it also finds the Shared Components entries by name, in the builder language or in English: *template* leads to
+  Templates and Template Components, *session state* to Session State Protection. Your account menu has the
   **builder theme** (*Dark*, the default; *Light*; or *System*, which follows the operating system),
   Change password and Sign out. The theme is remembered on this device, also after signing out;
   it only changes the builder, not your applications.
@@ -1115,7 +1117,18 @@ Components, page groups, export, backups, supporting objects and lock the applic
 application home is the page report with Create Page in its toolbar) The dashboard is the Pages report and the side
 column, nothing below the report: under Tasks comes **Application lock and comments** (on a phone both follow the
 report), and the quick forms *Create pages from a table* and *Create blank page* are on **Create page**, tab
-Component. (UX-9) The report shows a
+Component. (sprint 203, AX-6; APEX: Recently Edited Pages) Under Tasks, **Recently edited pages** lists five pages by
+their last change, the ones you changed first, each with how long ago (and who, for another developer's change) and a
+link into the Page Designer.
+
+(sprint 203, AX-6; APEX: Tasks → Copy this Application) **Copy application** (a task; `/builder/apps/:id/copy`) makes
+a new application with everything the application has (pages, shared components, settings, supporting objects) under
+a new name and alias (proposed: *Name (copy)* and a free alias). It is the export imported again, so it is not linked
+to the original: for changes to merge back, make a [working copy](#working-copies) instead. The copy is in the
+original's workspace, runs on the same database role and tables, and the same users may run it with the same roles;
+web credentials keep their secrets. Its automations and REST data source synchronisations are off until you turn them
+on, so the two don't both send the same mail. Sessions, saved reports and user preferences are not copied. A locked
+application can still be copied. (UX-9) The report shows a
 page's mode in the property editor's words (*Normal*, *Modal dialog*), and Group stays empty for a page without one.
 (UX-6) Deleting the application is not a task: it is the **Danger zone** at the bottom of Settings → Definition,
 where you type the application's alias to confirm (the server checks it too). Its pages, shared components,
@@ -1698,6 +1711,25 @@ security attributes, navigation bar list, user interface attributes, PWA, global
 right Settings tab. **Breadcrumbs** shows the pages by their breadcrumb parent. **Tree view** (`?view=tree`)
 is the earlier page: every component in one rail, with **Access control** next to it.
 
+(sprint 203, AX-7) **User Interface → Templates** (`/builder/apps/:id/templates`; APEX: Shared Components →
+Templates) lists the templates the application's components can choose, each with a description and **Used by**: the
+pages, regions, buttons or items that use it (a disclosure of links into the Page Designer, at the component):
+
+| Templates | Chosen by |
+|---|---|
+| Page: Standard, Left side column, Right side column, Minimal (no navigation) | the page's Template (Page → Appearance) |
+| Region: Standard, Plain, Collapsible, Hero, Title bar, Buttons container, Inline dialog, Inline drawer, Wizard, Tabs container, Flex container | the region's Template |
+| Button: Text, Text primary (hot), Menu button | the button's *Primary (hot)* setting and its menu entries |
+| Label: Optional, Required, Hidden | the item's *Required* setting and the template option *Hide the label* |
+| Report: Standard (table), Value attribute pairs, Badge list, Media list | a classic report's `report_template` |
+| List: Links, Badge list, Cards, Tabs, Wizard progress | a list region's `template` |
+
+They are part of pgkiln's theme, so the page is read-only: their look changes with Theme Roller and
+[template options](04-pages-and-regions.md), and markup of your own is a **template component**, which the page
+links to (with the number of the application's own and the built-in ones). **Security → Session State Protection**
+opens Settings → Errors and Sessions at **Expire bookmarks** (pgkiln's checksums protect page links; a page's
+*Protection* sets it per page).
+
 | Component | Purpose |
 |---|---|
 | **Access control** | Who may sign in (only listed accounts, or any active account), which accounts have access with which roles, and which identity-provider groups map to which roles |
@@ -1951,7 +1983,10 @@ for CI, with text, JSON or SARIF output: [`pgkiln advise`](18-cli.md#pgkiln-advi
 application's upkeep needs: tiles for the Advisor, Search, Debug messages, Activity, Backups,
 Working copies and Export, and the tools below. It also shows an **application dashboard** (pages,
 regions, items, processes, lists of values, changes in the last 7 days), the **recently updated
-pages** (from the change history) and the checksums.
+pages** (from the change history) and the checksums. (sprint 203, AX-6) Each recently updated page has its number and
+name; a page the application no longer has (deleted, or renumbered: often a page a test or a working copy merge made
+and removed) is *Deleted page 9201 (its last recorded name)*, linked to its change history. Times are relative
+(*3 days ago*, the exact time when you point at it), as in the Pages report.
 
 - **Database object dependencies** (`/builder/apps/:id/utilities/dependencies`): every piece of SQL
   the Advisor plans, plus the tables of form and grid regions, is parsed as the application's

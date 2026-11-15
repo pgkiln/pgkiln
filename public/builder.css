@@ -1248,6 +1248,13 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .app-side .region { margin: 0; }
 .app-side .lock-panel .search { flex-wrap: wrap; } /* the note above Lock the application in the narrow column */
 .app-side .lock-panel .search input { flex: 1 1 100%; min-width: 0; }
+/* (sprint 203, AX-6) Recently edited pages in the side column, under Tasks */
+.app-recent .sc-links li { flex-wrap: wrap; gap: 0 0.5rem; }
+.app-recent .sc-links a { display: inline-flex; align-items: center; gap: 0.45rem; }
+/* (sprint 203, AX-7) Shared Components → Templates: where each template is used */
+.tpl-uses summary { cursor: pointer; }
+.tpl-uses ul { margin: 0.35rem 0 0; padding-left: 1.1rem; }
+.tpl-table td:first-child { min-width: 9rem; }
 /* (sprint 193, NX-F3) the Pages report: filters with counts, the column chooser (kept per developer), the alias */
 .pages-filters { display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: flex-end; margin: 0 0 0.75rem; }
 .pages-filters .field { margin: 0; flex: 1 1 7rem; max-width: 12rem; min-width: 0; }

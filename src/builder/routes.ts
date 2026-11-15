@@ -16,10 +16,10 @@ import { documentShell } from '../layout.ts';
 import { developerPasswordMin, developerPasswordProblem } from '../accounts.ts';
 import { clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, sessionLimits, takeFlash } from '../session.ts';
 import { loginSettingsFields, saveLoginSettings } from './login-page.ts';
-import { APP_COLORS, appHeader, back, BASE, brandMark, builderHead, csrf, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
+import { APP_COLORS, appHeader, back, BASE, brandMark, builderHead, csrf, designerUrl, developer, flash, input, region, select, send, shell, THEME_COOKIE, validTheme, type Req } from './ui.ts';
 import { appOr404 } from './forms.ts';
 import { docToFiles, filesToZip } from '../appfiles.ts';
-import { homeRoutes, rememberApp } from './home.ts';
+import { ago, homeRoutes, rememberApp } from './home.ts';
 import { currentWorkspace, placeApp, workshopDb, workspaceRoutes } from './workspaces.ts';
 import { AppRoleError, appRoleName, importRole, makeAppRole, reservedSchema, roleProblem } from '../app-role.ts';
 import { workspacesChanged } from '../workspace-db.ts';
@@ -663,6 +663,15 @@ export async function builderRoutes(app: FastifyInstance) {
     const appLock = locks.get(0);
     const issues = await appIssues(a.id);
     const tx = tr(s);
+    // (sprint 203, AX-6; APEX: Recently Edited Pages) five pages by their last change: the ones you changed first
+    const edited = (await owner.query<{ page_no: number; name: string; mine: string | null; last: string; by: string | null }>(
+      `with e as (select page_no, changed_by as by, changed_at as at from meta.component_change where app_id = $1 and page_no > 0
+                  union all select page_no, updated_by, updated_at from meta.page_change where app_id = $1)
+       select p.page_no, p.name, max(e.at) filter (where e.by = $2)::text as mine, max(e.at)::text as last,
+              (array_agg(e.by order by e.at desc))[1] as by
+         from e join meta.page p on p.app_id = $1 and p.page_no = e.page_no
+        group by p.page_no, p.name
+        order by max(e.at) filter (where e.by = $2) desc nulls last, max(e.at) desc, p.page_no limit 5`, [a.id, s.username])).rows;
 
     const main = html`
       ${appHeader(a, 'pages', s, [`${BASE}/apps/${a.id}/create-page`, tx('app.create_page'), 'plus'])}
@@ -681,7 +690,17 @@ export async function builderRoutes(app: FastifyInstance) {
           <li><a href="${BASE}/apps/${a.id}/supporting-objects">${icon('database')} ${tx('app.task.supporting')}</a></li>
           <li><a href="#app-lock">${icon('lock')} ${tx('app.task.lock')}</a></li>
           ${issues.task}
+          <li><a href="${BASE}/apps/${a.id}/copy">${icon('copy')} ${tx('app.task.copy_app')}</a></li>
         </ul></aside>
+      <section class="app-recent region region-standard" aria-labelledby="app-recent-h"><header class="region-header"><h2 id="app-recent-h">${tx('app.recent_pages')}</h2></header>
+        ${edited.length
+          ? html`<ul class="sc-links">${edited.map((p) => {
+              const at = p.mine ?? p.last;
+              return html`<li><a href="${designerUrl(a.id, p.page_no)}">${icon('file')} ${p.page_no}: ${p.name}</a>
+                <small class="muted"><time datetime="${new Date(at).toISOString()}" title="${at.slice(0, 16)}${p.mine ? '' : p.by ? ` · ${p.by}` : ''}">${ago(at, Date.now(), tx)}</time>${p.mine ? '' : p.by ? html` · ${p.by}` : ''}</small></li>`;
+            })}</ul>`
+          : html`<p class="muted region-body u-mt0">${tx('app.recent_pages_none')}</p>`}
+      </section>
       <div id="app-lock">${region(tx('app.lock_region'), await lockPanel(s, a.id, 0, { headings: true }))}</div>
       </div>
       </div>`;

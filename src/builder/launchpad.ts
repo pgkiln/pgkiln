@@ -8,6 +8,8 @@ import { SQL_TOOLS, TOOL_GROUPS, toolDescription, toolLabel } from './sql-tools.
 import { tr } from './i18n.ts';
 import { SYSTEM_SCHEMAS } from './object-browser.ts';
 import { currentWorkspace, inWorkspaceSql, workshopDb } from './workspaces.ts';
+import { itemLabel, sharedGroups } from './shared.ts';
+import { recentIds } from './home.ts';
 import { isAdmin } from './locks.ts';
 
 // (sprint 96, Database Actions DA-15) The SQL Workshop's Launchpad and the builder's search.
@@ -62,12 +64,35 @@ export async function launchpad(s: Session, admin: boolean): Promise<Raw> {
 
 interface Result { kind: string; label: string; detail: string; href: string; icon: string }
 
+/**
+ * (sprint 203, AX-7) The Shared Components entries (Templates, Session State Protection, Lists of Values, …) of the
+ * application the search was opened in (`app`), else of the last one opened, whose name (in the builder language
+ * or in English) has `needle`.
+ */
+async function sharedEntries(s: Session, needle: string, app: string): Promise<Result[]> {
+  const id = /^\d{1,9}$/.test(app) ? Number(app) : recentIds(s)[0];
+  if (!id) return [];
+  const a = await owner.one<{ id: number; name: string }>(`select a.id, a.name from meta.app a where a.id = $1 and ${inWorkspaceSql('a', 2)}`, [id, currentWorkspace(s)]);
+  if (!a) return [];
+  const tx = tr(s);
+  return sharedGroups(a.id).flatMap((g) => g.items
+    .map((it) => ({ it, label: itemLabel(tx, it.label) }))
+    .filter(({ it, label }) => `${label} ${it.label}`.toLowerCase().includes(needle))
+    .map(({ it, label }) => ({ kind: tx('sc.shared_component'), label, detail: `${a.name} · ${tx.dyn(`sc.group.${g.key}`, g.title)}`, href: it.href, icon: g.icon })))
+    // a name that starts with the words first ("template": Templates, Template Components, then Email Templates), shorter first
+    .map((r, i) => ({ r, i, rank: [r.label.toLowerCase().startsWith(needle) ? 0 : 1, r.label.length, i] }))
+    .sort((x, y) => x.rank[0] - y.rank[0] || x.rank[1] - y.rank[1] || x.rank[2] - y.rank[2])
+    .map((x) => x.r);
+}
+
 /** What the builder's search finds for `q`. */
-async function search(s: Session, q: string, admin: boolean): Promise<Result[]> {
+async function search(s: Session, q: string, admin: boolean, app = ''): Promise<Result[]> {
   const needle = q.toLowerCase();
   const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-  const out: Result[] = SQL_TOOLS.filter((t) => (admin || !t.admin) && `${t.label} ${t.description}`.toLowerCase().includes(needle))
-    .map((t) => ({ kind: 'Tool', label: t.label, detail: t.description, href: t.href, icon: t.icon }));
+  // (sprint 203) the application's Shared Components entries first: "template" is the Templates page, not a tool's description
+  const out: Result[] = (await sharedEntries(s, needle, app)).slice(0, 8);
+  out.push(...SQL_TOOLS.filter((t) => (admin || !t.admin) && `${t.label} ${t.description}`.toLowerCase().includes(needle))
+    .map((t) => ({ kind: 'Tool', label: t.label, detail: t.description, href: t.href, icon: t.icon })));
   const ws = currentWorkspace(s);
   const apps = (await owner.query<{ id: number; name: string; alias: string }>(
     `select a.id, a.name, a.alias from meta.app a where ${inWorkspaceSql('a', 1)} and (a.name ilike $2 or a.alias ilike $2) order by a.name limit 8`, [ws, like])).rows;
@@ -129,7 +154,7 @@ export async function launchpadRoutes(app: FastifyInstance) {
     if (!s) return;
     const q = String(req.query?.q ?? '').trim().slice(0, 100);
     const admin = await isAdmin(s.username);
-    const results = q ? await search(s, q, admin) : [];
+    const results = q ? await search(s, q, admin, String(req.query?.app ?? '')) : [];
     if (req.query?.format === 'json') return reply.header('Cache-Control', 'private, no-store').send({ q, results });
     const main = html`<h1 class="u-mb1">Search</h1>
       <form method="get" action="${BASE}/palette" class="search u-mb1" role="search"><label class="sr-only" for="pal-q">Search</label>

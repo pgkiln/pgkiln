@@ -7,6 +7,8 @@ import { icon, ICONS, LUCIDE_VERSION, lucideNames, searchIcons } from '../icons.
 import { appOfPath } from './locks.ts';
 import { appHeader, BASE, designerUrl, developer, region, select, send, shell, type Req } from './ui.ts';
 import { scopedTx as tx } from './i18n.ts';
+import { ago } from './home.ts';
+import { fromText } from '../yamltext.ts';
 
 // (sprint 138, AP-5) App Builder → an application's Utilities (APEX: Application
 // Utilities): one page for what an application's maintenance needs, the tools
@@ -30,6 +32,28 @@ export function diffHtml(path: string, a: string | null | undefined, b: string |
 function changeDiff(before: Record<string, string> | null, after: Record<string, string> | null): Raw {
   const paths = [...new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])].sort();
   return html`${paths.map((p) => (before?.[p] === after?.[p] ? '' : diffHtml(p, before?.[p], after?.[p], ['before', 'after'])))}`;
+}
+
+/**
+ * (sprint 203, AX-6) The names of page numbers the application no longer has (a page deleted, or renumbered), from the
+ * last recorded version of each page's settings (pages/NNNN/page.yaml in meta.component_change); a page whose
+ * settings were never recorded is missing from the map.
+ */
+export async function deletedPageNames(appId: number, pageNos: number[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  if (!pageNos.length) return out;
+  const rows = (await owner.query<{ page_no: number; before: Record<string, string> }>(
+    `select distinct on (page_no) page_no, before from meta.component_change
+      where app_id = $1 and page_no = any ($2::int[]) and before is not null and component ~ '^pages/[^/]+/page$'
+      order by page_no, changed_at desc, id desc`, [appId, pageNos])).rows;
+  for (const r of rows) {
+    const text = Object.entries(r.before ?? {}).find(([path]) => path.endsWith('/page.yaml'))?.[1];
+    try {
+      const name = text ? (fromText(text) as { name?: unknown } | null)?.name : undefined;
+      if (typeof name === 'string' && name.trim()) out.set(r.page_no, name.trim());
+    } catch { /* an unreadable old version: the number alone */ }
+  }
+  return out;
 }
 
 /** The component of a history row in the builder (a page component opens the page designer). */
@@ -72,6 +96,9 @@ export async function utilityRoutes(app: FastifyInstance) {
          from meta.component_change where app_id = $1 and page_no is not null order by page_no, changed_at desc`, [a.id])).rows
       .sort((x, y) => (x.changed_at < y.changed_at ? 1 : -1)).slice(0, 10);
     const pageName = new Map(pages.map((p) => [p.page_no, p.name]));
+    // (sprint 203, AX-6) every row named: a deleted page by its last recorded name
+    const gone = await deletedPageNames(a.id, recent.map((r) => r.page_no).filter((n) => !pageName.has(n)));
+    const recentLabel = (n: number) => (pageName.has(n) ? `${n}: ${pageName.get(n)}` : gone.has(n) ? tx('util.deleted_page_named', { n, name: gone.get(n)! }) : tx('util.deleted_page', { n }));
     const card = (href: string, ic: string, title: string, text: string) =>
       html`<a class="ab-tile" href="${href}"><span class="ab-tile-icon">${icon(ic)}</span><strong>${title}</strong><span>${text}</span></a>`;
     const u = `${BASE}/apps/${a.id}`;
@@ -97,8 +124,11 @@ export async function utilityRoutes(app: FastifyInstance) {
         </dl>`)}
       ${region(tx('util.recently_updated_pages'), recent.length
         ? html`<div class="table-wrap"><table class="table report-reflow"><thead><tr><th scope="col">${tx('util.page')}</th><th scope="col">${tx('util.last_change')}</th><th scope="col">${tx('util.by')}</th><th scope="col">${tx('util.changes')}</th></tr></thead><tbody>
-            ${recent.map((r) => html`<tr><td data-label="${tx('util.page')}"><a href="${designerUrl(a.id, r.page_no)}">${r.page_no}${pageName.has(r.page_no) ? `: ${pageName.get(r.page_no)}` : ''}</a></td><td data-label="${tx('util.last_change')}">${when(r.changed_at)}</td>
-              <td data-label="${tx('util.by')}">${r.changed_by ?? 'command line'}</td><td data-label="${tx('util.changes')}"><a href="${u}/utilities/history?page=${r.page_no}">${r.n}</a></td></tr>`)}</tbody></table></div>`
+            ${recent.map((r) => html`<tr><td data-label="${tx('util.page')}">${pageName.has(r.page_no)
+                ? html`<a href="${designerUrl(a.id, r.page_no)}">${recentLabel(r.page_no)}</a>`
+                : html`<a class="muted" href="${u}/utilities/history?page=${r.page_no}">${recentLabel(r.page_no)}</a>`}</td>
+              <td data-label="${tx('util.last_change')}"><time datetime="${new Date(r.changed_at).toISOString()}" title="${when(r.changed_at)}">${ago(r.changed_at, Date.now(), tx)}</time></td>
+              <td data-label="${tx('util.by')}">${r.changed_by ?? html`<span class="muted">${tx('util.command_line')}</span>`}</td><td data-label="${tx('util.changes')}"><a href="${u}/utilities/history?page=${r.page_no}">${r.n}</a></td></tr>`)}</tbody></table></div>`
         : html`<p class="muted u-mt0">${tx('util.no_recorded_changes_yet_the')}</p>`)}
       ${region(tx('util.application_checksum'), html`<p class="u-mt0">${tx('util.the_checksum_of_the_application')}</p>
         <p class="util-sum"><code>${sum}</code></p>

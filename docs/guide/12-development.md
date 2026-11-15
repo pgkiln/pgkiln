@@ -507,7 +507,8 @@ src/
     sql.ts                 SQL Workshop: the home and the session's schema
     sql-tour.ts            (sprint 179) GET /builder/sql/tour: the guided tour of the SQL Workshop's tools (a step per tool, no script)
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
-                           GET /builder/palette (the builder's search: JSON for Ctrl+K, a results page without JavaScript)
+                           GET /builder/palette (the builder's search: JSON for Ctrl+K, a results page without JavaScript;
+                           (sprint 203) sharedEntries(): the Shared Components entries of ?app= or the last opened application)
     sql-charts.ts          (sprint 97) charts of a query: chartSpec(), drawChart() (runtime/charts.ts, a PageCss in a nonce'd <style>), the
                            worksheet's Chart tab, SQL Workshop → Charts (meta.sql_chart, 110; read-only runs);
                            (sprint 173) an application page from a saved chart: chartRegionSource(), /apps/:id/chart-page
@@ -582,7 +583,8 @@ src/
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
                            application and page checksums; Change history (filters, diffHtml of a change); the icon browser
-                           /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application)
+                           /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application);
+                           (sprint 203) deletedPageNames(): a deleted page's last recorded name (pages/NNNN/page.yaml in the history)
     dependencies.ts        (sprint 138) Utilities → Database object dependencies: appDependencies() (the Advisor's fragments, each
                            parsed as the app role into a BEGIN ATOMIC temp function, one statement by the extended protocol;
                            pg_depend → tables, views, sequences, functions; missing objects from the parser's errors; privileges
@@ -622,6 +624,8 @@ src/
                            application
     form-designer.ts       page designer: Form Designer settings (designers' scheme; sources: key, actions, offered columns, labels, lists of values)
     workingcopies.ts       Working copies: list and create, compare with differences, merge or refresh with conflict choices, delete
+    copy-app.ts            (sprint 203, AX-6) Copy application: GET /apps/:id/copy, POST /copy-app (copyApplication(): export →
+                           import under a new alias, same workspace and app_access, automations and REST syncs off)
     rest.ts                REST module endpoints list and curl example (Shared Components)
     autorest.ts            (sprint 100) SQL Workshop → RESTful Services (/builder/sql/rest): publish a table or view through an
                            application of the workspace (checks: schema the workshop may use, app role not the owner), its page
@@ -641,6 +645,8 @@ src/
     websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns,
                            write-back operations, synchronisation settings, Synchronise now and run history
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
+    ui-templates.ts        (sprint 203, AX-7) Shared Components → Templates (/apps/:id/templates): page, region, button, label,
+                           classic report and list templates with where each is used (read-only; names in uit.* keys)
     code-editor.ts         code fields (data-code marks), /builder/code/completions (scoped to the app's role), /builder/code/check
     instance.ts            Workspace utilities → Instance settings (src/instance.ts: session and sign-in settings, configuration overview;
                            Lockout checks from src/instance-checks.ts and POST /instance/key-backup)

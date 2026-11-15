@@ -100,7 +100,9 @@
     const mine = ++seq;
     if (!q) { listbox.replaceChildren(); items = []; status.textContent = 'Type to search.'; return; }
     try {
-      const res = await fetch(`/builder/palette?format=json&q=${encodeURIComponent(q)}`, { credentials: 'same-origin' });
+      // (sprint 203) inside an application, its Shared Components entries are found too
+      const app = /^\/builder\/apps\/(\d+)/.exec(location.pathname)?.[1];
+      const res = await fetch(`/builder/palette?format=json&q=${encodeURIComponent(q)}${app ? `&app=${app}` : ''}`, { credentials: 'same-origin' });
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       if (mine !== seq) return; // a later query is on its way
