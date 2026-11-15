@@ -138,13 +138,13 @@ describe('region settings: designer', () => {
   test('saving the grid form round-trips the sample settings', async () => {
     const r = of('grid');
     const page = (await b.get(`/builder/pages/${r.page_id}?c=region-${r.id}`)).body;
-    const n = Number(/name="n" value="(\d+)"/.exec(page)![1]);
+    const n = Number(/name="settings:n" value="(\d+)"/.exec(page)![1]);
     const body: Record<string, string> = { ...allowAll, page_size: '25', n: String(n) };
     for (let i = 0; i < n; i++) {
-      body[`col_${i}`] = new RegExp(`name="col_${i}" value="([^"]+)"`).exec(page)![1];
-      body[`heading_${i}`] = new RegExp(`name="heading_${i}" value="([^"]*)"`).exec(page)![1];
+      body[`col_${i}`] = new RegExp(`name="settings:col_${i}" value="([^"]+)"`).exec(page)![1];
+      body[`heading_${i}`] = new RegExp(`name="settings:heading_${i}" value="([^"]*)"`).exec(page)![1];
       body[`shown_${i}`] = 'true';
-      if (new RegExp(`name="required_${i}" value="true" checked`).test(page)) body[`required_${i}`] = 'true';
+      if (new RegExp(`name="settings:required_${i}" value="true" checked`).test(page)) body[`required_${i}`] = 'true';
     }
     assert.equal((await b.submit(url(r), body)).statusCode, 303);
     const cfg = (await owner.one('select config from meta.region where id = $1', [r.id])).config;
@@ -212,7 +212,7 @@ describe('map settings', () => {
       assert.match(page, /Map settings/);
       assert.match(page, /<legend>Layer 2: Offices<\/legend>/);
       assert.match(page, /<legend>Add a layer<\/legend>/);
-      assert.match(page, /name="layer3_source"[^>]*data-code="sql"/);
+      assert.match(page, /name="settings:layer3_source"[^>]*data-code="sql"/);
       assert.match(page, /<option value="distance" selected>/);
       const res = await b.submit(`/builder/pages/${r.page_id}/region/${r.id}/settings`, {
         layers: '1', cluster: 'true', report: String(r.config.report), filter: 'distance',

@@ -93,6 +93,6 @@ describe('sprint 184: the map legend (code review of 0.94.0)', () => {
     const body = (await dev.get(`/builder/pages/${pageId}?c=region-${regionId}`)).body;
     const hint = /Not used: a layer that isn&#39;t listed in the legend|Not used: a layer that isn't listed in the legend/g;
     assert.equal(body.match(hint)?.length, 1, 'once: Routes (left out); Shops is listed with the region\'s own layer');
-    assert.match(body, /name="layer0_hidden" value="true" checked/);
+    assert.match(body, /name="settings:layer0_hidden" value="true" checked/);
   });
 });

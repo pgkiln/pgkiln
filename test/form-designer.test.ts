@@ -272,18 +272,18 @@ describe('form designer settings in the builder', () => {
     assert.match(page, /Form Designer settings/);
     assert.match(page, /<option value="ADMIN" selected>Authorization: ADMIN<\/option>/);
     assert.match(page, /<option value="deptno" selected>deptno<\/option>/);
-    assert.match(page, /name="s2_lov_\d+" maxlength="2000" value="LOV:JOBS"/);
+    // (sprint 202) the settings go with the Page Designer's Save: names "form-designer:<field>" in the property editor's form
+    assert.match(page, /name="form-designer:s2_lov_\d+" maxlength="2000" value="LOV:JOBS"[^>]*form="pd-form">/);
     assert.match(page, /<datalist id="fds_\d+_lovs"><option value="LOV:DEPARTMENTS">/);
-    // post the form as the page shows it
-    const form = /<form method="post" action="[^"]*\/form-designer" class="component-form">([\s\S]*?)<\/form>/.exec(page)![1];
+    // post the form's fields as the page shows them to the form's own route
+    const form = page;
     const body: Record<string, string> = {};
-    for (const m of form.matchAll(/<input(?=[^>]*\bname="([^"]+)")([^>]*)>/g)) {
+    for (const m of form.matchAll(/<input(?=[^>]*\bname="form-designer:([^"]+)")([^>]*)>/g)) {
       const type = /type="([^"]+)"/.exec(m[2])?.[1];
       if ((type === 'checkbox') && !/\bchecked\b/.test(m[2])) continue;
       body[m[1]] = (/value="([^"]*)"/.exec(m[2])?.[1] ?? '').replace(/&amp;/g, '&');
     }
-    for (const m of form.matchAll(/<select[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) body[m[1]] = /<option value="([^"]*)" selected>/.exec(m[2])?.[1] ?? '';
-    delete body.__csrf;
+    for (const m of form.matchAll(/<select[^>]*name="form-designer:([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)) body[m[1]] = /<option value="([^"]*)" selected>/.exec(m[2])?.[1] ?? '';
     const res = await dev.submit(`/builder/pages/${pageId}/region/${rid}/form-designer`, body);
     assert.equal(res.statusCode, 303);
     try {

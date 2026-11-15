@@ -271,7 +271,7 @@ describe('builder settings (sprint 26)', () => {
     try {
       const form = (await b.get(`/builder/pages/${pid}?c=region-${sel}`)).body;
       assert.match(form, /Display selector settings/);
-      assert.match(form, new RegExp(`name="tab_${smartReport}" maxlength="60" value="Smart filters"`));
+      assert.match(form, new RegExp(`name="settings:tab_${smartReport}" maxlength="60" value="Smart filters"`));
       const res = await b.submit(`/builder/pages/${pid}/region/${sel}/settings`, {
         style: 'select', show_all: 'true', members: '1',
         [`member_${smartReport}`]: 'true', [`tab_${smartReport}`]: 'Mine', [`member_${facetReport}`]: 'true', [`member_${other.id}`]: 'true', [`tab_${other.id}`]: 'x',

@@ -10,7 +10,8 @@ import { formatMaskError } from '../runtime/format.ts';
 import { heading } from '../runtime/items.ts';
 import { COLUMN_OPTIONS } from '../runtime/template-options.ts';
 import type { Session } from '../session.ts';
-import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { BASE, csrf, type Req } from './ui.ts';
+import { settingsRoute, type SettingsSaver } from './settings-save.ts';
 import { scopedTx as tx, tr, withTranslator } from './i18n.ts';
 
 // Page designer → a report region → Report settings: the most used keys of
@@ -122,7 +123,6 @@ async function reportSettingsFormInner(pageId: number, appId: number, r: { id: n
 
   const linkItems = linkItemsText(cfg.link?.items);
   return html`<h3 class="u-mt15">${tx('rpt.report_settings')}</h3>
-    <p class="muted u-mt0">${tx('rpt.these_fields_write_the_region')}</p>
     ${'error' in cols ? html`<div class="alert alert-error" role="alert">The columns could not be read: ${cols.error}</div>` : ''}
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/report-settings" class="component-form">${csrf(s)}
       <input type="hidden" name="n" value="${all.length}">
@@ -189,7 +189,6 @@ async function reportSettingsFormInner(pageId: number, appId: number, r: { id: n
           <select id="${id('layout')}" name="pdf_layout">${opt('', layouts.rows.some((l) => l.is_default) ? '- the default layout -' : '- built-in -', cfg.pdf?.layout)}${layouts.rows.map((l) => opt(l.name, l.name + (l.is_default ? ' (default)' : ''), cfg.pdf?.layout))}</select>
           <small class="help">${tx('rpt.layouts_are_under_shared_components')}</small></div>
       </div></fieldset>
-      <div class="buttons"><button class="btn btn-hot">${tx('rpt.save_report_settings')}</button></div>
     </form>`;
 }
 
@@ -274,15 +273,12 @@ export function formatProblems(b: Record<string, string | undefined>) {
     });
 }
 
-export async function reportSettingsRoutes(app: FastifyInstance) {
-  app.post(`${BASE}/pages/:pid/region/:rid/report-settings`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params as { pid: string; rid: string };
+/** (sprint 202) the report settings form's save: its own route and the Page Designer's one Save (settings-save.ts) */
+export const saveReportSettings: SettingsSaver = async (pid, rid, body, s) => {
     const r = /^\d+$/.test(pid) && /^\d+$/.test(rid)
       ? await owner.one(`select r.id, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = 'report'`, [rid, pid])
       : undefined;
-    if (!r) return reply.code(404).send('Not found');
+    if (!r) return null;
     const [pages, layouts, schemes, items] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.report_layout where app_id = $1', [r.app_id]),
@@ -291,16 +287,17 @@ export async function reportSettingsRoutes(app: FastifyInstance) {
     ]);
     const config = mergeReportSettings(
       r.config ?? {},
-      (req.body ?? {}) as Record<string, string | undefined>,
+      body,
       new Set(pages.rows.map((x) => x.page_no)),
       new Set(layouts.rows.map((x) => x.name)),
       new Set(schemes.rows.map((x) => x.name)),
       new Set(items.rows.map((x) => x.name)),
     );
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    const bad = formatProblems((req.body ?? {}) as Record<string, string | undefined>);
-    if (bad.length) flash(s, tr(s)('rpt.saved_without', { masks: bad.join('; ') }), 'error');
-    else flash(s, tr(s)('rpt.saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
+    const bad = formatProblems(body);
+    return bad.length ? { message: tr(s)('rpt.saved_without', { masks: bad.join('; ') }), error: true } : { message: tr(s)('rpt.saved') };
+};
+
+export async function reportSettingsRoutes(app: FastifyInstance) {
+  app.post(`${BASE}/pages/:pid/region/:rid/report-settings`, (req: Req, reply) => settingsRoute(req, reply, saveReportSettings));
 }

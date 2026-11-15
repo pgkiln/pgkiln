@@ -216,7 +216,7 @@ describe('the Page Designer', () => {
     // a sub region's Parent region offers regions at page level, not itself nor other sub regions
     const props = await dev.get(`/builder/apps/${appId}/pages/1?c=region-${R.alpha}`);
     const select = /<select id="f_region_parent_id" name="parent_id">([\s\S]*?)<\/select>/.exec(props.body)?.[1] ?? '';
-    assert.match(select, new RegExp(`<option value="${R.tabs}" selected>Tabs \\(static\\)</option>`));
+    assert.match(select, new RegExp(`<option value="${R.tabs}" selected>Tabs \\(Static Content\\)</option>`));
     assert.doesNotMatch(select, new RegExp(`value="${R.alpha}"|value="${R.beta}"`));
     // the create form from the slot's link: the parent is set
     const create = await dev.get(`/builder/apps/${appId}/pages/1?new=region&parent=${R.flex}`);

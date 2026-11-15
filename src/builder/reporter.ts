@@ -4,7 +4,8 @@ import { html, raw, type Raw } from '../html.ts';
 import { heading } from '../runtime/items.ts';
 import { RESERVED_SCHEMAS, SOURCE_ID, sourcesOf, type Source, type SourceColumn } from '../runtime/data-reporter.ts';
 import type { Session } from '../session.ts';
-import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { BASE, csrf, type Req } from './ui.ts';
+import { settingsRoute, type SettingsSaver } from './settings-save.ts';
 import { scopedTx as tx } from './i18n.ts';
 
 // Page designer → a Data Reporter region → Settings: the data sources the
@@ -244,26 +245,23 @@ export async function reporterSettingsForm(pageId: number, appId: number, r: { i
       <small class="help">${tx('drep.all_columns_are_offered_at')}</small>
       ${datasets.length ? html`<div class="form-grid"><div class="field" data-wide><label class="label" for="${id('new_dataset')}">${tx('drep.or_a_dataset_of_the')}</label>
         <select id="${id('new_dataset')}" name="new_dataset"><option value="">- none -</option>${datasets.map((d) => html`<option value="${d.name}">${d.label} (${d.name})</option>`)}</select></div></div>` : ''}</fieldset>
-      <div class="buttons"><button class="btn btn-hot">${tx('drep.save_data_reporter_settings')}</button></div>
     </form>`;
 }
 
 export async function reporterBuilderRoutes(app: FastifyInstance) {
-  app.post(`${BASE}/pages/:pid/region/:rid/reporter`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params as { pid: string; rid: string };
+  app.post(`${BASE}/pages/:pid/region/:rid/reporter`, (req: Req, reply) => settingsRoute(req, reply, saveReporterSettings));
+}
+
+/** (sprint 202) a Data Reporter region's settings: its own route and the Page Designer's one Save (settings-save.ts) */
+export const saveReporterSettings: SettingsSaver = async (pid, rid, body) => {
     const r = /^\d{1,9}$/.test(pid) && /^\d{1,9}$/.test(rid)
       ? await owner.one<{ id: number; config: Config; app_id: number }>(
           `select r.id, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2 and r.type = 'data_reporter'`, [rid, pid])
       : undefined;
-    if (!r) return reply.code(404).send('Not found');
+    if (!r) return null;
     const schemes = (await owner.query<{ name: string }>('select name from meta.authz_scheme where app_id = $1', [r.app_id])).rows;
     const datasets = (await owner.query<{ name: string }>('select name from meta.dataset where workspace_id = meta.app_workspace($1)', [r.app_id])).rows;
-    const { config, errors } = await mergeReporterSettings(r.config ?? {}, (req.body ?? {}) as Body, { authz: new Set(schemes.map((x) => x.name.toUpperCase())), datasets: new Set(datasets.map((x) => x.name)) });
+    const { config, errors } = await mergeReporterSettings(r.config ?? {}, body as Body, { authz: new Set(schemes.map((x) => x.name.toUpperCase())), datasets: new Set(datasets.map((x) => x.name)) });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
-    if (errors.length) flash(s, errors.join(' '), 'error');
-    else flash(s, tx('drep.settings_saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
-}
+    return errors.length ? { message: errors.join(' '), error: true } : { message: tx('drep.settings_saved') };
+};

@@ -1,6 +1,7 @@
 import { layerDefs, shapeStyle } from '../runtime/maps.ts';
 import type { FastifyInstance } from 'fastify';
-import { aiFilterSettingsForm, assistantSettingsForm } from './assistant.ts';
+import { aiFilterSettingsForm, assistantSettingsForm, saveAiFilterSettings, saveAssistantSettings } from './assistant.ts';
+import { settingsBodies, settingsRoute, type SettingsSaver } from './settings-save.ts';
 import { designSql } from './websources.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -10,14 +11,14 @@ import { heading } from '../runtime/items.ts';
 import { positionColumns } from '../runtime/report.ts';
 import { anyBound, MAX_RANGES, type Range } from '../runtime/facet-state.ts';
 import type { Session } from '../session.ts';
-import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm } from './report-settings.ts';
-import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
-import { columnTemplatesForm, templateRegionForm } from './templates.ts';
+import { linkItemsText, parseLinkItems, reportColumns, reportSettingsForm, saveReportSettings } from './report-settings.ts';
+import { BASE, csrf, type Req } from './ui.ts';
+import { columnTemplatesForm, saveColumnTemplates, saveTemplateRegionSettings, templateRegionForm } from './templates.ts';
 import { LIST_TEMPLATES } from '../runtime/lists.ts';
 import { MAX_EXTRA_LAYERS } from '../runtime/maps.ts';
 import { postgis } from '../runtime/spatial.ts';
-import { reporterSettingsForm } from './reporter.ts';
-import { formDesignerSettingsForm } from './form-designer.ts';
+import { reporterSettingsForm, saveReporterSettings } from './reporter.ts';
+import { formDesignerSettingsForm, saveFormDesignerSettings } from './form-designer.ts';
 import { scopedTx as tx, tr, withTranslator } from './i18n.ts';
 
 // Page designer → a region → Settings: the region's "config" JSON as a form
@@ -922,24 +923,23 @@ async function regionSettingsFormInner(pageId: number, appId: number, r: RegionR
       break;
   }
   return html`<h3 class="u-mt15">${title}</h3>
-    <p class="muted u-mt0">${tx('rs.these_fields_write_the_region')}</p>
     <form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/settings" class="component-form">${csrf(s)}
       ${body!}
-      <div class="buttons"><button class="btn btn-hot">Save ${title.toLowerCase()}</button></div>
     </form>`;
 }
 
 // ---------------------------------------------------------------- route
 
 export async function regionSettingsRoutes(app: FastifyInstance) {
-  app.post(`${BASE}/pages/:pid/region/:rid/settings`, async (req: Req, reply) => {
-    const s = await developer(req, reply);
-    if (!s) return;
-    const { pid, rid } = req.params as { pid: string; rid: string };
+  app.post(`${BASE}/pages/:pid/region/:rid/settings`, (req: Req, reply) => settingsRoute(req, reply, saveRegionSettings));
+}
+
+/** (sprint 202) the settings form of grid, chart, cards, calendar, … regions: its own route and the Page Designer's one Save */
+export const saveRegionSettings: SettingsSaver = async (pid, rid, b, s) => {
     const r = /^\d+$/.test(pid) && /^\d+$/.test(rid)
       ? await owner.one(`select r.id, r.type, r.config, p.app_id from meta.region r join meta.page p on p.id = r.page_id where r.id = $1 and r.page_id = $2`, [rid, pid])
       : undefined;
-    if (!r || !(SETTINGS_TYPES as readonly string[]).includes(r.type)) return reply.code(404).send('Not found');
+    if (!r || !(SETTINGS_TYPES as readonly string[]).includes(r.type)) return null;
     const [pages, lovs, reports, schemes] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.lov where app_id = $1', [r.app_id]),
@@ -951,7 +951,7 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
       const c = await reportColumns(r.app_id, await designSql(r.app_id, x));
       reportCols.set(x.id, 'columns' in c ? c.columns : []);
     }
-    const config = MERGES[r.type as SettingsType](r.config ?? {}, (req.body ?? {}) as Body, {
+    const config = MERGES[r.type as SettingsType](r.config ?? {}, b, {
       pages: new Set(pages.rows.map((x) => x.page_no)),
       lovs: new Set(lovs.rows.map((x) => x.name)),
       reports: reportCols,
@@ -959,7 +959,6 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
     });
     await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     // the display selector's form also says which regions of the page take part
-    const b = (req.body ?? {}) as Body;
     if (r.type === 'display_selector' && b.members === '1') {
       // {region id: true or the tab name}, for the regions of this page only (checked in the update)
       const flags: Record<string, string | boolean> = {};
@@ -974,7 +973,28 @@ export async function regionSettingsRoutes(app: FastifyInstance) {
         [pid, r.id, JSON.stringify(flags)],
       );
     }
-    flash(s, tr(s)('rs.saved'));
-    return back(reply, s, `${BASE}/pages/${pid}?c=region-${rid}`);
-  });
+    return { message: tr(s)('rs.saved') };
+};
+
+/** Every settings form of the Attributes tab by the last part of its action (settings-save.ts) */
+const SAVERS: Record<string, SettingsSaver> = {
+  settings: saveRegionSettings, 'report-settings': saveReportSettings, 'column-templates': saveColumnTemplates, 'ai-filter': saveAiFilterSettings,
+  assistant: saveAssistantSettings, 'template-settings': saveTemplateRegionSettings, reporter: saveReporterSettings, 'form-designer': saveFormDesignerSettings,
+};
+
+/**
+ * (sprint 202, AX-2) The Attributes tab's settings sent with the region's properties by the Page Designer's Save: each
+ * form's saver, in turn. Nothing when the region's type is no longer the one the tab was drawn for. The problems found.
+ */
+export async function saveRegionAttributes(pid: string, rid: string, body: Record<string, unknown>, s: Session): Promise<string[]> {
+  const forms = settingsBodies(body);
+  if (!forms.size || !/^\d{1,9}$/.test(pid) || !/^\d{1,9}$/.test(rid)) return [];
+  const now = await owner.one<{ type: string }>('select type from meta.region where id = $1 and page_id = $2', [rid, pid]);
+  if (!now || now.type !== body.__region_type) return [];
+  const problems: string[] = [];
+  for (const [key, sub] of forms) {
+    const saved = await SAVERS[key]?.(pid, rid, sub, s);
+    if (saved?.error) problems.push(saved.message);
+  }
+  return problems;
 }

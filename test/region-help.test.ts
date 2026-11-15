@@ -1,4 +1,4 @@
-// The help of a region's Attributes (JSON) per region type (sprint 51).
+// The help of a region's settings (Show as JSON) per region type (sprint 51).
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -42,7 +42,8 @@ describe('region attributes help', () => {
     await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
     const r = await owner.one(`select r.id, r.page_id from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
                                 where a.alias = 'hr' and p.page_no = 42 and r.type = 'search'`);
-    const page = (await dev.get(`/builder/pages/${r.page_id}?c=region-${r.id}`)).body;
+    // (sprint 202) with the settings as JSON: Utilities → Show as JSON
+    const page = (await dev.get(`/builder/pages/${r.page_id}?c=region-${r.id}&json=1`)).body;
     const help = /id="f_region_config"[\s\S]*?<small class="help">([\s\S]*?)<\/small>/.exec(page)?.[1] ?? '';
     assert.match(help, /&quot;configs&quot;/);
     assert.doesNotMatch(help, /page_size/);
