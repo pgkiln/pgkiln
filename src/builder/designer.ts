@@ -19,6 +19,7 @@ import { embedSettings } from './settings-save.ts';
 import { optionName, typeName } from './type-names.ts';
 import { codeAttrs } from './code-editor.ts';
 import { usedInPanel } from './search.ts';
+import { SLOTTED_TEMPLATES } from '../runtime/regions.ts';
 import { columnProperties, COLUMN_REGION_TYPES, regionColumns, selectedColumns, type ColumnList } from './region-columns.ts';
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
@@ -165,11 +166,12 @@ export async function designerRoutes(app: FastifyInstance) {
       // (172, APEX: Sub Regions) a container's sub regions, a branch of their own
       const subs = subsOf(r);
       const buttons = rows.button.filter((b) => b.region_id === r.id);
-      // (sprint 77, APEX: region slots) buttons by their position in the region
-      const bySlot = ['region', ...TOP_SLOTS, ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
+      // (sprint 77, APEX: region slots; sprint 207, AX-4: APEX's Region Buttons node) one Buttons folder, in it a folder
+      // per button position in the layout's order (the header's, the region's own, the bottom bar's)
+      const bySlot = [...TOP_SLOTS, 'region', ...BOTTOM_SLOTS].map((sl) => [sl, buttons.filter((b) => (b.slot ?? 'region') === sl)] as const).filter(([, list]) => list.length);
       const kids = [...columnsFolder(r), ...(subs.length ? [folder(tx('pd.tree.sub_regions'), subs.map((x, i) => regionLeaf(x, subs[i + 1])))] : []),
         ...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
-        ...bySlot.map(([sl, list]) => folder(sl === 'region' ? tx('pd.tree.buttons') : tx('pd.tree.buttons_at', { slot: slotLabel(sl) }), list.map(buttonLeaf)))];
+        ...(bySlot.length ? [folder(tx('pd.tree.buttons'), bySlot.map(([sl, list]) => html`<li data-slot="${sl}"><span class="pd-node pd-folder"><span class="pd-label">${slotLabel(sl)}</span></span><ul>${list.map(buttonLeaf)}</ul></li>`))] : [])];
       return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${typeName('region', r.type)})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${typeName('region', r.type)}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
@@ -265,26 +267,30 @@ export async function designerRoutes(app: FastifyInstance) {
       html`<a class="pd-chip pd-chip-${k}${isSel(`${k}-${r.id}`) ? ' is-selected' : ''}${k === 'button' && r.hot ? ' is-hot' : ''}" href="${url(`c=${k}-${r.id}`)}" draggable="true" data-kind="${k}" data-id="${r.id}"${cur(`${k}-${r.id}`)} aria-describedby="pd-kbd">${k === 'item' ? bicon(itemIcon(r.type)) : ''}<span>${r.label || r.name}</span>${k === 'item' ? html`<small>${r.name}</small>` : ''}</a>`;
     const slot = (k: 'item' | 'button', regionId: number | null, list: any[], buttonSlot = '') =>
       html`<div class="pd-slot pd-slot-${k}${buttonSlot && buttonSlot !== 'region' && !list.length ? ' pd-slot-spare' : ''}" data-drop="${k}" data-region="${regionId ?? ''}"${buttonSlot ? raw(` data-slot="${buttonSlot}"`) : ''}${buttonSlot && buttonSlot !== 'region' ? html` title="${tx('pd.slot_title', { slot: slotLabel(buttonSlot) })}"` : ''}>${list.length ? list.map((r) => chip(k, r)) : html`<span class="pd-slot-hint">${k === 'item' ? tx('pd.tree.items') : buttonSlot && buttonSlot !== 'region' ? slotLabel(buttonSlot) : tx('pd.tree.buttons')}</span>`}</div>`;
-    // (sprint 77, APEX: region slots) a region's buttons by position: the header's, the region's own, the bottom bar's
+    // (sprint 77, APEX: region slots) a region's buttons by position: the header's, the region's own, the bottom bar's.
+    // (sprint 207, AX-4) the positions the region's template places (SLOTTED_TEMPLATES), and any other that holds buttons
     const buttonSlots = (r: any) => {
       const mine = rows.button.filter((b) => b.region_id === r.id);
       const at = (sl: string) => mine.filter((b) => (b.slot ?? 'region') === sl);
-      const row = (list: string[], cls: string) => html`<div class="pd-slots ${cls}">${list.map((sl) => slot('button', r.id, at(sl), sl))}</div>`;
+      const offered = (sl: string) => SLOTTED_TEMPLATES.has(r.template) || at(sl).length > 0;
+      const row = (list: string[], cls: string) => html`<div class="pd-slots ${cls}">${list.filter(offered).map((sl) => slot('button', r.id, at(sl), sl))}</div>`;
       return html`${row(TOP_SLOTS, 'pd-slots-top')}${slot('button', r.id, at('region'), 'region')}${row(BOTTOM_SLOTS, 'pd-slots-bottom')}`;
     };
     // (172, APEX: the Sub Regions slot) a region's sub regions: a grid of their own inside it, for a container template
-    // or when it has sub regions (other regions take sub regions through their Parent region or Arrange → Move into)
+    // or when it has sub regions. (sprint 207, AX-4) Other regions have the slot too, shown while a region is dragged
+    // and when the layout is maximized (pd-sub-spare), as APEX draws it in every region
     const subGrid = (r: any) => {
       const subs = subsOf(r);
-      if (!subs.length && !CONTAINER_TEMPLATES.has(r.template)) return '';
-      return html`<div class="pd-sub">
+      const spare = !subs.length && !CONTAINER_TEMPLATES.has(r.template);
+      return html`<div class="pd-sub${spare ? ' pd-sub-spare' : ''}">
           <div class="pd-sub-label">${tx('pd.tree.sub_regions')}${r.template === 'tabs_container' ? html` <small>${tx('pd.sub_tabs')}</small>` : ''}</div>
           <div class="pd-grid pd-subgrid" data-drop="region" data-position="${r.position ?? 'body'}" data-parent="${r.id}">
             ${subs.map(block)}
             <div class="pd-grid-end" data-end><a href="${url(`new=region&parent=${r.id}`)}">${icon('plus')} ${tx('pd.sub_region')}<span class="sr-only"> ${tx('pd.in_region', { region: regionTitle(r) })}</span></a></div>
           </div></div>`;
     };
-    const block = (r: any): Raw => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}">
+    // data-holds: a region with sub regions stays at page level (one level of nesting): it is not dropped into a slot
+    const block = (r: any): Raw => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}"${subsOf(r).length ? raw(' data-holds') : ''}>
         <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
           <span class="pd-grip" title="${tx('pd.drag_move')}">${bicon('grip')}</span>
           <a class="pd-region-link" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} aria-describedby="pd-kbd">${bicon(regionIcon(r.type))}<span>${regionTitle(r)}</span></a>
@@ -328,7 +334,7 @@ export async function designerRoutes(app: FastifyInstance) {
         <button type="button" class="tb-btn" data-zoom="-1" title="${tx('pd.zoom_out')}" hidden>${bicon('zoom-out')}<span class="sr-only">${tx('pd.zoom_out')}</span></button>
         <button type="button" class="tb-btn" data-zoom="1" title="${tx('pd.zoom_in')}" hidden>${bicon('zoom-in')}<span class="sr-only">${tx('pd.zoom_in')}</span></button>
         <button type="button" class="tb-btn" data-maximize title="${tx('pd.maximize')}" aria-pressed="false" hidden>${bicon('expand')}<span class="sr-only">${tx('pd.maximize')}</span></button>
-        <span class="pd-canvas-hint" id="pd-kbd">${tx('pd.kbd_hint')}</span>
+        <a class="tb-btn pd-canvas-help" href="#pd-c-help" data-show-tab="pd-c-help" title="${tx('pd.layout_help')}">${bicon('help')}<span class="sr-only">${tx('pd.layout_help')}</span></a>
       </div>
       <div class="pd-canvas" id="pd-layout" data-page-id="${p.id}">
         <div class="pd-page-label">${icon('file')} ${tx('pd.page_title', { n: p.page_no, name: p.name })}${p.mode === 'modal' ? ` ${tx('pd.modal')}` : ''}</div>
@@ -348,11 +354,13 @@ export async function designerRoutes(app: FastifyInstance) {
       </div>`;
     const help = html`<div class="pd-help">
       <h3>${tx('pdz.layout')}</h3>
+      <p id="pd-kbd">${tx('pd.kbd_hint')}</p>
       <p>${tx.rich('pdz.grid_help', { span: html`<em>${tx('pdz.column_span')}</em>` })}</p>
       <ul>
         <li>${tx('pdz.drag_a_region_by_its')}</li>
         <li>${tx('pdz.drag_items_and_buttons_to')}</li>
         <li>${tx('pdz.drag_a_region_item_or')}</li>
+        <li>${tx('pdz.slots_help')}</li>
         <li>${tx.rich('pdz.keyboard_help', { move: html`<kbd>${tx('pdz.alt')}</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd>`, resize: html`<kbd>${tx('pdz.alt')}</kbd>+<kbd>${tx('pdz.shift')}</kbd>+<kbd>←</kbd> / <kbd>→</kbd>`, arrange: html`<strong>${tx('pdz.arrange')}</strong>` })}</li>
         <li>${tx.rich('pdz.undo_help', { undo: html`<strong>${tx('pdz.undo')}</strong>`, redo: html`<strong>${tx('pdz.redo')}</strong>` })}</li>
       </ul>

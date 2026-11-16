@@ -479,10 +479,16 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
 /** (099) Button positions in a region: its top bar, the bottom bar's left end, the bottom bar's right end. */
 const TOP_SLOTS = new Set(['create', 'edit', 'change', 'copy', 'help', 'up']);
 const LEFT_SLOTS = new Set(['previous', 'close', 'delete']);
+/**
+ * (099) The region templates that place buttons by their position (slottedShell); the others (hero, title bar,
+ * buttons container, inline dialog and drawer, wizard) put every button where their own buttons go. (sprint 207,
+ * AX-4) The Page Designer offers the button positions as drop targets in these templates only.
+ */
+export const SLOTTED_TEMPLATES: ReadonlySet<string> = new Set(['standard', 'collapsible', 'plain', 'tabs_container', 'flex_container']);
 
 async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw) {
   const slotted = [...ctx.vis!.buttons.values()].some((b) => b.region_id === r.id && b.slot && b.slot !== 'region');
-  if (slotted && (r.template === 'standard' || r.template === 'collapsible' || r.template === 'plain' || r.template === 'tabs_container' || r.template === 'flex_container')) return slottedShell(ctx, r, hidden, body);
+  if (slotted && SLOTTED_TEMPLATES.has(r.template)) return slottedShell(ctx, r, hidden, body);
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
