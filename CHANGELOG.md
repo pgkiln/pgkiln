@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-11-15
+
 ### Added
 - **Recently edited pages and Copy application on the application home** (sprint 203, AX-6; as APEX): the side column
   lists, under Tasks, the five pages changed last (yours first), each with how long ago (and who, for another
