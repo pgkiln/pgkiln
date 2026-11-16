@@ -4,15 +4,34 @@ on:
   push:
     branches: [main]
   pull_request:
+  # (sprint 208) the full upgrade matrix every night, and on demand (Actions → CI → Run workflow)
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
 
-# a newer push to the same pull request cancels the run before it (no mail about a run nobody waits for)
+# a newer push to the same pull request cancels the run before it (no mail about a run nobody waits for); the event
+# is in the group so that the nightly run never replaces a pending run of a push to main
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+env:
+  # Every release the upgrade jobs install and upgrade from, oldest first. Releasing: add the new tag at the end of this
+  # line (docs/guide/12-development.md, "Releasing"). The oldest and the newest run the whole suite; a pull request
+  # runs the three before the newest too, everything else (main, release-* branches, nightly) all of them.
+  UPGRADE_FROM: v0.31.0 v0.32.0 v0.33.2 v0.34.0 v0.35.0 v0.36.0 v0.37.0 v0.38.0 v0.39.0 v0.40.0 v0.41.0 v0.42.0 v0.43.0 v0.44.0 v0.45.0 v0.46.0 v0.47.0 v0.48.0 v0.49.0 v0.50.0 v0.51.0 v0.52.0 v0.53.0 v0.54.0 v0.55.0 v0.56.0 v0.57.0 v0.58.0 v0.59.0 v0.60.0 v0.61.0 v0.62.0 v0.63.0 v0.64.0 v0.65.0 v0.66.0 v0.67.0 v0.68.0 v0.69.0 v0.70.0 v0.71.0 v0.72.0 v0.73.0 v0.74.0 v0.75.0 v0.76.0 v0.77.0 v0.78.0 v0.79.0 v0.80.0 v0.81.0 v0.82.0 v0.83.0 v0.84.0 v0.85.0 v0.86.0 v0.87.0 v0.88.0 v0.89.0 v0.90.0 v0.91.0 v0.92.0 v0.93.0 v0.94.0 v0.95.0 v0.96.0 v0.97.0 v0.98.0 v0.99.0 v0.100.0 v0.101.0 v0.102.0
+
+# (sprint 208) The long suites run in shards (node --test-shard=i/n: every test file runs in exactly one shard), each
+# with its own database. The jobs named test, e2e and upgrade (v0.31.0) gather the shards' results: they are the
+# required checks of the main branch, so keep their names.
 jobs:
-  test:
+  test-shard:
+    name: test (${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     services:
       postgres:
         # (sprint 136) with pgvector, for the vector search tests; the upgrade jobs keep postgres:17 (without pgvector)
@@ -51,6 +70,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+        if: matrix.shard == 1
       # services can't pass server options: load pg_stat_statements (Top SQL) with ALTER SYSTEM and a restart
       - name: Load pg_stat_statements
         run: |
@@ -63,11 +83,30 @@ jobs:
         run: |
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-17
-      # npm test installs the framework and the HR example app (the tests' fixture) first (pretest)
-      - run: npm test
+      # npm test, in shards: pretest installs the framework and the HR example app (the tests' fixture), then a third
+      # of test/*.test.ts (the flag must come before the files, so not npm test -- --test-shard)
+      - name: Tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        run: |
+          npm run pretest
+          npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} test/*.test.ts
 
-  e2e:
+  test:
+    # required check: every shard of test-shard passed
+    needs: test-shard
+    if: always()
     runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.test-shard.result }}" = success ]'
+
+  e2e-shard:
+    # four shards: test/e2e/responsive.ts takes a third of the run; its four widths (responsive-<width>.test.ts, next
+    # to each other in the file list) land in four different shards
+    name: e2e (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     services:
       postgres:
         image: postgres:17
@@ -95,25 +134,62 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      # not cached: the browser downloads as fast as a cache restores it, and the system packages aren't cacheable
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - name: Browser tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        run: |
+          npm run pretest:e2e
+          npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} test/e2e/*.test.ts
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.shard }}
           path: test-results/
+
+  e2e:
+    # required check: every shard of e2e-shard passed
+    needs: e2e-shard
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.e2e-shard.result }}" = success ]'
+
+  releases:
+    # the upgrade jobs' matrix from UPGRADE_FROM: the oldest and the newest release run the whole suite in three shards
+    # each, the others a few tests; a pull request (except a release-* branch) takes only the three releases before the
+    # newest of the others
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+      suite: ${{ steps.pick.outputs.suite }}
+    steps:
+      - id: pick
+        env:
+          ALL: ${{ github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') }}
+        run: |
+          read -ra r <<< "$UPGRADE_FROM"
+          n=${#r[@]}
+          suite=("${r[0]}" "${r[n-1]}")
+          if [ "$ALL" = true ]; then others=("${r[@]:1:n-2}"); else others=("${r[@]:n-4:3}"); fi
+          {
+            echo "suite=$(printf '%s\n' "${suite[@]}" | jq -Rnc '[inputs]')"
+            echo "matrix=$( { for f in "${suite[@]}"; do for s in 1 2 3; do jq -nc --arg f "$f" --argjson s "$s" '{from: $f, shard: $s}'; done; done
+                              for f in "${others[@]}"; do jq -nc --arg f "$f" '{from: $f}'; done; } | jq -sc '{include: .}')"
+          } >> "$GITHUB_OUTPUT"
+          cat "$GITHUB_OUTPUT"
 
   # Install an older release with its sample data, upgrade to this commit,
   # then run the tests: migrations must work on existing databases too. The whole
-  # suite runs after upgrading from the oldest and the newest release; the others
+  # suite runs (in three shards) after upgrading from the oldest and the newest release; the others
   # run the tests that touch every table (export / import, the CLI, generated apps,
-  # sign-in), so 29 copies of the suite don't each get a chance to hit a timing flake.
+  # sign-in), so dozens of copies of the suite don't each get a chance to hit a timing flake.
   upgrade:
+    name: upgrade (${{ matrix.from }}${{ matrix.shard && format(', shard {0}/3', matrix.shard) || '' }})
+    needs: releases
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        from: [v0.31.0, v0.32.0, v0.33.2, v0.34.0, v0.35.0, v0.36.0, v0.37.0, v0.38.0, v0.39.0, v0.40.0, v0.41.0, v0.42.0, v0.43.0, v0.44.0, v0.45.0, v0.46.0, v0.47.0, v0.48.0, v0.49.0, v0.50.0, v0.51.0, v0.52.0, v0.53.0, v0.54.0, v0.55.0, v0.56.0, v0.57.0, v0.58.0, v0.59.0, v0.60.0, v0.61.0, v0.62.0, v0.63.0, v0.64.0, v0.65.0, v0.66.0, v0.67.0, v0.68.0, v0.69.0, v0.70.0, v0.71.0, v0.72.0, v0.73.0, v0.74.0, v0.75.0, v0.76.0, v0.77.0, v0.78.0, v0.79.0, v0.80.0, v0.81.0, v0.82.0, v0.83.0, v0.84.0, v0.85.0, v0.86.0, v0.87.0, v0.88.0, v0.89.0, v0.90.0, v0.91.0, v0.92.0, v0.93.0, v0.94.0, v0.95.0, v0.96.0, v0.97.0, v0.98.0, v0.99.0, v0.100.0, v0.101.0, v0.102.0]
+      matrix: ${{ fromJSON(needs.releases.outputs.matrix) }}
     services:
       postgres:
         image: postgres:17
@@ -151,13 +227,34 @@ jobs:
         run: npm run example:hr
       - name: Tests
         run: |
-          # the first and the last release of the matrix above
-          releases=$(grep -oE 'from: \[[^]]*\]' .github/workflows/ci.yml | grep -oE 'v[0-9.]+')
-          if [ "${{ matrix.from }}" = "$(echo "$releases" | head -1)" ] || [ "${{ matrix.from }}" = "$(echo "$releases" | tail -1)" ]; then
-            npm test
+          if [ -n "${{ matrix.shard }}" ]; then
+            # the whole suite (npm test), a third of it
+            npm run pretest
+            npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/3 test/*.test.ts
           else
             npx tsx --test --test-concurrency=1 test/cli.test.ts test/export.test.ts test/generated-apps.test.ts test/builder-home.test.ts test/mfa.test.ts
           fi
+
+  upgrade-suite:
+    # required check "upgrade (v0.31.0)": the three shards of the whole suite after upgrading from this release passed
+    name: upgrade (${{ matrix.from }})
+    needs: [releases, upgrade]
+    if: always() && needs.releases.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        from: ${{ fromJSON(needs.releases.outputs.suite) }}
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          SHARDS: 'upgrade (${{ matrix.from }}, shard '
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100" \
+            --jq '.jobs[] | select(.name | startswith(env.SHARDS)) | "\(.conclusion) \(.name)"' | tee shards
+          [ "$(grep -c '^success ' shards)" = 3 ]
 
   docker:
     # what a user runs: deploy/.env.example filled in, docker compose up -d

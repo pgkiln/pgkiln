@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Faster CI** (sprint 208): the unit tests, the browser tests and the full-suite upgrade tests run in parallel shards
+  (`node --test-shard`, a database per shard; the required checks `test`, `e2e` and `upgrade (v0.31.0)` collect them).
+  Pull requests test upgrades from the oldest, the newest and the three releases before the newest; pushes to main,
+  release pull requests, a new nightly run and a manual run test every release. The releases to upgrade from are one
+  line, `UPGRADE_FROM`, in ci.yml. A pull-request run takes about 8 minutes instead of 26 (a full run 14).
+  `test/e2e/responsive.test.ts` is now one file per width; the e2e screenshots are `screenshots-1` … `screenshots-4`.
+
 ## [0.103.0] - 2026-11-16
 
 ### Added
