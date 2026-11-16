@@ -204,8 +204,8 @@ describe('the rendering tree', () => {
     for (const label of ['Banner', 'Breadcrumb bar', 'Left column', 'Body', 'Footer']) assert.match(tree, new RegExp(`<span class="pd-label">${label}</span>`), label);
     assert.doesNotMatch(tree, /<span class="pd-label">Right column<\/span>/, 'an empty position the template lacks is left out');
     assert.ok(tree.indexOf('>Banner<') < tree.indexOf('>Body<') && tree.indexOf('>Body<') < tree.indexOf('>Footer<'));
-    assert.match(tree, /<span class="pd-label">Buttons: Next<\/span>/);
-    assert.match(tree, /<span class="pd-label">Buttons: Create<\/span>/);
+    // (sprint 207, AX-4) one Buttons folder with a folder per position, in the layout's order
+    assert.match(tree, /<span class="pd-label">Buttons<\/span><\/span><ul><li data-slot="create">[\s\S]*<li data-slot="next"><span class="pd-node pd-folder"><span class="pd-label">Next<\/span>/);
     assert.match(tree, new RegExp(`data-kind="region" data-id="${r.left}" data-position="left"[^>]* data-next=""`));
     assert.match(html, /<dialog class="pd-dialog" id="pd-copy-dialog"/);
   });

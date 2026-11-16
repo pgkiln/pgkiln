@@ -609,6 +609,16 @@
       b.hidden = false;
       b.addEventListener('click', () => setZoom(zoom + Number(b.dataset.zoom) * 0.1));
     }
+    // (sprint 207, AX-4) the bar's ? opens the Help tab (without script it is a link to the Help section)
+    for (const a of document.querySelectorAll('[data-show-tab]')) {
+      a.addEventListener('click', (e) => {
+        const t = document.getElementById(`${a.dataset.showTab}-tab`);
+        if (!t) return;
+        e.preventDefault();
+        t.click();
+        t.focus();
+      });
+    }
     const max = document.querySelector('[data-maximize]');
     if (max) {
       max.hidden = false;
@@ -667,10 +677,13 @@
       (drag.kind === 'region' && !drag.isNew ? src.closest('.pd-region') : src).classList.add('is-dragging');
       // (sprint 77) empty display positions and button positions show while something can drop there
       canvas.classList.add(`pd-dragging-${drag.kind}`);
+      // (sprint 207, AX-4) a region that holds sub regions stays at page level: no Sub regions slot takes it
+      drag.holds = drag.kind === 'region' && !drag.isNew && !!src.closest('.pd-region')?.hasAttribute('data-holds');
+      if (drag.holds) canvas.classList.add('pd-dragging-holder');
     });
     document.addEventListener('dragend', () => {
       for (const el of document.querySelectorAll('.is-dragging')) el.classList.remove('is-dragging');
-      canvas.classList.remove('pd-dragging-region', 'pd-dragging-item', 'pd-dragging-button');
+      canvas.classList.remove('pd-dragging-region', 'pd-dragging-item', 'pd-dragging-button', 'pd-dragging-holder');
       clear();
       drag = null;
     });
@@ -680,6 +693,8 @@
       if (drag.kind === 'region') {
         const grid = e.target.closest('.pd-grid');
         if (!grid || !canvas.contains(grid)) return null;
+        // (sprint 207) not into its own Sub regions slot, nor (holding sub regions) into any
+        if (grid.dataset.parent && (drag.holds || grid.closest('.pd-region.is-dragging'))) return null;
         // (172) a sub region grid lies inside its container: only the regions of the grid itself are places
         const over = e.target.closest('.pd-region');
         if (over && over.parentElement === grid) {

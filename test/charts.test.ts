@@ -1,6 +1,6 @@
 // Chart markup (src/runtime/charts.ts): each kind's geometry is classes in the
 // page stylesheet, never style attributes, and every chart keeps its data
-// table and tooltips. The charts in a real browser are in test/e2e/responsive.test.ts.
+// table and tooltips. The charts in a real browser are in test/e2e/responsive.ts.
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PageCss } from '../src/css.ts';

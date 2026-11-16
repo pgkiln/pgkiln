@@ -3,6 +3,8 @@
 // interactions must work on touch-sized screens.
 //   npx playwright install chromium   (once)
 //   npm run test:e2e                  (SCREENSHOTS=1 saves them to test-results/)
+// (sprint 208) The tests are run by one file per width, responsive-<width>.test.ts: the four widths took a third of
+// the e2e run, and as separate files CI's shards (--test-shard) run them in parallel.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -86,7 +88,9 @@ async function check(page: Page, name: string, vp: string) {
   assert.equal(o, null, `${name} overflows at ${vp}: ${JSON.stringify(o)}`);
 }
 
-for (const [vp, size] of Object.entries(VIEWPORTS)) {
+/** The tests at one width (registered by test/e2e/responsive-<width>.test.ts). */
+export function viewportTests(vp: keyof typeof VIEWPORTS) {
+  const size = VIEWPORTS[vp];
   describe(`${vp} (${size.width}px)`, () => {
     test('application pages fit the screen', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
@@ -1330,107 +1334,110 @@ for (const [vp, size] of Object.entries(VIEWPORTS)) {
   });
 }
 
-// Regions stacked in the builder never touch: Team Development milestones (two regions in the page), a DB user's
-// form (regions inside a form) and Shared Components (a grid with its own gap, no extra margin).
-describe('builder region spacing', () => {
-  test('stacked regions keep 1rem between them; a grid keeps only its gap', async () => {
-    const page = await (await newContext({ viewport: VIEWPORTS.desktop })).newPage();
-    await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
-    const gaps = () => page.$$eval('.ide-page .region + .region', (els) => els.map((e) => {
-      const prev = e.previousElementSibling!.getBoundingClientRect(), r = e.getBoundingClientRect();
-      return Math.round(prev.right <= r.left ? 16 : r.top - prev.bottom);
-    }));
-    for (const url of ['/builder/team/milestones', '/builder/db-users/new']) {
-      await page.goto(`${base}${url}`);
-      const g = await gaps();
-      assert.ok(g.length > 0, url);
-      for (const x of g) assert.ok(x >= 16, `${url}: regions ${x}px apart`);
-    }
-    const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
-    await page.goto(`${base}/builder/apps/${hr}/shared`);
-    assert.ok(await page.locator('.sc-grid > .region').count() > 1);
-    for (const m of await page.$$eval('.sc-grid > .region', (els) => els.map((e) => getComputedStyle(e).marginTop))) assert.equal(m, '0px');
-    await page.context().close();
-  });
-});
-
-// (sprint 186) the new screens at a phone's width, and at 360 px (CI's fonts render wider than a developer's):
-// Settings → Security of an application without a role (the red line and Create app_<alias>), the worksheet's hint
-// after a refusal by row level security, and the page an end user gets for an application without a role.
-describe('sprint 186 an application\'s own role and the RLS hint fit a phone', () => {
-  const ALIAS = 'e2e186-legacy';
-  const T = 'public.e2e186_rls';
-  before(async () => {
-    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
-    await owner.query(`drop table if exists ${T}`);
-    await owner.tx(async (c) => {
-      await c.query('alter table meta.app disable trigger app_role_check');
-      const id = (await c.query(`insert into meta.app (alias, name, authentication) values ($1, 'E2E 186 an application made before 0.97 without a role', 'none') returning id`, [ALIAS])).rows[0].id;
-      await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
-      await c.query('alter table meta.app enable trigger app_role_check');
-      await c.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false)`, [id]);
-    });
-    const dev = (await owner.one<{ d: string }>('select dev_role as d from meta.workspace where id = 1'))!.d;
-    await owner.query(`create table ${T} (id int); alter table ${T} enable row level security; grant insert on ${T} to ${dev}`);
-  });
-  after(async () => {
-    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
-    await owner.query(`drop table if exists ${T}`);
-  });
-  for (const [vp, size] of [['phone-360', { width: 360, height: 780 }], ['phone', VIEWPORTS.phone]] as const) {
-    test(`at ${vp}`, async () => {
-      const page = await (await newContext({ viewport: size })).newPage();
-      // the end user's page
-      const res = await page.goto(`${base}/a/${ALIAS}/1`);
-      assert.equal(res?.status(), 503);
-      await check(page, 'app-without-role', vp);
+/** The layout tests that need only one width (registered by test/e2e/responsive-desktop.test.ts). */
+export function layoutTests() {
+  // Regions stacked in the builder never touch: Team Development milestones (two regions in the page), a DB user's
+  // form (regions inside a form) and Shared Components (a grid with its own gap, no extra margin).
+  describe('builder region spacing', () => {
+    test('stacked regions keep 1rem between them; a grid keeps only its gap', async () => {
+      const page = await (await newContext({ viewport: VIEWPORTS.desktop })).newPage();
       await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
-      const id = (await owner.one(`select id from meta.app where alias = $1`, [ALIAS])).id;
-      await page.goto(`${base}/builder/apps/${id}/settings?tab=security`);
-      assert.ok(await page.locator('#make-role').isVisible());
-      assert.ok(await page.locator('.checklist .ck-error').isVisible());
-      await check(page, 'settings-security-no-role', vp);
-      await page.goto(`${base}/builder/sql/worksheet`);
-      await page.evaluate((t) => {
-        const ta = document.querySelector<HTMLTextAreaElement>('textarea[name=sql]')!;
-        ta.value = t;
-        ta.dispatchEvent(new Event('input', { bubbles: true }));
-        ta.focus();
-        ta.setSelectionRange(0, 0);
-      }, `insert into ${T} values (1)`);
-      await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
-      await page.locator('.rls-hint:visible').first().waitFor(); // (the Result pane's; the Output pane has one too)
-      await check(page, 'worksheet-rls-hint', vp);
+      const gaps = () => page.$$eval('.ide-page .region + .region', (els) => els.map((e) => {
+        const prev = e.previousElementSibling!.getBoundingClientRect(), r = e.getBoundingClientRect();
+        return Math.round(prev.right <= r.left ? 16 : r.top - prev.bottom);
+      }));
+      for (const url of ['/builder/team/milestones', '/builder/db-users/new']) {
+        await page.goto(`${base}${url}`);
+        const g = await gaps();
+        assert.ok(g.length > 0, url);
+        for (const x of g) assert.ok(x >= 16, `${url}: regions ${x}px apart`);
+      }
+      const hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+      await page.goto(`${base}/builder/apps/${hr}/shared`);
+      assert.ok(await page.locator('.sc-grid > .region').count() > 1);
+      for (const m of await page.$$eval('.sc-grid > .region', (els) => els.map((e) => getComputedStyle(e).marginTop))) assert.equal(m, '0px');
       await page.context().close();
     });
-  }
-});
+  });
 
-// (sprint 199, NX-U6) the sign-in card with the application's mark and "Sign in with a passkey" (HR has it on, part 91):
-// the button needs a host name (WebAuthn has no IP relying parties), so these pages are opened at localhost
-describe('the sign-in page with a passkey button (sprint 199)', () => {
-  let was = true;
-  before(async () => {
-    was = (await owner.one(`select passkey_signin from meta.app where alias = 'hr'`))!.passkey_signin;
-    await owner.query(`update meta.app set passkey_signin = true where alias = 'hr'`);
-  });
-  after(async () => {
-    await owner.query(`update meta.app set passkey_signin = $1 where alias = 'hr'`, [was]);
-  });
-  for (const [vp, size] of [['phone-360', { width: 360, height: 780 }], ...Object.entries(VIEWPORTS)] as [string, { width: number; height: number }][]) {
-    test(`at ${vp}`, async () => {
-      const page = await (await newContext({ viewport: size })).newPage();
-      const host = base.replace('127.0.0.1', 'localhost');
-      await page.goto(`${host}/a/hr/login`);
-      await page.locator('.login-passkey-button').waitFor({ state: 'visible' });
-      assert.ok(await page.locator('.login-card .login-mark').isVisible());
-      await check(page, 'app-login-passkey', vp);
-      // HR's other language
-      await page.goto(`${host}/a/hr/login?lang=nl`);
-      await page.locator('.login-passkey-button').waitFor({ state: 'visible' });
-      assert.match((await page.locator('.login-passkey-button').textContent()) ?? '', /Aanmelden met een passkey/);
-      await check(page, 'app-login-passkey-nl', vp);
-      await page.context().close();
+  // (sprint 186) the new screens at a phone's width, and at 360 px (CI's fonts render wider than a developer's):
+  // Settings → Security of an application without a role (the red line and Create app_<alias>), the worksheet's hint
+  // after a refusal by row level security, and the page an end user gets for an application without a role.
+  describe('sprint 186 an application\'s own role and the RLS hint fit a phone', () => {
+    const ALIAS = 'e2e186-legacy';
+    const T = 'public.e2e186_rls';
+    before(async () => {
+      await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+      await owner.query(`drop table if exists ${T}`);
+      await owner.tx(async (c) => {
+        await c.query('alter table meta.app disable trigger app_role_check');
+        const id = (await c.query(`insert into meta.app (alias, name, authentication) values ($1, 'E2E 186 an application made before 0.97 without a role', 'none') returning id`, [ALIAS])).rows[0].id;
+        await c.query('set constraints all immediate'); // the deferred workspace check first: ALTER TABLE refuses pending trigger events
+        await c.query('alter table meta.app enable trigger app_role_check');
+        await c.query(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'Home', 'Home', false)`, [id]);
+      });
+      const dev = (await owner.one<{ d: string }>('select dev_role as d from meta.workspace where id = 1'))!.d;
+      await owner.query(`create table ${T} (id int); alter table ${T} enable row level security; grant insert on ${T} to ${dev}`);
     });
-  }
-});
+    after(async () => {
+      await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+      await owner.query(`drop table if exists ${T}`);
+    });
+    for (const [vp, size] of [['phone-360', { width: 360, height: 780 }], ['phone', VIEWPORTS.phone]] as const) {
+      test(`at ${vp}`, async () => {
+        const page = await (await newContext({ viewport: size })).newPage();
+        // the end user's page
+        const res = await page.goto(`${base}/a/${ALIAS}/1`);
+        assert.equal(res?.status(), 503);
+        await check(page, 'app-without-role', vp);
+        await login(page, '/builder/login', 'admin', 'admin', '#f_username', '#f_password');
+        const id = (await owner.one(`select id from meta.app where alias = $1`, [ALIAS])).id;
+        await page.goto(`${base}/builder/apps/${id}/settings?tab=security`);
+        assert.ok(await page.locator('#make-role').isVisible());
+        assert.ok(await page.locator('.checklist .ck-error').isVisible());
+        await check(page, 'settings-security-no-role', vp);
+        await page.goto(`${base}/builder/sql/worksheet`);
+        await page.evaluate((t) => {
+          const ta = document.querySelector<HTMLTextAreaElement>('textarea[name=sql]')!;
+          ta.value = t;
+          ta.dispatchEvent(new Event('input', { bubbles: true }));
+          ta.focus();
+          ta.setSelectionRange(0, 0);
+        }, `insert into ${T} values (1)`);
+        await Promise.all([page.waitForNavigation(), page.keyboard.press('Control+Enter')]);
+        await page.locator('.rls-hint:visible').first().waitFor(); // (the Result pane's; the Output pane has one too)
+        await check(page, 'worksheet-rls-hint', vp);
+        await page.context().close();
+      });
+    }
+  });
+
+  // (sprint 199, NX-U6) the sign-in card with the application's mark and "Sign in with a passkey" (HR has it on, part 91):
+  // the button needs a host name (WebAuthn has no IP relying parties), so these pages are opened at localhost
+  describe('the sign-in page with a passkey button (sprint 199)', () => {
+    let was = true;
+    before(async () => {
+      was = (await owner.one(`select passkey_signin from meta.app where alias = 'hr'`))!.passkey_signin;
+      await owner.query(`update meta.app set passkey_signin = true where alias = 'hr'`);
+    });
+    after(async () => {
+      await owner.query(`update meta.app set passkey_signin = $1 where alias = 'hr'`, [was]);
+    });
+    for (const [vp, size] of [['phone-360', { width: 360, height: 780 }], ...Object.entries(VIEWPORTS)] as [string, { width: number; height: number }][]) {
+      test(`at ${vp}`, async () => {
+        const page = await (await newContext({ viewport: size })).newPage();
+        const host = base.replace('127.0.0.1', 'localhost');
+        await page.goto(`${host}/a/hr/login`);
+        await page.locator('.login-passkey-button').waitFor({ state: 'visible' });
+        assert.ok(await page.locator('.login-card .login-mark').isVisible());
+        await check(page, 'app-login-passkey', vp);
+        // HR's other language
+        await page.goto(`${host}/a/hr/login?lang=nl`);
+        await page.locator('.login-passkey-button').waitFor({ state: 'visible' });
+        assert.match((await page.locator('.login-passkey-button').textContent()) ?? '', /Aanmelden met een passkey/);
+        await check(page, 'app-login-passkey-nl', vp);
+        await page.context().close();
+      });
+    }
+  });
+}

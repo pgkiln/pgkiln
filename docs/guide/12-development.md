@@ -519,6 +519,12 @@ src/
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo;
                            (sprint 195) sub regions: moveComponent's parent (targetParent: one level), CONTAINER_LABELS (the gallery's
                            containers), duplicate and copy with sub regions, deleteRegion (sub regions move up to the page)
+                           (sprint 207, AX-4) the layout's slots: designer.ts draws a Sub regions slot in every region at page level
+                           (.pd-sub-spare unless a container or it has sub regions; data-holds on a region with sub regions)
+                           and the button positions of SLOTTED_TEMPLATES (runtime/regions.ts: the templates slottedShell
+                           places by position); builder.js / builder.css show the spares while dragging (pd-dragging-region,
+                           -button, -holder) and on body.pd-max; the tree's Buttons node has a folder per position (li[data-slot]);
+                           the layout bar's ? ([data-show-tab]) opens the Help tab, which holds the keyboard hint (#pd-kbd)
     sql.ts                 SQL Workshop: the home and the session's schema
     sql-tour.ts            (sprint 179) GET /builder/sql/tour: the guided tour of the SQL Workshop's tools (a step per tool, no script)
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
@@ -792,6 +798,8 @@ test/
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
   instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
   drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
+  designer-slots.test.ts   (sprint 207, AX-4) the layout's slots per region template, the spare Sub regions slot, data-holds, the
+                           tree's Buttons node by position, the keyboard hint in the Help tab
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
                            meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
@@ -836,7 +844,8 @@ test/
                            embeddings (/embeddings, also in ai-script-mock.ts): conceptEmbedding(), eight "topics", the same
                            as the HR example's hr.policy_embedding
   helpers.ts               a cookie-keeping test browser
-  e2e/responsive.test.ts   browser tests at phone/tablet/desktop widths (Playwright)
+  e2e/responsive.ts        browser tests at phone/tablet/desktop widths (Playwright), run per width by
+                           e2e/responsive-<width>.test.ts (sprint 208: one file per width for the CI shards)
   e2e/settings-layout.test.ts (sprint 198, NX-U3) Settings' right rail: Sign-in in two screens and the checklist in view at
                            1456 × 836, real anchors (also without JavaScript), one column below 1280 px, 360/1366 px, axe
   e2e/builder-i18n.test.ts (sprint 121) Deutsch on the sign-in page, the status bar's language menu, German screens at 390 px, CSP
@@ -856,6 +865,9 @@ test/
   e2e/designer-columns.test.ts (sprint 205, AX-1) HR page 2's Columns node: click sal, Save, reload at 360 and 1366 px; Ctrl+click,
                            the keyboard, the Attributes tab's shortcut, without JavaScript (Select several columns)
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
+  e2e/region-slots.test.ts (sprint 207, AX-4) a region's slots: a gallery report onto a Tabs Container's Sub regions slot, a region
+                           onto another's spare slot (shown while dragging, not its own, none for a holder), CREATE to Next on a
+                           maximized layout, the bar's ? and the Help tab at 390 and 1366 px, without JavaScript
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
   e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone
   e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
@@ -967,14 +979,41 @@ npm run db:reset     # fresh database
 CI (`.github/workflows/ci.yml`) runs these jobs against PostgreSQL 17:
 
 - **test**: typecheck and `npm test` on a fresh database;
-- **e2e**: the browser tests, uploading the screenshots as an artifact; `test/e2e/accessibility.test.ts` runs
+- **e2e**: the browser tests, uploading the screenshots as artifacts; `test/e2e/accessibility.test.ts` runs
   axe-core (WCAG 2.1 A and AA rules) on every page of the HR example (light, dark, Iris) and the builder's main pages
   (in both builder themes, with the SQL Workshop and the wizards, since sprint 108) and allows no violation;
-- **docker**: builds the image and starts the compose stack as a user would.
+- **docker**: builds the image and starts the compose stack as a user would; **docker-upgrade** upgrades an older
+  image with `docker compose pull`;
+- **upgrade**: installs an earlier release (`v0.31.0` …) with its HR example (`git archive <tag> | tar -x`,
+  then `scripts/migrate.ts --seed --root`), upgrades to the commit and runs tests on the result: the whole suite
+  after the oldest and the newest release, the tests that touch every table (export / import, the CLI, generated
+  apps, sign-in) after the others.
 
-- **upgrade**: installs each earlier release (`v0.31.0` …) with its HR example (`git archive <tag> | tar -x`,
-  then `scripts/migrate.ts --seed --root`), upgrades to the commit and runs `npm test` on the result.
-  Add each new release to its matrix.
+(Sprint 208) The long suites run in **shards**, each a runner with its own database: `test (1/3)` … `test (3/3)`,
+`e2e (1/4)` … `e2e (4/4)` and `upgrade (v0.31.0, shard 1/3)` …. A shard runs the files Node's test runner gives it
+(`tsx --test --test-concurrency=1 --test-shard=i/n test/*.test.ts`: the sorted files are dealt out in turn, so
+every file runs in exactly one shard). `--test-shard` must come before the files, so `npm test --
+--test-shard=…` doesn't work. To run a shard locally:
+
+```bash
+npm run pretest && npx tsx --test --test-concurrency=1 --test-shard=2/3 test/*.test.ts
+npm run pretest:e2e && npx tsx --test --test-concurrency=1 --test-shard=2/4 test/e2e/*.test.ts
+```
+
+Tests in one file may depend on each other, never on another test file having run first: a shard starts on a fresh
+database with only the HR example installed. A test file that takes minutes holds up its shard: split it, as
+`test/e2e/responsive.ts` is split into one `responsive-<width>.test.ts` per width (four files next to each other in
+the list, so with four e2e shards each width runs in its own).
+
+The jobs **test**, **e2e** and **upgrade (v0.31.0)** (and `upgrade (<newest>)`) only gather their shards' results:
+`test`, `e2e`, `docker` and `upgrade (v0.31.0)` are the main branch's required checks, so keep those job names.
+
+The releases to upgrade from are the `UPGRADE_FROM` line at the top of `ci.yml`, oldest first; the `releases` job
+turns it into the upgrade matrix. A pull request runs the oldest and the newest release (whole suite) and the three
+releases before the newest; a push to `main`, a pull request from a `release-*` branch, the nightly run and a manual
+run (Actions → CI → Run workflow) run every release. Add each new release at the end of `UPGRADE_FROM`.
+
+A newer push to a pull request cancels the run still going for it.
 
 CI has **no `.env`** and no PostgREST: only the variables in the workflow are set, and the
 PostgREST HTTP tests skip. To reproduce a CI failure, run the tests in a clean checkout
@@ -1041,4 +1080,5 @@ browser enhancements at the end of `public/app.js` (the item must work without t
    (`docker-publish.yml`: `pgkiln/pgkiln` and `ghcr.io/pgkiln/pgkiln`, amd64 and arm64) and the npm package
    (`npm-publish.yml`, trusted publishing with provenance; it refuses a tag that doesn't match
    `package.json`). Then `gh release create vX.Y.Z` with the changelog section as notes.
-4. Add the new tag to the `upgrade` job's matrix in `.github/workflows/ci.yml` (see above).
+4. Add the new tag at the end of the `UPGRADE_FROM` line in `.github/workflows/ci.yml` (see above): one edit;
+   the `releases` job derives the upgrade matrix and the full-suite releases from it.

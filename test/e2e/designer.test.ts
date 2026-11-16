@@ -19,7 +19,7 @@ let appId: number;
 const shots = process.env.SCREENSHOTS === '1';
 if (shots) mkdirSync('test-results', { recursive: true });
 const PAGE_NO = 9201;
-// the same widths as responsive.test.ts (importing it would run its tests twice)
+// the same widths as responsive.ts (importing it would start its server and browser too)
 const VIEWPORTS = {
   phone: { width: 390, height: 844 },
   'tablet-portrait': { width: 768, height: 1024 },

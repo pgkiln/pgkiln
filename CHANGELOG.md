@@ -5,6 +5,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Page Designer: a region's slots** (sprint 207, AX-4; APEX: Region Body, Sub Regions and the button positions as
+  drop targets): every region on the Layout draws a *Sub regions* slot (any region at page level, not only containers)
+  and the button positions its template places (Create, Edit, Change, Copy, Help, Up; Previous, Close, Delete, Next).
+  Empty slots show while dragging, and always when the layout is maximized. Dragging a report onto a Tabs Container's
+  Sub regions slot nests it; dragging a button to Next changes its position. The Rendering tree groups a region's
+  buttons under one *Buttons* node with a folder per position. The layout bar's keyboard hint, which was cut off, is in
+  the Help tab; the bar has a ? that opens it.
+
+### Changed
+- **Faster CI** (sprint 208): the unit tests, the browser tests and the full-suite upgrade tests run in parallel shards
+  (`node --test-shard`, a database per shard; the required checks `test`, `e2e` and `upgrade (v0.31.0)` collect them).
+  Pull requests test upgrades from the oldest, the newest and the three releases before the newest; pushes to main,
+  release pull requests, a new nightly run and a manual run test every release. The releases to upgrade from are one
+  line, `UPGRADE_FROM`, in ci.yml. A pull-request run takes about 8 minutes instead of 26 (a full run 14).
+  `test/e2e/responsive.test.ts` is now one file per width; the e2e screenshots are `screenshots-1` … `screenshots-4`.
+
 ## [0.103.0] - 2026-11-16
 
 ### Added
