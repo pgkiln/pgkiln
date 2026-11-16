@@ -18072,3 +18072,42 @@ describe('sprint 205 AX-1: the Page Designer\'s column properties', () => {
     assert.match(odd, /data-col="&lt;b&gt;x&lt;\/b&gt;"/);
   });
 });
+
+describe('sprint 209 NX-F5', () => {
+  // an uploaded APEX export is untrusted text: what the importer writes into SQL or links from it is checked
+  const exportWith = (calls: string) => `begin
+wwv_flow_imp.import_begin(p_release=>'23.2.0',p_default_application_id=>1,p_default_owner=>'SALES');
+wwv_imp_workspace.create_flow(p_id=>wwv_flow.g_flow_id,p_name=>'Evil',p_alias=>'EVIL');
+wwv_flow_imp_page.create_page(p_id=>2,p_name=>'Two');
+wwv_flow_imp_page.create_page(p_id=>1,p_name=>'One');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(10),p_plug_name=>'R',p_query_type=>'TABLE',p_query_table=>'ORDERS',p_plug_source_type=>'NATIVE_IR');
+${calls}
+end;
+/`;
+  test('a sort column that is not a plain name never reaches the ORDER BY; link items must be item names', async () => {
+    const { apexToDoc } = await import('../src/apeximport.ts');
+    const { doc } = apexToDoc(exportWith(`
+wwv_flow_imp_page.create_worksheet(p_id=>wwv_flow_imp.id(11),p_detail_link=>'f?p=&APP_ID.:2:&SESSION.::NO::P2_ID,x)--,P2_OK:\\#ID#\\,1,2');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(12),p_db_column_name=>'ID',p_column_label=>'<img src=x onerror=alert(209)>');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(13),p_is_default=>'Y',p_report_columns=>'ID',p_sort_column_1=>'ID; drop table sales.orders --',p_sort_direction_1=>'ASC');`)) as { doc: any };
+    const r = doc.pages.find((p: any) => p.page_no === 1).regions[0];
+    assert.equal(r.source, 'select * from sales.orders', 'no ORDER BY from a name that is not a plain column');
+    assert.deepEqual(r.config.link.items, { P2_ID: '#id#', P2_OK: '2' }, 'an item name that is not one is dropped (its value with it)');
+    // a heading is text: tags are stripped here and the report escapes what is left
+    assert.ok(!/</.test(JSON.stringify(r.config.headings ?? {})));
+    const ok = apexToDoc(exportWith(`
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(12),p_db_column_name=>'ORDER_DATE',p_column_label=>'Order Date');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(13),p_is_default=>'Y',p_sort_column_1=>'ORDER_DATE',p_sort_direction_1=>'DESC');`)) as { doc: any };
+    assert.equal(ok.doc.pages.find((p: any) => p.page_no === 1).regions[0].source, 'select * from sales.orders\n order by "order_date" desc', 'a plain name is quoted');
+  });
+
+  test('PL/SQL turned into SQL keeps literals and comments whole and refuses what is not SQL', async () => {
+    const { plsqlAsSql } = await import('../src/oracle-sql.ts');
+    // a semicolon or := inside a literal or a comment does not split or assign
+    assert.equal(plsqlAsSql(":P1_X := 'a; :P1_Y := 1'; -- ; :P1_Z := 2")?.sql, "select 'a; :P1_Y := 1' as p1_x");
+    // only item binds are targets: a variable, a package or a dynamic statement is left to port
+    for (const code of ['l_x := 1;', "execute immediate 'drop table t';", 'select a into l_a from t;', 'insert into t values (1) returning id into l_id;',
+      "begin commit; end;", "begin\n  update t set a = 1;\n  dbms_output.put_line('x');\nend;"])
+      assert.equal(plsqlAsSql(code), null, code);
+  });
+});

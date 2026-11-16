@@ -237,7 +237,8 @@ export function plsqlAsSql(code: string | null | undefined): { sql: string; how:
   if (stmts.some((s) => PLSQL.test(s.mask.replace(/\bend\s+if\b|\bend\s+loop\b/gi, '')))) return null;
   const ITEM = /^:([A-Za-z][A-Za-z0-9_$#]*)$/;
   const assign = (s: { mask: string }) => /^:[A-Za-z][\w$#]*\s*:=/.test(s.mask);
-  const dml = (s: { mask: string }) => /^(insert|update|delete|merge)\b/i.test(s.mask) && !/\binto\s+:/i.test(s.mask.replace(/^insert\s+into\b/i, ''));
+  // a DML statement as it is: not one that returns INTO something (an item: handled below; a variable: PL/SQL)
+  const dml = (s: { mask: string }) => /^(insert|update|delete|merge)\b/i.test(s.mask) && !/\breturning\b[\s\S]*\binto\b/i.test(s.mask);
   const out: string[] = [];
   let i = 0;
   while (i < stmts.length && dml(stmts[i])) out.push(stmts[i++].sql);
