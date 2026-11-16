@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **APEX import brings over more** (sprint 211, NX-F5): saved interactive reports other than the default become pgkiln
+  saved reports (public ones belong to the developer who imports, private ones to their APEX user): shown columns,
+  sort, control break and aggregates, rows per page, filters and highlights, the search and computed columns. A report
+  column with a list of values (shared, `STATIC:` or a query) shows its display value, looked up in the region's
+  query. Interactive grid column validations become the grid columns' validations. Breadcrumb entries set the pages'
+  breadcrumb parents. Chart axes give the chart's format mask and a gauge's range. ACL roles become the roles the
+  authorization schemes check (`ADMINISTRATOR` → `administrator`), and `ACCESS_CONTROL_SCOPE` = `ALL_USERS` access
+  control *any user*. Dynamic content regions whose PL/SQL is one `return` or only `htp.p` calls become `dynamic`
+  regions. `pgkiln import-apex` and Import → From Oracle APEX say how many saved reports were carried over.
+
 ## [0.104.0] - 2026-11-16
 
 ### Added
