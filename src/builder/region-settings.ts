@@ -16,6 +16,8 @@ import { BASE, csrf, type Req } from './ui.ts';
 import { columnTemplatesForm, saveColumnTemplates, saveTemplateRegionSettings, templateRegionForm } from './templates.ts';
 import { LIST_TEMPLATES } from '../runtime/lists.ts';
 import { MAX_EXTRA_LAYERS } from '../runtime/maps.ts';
+import { DEFERRABLE } from '../runtime/region-cache.ts';
+import type { Region } from '../metadata.ts';
 import { postgis } from '../runtime/spatial.ts';
 import { reporterSettingsForm, saveReporterSettings } from './reporter.ts';
 import { formDesignerSettingsForm, saveFormDesignerSettings } from './form-designer.ts';
@@ -783,6 +785,54 @@ async function displaySelectorFields(r: RegionRow, pageId: number, id: (n: strin
 export const regionSettingsForm = (pageId: number, appId: number, r: RegionRow, s: Session) => withTranslator(tr(s), () => regionSettingsFormInner(pageId, appId, r, s));
 
 async function regionSettingsFormInner(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
+  const forms = await typeSettingsForm(pageId, appId, r, s);
+  const caching = cachingForm(pageId, r, s);
+  return forms || caching ? html`${forms}${caching}` : '';
+}
+
+// ---------------------------------------------------------------- (sprint 210, AX-5) Server Cache
+// APEX: a region's Server Cache and Lazy Loading. A report has them in its own settings (report-settings.ts); the
+// other region types that can be cached (region-cache.ts DEFERRABLE) get this group on their Attributes tab.
+
+/** The Server cache group of a cacheable region other than a report, or ''. */
+export function cachingForm(pageId: number, r: RegionRow, s: Session): Raw | '' {
+  if (r.type === 'report' || !DEFERRABLE.has(r.type as Region['type'])) return '';
+  const cfg = r.config ?? {};
+  const id = (n: string) => `rc_${r.id}_${n}`;
+  return html`<form method="post" action="${BASE}/pages/${pageId}/region/${r.id}/caching" class="component-form">${csrf(s)}
+    <fieldset class="prop-group"><legend>${tx('pd.menu.caching')}</legend><div class="form-grid">
+      ${check('lazy', tx('rpt.load_after_the_page_shows'), cfg.lazy === true)}
+      <div class="field"><label class="label" for="${id('cache_scope')}">${tx('rpt.cache')}</label>
+        <select id="${id('cache_scope')}" name="cache_scope">${opt('', tx('rpt.no_cache'), cfg.cache?.scope)}${opt('user', tx('rpt.per_user'), cfg.cache?.scope)}${opt('session', tx('rpt.per_session'), cfg.cache?.scope)}${opt('all', tx('rpt.for_all_users_with_the'), cfg.cache?.scope)}</select></div>
+      <div class="field"><label class="label" for="${id('cache_seconds')}">${tx('rpt.cache_for_seconds')}</label>
+        <input id="${id('cache_seconds')}" name="cache_seconds" type="number" min="1" max="86400" value="${cfg.cache?.seconds ?? ''}" placeholder="300">
+        <small class="help">${tx('rpt.a_submit_of_the_page')}</small></div>
+    </div></fieldset>
+  </form>`;
+}
+
+/** The region's config after the Server cache group: lazy and cache replaced, every other key left alone. */
+export function mergeCachingSettings(config: Config, b: Body): Config {
+  const out: Config = { ...config };
+  if (b.lazy === 'true') out.lazy = true;
+  else delete out.lazy;
+  const scope = b.cache_scope;
+  const seconds = Math.floor(Number(b.cache_seconds || 300));
+  if (scope === 'user' || scope === 'session' || scope === 'all') out.cache = { scope, seconds: Math.min(Math.max(seconds || 300, 1), 86_400) };
+  else delete out.cache;
+  return out;
+}
+
+export const saveRegionCaching: SettingsSaver = async (pid, rid, b, s) => {
+  const r = /^\d{1,9}$/.test(pid) && /^\d{1,9}$/.test(rid)
+    ? await owner.one<{ id: number; type: string; config: Config }>('select id, type, config from meta.region where id = $1 and page_id = $2', [rid, pid])
+    : undefined;
+  if (!r || r.type === 'report' || !DEFERRABLE.has(r.type as Region['type'])) return null;
+  await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(mergeCachingSettings(r.config ?? {}, b))]);
+  return { message: tr(s)('rs.saved') };
+};
+
+async function typeSettingsForm(pageId: number, appId: number, r: RegionRow, s: Session): Promise<Raw | ''> {
   if (r.type === 'report') return html`${await reportSettingsForm(pageId, appId, r, s)}${await columnTemplatesForm(pageId, appId, r, s)}${await aiFilterSettingsForm(pageId, appId, r, s)}`;
   if (r.type === 'ai_assistant') return assistantSettingsForm(pageId, appId, r, s);
   if (r.type === 'template_component') return templateRegionForm(pageId, appId, r, s);
@@ -932,6 +982,7 @@ async function regionSettingsFormInner(pageId: number, appId: number, r: RegionR
 
 export async function regionSettingsRoutes(app: FastifyInstance) {
   app.post(`${BASE}/pages/:pid/region/:rid/settings`, (req: Req, reply) => settingsRoute(req, reply, saveRegionSettings));
+  app.post(`${BASE}/pages/:pid/region/:rid/caching`, (req: Req, reply) => settingsRoute(req, reply, saveRegionCaching));
 }
 
 /** (sprint 202) the settings form of grid, chart, cards, calendar, … regions: its own route and the Page Designer's one Save */
@@ -980,6 +1031,7 @@ export const saveRegionSettings: SettingsSaver = async (pid, rid, b, s) => {
 const SAVERS: Record<string, SettingsSaver> = {
   settings: saveRegionSettings, 'report-settings': saveReportSettings, 'column-templates': saveColumnTemplates, 'ai-filter': saveAiFilterSettings,
   assistant: saveAssistantSettings, 'template-settings': saveTemplateRegionSettings, reporter: saveReporterSettings, 'form-designer': saveFormDesignerSettings,
+  caching: saveRegionCaching,
 };
 
 /**

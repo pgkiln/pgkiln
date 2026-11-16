@@ -119,3 +119,40 @@ describe('the Page Designer\'s menus without JavaScript (AX-5)', () => {
     await page.context().close();
   });
 });
+
+describe('the Page Designer\'s two panes or three (sprint 210, AX-5)', () => {
+  test('Utilities → Two panes: the tree and the layout as tabs on the left, remembered; Three panes back', async () => {
+    const { page, errors } = await signIn({ width: 1366, height: 768 });
+    await page.goto(`${base}/builder/apps/${appId}/pages/3`);
+    const tree = page.locator('#pd-p-tree');
+    const layout = page.locator('#pd-p-layout');
+    assert.equal(await tree.isVisible(), true);
+    assert.equal(await layout.isVisible(), true);
+    await page.click('details.tb-menu > summary[title="Utilities"]');
+    await page.click('[data-panes="2"]');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('pd-two')), true);
+    const tabs = page.locator('.pd-twobar [role=tab]');
+    assert.equal(await tabs.count(), 2);
+    assert.equal(await tree.isVisible(), true);
+    assert.equal(await layout.isVisible(), false);
+    // the Layout tab, then with the arrow keys back to the tree
+    await tabs.nth(1).click();
+    assert.equal(await layout.isVisible(), true);
+    assert.equal(await tree.isVisible(), false);
+    assert.equal(await tabs.nth(1).getAttribute('aria-selected'), 'true');
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await tree.isVisible(), true);
+    await fits(page, 'two panes');
+    // remembered after a reload
+    await page.reload();
+    assert.equal(await page.evaluate(() => document.body.classList.contains('pd-two')), true);
+    assert.equal(await page.locator('#pd-p-props').isVisible(), true, 'the properties stay');
+    await page.click('details.tb-menu > summary[title="Utilities"]');
+    await page.click('[data-panes="3"]');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('pd-two')), false);
+    assert.equal(await layout.isVisible(), true);
+    assert.equal(await tree.isVisible(), true);
+    assert.deepEqual(errors, []);
+    await page.context().close();
+  });
+});

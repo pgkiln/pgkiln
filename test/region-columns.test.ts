@@ -269,6 +269,33 @@ describe('sprint 205 AX-1: columns in the Page Designer', () => {
     assert.match(propertyEditor(await designer(`c=column-${report}&col=nope`)), /Component not found\./);
   });
 
+  test('(sprint 210) a column\'s condition and authorization: saved in column_access, checked, badges in the tree', async () => {
+    const page = await designer(`c=column-${report}&col=comm`);
+    const pe = propertyEditor(page);
+    assert.match(pe, /<legend>Server-side condition<\/legend>/);
+    assert.match(pe, /<legend>Security<\/legend>/);
+    assert.match(pe, /<option value="ADMIN">ADMIN<\/option>/);
+    assert.match(pe, /<option value="!ADMIN">/);
+    const res = await save(report, { ...saveForm(page), authz: 'ADMIN', condition_type: 'item_equals', condition_expr: 'P1_MODE', condition_value: 'FULL' });
+    assert.equal(res.statusCode, 303);
+    assert.deepEqual((await config(report)).column_access.comm, { authz: 'ADMIN', condition_type: 'item_equals', condition_expr: 'P1_MODE', condition_value: 'FULL' });
+    assert.match(await designer(`c=region-${report}`), /data-col="comm"[^>]*>[\s\S]{0,400}?pd-tag/);
+    // an unknown scheme or condition type, and a condition meta.condition_ok refuses: not saved
+    await save(report, { ...saveForm(await designer(`c=column-${report}&col=comm`)), authz: 'NO_SUCH_SCHEME' });
+    assert.equal((await config(report)).column_access.comm.authz, 'ADMIN');
+    await save(report, { ...saveForm(await designer(`c=column-${report}&col=comm`)), condition_type: 'drop table' });
+    assert.equal((await config(report)).column_access.comm.condition_type, 'item_equals');
+    await save(report, { ...saveForm(await designer(`c=column-${report}&col=comm`)), condition_type: 'item_null', condition_expr: 'x) or (1=1' });
+    assert.equal((await config(report)).column_access.comm.condition_type, 'item_equals');
+    // none: the entry goes
+    await save(report, { ...saveForm(await designer(`c=column-${report}&col=comm`)), authz: '', condition_type: '' });
+    assert.equal((await config(report)).column_access, undefined);
+    // several columns share the authorization, not the condition (a single column's)
+    const many = propertyEditor(await designer(`c=column-${report}&col=sal&col=comm`));
+    assert.match(many, /name="authz"/);
+    assert.doesNotMatch(many, /name="condition_type"/);
+  });
+
   test('the Attributes tab\'s Columns group selects the column\'s node', async () => {
     const page = await designer(`c=region-${report}`);
     assert.match(page, new RegExp(`<a href="/builder/pages/${pageId}\\?c=column-${report}&amp;col=sal" title="Open column sal in the tree"><code>sal</code></a>`));

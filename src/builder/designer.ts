@@ -153,7 +153,9 @@ export async function designerRoutes(app: FastifyInstance) {
       const on = kind === 'column' && cid === String(r.id) && selColumns.includes(c.name);
       const head = r.config?.headings?.[c.name];
       const note = [typeof head === 'string' ? head : '', c.type ?? ''].filter(Boolean).join(' · ');
-      return html`<li><a class="pd-node" href="${url(colKey(r.id, [c.name]))}"${on ? raw(' aria-current="true"') : ''} data-kind="column" data-id="${r.id}" data-col="${c.name}" title="${note ? `${c.name} (${note})` : c.name}">${icon('hash')}<span class="pd-label">${c.name}</span>${c.stale ? html`<span class="pd-tag pd-tag-stale" title="${tx('rs.not_in_query')}">${icon('alert')}<span class="sr-only">${tx('rs.not_in_query')}</span></span>` : ''}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
+      // (sprint 210) a column's authorization and condition: the same badges as a region's
+      const acc = r.config?.column_access?.[c.name];
+      return html`<li><a class="pd-node" href="${url(colKey(r.id, [c.name]))}"${on ? raw(' aria-current="true"') : ''} data-kind="column" data-id="${r.id}" data-col="${c.name}" title="${note ? `${c.name} (${note})` : c.name}">${icon('hash')}<span class="pd-label">${c.name}</span>${acc && typeof acc === 'object' ? badges({ authz: typeof acc.authz === 'string' ? acc.authz : null, condition_type: acc.condition_type, condition_expr: acc.condition_expr, condition_value: acc.condition_value }) : ''}${c.stale ? html`<span class="pd-tag pd-tag-stale" title="${tx('rs.not_in_query')}">${icon('alert')}<span class="sr-only">${tx('rs.not_in_query')}</span></span>` : ''}${note ? html`<span class="pd-note">${note}</span>` : ''}</a></li>`;
     };
     const columnsFolder = (r: any) => {
       const list = columnLists.get(r.id);
@@ -381,12 +383,14 @@ export async function designerRoutes(app: FastifyInstance) {
       ? { app_id: p.app_id, page_no: 0, locked_by: '', locked_at: '', note: null, run_only: true } : undefined;
     const blocking = runOnly ?? locks.find((l) => l.locked_by !== s.username);
     const mine = locks.find((l) => l.locked_by === s.username);
+    // (sprint 210, AX-5) Create → Developer comment: the Lock and comments tab, its comment field focused
+    const comment = req.query.comment === '1';
     const commentCount = (await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1 and page_no = $2', [p.app_id, p.page_no])).n;
     const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} ${tx('pd.lock_refused')}</div>` : ''}${await pageIssuesNote(p.app_id, p.page_no)}
       <div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="${tx('pd.copy.page')}">
-      ${tab('pd-c-layout', tx('pd.layout'), layout, true)}
+      ${tab('pd-c-layout', tx('pd.layout'), layout, !comment)}
       ${tab('pd-c-search', tx('pd.page_search'), pageSearch)}
-      ${tab('pd-c-notes', `${tx('pd.lock_comments')}${commentCount ? ` (${commentCount})` : ''}${mine || blocking ? ` · ${tx('pd.locked')}` : ''}`, await lockPanel(s, p.app_id, p.page_no))}
+      ${tab('pd-c-notes', `${tx('pd.lock_comments')}${commentCount ? ` (${commentCount})` : ''}${mine || blocking ? ` · ${tx('pd.locked')}` : ''}`, await lockPanel(s, p.app_id, p.page_no, { focus: comment }), comment ? 'force' : false)}
       ${tab('pd-c-help', tx('rail.help'), help)}
     </div>`;
 
@@ -551,6 +555,11 @@ export async function designerRoutes(app: FastifyInstance) {
         <div class="menu-panel align-right">
           ${selRegion ? html`<div class="menu-section menu-links"><a href="${url(`c=region-${selRegion.id}&json=1`)}"${req.query.json === '1' ? raw(' aria-current="true"') : ''}>${icon('code')} ${tx('pd.menu.show_json')}</a></div>` : ''}
           ${pageUtilityLinks(p)}
+          <div class="menu-section pd-panes-switch" role="group" aria-label="${tx('pd.menu.layout')}" hidden>
+            <strong>${tx('pd.menu.layout')}</strong>
+            <button type="button" class="link-button" data-panes="3" aria-pressed="true">${icon('layers')} ${tx('pd.menu.three_panes')}</button>
+            <button type="button" class="link-button" data-panes="2" aria-pressed="false">${icon('grid')} ${tx('pd.menu.two_panes')}</button>
+          </div>
           <div class="menu-section menu-links">
           <a href="${BASE}/apps/${p.app_id}/advisor">${icon('check')} ${tx('app.tab.advisor')}</a>
           <a href="${BASE}/apps/${p.app_id}/search?q=P${p.page_no}_">${icon('search')} ${tx('pd.menu.search_items')}</a>

@@ -544,6 +544,7 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `max_rows` | none | Maximum row count: the report, its total and its downloads read at most this many rows (1 to 1,000,000) |
 | `lazy` | `false` | Load the region after the page shows (see [large tables](#large-tables)) |
 | `cache` | none | Keep the rendered region: `{"scope": "user" \| "session" \| "all", "seconds": 300}` |
+| `column_access` | none | (sprint 210) A column's condition and authorization: `{"sal": {"authz": "SALES_MANAGER", "condition_type": "never"}}`; a column that fails either is left out of the page and every download (also classic report, grid and cards; see [the builder](03-builder.md)) |
 | `searchable` | `true` | Show the search box (`false`: no search, no Actions menu; or use a [`classic_report`](#classic_report-classic-report)) |
 | `fulltext` | none | (sprint 135) A `tsvector` column of the source that the search box also uses: a row is found when its text contains the search text, **or** its tsvector matches it (`websearch_to_tsquery`: stemmed words, `"phrases"`, `or`, `-word`). It may be a `hidden` column (you chose it). Without it, the only `tsvector` column the user may see is used, if there is one. Not with a search in one column |
 | `fulltext_config` | language's | (sprint 135) The text search configuration of that search (`english`, `dutch`…, the one the tsvector was made with); by default the application's primary language's, else `simple`. Only names in `pg_ts_config` are used |
@@ -2131,4 +2132,6 @@ token is never cached, and a region that shows an error is not cached. A lazy re
 the cache shows at once. Each server process has its own cache: `REGION_CACHE_MAX_ENTRIES`
 (default 1000) and `REGION_CACHE_MAX_MB` (default 64) bound it, and one region over 2 MB is
 not cached. Use it for regions that are expensive and may be a little old (dashboards, summaries).
+In the Page Designer a region's **Attributes** tab sets both (a report in its settings, the other types in a *Caching*
+group), and Utilities → **Caching** lists the page's cacheable regions with what this server holds, and purges them.
 
