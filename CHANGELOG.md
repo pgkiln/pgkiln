@@ -5,9 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.102.0] - 2026-11-15
-
 ### Added
+- **Page Designer: report and grid columns in the tree** (sprint 205, AX-1; APEX: the Columns node): report, classic
+  report, interactive grid, cards and calendar regions have a *Columns* node in the Rendering tree, one entry per column
+  of the query in its order (columns the settings still name but the query no longer returns are marked *not in the
+  query*). Choosing a column opens its properties in the property editor, saved by the toolbar's Save: heading, shown,
+  format mask, display (bold … right-aligned, centred), link and PDF for reports; read-only, required, edit as and
+  validation for grids; format for cards; what a calendar reads it as. Ctrl+click, Shift+click (Ctrl/Shift+Space, or
+  *Select several columns* without JavaScript) edits several columns at once: fields show what they share, *Mixed*
+  keeps each column's value; only changed fields are saved. The settings stay in the region's attributes (exports and
+  application files unchanged); the Attributes tab's *Columns* group links each column to its node.
 - **Page Designer: menus for the open page** (sprint 206, AX-5; as APEX's Page Designer Create and Utilities menus):
   *Create → Copy this page* opens Create page as copy with the page already chosen; *Create → Issue for this page*
   opens a new Team Development issue with the application and page filled in. *Utilities → History of this page*
@@ -16,6 +23,8 @@ All notable changes to this project are documented here. The format follows
   text export as a zip (to bring it back, replace the page's folder in an application exported with `--format text`
   and import that application). All entries are links: keyboard and no-JavaScript friendly; access is the
   application's.
+
+## [0.102.0] - 2026-11-15
 
 ### Added
 - **Recently edited pages and Copy application on the application home** (sprint 203, AX-6; as APEX): the side column
