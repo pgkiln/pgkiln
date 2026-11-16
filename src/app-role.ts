@@ -79,10 +79,20 @@ export async function setAppRole(c: Queryable, role: string | null | undefined, 
 /** The role pgkiln makes for an application: app_<alias> (as the Create Application wizard does). */
 export const appRoleName = (alias: string) => `app_${alias.toLowerCase().replace(/[^a-z0-9_]/g, '_')}`.slice(0, 63);
 
+/**
+ * (sprint 212, migration 181) Inside the caller's transaction: wait for any other transaction's role changes (the
+ * lock meta.workspace_sync_roles takes), so that two GRANTs on the same schema don't fail with "tuple concurrently
+ * updated". Held until the commit.
+ */
+export async function lockRoles(c: Queryable) {
+  await c.query(`select pg_advisory_xact_lock(hashtext('pgkiln.workspace_sync_roles'))`);
+}
+
 /** The rights the Create Application wizard gives an application's role on its schema (src/builder/newapp.ts). */
 export async function grantSchema(c: Queryable, schema: string, role: string) {
   const S = pg.escapeIdentifier(schema);
   const R = pg.escapeIdentifier(role);
+  await lockRoles(c);
   await c.query(`grant usage on schema ${S} to ${R}`);
   await c.query(`grant select, insert, update, delete on all tables in schema ${S} to ${R}`);
   await c.query(`grant usage, select on all sequences in schema ${S} to ${R}`);
@@ -106,6 +116,7 @@ export class AppRoleError extends Error {}
  */
 export async function makeAppRole(c: Queryable, o: { alias: string; ws: number; schema?: string | null; appId?: number | null }) {
   const role = appRoleName(o.alias);
+  await lockRoles(c);
   const exists = !!(await c.query('select 1 from pg_roles where rolname = $1', [role])).rowCount;
   if (exists) {
     if ((await c.query('select meta.role_is_powerful($1) as p', [role])).rows[0].p)
