@@ -8,13 +8,15 @@ ENV NODE_ENV=production \
     PGKILN_DUMP_DIR=/app/dumps
 
 # (sprint 103) pg_dump and pg_restore for Schema Export / Import: PostgreSQL 17's client programs from the
-# PostgreSQL apt repository (they dump and restore servers of version 17 and older)
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
- && install -d /usr/share/postgresql-common/pgdg \
- && curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+# PostgreSQL apt repository (they dump and restore servers of version 17 and older). Its signing key is in the
+# repository (keys/apt.postgresql.org.asc, fingerprint B97B 0AFC AA1A 47F0 44F2 44A0 7FCC 7D46 ACCC 4CF8, as
+# Debian's postgresql-common ships it): downloading it from www.postgresql.org failed the build when that site
+# cut the connection (curl 18), Nov 2026.
+COPY keys/apt.postgresql.org.asc /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
  && apt-get update && apt-get install -y --no-install-recommends postgresql-client-17 \
- && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY package.json package-lock.json ./

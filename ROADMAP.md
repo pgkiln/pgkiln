@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.102.0 (November 2026): one Save for a region and type names instead of codes in the Page Designer (AX-2, AX-3); recently edited pages and Copy application on the application home, Templates and Session State Protection in Shared Components (AX-6, AX-7); builder tokens tied to their developer's sign-in with every call logged, and an optional breached-password check (NX-F4, SEC-3).
+- **Current release:** 0.103.0 (November 2026): report and grid columns in the Page Designer tree, each with its own properties and several edited at once (AX-1), and the Page Designer's Create and Utilities menus on the open page: copy, issue, history, view as text with its checksum, and export (AX-5).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

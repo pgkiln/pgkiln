@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-11-16
+
 ### Added
 - **Page Designer: report and grid columns in the tree** (sprint 205, AX-1; APEX: the Columns node): report, classic
   report, interactive grid, cards and calendar regions have a *Columns* node in the Rendering tree, one entry per column
@@ -23,6 +25,11 @@ All notable changes to this project are documented here. The format follows
   text export as a zip (to bring it back, replace the page's folder in an application exported with `--format text`
   and import that application). All entries are links: keyboard and no-JavaScript friendly; access is the
   application's.
+
+### Fixed
+- **The Docker image builds without www.postgresql.org**: the PostgreSQL apt repository's signing key (for `pg_dump`
+  and `pg_restore` 17) is part of the repository (`keys/apt.postgresql.org.asc`) instead of a download at build time, which
+  failed the image build when that site cut the connection.
 
 ## [0.102.0] - 2026-11-15
 
