@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-11-16
+
 ### Added
 - **A column's condition and authorization** (sprint 210, AX-1; APEX: a report or grid column's Server-side Condition
   and Security → Authorization Scheme): report, classic report, interactive grid and cards columns have a *Server-side
