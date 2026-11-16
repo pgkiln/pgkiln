@@ -8168,6 +8168,11 @@ export const ko: BuilderMessages = {
   'apx.kind.lov': '값 목록',
   'apx.kind.authorization': '권한 부여 체계',
   'apx.kind.navigation': '탐색 항목',
+  'apx.kind.app_item': '애플리케이션 항목',
+  'apx.kind.app_process': '애플리케이션 프로세스',
+  'apx.kind.app_computation': '애플리케이션 계산',
+  'apx.kind.build_option': '빌드 옵션',
+  'apx.kind.app_setting': '애플리케이션 설정',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': '브라우저 보안',
   'bs.intro': '브라우저가 애플리케이션 페이지로 할 수 있는 일: 프레임에 표시, 주소 전달, 색인 생성. 빌더는 자체 설정을 유지합니다.',

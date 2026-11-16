@@ -16,7 +16,9 @@ website/                   the website pgkiln.vargar.eu (VitePress): landing pag
                            cd website && npm install && npm run dev; scripts/deploy.sh publishes it (see website/deploy/)
 scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
 scripts/oracle-e2e.sh      (sprint 192) Oracle Free + ora2pg (Docker) → PostgreSQL → import-apex --check and the import of f77536.sql;
-                           scripts/apex-e2e-pages.ts opens every page as a user (.github/workflows/oracle-e2e.yml: manual, weekly)
+                           scripts/apex-e2e-pages.ts opens every page as a user (.github/workflows/oracle-e2e.yml: manual, weekly;
+                           sprint 209: first run green). Locally: ORA_CONTAINER, ORA_PORT and ALIAS keep parallel runs apart, --keep
+                           leaves the Oracle container, the schema and the application
 scripts/check-sample.ts    (sprint 166) one App Gallery sample: install, sign in as demo, render every page, report errors (--keep)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
@@ -33,6 +35,8 @@ src/
                            PUBLIC_URL of a public host, or pgkiln admin check --production); every line ok or error
   oracle-sql.ts            (sprint 187) translateOracle: nvl, nvl2, decode, sysdate, systimestamp, dual, sequences, v(),
                            minus rewritten outside literals, q-quotes, quoted names and comments (codeMask)
+                           (sprint 209) plsqlAsSql: a PL/SQL process body that is SQL in disguise (DML statements, :ITEM := expr,
+                           SELECT … INTO :ITEM, RETURNING … INTO :ITEM) as the SQL of a pgkiln sql process, else null
   release-check.ts         (sprint 109) "pgkiln X is available": meta.setting 'release_check' over PGKILN_RELEASE_CHECK (off by default);
                            GitHub's releases/latest (PGKILN_RELEASE_URL in tests), 5 s timeout, 1 MB, cached a day per process,
                            never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
@@ -49,6 +53,11 @@ src/
                            (sprint 187) Entry.oracle() returns the SQL rewritten by oracle-sql.ts and notes what was rewritten
                            (sprint 192) Entry.use()/scan(): the database objects each entry uses (ReportEntry.uses); unqualified
                            tables qualified with the schema (qualifyTables)
+                           (sprint 209) build options (bo(): p_required_patch, a negative id is "!"), application items, processes,
+                           computations and settings; report and grid column settings (worksheet, worksheet_column, the default
+                           worksheet_rpt, report_columns, region_column, interactive_grid, ig_report_column; the column calls follow
+                           their region); PL/SQL processes through plsqlProcess (oracle-sql.ts plsqlAsSql); APEX 26.2's login page
+                           (Invoke API APEX_AUTHENTICATION.LOGIN) left out with its components
   apex-check.ts            (sprint 192, NX-F5) sqlObjects (tables, sequences, pkg.proc calls of a SQL/PL/SQL text, statically),
                            soleTableColumn, qualifyTables; apexCheck: the report's uses looked up in pg_catalog (missing tables,
                            APEX views, columns, sequences, routines; a routine ora2pg converted as pkg.proc or pkg_proc is a hint),
@@ -293,7 +302,7 @@ src/
     context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons); (sprint 131)
                            step-up (mfa_minutes; StepUp sends the page's user to /login/2fa?next=)
-    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it), application processes
+    engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it; sprint 209: each load process in a savepoint), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages

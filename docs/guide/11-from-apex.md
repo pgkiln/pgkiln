@@ -143,15 +143,15 @@ key/value pairs instead of `p_attribute_01` …, leave out `p_list_id` and `p_re
 columns (they belong to the list or region written before them), and write classic reports as
 `create_report_region`. The importer reads both forms; (sprint 192) a form item without `p_source_type` (26.2's
 default, a column of the form's region) is a column of the form. It is tested in CI on a real 26.2.1 export, the sample
-application *Demonstration - HR* (46 pages, `test/fixtures/apex/f77536.sql`): every page but the global page is
-imported and opens; what's left is the application's own PL/SQL and APEX's built-in administration pages.
+application *Demonstration - HR* (46 pages, `test/fixtures/apex/f77536.sql`): every page but the global page and the
+login page is imported and opens; what's left is the application's own PL/SQL and APEX's built-in administration pages.
 
 What maps:
 
 | APEX | pgkiln |
 |---|---|
 | Application: name, alias, primary language, date format, home page, version | The same; authentication becomes the user directory, themes and templates pgkiln's theme |
-| Pages: number, name, title, alias, normal or modal (non-modal: modal), public, help, authorization | The same; (193) the alias in lower case with hyphens (`LEAVE_REQUESTS` → `leave-requests`), or one from the name when pgkiln can't use it ([page alias](04-pages-and-regions.md#page-alias)). The global page (0) and the login page (with `apex_authentication.login`) are not imported |
+| Pages: number, name, title, alias, normal or modal (non-modal: modal), public, help, authorization | The same; (193) the alias in lower case with hyphens (`LEAVE_REQUESTS` → `leave-requests`), or one from the name when pgkiln can't use it ([page alias](04-pages-and-regions.md#page-alias)). The global page (0) and the login page (with `apex_authentication.login`, or (209) APEX 26.2's Invoke API process of `APEX_AUTHENTICATION.LOGIN`) are not imported; the login page's components go with it, under one report entry |
 | Regions: Static Content, Classic Report (also `create_report_region`), Interactive Report, Form, Interactive Grid, Breadcrumb, Help Text | `static`, `classic_report`, `report`, `form` (table, key column and item), `grid` (table, key, columns), `breadcrumb`, `help_text`; a table source becomes `select … from schema.table` |
 | (sprint 190) Chart (JET), Cards, Calendar, Faceted Search, List | `chart`: the [kind](04-pages-and-regions.md#chart) from the chart type (bar → `column`, horizontal → `bar`, stacked → `stacked`, dial → `gauge` …) and a SELECT from the series: label column, value column or aggregate (`count`, `sum`, `avg`, `min`, `max`) on the series' table, query or the region's source; series with another source are left out. `cards`: the region's query with the card's title, body and badge columns as `title`, `body`, `badge`. `calendar`: start date, end date and display columns as `start_date`, `end_date`, `title`. `facets`: its facet items (checkbox, range with the `STATIC2` ranges, star rating, search) become `facets[]`, linked to the report it filters (a classic report becomes an interactive report). `list`: the shared list and its entries | Other types (maps, PL/SQL dynamic content, legacy mobile lists, …) become a static region that says what it was, with its source. A list of values' display column (`CUSTOMER_ID_L$1`) becomes the column itself |
 | Page items: text (e-mail, phone, URL), text area, number, date picker, select list, radio group, checkbox(es), switch, hidden, display only, password, popup LOV, shuttle, file, rich text, Markdown, star rating, colour, combobox, Select One / Many, QR code, image upload, display image, percent graph, address, display map | The pgkiln [item type](05-items.md#item-types) of the same name; form columns, primary key, required, help, lists of values (shared, SQL, `STATIC`/`STATIC2`), static defaults. A SQL or PL/SQL default or source becomes a before header [computation](06-processing.md#computations). Plug-in items become text fields |
@@ -163,6 +163,14 @@ What maps:
 | Dynamic actions: change, click, page load, Dialog Closed, focus, key and mouse events, after refresh, before submit, custom; Show, Hide, Enable, Disable, Set Value, Refresh, Execute Server-side Code, Submit, Close / Cancel Dialog, Alert, Confirm, Set Focus, Add / Remove Class, Clear, Cancel Event | One pgkiln row per action with the event's trigger and client-side condition; *false* actions with the opposite condition |
 | Shared lists of values (SQL, table, static), authorization schemes (exists, not exists, is in group / role) | `lov`, `authz_scheme` (`sql` or `role`); a scheme that isn't mapped is not created, so the components that name it are denied (fail closed) until you add it |
 | Navigation menu, lists | The navigation menu (entries to pages of the application); (sprint 190) the lists that list regions show, with their entries (pages, items, https links) |
+| (sprint 209) Interactive report columns (`create_worksheet_column`) and the default report (`create_worksheet_rpt`) | The report's `headings` (labels that differ from pgkiln's own), `formats` (format masks; APEX's `SINCE`, `PCT_GRAPH`, `IMAGE` and `DOWNLOAD` are left out with a note), `hidden` (*Hidden* columns, and the columns the default report doesn't show: APEX users could add those under Actions → Columns), `empty` (the *No data found* message), the detail link as `link` with `icon` (`f?p=…:3:…:P3_ID:\#ID#\` → page 3, `P3_ID` = `#id#`; else a column link), and the default report's sort as the query's `order by` (when it has none). Other saved reports, filters, highlights and computations are not carried over (the report says how many) |
+| (sprint 209) Classic report columns (`create_report_columns`) | `headings`, `formats`, `hidden` (*Hidden Column*), and the first column link as `link` (with `icon` when its text is an icon) |
+| (sprint 209) Interactive grid columns (`create_region_column`), the grid (`create_interactive_grid`) and its default view (`create_ig_report_column`) | `headings`, `formats`, `hidden` (Hidden columns), `readonly` (Display Only, *Query Only*, read only *Always*), per column in `columns`: `required`, `lov` (a shared list of values, a SQL query or `STATIC:`), `default` (static, or an item as `&ITEM.`) and `default_sql` (SQL query); the default view as `layout` (order, hidden, widths, frozen columns); the edit operations as `allow`. A column's display value of a list of values (`LOV_ESCAPE_SC`) is the column itself: join the lookup table to show the name |
+| (sprint 209) Build options; a component's build option (`p_required_patch`) | `build_options` (the name in capitals: *Feature: About Page* → `FEATURE_ABOUT_PAGE`), and `build_option` on pages, regions, items, buttons, processes, computations, validations, branches, dynamic actions and list and navigation entries; APEX's negative id (*Exclude*) becomes `!NAME` |
+| (sprint 209) Application items | `app_items` (name and comment); *Global* scope becomes the application's own item |
+| (sprint 209) Application processes (PL/SQL) | `app_processes`: *On New Session* and *After Authentication* → `after_login`, *On Demand* → `ajax`, the other points → `before_page` (with a note); the code as for a PL/SQL page process. pgkiln's application processes have no condition: one with a condition is noted |
+| (sprint 209) Application computations | `app_computations` with the page computation types; *After Authentication* / *On New Session* → `after_authentication`, *After Submit* → `after_submit`, the rest → `before_header`; *Never* is not imported |
+| (sprint 209) Application settings | `app_settings`: value, valid values (a value outside them is left empty), required, *keep on upgrade*, comment |
 
 Validation types (CD-1):
 
@@ -187,7 +195,7 @@ Process types (CD-4):
 |---|---|---|
 | `NATIVE_FORM_INIT`, `NATIVE_FORM_DML` | `form_init`, `form_dml` | With the form region. `form_dml` decides by the button name (`CREATE`, `SAVE`, `DELETE` …): the report says when a button's *Database Action* doesn't match its name |
 | `NATIVE_IG_DML` | `grid_dml` | With the grid region |
-| `NATIVE_PLSQL` | `sql` | The PL/SQL as it is: needs porting |
+| `NATIVE_PLSQL` | `sql` | (sprint 209) PL/SQL that is SQL in disguise becomes that SQL (below); other PL/SQL as it is: needs porting |
 | `NATIVE_SESSION_STATE` (clear the current page, pages, items, all) | `clear_session_state` | `{"pages": …}`, `{"items": …}`, `{"all": true}` |
 | `NATIVE_CLOSE_WINDOW` | `close_dialog` | Items to return as `{"items": …}` |
 | `NATIVE_RESET_PAGINATION` | `reset_pagination` | |
@@ -197,11 +205,26 @@ Process types (CD-4):
 | `NATIVE_EXECUTION_CHAIN` | `chain` | Child processes keep their chain |
 | `NATIVE_FORM_FETCH`, `NATIVE_FORM_PROCESS` (legacy forms), `NATIVE_WEB_SERVICE`, `NATIVE_USER_PREFERENCES`, `NATIVE_PRINT_REPORT`, `NATIVE_GEOCODING`, `NATIVE_WORKFLOW`, `NATIVE_HUMAN_TASK_*`, plug-ins | not mapped | The report says which pgkiln type to set up by hand |
 
-Not imported yet: interactive report and grid column settings and saved reports, charts, cards,
-calendars, maps, trees and faceted search, lists other than the navigation menu, application items,
-processes and computations, shared component types beyond lists of values and authorization
-schemes, translations, page JavaScript and CSS, plug-ins, and the APEXlang (`.apx`) and YAML
-exports.
+**PL/SQL that is SQL** (sprint 209). A PL/SQL process (on a page or of the application) whose body is only SQL, in
+a `begin … end;` block or not, becomes a pgkiln `sql` process that runs, rewritten like other Oracle SQL:
+
+| PL/SQL | Becomes |
+|---|---|
+| `begin update …; delete …; end;` (any `insert`, `update`, `delete`, `merge`) | the statements |
+| `:P3_A := upper(:P3_B); :P3_C := nvl(:P3_D, 0);` (after any of those statements) | `select upper(:P3_B) as p3_a, coalesce(:P3_D, 0) as p3_c`: a column named like an item sets it. Not when an expression reads an item assigned just before it |
+| `select ename, sal into :P3_ENAME, :P3_SAL from …;` | `select ename as p3_ename, sal as p3_sal from …` |
+| `insert … returning id into :P3_ID;` | `insert … returning id as p3_id` |
+
+Everything else (`declare`, variables, `if`, loops, exceptions, package calls) stays as it is and needs porting. Until
+it is ported such a process fails where it runs: on a submit the submit is rolled back with the error; while the page
+is shown the error shows at the top and the rest of the page still works.
+
+Not imported yet: interactive report saved reports other than the default one (their filters, highlights, control
+breaks, computations and charts), interactive grid saved reports and column validations, report columns' lists of
+values (display values), charts' axes (`create_jet_chart_axis`), maps, trees and dynamic content regions, lists other
+than the navigation menu and the lists regions show, breadcrumbs (`create_menu`), ACL roles (`create_acl_role`: the
+authorization schemes that name them become application roles), credentials, plug-in settings, shared component types
+beyond those above, translations, page JavaScript and CSS, plug-ins, and the APEXlang (`.apx`) and YAML exports.
 
 ## From Oracle to pgkiln
 
@@ -278,6 +301,25 @@ pgkiln import-apex f100.sql --schema sales --alias sales
 **4. Afterwards**: open the [Advisor](03-builder.md#advisor) (or `pgkiln advise sales`): it runs every query of the
 application as its role and lists what fails, among them the PL/SQL left to port and the APEX views. Work through the
 Team Development issues labelled *APEX import*, and run `pgkiln import-apex --check` again after each ora2pg run.
+
+**What the recipe gives** (sprint 209: `scripts/oracle-e2e.sh` locally and the workflow on GitHub, Oracle Database
+Free 23 and ora2pg 25.0). ora2pg moves the 12 OEHR tables, their sequence and view, the rows and the foreign keys;
+`--check` then finds no table, column, sequence or routine of the application missing, only APEX's views (used by the
+administration pages). After the import all 44 imported pages open as a user, and the OEHR pages show Oracle's rows:
+
+| Page | Shows |
+|---|---|
+| 2 Dashboard | four charts: order modes, product status, orders per sales rep and per customer |
+| 3 Customers | the customers in a faceted interactive report |
+| 5 Order Search, 7 Orders Calendar | the orders as cards, and on a calendar |
+| 6 Orders | the orders and the order items in two interactive grids |
+| 8 Employees | the employees in a faceted report |
+| 10, 12, 14, 16, 18, 20 | regions, countries, warehouses, products, jobs and departments in interactive reports, with APEX's column headings, hidden key columns, the edit link to the form page and the default report's sort |
+| 4, 9, 11, 13, 15, 17, 19, 21 | the form pages, empty for a new row or filled from the edit link |
+
+The 17 pages left with an error are APEX's own administration pages (access control, activity, feedback, theme
+styles, settings): they read APEX's views (`apex_activity_log`, `apex_appl_acl_users`, `apex_collections` …) and call
+`apex_util` and `owa_util`; rebuild them with pgkiln's own (Activity, Access control, Feedback) or leave them out.
 
 ## Users per application
 

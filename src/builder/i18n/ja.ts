@@ -8168,6 +8168,11 @@ export const ja: BuilderMessages = {
   'apx.kind.lov': 'LOV',
   'apx.kind.authorization': '認可スキーム',
   'apx.kind.navigation': 'ナビゲーション・エントリ',
+  'apx.kind.app_item': 'アプリケーション・アイテム',
+  'apx.kind.app_process': 'アプリケーション・プロセス',
+  'apx.kind.app_computation': 'アプリケーション計算',
+  'apx.kind.build_option': 'ビルド・オプション',
+  'apx.kind.app_setting': 'アプリケーション設定',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'ブラウザ・セキュリティ',
   'bs.intro': 'ブラウザがアプリケーションのページに対して行えること: フレーム内での表示、アドレスの受け渡し、インデックス登録。ビルダーは独自の設定を保持します。',

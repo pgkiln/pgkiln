@@ -8168,6 +8168,11 @@ export const nl: BuilderMessages = {
   'apx.kind.lov': 'Lijst met waarden',
   'apx.kind.authorization': 'Autorisatieschema',
   'apx.kind.navigation': 'Navigatie-item',
+  'apx.kind.app_item': 'Applicatie-item',
+  'apx.kind.app_process': 'Applicatieproces',
+  'apx.kind.app_computation': 'Applicatieberekening',
+  'apx.kind.build_option': 'Build-optie',
+  'apx.kind.app_setting': 'Applicatie-instelling',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'Browserbeveiliging',
   'bs.intro': 'Wat browsers met de pagina\'s van de applicatie mogen doen: ze in een frame tonen, het adres doorgeven, ze indexeren. De builder houdt zijn eigen instellingen.',

@@ -17,7 +17,8 @@ export const handWork = (report: ApexReport) => report.entries.filter((e) => e.s
 const KIND: Record<ReportEntry['kind'], string> = {
   application: 'Application', page: 'Page', region: 'Region', item: 'Item', button: 'Button', validation: 'Validation',
   process: 'Process', computation: 'Computation', branch: 'Branch', dynamic_action: 'Dynamic action', lov: 'List of values',
-  authorization: 'Authorization scheme', navigation: 'Navigation',
+  authorization: 'Authorization scheme', navigation: 'Navigation', app_item: 'Application item', app_process: 'Application process',
+  app_computation: 'Application computation', build_option: 'Build option', app_setting: 'Application setting',
 };
 
 const title = (e: ReportEntry) =>

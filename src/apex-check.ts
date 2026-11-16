@@ -196,7 +196,8 @@ export interface CheckResult {
   found: { name: string; as: string; usedBy: string[] }[];
 }
 
-const KINDS: Record<string, string> = { lov: 'list of values', authorization: 'authorization scheme', dynamic_action: 'dynamic action' };
+const KINDS: Record<string, string> = { lov: 'list of values', authorization: 'authorization scheme', dynamic_action: 'dynamic action',
+  app_item: 'application item', app_process: 'application process', app_computation: 'application computation', build_option: 'build option', app_setting: 'application setting' };
 const who = (e: CheckEntry) => `${e.page !== null ? `page ${e.page} ` : ''}${KINDS[e.kind] ?? e.kind} ${e.name}`;
 
 /**

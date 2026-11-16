@@ -683,7 +683,9 @@ export async function runProcesses(ctx: PageContext, point: 'submit' | 'load') {
       dbg(ctx, 9, 'process', () => `process "${p.name}" skipped (button, authorization or condition)`);
       continue;
     }
-    const msg = await runOne(ctx, p, names, 0);
+    // (sprint 209) a load process that fails rolls back to before it: the error shows, and the rest of the page (its
+    // regions, conditions, lists of values) still runs in a usable transaction instead of "current transaction is aborted"
+    const msg = point === 'load' ? await savepoint(ctx.client!, () => runOne(ctx, p, names, 0)) : await runOne(ctx, p, names, 0);
     // (166) &ITEM. in a success message, with the values after the process (a new row's key, say), as in APEX;
     // once here, so a chain's messages (joined by runOne) are filled in once
     if (msg) messages.push(substitute(msg, ctx, (x) => x));

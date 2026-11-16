@@ -18,6 +18,7 @@ import { ApexId, ApexParseError, joinSplitExport, parseApexCalls, unistr } from 
 import { apexSource, apexSourceFromDir, apexToDoc, attributeAt, conditionOk, MAPPED_PROCESS_TYPES, MAPPED_VALIDATION_TYPES, NotAnApexExport, oracleisms, parseFp, reportText, type ReportEntry } from '../src/apeximport.ts';
 import { Browser } from './helpers.ts';
 import { apexCheck, checkText, qualifyTables, soleTableColumn, sqlObjects } from '../src/apex-check.ts';
+import { plsqlAsSql } from '../src/oracle-sql.ts';
 
 const FIX = join(root, 'test/fixtures/apex');
 const F100 = readFileSync(join(FIX, 'f100.sql'), 'utf8');
@@ -211,10 +212,12 @@ describe('the mapping of f100.sql', () => {
     assert.equal(pr('Process form Order').region_id, form.id);
     assert.equal(pr('Process form Order').success_message, 'Order &P3_ID. saved.');
     assert.equal(pr('Log the change').type, 'sql');
-    assert.match(pr('Log the change').code, /^begin\n {2}insert into order_log/);
+    // (sprint 209) a PL/SQL block of SQL statements became those statements, rewritten from Oracle's SQL
+    assert.match(pr('Log the change').code, /^insert into sales\.order_log \(order_id, action, by_user, at\)\n {2}values \(:P3_ID, :REQUEST, :APP_USER, localtimestamp\(0\)\)$/);
     assert.equal(pr('Log the change').condition_type, 'request_not_in');
     assert.equal(pr('Log the change').condition_value, 'DELETE');
-    assert.ok(entry('process', 'Log the change').port);
+    assert.ok(!entry('process', 'Log the change').port);
+    assert.ok(entry('process', 'Log the change').notes.includes('the PL/SQL block became its SQL statements'));
     assert.deepEqual(pr('Mail the customer').config, { from: 'orders@example.com', to: '&P3_EMAIL.', subject: 'Order &P3_ID.', body: 'Dear customer,\n\nyour order &P3_ID. is &P3_STATUS..' });
     assert.equal(pr('Mail the customer').when_button, 'SAVE');
     assert.deepEqual(pr('Clear the note').config, { items: ['P3_NOTE', 'P3_CODE'] });
@@ -296,7 +299,7 @@ describe('the mapping of f100.sql', () => {
     assert.deepEqual([refresh.event, refresh.action, refresh.affected_region_id], ['dialog_closed', 'refresh_region', r(2, 'Orders').id]);
     assert.equal(entry('dynamic_action', 'Highlight rows').status, 'not_mapped');
     // (sprint 190) create_jet_chart is read now
-    assert.deepEqual(report.skipped, { create_worksheet_column: 1 });
+    assert.deepEqual(report.skipped, {}, '(sprint 209) interactive report columns are read');
   });
 
   test('the report as text: not mapped first, with the APEX types and what to port', () => {
@@ -304,7 +307,7 @@ describe('the mapping of f100.sql', () => {
     assert.match(text, /^APEX application 100 "Order's Desk" \(APEX 23\.2\.0\) → orders-desk\n/);
     assert.ok(text.indexOf('NOT MAPPED') < text.indexOf('MAPPED WITH NOTES'));
     assert.match(text, /validation "Legacy PL\/SQL error" \(PLSQL_ERROR\)/);
-    assert.match(text, /process "Log the change" \(NATIVE_PLSQL\) → sql {2}\[needs porting\]/);
+    assert.match(text, /process "Recalculate" \(NATIVE_INVOKE_API\) → sql {2}\[needs porting\]/);
     assert.doesNotMatch(text, /\nMAPPED\n/, 'without --all no list of what simply mapped');
     assert.match(reportText(report, { all: true }), /\nMAPPED\n/);
     assert.equal(report.counts.mapped + report.counts.notes + report.counts.not_mapped, report.entries.length);
@@ -493,10 +496,10 @@ describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
   test('parses (wwv_flow_t_plugin_attributes(…).to_clob) and maps every page but the global page', () => {
     const { doc, report } = apexToDoc(F77536);
     assert.equal(doc.app.name, 'Demonstration - HR');
-    assert.equal(doc.pages.length, 45, '46 pages, without page 0');
+    assert.equal(doc.pages.length, 44, '46 pages, without page 0 and (sprint 209) the login page of APEX_AUTHENTICATION.LOGIN');
     assert.ok(report.counts.mapped >= 300, `mapped ${report.counts.mapped}`);
     assert.ok(report.counts.mapped + report.counts.notes >= 452, `mapped with or without notes ${report.counts.mapped + report.counts.notes}`);
-    assert.ok(report.counts.not_mapped <= 9, `not mapped ${report.counts.not_mapped}`);
+    assert.ok(report.counts.not_mapped <= 10, `not mapped ${report.counts.not_mapped}`); // (sprint 209) the login page is one
   });
 
   test('charts, cards, calendar, faceted search, lists and classic reports of APEX 26.2 become pgkiln regions', () => {
@@ -538,9 +541,8 @@ describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
     // authorization: NATIVE_IS_IN_GROUP from p_attributes
     assert.deepEqual(doc.authz_schemes.find((x: any) => x.name === 'ADMINISTRATION_RIGHTS'), { name: 'ADMINISTRATION_RIGHTS', type: 'role', value: 'Administrator', error_message: 'Insufficient privileges, user is not an Administrator' });
     // processes: p_attributes by their 26.2 names; APEX's own login API is pgkiln's sign-in
-    const p9999 = doc.pages.find((p: any) => p.page_no === 9999);
-    assert.deepEqual(p9999.processes.map((x: any) => x.name).filter((n: string) => n === 'Login' || n === 'Set Username Cookie'), [], 'the Invoke API calls of APEX_AUTHENTICATION are left out');
-    assert.ok(p9999.processes.some((x: any) => x.type === 'clear_session_state' && x.config?.pages?.[0] === 9999));
+    // (sprint 209) the login page (an Invoke API process of APEX_AUTHENTICATION.LOGIN) is not imported: pgkiln signs users in
+    assert.ok(!doc.pages.some((p: any) => p.page_no === 9999));
   });
   test('attributeAt reads p_attribute_NN, else the 26.2 name', () => {
     assert.equal(attributeAt({ p_attribute_01: 'EMAIL' }, 'NATIVE_TEXT_FIELD', 1), 'EMAIL');
@@ -676,5 +678,201 @@ describe('sprint 192: from Oracle to pgkiln (NX-F5)', () => {
     const ok = await b.submit(url, { action: 'preview', alias: 'apex192-builder', schema: 'apex192_oehr' });
     assert.doesNotMatch(ok.body, /<code>apex192_oehr\.oehr_orders<\/code>/);
     assert.match(ok.body, /<code>apex_workspace_apex_users<\/code>/);
+  });
+});
+
+describe('sprint 209 NX-F5: shared components, report and grid columns, PL/SQL that is SQL', () => {
+  // a hand-written export in APEX 23.2's format: the parts sprint 209 reads
+  const SHOP = `
+begin
+wwv_flow_imp.import_begin(p_version_yyyy_mm_dd=>'2023.10.31',p_release=>'23.2.0',p_default_application_id=>209,p_default_owner=>'APEX209');
+end;
+/
+begin
+wwv_imp_workspace.create_flow(p_id=>wwv_flow.g_flow_id,p_owner=>'APEX209',p_name=>'Shop 209',p_alias=>'SHOP209',p_flow_language=>'en');
+wwv_flow_imp_shared.create_build_option(p_id=>wwv_flow_imp.id(901),p_build_option_name=>'Feature: Extras',p_build_option_status=>'INCLUDE',p_build_option_comment=>'Extra features');
+wwv_flow_imp_shared.create_build_option(p_id=>wwv_flow_imp.id(902),p_build_option_name=>'Commented Out',p_build_option_status=>'EXCLUDE');
+wwv_flow_imp_shared.create_flow_item(p_id=>wwv_flow_imp.id(911),p_name=>'AI_CURRENCY',p_protection_level=>'I',p_item_comment=>'The shop''s currency');
+wwv_flow_imp_shared.create_flow_item(p_id=>wwv_flow_imp.id(912),p_name=>'AI_GREETING',p_scope=>'GLOBAL');
+wwv_flow_imp_shared.create_flow_process(p_id=>wwv_flow_imp.id(921),p_process_sequence=>1,p_process_point=>'ON_NEW_INSTANCE',p_process_type=>'NATIVE_PLSQL',p_process_name=>'Set currency',p_process_sql_clob=>':AI_CURRENCY := ''EUR'';',p_process_clob_language=>'PLSQL');
+wwv_flow_imp_shared.create_flow_process(p_id=>wwv_flow_imp.id(922),p_process_sequence=>2,p_process_point=>'BEFORE_HEADER',p_process_type=>'NATIVE_PLSQL',p_process_name=>'Greeting',p_process_sql_clob=>'begin :AI_GREETING := ''Hello from '' || nvl(:AI_CURRENCY, ''the shop''); end;',p_process_clob_language=>'PLSQL',p_required_patch=>wwv_flow_imp.id(901));
+wwv_flow_imp_shared.create_flow_process(p_id=>wwv_flow_imp.id(923),p_process_sequence=>3,p_process_point=>'ON_DEMAND',p_process_type=>'NATIVE_PLSQL',p_process_name=>'Real PL/SQL',p_process_sql_clob=>'declare l number; begin l := 1; htp.p(l); end;',p_process_when_type=>'NEVER');
+wwv_flow_imp_shared.create_flow_computation(p_id=>wwv_flow_imp.id(931),p_computation_sequence=>10,p_computation_item=>'AI_CURRENCY',p_computation_point=>'AFTER_LOGIN',p_computation_type=>'QUERY',p_computation=>'select ''EUR'' from dual');
+wwv_flow_imp_shared.create_flow_computation(p_id=>wwv_flow_imp.id(932),p_computation_sequence=>20,p_computation_item=>'AI_GREETING',p_computation_point=>'NEVER',p_computation_type=>'STATIC_ASSIGNMENT',p_computation=>'x');
+wwv_flow_imp_shared.create_app_setting(p_id=>wwv_flow_imp.id(941),p_name=>'SHIP_MODE',p_value=>'FAST',p_is_required=>'Y',p_valid_values=>'FAST, SLOW',p_on_upgrade_keep_value=>false,p_comments=>'How we ship');
+wwv_flow_imp_shared.create_list_of_values(p_id=>wwv_flow_imp.id(951),p_lov_name=>'CATEGORIES',p_lov_query=>'select name d, code r from category order by 1',p_source_type=>'LEGACY_SQL');
+wwv_flow_imp_page.create_page(p_id=>1,p_name=>'Products',p_step_title=>'Products',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(1001),p_plug_name=>'Products',p_plug_display_sequence=>10,p_query_type=>'TABLE',p_query_table=>'PRODUCT',p_plug_source_type=>'NATIVE_IR');
+wwv_flow_imp_page.create_worksheet(p_id=>wwv_flow_imp.id(1002),p_show_detail_link=>'C',p_detail_link=>'f?p=&APP_ID.:2:&SESSION.::&DEBUG.:RP:P2_ID:\\#ID#\\',p_no_data_found_message=>'No products.');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1003),p_db_column_name=>'ID',p_display_order=>1,p_column_label=>'Id',p_display_text_as=>'HIDDEN_ESCAPE_SC');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1004),p_db_column_name=>'NAME',p_display_order=>2,p_column_label=>'Product');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1005),p_db_column_name=>'PRICE',p_display_order=>3,p_column_label=>'Price',p_format_mask=>'999G990D00');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1006),p_db_column_name=>'CATEGORY',p_display_order=>4,p_column_label=>'Category',p_display_text_as=>'LOV_ESCAPE_SC',p_rpt_named_lov=>wwv_flow_imp.id(951));
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1007),p_db_column_name=>'SECRET',p_display_order=>5,p_column_label=>'Secret note',p_format_mask=>'SINCE');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(1008),p_application_user=>'APXWS_DEFAULT',p_is_default=>'Y',p_report_columns=>'ID:NAME:PRICE:CATEGORY',p_sort_column_1=>'NAME',p_sort_direction_1=>'DESC');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(1010),p_plug_name=>'Greeting',p_plug_display_sequence=>20,p_plug_source=>'<p>&AI_GREETING.</p>',p_plug_source_type=>'NATIVE_STATIC',p_required_patch=>wwv_flow_imp.id(-902));
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(1011),p_plug_name=>'Old notes',p_plug_display_sequence=>30,p_plug_source=>'<p>commented out</p>',p_plug_source_type=>'NATIVE_STATIC',p_required_patch=>wwv_flow_imp.id(902));
+wwv_flow_imp_page.create_page_item(p_id=>wwv_flow_imp.id(1020),p_name=>'P1_X',p_item_sequence=>10,p_display_as=>'NATIVE_HIDDEN');
+wwv_flow_imp_page.create_page_process(p_id=>wwv_flow_imp.id(1021),p_process_sequence=>10,p_process_point=>'BEFORE_HEADER',p_process_type=>'NATIVE_PLSQL',p_process_name=>'Broken lookup',p_process_sql_clob=>'select missing_column into :P1_X from product where id = 1;');
+wwv_flow_imp_page.create_page(p_id=>2,p_name=>'Product',p_page_mode=>'MODAL',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_page_item(p_id=>wwv_flow_imp.id(2001),p_name=>'P2_ID',p_item_sequence=>10,p_display_as=>'NATIVE_HIDDEN');
+wwv_flow_imp_page.create_page(p_id=>3,p_name=>'Price list',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(3001),p_plug_name=>'Price list',p_plug_display_sequence=>10,p_query_type=>'TABLE',p_query_table=>'PRODUCT',p_plug_source_type=>'NATIVE_IG');
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(3002),p_name=>'ID',p_source_type=>'DB_COLUMN',p_source_expression=>'ID',p_item_type=>'NATIVE_HIDDEN',p_display_sequence=>10,p_is_primary_key=>true,p_is_required=>true);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(3003),p_name=>'NAME',p_source_type=>'DB_COLUMN',p_source_expression=>'NAME',p_item_type=>'NATIVE_TEXT_FIELD',p_heading=>'Product',p_display_sequence=>20,p_is_required=>true);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(3004),p_name=>'PRICE',p_source_type=>'DB_COLUMN',p_source_expression=>'PRICE',p_item_type=>'NATIVE_NUMBER_FIELD',p_heading=>'Price',p_format_mask=>'999G990D00',p_default_type=>'STATIC',p_default_expression=>'0',p_display_sequence=>30);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(3005),p_name=>'CATEGORY',p_source_type=>'DB_COLUMN',p_source_expression=>'CATEGORY',p_item_type=>'NATIVE_SELECT_LIST',p_heading=>'Category',p_lov_type=>'SHARED',p_lov_id=>wwv_flow_imp.id(951),p_display_sequence=>40);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(3006),p_name=>'SECRET',p_source_type=>'DB_COLUMN',p_source_expression=>'SECRET',p_item_type=>'NATIVE_DISPLAY_ONLY',p_heading=>'Secret',p_display_sequence=>50);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(3007),p_name=>'APEX$ROW_ACTION',p_item_type=>'NATIVE_ROW_ACTION',p_display_sequence=>60);
+wwv_flow_imp_page.create_interactive_grid(p_id=>wwv_flow_imp.id(3010),p_is_editable=>true,p_edit_operations=>'u');
+wwv_flow_imp_page.create_ig_report(p_id=>wwv_flow_imp.id(3011),p_interactive_grid_id=>wwv_flow_imp.id(3010),p_type=>'PRIMARY');
+wwv_flow_imp_page.create_ig_report_view(p_id=>wwv_flow_imp.id(3012),p_report_id=>wwv_flow_imp.id(3011),p_view_type=>'GRID');
+wwv_flow_imp_page.create_ig_report_column(p_id=>wwv_flow_imp.id(3013),p_view_id=>wwv_flow_imp.id(3012),p_display_seq=>1,p_column_id=>wwv_flow_imp.id(3003),p_is_visible=>true,p_is_frozen=>true,p_width=>200);
+wwv_flow_imp_page.create_ig_report_column(p_id=>wwv_flow_imp.id(3014),p_view_id=>wwv_flow_imp.id(3012),p_display_seq=>2,p_column_id=>wwv_flow_imp.id(3004),p_is_visible=>true,p_is_frozen=>false);
+wwv_flow_imp_page.create_ig_report_column(p_id=>wwv_flow_imp.id(3015),p_view_id=>wwv_flow_imp.id(3012),p_display_seq=>3,p_column_id=>wwv_flow_imp.id(3005),p_is_visible=>false,p_is_frozen=>false);
+wwv_flow_imp_page.create_page_process(p_id=>wwv_flow_imp.id(3020),p_process_sequence=>10,p_region_id=>wwv_flow_imp.id(3001),p_process_type=>'NATIVE_IG_DML',p_process_name=>'Save');
+wwv_flow_imp_page.create_page(p_id=>4,p_name=>'Old page',p_page_is_public_y_n=>'Y',p_required_patch=>wwv_flow_imp.id(902));
+wwv_flow_imp_page.create_page(p_id=>5,p_name=>'Cheap',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_report_region(p_id=>wwv_flow_imp.id(5001),p_name=>'Cheap products',p_display_sequence=>10,p_source=>'select id, name, price from product where price < 10',p_source_type=>'NATIVE_SQL_REPORT');
+wwv_flow_imp_page.create_report_columns(p_id=>wwv_flow_imp.id(5002),p_query_column_id=>1,p_column_alias=>'ID',p_column_display_sequence=>1,p_column_heading=>'Id',p_hidden_column=>'Y');
+wwv_flow_imp_page.create_report_columns(p_id=>wwv_flow_imp.id(5003),p_query_column_id=>2,p_column_alias=>'NAME',p_column_display_sequence=>2,p_column_heading=>'Cheap product',p_column_link=>'f?p=&APP_ID.:2:&SESSION.::&DEBUG.::P2_ID:#ID#',p_column_linktext=>'#NAME#');
+wwv_flow_imp_page.create_report_columns(p_id=>wwv_flow_imp.id(5004),p_query_column_id=>3,p_column_alias=>'PRICE',p_column_display_sequence=>3,p_column_heading=>'Price',p_column_format=>'990D00');
+end;
+/
+`;
+  const ALIAS = 'apex209-shop';
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query('drop schema if exists apex209 cascade');
+    await owner.query(`create schema apex209;
+      create table apex209.category (code text primary key, name text not null);
+      create table apex209.product (id int primary key, name text not null, price numeric(10,2), category text references apex209.category, secret text);
+      insert into apex209.category values ('T', 'Tools'), ('G', 'Garden');
+      insert into apex209.product values (1, 'Hammer', 12.5, 'T', 'top secret'), (2, 'Rake', 7.25, 'G', null), (3, 'Anvil', 99, 'T', null);
+      grant usage on schema apex209 to hr_app;
+      grant select, insert, update, delete on all tables in schema apex209 to hr_app`);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query('drop schema if exists apex209 cascade');
+  });
+
+  test('plsqlAsSql: SQL statements, item assignments, SELECT and RETURNING … INTO; real PL/SQL stays', () => {
+    const t = (code: string) => plsqlAsSql(code)?.sql ?? null;
+    assert.equal(t("begin\n  update emp set sal = sal * 1.1 where deptno = :P2_DEPTNO;\n  delete from log where x = 'a;b';\nend;"),
+      "update emp set sal = sal * 1.1 where deptno = :P2_DEPTNO;\ndelete from log where x = 'a;b'");
+    assert.equal(t(':P1_A := upper(:P1_B);\n:P1_C := nvl(:P1_D, 0);'), 'select upper(:P1_B) as p1_a,\n       nvl(:P1_D, 0) as p1_c');
+    assert.equal(t('select ename, sal into :P3_ENAME, :P3_SAL from emp where empno = :P3_EMPNO;'), 'select ename as p3_ename, sal as p3_sal\n from emp where empno = :P3_EMPNO');
+    assert.equal(t('insert into t (a) values (:P1_A) returning id into :P1_ID;'), 'insert into t (a) values (:P1_A) returning id as p1_id');
+    assert.equal(t("begin\n  -- a comment; with a semicolon\n  :P1_X := 'it''s; fine';\nend;"), "select 'it''s; fine' as p1_x");
+    assert.equal(t('update t set a = 1;\n:P1_DONE := \'Y\';'), "update t set a = 1;\nselect 'Y' as p1_done");
+    for (const code of [
+      ":P1_A := 'x';\n:P1_B := :P1_A || 'y';", // reads an item set just before: one SELECT would see the old value
+      'begin if :P1_X is null then null; end if; end;',
+      'declare l number; begin null; end;',
+      "apex_util.set_session_state('P1_X', 1);",
+      'select count(*) into l_cnt from emp',
+      'select a, b into :P1_A from t',
+      ':P1_A := 1;\nupdate t set a = 1;',
+      '',
+    ]) assert.equal(t(code), null, code);
+  });
+
+  test('build options, application items, processes, computations and settings', () => {
+    const { doc, report } = apexToDoc(SHOP, { alias: ALIAS }) as { doc: any; report: any };
+    const entry = (kind: string, name: string) => report.entries.find((e: any) => e.kind === kind && e.name === name);
+    assert.deepEqual(doc.build_options, [
+      { name: 'FEATURE_EXTRAS', status: 'include', description: 'Extra features', configurable: false },
+      { name: 'COMMENTED_OUT', status: 'exclude', description: null, configurable: false },
+    ]);
+    assert.equal(entry('build_option', 'Commented Out').target, 'COMMENTED_OUT');
+    assert.deepEqual(doc.app_items, [{ name: 'AI_CURRENCY', description: "The shop's currency" }, { name: 'AI_GREETING', description: null }]);
+    assert.match(entry('app_item', 'AI_GREETING').notes.join(), /scope Global/);
+    const proc = (n: string) => doc.app_processes.find((p: any) => p.name === n);
+    assert.deepEqual(proc('Set currency'), { seq: 1, name: 'Set currency', point: 'after_login', code: "select 'EUR' as ai_currency", authz: null, build_option: null });
+    assert.equal(proc('Greeting').point, 'before_page');
+    assert.equal(proc('Greeting').code, "select 'Hello from ' || coalesce(:AI_CURRENCY, 'the shop') as ai_greeting");
+    assert.equal(proc('Greeting').build_option, 'FEATURE_EXTRAS');
+    assert.equal(proc('Real PL/SQL').point, 'ajax');
+    assert.ok(entry('app_process', 'Real PL/SQL').port, 'real PL/SQL needs porting');
+    assert.match(entry('app_process', 'Real PL/SQL').notes.join(), /condition \(NEVER\) is not carried over/);
+    assert.deepEqual(doc.app_computations.map((c: any) => [c.item_name, c.point, c.type, c.expression]), [['AI_CURRENCY', 'after_authentication', 'sql_query', "select 'EUR'"]]);
+    assert.equal(entry('app_computation', 'AI_GREETING').status, 'not_mapped');
+    assert.deepEqual(doc.app_settings, [{ name: 'SHIP_MODE', value: 'FAST', description: 'How we ship', required: true, valid_values: ['FAST', 'SLOW'], keep_on_upgrade: false }]);
+    // p_required_patch: the option, or (a negative id) while it is excluded
+    const p1 = doc.pages.find((p: any) => p.page_no === 1);
+    assert.equal(p1.regions.find((r: any) => r.title === 'Greeting').build_option, '!COMMENTED_OUT');
+    assert.equal(p1.regions.find((r: any) => r.title === 'Old notes').build_option, 'COMMENTED_OUT');
+    assert.equal(doc.pages.find((p: any) => p.page_no === 4).build_option, 'COMMENTED_OUT');
+    assert.deepEqual(report.skipped, {});
+  });
+
+  test('interactive report, classic report and grid column settings', () => {
+    const { doc, report } = apexToDoc(SHOP, { alias: ALIAS }) as { doc: any; report: any };
+    const region = (t: string) => doc.pages.flatMap((p: any) => p.regions).find((r: any) => r.title === t);
+    const notes = (t: string) => report.entries.find((e: any) => e.kind === 'region' && e.name === t).notes.join('\n');
+    const ir = region('Products');
+    assert.equal(ir.source, 'select * from apex209.product\n order by "name" desc');
+    assert.deepEqual(ir.config, {
+      headings: { name: 'Product', secret: 'Secret note' }, hidden: ['id', 'secret'], formats: { price: '999G990D00' },
+      link: { column: 'id', page: 2, items: { P2_ID: '#id#' }, icon: true }, empty: 'No products.',
+    });
+    assert.match(notes('Products'), /column category shows a list of values' display value/);
+    assert.match(notes('Products'), /APEX's SINCE format is not carried over/);
+    assert.match(notes('Products'), /columns not in the default report \(secret\) became hidden columns/);
+    const classic = region('Cheap products');
+    assert.deepEqual(classic.config, { headings: { name: 'Cheap product' }, hidden: ['id'], formats: { price: '990D00' }, link: { column: 'name', page: 2, items: { P2_ID: '#id#' } } });
+    const grid = region('Price list');
+    assert.deepEqual(grid.config, {
+      headings: { name: 'Product' }, hidden: ['id'], formats: { price: '999G990D00' }, readonly: ['secret'],
+      columns: { name: { required: true }, price: { default: '0' }, category: { lov: 'LOV:CATEGORIES' } },
+      layout: { order: ['name', 'price', 'category'], hidden: ['category'], widths: { name: 200 }, frozen: 1 },
+      allow: { insert: false, update: true, delete: false },
+    });
+  });
+
+  test('imported, the pages run: columns, link, build options, application items; a failing load process leaves the page working', async () => {
+    const { doc } = apexToDoc(SHOP, { alias: ALIAS, dbRole: 'hr_app' });
+    await owner.query('select meta.import_app($1::jsonb, $2)', [JSON.stringify(doc), ALIAS]);
+    const back = (await owner.one<{ d: any }>('select meta.export_app($1) as d', [ALIAS]))!.d;
+    for (const k of ['build_options', 'app_items', 'app_processes', 'app_computations', 'app_settings']) assert.equal(back[k].length, (doc as any)[k].length, k);
+    const b = new Browser(app);
+    const p1 = await b.get(`/a/${ALIAS}/1`);
+    assert.equal(p1.statusCode, 200);
+    const body = p1.body;
+    assert.ok(body.includes('Hammer') && body.includes('Rake'), 'the report shows its rows after the failing load process');
+    assert.ok(body.indexOf('Rake') < body.indexOf('Hammer'), 'sorted by name, descending');
+    assert.match(body, /missing_column|unexpected error/, 'the load process\'s error shows');
+    assert.ok(!body.includes('current transaction is aborted'));
+    assert.match(body, />Product</);
+    assert.ok(!body.includes('top secret'), 'a column left out of the default report is hidden');
+    assert.match(body, /Hello from the shop/, 'the application process (build option included) sets the application item');
+    assert.ok(!body.includes('commented out'), 'a region of an excluded build option is left out');
+    assert.match(body, /href="[^"]*\/a\/apex209-shop\/2[^"]*P2_ID=3/, 'the detail link');
+    assert.equal((await b.get(`/a/${ALIAS}/4`)).statusCode, 404, 'a page of an excluded build option');
+    const p5 = await b.get(`/a/${ALIAS}/5`);
+    assert.match(p5.body, /Cheap product/);
+    assert.match(p5.body, /7\.25/);
+    const p3 = await b.get(`/a/${ALIAS}/3`);
+    assert.equal(p3.statusCode, 200);
+    assert.match(p3.body, /Anvil/);
+  });
+
+  test('app 77536: its build options and settings, interactive report columns and links, grid layouts', () => {
+    const { doc } = apexToDoc(readFileSync(join(FIX, 'f77536.sql'), 'utf8')) as { doc: any };
+    assert.equal(doc.build_options.length, 9);
+    assert.equal(doc.build_options.find((b: any) => b.name === 'COMMENTED_OUT').status, 'exclude');
+    assert.deepEqual(doc.app_settings.map((s: any) => s.name).sort(), ['ACCESS_CONTROL_SCOPE', 'FEEDBACK_ATTACHMENTS_YN']);
+    assert.ok(doc.pages.filter((p: any) => p.build_option).length >= 20, 'the administration pages keep their feature build options');
+    const regions = doc.pages.flatMap((p: any) => p.regions);
+    const countries = regions.find((r: any) => r.title === 'Countries' && r.type === 'report');
+    assert.deepEqual(countries.config.link, { column: 'country_id', page: 13, items: { P13_COUNTRY_ID: '#country_id#' }, icon: true });
+    assert.deepEqual(countries.config.hidden, ['country_id']);
+    assert.match(countries.source, /order by "country_id"$/);
+    const products = regions.find((r: any) => r.title === 'Product Information' && r.type === 'report');
+    assert.ok(products.config.hidden.includes('category_id'));
+    const items = regions.find((r: any) => r.title === 'Order Items' && r.type === 'grid');
+    assert.ok(items.config.hidden.includes('line_item_id'));
+    assert.ok(items.config.layout?.order.length >= 3);
   });
 });

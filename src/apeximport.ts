@@ -17,7 +17,7 @@
 // Every component gets a line in the report: mapped, mapped with notes, or not mapped (with its
 // APEX type), so a developer knows what to finish by hand. Unknown things never fail the import.
 
-import { translateOracle } from './oracle-sql.ts';
+import { codeMask, plsqlAsSql, translateOracle } from './oracle-sql.ts';
 import { pageAliasProblem } from './page-alias.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
@@ -28,7 +28,9 @@ import { emptyUses, qualifyTables, soleTableColumn, sqlObjects, type Uses } from
 export type ReportStatus = 'mapped' | 'notes' | 'not_mapped';
 export type ReportKind =
   | 'application' | 'page' | 'region' | 'item' | 'button' | 'validation' | 'process' | 'computation' | 'branch'
-  | 'dynamic_action' | 'lov' | 'authorization' | 'navigation';
+  | 'dynamic_action' | 'lov' | 'authorization' | 'navigation'
+  // (sprint 209) shared components of the application
+  | 'app_item' | 'app_process' | 'app_computation' | 'build_option' | 'app_setting';
 
 export interface ReportEntry {
   kind: ReportKind;
@@ -568,6 +570,10 @@ const READ = new Set([
   'create_list_of_values', 'create_static_lov_data', 'create_security_scheme', 'create_list', 'create_list_item',
   'create_region_column', 'create_invokeapi_comp_param', 'create_user_interface', 'create_web_source_module',
   'create_worksheet', 'create_authentication', 'import_begin',
+  // (sprint 209)
+  'create_build_option', 'create_flow_item', 'create_flow_process', 'create_flow_computation', 'create_app_setting',
+  'create_worksheet_column', 'create_worksheet_rpt', 'create_report_columns', 'create_interactive_grid', 'create_ig_report',
+  'create_ig_report_view', 'create_ig_report_column',
 ]);
 
 // ------------------------------------------------------------------ the mapping
@@ -744,6 +750,34 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     return (neg ? '!' : '') + name;
   };
 
+  // ---- (sprint 209) build options; a component's p_required_patch names one (a negative id: while it is excluded)
+  const buildOptions: any[] = [];
+  const buildOptionName = new Map<string, string>();
+  const usedBo = new Set<string>();
+  for (const c of by('create_build_option')) {
+    const a = c.args;
+    const apexName = str(a, 'p_build_option_name', 'p_name') ?? 'BUILD_OPTION';
+    let name = upperName(apexName, 'BUILD_OPTION');
+    for (let n = 2; usedBo.has(name); n++) name = `${upperName(apexName, 'BUILD_OPTION').slice(0, 55)}_${n}`;
+    usedBo.add(name);
+    const id = ref(a, 'p_id');
+    if (id) buildOptionName.set(id.replace(/^-/, ''), name);
+    const status = /^exclude$/i.test(str(a, 'p_build_option_status') ?? '') ? 'exclude' : 'include';
+    add(new Entry('build_option', null, apexName, (str(a, 'p_build_option_status') ?? 'INCLUDE').toUpperCase(), name));
+    buildOptions.push({ name, status, description: str(a, 'p_build_option_comment'), configurable: false });
+  }
+  /** a component's build option: NAME, !NAME (APEX's negative id), or null; one not in the export is left off */
+  const bo = (a: Args, e: Entry): string | null => {
+    const id = ref(a, 'p_required_patch', 'p_build_option_id');
+    if (!id) return null;
+    const name = buildOptionName.get(id.replace(/^-/, ''));
+    if (!name) {
+      e.note('its build option is not in the export: the component is always part of the application');
+      return null;
+    }
+    return (id.startsWith('-') ? '!' : '') + name;
+  };
+
   // ---- pages
   const pageCalls = by('create_page');
   const pageAlias = new Map<string, number>();
@@ -761,6 +795,10 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   for (const c of by('create_page_process')) {
     const code = str(c.args, 'p_process_sql_clob', 'p_process_sql') ?? '';
     if (/apex_authentication\s*\.\s*login\b|wwv_flow_custom_auth_std\s*\.\s*login\b/i.test(code)) loginPages.add(pageOf.get(c)!);
+    // (sprint 209) APEX 26.2's login page calls the API declaratively: an Invoke API process of APEX_AUTHENTICATION.LOGIN
+    const type = (str(c.args, 'p_process_type') ?? '').toUpperCase();
+    if (type === 'NATIVE_INVOKE_API' && /^APEX_AUTHENTICATION$/i.test(attributeAt(c.args, type, 3) ?? str(c.args, 'p_api_package') ?? '')
+      && /^LOGIN$/i.test(attributeAt(c.args, type, 4) ?? str(c.args, 'p_api_procedure') ?? '')) loginPages.add(pageOf.get(c)!);
   }
 
   const pages: any[] = [];
@@ -805,6 +843,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       page_template: 'standard',
       help: help && help.length <= 20000 ? help : null,
       authz: authz(a, e),
+      build_option: bo(a, e),
       parent_page: null,
       regions: [] as any[],
       items: [] as any[],
@@ -896,7 +935,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       condition_type: cond.condition_type,
       condition_value: cond.condition_value,
       authz: authz(a, e),
-      build_option: null,
+      build_option: bo(a, e),
       rest_source: null,
     };
     const point = (str(a, 'p_plug_display_point') ?? 'BODY').toUpperCase();
@@ -1010,7 +1049,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
           row.type = 'static';
           row.source = `<p>APEX report ${escapeHtml(title)}: no query found.</p>`;
           e.notMapped('no query found');
-        } else if (row.type === 'report') e.note('interactive report settings (columns, saved reports, links) are not carried over: set them in the report settings');
+        }
         break;
       }
       case 'form': {
@@ -1043,7 +1082,6 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
           row.source = `<p>APEX interactive grid ${escapeHtml(title)}: no table or query found.</p>`;
           e.notMapped('no table or query found');
         }
-        e.note('grid column settings (labels, lists of values, column validations) are not carried over');
         break;
       }
       case 'breadcrumb':
@@ -1057,6 +1095,203 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (id) regionDoc.set(id, { id: row.id, page, row });
   }
   const regionId = (id: string | null) => (id ? regionDoc.get(id)?.id ?? null : null);
+
+  // ---- (sprint 209) report and grid column settings. The column calls come right after their region (APEX 26.2 leaves
+  // out p_region_id; older exports name it, or the worksheet): headings, hidden columns, format masks, the link, the
+  // default report's sort; a grid's columns (list of values, required, read only, default) and its default layout.
+  {
+    const plugLines = [...by('create_page_plug'), ...by('create_report_region')].sort((x, y) => x.line - y.line);
+    const regionAbove = (x: ApexCall) => {
+      let found: ApexCall | null = null;
+      for (const p of plugLines) if (p.line < x.line) found = p; else break;
+      return found ? ref(found.args, 'p_id') : null;
+    };
+    const grouped = (method: string) => {
+      const out = new Map<string, ApexCall[]>();
+      for (const c of by(method)) {
+        const r = ref(c.args, 'p_region_id') ?? regionAbove(c);
+        if (r) out.set(r, [...(out.get(r) ?? []), c]);
+      }
+      return out;
+    };
+    const defaultHeading = (c: string) => c.replace(/_/g, ' ').replace(/\b\p{L}/gu, (x) => x.toUpperCase());
+    /** a format mask pgkiln formats with (APEX's SINCE, PCT_GRAPH, IMAGE, DOWNLOAD … are not masks) */
+    const mask = (m: string | null, col: string, e: Entry) => {
+      if (!m) return null;
+      if (/^(SINCE|SINCE_SHORT|PCT_GRAPH|IMAGE|DOWNLOAD)\b/i.test(m)) {
+        e.note(`column ${col}: APEX's ${m.split(':')[0]} format is not carried over`);
+        return null;
+      }
+      return m;
+    };
+    /** the APEX link (f?p=…) of a column or the detail link, as a report's link (null: not a page of the application) */
+    const linkOf = (url: string | null, column: string | null, e: Entry, icon: boolean) => {
+      const fp = parseFp(url);
+      const page = fp ? pageNo(fp.page) : null;
+      if (!fp || !page) {
+        if (url) e.note(`its link ${url} is not a page of the application: not carried over`);
+        return null;
+      }
+      const items = lowerHashes(fp.items);
+      const col = column ?? /#([a-z0-9_$]+)#/.exec(Object.values(items).join(' '))?.[1] ?? null;
+      if (!col) return null;
+      return { column: col, page, items, ...(icon ? { icon: true } : {}) };
+    };
+    const orderBy = (row: any, cols: [string, boolean][], e: Entry) => {
+      // only where an ORDER BY can go at the end, and on plain column names (quoted: a column may be called page or timestamp)
+      if (!cols.length || !row.source || /\b(order\s+by|limit|fetch|offset|for\s+update)\b/i.test(codeMask(row.source))) return;
+      if (cols.some(([c]) => !/^[a-z_][a-z0-9_$]*$/.test(c))) return;
+      row.source += `\n order by ${cols.map(([c, desc]) => `"${c}"${desc ? ' desc' : ''}`).join(', ')}`;
+      e.note(`the default sort (${cols.map(([c, d]) => `${c}${d ? ' desc' : ''}`).join(', ')}) became the query's order by`);
+    };
+    const settle = (cfg: any) => {
+      for (const k of ['headings', 'formats', 'columns']) if (cfg[k] && !Object.keys(cfg[k]).length) delete cfg[k];
+      for (const k of ['hidden', 'readonly']) if (cfg[k] && !cfg[k].length) delete cfg[k];
+    };
+
+    // interactive reports
+    const worksheets = grouped('create_worksheet');
+    const savedReports = grouped('create_worksheet_rpt');
+    for (const [rid, cols] of grouped('create_worksheet_column')) {
+      const r = regionDoc.get(rid);
+      const e = regionApex.get(rid)?.e;
+      if (!r || !e || !['report', 'classic_report'].includes(r.row.type)) continue;
+      const cfg: any = { ...r.row.config, headings: {}, hidden: [], formats: {} };
+      const reports = savedReports.get(rid) ?? [];
+      const primary = reports.find((x) => yes(x.args, 'p_is_default')) ?? reports.find((x) => str(x.args, 'p_application_user') === 'APXWS_DEFAULT') ?? reports[0];
+      const shown = new Set((str(primary?.args ?? {}, 'p_report_columns') ?? '').split(':').map((x) => x.trim().toUpperCase()).filter(Boolean));
+      const leftOut: string[] = [];
+      let columnLink: any = null;
+      for (const c of cols.sort((x, y) => (num(x.args, 'p_display_order') ?? 0) - (num(y.args, 'p_display_order') ?? 0))) {
+        const apexCol = str(c.args, 'p_db_column_name');
+        if (!apexCol) continue;
+        const col = ident(apexCol);
+        const label = stripTags(str(c.args, 'p_column_label') ?? '');
+        if (label && label !== defaultHeading(col)) cfg.headings[col] = label;
+        const fm = mask(str(c.args, 'p_format_mask'), col, e);
+        if (fm) cfg.formats[col] = fm;
+        if (/^HIDDEN/i.test(str(c.args, 'p_display_text_as') ?? '')) cfg.hidden.push(col);
+        else if (shown.size && !shown.has(apexCol.toUpperCase())) {
+          cfg.hidden.push(col);
+          leftOut.push(col);
+        }
+        if (/^LOV/i.test(str(c.args, 'p_display_text_as') ?? '') || c.args.p_rpt_named_lov) e.note(`column ${col} shows a list of values' display value in APEX: join the lookup table in the query to show it`);
+        if (!columnLink && str(c.args, 'p_column_link')) columnLink = linkOf(str(c.args, 'p_column_link'), col, e, false);
+      }
+      if (leftOut.length) e.note(`columns not in the default report (${leftOut.join(', ')}) became hidden columns: APEX users could add them under Actions → Columns`);
+      const ws = worksheets.get(rid)?.[0];
+      const detail = ws && !/^N$/i.test(str(ws.args, 'p_show_detail_link') ?? '') ? linkOf(str(ws.args, 'p_detail_link'), null, e, true) : null;
+      if (detail || columnLink) cfg.link = detail ?? columnLink;
+      if (ws && str(ws.args, 'p_no_data_found_message') && !/^No data found\.?$/i.test(str(ws.args, 'p_no_data_found_message')!)) cfg.empty = str(ws.args, 'p_no_data_found_message');
+      if (primary) {
+        const sort: [string, boolean][] = [];
+        for (let n = 1; n <= 6; n++) {
+          const sc = str(primary.args, `p_sort_column_${n}`);
+          if (sc) sort.push([ident(sc), /^desc/i.test(str(primary.args, `p_sort_direction_${n}`) ?? '')]);
+        }
+        orderBy(r.row, sort, e);
+      }
+      if (reports.length > 1) e.note(`${reports.length - 1} other saved report(s) are not carried over: the default report's columns and sort are`);
+      settle(cfg);
+      r.row.config = cfg;
+    }
+
+    // classic reports
+    for (const [rid, cols] of grouped('create_report_columns')) {
+      const r = regionDoc.get(rid);
+      const e = regionApex.get(rid)?.e;
+      if (!r || !e || !['report', 'classic_report'].includes(r.row.type)) continue;
+      const cfg: any = { ...r.row.config, headings: {}, hidden: [], formats: {} };
+      // (a classic report's p_default_sort_column_sequence is not read: APEX writes 1 on every column of some reports)
+      for (const c of cols.sort((x, y) => (num(x.args, 'p_column_display_sequence') ?? 0) - (num(y.args, 'p_column_display_sequence') ?? 0))) {
+        const apexCol = str(c.args, 'p_column_alias');
+        if (!apexCol) continue;
+        const col = ident(apexCol);
+        const label = stripTags(str(c.args, 'p_column_heading') ?? '');
+        if (label && label !== defaultHeading(col)) cfg.headings[col] = label;
+        const fm = mask(str(c.args, 'p_column_format'), col, e);
+        if (fm) cfg.formats[col] = fm;
+        if (yes(c.args, 'p_hidden_column') || /^HIDDEN/i.test(str(c.args, 'p_display_as') ?? '')) cfg.hidden.push(col);
+        if (c.args.p_named_lov || /LOV/i.test(str(c.args, 'p_display_as') ?? '')) e.note(`column ${col} shows a list of values' display value in APEX: join the lookup table in the query to show it`);
+        if (!cfg.link && str(c.args, 'p_column_link')) {
+          const icon = /<img|<span[^>]*\bfa\b|fa-|#EDIT_ICON#|^\s*$/i.test(str(c.args, 'p_column_linktext') ?? '');
+          const l = linkOf(str(c.args, 'p_column_link'), col, e, icon);
+          if (l) cfg.link = l;
+        }
+      }
+      settle(cfg);
+      r.row.config = cfg;
+    }
+
+    // interactive grids
+    const grids = grouped('create_interactive_grid');
+    const igColumns = new Map<string, ApexCall>();
+    for (const c of by('create_ig_report_column')) {
+      const id = ref(c.args, 'p_column_id');
+      if (id && !igColumns.has(id)) igColumns.set(id, c);
+    }
+    for (const [rid, cols] of grouped('create_region_column')) {
+      const r = regionDoc.get(rid);
+      const e = regionApex.get(rid)?.e;
+      if (!r || !e || r.row.type !== 'grid') continue;
+      const cfg: any = { ...r.row.config, headings: {}, hidden: [], formats: {}, readonly: [], columns: {} };
+      const layout: { c: string; seq: number; visible: boolean; width: number | null; frozen: boolean }[] = [];
+      for (const c of cols.sort((x, y) => (num(x.args, 'p_display_sequence') ?? 0) - (num(y.args, 'p_display_sequence') ?? 0))) {
+        const a = c.args;
+        const itemType = (str(a, 'p_item_type') ?? '').toUpperCase();
+        if (/^NATIVE_ROW_(SELECTOR|ACTION)$/.test(itemType) || !str(a, 'p_name')) continue;
+        const col = ident(str(a, 'p_source_expression') ?? str(a, 'p_name')!);
+        const label = stripTags(str(a, 'p_heading') ?? '');
+        if (label && label !== defaultHeading(col)) cfg.headings[col] = label;
+        const fm = mask(str(a, 'p_format_mask'), col, e);
+        if (fm) cfg.formats[col] = fm;
+        if (itemType === 'NATIVE_HIDDEN') cfg.hidden.push(col);
+        if (itemType === 'NATIVE_DISPLAY_ONLY' || a.p_is_query_only === true || yes(a, 'p_is_query_only') || /^ALWAYS$/i.test(str(a, 'p_readonly_condition_type') ?? '')) cfg.readonly.push(col);
+        const colCfg: any = {};
+        if ((a.p_is_required === true || yes(a, 'p_is_required')) && itemType !== 'NATIVE_HIDDEN' && !(a.p_is_primary_key === true || yes(a, 'p_is_primary_key'))) colCfg.required = true;
+        const lovType = (str(a, 'p_lov_type') ?? '').toUpperCase();
+        if (lovType === 'SHARED') {
+          const n = lovName.get(ref(a, 'p_lov_id') ?? '');
+          if (n) colCfg.lov = `LOV:${n}`;
+          else e.note(`column ${col}: its shared list of values is not in the export`);
+        } else if (lovType === 'SQL_QUERY' && str(a, 'p_lov_source')) colCfg.lov = stripSemi(e.oracle(str(a, 'p_lov_source')!));
+        else if (lovType === 'STATIC' && str(a, 'p_lov_source')) colCfg.lov = staticLovText(str(a, 'p_lov_source')!.replace(/^STATIC2?:/i, ''));
+        const defType = (str(a, 'p_default_type') ?? '').toUpperCase();
+        const defExpr = str(a, 'p_default_expression');
+        if (defExpr && defType === 'STATIC') colCfg.default = defExpr;
+        else if (defExpr && (defType === 'SQL_QUERY' || defType === 'QUERY')) colCfg.default_sql = stripSemi(e.oracle(defExpr));
+        else if (defExpr && defType === 'ITEM') colCfg.default = `&${defExpr.toUpperCase()}.`;
+        else if (defExpr && defType) e.note(`column ${col}: default type ${defType} is not carried over`);
+        if (Object.keys(colCfg).length) cfg.columns[col] = colCfg;
+        const view = igColumns.get(ref(a, 'p_id') ?? '');
+        if (view) layout.push({ c: col, seq: num(view.args, 'p_display_seq') ?? 0, visible: view.args.p_is_visible !== false && !/^n/i.test(String(view.args.p_is_visible ?? '')),
+          width: num(view.args, 'p_width'), frozen: view.args.p_is_frozen === true || yes(view.args, 'p_is_frozen') });
+      }
+      if (layout.length) {
+        layout.sort((x, y) => x.seq - y.seq);
+        const lay: any = { order: layout.map((x) => x.c).filter((c) => !cfg.hidden.includes(c)) };
+        const off = layout.filter((x) => !x.visible && !cfg.hidden.includes(x.c)).map((x) => x.c);
+        if (off.length) lay.hidden = off;
+        const widths = Object.fromEntries(layout.filter((x) => x.width && x.width > 0).map((x) => [x.c, Math.round(x.width!)]));
+        if (Object.keys(widths).length) lay.widths = widths;
+        let frozen = 0;
+        for (const x of layout.filter((y) => y.visible && !cfg.hidden.includes(y.c))) if (x.frozen) frozen++; else break;
+        if (frozen) lay.frozen = Math.min(frozen, 5);
+        cfg.layout = lay;
+      }
+      const ig = grids.get(rid)?.[0];
+      if (ig) {
+        const ops = (str(ig.args, 'p_edit_operations') ?? 'i:u:d').toLowerCase().split(':');
+        const editable = ig.args.p_is_editable === true || yes(ig.args, 'p_is_editable');
+        const allow = { insert: editable && ops.includes('i'), update: editable && ops.includes('u'), delete: editable && ops.includes('d') };
+        if (!allow.insert || !allow.update || !allow.delete) cfg.allow = allow;
+        if (ig.args.p_add_authorization_scheme || ig.args.p_update_authorization_scheme || ig.args.p_delete_authorization_scheme)
+          e.note('the grid\'s add, update and delete authorization schemes are not carried over: give the region (or its grid_dml process) an authorization scheme');
+      }
+      settle(cfg);
+      r.row.config = cfg;
+    }
+  }
 
   // ---- (sprint 195, NX-F2) sub regions: p_parent_plug_id becomes the region's parent. pgkiln nests one level deep, so a
   // region deeper down goes into its top-most ancestor (after that ancestor's own sub regions, by sequence), with a note.
@@ -1273,7 +1508,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       readonly_condition: readonly,
       authz: authz(a, e),
       config,
-      build_option: null,
+      build_option: bo(a, e),
       template_options: [],
       ...cond,
     });
@@ -1317,7 +1552,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       template_options: [],
       slot: null,
       authz: authz(a, e),
-      build_option: null,
+      build_option: bo(a, e),
       confirm: null,
       menu: null,
       badge: null,
@@ -1389,7 +1624,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       always_execute: yes(a, 'p_always_execute'),
       display_location: DISPLAY_LOCATIONS[(str(a, 'p_error_display_location') ?? '').toUpperCase()] ?? 'inline_and_notification',
       authz: authz(a, e),
-      build_option: null,
+      build_option: bo(a, e),
     };
     if ((str(a, 'p_error_display_location') ?? '').toUpperCase() === 'ON_ERROR_PAGE') e.note('"on error page" became a notification at the top of the page');
     if (m.item) {
@@ -1467,7 +1702,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       success_message: str(a, 'p_process_success_message'),
       parent_process: null,
       authz: authz(a, e),
-      build_option: null,
+      build_option: bo(a, e),
     };
     const parent = ref(a, 'p_parent_process_id');
     if (parent) row.parent_process = procName.get(parent) ?? null;
@@ -1477,8 +1712,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       case 'NATIVE_PLSQL':
       case 'PLSQL': {
         row.type = 'sql';
-        row.code = plsqlCode();
-        e.plsql(row.code);
+        row.code = plsqlProcess(plsqlCode(), e);
         if (!row.code) e.notMapped('no code found');
         break;
       }
@@ -1653,6 +1887,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     comp.seq = int(num(a, 'p_computation_sequence'), 10);
     Object.assign(comp, condition(str(a, 'p_compute_when_type'), str(a, 'p_compute_when'), str(a, 'p_compute_when_text'), e));
     comp.authz = authz(a, e);
+    comp.build_option = bo(a, e);
     e.target = comp.type;
     page.computations.push(comp);
   }
@@ -1683,7 +1918,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       target_function: null,
       target_app: null,
       authz: authz(a, e),
-      build_option: null,
+      build_option: bo(a, e),
     };
     const action = str(a, 'p_branch_action') ?? '';
     if (/FUNCTION_RETURNING_(URL|PAGE)/.test(apexType)) {
@@ -1834,7 +2069,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         css_classes: css,
         config: null,
         authz: authz(a, e),
-        build_option: null,
+        build_option: bo(a, e),
         server_condition_type: sCond.condition_type,
         server_condition_expr: sCond.condition_expr,
         server_condition_value: sCond.condition_value,
@@ -1973,7 +2208,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
         else e.note(`its link ${target} is not a page of the application: the entry has no target`);
       }
       mine.push({ id, list_name: name, parent_id: ref(a, 'p_parent_list_item_id'), seq: int(num(a, 'p_list_item_display_sequence'), 10), label,
-        target_page: page, target_items: fp?.items ?? {}, target_url: url, description: str(a, 'p_list_text_01') ?? null, authz: authz(a, e) });
+        target_page: page, target_items: fp?.items ?? {}, target_url: url, description: str(a, 'p_list_text_01') ?? null, authz: authz(a, e), build_option: bo(a, e) });
     }
     for (const x of mine) x.parent_id = x.parent_id ? ids.get(x.parent_id) ?? null : null;
     if (dynamic) add(new Entry('navigation', null, name, 'dynamic list', 'list')).notMapped('a dynamic list (a query): it became an empty static list, rebuild its query by hand');
@@ -2000,11 +2235,99 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const id = next++;
       const cid = ref(a, 'p_id');
       if (cid) navIds.set(cid, id);
-      nav.push({ id, parent_id: ref(a, 'p_parent_list_item_id'), seq: int(num(a, 'p_list_item_display_sequence'), 10), label, icon: null, target_page: target, authz: authz(a, e), build_option: null });
+      nav.push({ id, parent_id: ref(a, 'p_parent_list_item_id'), seq: int(num(a, 'p_list_item_display_sequence'), 10), label, icon: null, target_page: target, authz: authz(a, e), build_option: bo(a, e) });
     }
     for (const x of nav) x.parent_id = x.parent_id ? navIds.get(x.parent_id) ?? null : null;
     // parents first: import_app maps parent ids in order
     nav.sort((x, y) => (x.parent_id === null ? 0 : 1) - (y.parent_id === null ? 0 : 1));
+  }
+
+  // ---- (sprint 209) application items, processes, computations and settings
+  const appItems: any[] = [];
+  for (const c of by('create_flow_item')) {
+    const a = c.args;
+    const name = (str(a, 'p_name') ?? '').toUpperCase();
+    const e = add(new Entry('app_item', null, name || '(no name)', (str(a, 'p_scope') ?? 'APP').toUpperCase(), 'app_item'));
+    if (!isUpperName(name) || appItems.some((x) => x.name === name)) {
+      e.notMapped(isUpperName(name) ? 'another application item has this name' : 'an item name pgkiln cannot use');
+      continue;
+    }
+    if (/^global$/i.test(str(a, 'p_scope') ?? '')) e.note('scope Global (shared by the applications of a session) became this application\'s item');
+    if (bo(a, e)) e.note('application items have no build option in pgkiln: it is always there');
+    appItems.push({ name, description: str(a, 'p_item_comment', 'p_comments') });
+  }
+  const appProcesses: any[] = [];
+  const usedAppProc = new Set<string>();
+  for (const c of by('create_flow_process')) {
+    const a = c.args;
+    let name = str(a, 'p_process_name') ?? 'Process';
+    for (let n = 2; usedAppProc.has(name); n++) name = `${str(a, 'p_process_name') ?? 'Process'} (${n})`;
+    usedAppProc.add(name);
+    const apexType = (str(a, 'p_process_type') ?? 'NATIVE_PLSQL').toUpperCase();
+    const pointCode = (str(a, 'p_process_point') ?? 'BEFORE_HEADER').toUpperCase();
+    const point = /^(ON_NEW_INSTANCE|AFTER_LOGIN|AFTER_AUTHENTICATION)$/.test(pointCode) ? 'after_login' : pointCode === 'ON_DEMAND' ? 'ajax' : 'before_page';
+    const e = add(new Entry('app_process', null, name, `${apexType} ${pointCode}`, point));
+    if (apexType !== 'NATIVE_PLSQL' && apexType !== 'PLSQL') {
+      e.notMapped(`process type ${apexType} is not mapped: application processes run SQL in pgkiln`);
+      continue;
+    }
+    const code = plsqlProcess(str(a, 'p_process_sql_clob', 'p_process_sql', 'p_process_clob'), e);
+    if (!code?.trim()) {
+      e.notMapped('no code found');
+      continue;
+    }
+    if (point === 'before_page' && pointCode !== 'BEFORE_HEADER') e.note(`process point ${pointCode} became before every page view and submit`);
+    if (point === 'after_login' && pointCode === 'ON_NEW_INSTANCE') e.note('"on new session" became after sign-in');
+    if (str(a, 'p_process_when_type')) e.note(`its condition (${str(a, 'p_process_when_type')}) is not carried over: an application process always runs; put the condition in its SQL`);
+    appProcesses.push({ seq: int(num(a, 'p_process_sequence'), 10), name, point, code, authz: authz(a, e), build_option: bo(a, e) });
+  }
+  const appComputations: any[] = [];
+  for (const c of by('create_flow_computation')) {
+    const a = c.args;
+    const item = (str(a, 'p_computation_item') ?? '').toUpperCase();
+    const apexType = (str(a, 'p_computation_type') ?? '').toUpperCase();
+    const pointCode = (str(a, 'p_computation_point') ?? 'BEFORE_HEADER').toUpperCase();
+    const e = add(new Entry('app_computation', null, item || '(no item)', `${apexType || '(none)'} ${pointCode}`, null));
+    if (!isUpperName(item)) {
+      e.notMapped('no item');
+      continue;
+    }
+    if (pointCode === 'NEVER') {
+      e.notMapped('its point is Never: it never runs');
+      continue;
+    }
+    const comp = sourceComputation(item, apexType, str(a, 'p_computation') ?? '', a.p_computation_language, e);
+    if (!comp) continue;
+    comp.point = /^(AFTER_LOGIN|ON_NEW_INSTANCE|AFTER_AUTHENTICATION)$/.test(pointCode) ? 'after_authentication'
+      : /^(AFTER_SUBMIT|ON_SUBMIT_BEFORE_COMPUTATION)$/.test(pointCode) ? 'after_submit' : 'before_header';
+    if (!['AFTER_LOGIN', 'AFTER_AUTHENTICATION', 'AFTER_SUBMIT', 'BEFORE_HEADER'].includes(pointCode)) e.note(`point ${pointCode} became ${comp.point}`);
+    comp.seq = int(num(a, 'p_computation_sequence'), 10);
+    Object.assign(comp, condition(str(a, 'p_compute_when_type'), str(a, 'p_compute_when'), str(a, 'p_compute_when_text'), e));
+    comp.authz = authz(a, e);
+    comp.build_option = bo(a, e);
+    comp.comments = str(a, 'p_computation_comment') ?? null;
+    e.target = comp.type;
+    appComputations.push(comp);
+  }
+  const appSettings: any[] = [];
+  for (const c of by('create_app_setting')) {
+    const a = c.args;
+    const name = (str(a, 'p_name') ?? '').toUpperCase();
+    const e = add(new Entry('app_setting', null, name || '(no name)', 'setting', 'app_setting'));
+    if (!isUpperName(name) || appSettings.some((x) => x.name === name)) {
+      e.notMapped(isUpperName(name) ? 'another setting has this name' : 'a setting name pgkiln cannot use');
+      continue;
+    }
+    const valid = (str(a, 'p_valid_values') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    let value = str(a, 'p_value');
+    if (value !== null && valid.length && !valid.includes(value)) {
+      e.note(`its value ${value} is not one of its valid values: it was left empty`);
+      value = null;
+    }
+    const required = yes(a, 'p_is_required') && value !== null;
+    if (bo(a, e)) e.note('application settings have no build option in pgkiln: it is always there');
+    appSettings.push({ name, value, description: str(a, 'p_comments'), required, valid_values: valid.length ? valid : null,
+      keep_on_upgrade: a.p_on_upgrade_keep_value === undefined ? true : yes(a, 'p_on_upgrade_keep_value') });
   }
 
   // ---- the application
@@ -2040,7 +2363,19 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     pages,
     lists,
     list_entries: listEntries,
+    build_options: buildOptions,
+    app_items: appItems,
+    app_processes: appProcesses,
+    app_computations: appComputations,
+    app_settings: appSettings,
   };
+  // (sprint 209) the login page's components went with it: one entry (the page's) says so, not one per component
+  for (const no of loginPages) {
+    const left = entries.filter((x) => x.page === no && x.kind !== 'page');
+    if (!left.length) continue;
+    entries.find((x) => x.page === no && x.kind === 'page')?.note(`its ${left.length} components (regions, items, buttons, processes …) were left out with it`);
+    for (const x of left) entries.splice(entries.indexOf(x), 1);
+  }
   const counts = { mapped: 0, notes: 0, not_mapped: 0, port: 0 };
   for (const e of entries) {
     counts[e.status]++;
@@ -2055,6 +2390,21 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       counts,
     },
   };
+}
+
+/**
+ * (sprint 209) A PL/SQL process body as a pgkiln `sql` process's code: SQL in disguise becomes that SQL (src/oracle-sql.ts,
+ * plsqlAsSql), rewritten from Oracle's where the meaning stays; real PL/SQL is carried over as it is, to port.
+ */
+function plsqlProcess(code: string | null, e: Entry): string | null {
+  if (!code) return code;
+  const t = plsqlAsSql(code);
+  if (!t) {
+    e.plsql(code);
+    return code;
+  }
+  e.note(t.how);
+  return e.oracle(t.sql);
 }
 
 /** A computation from an APEX source, default or computation (null: not mapped, with a note). */
@@ -2179,6 +2529,11 @@ const KIND_LABEL: Record<ReportKind, string> = {
   lov: 'list of values',
   authorization: 'authorization scheme',
   navigation: 'navigation entry',
+  app_item: 'application item',
+  app_process: 'application process',
+  app_computation: 'application computation',
+  build_option: 'build option',
+  app_setting: 'application setting',
 };
 export const kindLabel = (k: ReportKind) => KIND_LABEL[k];
 

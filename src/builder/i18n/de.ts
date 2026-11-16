@@ -8168,6 +8168,11 @@ export const de: BuilderMessages = {
   'apx.kind.lov': 'Werteliste',
   'apx.kind.authorization': 'Autorisierungsschema',
   'apx.kind.navigation': 'Navigationseintrag',
+  'apx.kind.app_item': 'Anwendungselement',
+  'apx.kind.app_process': 'Anwendungsprozess',
+  'apx.kind.app_computation': 'Anwendungsberechnung',
+  'apx.kind.build_option': 'Build-Option',
+  'apx.kind.app_setting': 'Anwendungseinstellung',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'Browsersicherheit',
   'bs.intro': 'Was Browser mit den Seiten der Anwendung tun dürfen: sie in einem Frame zeigen, die Adresse weitergeben, sie indexieren. Der Builder behält seine eigenen Einstellungen.',

@@ -199,6 +199,10 @@ end if;
 All changes of the submit are rolled back, and the page is shown again with the entered
 values so the user can correct them.
 
+A process that fails while the page is **shown** (point `load`) is rolled back to where it started (sprint 209):
+its error shows at the top of the page, the load processes after it don't run, and the rest of the page (regions,
+lists of values, conditions) still works.
+
 **Error handling function** (Settings → *Errors and sessions*; APEX: Error Handling Function). A
 function of your own rewrites every error message users see: those raised in PL/pgSQL, the friendly
 constraint messages and the "reference" messages of unexpected errors.

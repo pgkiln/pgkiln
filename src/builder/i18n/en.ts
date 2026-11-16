@@ -8173,6 +8173,11 @@ export const en = {
   'apx.kind.lov': 'List of values',
   'apx.kind.authorization': 'Authorization scheme',
   'apx.kind.navigation': 'Navigation entry',
+  'apx.kind.app_item': 'Application item',
+  'apx.kind.app_process': 'Application process',
+  'apx.kind.app_computation': 'Application computation',
+  'apx.kind.build_option': 'Build option',
+  'apx.kind.app_setting': 'Application setting',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'Browser security',
   'bs.intro': 'What browsers may do with the application\'s pages: show them in a frame, pass on the address, index them. The builder keeps its own settings.',
