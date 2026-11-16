@@ -8171,6 +8171,7 @@ export const zhTW: BuilderMessages = {
   'apx.obj.routine': "PL/SQL 常式",
   'apx.col.exists_as': "存在為",
   'apx.issues_made': "{n} 個 Team Development 問題列出了需要手動處理的內容（標籤「APEX import」）。",
+  'apx.saved_reports_made': "已沿用互動式報表的 {n} 個已儲存報表。",
   'apx.another': '選擇其他檔案',
   'apx.update': '更新報告',
   'apx.alias_bad': '別名由小寫字母、數字、- 與 _ 組成，並以字母開頭。',
@@ -8207,6 +8208,9 @@ export const zhTW: BuilderMessages = {
   'apx.kind.app_computation': '應用程式計算',
   'apx.kind.build_option': '建置選項',
   'apx.kind.app_setting': '應用程式設定',
+  'apx.kind.breadcrumb': '導覽路徑項目',
+  'apx.kind.acl_role': 'ACL 角色',
+  'apx.kind.saved_report': '已儲存的報表',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': '瀏覽器安全性',
   'bs.intro': '瀏覽器可以對應用程式的頁面做什麼：在框架中顯示、傳遞位址、編入索引。建置器保留自己的設定。',

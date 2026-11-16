@@ -247,7 +247,9 @@ describe('the mapping of f100.sql', () => {
     assert.equal(r(1, 'Sales by Month').type, 'static');
     // (sprint 190) charts are mapped from their series; this one has none
     assert.match(r(1, 'Sales by Month').source, /no series with a source, label and value/);
-    assert.match(r(1, 'News').source, /<pre>htp\.p\(&#39;&lt;b&gt;|<pre>htp\.p\('&lt;b&gt;/, 'the PL/SQL is kept, escaped');
+    // (sprint 211) a PL/SQL region of htp.p calls is a dynamic region: its SELECT returns the HTML
+    assert.equal(r(1, 'News').type, 'dynamic');
+    assert.equal(r(1, 'News').source, "select ('<b>' || sales_pkg.news || '</b>') || chr(10)");
     assert.equal(r(2, 'Orders').type, 'report');
     assert.equal(r(2, 'Top customers').type, 'classic_report');
     assert.equal(r(2, 'Top customers').source, 'select * from sales.customers\n where rownum <= 5');
@@ -539,7 +541,7 @@ describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
     assert.ok(byType('classic_report').length >= 6);
     assert.ok(byType('grid').every((g: any) => g.pk_column), 'every grid has its key column');
     // authorization: NATIVE_IS_IN_GROUP from p_attributes
-    assert.deepEqual(doc.authz_schemes.find((x: any) => x.name === 'ADMINISTRATION_RIGHTS'), { name: 'ADMINISTRATION_RIGHTS', type: 'role', value: 'Administrator', error_message: 'Insufficient privileges, user is not an Administrator' });
+    assert.deepEqual(doc.authz_schemes.find((x: any) => x.name === 'ADMINISTRATION_RIGHTS'), { name: 'ADMINISTRATION_RIGHTS', type: 'role', value: 'administrator', error_message: 'Insufficient privileges, user is not an Administrator' });
     // processes: p_attributes by their 26.2 names; APEX's own login API is pgkiln's sign-in
     // (sprint 209) the login page (an Invoke API process of APEX_AUTHENTICATION.LOGIN) is not imported: pgkiln signs users in
     assert.ok(!doc.pages.some((p: any) => p.page_no === 9999));
@@ -812,12 +814,15 @@ end;
     const region = (t: string) => doc.pages.flatMap((p: any) => p.regions).find((r: any) => r.title === t);
     const notes = (t: string) => report.entries.find((e: any) => e.kind === 'region' && e.name === t).notes.join('\n');
     const ir = region('Products');
-    assert.equal(ir.source, 'select * from apex209.product\n order by "name" desc');
+    // (sprint 211) the category column shows its list of values' display value: looked up in the query
+    assert.equal(ir.source, 'select q."id",\n       q."name",\n       q."price",\n'
+      + '       (select l.d from (select name d, code r from apex209.category order by 1) l(d, r) where l.r::text = q."category"::text limit 1) as "category",\n'
+      + '       q."secret"\n  from (select * from apex209.product) q\n order by "name" desc');
     assert.deepEqual(ir.config, {
       headings: { name: 'Product', secret: 'Secret note' }, hidden: ['id', 'secret'], formats: { price: '999G990D00' },
       link: { column: 'id', page: 2, items: { P2_ID: '#id#' }, icon: true }, empty: 'No products.',
     });
-    assert.match(notes('Products'), /column category shows a list of values' display value/);
+    assert.match(notes('Products'), /columns category show their list of values' display value/);
     assert.match(notes('Products'), /APEX's SINCE format is not carried over/);
     assert.match(notes('Products'), /columns not in the default report \(secret\) became hidden columns/);
     const classic = region('Cheap products');
@@ -845,6 +850,7 @@ end;
     assert.match(body, /missing_column|unexpected error/, 'the load process\'s error shows');
     assert.ok(!body.includes('current transaction is aborted'));
     assert.match(body, />Product</);
+    assert.ok(body.includes('Tools') && body.includes('Garden'), '(sprint 211) the category column shows its list of values\' display value');
     assert.ok(!body.includes('top secret'), 'a column left out of the default report is hidden');
     assert.match(body, /Hello from the shop/, 'the application process (build option included) sets the application item');
     assert.ok(!body.includes('commented out'), 'a region of an excluded build option is left out');
@@ -874,5 +880,198 @@ end;
     const items = regions.find((r: any) => r.title === 'Order Items' && r.type === 'grid');
     assert.ok(items.config.hidden.includes('line_item_id'));
     assert.ok(items.config.layout?.order.length >= 3);
+  });
+});
+
+describe('sprint 211 NX-F5: saved reports, LOV display values, grid validations, breadcrumbs, chart axes, ACL roles, dynamic content', () => {
+  // a hand-written export in APEX 23.2's format: the parts sprint 211 reads
+  const STORE = `
+begin
+wwv_flow_imp.import_begin(p_version_yyyy_mm_dd=>'2023.10.31',p_release=>'23.2.0',p_default_application_id=>211,p_default_owner=>'APEX211');
+end;
+/
+begin
+wwv_imp_workspace.create_flow(p_id=>wwv_flow.g_flow_id,p_owner=>'APEX211',p_name=>'Store 211',p_alias=>'STORE211',p_flow_language=>'en');
+wwv_flow_imp_shared.create_acl_role(p_id=>wwv_flow_imp.id(801),p_static_id=>'ADMINISTRATOR',p_name=>'Administrator',p_description=>'Runs the store.');
+wwv_flow_imp_shared.create_acl_role(p_id=>wwv_flow_imp.id(802),p_static_id=>'READER',p_name=>'Reader');
+wwv_flow_imp_shared.create_security_scheme(p_id=>wwv_flow_imp.id(811),p_name=>'Administration Rights',p_scheme_type=>'NATIVE_IS_IN_GROUP',p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2('name', 'Administrator', 'type', 'A')).to_clob,p_error_message=>'Administrators only');
+wwv_flow_imp_shared.create_app_setting(p_id=>wwv_flow_imp.id(821),p_name=>'ACCESS_CONTROL_SCOPE',p_value=>'ALL_USERS',p_valid_values=>'ACL_ONLY, ALL_USERS');
+wwv_flow_imp_shared.create_list_of_values(p_id=>wwv_flow_imp.id(831),p_lov_name=>'CATEGORIES',p_lov_query=>'select name d, code r from category',p_source_type=>'LEGACY_SQL');
+wwv_flow_imp_shared.create_menu(p_id=>wwv_flow_imp.id(841),p_name=>'Breadcrumb');
+wwv_flow_imp_shared.create_menu_option(p_id=>wwv_flow_imp.id(842),p_short_name=>'Home',p_link=>'f?p=&APP_ID.:1:&APP_SESSION.::&DEBUG.:::',p_page_id=>1);
+wwv_flow_imp_shared.create_menu_option(p_id=>wwv_flow_imp.id(843),p_parent_id=>wwv_flow_imp.id(842),p_short_name=>'Price list',p_link=>'f?p=&APP_ID.:2:&APP_SESSION.::&DEBUG.:::',p_page_id=>2);
+wwv_flow_imp_shared.create_menu_option(p_id=>wwv_flow_imp.id(844),p_parent_id=>wwv_flow_imp.id(843),p_short_name=>'Figures',p_link=>'f?p=&APP_ID.:3:&APP_SESSION.::&DEBUG.:::',p_page_id=>3);
+wwv_flow_imp_shared.create_menu_option(p_id=>wwv_flow_imp.id(845),p_parent_id=>wwv_flow_imp.id(842),p_short_name=>'Help',p_link=>'https://example.com/help');
+wwv_flow_imp_page.create_page(p_id=>1,p_name=>'Home',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(1000),p_plug_name=>'Trail',p_plug_display_sequence=>5,p_plug_source_type=>'NATIVE_BREADCRUMB',p_menu_id=>wwv_flow_imp.id(841));
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(1001),p_plug_name=>'Products',p_plug_display_sequence=>10,p_query_type=>'TABLE',p_query_table=>'PRODUCT',p_plug_source_type=>'NATIVE_IR');
+wwv_flow_imp_page.create_worksheet(p_id=>wwv_flow_imp.id(1002),p_show_detail_link=>'N');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1003),p_db_column_name=>'ID',p_display_order=>1,p_column_identifier=>'A',p_column_label=>'Id',p_display_text_as=>'HIDDEN_ESCAPE_SC');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1004),p_db_column_name=>'NAME',p_display_order=>2,p_column_identifier=>'B',p_column_label=>'Product');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1005),p_db_column_name=>'PRICE',p_display_order=>3,p_column_identifier=>'C',p_column_label=>'Price');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(1006),p_db_column_name=>'CATEGORY',p_display_order=>4,p_column_identifier=>'D',p_column_label=>'Category',p_display_text_as=>'LOV_ESCAPE_SC',p_rpt_named_lov=>wwv_flow_imp.id(831));
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(1010),p_application_user=>'APXWS_DEFAULT',p_is_default=>'Y',p_status=>'PUBLIC',p_report_columns=>'NAME:PRICE:CATEGORY');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(1011),p_application_user=>'APXWS_ALTERNATIVE',p_name=>'Cheap things',p_status=>'PUBLIC',p_report_columns=>'NAME:PRICE',p_sort_column_1=>'PRICE',p_sort_direction_1=>'DESC',p_display_rows=>25);
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(1012),p_report_id=>wwv_flow_imp.id(1011),p_condition_type=>'FILTER',p_column_name=>'PRICE',p_operator=>'<',p_expr=>'50',p_enabled=>'Y');
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(1013),p_report_id=>wwv_flow_imp.id(1011),p_condition_type=>'HIGHLIGHT',p_condition_name=>'Rakes',p_column_name=>'NAME',p_operator=>'=',p_expr=>'Rake',p_row_bg_color=>'#99FF99',p_enabled=>'Y');
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(1014),p_report_id=>wwv_flow_imp.id(1011),p_condition_type=>'FILTER',p_column_name=>'NAME',p_operator=>'regexp_like',p_expr=>'^R',p_enabled=>'Y');
+wwv_flow_imp_page.create_worksheet_computation(p_id=>wwv_flow_imp.id(1015),p_report_id=>wwv_flow_imp.id(1011),p_db_column_name=>'APXWS_CC_001',p_column_identifier=>'E',p_computation_expr=>'C * 2',p_column_label=>'Double price');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(1016),p_application_user=>'ALICE',p_name=>'Mine',p_status=>'PRIVATE',p_report_columns=>'NAME');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(1017),p_application_user=>'not a user!',p_name=>'Lost',p_status=>'PRIVATE',p_report_columns=>'NAME');
+wwv_flow_imp_page.create_report_region(p_id=>wwv_flow_imp.id(1020),p_name=>'Sizes',p_display_sequence=>20,p_source=>'select id, sz from product_size',p_source_type=>'NATIVE_SQL_REPORT');
+wwv_flow_imp_page.create_report_columns(p_id=>wwv_flow_imp.id(1021),p_query_column_id=>1,p_column_alias=>'ID',p_column_display_sequence=>1);
+wwv_flow_imp_page.create_report_columns(p_id=>wwv_flow_imp.id(1022),p_query_column_id=>2,p_column_alias=>'SZ',p_column_display_sequence=>2,p_column_heading=>'Size',p_display_as=>'TEXT_FROM_LOV_ESC',p_inline_lov=>'STATIC:Small;S,Large;L');
+wwv_flow_imp_page.create_page(p_id=>2,p_name=>'Price list',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(2001),p_plug_name=>'Price list',p_plug_display_sequence=>10,p_query_type=>'TABLE',p_query_table=>'PRODUCT',p_plug_source_type=>'NATIVE_IG');
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(2002),p_name=>'ID',p_source_type=>'DB_COLUMN',p_source_expression=>'ID',p_item_type=>'NATIVE_HIDDEN',p_display_sequence=>10,p_is_primary_key=>true);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(2003),p_name=>'NAME',p_source_type=>'DB_COLUMN',p_source_expression=>'NAME',p_item_type=>'NATIVE_TEXT_FIELD',p_heading=>'Product',p_display_sequence=>20);
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(2004),p_name=>'PRICE',p_source_type=>'DB_COLUMN',p_source_expression=>'PRICE',p_item_type=>'NATIVE_NUMBER_FIELD',p_heading=>'Price',p_display_sequence=>30);
+wwv_flow_imp_page.create_interactive_grid(p_id=>wwv_flow_imp.id(2010),p_is_editable=>true,p_edit_operations=>'i:u:d');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(2020),p_tabular_form_region_id=>wwv_flow_imp.id(2001),p_validation_name=>'Name required',p_validation_sequence=>10,p_validation=>'NAME',p_validation_type=>'ITEM_NOT_NULL',p_error_message=>'#COLUMN_HEADER# must have a value.',p_associated_column=>'NAME');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(2021),p_tabular_form_region_id=>wwv_flow_imp.id(2001),p_validation_name=>'Price positive',p_validation_sequence=>20,p_validation=>':PRICE >= 0',p_validation_type=>'SQL_EXPRESSION',p_error_message=>'The price cannot be negative.',p_associated_column=>'PRICE');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(2022),p_tabular_form_region_id=>wwv_flow_imp.id(2001),p_validation_name=>'Name letters',p_validation_sequence=>30,p_validation=>'NAME',p_validation2=>'^[A-Za-z ]+$',p_validation_type=>'REGULAR_EXPRESSION',p_error_message=>'Letters only.',p_associated_column=>'NAME');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(2023),p_tabular_form_region_id=>wwv_flow_imp.id(2001),p_validation_name=>'Real PL/SQL',p_validation_sequence=>40,p_validation=>'begin return true; end;',p_validation_type=>'FUNC_BODY_RETURNING_BOOLEAN',p_error_message=>'No.',p_associated_column=>'PRICE');
+wwv_flow_imp_page.create_page_process(p_id=>wwv_flow_imp.id(2030),p_process_sequence=>10,p_region_id=>wwv_flow_imp.id(2001),p_process_type=>'NATIVE_IG_DML',p_process_name=>'Save');
+wwv_flow_imp_page.create_page(p_id=>3,p_name=>'Figures',p_page_is_public_y_n=>'Y');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(3001),p_plug_name=>'Revenue',p_plug_display_sequence=>10,p_query_type=>'TABLE',p_query_table=>'PRODUCT',p_plug_source_type=>'NATIVE_JET_CHART');
+wwv_flow_imp_page.create_jet_chart(p_id=>wwv_flow_imp.id(3002),p_region_id=>wwv_flow_imp.id(3001),p_chart_type=>'bar');
+wwv_flow_imp_page.create_jet_chart_series(p_id=>wwv_flow_imp.id(3003),p_chart_id=>wwv_flow_imp.id(3002),p_seq=>10,p_name=>'Price',p_data_source_type=>'REGION_SOURCE',p_items_value_column_name=>'PRICE',p_items_label_column_name=>'NAME');
+wwv_flow_imp_page.create_jet_chart_axis(p_id=>wwv_flow_imp.id(3004),p_chart_id=>wwv_flow_imp.id(3002),p_axis=>'x',p_is_rendered=>'on',p_title=>'Product');
+wwv_flow_imp_page.create_jet_chart_axis(p_id=>wwv_flow_imp.id(3005),p_chart_id=>wwv_flow_imp.id(3002),p_axis=>'y',p_is_rendered=>'on',p_format_type=>'decimal',p_decimal_places=>2,p_scaling=>'log',p_min=>0,p_max=>200);
+wwv_flow_imp_page.create_jet_chart_axis(p_id=>wwv_flow_imp.id(3006),p_chart_id=>wwv_flow_imp.id(3002),p_axis=>'y2',p_is_rendered=>'on');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(3010),p_plug_name=>'Stock',p_plug_display_sequence=>20,p_query_type=>'SQL',p_plug_source=>'select ''Stock'' label, 42 value from dual',p_plug_source_type=>'NATIVE_JET_CHART');
+wwv_flow_imp_page.create_jet_chart(p_id=>wwv_flow_imp.id(3011),p_region_id=>wwv_flow_imp.id(3010),p_chart_type=>'dial',p_value_min=>0,p_value_max=>100);
+wwv_flow_imp_page.create_jet_chart_series(p_id=>wwv_flow_imp.id(3012),p_chart_id=>wwv_flow_imp.id(3011),p_seq=>10,p_name=>'Stock',p_data_source_type=>'REGION_SOURCE',p_items_value_column_name=>'VALUE',p_items_label_column_name=>'LABEL');
+wwv_flow_imp_page.create_jet_chart_axis(p_id=>wwv_flow_imp.id(3013),p_chart_id=>wwv_flow_imp.id(3011),p_axis=>'y',p_format_type=>'currency');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(3020),p_plug_name=>'Count',p_plug_display_sequence=>30,p_function_body_language=>'PLSQL',p_plug_source=>'begin'||wwv_flow.LF||'  return ''<p class="lead">Products: '' || (select count(*) from product) || ''</p>'';'||wwv_flow.LF||'end;',p_plug_source_type=>'NATIVE_DYNAMIC_CONTENT');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(3021),p_plug_name=>'Printed',p_plug_display_sequence=>40,p_plug_source=>'htp.p(''<p>Cheapest: '');'||wwv_flow.LF||'sys.htp.prn((select min(price) from product));'||wwv_flow.LF||'htp.p(''</p>'');',p_plug_source_type=>'NATIVE_PLSQL');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(3022),p_plug_name=>'Looped',p_plug_display_sequence=>50,p_plug_source=>'begin for r in (select name from product) loop htp.p(r.name); end loop; end;',p_plug_source_type=>'NATIVE_PLSQL');
+end;
+/
+`;
+  const ALIAS = 'apex211-store';
+  let doc: any;
+  let report: any;
+  let savedReports: any[];
+  before(async () => {
+    ({ doc, report, savedReports } = apexToDoc(STORE, { alias: ALIAS, dbRole: 'hr_app', schema: 'apex211' } as any) as any);
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query('drop schema if exists apex211 cascade');
+    await owner.query(`create schema apex211;
+      create table apex211.category (code text primary key, name text not null);
+      create table apex211.product (id int primary key, name text not null, price numeric(10,2), category text references apex211.category);
+      create table apex211.product_size (id int primary key, sz text);
+      insert into apex211.category values ('T', 'Tools'), ('G', 'Garden');
+      insert into apex211.product values (1, 'Hammer', 12.5, 'T'), (2, 'Rake', 7.25, 'G'), (3, 'Anvil', 99, 'T'), (4, 'Spade', 30, 'G');
+      insert into apex211.product_size values (1, 'S'), (2, 'L');
+      grant usage on schema apex211 to hr_app;
+      grant select, insert, update, delete on all tables in schema apex211 to hr_app`);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query('drop schema if exists apex211 cascade');
+  });
+  const entry = (kind: string, name: string) => report.entries.find((e: any) => e.kind === kind && e.name === name);
+  const region = (t: string) => doc.pages.flatMap((p: any) => p.regions).find((r: any) => r.title === t);
+
+  test('saved interactive reports: public and private, filters, highlights, sort, columns, computations', () => {
+    assert.equal(savedReports.length, 2, 'the default report is the region itself; a report without a usable owner is left out');
+    const cheap = savedReports.find((s) => s.name === 'Cheap things');
+    assert.deepEqual({ ...cheap, params: undefined }, { page: 1, region: 'products', name: 'Cheap things', public: true, username: null, params: undefined });
+    assert.deepEqual(cheap.params, [['c', 'Double price|price * 2'], ['x', 'category'], ['s', '3'], ['d', 'desc'], ['n', '25'],
+      ['f', 'price|lt|50'], ['h', 'name|eq|green|Rake']]);
+    assert.match(entry('saved_report', 'Products: Cheap things').notes.join('\n'), /filter NAME \(regexp_like\) is not carried over/);
+    const mine = savedReports.find((s) => s.name === 'Mine');
+    assert.equal(mine.username, 'alice');
+    assert.equal(mine.public, false);
+    assert.equal(entry('saved_report', 'Products: Lost').status, 'not_mapped');
+  });
+
+  test('report columns with a list of values show its display value (shared and static)', () => {
+    assert.ok(region('Products').source.includes(`(select l.d from (select name d, code r from apex211.category) l(d, r) where l.r::text = q."category"::text limit 1) as "category"`));
+    const sizes = region('Sizes');
+    assert.equal(sizes.source, `select q."id",\n       (select l.d from (select d, r from (values ('Small', 'S', 0), ('Large', 'L', 1)) v(d, r, n)) l(d, r) where l.r::text = q."sz"::text limit 1) as "sz"\n  from (select id, sz from apex211.product_size) q`);
+  });
+
+  test('interactive grid column validations become the grid columns\' validations', () => {
+    const cols = region('Price list').config.columns;
+    assert.equal(cols.name.validation, "(nullif(:NAME, '') is not null) and (:NAME is null or :NAME ~ '^[A-Za-z ]+$')");
+    assert.equal(cols.name.validation_message, 'Product must have a value.');
+    assert.equal(cols.price.validation, ':PRICE >= 0');
+    assert.equal(cols.price.validation_message, 'The price cannot be negative.');
+    assert.equal(entry('validation', 'Real PL/SQL').status, 'not_mapped');
+    assert.match(entry('validation', 'Name letters').notes.join('\n'), /more than one validation/);
+  });
+
+  test('breadcrumbs: the entries set the pages\' breadcrumb parents', () => {
+    const parent = (n: number) => doc.pages.find((p: any) => p.page_no === n).parent_page;
+    assert.equal(parent(1), null);
+    assert.equal(parent(2), 1);
+    assert.equal(parent(3), 2);
+    assert.equal(entry('breadcrumb', 'Help').status, 'not_mapped');
+    assert.match(entry('breadcrumb', 'Price list').target, /page 2 → parent 1/);
+    assert.equal(region('Trail').position, 'breadcrumb');
+  });
+
+  test('chart axes: the value axis\' format, a gauge\'s range; the rest is noted', () => {
+    const revenue = region('Revenue');
+    assert.equal(revenue.config.format_mask, 'FM999G999G999G990D00');
+    const notes = entry('region', 'Revenue').notes.join('\n');
+    assert.match(notes, /second value axis \(y2\) is not carried over/);
+    assert.match(notes, /the label axis's title "Product"/);
+    assert.match(notes, /the value axis's log scale/);
+    assert.match(notes, /fixed range \(0 to 200\)/);
+    const stock = region('Stock');
+    assert.equal(stock.config.kind, 'gauge');
+    assert.deepEqual(stock.config.gauge, { min: 0, max: 100 });
+    assert.equal(stock.config.format_mask, 'FML999G999G999G990D00');
+  });
+
+  test('ACL roles become the roles the authorization schemes check; ALL_USERS lets every user in', () => {
+    assert.deepEqual(doc.authz_schemes.find((s: any) => s.name === 'ADMINISTRATION_RIGHTS'), { name: 'ADMINISTRATION_RIGHTS', type: 'role', value: 'administrator', error_message: 'Administrators only' });
+    assert.equal(entry('acl_role', 'Administrator').target, 'role administrator');
+    assert.match(entry('acl_role', 'Administrator').notes.join('\n'), /checked by the authorization scheme ADMINISTRATION_RIGHTS/);
+    assert.match(entry('acl_role', 'Reader').notes.join('\n'), /no authorization scheme checks it/);
+    assert.equal(doc.app.access_control, 'any_user');
+  });
+
+  test('dynamic content: a return or htp.p calls become a dynamic region; real PL/SQL stays to port', () => {
+    const count = region('Count');
+    assert.equal(count.type, 'dynamic');
+    assert.equal(count.source, `select '<p class="lead">Products: ' || (select count(*) from apex211.product) || '</p>'`);
+    const printed = region('Printed');
+    assert.equal(printed.type, 'dynamic');
+    assert.equal(printed.source, `select ('<p>Cheapest: ') || chr(10)\n    || ((select min(price) from apex211.product))\n    || ('</p>') || chr(10)`);
+    const looped = region('Looped');
+    assert.equal(looped.type, 'static');
+    assert.equal(entry('region', 'Looped').status, 'not_mapped');
+    assert.ok(entry('region', 'Looped').port);
+  });
+
+  test('imported, it runs: saved reports written, display values, breadcrumb, dynamic content', async () => {
+    await owner.query('select meta.import_app($1::jsonb, $2)', [JSON.stringify(doc), ALIAS]);
+    const appId = (await owner.one<{ id: number }>('select id from meta.app where alias = $1', [ALIAS]))!.id;
+    const { apexSavedReports } = await import('../src/apex-saved-reports.ts');
+    assert.equal(await apexSavedReports(owner, savedReports, { appId, owner: 'Developer' }), 2);
+    const rows = (await owner.query(`select username, name, public, params from meta.saved_report where app_id = $1 order by name`, [appId])).rows;
+    assert.deepEqual(rows.map((r: any) => [r.username, r.name, r.public]), [['developer', 'Cheap things', true], ['alice', 'Mine', false]]);
+    assert.equal(await apexSavedReports(owner, savedReports, { appId, owner: 'developer' }), 0, 'a second run adds nothing');
+    const b = new Browser(app);
+    const p1 = await b.get(`/a/${ALIAS}/1`);
+    assert.equal(p1.statusCode, 200);
+    assert.ok(p1.body.includes('Tools') && p1.body.includes('Garden'), 'the category column shows its display value');
+    assert.ok(p1.body.includes('Small') && p1.body.includes('Large'), 'a static list of values too');
+    // the saved report's parameters, as the runtime reads them
+    const cheapPage = (await b.get(`/a/${ALIAS}/1?${rows.find((r: any) => r.name === 'Cheap things').params}`)).body;
+    // the rows' text (a highlight names its value in the table's markup too)
+    const cheap = cheapPage.slice(cheapPage.indexOf('<table')).replace(/<[^>]*>/g, ' ');
+    assert.ok(cheap.includes('Rake') && cheap.includes('Spade') && !cheap.includes('Anvil'), 'the filter price < 50');
+    assert.match(cheap, /Double Price[\s\S]*Spade\s+30\.00\s+60\.00/, 'the computed column');
+    assert.ok(cheap.indexOf('Spade') < cheap.indexOf('Hammer') && cheap.indexOf('Hammer') < cheap.indexOf('Rake'), 'sorted by price, descending');
+    const p3 = await b.get(`/a/${ALIAS}/3`);
+    assert.equal(p3.statusCode, 200);
+    assert.match(p3.body, /<p class="lead">Products: 4<\/p>/);
+    assert.match(p3.body, /Cheapest: \s*7\.25/);
+    assert.match(p3.body, /href="[^"]*\/a\/apex211-store\/2[^"]*"[^>]*>Price list</, 'the breadcrumb leads to the parent pages');
   });
 });

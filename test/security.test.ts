@@ -18216,6 +18216,60 @@ wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(13),p_is_default=>'
   });
 });
 
+describe('sprint 211 NX-F5', () => {
+  // an uploaded APEX export is untrusted text: saved reports, lists of values, grid validations and ACL roles from it
+  const exportWith = (calls: string) => `begin
+wwv_flow_imp.import_begin(p_release=>'23.2.0',p_default_application_id=>1,p_default_owner=>'SALES');
+wwv_imp_workspace.create_flow(p_id=>wwv_flow.g_flow_id,p_name=>'Evil',p_alias=>'EVIL');
+wwv_flow_imp_page.create_page(p_id=>1,p_name=>'One');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(10),p_plug_name=>'R',p_query_type=>'TABLE',p_query_table=>'ORDERS',p_plug_source_type=>'NATIVE_IR');
+wwv_flow_imp_page.create_worksheet(p_id=>wwv_flow_imp.id(11));
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(12),p_db_column_name=>'ID',p_column_identifier=>'A');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(13),p_db_column_name=>'STATUS',p_column_identifier=>'B',p_display_text_as=>'LOV_ESCAPE_SC',p_rpt_lov=>'STATIC:Open'';drop table sales.orders--;O,Closed;C');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(14),p_is_default=>'Y',p_application_user=>'APXWS_DEFAULT',p_report_columns=>'ID:STATUS');
+${calls}
+end;
+/`;
+  test('saved report values stay values, columns must be the region\'s, owners must be user names', async () => {
+    const { apexToDoc } = await import('../src/apeximport.ts');
+    const { savedReports, report } = apexToDoc(exportWith(`
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(15),p_name=>'X',p_status=>'PUBLIC',p_application_user=>'APXWS_ALTERNATIVE');
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(16),p_report_id=>wwv_flow_imp.id(15),p_condition_type=>'FILTER',p_column_name=>'ID',p_operator=>'=',p_expr=>'1'' or 1=1 --');
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(17),p_report_id=>wwv_flow_imp.id(15),p_condition_type=>'FILTER',p_column_name=>'ID) or (1=1',p_operator=>'=',p_expr=>'1');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(18),p_name=>'Y',p_status=>'PRIVATE',p_application_user=>'x''; drop role y; --');`)) as any;
+    assert.equal(savedReports.length, 1);
+    // the value is a filter value: the runtime binds it as a literal
+    assert.deepEqual(savedReports[0].params, [['f', "id|eq|1' or 1=1 --"]]);
+    assert.equal(report.entries.find((e: any) => e.name === 'R: Y').status, 'not_mapped', 'an owner that is not a user name');
+  });
+
+  test('a static list of values\' text becomes escaped literals; grid validation values too; ACL role names are plain', async () => {
+    const { apexToDoc } = await import('../src/apeximport.ts');
+    const { doc } = apexToDoc(exportWith(`
+wwv_flow_imp_shared.create_acl_role(p_id=>wwv_flow_imp.id(20),p_static_id=>'ADMIN''); drop table x; --',p_name=>'Admin');
+wwv_flow_imp_shared.create_security_scheme(p_id=>wwv_flow_imp.id(21),p_name=>'Admins',p_scheme_type=>'NATIVE_IS_IN_GROUP',p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2('name', 'Admin', 'type', 'A')).to_clob);
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(30),p_plug_name=>'G',p_query_type=>'TABLE',p_query_table=>'ORDERS',p_plug_source_type=>'NATIVE_IG');
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(31),p_name=>'ID',p_source_type=>'DB_COLUMN',p_source_expression=>'ID',p_is_primary_key=>true);
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(32),p_tabular_form_region_id=>wwv_flow_imp.id(30),p_validation_name=>'V',p_validation=>'ID',p_validation2=>'x''); drop table y; --',p_validation_type=>'ITEM_IN_VALIDATION_EQ_STRING2',p_associated_column=>'ID');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(33),p_tabular_form_region_id=>wwv_flow_imp.id(30),p_validation_name=>'W',p_validation=>'ID',p_validation_type=>'ITEM_NOT_NULL',p_associated_column=>'ID); drop table z; --');`)) as any;
+    const regions = doc.pages[0].regions;
+    const ir = regions.find((r: any) => r.title === 'R');
+    assert.ok(ir.source.includes(`('Open''', 'drop table sales.orders--', 0)`), 'display and return value are escaped literals');
+    const g = regions.find((r: any) => r.title === 'G');
+    assert.equal(g.config.columns.id.validation, `:ID = 'x''); drop table y; --'`);
+    assert.equal(Object.keys(g.config.columns).length, 1, 'a column that is not a name gets no validation');
+    assert.equal(doc.authz_schemes[0].value, 'admin_drop_table_x');
+  });
+
+  test('saved reports are only written for the imported application\'s report regions, with parameters of its own', async () => {
+    const { apexSavedReports } = await import('../src/apex-saved-reports.ts');
+    const before = (await owner.one<{ n: number }>('select count(*)::int as n from meta.saved_report'))!.n;
+    // a region that is not a report of this application (its own id, a page it does not have) writes nothing
+    assert.equal(await apexSavedReports(owner, [{ page: 99999, region: 'x', name: 'N', public: true, username: 'u', params: [['f', 'a|eq|1']] }], { appId, owner: 'dev' }), 0);
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.saved_report'))!.n, before);
+  });
+});
+
 // (sprint 210, AX-1) A report or grid column's authorization scheme and server-side condition: a column that fails
 // either is not in the region for this request, so neither the page nor any download, refresh or save can reach it.
 describe('column authorization and condition', () => {

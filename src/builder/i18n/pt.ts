@@ -8171,6 +8171,7 @@ export const pt: BuilderMessages = {
   'apx.obj.routine': "Rotina PL/SQL",
   'apx.col.exists_as': "Existe como",
   'apx.issues_made': "{n} issues de Team Development listam o que precisa de trabalho manual (etiqueta «APEX import»).",
+  'apx.saved_reports_made': "Foram transferidos {n} relatórios guardados dos relatórios interativos.",
   'apx.another': 'Escolher outro arquivo',
   'apx.update': 'Atualizar o relatório',
   'apx.alias_bad': 'Um alias tem letras minúsculas, dígitos, - e _, e começa com uma letra.',
@@ -8207,6 +8208,9 @@ export const pt: BuilderMessages = {
   'apx.kind.app_computation': 'Cálculo de aplicação',
   'apx.kind.build_option': 'Opção de build',
   'apx.kind.app_setting': 'Configuração de aplicação',
+  'apx.kind.breadcrumb': 'Entrada de trilha de navegação',
+  'apx.kind.acl_role': 'Função de ACL',
+  'apx.kind.saved_report': 'Relatório guardado',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'Segurança do navegador',
   'bs.intro': 'O que os navegadores podem fazer com as páginas da aplicação: mostrá-las num frame, repassar o endereço, indexá-las. O builder mantém as suas próprias configurações.',

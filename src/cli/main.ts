@@ -355,7 +355,7 @@ const COMMANDS: Record<string, Command> = {
         }
         throw e;
       }
-      const { doc, report } = result;
+      const { doc, report, savedReports } = result;
       // (sprint 192, NX-F5) the database objects the application uses, looked up in the target database's catalogue
       if (v.check) {
         if (v['dry-run'] || v.out) throw new UsageError('--check imports nothing: leave out --dry-run and --out');
@@ -390,20 +390,24 @@ const COMMANDS: Record<string, Command> = {
         const made = await importDoc(db, doc, { alias: report.application.alias, replace: false, by: `pgkiln import-apex (${userInfo().username})`, schema: there });
         // (sprint 187) a Team Development issue per component that needs hand work, in the application's workspace
         let issues = 0;
-        if (!v['no-issues'] && made.committed) {
+        let saved = 0;
+        if (made.committed && (!v['no-issues'] || savedReports.length)) {
           const { apexIssues } = await import('../apex-issues.ts');
+          const { apexSavedReports } = await import('../apex-saved-reports.ts');
           await db.query('begin');
           try {
-            issues = await apexIssues(db, report, { appId: made.id, alias: report.application.alias, by: `pgkiln import-apex (${userInfo().username})` });
+            if (!v['no-issues']) issues = await apexIssues(db, report, { appId: made.id, alias: report.application.alias, by: `pgkiln import-apex (${userInfo().username})` });
+            // (sprint 211) saved interactive reports; the application's own public ones belong to who runs the import
+            saved = await apexSavedReports(db, savedReports, { appId: made.id, owner: userInfo().username });
             await db.query('commit');
           } catch (e) {
             await db.query('rollback');
             throw e;
           }
         }
-        return { ...made, issues };
+        return { ...made, issues, saved };
       });
-      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''}${r.issues ? ` ${r.issues} Team Development issue(s) list what needs hand work (label "APEX import").` : ''}${missing ? ` ${missing} database object(s) are missing: their pages show errors until you create them.` : ''} Finish what the report lists.\n`);
+      if (!v.json) out(`\nImported ${report.application.alias} (application ${r.id}).${r.roleNote ? ` ${r.roleNote}` : ''}${r.issues ? ` ${r.issues} Team Development issue(s) list what needs hand work (label "APEX import").` : ''}${r.saved ? ` ${r.saved} saved report(s).` : ''}${missing ? ` ${missing} database object(s) are missing: their pages show errors until you create them.` : ''} Finish what the report lists.\n`);
       return EXIT.ok;
     },
   },

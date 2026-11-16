@@ -17,7 +17,7 @@
 // Every component gets a line in the report: mapped, mapped with notes, or not mapped (with its
 // APEX type), so a developer knows what to finish by hand. Unknown things never fail the import.
 
-import { codeMask, plsqlAsSql, translateOracle } from './oracle-sql.ts';
+import { codeMask, plsqlAsHtml, plsqlAsSql, translateOracle } from './oracle-sql.ts';
 import { pageAliasProblem } from './page-alias.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
@@ -30,7 +30,9 @@ export type ReportKind =
   | 'application' | 'page' | 'region' | 'item' | 'button' | 'validation' | 'process' | 'computation' | 'branch'
   | 'dynamic_action' | 'lov' | 'authorization' | 'navigation'
   // (sprint 209) shared components of the application
-  | 'app_item' | 'app_process' | 'app_computation' | 'build_option' | 'app_setting';
+  | 'app_item' | 'app_process' | 'app_computation' | 'build_option' | 'app_setting'
+  // (sprint 211) breadcrumb entries, ACL roles, saved interactive reports
+  | 'breadcrumb' | 'acl_role' | 'saved_report';
 
 export interface ReportEntry {
   kind: ReportKind;
@@ -61,6 +63,19 @@ export interface ApexReport {
 }
 
 export class NotAnApexExport extends Error {}
+
+/** (sprint 211) A saved interactive report to write after the import: its region by page and static id, its r<id>_* parameters */
+export interface ApexSavedReport {
+  page: number;
+  /** the region's static id */
+  region: string;
+  name: string;
+  public: boolean;
+  /** its owner; null: who imports the application */
+  username: string | null;
+  /** the parameters without their r<id>_ prefix: ['f', 'job|eq|CLERK'] … */
+  params: [string, string][];
+}
 
 const PORT = 'PL/SQL carried over as it is: port it to PL/pgSQL (chapter 11, Porting PL/SQL to PL/pgSQL)';
 
@@ -574,6 +589,8 @@ const READ = new Set([
   'create_build_option', 'create_flow_item', 'create_flow_process', 'create_flow_computation', 'create_app_setting',
   'create_worksheet_column', 'create_worksheet_rpt', 'create_report_columns', 'create_interactive_grid', 'create_ig_report',
   'create_ig_report_view', 'create_ig_report_column',
+  // (sprint 211)
+  'create_worksheet_condition', 'create_worksheet_computation', 'create_menu', 'create_menu_option', 'create_jet_chart_axis', 'create_acl_role',
 ]);
 
 // ------------------------------------------------------------------ the mapping
@@ -616,7 +633,7 @@ export function apexAlias(alias: string | null, name: string | null, appId: stri
 }
 
 /** An APEX SQL export (the text of f100.sql, or the joined files of a split export) as a pgkiln/2 document and the import report. */
-export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: Doc; report: ApexReport } {
+export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: Doc; report: ApexReport; savedReports: ApexSavedReport[] } {
   const calls = parseApexCalls(source);
   const by = (m: string) => calls.filter((c) => c.method === m);
   const flow = by('create_flow')[0];
@@ -640,6 +657,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
 
   const entries: Entry[] = [];
   const add = (e: Entry) => (entries.push(e), e);
+  /** (sprint 211) saved interactive reports: user data, written after the import (src/apex-saved-reports.ts) */
+  const saved: ApexSavedReport[] = [];
   const skipped: Record<string, number> = {};
 
   // ---- first pass: components by APEX id, and which page each belongs to
@@ -668,6 +687,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   // ---- shared lists of values
   const lovs: any[] = [];
   const lovName = new Map<string, string>();
+  /** (sprint 211) a shared list of values as a query of its display and return value (first and second column), by APEX id */
+  const lovSql = new Map<string, string>();
   const usedLov = new Set<string>();
   for (const c of by('create_list_of_values')) {
     const a = c.args;
@@ -681,7 +702,11 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const e = add(new Entry('lov', null, apexName, str(a, 'p_source_type') ?? (staticLov.has(c) ? 'STATIC' : 'SQL'), 'lov'));
     const values = staticLov.get(c);
     let query: string | null = null;
-    if (values?.length) query = staticLovQuery(values.sort((x, y) => (num(x.args, 'p_lov_disp_sequence') ?? 0) - (num(y.args, 'p_lov_disp_sequence') ?? 0)).map((v) => [str(v.args, 'p_lov_disp_value') ?? '', str(v.args, 'p_lov_return_value') ?? '']));
+    if (values?.length) {
+      const pairs = values.sort((x, y) => (num(x.args, 'p_lov_disp_sequence') ?? 0) - (num(y.args, 'p_lov_disp_sequence') ?? 0)).map((v): [string, string] => [str(v.args, 'p_lov_disp_value') ?? '', str(v.args, 'p_lov_return_value') ?? '']);
+      query = staticLovQuery(pairs);
+      if (id) lovSql.set(id, staticLovSql(pairs));
+    }
     else if (str(a, 'p_query_table')) {
       const ret = str(a, 'p_return_column_name');
       const disp = str(a, 'p_display_column_name') ?? ret;
@@ -700,8 +725,37 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       query = "select 'TODO' as d, 'TODO' as r";
       e.status = 'not_mapped';
     }
+    if (id && !lovSql.has(id) && e.status !== 'not_mapped' && !/^STATIC2?:/i.test(query)) {
+      // a SQL list of values may name its display and return columns (APEX 21+): those, else the first two columns
+      const rc = str(a, 'p_return_column_name');
+      const dc = str(a, 'p_display_column_name');
+      const named = !str(a, 'p_query_table') && rc && dc && /^[A-Za-z][A-Za-z0-9_$#]*$/.test(rc) && /^[A-Za-z][A-Za-z0-9_$#]*$/.test(dc);
+      lovSql.set(id, named ? `select x.${ident(dc)} as d, x.${ident(rc)} as r from (${stripSemi(query)}) x` : query);
+    }
     lovs.push({ name, query, rest_source: null });
   }
+
+  // ---- (sprint 211) access control roles (create_acl_role): pgkiln's application roles are names, given to users under
+  // Access control and checked by role authorization schemes and meta.has_role(). An ACL role becomes the role named
+  // by its static id in lower case (ADMINISTRATOR → administrator); the schemes that name it (by name or static id) check that.
+  const aclRole = new Map<string, { role: string; e: Entry; schemes: string[] }>();
+  for (const c of by('create_acl_role')) {
+    const a = c.args;
+    const apexName = str(a, 'p_name') ?? str(a, 'p_static_id') ?? 'Role';
+    const role = (str(a, 'p_static_id') ?? apexName).trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 60) || 'role';
+    const e = add(new Entry('acl_role', null, apexName, 'ACL role', `role ${role}`));
+    const desc = str(a, 'p_description');
+    if (desc) e.note(`description: ${desc.slice(0, 200)}`);
+    const it = { role, e, schemes: [] as string[] };
+    for (const k of [apexName, str(a, 'p_static_id')]) if (k) aclRole.set(k.trim().toLowerCase(), it);
+  }
+  /** a group or role an authorization scheme names: an ACL role's pgkiln role, else the name as it is */
+  const roleOf = (g: string, scheme: string) => {
+    const r = aclRole.get(g.trim().toLowerCase());
+    if (!r) return g;
+    if (!r.schemes.includes(scheme)) r.schemes.push(scheme);
+    return r.role;
+  };
 
   // ---- authorization schemes (an unknown scheme fails closed in pgkiln: components that name one not created are denied)
   const authzSchemes: any[] = [];
@@ -725,7 +779,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     } else if ((type === 'NATIVE_NOT_EXISTS' || type === 'NOT_EXISTS') && body) {
       authzSchemes.push({ name, type: 'sql', value: `not exists (${stripSemi(e.oracle(body))})`, error_message: msg });
     } else if ((type === 'NATIVE_IS_IN_GROUP' || type === 'NATIVE_ACL_ROLE') && body) {
-      const groups = body.split(/[,:]/).map((x) => x.trim()).filter(Boolean);
+      const groups = [...new Set(body.split(/[,:]/).map((x) => x.trim()).filter(Boolean).map((g) => roleOf(g, name)))];
       if (groups.length === 1) {
         authzSchemes.push({ name, type: 'role', value: groups[0], error_message: msg });
         e.target = 'role';
@@ -1028,14 +1082,25 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
             // &ITEM. works the same; #SUBSTITUTIONS# of templates don't
             if (/#[A-Z_]+#/.test(row.source ?? '')) e.note('#…# template substitutions in the HTML are not filled in');
           }
+        } else if ((apexType === 'NATIVE_DYNAMIC_CONTENT' || apexType === 'NATIVE_PLSQL') && !/^javascript/i.test(str(a, 'p_function_body_language') ?? '')
+          && plsqlAsHtml(str(a, 'p_plug_source'), apexType === 'NATIVE_PLSQL' ? 'htp' : 'function')) {
+          // (sprint 211) dynamic content whose PL/SQL is one return (or only htp.p calls): a pgkiln dynamic region, its
+          // SELECT's first column the HTML. APEX does not escape it either: the expression must (meta.html_escape)
+          row.type = 'dynamic';
+          row.source = e.oracle(plsqlAsHtml(str(a, 'p_plug_source'), apexType === 'NATIVE_PLSQL' ? 'htp' : 'function')!);
+          e.target = 'dynamic';
+          e.note(`the PL/SQL became a SELECT whose value is the region's HTML: ${apexType === 'NATIVE_PLSQL' ? 'the htp.p calls joined with ||' : 'its return expression'}`);
+          if (/\bapex_escape\s*\.\s*html\b|\bhtf\s*\.\s*escape_sc\b/i.test(row.source)) e.note('escape values with meta.html_escape() in place of apex_escape.html / htf.escape_sc');
         } else {
           // a type pgkiln has, but with settings the importer does not read, or one it has not: keep the source to see
           const what = REGION_NAMES[apexType] ?? apexType;
           const src = str(a, 'p_plug_source');
           row.source = `<div class="alert alert-info"><p>APEX region <strong>${escapeHtml(title)}</strong> (${escapeHtml(what)}, ${escapeHtml(apexType)}) was not imported: rebuild it with a pgkiln region.</p>${src ? `<pre>${escapeHtml(src)}</pre>` : ''}</div>`;
           row.template = 'plain';
-          e.notMapped(`${what} regions are not mapped: a static region with a note (and the APEX source) stands in for it`);
-          if (apexType === 'NATIVE_PLSQL') {
+          if (apexType === 'NATIVE_PLSQL' || apexType === 'NATIVE_DYNAMIC_CONTENT')
+            e.notMapped(`${what}: its PL/SQL is more than one return (or htp.p calls): port it to a SELECT that returns the HTML and make the region a dynamic region (a static region with a note and the APEX source stands in for it)`);
+          else e.notMapped(`${what} regions are not mapped: a static region with a note (and the APEX source) stands in for it`);
+          if (apexType === 'NATIVE_PLSQL' || apexType === 'NATIVE_DYNAMIC_CONTENT') {
             e.port = true;
             e.scan(src);
           }
@@ -1087,7 +1152,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       case 'breadcrumb':
         row.template = 'plain';
         row.position = 'breadcrumb';
-        e.note("pgkiln's breadcrumb comes from each page's breadcrumb parent, not from an APEX breadcrumb: set the pages' parents");
+        // (sprint 211) the breadcrumb's entries became the pages' breadcrumb parents (below)
+        if (!by('create_menu_option').length) e.note("pgkiln's breadcrumb comes from each page's breadcrumb parent, not from an APEX breadcrumb: set the pages' parents");
         break;
     }
     page.regions.push(row);
@@ -1114,6 +1180,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       }
       return out;
     };
+    /** (sprint 211) an interactive report's columns in the query's order: APEX's column identifiers (A … Z, AA …) follow it */
+    const identifierNo = (id: string | null) => (id && /^[A-Z]{1,3}$/.test(id) ? [...id].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) : null);
+    const queryOrder = (cols: ApexCall[]) =>
+      cols.every((c) => identifierNo(str(c.args, 'p_column_identifier')) !== null)
+        ? cols.slice().sort((x, y) => identifierNo(str(x.args, 'p_column_identifier'))! - identifierNo(str(y.args, 'p_column_identifier'))!)
+        : cols.slice().sort((x, y) => (num(x.args, 'p_display_order') ?? 0) - (num(y.args, 'p_display_order') ?? 0));
     const defaultHeading = (c: string) => c.replace(/_/g, ' ').replace(/\b\p{L}/gu, (x) => x.toUpperCase());
     /** a format mask pgkiln formats with (APEX's SINCE, PCT_GRAPH, IMAGE, DOWNLOAD … are not masks) */
     const mask = (m: string | null, col: string, e: Entry) => {
@@ -1137,13 +1209,50 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       if (!col) return null;
       return { column: col, page, items, ...(icon ? { icon: true } : {}) };
     };
-    const orderBy = (row: any, cols: [string, boolean][], e: Entry) => {
+    const orderBy = (row: any, cols: [string, boolean][], e: Entry, base: string = row.source) => {
       // only where an ORDER BY can go at the end, and on plain column names (quoted: a column may be called page or timestamp)
-      if (!cols.length || !row.source || /\b(order\s+by|limit|fetch|offset|for\s+update)\b/i.test(codeMask(row.source))) return;
+      if (!cols.length || !row.source || /\b(order\s+by|limit|fetch|offset|for\s+update)\b/i.test(codeMask(base))) return;
       if (cols.some(([c]) => !/^[a-z_][a-z0-9_$]*$/.test(c))) return;
       row.source += `\n order by ${cols.map(([c, desc]) => `"${c}"${desc ? ' desc' : ''}`).join(', ')}`;
       e.note(`the default sort (${cols.map(([c, d]) => `${c}${d ? ' desc' : ''}`).join(', ')}) became the query's order by`);
     };
+    /** (sprint 211) the list of values of a report column (shared, or the column's own query): its display and return value as SQL */
+    const columnLov = (named: string | null, inline: string | null, col: string, e: Entry): string | null => {
+      if (named) {
+        const q = lovSql.get(named);
+        if (!q) e.note(`column ${col}: its list of values is not in the export (or has no query): the column shows its value`);
+        return q ?? null;
+      }
+      if (!inline) return null;
+      if (/^STATIC2?:/i.test(inline)) {
+        const pairs = inline.replace(/^STATIC2?:/i, '').split(',').map((x): [string, string] => {
+          const [d, r] = x.split(';');
+          return [d, r ?? d];
+        });
+        return staticLovSql(pairs);
+      }
+      return stripSemi(e.oracle(inline));
+    };
+    /**
+     * (sprint 211) APEX shows a column with a list of values as its display value: the region's query becomes a query of
+     * its columns (in the query's order) with each such column looked up in its list (the return value compared as text,
+     * as APEX does). A column a link passes on (#col#) keeps its value. The column names come from the export: only
+     * plain names are used, quoted.
+     */
+    const lovDisplay = (row: any, cols: string[], lovCols: Map<string, string>, keep: Set<string>, e: Entry) => {
+      for (const c of keep) if (lovCols.delete(c)) e.note(`column ${c}: a link passes its value on, so it shows its value, not the list of values' display value`);
+      if (!lovCols.size || !row.source) return;
+      // (a link's column the export doesn't list would be lost from the query: then the query stays as it is)
+      if (cols.some((c) => !/^[a-z_][a-z0-9_$]*$/.test(c)) || new Set(cols).size !== cols.length || [...keep].some((c) => !cols.includes(c))) {
+        e.note(`columns ${[...lovCols.keys()].join(', ')} show a list of values' display value in APEX: join the lookup table in the query to show it`);
+        return;
+      }
+      const sel = cols.map((c) => (lovCols.has(c) ? `(select l.d from (${lovCols.get(c)}) l(d, r) where l.r::text = q."${c}"::text limit 1) as "${c}"` : `q."${c}"`));
+      row.source = `select ${sel.join(',\n       ')}\n  from (${row.source}) q`;
+      e.note(`columns ${[...lovCols.keys()].join(', ')} show their list of values' display value (looked up in the query)`);
+    };
+    /** the columns a link passes on (#col# in its items) */
+    const linkColumns = (link: any) => new Set<string>([...Object.values(link?.items ?? {}).join(' ').matchAll(/#([a-z0-9_$]+)#/g)].map((m) => m[1]));
     const settle = (cfg: any) => {
       for (const k of ['headings', 'formats', 'columns']) if (cfg[k] && !Object.keys(cfg[k]).length) delete cfg[k];
       for (const k of ['hidden', 'readonly']) if (cfg[k] && !cfg[k].length) delete cfg[k];
@@ -1152,6 +1261,118 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     // interactive reports
     const worksheets = grouped('create_worksheet');
     const savedReports = grouped('create_worksheet_rpt');
+    // (sprint 211) a saved report's filters, highlights and search, and its computed columns, by the report's APEX id
+    const byReport = (method: string) => {
+      const out = new Map<string, Args[]>();
+      for (const c of by(method)) {
+        const id = ref(c.args, 'p_report_id');
+        if (id) out.set(id, [...(out.get(id) ?? []), c.args]);
+      }
+      return out;
+    };
+    const conditionsOf = byReport('create_worksheet_condition');
+    const computationsOf = byReport('create_worksheet_computation');
+    const usedSaved = new Set<string>();
+    /**
+     * (sprint 211) An APEX saved report (create_worksheet_rpt) as a pgkiln saved report: the report's r<id>_* parameters
+     * (src/runtime/report.ts), which the runtime reads as it reads a URL (values become literals, columns must exist,
+     * operators and colours come from fixed lists, computed columns are parsed), so nothing here reaches SQL as it is.
+     */
+    const savedReport = (rpt: ApexCall, region: { page: number; region: string; title: string; ordered: string[]; byName: Map<string, string>; byIdentifier: Map<string, string>; positions: boolean; hidden: Set<string> },
+      conditions: Args[], computations: Args[]): ApexSavedReport | null => {
+      const a = rpt.args;
+      const user = str(a, 'p_application_user') ?? '';
+      const isPublic = /^PUBLIC$/i.test(str(a, 'p_status') ?? '') || /^APXWS_/i.test(user);
+      const raw = (str(a, 'p_name') ?? str(a, 'p_report_alias') ?? 'Report').replace(/\s+/g, ' ').trim().slice(0, 70) || 'Report';
+      const owner = /^APXWS_/i.test(user) ? null : savedReportUser(user);
+      let name = raw;
+      for (let n = 2; usedSaved.has(`${region.page}/${region.region}/${owner ?? ''}/${name.toLowerCase()}`); n++) name = `${raw} (${n})`;
+      usedSaved.add(`${region.page}/${region.region}/${owner ?? ''}/${name.toLowerCase()}`);
+      const e = add(new Entry('saved_report', region.page, `${region.title}: ${name}`, `${isPublic ? 'public' : 'private'} ${(str(a, 'p_report_type') ?? 'REPORT').toLowerCase()}`, 'saved report'));
+      const params: [string, string][] = [];
+      const col = (c: string | null) => (c ? region.byName.get(c.toUpperCase()) ?? null : null);
+      // computed columns first: filters, sorts and highlights may name them
+      const computed = new Map<string, string>();
+      for (const cc of computations) {
+        const apexName = str(cc, 'p_db_column_name') ?? '';
+        const label = (str(cc, 'p_column_label') ?? str(cc, 'p_report_label') ?? apexName).replace(/[^\p{L}\p{N} _\-().%]/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+        const expr = str(cc, 'p_computation_expr');
+        if (!expr || !label || label.startsWith('__')) {
+          e.note(`computed column ${apexName}: not carried over`);
+          continue;
+        }
+        // the expression names columns by their identifier (A, B …): their names, outside string literals
+        const pg = expr.replace(/('(?:[^']|'')*')|\b([A-Za-z][A-Za-z0-9_]*)\b(\s*\()?/g, (m, lit, id, call) =>
+          lit ? lit : call ? `${id.toLowerCase()}${call}` : region.byIdentifier.get(id.toUpperCase()) ?? computed.get(id.toUpperCase()) ?? id.toLowerCase());
+        params.push(['c', `${label}|${pg.slice(0, 500)}`]);
+        computed.set(apexName.toUpperCase(), label);
+        const cid = str(cc, 'p_column_identifier');
+        if (cid) computed.set(cid.toUpperCase(), label);
+      }
+      const anyCol = (c: string | null) => col(c) ?? (c ? computed.get(c.toUpperCase()) ?? null : null);
+      // columns: the ones it doesn't show are hidden, the ones it shows in its order
+      const shown = (str(a, 'p_report_columns') ?? '').split(':').map((x) => x.trim()).filter(Boolean).map((x) => col(x)).filter((x): x is string => !!x);
+      if (shown.length) {
+        const visible = region.ordered.filter((c) => !region.hidden.has(c));
+        for (const c of visible) if (!shown.includes(c)) params.push(['x', c]);
+        const order = shown.filter((c) => visible.includes(c));
+        if (order.join() !== visible.filter((c) => shown.includes(c)).join()) for (const c of order) params.push(['o', c]);
+      }
+      // the sort: pgkiln sorts by the column's place in the query
+      const sortCol = col(str(a, 'p_sort_column_1'));
+      if (sortCol) {
+        const pos = region.ordered.indexOf(sortCol) + 1;
+        if (region.positions && pos > 0) {
+          params.push(['s', String(pos)]);
+          if (/^desc/i.test(str(a, 'p_sort_direction_1') ?? '')) params.push(['d', 'desc']);
+          if (str(a, 'p_sort_column_2')) e.note('only its first sort column is carried over');
+        } else e.note(`its sort (${sortCol}) is not carried over: the columns' order in the query is not known`);
+      }
+      const brk = col((str(a, 'p_break_on') ?? '').split(':')[0] || null);
+      if (brk) params.push(['b', brk]);
+      for (const [fn, key] of [['sum', 'p_sum_columns_on_break'], ['avg', 'p_avg_columns_on_break'], ['count', 'p_count_columns_on_break'], ['min', 'p_min_columns_on_break'], ['max', 'p_max_columns_on_break']]) {
+        for (const c of (str(a, key) ?? '').split(':').map((x) => anyCol(x.trim())).filter((x): x is string => !!x)) params.push(['a', `${fn}|${c}`]);
+      }
+      const rows = num(a, 'p_display_rows');
+      if (rows !== null && rows >= 1 && rows <= 500) params.push(['n', String(Math.round(rows))]);
+      for (const k of ['p_median_columns_on_break', 'p_count_distnt_col_on_break', 'p_flashback_minutes']) if (str(a, k)) e.note(`${k.replace(/^p_/, '')} is not carried over`);
+      const type = (str(a, 'p_report_type') ?? 'REPORT').toUpperCase();
+      if (type !== 'REPORT') e.note(`its ${type.toLowerCase().replace('_', ' ')} view is not carried over: the report view is (set it up again under Actions)`);
+      for (const cd of conditions) {
+        const kind = (str(cd, 'p_condition_type') ?? 'FILTER').toUpperCase();
+        const c = anyCol(str(cd, 'p_column_name'));
+        const what = `${kind.toLowerCase()} ${str(cd, 'p_condition_name') ?? str(cd, 'p_column_name') ?? ''}`.trim();
+        if (/^n/i.test(str(cd, 'p_enabled') ?? 'Y')) {
+          e.note(`${what}: switched off in APEX, not carried over`);
+          continue;
+        }
+        if (kind === 'SEARCH') {
+          const q = (str(cd, 'p_expr') ?? '').slice(0, 200);
+          if (q) params.push(['q', q]);
+          if (q && c) params.push(['qc', c]);
+          continue;
+        }
+        const f = c ? apexFilter(str(cd, 'p_operator'), str(cd, 'p_expr'), str(cd, 'p_expr2')) : null;
+        if (!f) {
+          e.note(`${what} (${str(cd, 'p_operator') ?? (c ? '' : 'a row filter')}) is not carried over: add it again under Actions`);
+          continue;
+        }
+        if (kind === 'HIGHLIGHT') {
+          if (['in', 'not_in', 'between', 'period'].includes(f.op)) {
+            e.note(`${what}: a highlight on ${f.op.replace('_', ' ')} is not carried over`);
+            continue;
+          }
+          params.push(['h', `${c}|${f.op}|${highlightColor(str(cd, 'p_row_bg_color', 'p_column_bg_color', 'p_row_font_color', 'p_column_font_color'))}|${f.value}`]);
+        } else params.push(['f', `${c}|${f.op}|${f.value}`]);
+      }
+      if (/^PRIVATE$/i.test(str(a, 'p_status') ?? '') && !owner) {
+        e.notMapped(`its owner (${user || 'none'}) is not a user name pgkiln can use`);
+        return null;
+      }
+      if (!owner) e.note('a public report of the application: its owner is who imports it');
+      else if (!isPublic) e.note(`a private report of ${owner}: it shows once ${owner} signs in`);
+      return { page: region.page, region: region.region, name, public: isPublic, username: owner, params };
+    };
     for (const [rid, cols] of grouped('create_worksheet_column')) {
       const r = regionDoc.get(rid);
       const e = regionApex.get(rid)?.e;
@@ -1162,10 +1383,15 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const shown = new Set((str(primary?.args ?? {}, 'p_report_columns') ?? '').split(':').map((x) => x.trim().toUpperCase()).filter(Boolean));
       const leftOut: string[] = [];
       let columnLink: any = null;
+      const lovCols = new Map<string, string>();
       for (const c of cols.sort((x, y) => (num(x.args, 'p_display_order') ?? 0) - (num(y.args, 'p_display_order') ?? 0))) {
         const apexCol = str(c.args, 'p_db_column_name');
         if (!apexCol) continue;
         const col = ident(apexCol);
+        if (/^LOV/i.test(str(c.args, 'p_display_text_as') ?? '')) {
+          const q = columnLov(ref(c.args, 'p_rpt_named_lov'), str(c.args, 'p_rpt_lov'), col, e);
+          if (q) lovCols.set(col, q);
+        }
         const label = stripTags(str(c.args, 'p_column_label') ?? '');
         if (label && label !== defaultHeading(col)) cfg.headings[col] = label;
         const fm = mask(str(c.args, 'p_format_mask'), col, e);
@@ -1175,7 +1401,6 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
           cfg.hidden.push(col);
           leftOut.push(col);
         }
-        if (/^LOV/i.test(str(c.args, 'p_display_text_as') ?? '') || c.args.p_rpt_named_lov) e.note(`column ${col} shows a list of values' display value in APEX: join the lookup table in the query to show it`);
         if (!columnLink && str(c.args, 'p_column_link')) columnLink = linkOf(str(c.args, 'p_column_link'), col, e, false);
       }
       if (leftOut.length) e.note(`columns not in the default report (${leftOut.join(', ')}) became hidden columns: APEX users could add them under Actions → Columns`);
@@ -1183,15 +1408,27 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       const detail = ws && !/^N$/i.test(str(ws.args, 'p_show_detail_link') ?? '') ? linkOf(str(ws.args, 'p_detail_link'), null, e, true) : null;
       if (detail || columnLink) cfg.link = detail ?? columnLink;
       if (ws && str(ws.args, 'p_no_data_found_message') && !/^No data found\.?$/i.test(str(ws.args, 'p_no_data_found_message')!)) cfg.empty = str(ws.args, 'p_no_data_found_message');
+      // the columns in the query's order: by APEX's column identifier (A, B … AA), which follows the query
+      const ordered = queryOrder(cols.filter((c) => str(c.args, 'p_db_column_name')));
+      const base = r.row.source;
+      lovDisplay(r.row, ordered.map((c) => ident(str(c.args, 'p_db_column_name')!)), lovCols, linkColumns(cfg.link), e);
       if (primary) {
         const sort: [string, boolean][] = [];
         for (let n = 1; n <= 6; n++) {
           const sc = str(primary.args, `p_sort_column_${n}`);
           if (sc) sort.push([ident(sc), /^desc/i.test(str(primary.args, `p_sort_direction_${n}`) ?? '')]);
         }
-        orderBy(r.row, sort, e);
+        orderBy(r.row, sort, e, base);
       }
-      if (reports.length > 1) e.note(`${reports.length - 1} other saved report(s) are not carried over: the default report's columns and sort are`);
+      // (sprint 211) the other saved reports (public and private) become pgkiln saved reports of the region
+      for (const rpt of reports.filter((x) => x !== primary)) {
+        const sr = savedReport(rpt, { page: r.page.page_no, region: r.row.static_id, title: r.row.title, ordered: ordered.map((c) => ident(str(c.args, 'p_db_column_name')!)),
+          byName: new Map(cols.filter((c) => str(c.args, 'p_db_column_name')).map((c) => [str(c.args, 'p_db_column_name')!.toUpperCase(), ident(str(c.args, 'p_db_column_name')!)])),
+          byIdentifier: new Map(cols.filter((c) => str(c.args, 'p_db_column_name') && str(c.args, 'p_column_identifier')).map((c) => [str(c.args, 'p_column_identifier')!.toUpperCase(), ident(str(c.args, 'p_db_column_name')!)])),
+          positions: ordered.every((c) => identifierNo(str(c.args, 'p_column_identifier')) !== null), hidden: new Set(cfg.hidden) },
+        conditionsOf.get(ref(rpt.args, 'p_id') ?? '') ?? [], computationsOf.get(ref(rpt.args, 'p_id') ?? '') ?? []);
+        if (sr) saved.push(sr);
+      }
       settle(cfg);
       r.row.config = cfg;
     }
@@ -1203,22 +1440,29 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       if (!r || !e || !['report', 'classic_report'].includes(r.row.type)) continue;
       const cfg: any = { ...r.row.config, headings: {}, hidden: [], formats: {} };
       // (a classic report's p_default_sort_column_sequence is not read: APEX writes 1 on every column of some reports)
+      const lovCols = new Map<string, string>();
       for (const c of cols.sort((x, y) => (num(x.args, 'p_column_display_sequence') ?? 0) - (num(y.args, 'p_column_display_sequence') ?? 0))) {
         const apexCol = str(c.args, 'p_column_alias');
         if (!apexCol) continue;
         const col = ident(apexCol);
+        if (/LOV/i.test(str(c.args, 'p_display_as') ?? '') || c.args.p_named_lov || str(c.args, 'p_inline_lov')) {
+          const q = columnLov(ref(c.args, 'p_named_lov'), str(c.args, 'p_inline_lov'), col, e);
+          if (q) lovCols.set(col, q);
+        }
         const label = stripTags(str(c.args, 'p_column_heading') ?? '');
         if (label && label !== defaultHeading(col)) cfg.headings[col] = label;
         const fm = mask(str(c.args, 'p_column_format'), col, e);
         if (fm) cfg.formats[col] = fm;
         if (yes(c.args, 'p_hidden_column') || /^HIDDEN/i.test(str(c.args, 'p_display_as') ?? '')) cfg.hidden.push(col);
-        if (c.args.p_named_lov || /LOV/i.test(str(c.args, 'p_display_as') ?? '')) e.note(`column ${col} shows a list of values' display value in APEX: join the lookup table in the query to show it`);
         if (!cfg.link && str(c.args, 'p_column_link')) {
           const icon = /<img|<span[^>]*\bfa\b|fa-|#EDIT_ICON#|^\s*$/i.test(str(c.args, 'p_column_linktext') ?? '');
           const l = linkOf(str(c.args, 'p_column_link'), col, e, icon);
           if (l) cfg.link = l;
         }
       }
+      // p_query_column_id is the column's place in the query
+      const ordered = cols.slice().sort((x, y) => (num(x.args, 'p_query_column_id') ?? 0) - (num(y.args, 'p_query_column_id') ?? 0)).map((c) => str(c.args, 'p_column_alias')).filter((c): c is string => !!c);
+      lovDisplay(r.row, ordered.map(ident), lovCols, linkColumns(cfg.link), e);
       settle(cfg);
       r.row.config = cfg;
     }
@@ -1589,6 +1833,56 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     page.buttons.push(row);
   }
 
+  // ---- (sprint 211) an interactive grid's column validation becomes the grid column's validation (an SQL expression
+  // that must be true for each added or changed row; the row's columns are binds by their names, as text)
+  const GRID_CHECKS: Record<string, (b: string, v: string | null) => string | null> = {
+    ITEM_NOT_NULL: (b) => `nullif(${b}, '') is not null`,
+    ITEM_IS_NOT_NULL: (b) => `nullif(${b}, '') is not null`,
+    ITEM_IS_NUMERIC: (b) => `${b} is null or ${b} ~ '^\\s*[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)\\s*$'`,
+    ITEM_IS_ALPHANUMERIC: (b) => `${b} is null or ${b} ~ '^[[:alnum:]]*$'`,
+    ITEM_CONTAINS_NO_SPACES: (b) => `${b} is null or ${b} !~ '\\s'`,
+    ITEM_IN_VALIDATION_EQ_STRING2: (b, v) => (v === null ? null : `${b} = ${sqlString(v)}`),
+    ITEM_IN_VALIDATION_NOT_EQ_STRING2: (b, v) => (v === null ? null : `${b} is distinct from ${sqlString(v)}`),
+    ITEM_IN_VALIDATION_IN_STRING2: (b, v) => (v === null ? null : `${b} = any (string_to_array(${sqlString(v)}, ':'))`),
+    ITEM_IN_VALIDATION_NOT_IN_STRING2: (b, v) => (v === null ? null : `${b} is null or not (${b} = any (string_to_array(${sqlString(v)}, ':')))`),
+    REGULAR_EXPRESSION: (b, v) => (v === null ? null : `${b} is null or ${b} ~ ${sqlString(v)}`),
+  };
+  const gridValidation = (a: Args, apexType: string, e: Entry) => {
+    const region = regionDoc.get(ref(a, 'p_tabular_form_region_id') ?? '');
+    const column = (str(a, 'p_associated_column') ?? (VALIDATION_TYPES[apexType]?.item ? str(a, 'p_validation') : null) ?? '').trim().toUpperCase();
+    if (!region || region.row.type !== 'grid' || !isUpperName(column)) {
+      e.notMapped(!region || region.row.type !== 'grid' ? 'a validation of a grid that was not imported' : 'a grid validation without a column: give a grid column a validation in pgkiln (chapter 4)');
+      return;
+    }
+    const col = column.toLowerCase();
+    const v1 = str(a, 'p_validation');
+    const v2 = str(a, 'p_validation2');
+    let expr: string | null = null;
+    if (GRID_CHECKS[apexType]) expr = GRID_CHECKS[apexType](`:${column}`, v2);
+    else if (apexType === 'SQL_EXPRESSION' || (apexType === 'EXPRESSION' && !/plsql/i.test(v2 ?? ''))) expr = v1 ? stripSemi(e.oracle(v1)) : null;
+    else if ((apexType === 'EXISTS' || apexType === 'NOT_EXISTS') && v1) expr = `${apexType === 'NOT_EXISTS' ? 'not ' : ''}exists (${stripSemi(e.oracle(v1))})`;
+    if (!expr) {
+      e.scan(v1);
+      if (VALIDATION_TYPES[apexType]?.plsql || /plsql/i.test(v2 ?? '')) e.port = true;
+      e.notMapped(`grid column validation type ${apexType || '(none)'} is not mapped: write the column's validation (an SQL expression on :${column}) in the grid's settings`);
+      return;
+    }
+    if (apexType === 'REGULAR_EXPRESSION') e.note('the regular expression is checked by PostgreSQL (POSIX): check Oracle-only syntax');
+    const heading = region.row.config?.headings?.[col] ?? col.replace(/_/g, ' ').replace(/\b\p{L}/gu, (x: string) => x.toUpperCase());
+    const message = (str(a, 'p_error_message') ?? '').replace(/#(LABEL|COLUMN_HEADER)#/g, heading).slice(0, 2000);
+    const cfg = region.row.config ?? (region.row.config = {});
+    const cc = ((cfg.columns ??= {})[col] ??= {});
+    if (cc.validation) {
+      cc.validation = `(${cc.validation}) and (${expr})`;
+      e.note(`column ${col} has more than one validation: they are joined with "and", and the first one's message is shown`);
+    } else {
+      cc.validation = expr;
+      if (message) cc.validation_message = message;
+    }
+    e.target = `grid column ${col}: validation`;
+    if (str(a, 'p_validation_condition_type') || ref(a, 'p_when_button_pressed')) e.note('its condition (or button) is not carried over: the grid checks the column on every save');
+  };
+
   // ---- validations
   for (const c of by('create_page_validation')) {
     const page = pageFor(c);
@@ -1601,8 +1895,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       e.notMapped('its page was not imported');
       continue;
     }
-    if (ref(a, 'p_tabular_form_region_id') || ref(a, 'p_associated_column')) {
-      e.notMapped('an interactive grid column validation: set it on the grid column in pgkiln (a column\'s validation, chapter 4)');
+    if (ref(a, 'p_tabular_form_region_id') || str(a, 'p_associated_column')) {
+      gridValidation(a, apexType, e);
       continue;
     }
     if (!m) {
@@ -2111,6 +2405,53 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     funnel: 'funnel', pyramid: 'pyramid', polar: 'polar', radar: 'radar', dial: 'gauge', range: 'range', boxplot: 'boxplot',
     stock: 'stock', gantt: 'gantt', combo: 'combo',
   };
+  /**
+   * (sprint 211) A chart's axes (create_jet_chart_axis): the value axis' number format (decimal or currency, its decimal
+   * places) becomes the chart's format mask; a gauge's value axis range its minimum and maximum. pgkiln draws its own
+   * axes, so titles, a second value axis, log scales, fixed ranges and hidden axes are noted, not carried over.
+   */
+  const axesOf = new Map<string, Args[]>();
+  for (const c of by('create_jet_chart_axis')) {
+    const id = ref(c.args, 'p_chart_id');
+    if (id) axesOf.set(id, [...(axesOf.get(id) ?? []), c.args]);
+  }
+  const chartAxes = (ca: Args, row: any, kind: string, e: Entry) => {
+    const axes = axesOf.get(ref(ca, 'p_id') ?? '') ?? [];
+    const noted: string[] = [];
+    // a dial gauge's range is the chart's own (p_value_min, p_value_max)
+    if (kind === 'gauge') {
+      const min = num(ca, 'p_value_min');
+      const max = num(ca, 'p_value_max');
+      if (min !== null || max !== null) row.config.gauge = { ...(min !== null ? { min } : {}), ...(max !== null ? { max } : {}) };
+    }
+    for (const ax of axes) {
+      const which = (str(ax, 'p_axis') ?? '').toLowerCase();
+      const name = which === 'x' ? 'label axis' : which === 'y2' ? 'second value axis' : 'value axis';
+      if (which === 'y2') {
+        e.note('its second value axis (y2) is not carried over: pgkiln charts have one value axis');
+        continue;
+      }
+      const title = str(ax, 'p_title');
+      if (title) noted.push(`the ${name}'s title "${title.slice(0, 80)}"`);
+      if (/^off$/i.test(str(ax, 'p_is_rendered') ?? '')) noted.push(`the ${name} hidden`);
+      if (/^log/i.test(str(ax, 'p_scaling') ?? '')) noted.push(`the ${name}'s log scale`);
+      if (which === 'x') continue;
+      const min = num(ax, 'p_min');
+      const max = num(ax, 'p_max');
+      if (kind === 'gauge') {
+        if (min !== null || max !== null) row.config.gauge = { ...(row.config.gauge ?? {}), ...(min !== null ? { min } : {}), ...(max !== null ? { max } : {}) };
+      } else if (min !== null || max !== null) noted.push(`the ${name}'s fixed range (${min ?? ''} to ${max ?? ''})`);
+      const type = (str(ax, 'p_format_type') ?? '').toLowerCase();
+      const places = num(ax, 'p_decimal_places');
+      const d = places !== null && places > 0 ? `D${'0'.repeat(Math.min(Math.round(places), 10))}` : '';
+      if (type === 'decimal' && places !== null) row.config.format_mask = `FM999G999G999G990${d}`;
+      else if (type === 'currency') row.config.format_mask = `FML999G999G999G990${places === null ? 'D00' : d}`;
+      else if (type && type !== 'decimal') noted.push(`the ${name}'s ${type} format`);
+      if (/^(thousand|million|billion|trillion|quadrillion)$/i.test(str(ax, 'p_format_scaling') ?? '')) noted.push(`the ${name}'s scaling (${str(ax, 'p_format_scaling')!.toLowerCase()})`);
+    }
+    if (row.config.format_mask) e.note(`the value axis' number format became the format mask ${row.config.format_mask}`);
+    if (noted.length) e.note(`not carried over (pgkiln draws its own axes): ${noted.join(', ')}`);
+  };
   for (const ch of by('create_jet_chart')) {
     const ca = ch.args;
     const regionId = ref(ca, 'p_region_id');
@@ -2164,6 +2505,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (same.length < series.length) e.note(`${series.length - same.length} of its ${series.length} series ${series.length - same.length === 1 ? 'has' : 'have'} another source or label and ${series.length - same.length === 1 ? 'was' : 'were'} left out`);
     region.row.source = `select ${first.label}, ${same.map((x) => x.value).join(', ')}\n  from ${first.from}${first.grouped ? `\n group by ${first.label}` : ''}\n order by 1`;
     region.row.config = { ...(region.row.config ?? {}), kind };
+    chartAxes(ca, region.row, kind, e);
     e.target = `chart ${kind}`;
   }
 
@@ -2240,6 +2582,53 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     for (const x of nav) x.parent_id = x.parent_id ? navIds.get(x.parent_id) ?? null : null;
     // parents first: import_app maps parent ids in order
     nav.sort((x, y) => (x.parent_id === null ? 0 : 1) - (y.parent_id === null ? 0 : 1));
+  }
+
+  // ---- (sprint 211) breadcrumbs (create_menu, create_menu_option): pgkiln's breadcrumb is each page's breadcrumb parent,
+  // so an entry's parent entry's page becomes its page's parent. The trail shows the pages' names.
+  {
+    const options = by('create_menu_option');
+    const optionPage = new Map<string, number>();
+    for (const c of options) {
+      const fp = parseFp(str(c.args, 'p_link'));
+      const p = num(c.args, 'p_page_id') ?? (fp ? pageNo(fp.page) : null);
+      const id = ref(c.args, 'p_id');
+      if (id && p !== null && docPage.has(p)) optionPage.set(id, p);
+    }
+    const parentSet = new Map<number, string>();
+    for (const c of options) {
+      const a = c.args;
+      const label = str(a, 'p_short_name') ?? str(a, 'p_long_name') ?? 'Entry';
+      const id = ref(a, 'p_id');
+      const page = id ? optionPage.get(id) ?? null : null;
+      const parentId = ref(a, 'p_parent_id');
+      const parent = parentId ? optionPage.get(parentId) ?? null : null;
+      const e = add(new Entry('breadcrumb', page, label, 'breadcrumb entry', page !== null ? (parent !== null ? `page ${page} → parent ${parent}` : `page ${page}`) : null));
+      if (page === null) {
+        e.notMapped(str(a, 'p_link') && !parseFp(str(a, 'p_link')) ? `its link ${str(a, 'p_link')} is not a page of the application: pgkiln's breadcrumb shows pages` : 'its page was not imported');
+        continue;
+      }
+      const pg = docPage.get(page)!;
+      if (pg.name !== label) e.note(`pgkiln's breadcrumb shows the page's name (${pg.name}), not "${label}"`);
+      if (parentId && parent === null) e.note('its parent entry has no page of the application: the page has no breadcrumb parent');
+      else if (parent !== null && parent !== page) {
+        // no cycle: the parent's own parents must not lead back to the page
+        const seen = new Set<number>([page]);
+        let up: number | null = parent;
+        while (up !== null && !seen.has(up)) {
+          seen.add(up);
+          up = docPage.get(up)?.parent_page ?? null;
+        }
+        if (parentSet.has(page) && pg.parent_page !== parent) e.note(`page ${page} is in more than one breadcrumb: the parent from "${parentSet.get(page)}" is kept`);
+        else if (up !== null) e.note(`page ${parent} as its parent would make a cycle: the page has no breadcrumb parent from this entry`);
+        else {
+          pg.parent_page = parent;
+          parentSet.set(page, label);
+        }
+      }
+      if (bo(a, e)) e.note('its build option is not carried over: the page keeps its parent');
+    }
+    if (by('create_menu').length > 1) add(new Entry('breadcrumb', null, `${by('create_menu').length} breadcrumbs`, 'breadcrumb', 'parent pages')).note('pgkiln has one breadcrumb per application: the entries of every breadcrumb set the pages\' parents');
   }
 
   // ---- (sprint 209) application items, processes, computations and settings
@@ -2353,6 +2742,19 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     db_role: opts.dbRole ?? null,
     ...APP_DEFAULTS,
   };
+  // (sprint 211) the ACL roles, and the access control scope (APEX's ACCESS_CONTROL_SCOPE setting): ALL_USERS lets every
+  // signed-in user in (pgkiln's any_user), ACL_ONLY only users with a role (assigned, pgkiln's default)
+  const uniqueRoles = [...new Set([...aclRole.values()])];
+  for (const r of uniqueRoles) {
+    if (r.schemes.length) r.e.note(`checked by the authorization scheme${r.schemes.length > 1 ? 's' : ''} ${r.schemes.join(', ')}`);
+    else r.e.note(`no authorization scheme checks it: check it with a role scheme (role ${r.role}) or meta.has_role('${r.role}')`);
+    r.e.note(`give it to users under Access control (APEX's user role assignments are data, not in the export)`);
+  }
+  const scope = appSettings.find((x) => x.name === 'ACCESS_CONTROL_SCOPE')?.value;
+  if (uniqueRoles.length && /^ALL_USERS$/i.test(scope ?? '')) {
+    app.access_control = 'any_user';
+    appEntry.note('access control scope ALL_USERS: every signed-in user may use the application (access control any_user); the roles give rights');
+  } else if (uniqueRoles.length) appEntry.note('access control: only users given access (with their roles) may use the application, as with APEX\'s ACL_ONLY');
 
   const doc: Doc = {
     format: 'pgkiln/2',
@@ -2389,7 +2791,61 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       skipped,
       counts,
     },
+    savedReports: saved,
   };
+}
+
+/**
+ * (sprint 211) An APEX filter or highlight (operator, expression, second expression) as pgkiln's operator and value
+ * (src/runtime/report.ts, OPERATORS); null: no pgkiln operator does the same. Dates (YYYYMMDDHH24MISS) become ISO dates.
+ */
+export function apexFilter(op: string | null, expr: string | null, expr2: string | null): { op: string; value: string } | null {
+  const o = (op ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const v = (x: string | null) => {
+    const t = (x ?? '').slice(0, 1000);
+    const d = /^(\d{4})(\d{2})(\d{2})(\d{6})?$/.exec(t);
+    return d ? `${d[1]}-${d[2]}-${d[3]}` : t;
+  };
+  const simple: Record<string, string> = { '=': 'eq', '!=': 'ne', '<>': 'ne', '>': 'gt', '>=': 'ge', '<': 'lt', '<=': 'le', contains: 'contains', 'does not contain': 'not_contains' };
+  if (simple[o]) return { op: simple[o], value: v(expr) };
+  if (o === 'is null' || o === 'is not null') return { op: o === 'is null' ? 'null' : 'not_null', value: '' };
+  if (o === 'in' || o === 'not in') {
+    const xs = (expr ?? '').split(',').map((x) => v(x.trim())).filter(Boolean).slice(0, 100);
+    return xs.length ? { op: o === 'in' ? 'in' : 'not_in', value: JSON.stringify(xs) } : null;
+  }
+  if (o === 'between') return expr || expr2 ? { op: 'between', value: JSON.stringify([v(expr), v(expr2)]) } : null;
+  if (o === 'like' || o === 'not like') {
+    // only %text% is "contains"
+    const m = /^%([^%_]*)%$/.exec(expr ?? '');
+    return m && m[1] ? { op: o === 'like' ? 'contains' : 'not_contains', value: m[1] } : null;
+  }
+  if (o === 'is in the last' || o === 'is in the next') {
+    const n = Number(expr);
+    const unit = (expr2 ?? '').toUpperCase();
+    if (o === 'is in the last' && unit === 'D' && n === 7) return { op: 'period', value: 'last_7_days' };
+    if (o === 'is in the last' && unit === 'D' && n === 30) return { op: 'period', value: 'last_30_days' };
+    if (o === 'is in the next' && unit === 'D' && n === 7) return { op: 'period', value: 'next_7_days' };
+  }
+  return null;
+}
+
+/** (sprint 211) An APEX highlight colour (#FFFF99 …) as the nearest of pgkiln's (yellow, green, red, blue, gray) */
+export function highlightColor(hex: string | null): string {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec((hex ?? '').trim());
+  if (!m) return 'yellow';
+  const [r, g, b] = [m[1], m[2], m[3]].map((x) => parseInt(x, 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max - min < 0.12) return 'gray';
+  let h = max === r ? ((g - b) / (max - min)) % 6 : max === g ? (b - r) / (max - min) + 2 : (r - g) / (max - min) + 4;
+  h = (h * 60 + 360) % 360;
+  return h < 20 || h >= 330 ? 'red' : h < 75 ? 'yellow' : h < 165 ? 'green' : h < 270 ? 'blue' : 'red';
+}
+
+/** (sprint 211) An APEX user name as a pgkiln user name (lower case), or null when it isn't one */
+export function savedReportUser(user: string | null | undefined): string | null {
+  const u = String(user ?? '').trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9._@+-]{0,99}$/.test(u) ? u : null;
 }
 
 /**
@@ -2465,6 +2921,10 @@ function staticLovQuery(values: [string, string][]) {
   if (values.every(([d, r]) => !/[,;]/.test(d + r))) return `STATIC:${values.map(([d, r]) => (d === r ? d : `${d};${r}`)).join(',')}`;
   return `select d, r from (values ${values.map(([d, r], i) => `(${sqlString(d)}, ${sqlString(r)}, ${i})`).join(', ')}) v(d, r, n) order by n`;
 }
+/** (sprint 211) static values as a query of display and return value, the values as escaped literals */
+function staticLovSql(values: [string, string][]) {
+  return `select d, r from (values ${values.map(([d, r], i) => `(${sqlString(d)}, ${sqlString(r)}, ${i})`).join(', ')}) v(d, r, n)`;
+}
 /** APEX's STATIC:Display;Return,… (and STATIC2:) as pgkiln's */
 function staticLovText(body: string) {
   return `STATIC:${body}`;
@@ -2534,6 +2994,9 @@ const KIND_LABEL: Record<ReportKind, string> = {
   app_computation: 'application computation',
   build_option: 'build option',
   app_setting: 'application setting',
+  breadcrumb: 'breadcrumb entry',
+  acl_role: 'ACL role',
+  saved_report: 'saved report',
 };
 export const kindLabel = (k: ReportKind) => KIND_LABEL[k];
 

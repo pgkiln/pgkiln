@@ -8171,6 +8171,7 @@ export const ja: BuilderMessages = {
   'apx.obj.routine': "PL/SQL ルーチン",
   'apx.col.exists_as': "存在する名前",
   'apx.issues_made': "{n} 件の Team Development の課題に手作業が必要なものが一覧になっています (ラベル「APEX import」)。",
+  'apx.saved_reports_made': "対話モード・レポートの保存済みレポート {n} 件を引き継ぎました。",
   'apx.another': '別のファイルを選択',
   'apx.update': 'レポートを更新',
   'apx.alias_bad': '別名は小文字、数字、- と _ からなり、英字で始まります。',
@@ -8207,6 +8208,9 @@ export const ja: BuilderMessages = {
   'apx.kind.app_computation': 'アプリケーション計算',
   'apx.kind.build_option': 'ビルド・オプション',
   'apx.kind.app_setting': 'アプリケーション設定',
+  'apx.kind.breadcrumb': 'ブレッドクラム・エントリ',
+  'apx.kind.acl_role': 'ACLロール',
+  'apx.kind.saved_report': '保存済みレポート',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'ブラウザ・セキュリティ',
   'bs.intro': 'ブラウザがアプリケーションのページに対して行えること: フレーム内での表示、アドレスの受け渡し、インデックス登録。ビルダーは独自の設定を保持します。',

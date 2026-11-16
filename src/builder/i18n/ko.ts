@@ -8171,6 +8171,7 @@ export const ko: BuilderMessages = {
   'apx.obj.routine': "PL/SQL 루틴",
   'apx.col.exists_as': "존재하는 이름",
   'apx.issues_made': "Team Development 이슈 {n}개에 수작업이 필요한 항목이 정리되어 있습니다(레이블 \"APEX import\").",
+  'apx.saved_reports_made': "대화형 보고서의 저장된 보고서 {n}개를 가져왔습니다.",
   'apx.another': '다른 파일 선택',
   'apx.update': '보고서 업데이트',
   'apx.alias_bad': '별칭은 소문자, 숫자, - 및 _로 이루어지며 문자로 시작합니다.',
@@ -8207,6 +8208,9 @@ export const ko: BuilderMessages = {
   'apx.kind.app_computation': '애플리케이션 계산',
   'apx.kind.build_option': '빌드 옵션',
   'apx.kind.app_setting': '애플리케이션 설정',
+  'apx.kind.breadcrumb': '이동 경로 항목',
+  'apx.kind.acl_role': 'ACL 역할',
+  'apx.kind.saved_report': '저장된 보고서',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': '브라우저 보안',
   'bs.intro': '브라우저가 애플리케이션 페이지로 할 수 있는 일: 프레임에 표시, 주소 전달, 색인 생성. 빌더는 자체 설정을 유지합니다.',
