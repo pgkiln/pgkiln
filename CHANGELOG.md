@@ -13,8 +13,19 @@ All notable changes to this project are documented here. The format follows
   Sub regions slot nests it; dragging a button to Next changes its position. The Rendering tree groups a region's
   buttons under one *Buttons* node with a folder per position. The layout bar's keyboard hint, which was cut off, is in
   the Help tab; the bar has a ? that opens it.
+- **From Oracle to pgkiln, end to end** (sprint 209, NX-F5): the Oracle Database Free + ora2pg + `import-apex` workflow
+  (`oracle-e2e.yml`, weekly and by hand) ran for the first time and is green: every OEHR page of *Demonstration - HR*
+  shows the rows that were in Oracle.
+- **APEX import reads more** (sprint 209): build options (and each component's build option), application items,
+  application processes, computations and settings; interactive report columns (headings, format masks, hidden
+  columns, the detail link, the default report's sort), classic report columns and interactive grid columns (headings,
+  formats, hidden, read-only, required, list of values, defaults, the default layout, edit operations). A PL/SQL
+  process that is only SQL (DML, `:ITEM := …`, `SELECT/RETURNING … INTO :ITEM`) becomes a runnable SQL process. APEX
+  26.2's login page (Invoke API `APEX_AUTHENTICATION.LOGIN`) is left out, with its components under one report entry.
 
 ### Changed
+- **Load processes run in a savepoint** (sprint 209): a failing load process shows its error and the rest of the
+  page still renders (was: "current transaction is aborted" for everything after it).
 - **Faster CI** (sprint 208): the unit tests, the browser tests and the full-suite upgrade tests run in parallel shards
   (`node --test-shard`, a database per shard; the required checks `test`, `e2e` and `upgrade (v0.31.0)` collect them).
   Pull requests test upgrades from the oldest, the newest and the three releases before the newest; pushes to main,
