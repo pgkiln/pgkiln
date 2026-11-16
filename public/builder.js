@@ -650,7 +650,7 @@
         bar.appendChild(t);
         return t;
       });
-      pd.prepend(bar);
+      // (only while two panes are on: the phone's pane tabs are the other [role=tab]s of .pd)
       const show = (which, remember) => {
         document.body.classList.toggle('pd-two-layout', which === 'layout');
         for (const t of twoTabs) {
@@ -671,8 +671,15 @@
         show(next, true);
         twoTabs.find((t) => t.dataset.twoTab === next)?.focus();
       });
+      const phone = window.matchMedia('(max-width: 1023px)');
+      const placeBar = () => {
+        if (document.body.classList.contains('pd-two') && !phone.matches) pd.prepend(bar);
+        else bar.remove();
+      };
+      phone.addEventListener?.('change', placeBar);
       const setPanes = (n) => {
         document.body.classList.toggle('pd-two', n === 2);
+        placeBar();
         for (const b of panesSwitch.querySelectorAll('[data-panes]')) b.setAttribute('aria-pressed', String(Number(b.dataset.panes) === n));
         store.set('panes', n === 2 ? '2' : null);
       };
