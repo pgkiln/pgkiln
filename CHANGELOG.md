@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-11-16
+
 ### Added
 - **Page Designer: report and grid columns in the tree** (sprint 205, AX-1; APEX: the Columns node): report, classic
   report, interactive grid, cards and calendar regions have a *Columns* node in the Rendering tree, one entry per column
