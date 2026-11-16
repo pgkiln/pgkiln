@@ -15,7 +15,7 @@ import { buildApp } from '../../src/app.ts';
 import { closePools, owner } from '../../src/db.ts';
 import { dropSample, installSample, SAMPLES } from '../gallery-samples.ts';
 
-// as in responsive.test.ts (not imported from there: that would run its tests too)
+// as in responsive.ts (not imported from there: that would start its server and browser too)
 const VIEWPORTS = {
   phone: { width: 390, height: 844 },
   'tablet-portrait': { width: 768, height: 1024 },
