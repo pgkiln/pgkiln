@@ -6,6 +6,7 @@
 // document with meta.import_app(), the same path as the JSON import, into the developer's workspace.
 import { importRole } from '../app-role.ts';
 import { apexIssues, handWork } from '../apex-issues.ts';
+import { apexSavedReports } from '../apex-saved-reports.ts';
 import { apexCheck, type CheckResult } from '../apex-check.ts';
 import { devDbForWorkspace } from '../workspace-db.ts';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -205,6 +206,7 @@ export async function apexImportRoutes(app: FastifyInstance) {
     let id: number;
     let roleNote: string | null = null;
     let issues = 0;
+    let saved = 0;
     try {
       id = await owner.tx(async (c) => {
         // (sprint 186, NX-S2) without a parsing schema's role: app_<alias> with rights on the parsing schema
@@ -213,13 +215,15 @@ export async function apexImportRoutes(app: FastifyInstance) {
         await placeApp(c, made.id, ws);
         // (sprint 187) a Team Development issue per component that needs hand work
         if (b.issues === '1') issues = await apexIssues(c, t.report, { appId: made.id, alias, by: s.username! });
+        // (sprint 211) saved interactive reports; the application's own public ones belong to the developer who imports it
+        saved = await apexSavedReports(c, t.savedReports, { appId: made.id, owner: s.username ?? null });
         return made.id as number;
       });
     } catch (e) {
       return failed(tx('apx.import_failed', { message: (e as Error).message }));
     }
     await owner.query('delete from meta.temp_file where id = $1', [req.params.id]);
-    flash(s, `${tx('apx.imported', { alias, port: t.report.counts.port, not_mapped: t.report.counts.not_mapped })}${roleNote ? ` ${roleNote}` : ''}${issues ? ` ${tx('apx.issues_made', { n: issues })}` : ''}`);
+    flash(s, `${tx('apx.imported', { alias, port: t.report.counts.port, not_mapped: t.report.counts.not_mapped })}${roleNote ? ` ${roleNote}` : ''}${issues ? ` ${tx('apx.issues_made', { n: issues })}` : ''}${saved ? ` ${tx('apx.saved_reports_made', { n: saved })}` : ''}`);
     return back(reply, s, `${BASE}/apps/${id}`);
   });
 }

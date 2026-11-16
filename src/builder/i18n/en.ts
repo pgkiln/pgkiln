@@ -8142,6 +8142,7 @@ export const en = {
   'apx.obj.routine': "PL/SQL routine",
   'apx.col.exists_as': "Exists as",
   'apx.issues_made': "{n} Team Development issues list what needs hand work (label “APEX import”).",
+  'apx.saved_reports_made': "{n} saved reports of the interactive reports were carried over.",
   'apx.another': 'Choose another file',
   'apx.update': 'Update the report',
   'apx.alias_bad': 'An alias has lower case letters, digits, - and _, and starts with a letter.',
@@ -8178,6 +8179,9 @@ export const en = {
   'apx.kind.app_computation': 'Application computation',
   'apx.kind.build_option': 'Build option',
   'apx.kind.app_setting': 'Application setting',
+  'apx.kind.breadcrumb': 'Breadcrumb entry',
+  'apx.kind.acl_role': 'ACL role',
+  'apx.kind.saved_report': 'Saved report',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'Browser security',
   'bs.intro': 'What browsers may do with the application\'s pages: show them in a frame, pass on the address, index them. The builder keeps its own settings.',

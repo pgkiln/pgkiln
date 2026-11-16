@@ -8137,6 +8137,7 @@ export const nl: BuilderMessages = {
   'apx.obj.routine': "PL/SQL-routine",
   'apx.col.exists_as': "Bestaat als",
   'apx.issues_made': "{n} Team Development-issues noemen wat handwerk vraagt (label „APEX import”).",
+  'apx.saved_reports_made': "{n} opgeslagen rapporten van de interactieve rapporten zijn overgenomen.",
   'apx.another': 'Ander bestand kiezen',
   'apx.update': 'Rapport bijwerken',
   'apx.alias_bad': 'Een alias heeft kleine letters, cijfers, - en _, en begint met een letter.',
@@ -8173,6 +8174,9 @@ export const nl: BuilderMessages = {
   'apx.kind.app_computation': 'Applicatieberekening',
   'apx.kind.build_option': 'Build-optie',
   'apx.kind.app_setting': 'Applicatie-instelling',
+  'apx.kind.breadcrumb': 'Kruimelpadvermelding',
+  'apx.kind.acl_role': 'ACL-rol',
+  'apx.kind.saved_report': 'Opgeslagen rapport',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': 'Browserbeveiliging',
   'bs.intro': 'Wat browsers met de pagina\'s van de applicatie mogen doen: ze in een frame tonen, het adres doorgeven, ze indexeren. De builder houdt zijn eigen instellingen.',

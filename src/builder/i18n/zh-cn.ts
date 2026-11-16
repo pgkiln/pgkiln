@@ -8137,6 +8137,7 @@ export const zhCN: BuilderMessages = {
   'apx.obj.routine': "PL/SQL 例程",
   'apx.col.exists_as': "存在为",
   'apx.issues_made': "{n} 个 Team Development 问题列出了需要手工处理的内容（标签“APEX import”）。",
+  'apx.saved_reports_made': "已沿用交互式报表的 {n} 个已保存报表。",
   'apx.another': '选择其他文件',
   'apx.update': '更新报告',
   'apx.alias_bad': '别名由小写字母、数字、- 和 _ 组成，并以字母开头。',
@@ -8173,6 +8174,9 @@ export const zhCN: BuilderMessages = {
   'apx.kind.app_computation': '应用程序计算',
   'apx.kind.build_option': '构建选项',
   'apx.kind.app_setting': '应用程序设置',
+  'apx.kind.breadcrumb': '面包屑条目',
+  'apx.kind.acl_role': 'ACL 角色',
+  'apx.kind.saved_report': '已保存的报表',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': '浏览器安全',
   'bs.intro': '浏览器可以对应用程序的页面做什么：在框架中显示、传递地址、编入索引。构建器保留自己的设置。',
