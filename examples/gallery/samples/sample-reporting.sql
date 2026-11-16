@@ -131,13 +131,14 @@ select pg_temp.page_id('sample-reporting', r.page), r.seq, r.title, r.type, r.co
 
   -- 6 Classic report
   (6, 5, 'About this page', 'static', 12, 'plain',
-   '<p class="lead">With <code>"searchable": false</code> a report is a classic report: no search field and no Actions menu. <code>column_options</code> sets how columns look (bold, muted, monospace, right-aligned), <code>column_templates</code> draws the stock column through the built-in badge component, and <code>link</code> makes the title open the form.</p>',
+   '<p class="lead">With <code>"searchable": false</code> a report is a classic report: no search field and no Actions menu. <code>column_options</code> sets how columns look (bold, muted, monospace, right-aligned), <code>column_templates</code> draws the stock column through the built-in badge component, and <code>link</code> makes the title open the form. <code>column_access</code> gives a column a server-side condition and an authorization scheme: the price is only for signed-in users, and a column that fails is in neither the page nor any download.</p>',
    '{}', null),
   (6, 10, 'Books per genre', 'report', 12, 'standard',
    E'select id, title, author, genre, published, price,\n       case when in_stock then ''In stock'' else ''Sold out'' end as stock,\n       case when in_stock then ''success'' else ''danger'' end as stock_state\n  from sample_reporting.book order by genre, title',
    '{"searchable": false, "page_size": 50, "hidden": ["id", "stock_state"],
      "link": {"column": "title", "page": 3, "items": {"P3_ID": "#id#"}},
      "formats": {"price": "999G990D00"},
+     "column_access": {"price": {"authz": "MUST_NOT_BE_PUBLIC_USER"}, "published": {"condition_type": "user_signed_in"}},
      "column_options": {"title": ["to-col-bold"], "author": ["to-col-muted"], "published": ["to-col-mono"], "price": ["to-col-right"]},
      "column_templates": {"stock": {"component": "ut_badge", "attributes": {"LABEL": "#stock#", "STATE": "#stock_state#"}}}}', null)
   ) as r (page, seq, title, type, cols, template, source, config, sid);

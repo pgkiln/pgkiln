@@ -12,6 +12,7 @@ import { closePools, owner } from '../src/db.ts';
 import { docToFiles, filesToDoc } from '../src/appfiles.ts';
 import { pageChecksums, shortSum } from '../src/history.ts';
 import { pageFiles } from '../src/builder/page-utilities.ts';
+import { clearRegionCache, regionCacheStats } from '../src/runtime/region-cache.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -156,5 +157,84 @@ describe('sprint 206 AX-5 the Page Designer\'s menus on the open page', () => {
   test('an unknown page is not found', async () => {
     for (const url of [`/builder/apps/${appId}/pages/987654/text`, `/builder/apps/${appId}/pages/987654/export`, `/builder/apps/987654/pages/3/export`, `/builder/apps/${appId}/pages/x/text`])
       assert.equal((await dev.get(url)).statusCode, 404, url);
+  });
+});
+
+describe('sprint 210 AX-5 Caching, two panes or three, Developer comment', () => {
+  const pageId = async () => (await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, PAGE_NO])).id as number;
+  const regionId = async () => (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = $2 and r.title = 'Ax5 list'`, [appId, PAGE_NO])).id as number;
+
+  test('the menus: Create → Developer comment, Utilities → Caching and the Layout switch', async () => {
+    const page = (await dev.get(`/builder/apps/${appId}/pages/3`)).body;
+    assert.match(menu(page, 'Create'), new RegExp(`href="/builder/apps/${appId}/pages/3[^"]*comment=1#comment-3">.*Developer comment</a>`));
+    const util = menu(page, 'Utilities');
+    assert.match(util, new RegExp(`href="/builder/apps/${appId}/pages/3/caching">.*Caching</a>`));
+    assert.match(util, /class="menu-section pd-panes-switch" role="group" aria-label="Layout" hidden>/);
+    assert.match(util, /data-panes="3" aria-pressed="true">.*Three panes/);
+    assert.match(util, /data-panes="2" aria-pressed="false">.*Two panes/);
+    // the comment link opens the Lock and comments tab, its field focused
+    const c = (await dev.get(`/builder/apps/${appId}/pages/3?comment=1`)).body;
+    assert.match(c, /<textarea id="comment-3" name="body" rows="3" maxlength="4000" required autofocus>/);
+  });
+
+  test('Caching: the page\'s cacheable regions, what is held, Purge of a region and of the page', async () => {
+    const rid = await regionId();
+    await owner.query(`update meta.region set config = config || '{"cache": {"scope": "user", "seconds": 120}}' where id = $1`, [rid]);
+    clearRegionCache();
+    let body = (await dev.get(`/builder/apps/${appId}/pages/${PAGE_NO}/caching`)).body;
+    assert.match(body, /Ax5 list/);
+    assert.match(body, /per user, 120 s/);
+    assert.doesNotMatch(body, /cached \(\d+ KB\)/, 'nothing held yet');
+    // render the page in the application: one entry held
+    const { Browser: B } = await import('./helpers.ts');
+    const user = new B(app);
+    await user.get('/a/hr/login');
+    await user.submit('/a/hr/login', { username: 'king', password: 'king' });
+    assert.equal((await user.get(`/a/hr/${PAGE_NO}`)).statusCode, 200);
+    assert.equal(regionCacheStats().entries, 1);
+    body = (await dev.get(`/builder/apps/${appId}/pages/${PAGE_NO}/caching`)).body;
+    assert.match(body, /1 cached \(\d+ KB\)/);
+    assert.match(body, /name="region" value="\d+"/);
+    // a region of another page is not found
+    const other = (await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 limit 1`, [appId])).id;
+    assert.equal((await dev.submit(`/builder/apps/${appId}/pages/${PAGE_NO}/caching/purge`, { region: String(other) })).statusCode, 404);
+    assert.equal(regionCacheStats().entries, 1);
+    const res = await dev.submit(`/builder/apps/${appId}/pages/${PAGE_NO}/caching/purge`, { region: String(rid) });
+    assert.equal(res.statusCode, 303);
+    assert.equal(regionCacheStats().entries, 0);
+    assert.ok(await owner.one(`select 1 as ok from meta.activity_log where app_id = $1 and event = 'cache_purge' and detail = $2`, [appId, `${PAGE_NO}/${rid}`]));
+    // the whole page; without a CSRF token: refused
+    await user.get(`/a/hr/${PAGE_NO}`);
+    assert.equal(regionCacheStats().entries, 1);
+    assert.equal((await dev.post(`/builder/apps/${appId}/pages/${PAGE_NO}/caching/purge`, {})).statusCode, 403);
+    assert.equal(regionCacheStats().entries, 1);
+    await dev.submit(`/builder/apps/${appId}/pages/${PAGE_NO}/caching/purge`, {});
+    assert.equal(regionCacheStats().entries, 0);
+    await owner.query(`update meta.region set config = config - 'cache' where id = $1`, [rid]);
+    assert.equal((await dev.get(`/builder/apps/${appId}/pages/987654/caching`)).statusCode, 404);
+  });
+
+  test('a cacheable region other than a report has a Caching group on its Attributes tab', async () => {
+    const pid = await pageId();
+    const chart = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 50, 'Ax5 chart', 'chart', 'select 1 as a, 2 as b', '{"kind": "bar"}') returning id`, [pid])).id;
+    try {
+      const page = (await dev.get(`/builder/pages/${pid}?c=region-${chart}`)).body;
+      assert.match(page, /data-settings="caching"/);
+      assert.match(page, /name="caching:cache_scope"/);
+      const r = await dev.submit(`/builder/pages/${pid}/region/${chart}/caching`, { cache_scope: 'session', cache_seconds: '999999', lazy: 'true' });
+      assert.equal(r.statusCode, 303);
+      const cfg = (await owner.one('select config from meta.region where id = $1', [chart])).config;
+      assert.deepEqual([cfg.kind, cfg.cache, cfg.lazy], ['bar', { scope: 'session', seconds: 86400 }, true]);
+      await dev.submit(`/builder/pages/${pid}/region/${chart}/caching`, { cache_scope: 'everyone' });
+      const after = (await owner.one('select config from meta.region where id = $1', [chart])).config;
+      assert.equal(after.cache, undefined);
+      assert.equal(after.lazy, undefined);
+      // a report has its own (in the report settings), a static region none
+      const rep = (await dev.get(`/builder/pages/${pid}?c=region-${await regionId()}`)).body;
+      assert.doesNotMatch(rep, /data-settings="caching"/);
+      assert.equal((await dev.submit(`/builder/pages/${pid}/region/${await regionId()}/caching`, { cache_scope: 'user' })).statusCode, 404);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [chart]);
+    }
   });
 });
