@@ -155,42 +155,54 @@ jobs:
       - run: '[ "${{ needs.e2e-shard.result }}" = success ]'
 
   releases:
-    # the upgrade jobs' matrix from UPGRADE_FROM: the oldest and the newest release run the whole suite in three shards
-    # each, the others a few tests; a pull request (except a release-* branch) takes only the three releases before the
-    # newest of the others
+    # the upgrade jobs' matrices from UPGRADE_FROM: the oldest and the newest release run the whole suite in three
+    # shards each; the others run QUICK_TESTS, a batch of releases one after another per job (each on a fresh
+    # database), so that 70 one-minute jobs don't fill the runners the long shards are waiting for. A pull request
+    # (except a release-* branch) takes only the three releases before the newest of the others
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.pick.outputs.matrix }}
-      suite: ${{ steps.pick.outputs.suite }}
+      oldest: ${{ steps.pick.outputs.oldest }}
+      newest: ${{ steps.pick.outputs.newest }}
+      batches: ${{ steps.pick.outputs.batches }}
     steps:
       - id: pick
         env:
           ALL: ${{ github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') }}
+          # at most this many releases per batch job (about 30 s each)
+          PER_BATCH: 15
         run: |
           read -ra r <<< "$UPGRADE_FROM"
           n=${#r[@]}
-          suite=("${r[0]}" "${r[n-1]}")
           if [ "$ALL" = true ]; then others=("${r[@]:1:n-2}"); else others=("${r[@]:n-4:3}"); fi
+          m=${#others[@]}
+          k=$(( (m + PER_BATCH - 1) / PER_BATCH ))
+          size=$(( (m + k - 1) / k ))
           {
-            echo "suite=$(printf '%s\n' "${suite[@]}" | jq -Rnc '[inputs]')"
-            echo "matrix=$( { for f in "${suite[@]}"; do for s in 1 2 3; do jq -nc --arg f "$f" --argjson s "$s" '{from: $f, shard: $s}'; done; done
-                              for f in "${others[@]}"; do jq -nc --arg f "$f" '{from: $f}'; done; } | jq -sc '{include: .}')"
+            echo "oldest=${r[0]}"
+            echo "newest=${r[n-1]}"
+            echo "batches=$( for ((i = 0; i < m; i += size)); do
+                               b=("${others[@]:i:size}")
+                               jq -nc --arg first "${b[0]}" --arg last "${b[-1]}" --arg releases "${b[*]}" \
+                                 '{first: $first, last: $last, releases: $releases}'
+                             done | jq -sc '{include: .}')"
           } >> "$GITHUB_OUTPUT"
           cat "$GITHUB_OUTPUT"
 
-  # Install an older release with its sample data, upgrade to this commit,
-  # then run the tests: migrations must work on existing databases too. The whole
-  # suite runs (in three shards) after upgrading from the oldest and the newest release; the others
-  # run the tests that touch every table (export / import, the CLI, generated apps,
-  # sign-in), so dozens of copies of the suite don't each get a chance to hit a timing flake.
-  upgrade:
-    name: upgrade (${{ matrix.from }}${{ matrix.shard && format(', shard {0}/3', matrix.shard) || '' }})
+  # Install an older release with its sample data, upgrade to this commit, then run the tests: migrations must work on
+  # existing databases too. The whole suite runs (in three shards) after upgrading from the oldest and the newest
+  # release; the others run the tests that touch every table (QUICK_TESTS: export / import, the CLI, generated apps,
+  # sign-in), so dozens of copies of the suite don't each get a chance to hit a timing flake. The oldest and the newest
+  # are two jobs with the same steps (the YAML anchors), so that each one's required check waits only for its own shards.
+  upgrade-oldest:
+    name: upgrade (${{ matrix.from }}, shard ${{ matrix.shard }}/3)
     needs: releases
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.releases.outputs.matrix) }}
-    services:
+      matrix:
+        from: ['${{ needs.releases.outputs.oldest }}']
+        shard: [1, 2, 3]
+    services: &upgrade-services
       postgres:
         image: postgres:17
         env:
@@ -204,11 +216,11 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-    env:
+    env: &upgrade-env
       DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
       RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
-    steps:
+    steps: &upgrade-suite-steps
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # the release tags
@@ -225,36 +237,95 @@ jobs:
           npx tsx scripts/migrate.ts --seed --root "$RUNNER_TEMP/old"
       - name: Upgrade to this commit
         run: npm run example:hr
-      - name: Tests
+      # the whole suite (npm test), a third of it
+      - name: Tests (shard ${{ matrix.shard }}/3)
         run: |
-          if [ -n "${{ matrix.shard }}" ]; then
-            # the whole suite (npm test), a third of it
-            npm run pretest
-            npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/3 test/*.test.ts
-          else
-            npx tsx --test --test-concurrency=1 test/cli.test.ts test/export.test.ts test/generated-apps.test.ts test/builder-home.test.ts test/mfa.test.ts
-          fi
+          npm run pretest
+          npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/3 test/*.test.ts
 
-  upgrade-suite:
-    # required check "upgrade (v0.31.0)": the three shards of the whole suite after upgrading from this release passed
-    name: upgrade (${{ matrix.from }})
-    needs: [releases, upgrade]
-    if: always() && needs.releases.result == 'success'
+  upgrade-newest:
+    name: upgrade (${{ matrix.from }}, shard ${{ matrix.shard }}/3)
+    needs: releases
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
     strategy:
       fail-fast: false
       matrix:
-        from: ${{ fromJSON(needs.releases.outputs.suite) }}
+        from: ['${{ needs.releases.outputs.newest }}']
+        shard: [1, 2, 3]
+    services: *upgrade-services
+    env: *upgrade-env
+    steps: *upgrade-suite-steps
+
+  upgrade-batch:
+    # the other releases, a batch per job, one after another: each gets a fresh PostgreSQL container (no service: a
+    # service lives as long as the job), the old release installed, the upgrade and QUICK_TESTS. A failing release
+    # doesn't stop the batch; the job fails at the end and lists the releases that failed
+    name: upgrade (${{ matrix.first }} … ${{ matrix.last }})
+    needs: releases
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.releases.outputs.batches) }}
+    env:
+      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
+      RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
+      API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
+      QUICK_TESTS: test/cli.test.ts test/export.test.ts test/generated-apps.test.ts test/builder-home.test.ts test/mfa.test.ts
+      RELEASES: ${{ matrix.releases }}
     steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          SHARDS: 'upgrade (${{ matrix.from }}, shard '
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the release tags
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: docker pull -q postgres:17
+      - name: Upgrade from ${{ matrix.releases }}
         run: |
-          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?filter=latest&per_page=100" \
-            --jq '.jobs[] | select(.name | startswith(env.SHARDS)) | "\(.conclusion) \(.name)"' | tee shards
-          [ "$(grep -c '^success ' shards)" = 3 ]
+          failed=()
+          for from in $RELEASES; do
+            echo "::group::upgrade from $from"
+            start=$SECONDS
+            docker rm -f pg >/dev/null 2>&1 || true
+            docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=pgkiln -e POSTGRES_PASSWORD=pgkiln -e POSTGRES_DB=pgkiln \
+              postgres:17 >/dev/null
+            # pg_isready answers during the image's initdb too (on a socket only): wait for TCP and a query
+            for i in $(seq 1 60); do psql "$DATABASE_URL" -qtAc 'select 1' >/dev/null 2>&1 && break; sleep 0.5; done
+            old="$RUNNER_TEMP/old-$from"
+            mkdir -p "$old"
+            if git archive "$from" | tar -x -C "$old" \
+               && npx tsx scripts/migrate.ts --seed --root "$old" \
+               && npm run example:hr \
+               && npx tsx --test --test-concurrency=1 $QUICK_TESTS; then
+              echo "upgrade from $from: ok ($((SECONDS - start)) s)"
+            else
+              failed+=("$from")
+              echo "::error::upgrade from $from failed"
+            fi
+            echo "::endgroup::"
+          done
+          docker rm -f pg >/dev/null 2>&1 || true
+          if [ ${#failed[@]} -gt 0 ]; then echo "failed: ${failed[*]}"; exit 1; fi
+
+  # required check "upgrade (v0.31.0)" (and its twin for the newest release): the three shards of the whole suite after
+  # upgrading from that release passed; each waits only for its own shards, not for the batches
+  upgrade-oldest-result:
+    name: upgrade (${{ needs.releases.outputs.oldest }})
+    needs: [releases, upgrade-oldest]
+    if: always() && needs.releases.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.upgrade-oldest.result }}" = success ]'
+
+  upgrade-newest-result:
+    name: upgrade (${{ needs.releases.outputs.newest }})
+    needs: [releases, upgrade-newest]
+    if: always() && needs.releases.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.upgrade-newest.result }}" = success ]'
 
   docker:
     # what a user runs: deploy/.env.example filled in, docker compose up -d
