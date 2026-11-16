@@ -19,7 +19,8 @@ All notable changes to this project are documented here. The format follows
 - **Flaky tests** (sprint 212): the network access list tests wait for the refusal, which is written next to the
   call; `test/security.test.ts` passes on its own and with `--test-name-pattern` (a top-level `await` after the first
   test, and `async` describe callbacks, let the runner finish the file early); the hidden report column test no
-  longer finds the salary 5000 in a region id such as `R155000`.
+  longer finds the salary 5000 in a region id such as `R155000`. The push notification browser test delivers the message again when
+  the service worker lost the first one.
 
 ## [0.104.0] - 2026-11-16
 
