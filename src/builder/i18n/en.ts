@@ -425,7 +425,6 @@ export const en = {
   'pdc.group.printing': 'Printing',
   'pdc.open_column': 'Open column {name} in the tree',
   'pd.tree.buttons': 'Buttons',
-  'pd.tree.buttons_at': 'Buttons: {slot}',
   'pd.tree.no_regions_yet': 'No regions yet',
   'pd.tree.no_regions': 'No regions',
   'pd.tree.pre_rendering': 'Pre-Rendering (before header)',

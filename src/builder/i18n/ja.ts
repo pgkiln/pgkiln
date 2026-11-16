@@ -422,7 +422,6 @@ export const ja: BuilderMessages = {
   'pdc.group.printing': '印刷',
   'pdc.open_column': 'ツリーで列 {name} を開く',
   'pd.tree.buttons': 'ボタン',
-  'pd.tree.buttons_at': 'ボタン: {slot}',
   'pd.tree.no_regions_yet': 'リージョンはまだありません',
   'pd.tree.no_regions': 'リージョンなし',
   'pd.tree.pre_rendering': 'レンダリング前（ヘッダーの前）',

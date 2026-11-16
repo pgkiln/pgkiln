@@ -422,7 +422,6 @@ export const es: BuilderMessages = {
   'pdc.group.printing': 'Impresión',
   'pdc.open_column': 'Abrir la columna {name} en el árbol',
   'pd.tree.buttons': 'Botones',
-  'pd.tree.buttons_at': 'Botones: {slot}',
   'pd.tree.no_regions_yet': 'Todavía no hay regiones',
   'pd.tree.no_regions': 'Sin regiones',
   'pd.tree.pre_rendering': 'Antes de la representación (antes de la cabecera)',

@@ -422,7 +422,6 @@ export const ko: BuilderMessages = {
   'pdc.group.printing': '인쇄',
   'pdc.open_column': '트리에서 {name} 열 열기',
   'pd.tree.buttons': '버튼',
-  'pd.tree.buttons_at': '버튼: {slot}',
   'pd.tree.no_regions_yet': '아직 영역이 없음',
   'pd.tree.no_regions': '영역 없음',
   'pd.tree.pre_rendering': '사전 렌더링(헤더 이전)',

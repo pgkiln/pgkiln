@@ -422,7 +422,6 @@ export const zhCN: BuilderMessages = {
   'pdc.group.printing': '打印',
   'pdc.open_column': '在树中打开列 {name}',
   'pd.tree.buttons': '按钮',
-  'pd.tree.buttons_at': '按钮：{slot}',
   'pd.tree.no_regions_yet': '尚无区域',
   'pd.tree.no_regions': '无区域',
   'pd.tree.pre_rendering': '预呈现（标题之前）',

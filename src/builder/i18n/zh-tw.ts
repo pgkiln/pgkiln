@@ -422,7 +422,6 @@ export const zhTW: BuilderMessages = {
   'pdc.group.printing': '列印',
   'pdc.open_column': '在樹狀結構中開啟欄 {name}',
   'pd.tree.buttons': '按鈕',
-  'pd.tree.buttons_at': '按鈕：{slot}',
   'pd.tree.no_regions_yet': '尚無區域',
   'pd.tree.no_regions': '無區域',
   'pd.tree.pre_rendering': '預先轉譯（頁首之前）',

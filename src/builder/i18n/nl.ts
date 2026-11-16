@@ -422,7 +422,6 @@ export const nl: BuilderMessages = {
   'pdc.group.printing': 'Afdrukken',
   'pdc.open_column': 'Kolom {name} openen in de boom',
   'pd.tree.buttons': 'Knoppen',
-  'pd.tree.buttons_at': 'Knoppen: {slot}',
   'pd.tree.no_regions_yet': "Nog geen regio's",
   'pd.tree.no_regions': "Geen regio's",
   'pd.tree.pre_rendering': 'Voor weergave (vóór de header)',

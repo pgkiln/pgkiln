@@ -422,7 +422,6 @@ export const de: BuilderMessages = {
   'pdc.group.printing': 'Drucken',
   'pdc.open_column': 'Spalte {name} im Baum öffnen',
   'pd.tree.buttons': 'Schaltflächen',
-  'pd.tree.buttons_at': 'Schaltflächen: {slot}',
   'pd.tree.no_regions_yet': 'Noch keine Regionen',
   'pd.tree.no_regions': 'Keine Regionen',
   'pd.tree.pre_rendering': 'Vor dem Rendering (vor dem Header)',
