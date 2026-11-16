@@ -506,7 +506,8 @@ a.pd-node:hover { background: var(--surface-3); }
 
 /* ------------------------------------------------------------ layout canvas */
 .pd-canvas-bar { display: flex; align-items: center; gap: 2px; min-height: 36px; padding: 2px 8px; background: var(--surface); border-bottom: 1px solid var(--border); color: var(--text); flex: none; }
-.pd-canvas-hint { margin-left: auto; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* (sprint 207, AX-4) the keyboard hint lives in the Help tab; the bar keeps a ? that opens it */
+.pd-canvas-help { margin-left: auto; }
 .pd-canvas {
   --zoom: 1; padding: 14px; font-size: calc(13px * var(--zoom)); background-color: var(--canvas);
   background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1.2px); background-size: 16px 16px;
@@ -845,7 +846,6 @@ kbd { display: inline-block; padding: 0 0.35em; border: 1px solid var(--border);
   .tb-undo, .pd-pagenav .pd-goto, .tb-btn .tb-caret { display: none; }
   .tb-main .btn span { display: none; }
   .tb-main .btn { padding: 0 0.5rem; }
-  .pd-canvas-hint { display: none; }
   .pd-canvas { padding: 8px; }
   .pd-grid { gap: 6px; }
   /* regions keep their place but never get narrower than half the canvas */
@@ -1312,15 +1312,23 @@ details.prop-group-more[open] > summary { margin-bottom: 8px; }
 .pd-zone-left .pd-grid > .pd-region, .pd-zone-right .pd-grid > .pd-region { grid-column: 1 / -1; }
 .pd-slots { display: flex; flex-wrap: wrap; gap: 0.3em; }
 .pd-slots-bottom > [data-slot="next"] { margin-left: auto; }
+.pd-slots:empty { display: none; }
 .pd-slot-spare { display: none; min-height: 1.6em; }
-.pd-dragging-button .pd-slot-spare { display: flex; }
-.pd-canvas:not(.pd-dragging-button) .pd-slots:not(:has(> .pd-slot:not(.pd-slot-spare))) { display: none; }
+/* (sprint 207, AX-4) empty slots show while something can drop there, and always on a maximized layout */
+.pd-dragging-button .pd-slot-spare, body.pd-max .pd-slot-spare { display: flex; }
+body:not(.pd-max) .pd-canvas:not(.pd-dragging-button) .pd-slots:not(:has(> .pd-slot:not(.pd-slot-spare))) { display: none; }
 @media (max-width: 640px) { .pd-canvas .pd-columns:has(> .pd-zone) { grid-template-columns: minmax(0, 1fr); } }
 /* (172) a region's sub regions: a grid of their own inside it */
 .pd-sub { display: grid; gap: 0.3em; padding: 0.35em; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--canvas) 60%, transparent); }
 .pd-sub-label { color: var(--muted); font-size: 0.74em; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
 .pd-sub-label small { text-transform: none; letter-spacing: 0; font-weight: 400; }
 .pd-subgrid > .pd-grid-end { padding: 0.3em; }
+/* (sprint 207, AX-4) the Sub regions slot of a region that is not a container: while a region is dragged (not into
+   itself, nor a region that holds sub regions: one level of nesting) and on a maximized layout */
+.pd-sub-spare { display: none; }
+.pd-dragging-region .pd-sub-spare, body.pd-max .pd-sub-spare { display: grid; }
+.pd-canvas.pd-dragging-holder .pd-sub-spare, .pd-canvas .pd-region.is-dragging .pd-sub-spare { display: none; }
+.pd-tree li[data-slot] > .pd-folder .pd-label { font-weight: 500; }
 
 /* (sprint 77) the rendering tree's context menu, the Copy to other page dialog, component colours */
 .pd-menu { position: fixed; z-index: 60; min-width: 13rem; padding: 4px; background: var(--surface, #fff); color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius); box-shadow: var(--shadow-lg); font-size: 13px; }

@@ -18072,3 +18072,106 @@ describe('sprint 205 AX-1: the Page Designer\'s column properties', () => {
     assert.match(odd, /data-col="&lt;b&gt;x&lt;\/b&gt;"/);
   });
 });
+
+// (sprint 207, AX-4) the Page Designer draws a Sub regions slot in every region and the button positions of its
+// template: the drops are the layout's move and create posts, which keep to the page, one level of nesting and the
+// known positions; a region's title in the slot's text is escaped
+describe('sprint 207 AX-4: the layout\'s region slots', () => {
+  const DEV = 'sec207_dev';
+  const PW = 'Sec207-password!';
+  const WS = 'sec207 other ws';
+  const OTHER = 'sec207-other';
+  let mine = 0;
+  let other = 0;
+  let foreignPage = 0;
+  const R: Record<string, number> = {};
+  let button = 0;
+  const signIn = async (user: string, pw: string) => {
+    const b = new FileBrowser(app);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password: pw })).statusCode, 303, `sign-in of ${user}`);
+    return b;
+  };
+  const parentOf = async (id: number) => (await owner.one<{ parent_id: number | null }>('select parent_id from meta.region where id = $1', [id]))!.parent_id;
+  const count = async (pid: number) => (await owner.one<{ n: number }>('select count(*)::int as n from meta.region where page_id = $1', [pid]))!.n;
+  const cleanup = async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no in (9307, 9308)', [appId]);
+    await owner.query('delete from meta.app where alias = $1', [OTHER]);
+    await owner.query('delete from meta.session where app_id is null and username = $1', [DEV]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+  };
+  before(async () => {
+    await cleanup();
+    const page = async (no: number) => (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec207') returning id`, [appId, no]))!.id;
+    [mine, other] = [await page(9307), await page(9308)];
+    const region = async (pid: number, title: string, seq: number, parent: number | null = null, template = 'standard') =>
+      (await owner.one<{ id: number }>(`insert into meta.region (page_id, seq, title, type, source, template, parent_id) values ($1, $2, $3, 'static', '<p>x</p>', $4, $5) returning id`, [pid, seq, title, template, parent]))!.id;
+    R.report = await region(mine, '<img src=x onerror=alert(207)>', 10);
+    R.tabs = await region(mine, 'Tabs', 20, null, 'tabs_container');
+    R.inner = await region(mine, 'Inner', 10, R.tabs);
+    R.loose = await region(mine, 'Loose', 30);
+    R.elsewhere = await region(other, 'Elsewhere', 10);
+    button = (await owner.one<{ id: number }>(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'CREATE', 'Create', 'redirect') returning id`, [mine, R.report]))!.id;
+    const ws = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
+    const oa = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, db_role) select $1, 'Sec207 other', db_role from meta.app where id = $2 returning id`, [OTHER, appId]))!.id;
+    await owner.query('insert into meta.workspace_app (app_id, workspace_id) values ($1, $2) on conflict (app_id) do update set workspace_id = excluded.workspace_id', [oa, ws]);
+    foreignPage = (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Other') returning id`, [oa]))!.id;
+    R.foreign = await region(foreignPage, 'Foreign', 10);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [DEV, PW]);
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [ws, DEV]);
+  });
+  after(cleanup);
+
+  test('a drop needs the CSRF token', async () => {
+    const b = await signIn('admin', 'admin');
+    await b.get(`/builder/apps/${appId}/pages/9307`);
+    for (const token of [undefined, 'forged']) {
+      const move = await b.request('POST', `/builder/pages/${mine}/layout/move`, { ...(token ? { __csrf: token } : {}), kind: 'region', id: String(R.loose), parent: String(R.report), before: '' });
+      assert.equal(move.statusCode, 403);
+      const create = await b.request('POST', `/builder/pages/${mine}/layout/create`, { ...(token ? { __csrf: token } : {}), kind: 'region', type: 'report', parent: String(R.report), before: '' });
+      assert.equal(create.statusCode, 403);
+    }
+    assert.equal(await parentOf(R.loose), null);
+    assert.equal(await count(mine), 4);
+  });
+
+  test('the Sub regions slot of another page or application, a sub region, the region itself or a holder is refused', async () => {
+    const b = await signIn('admin', 'admin');
+    await b.get(`/builder/apps/${appId}/pages/9307`);
+    const move = (fields: Record<string, string>) => b.submit(`/builder/pages/${mine}/layout/move`, { kind: 'region', before: '', ...fields });
+    assert.equal((await move({ id: String(R.loose), parent: String(R.elsewhere) })).statusCode, 400, 'a region of another page');
+    assert.equal((await move({ id: String(R.loose), parent: String(R.foreign) })).statusCode, 400, 'a region of another application');
+    assert.equal((await move({ id: String(R.loose), parent: String(R.inner) })).statusCode, 400, 'a sub region holds none');
+    assert.equal((await move({ id: String(R.loose), parent: String(R.loose) })).statusCode, 400, 'not into itself');
+    assert.equal((await move({ id: String(R.tabs), parent: String(R.report) })).statusCode, 400, 'a region with sub regions stays on the page');
+    assert.equal((await move({ id: String(R.loose), parent: '1 or 1=1' })).statusCode, 400);
+    assert.equal((await move({ id: String(R.elsewhere), parent: String(R.report) })).statusCode, 404, 'a region of another page is not moved');
+    for (const id of [R.loose, R.tabs, R.elsewhere]) assert.equal(await parentOf(id), null);
+    const create = (parent: string) => b.submit(`/builder/pages/${mine}/layout/create`, { kind: 'region', type: 'report', before: '', parent });
+    assert.equal((await create(String(R.foreign))).statusCode, 400);
+    assert.equal((await create(String(R.inner))).statusCode, 400);
+    assert.equal(await count(mine), 4, 'a refused create leaves nothing behind');
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.region where parent_id = $1', [R.foreign]))!.n, 0);
+    // a button position that is not one: refused; a button of another page is not reached
+    assert.equal((await b.submit(`/builder/pages/${mine}/layout/move`, { kind: 'button', id: String(button), region: String(R.report), slot: "next' --", before: '' })).statusCode, 400);
+    assert.equal((await b.submit(`/builder/pages/${other}/layout/move`, { kind: 'button', id: String(button), region: String(R.elsewhere), slot: 'next', before: '' })).statusCode, 404);
+    assert.equal((await owner.one<{ slot: string | null }>('select slot from meta.button where id = $1', [button]))!.slot, null);
+  });
+
+  test('a developer without access to the application is refused', async () => {
+    const d = await signIn(DEV, PW);
+    await d.get('/builder/apps');
+    const res = await d.submit(`/builder/pages/${mine}/layout/move`, { kind: 'region', id: String(R.loose), parent: String(R.report), before: '' });
+    assert.ok([403, 404].includes(res.statusCode), String(res.statusCode));
+    assert.equal(await parentOf(R.loose), null);
+  });
+
+  test('a region\'s title is escaped in its Sub regions slot and the tree\'s button positions', async () => {
+    const b = await signIn('admin', 'admin');
+    const html = (await b.get(`/builder/apps/${appId}/pages/9307`)).body;
+    assert.doesNotMatch(html, /<img src=x/);
+    assert.match(html, new RegExp(`<div class="pd-sub pd-sub-spare">[\\s\\S]*?data-parent="${R.report}"[\\s\\S]*?&lt;img src=x onerror=alert\\(207\\)&gt;`));
+  });
+});
