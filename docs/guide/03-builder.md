@@ -1296,6 +1296,8 @@ components, search configurations, data load definitions) are listed: for each, 
 page's SQL runs as this application's database role afterwards: grant it what the other application's role
 could read. From SQL: `meta.copy_page(from_app, page, to_app, new_page, name, map)`.
 
+(sprint 206) In the page designer, **Create → Copy this page** opens the last step with the open page chosen.
+
 ### Create a blank page
 
 **Create page → Blank page**, or the *Create blank page* form above the grid (sprint 197): give a page number,
@@ -1356,6 +1358,31 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   with a click; with the keyboard, the arrow keys walk the tree (Left / Right close and open a
   folder), Enter opens a component.
 
+  (sprint 205, AX-1; APEX: the Columns node) **Columns**: report, classic report, interactive grid, cards and calendar
+  regions have a *Columns* node first under the region, one entry per column of the region's query in the query's
+  order (read as the Attributes tab reads them: the query with `limit 0`, as the application's role, rolled back),
+  then the columns its settings still name that the query no longer returns (marked *not in the query*, so their
+  settings can be cleared). A column's note is its heading and data type. Choose a column to edit it in the property
+  editor; the toolbar's **Save** (or Ctrl+S) saves it:
+
+  | Region type | A column's properties |
+  |-------------|-----------------------|
+  | Interactive report | Heading, Shown, Format mask, Display (bold, muted, no wrapping, monospace, right-aligned, centred), Link (to page, set items: the report's one link moves to this column), In PDF, PDF width |
+  | Classic report | Heading, Shown, Format mask, Display, Link |
+  | Interactive grid | Heading, Shown, Read-only, Required, Edit as (a shared list of values), Valid when and its error message |
+  | Cards | Format mask (title, subtitle, body, badge) |
+  | Calendar | none: what the column is read as (start of the event, end, title, or only for links as `#name#`) |
+
+  **Several columns at once**: Ctrl+click (Cmd+click) a column of the same region to add it or take it out, Shift+click
+  for the columns in between; with the keyboard Ctrl+Space and Shift+Space; without JavaScript **Select several
+  columns** under the properties (tick them, *Select*). The property editor then shows what the columns share: a field
+  whose values differ says *Mixed* and keeps each column's own value unless you change it. Heading, link and validation
+  are a single column's. Only the fields you changed are saved, so a setting changed meanwhile on another tab is kept.
+
+  The settings stay in the region's attributes, where the **Attributes** tab's *Columns* group edits them too
+  (`headings`, `formats`, `column_options`, `hidden`, `pdf`, `link`; a grid's `readonly` and `columns`): exports,
+  application files and `diff_app` are unchanged. A column's name in that group is a link that selects its node.
+
   **Right-click** a region, item or button in the Rendering tree (or press <kbd>Shift</kbd>+<kbd>F10</kbd> or the
   menu key) for its menu (APEX: the tree's context menu): *Create page item*, *Create button* (in the region),
   *Create dynamic action*, *Create region below*, **Duplicate** (a copy right after it; a region comes with its
@@ -1401,10 +1428,35 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
 The toolbar has the page switcher (previous, the page number: type or step to one and press Enter, a list of
 all pages, next), **Undo** / **Redo** of
 layout changes, the **Create** menu (region, item, button, dynamic action, computation, validation,
-process, branch, or a new page), a **Utilities** menu (Advisor, search, shared components, all pages, export; with a
-region selected also **Show as JSON**, below),
+process, branch, or a new page; and for the open page, below), a **Utilities** menu (for the open page, below; Advisor,
+search, shared components, all pages, export of the application; with a region selected also **Show as JSON**, below),
 **Save** (saves the property editor; it is highlighted when there are unsaved changes) and **Run**
 (opens the page in a new tab). Changes are live as soon as they are saved.
+
+(sprint 206, AX-5; APEX: the Page Designer's Create and Utilities menus work on the page that is open) The menus have
+entries for the open page, one click away. They are links, so they work with the keyboard and without JavaScript:
+
+- **Create → Copy this page**: [Create page as copy](#create-page-as-copy) with this page already chosen
+  (`/builder/apps/<id>/copy-page?from=<id>&page=<n>`): give the new page's number and name, map the shared
+  components, **Copy page**; the copy opens in the page designer.
+- **Create → Issue for this page**: a new [Team Development](#team-development) issue with the application and the
+  page filled in (shown when you work in a workspace).
+- **Utilities → History of this page**: the [change history](#utilities) filtered to the page (`?page=<n>`; change
+  the filters there to see more).
+- **Utilities → View as text** (`/builder/apps/<id>/pages/<n>/text`): the page's part of the application's export in
+  the text layout (`pgkiln export --format text`, also what the MCP server's `read_app_files` shows): one YAML file per
+  component, with its SQL inline, read-only. APEX: APEXlang View.
+- **Utilities → Page checksum**: on the same page, the page's SHA-256 checksum, the one the application's
+  Utilities lists per page: the same page gives the same checksum on any installation.
+- **Utilities → Export this page** (`/builder/apps/<id>/pages/<n>/export`): the page's folder of the text export as a
+  zip (`<alias>/pages/0003-employees-form/…`, the `X-Pgkiln-Checksum` header carries the page checksum). There is no
+  import of a single page: to bring a page back, replace the page's folder in an application exported with
+  `--format text` with the zip's folder and import that application (`pgkiln import --replace`, or the MCP server's
+  `import_app`); the export of a page holds nothing the application's export doesn't.
+
+Access is the application's: a developer who can't open the application gets *Not found* for all of them; copying and
+the issue are the existing forms (with their CSRF token; a page or application lock and *Run only* refuse the copy, not
+viewing the text or exporting it).
 
 ### Page locks and comments
 
@@ -1675,7 +1727,8 @@ workspace and works without JavaScript.
   changes them; only its administrators delete labels, label groups and milestones.
 - Issues come from [feedback](#feedback) and [developer comments](#page-locks-and-comments) with **Make an issue**,
   linked both ways. The page designer shows a page's open issues and App Home counts them per page (*Open issues* in
-  its Tasks).
+  its Tasks). (sprint 206) The page designer's **Create → Issue for this page** opens a new issue with the application
+  and page filled in.
 
 Issues and the rest are workspace data: they are not part of an application's export (an in-place import keeps them)
 but travel in the workspace's [Export and import](#export-and-import) (*Team Development*): labels, milestones and
@@ -2029,6 +2082,7 @@ and removed) is *Deleted page 9201 (its last recorded name)*, linked to its chan
   with its SQL, an item, a list of values, …). Each added, changed or deleted component is kept with
   who (the developer; none for the command line), when and its files before and after; **Show**
   gives the differences as a diff. Filter by developer, date range, page and component name.
+  (sprint 206) The page designer's **Utilities → History of this page** opens it filtered to the open page.
   History is kept `CHANGE_HISTORY_DAYS` days (365 by default; 0 keeps everything) and starts with
   the first change after the upgrade to the version that introduced it.
 - **Upgrade application** (`/builder/apps/:id/utilities/upgrade`): components made before pgkiln

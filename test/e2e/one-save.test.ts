@@ -139,7 +139,8 @@ describe('type names in the Page Designer (AX-3)', () => {
     const { page, errors } = await signIn({ width: 1440, height: 900 });
     for (const no of [2, 3]) {
       await page.goto(`${base}/builder/apps/${appId}/pages/${no}`);
-      const notes = await page.locator('#pd-p-tree .pd-note').allInnerTexts();
+      // (sprint 205) not the column nodes: their notes are PostgreSQL data types (text, date)
+      const notes = await page.locator('#pd-p-tree a.pd-node:not([data-kind="column"]) .pd-note').allInnerTexts();
       assert.ok(notes.length > 2);
       assert.deepEqual(notes.filter((t) => /\b[a-z]+_[a-z_]+\b/.test(t) || /^(report|form|select|popup_lov|hidden|text|redirect|submit|document|number|date|switch|file|location)$/.test(t.trim())), [], `page ${no}`);
     }

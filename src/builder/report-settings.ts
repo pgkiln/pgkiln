@@ -21,7 +21,8 @@ import { scopedTx as tx, tr, withTranslator } from './i18n.ts';
 const PAGE_SIZES = ['5', '10', '15', '25', '50', '100'];
 
 /** The column names of a report's query: run with limit 0, as the app's role, then rolled back. */
-export async function reportColumns(appId: number, source: string | null): Promise<{ columns: string[] } | { error: string }> {
+/** (sprint 205) `types`: each column's type oid, in the same order (the Page Designer's Columns node shows the type). */
+export async function reportColumns(appId: number, source: string | null): Promise<{ columns: string[]; types?: number[] } | { error: string }> {
   if (!source?.trim()) return { error: 'The region has no source query yet.' };
   // the role from pgkiln's tables (the owner); the query on the developer's connection (090)
   const role = (await owner.one<{ db_role: string | null }>('select db_role from meta.app where id = $1', [appId]))?.db_role;
@@ -33,7 +34,8 @@ export async function reportColumns(appId: number, source: string | null): Promi
     if (role) await c.query(`set local role ${pg.escapeIdentifier(role)}`);
     const sql = applyBinds(source.trim().replace(/;+\s*$/, ''), {});
     const res = await c.query(`select * from (\n${sql}\n) "__q" limit 0`);
-    return { columns: res.fields.map((f) => f.name).filter((n) => !n.startsWith('__')) };
+    const fields = res.fields.filter((f) => !f.name.startsWith('__'));
+    return { columns: fields.map((f) => f.name), types: fields.map((f) => f.dataTypeID) };
   } catch (e) {
     return { error: (e as Error).message };
   } finally {
@@ -41,6 +43,10 @@ export async function reportColumns(appId: number, source: string | null): Promi
     c.release();
   }
 }
+
+/** (sprint 205, AX-1) a column of the Attributes tab's Columns group: a link that selects its node in the tree */
+export const columnNodeLink = (pageId: number, regionId: number, name: string) =>
+  html`<a href="${`${BASE}/pages/${pageId}?c=column-${regionId}&col=${encodeURIComponent(name)}`}" title="${tx('pdc.open_column', { name })}"><code>${name}</code></a>`;
 
 /** "P3_ID=#id#, P3_X=a=b" → { P3_ID: '#id#', P3_X: 'a=b' } (item names upper case). */
 export function parseLinkItems(text: string | undefined): Record<string, string> {
@@ -112,7 +118,7 @@ async function reportSettingsFormInner(pageId: number, appId: number, r: { id: n
   const printed = cfg.pdf?.columns?.length ? new Set(cfg.pdf.columns.map((c) => c.toLowerCase())) : null;
 
   const columnRows = all.map((n, i) => html`<tr>
-      <td data-label="${tx('rpt.column')}"><code>${n}</code>${known.has(n) ? '' : html` <span class="tag tag-error">${tx('rs.not_in_query')}</span>`}<input type="hidden" name="col_${i}" value="${n}"></td>
+      <td data-label="${tx('rpt.column')}">${columnNodeLink(pageId, r.id, n)}${known.has(n) ? '' : html` <span class="tag tag-error">${tx('rs.not_in_query')}</span>`}<input type="hidden" name="col_${i}" value="${n}"></td>
       <td data-label="${tx('rpt.heading')}"><input name="heading_${i}" value="${cfg.headings?.[n] ?? ''}" placeholder="${heading(n)}" aria-label="${tx('rpt.aria_heading_of', { name: n })}"></td>
       <td data-label="${tx('rpt.format_mask')}"><input name="fmt_${i}" value="${cfg.formats?.[n] ?? ''}" placeholder="e.g. 999G990D00" aria-label="${tx('rpt.aria_format_mask_of', { name: n })}" class="u-mw10"></td>
       <td data-label="${tx('rpt.display')}"><select name="opt_${i}" aria-label="${tx('rpt.aria_display_of', { name: n })}">${opt('', tx('rpt.normal'), columnOption(cfg, n))}${COLUMN_OPTIONS.map((o) => opt(o.cls, o.label, columnOption(cfg, n)))}</select></td>

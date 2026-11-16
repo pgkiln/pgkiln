@@ -581,6 +581,12 @@ src/
                            settings forms into groups of form#pd-form (controls named "<key>:<field>", form="pd-form", no Save of
                            their own), settingsBodies() takes the post apart, settingsRoute() each form's own route; the savers
                            (saveReportSettings, saveRegionSettings, …) and saveRegionAttributes() are in the forms' modules
+    region-columns.ts      (sprint 205, AX-1) the Page Designer's Columns node: regionColumns() (the query's columns with their
+                           types from reportColumns, then configuredColumns() no longer in the query), COLUMN_FIELDS per region
+                           type, columnProperties() (form#pd-form for one column or several: shared values, Mixed, was_<key>),
+                           mergeColumnSettings() (only changed fields; into headings, formats, column_options, hidden, pdf,
+                           link, a grid's readonly and columns), POST /builder/pages/:pid/region/:rid/columns; designer.ts
+                           draws the node (?c=column-<region>&col=<name>…), builder.js setupColumnSelect (Ctrl/Shift+click)
     type-names.ts          (sprint 202, AX-3) the Page Designer's type names in the builder language: optionName(kind, field, value)
                            (region/item/button types from the gallery's labels; dynamic action events and actions, process,
                            validation and computation types, region templates: pd.* keys); componentForm's selects and the tree
@@ -591,6 +597,12 @@ src/
                            application and page checksums; Change history (filters, diffHtml of a change); the icon browser
                            /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application);
                            (sprint 203) deletedPageNames(): a deleted page's last recorded name (pages/NNNN/page.yaml in the history)
+    page-utilities.ts      (sprint 206, AX-5) the page designer's menus on the open page: pageCreateLinks() (Create → Copy this
+                           page: create-page.ts's copy form with ?from=&page=; Issue for this page: team.ts's new issue with
+                           ?app=&page=), pageUtilityLinks() (History of this page: utilities/history?page=; View as text, Page
+                           checksum, Export this page); GET /builder/apps/:app/pages/:no/text (the page's files of the text layout,
+                           read-only, and pageChecksums()) and …/export (filesToZip of pageFiles(): the page's folder, logged as
+                           page_export); no import of one page (its folder goes into a text export, which is imported)
     dependencies.ts        (sprint 138) Utilities → Database object dependencies: appDependencies() (the Advisor's fragments, each
                            parsed as the app role into a BEGIN ATOMIC temp function, one statement by the extended protocol;
                            pg_depend → tables, views, sequences, functions; missing objects from the parser's errors; privileges
@@ -832,6 +844,8 @@ test/
                            JavaScript; a tabs container with a report and a form built by drag and drop
   e2e/app-home.test.ts     (sprint 197, NX-U4/U5) the app home is the Pages report and the side column, the quick forms on Create
                            page, the Page Designer's one Save at 360 and 1366 px, with and without JavaScript
+  e2e/designer-columns.test.ts (sprint 205, AX-1) HR page 2's Columns node: click sal, Save, reload at 360 and 1366 px; Ctrl+click,
+                           the keyboard, the Attributes tab's shortcut, without JavaScript (Select several columns)
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
   e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone
@@ -843,6 +857,8 @@ test/
                            a blueprint drafted and reviewed
   e2e/ai-assistant.test.ts the AI assistant and report questions on HR page 38 in a browser (mock Claude), with and without JavaScript
   e2e/ai.test.ts           Generate text with AI on HR page 37 in a browser (mock Claude): dynamic actions without a submit, errors, no JavaScript
+  e2e/page-menus.test.ts   (206) page 3's Utilities → History of this page and Create → Copy this page with the keyboard, at 360 px and
+                           1366 px and without JavaScript; View as text fits a phone
 ```
 
 ## Builder texts in more languages

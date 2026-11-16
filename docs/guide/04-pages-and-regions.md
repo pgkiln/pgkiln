@@ -310,7 +310,9 @@ region's fields post to a form of their own, so items placed in it are not shown
 
 Region-specific options go in the region's **attributes** (`config`, a JSON object). In the Page Designer the
 region's **Attributes** tab has fields for the common ones; (sprint 202) **Utilities → Show as JSON** shows and edits
-every key, also those without a field ([chapter 3](03-builder.md#the-page-designer)).
+every key, also those without a field ([chapter 3](03-builder.md#the-page-designer)). (sprint 205) The columns of a
+report, grid, cards or calendar region are also nodes of the Page Designer's tree, each with its own properties
+(heading, format mask, display, link, …), saved into the same keys.
 
 **Static ID** (APEX: Static ID, optional): lower case letters, digits, `_` and `-`, starting with a
 letter, unique on the page. It names the region in [exported files](18-cli.md#static-ids), so

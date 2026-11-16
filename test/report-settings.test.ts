@@ -77,11 +77,11 @@ describe('report settings', () => {
 
   test('columns come from the query, as the app role, without running it', async () => {
     const r = await reportColumns(appId, 'select empno, ename, sal from hr.emp where deptno = :P2_DEPTNO::int');
-    assert.deepEqual(r, { columns: ['empno', 'ename', 'sal'] });
+    assert.deepEqual(r, { columns: ['empno', 'ename', 'sal'], types: [23, 25, 1700] });
     const denied = await reportColumns(appId, 'select password_hash from meta.account');
     assert.ok('error' in denied && /permission denied/.test(denied.error));
     const slow = await reportColumns(appId, 'select pg_sleep(0.1) as x');
-    assert.deepEqual(slow, { columns: ['x'] });
+    assert.deepEqual('columns' in slow && slow.columns, ['x']);
   });
 
   test('the designer shows the form and saves it', async () => {
