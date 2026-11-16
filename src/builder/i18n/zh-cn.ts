@@ -8167,6 +8167,11 @@ export const zhCN: BuilderMessages = {
   'apx.kind.lov': '值列表',
   'apx.kind.authorization': '授权方案',
   'apx.kind.navigation': '导航条目',
+  'apx.kind.app_item': '应用程序项',
+  'apx.kind.app_process': '应用程序进程',
+  'apx.kind.app_computation': '应用程序计算',
+  'apx.kind.build_option': '构建选项',
+  'apx.kind.app_setting': '应用程序设置',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': '浏览器安全',
   'bs.intro': '浏览器可以对应用程序的页面做什么：在框架中显示、传递地址、编入索引。构建器保留自己的设置。',

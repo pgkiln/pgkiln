@@ -188,3 +188,110 @@ const PG_RESERVED = new Set(('all analyse analyze and any array as asc asymmetri
   'in initially inner intersect into is isnull join lateral leading left like limit localtime localtimestamp natural not notnull null ' +
   'offset on only or order outer overlaps placing primary references returning right select session_user similar some symmetric ' +
   'system_user table tablesample then to trailing true union unique user using variadic verbose when where window with').split(' '));
+
+/**
+ * (sprint 209, NX-F5) A PL/SQL process body that is SQL in disguise, as the SQL a pgkiln `sql` process runs (null when it
+ * is real PL/SQL: a person ports it). The forms, in a `begin … end;` block or not:
+ *
+ *   insert / update / delete / merge …;           the statements as they are (several are fine)
+ *   … ;  :P1_A := expr;  :P1_B := expr;           last: select expr as p1_a, expr as p1_b (a value a process
+ *                                                 returns under an item's name sets that item); an expression may not
+ *                                                 read an item assigned before it in the same group
+ *   … ;  select x, y into :P1_A, :P1_B from …;    last: select x as p1_a, y as p1_b from …
+ *   … ;  insert … returning id into :P1_ID;       last: insert … returning id as p1_id
+ *
+ * Anything else (declare, variables, if, loops, exceptions, package calls as statements …) gives null. The SQL is not
+ * yet rewritten from Oracle's: the caller runs translateOracle on it.
+ */
+export function plsqlAsSql(code: string | null | undefined): { sql: string; how: string } | null {
+  if (!code?.trim()) return null;
+  let text = code.trim();
+  let mask = codeMask(text);
+  // the comments and literals are blanked in the mask: a block is begin … end at its ends
+  const block = /^\s*begin\b/i.exec(mask);
+  if (block) {
+    const end = /\bend\s*;?\s*$/i.exec(mask);
+    if (!end || end.index < block[0].length) return null;
+    text = text.slice(block[0].length, end.index);
+    mask = mask.slice(block[0].length, end.index);
+  }
+  // statements, split at top-level semicolons
+  const stmts: { sql: string; mask: string }[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let k = 0; k <= mask.length; k++) {
+    const c = mask[k];
+    if (c === '(') depth++;
+    else if (c === ')') depth--;
+    else if ((c === ';' && depth === 0) || k === mask.length) {
+      // trimmed by the mask, so a leading comment goes and the two stay aligned
+      const m = mask.slice(from, k);
+      const lead = m.length - m.trimStart().length;
+      const trail = m.length - m.trimEnd().length;
+      if (m.trim()) stmts.push({ sql: text.slice(from + lead, k - trail), mask: m.slice(lead, m.length - trail) });
+      from = k + 1;
+    }
+  }
+  if (!stmts.length || depth !== 0) return null;
+  const PLSQL = /\b(begin|declare|exception|loop|if|elsif|raise|return|goto|exit|execute|open|fetch|pragma|bulk|forall)\b/i;
+  if (stmts.some((s) => PLSQL.test(s.mask.replace(/\bend\s+if\b|\bend\s+loop\b/gi, '')))) return null;
+  const ITEM = /^:([A-Za-z][A-Za-z0-9_$#]*)$/;
+  const assign = (s: { mask: string }) => /^:[A-Za-z][\w$#]*\s*:=/.test(s.mask);
+  const dml = (s: { mask: string }) => /^(insert|update|delete|merge)\b/i.test(s.mask) && !/\binto\s+:/i.test(s.mask.replace(/^insert\s+into\b/i, ''));
+  const out: string[] = [];
+  let i = 0;
+  while (i < stmts.length && dml(stmts[i])) out.push(stmts[i++].sql);
+  const rest = stmts.slice(i);
+  const hows: string[] = out.length ? ['SQL statements'] : [];
+  if (!rest.length) return out.length ? { sql: out.join(';\n'), how: 'the PL/SQL block became its SQL statements' } : null;
+  /** "x, y into :A, :B" → "x as a, y as b" (null when the counts differ or a target isn't an item) */
+  const intoItems = (cols: string, colsMask: string, targets: string) => {
+    const items = targets.split(',').map((t) => ITEM.exec(t.trim())?.[1]);
+    if (items.some((x) => !x)) return null;
+    const list: string[] = [];
+    let d = 0;
+    let f = 0;
+    for (let k = 0; k <= colsMask.length; k++) {
+      if (colsMask[k] === '(') d++;
+      else if (colsMask[k] === ')') d--;
+      else if ((colsMask[k] === ',' && d === 0) || k === colsMask.length) {
+        list.push(cols.slice(f, k).trim());
+        f = k + 1;
+      }
+    }
+    if (list.length !== items.length) return null;
+    return list.map((c, n) => `${c} as ${items[n]!.toLowerCase()}`).join(', ');
+  };
+  if (rest.every(assign)) {
+    const assigned: string[] = [];
+    const cols: string[] = [];
+    for (const s of rest) {
+      const m = /^:([A-Za-z][\w$#]*)\s*:=/.exec(s.mask)!;
+      const expr = s.sql.slice(m[0].length).trim();
+      const exprMask = s.mask.slice(m[0].length);
+      // an expression that reads an item set just before it would see the old value in one SELECT
+      if (assigned.some((a) => new RegExp(`:${a}(?![\\w$#])`, 'i').test(exprMask))) return null;
+      assigned.push(m[1].toUpperCase());
+      cols.push(`${expr} as ${m[1].toLowerCase()}`);
+    }
+    out.push(`select ${cols.join(',\n       ')}`);
+    hows.push('item assignments as a SELECT that returns the items');
+  } else if (rest.length === 1) {
+    const s = rest[0];
+    const sel = /^select\s+([\s\S]*?)\s+into\s+([\s\S]*?)\s+from\b/di.exec(s.mask);
+    const ret = /\breturning\s+([\s\S]*?)\s+into\s+([\s\S]*)$/di.exec(s.mask);
+    const part = (m: RegExpExecArray, n: number) => s.sql.slice(m.indices![n]![0], m.indices![n]![1]);
+    if (sel) {
+      const cols = intoItems(part(sel, 1), sel[1], part(sel, 2));
+      if (!cols) return null;
+      out.push(`select ${cols}\n ${s.sql.slice(sel.indices![2]![1]).trim()}`);
+      hows.push('SELECT … INTO :ITEM as a SELECT that returns the items');
+    } else if (ret && /^(insert|update|delete)\b/i.test(s.mask)) {
+      const cols = intoItems(part(ret, 1), ret[1], part(ret, 2));
+      if (!cols) return null;
+      out.push(`${s.sql.slice(0, ret.index)}returning ${cols}`);
+      hows.push('RETURNING … INTO :ITEM as RETURNING … AS item');
+    } else return null;
+  } else return null;
+  return { sql: out.join(';\n'), how: `the PL/SQL became SQL (${hows.join(', ')})` };
+}

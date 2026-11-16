@@ -8167,6 +8167,11 @@ export const zhTW: BuilderMessages = {
   'apx.kind.lov': '值清單',
   'apx.kind.authorization': '授權方案',
   'apx.kind.navigation': '導覽項目',
+  'apx.kind.app_item': '應用程式項目',
+  'apx.kind.app_process': '應用程式處理',
+  'apx.kind.app_computation': '應用程式計算',
+  'apx.kind.build_option': '建置選項',
+  'apx.kind.app_setting': '應用程式設定',
   // ------------------------------------------------------------ Settings → Security → Browser security (sprint 188)
   'bs.title': '瀏覽器安全性',
   'bs.intro': '瀏覽器可以對應用程式的頁面做什麼：在框架中顯示、傳遞位址、編入索引。建置器保留自己的設定。',
