@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-11-16
+
 ### Added
 - **Page Designer: a region's slots** (sprint 207, AX-4; APEX: Region Body, Sub Regions and the button positions as
   drop targets): every region on the Layout draws a *Sub regions* slot (any region at page level, not only containers)
