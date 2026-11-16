@@ -1343,8 +1343,10 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
     before the page is shown), the regions by
     [display position](04-pages-and-regions.md#side-columns-and-display-positions) (Banner, Breadcrumb bar,
     Left column, Body, Right column, Footer: the page template's positions and any other that has regions)
-    with their items and buttons (by [button position](04-pages-and-regions.md#button-positions): *Buttons*,
-    *Buttons: Next*, …), and page-level items and buttons;
+    with their items and buttons, and page-level items and buttons. (sprint 207, AX-4; APEX: the Region Buttons
+    node) A region's buttons are one **Buttons** node with a folder per
+    [button position](04-pages-and-regions.md#button-positions) in the layout's order (*Create*, …, *Region buttons*,
+    *Previous*, *Close*, *Delete*, *Next*): only the positions that have buttons;
   - **Dynamic actions**, grouped by event (change, click, page load);
   - **Processing**: computations after submit, validations, processes and the branches (the
     [branch components](06-processing.md#branches) in sequence, then the buttons that go to
@@ -1407,9 +1409,25 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   template (the tab shows its title). Nesting is one level: a sub region has no slot, and a region with sub regions
   stays on the page. Without drag and drop, a region's **Parent region** property and its Arrange bar's *Move into*
   list put it into another region or back on the page. Deleting a region with sub regions moves them up to the page,
-  where it was. The middle pane also has a **Page search** tab (searches the application)
-  a **Lock and comments** tab ([below](#page-locks-and-comments)) and a **Help** tab (layout keys and the substitution cheat sheet). Zoom in, zoom out and
-  maximize (hides the side panes) are above the layout.
+  where it was.
+
+  (sprint 207, AX-4; APEX: a region's slots) **A region's slots.** Every region on the layout has its slots as drop
+  targets, as APEX draws them: **Sub regions** (in a region at page level) and the button positions its template
+  places: *Create*, *Edit*, *Change*, *Copy*, *Help* and *Up* above the region's own buttons, *Previous*, *Close*,
+  *Delete* and *Next* under them. The templates `standard`, `plain`, `collapsible`, `tabs_container` and
+  `flex_container` place buttons by position; the others (hero, title bar, buttons container, inline dialog and
+  drawer, wizard) only have the region's buttons slot, plus any position a button already has. Slots with
+  components are always shown; an empty one shows **while you drag** something that can go there (a region: every
+  Sub regions slot but the dragged region's own, and none for a region that has sub regions; a button: the button
+  positions), and **always when the layout is maximized**. So dragging a report from the gallery onto a Tabs
+  Container's *Sub regions* slot nests it, and dragging a CREATE button to *Next* changes its position.
+
+  The middle pane also has a **Page search** tab (searches the application)
+  a **Lock and comments** tab ([below](#page-locks-and-comments)) and a **Help** tab (the layout's keys, its slots and
+  the substitution cheat sheet). Zoom in, zoom out, maximize (hides the side panes and shows every slot) and a **?**
+  that opens the Help tab (without JavaScript: a link to it) are above the layout; (sprint 207) the keyboard hint
+  that used to be at the right of that bar is in the Help tab, and still describes the layout's components to
+  screen readers.
 - **Right: the property editor** for the selected component, grouped (Identification, Source,
   Layout, Security, …) with help text for each property. Type in **Filter** to show only the
   properties whose name contains the text (Escape clears it); click a group's name to fold it

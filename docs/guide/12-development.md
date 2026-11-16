@@ -510,6 +510,12 @@ src/
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo;
                            (sprint 195) sub regions: moveComponent's parent (targetParent: one level), CONTAINER_LABELS (the gallery's
                            containers), duplicate and copy with sub regions, deleteRegion (sub regions move up to the page)
+                           (sprint 207, AX-4) the layout's slots: designer.ts draws a Sub regions slot in every region at page level
+                           (.pd-sub-spare unless a container or it has sub regions; data-holds on a region with sub regions)
+                           and the button positions of SLOTTED_TEMPLATES (runtime/regions.ts: the templates slottedShell
+                           places by position); builder.js / builder.css show the spares while dragging (pd-dragging-region,
+                           -button, -holder) and on body.pd-max; the tree's Buttons node has a folder per position (li[data-slot]);
+                           the layout bar's ? ([data-show-tab]) opens the Help tab, which holds the keyboard hint (#pd-kbd)
     sql.ts                 SQL Workshop: the home and the session's schema
     sql-tour.ts            (sprint 179) GET /builder/sql/tour: the guided tour of the SQL Workshop's tools (a step per tool, no script)
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
@@ -783,6 +789,8 @@ test/
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
   instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
   drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
+  designer-slots.test.ts   (sprint 207, AX-4) the layout's slots per region template, the spare Sub regions slot, data-holds, the
+                           tree's Buttons node by position, the keyboard hint in the Help tab
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
   web-request.test.ts      meta.web_request (scheduler pass, page process path, sources, credentials, limits, retention) and
                            meta.parse_data compared with the data loader (src/dataload.ts); HR page 35
@@ -848,6 +856,9 @@ test/
   e2e/designer-columns.test.ts (sprint 205, AX-1) HR page 2's Columns node: click sal, Save, reload at 360 and 1366 px; Ctrl+click,
                            the keyboard, the Attributes tab's shortcut, without JavaScript (Select several columns)
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
+  e2e/region-slots.test.ts (sprint 207, AX-4) a region's slots: a gallery report onto a Tabs Container's Sub regions slot, a region
+                           onto another's spare slot (shown while dragging, not its own, none for a holder), CREATE to Next on a
+                           maximized layout, the bar's ? and the Help tab at 390 and 1366 px, without JavaScript
   e2e/calendar.test.ts     calendar drag and drop and create on click, view switching, chart drill-down
   e2e/gantt.test.ts        Gantt drag and drop: moving a task, its end, the keyboard, a click still drills down, the phone
   e2e/globalization.test.ts the browser's time zone (sign-in, app.js), no-JavaScript fallback, a masked number item
