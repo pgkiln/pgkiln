@@ -84,11 +84,11 @@ jobs:
           sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install -y --no-install-recommends postgresql-client-17
       # npm test, in shards: pretest installs the framework and the HR example app (the tests' fixture), then a third
-      # of test/*.test.ts (the flag must come before the files, so not npm test -- --test-shard)
+      # of test/*.test.ts, (sprint 212) balanced by the files' durations (scripts/test-shard.ts, test/durations.json)
       - name: Tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
         run: |
           npm run pretest
-          npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} test/*.test.ts
+          npx tsx --test --test-concurrency=1 $(npx tsx scripts/test-shard.ts ${{ matrix.shard }}/${{ strategy.job-total }} test/*.test.ts)
 
   test:
     # required check: every shard of test-shard passed
@@ -99,8 +99,8 @@ jobs:
       - run: '[ "${{ needs.test-shard.result }}" = success ]'
 
   e2e-shard:
-    # four shards: test/e2e/responsive.ts takes a third of the run; its four widths (responsive-<width>.test.ts, next
-    # to each other in the file list) land in four different shards
+    # four shards, balanced by the files' durations (scripts/test-shard.ts, test/e2e/durations.json): test/e2e/
+    # responsive.ts takes a third of the run, in a file per width (responsive-<width>.test.ts)
     name: e2e (${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     strategy:
@@ -139,7 +139,7 @@ jobs:
       - name: Browser tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
         run: |
           npm run pretest:e2e
-          npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/${{ strategy.job-total }} test/e2e/*.test.ts
+          npx tsx --test --test-concurrency=1 $(npx tsx scripts/test-shard.ts ${{ matrix.shard }}/${{ strategy.job-total }} test/e2e/*.test.ts)
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -156,9 +156,10 @@ jobs:
 
   releases:
     # the upgrade jobs' matrices from UPGRADE_FROM: the oldest and the newest release run the whole suite in three
-    # shards each; the others run QUICK_TESTS, a batch of releases one after another per job (each on a fresh
-    # database), so that 70 one-minute jobs don't fill the runners the long shards are waiting for. A pull request
-    # (except a release-* branch) takes only the three releases before the newest of the others
+    # shards each; the others run QUICK_TESTS, a batch of releases per job (each on a fresh database, three at a time),
+    # so that 70 one-minute jobs don't fill the 20 runners the long shards are waiting for: (sprint 212) at most four
+    # batches, which with the 16 other jobs of a full run is 20. A pull request (except a release-* branch) takes only
+    # the three releases before the newest of the others, one batch
     runs-on: ubuntu-latest
     outputs:
       oldest: ${{ steps.pick.outputs.oldest }}
@@ -168,8 +169,8 @@ jobs:
       - id: pick
         env:
           ALL: ${{ github.event_name != 'pull_request' || startsWith(github.head_ref, 'release-') }}
-          # at most this many releases per batch job (about 30 s each)
-          PER_BATCH: 15
+          # at most this many releases per batch job (about 30 s each, three at a time: 18 take about 4 minutes)
+          PER_BATCH: 18
         run: |
           read -ra r <<< "$UPGRADE_FROM"
           n=${#r[@]}
@@ -241,7 +242,7 @@ jobs:
       - name: Tests (shard ${{ matrix.shard }}/3)
         run: |
           npm run pretest
-          npx tsx --test --test-concurrency=1 --test-shard=${{ matrix.shard }}/3 test/*.test.ts
+          npx tsx --test --test-concurrency=1 $(npx tsx scripts/test-shard.ts ${{ matrix.shard }}/3 test/*.test.ts)
 
   upgrade-newest:
     name: upgrade (${{ matrix.from }}, shard ${{ matrix.shard }}/3)
@@ -257,9 +258,11 @@ jobs:
     steps: *upgrade-suite-steps
 
   upgrade-batch:
-    # the other releases, a batch per job, one after another: each gets a fresh PostgreSQL container (no service: a
-    # service lives as long as the job), the old release installed, the upgrade and QUICK_TESTS. A failing release
-    # doesn't stop the batch; the job fails at the end and lists the releases that failed
+    # the other releases, a batch per job: each gets a fresh PostgreSQL container of its own (no service: a service
+    # lives as long as the job), the old release installed, the upgrade and QUICK_TESTS. (sprint 212) PARALLEL of them
+    # at a time, each on its own port (the runner has four cores; a release takes ~30 s, most of it QUICK_TESTS). A
+    # failing release doesn't stop the batch; the job prints each release's output in a group and fails at the end,
+    # listing the releases that failed
     name: upgrade (${{ matrix.first }} … ${{ matrix.last }})
     needs: releases
     runs-on: ubuntu-latest
@@ -267,11 +270,10 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.releases.outputs.batches) }}
     env:
-      DATABASE_URL: postgres://pgkiln:pgkiln@localhost:5432/pgkiln
-      RUNTIME_DATABASE_URL: postgres://pgkiln_runtime:pgkiln_runtime@localhost:5432/pgkiln
       API_JWT_SECRET: ci-only-api-secret-not-for-production-0123456789
       QUICK_TESTS: test/cli.test.ts test/export.test.ts test/generated-apps.test.ts test/builder-home.test.ts test/mfa.test.ts
       RELEASES: ${{ matrix.releases }}
+      PARALLEL: 3
     steps:
       - uses: actions/checkout@v7
         with:
@@ -284,16 +286,19 @@ jobs:
       - run: docker pull -q postgres:17
       - name: Upgrade from ${{ matrix.releases }}
         run: |
-          failed=()
-          for from in $RELEASES; do
-            echo "::group::upgrade from $from"
-            start=$SECONDS
-            docker rm -f pg >/dev/null 2>&1 || true
-            docker run -d --name pg -p 5432:5432 -e POSTGRES_USER=pgkiln -e POSTGRES_PASSWORD=pgkiln -e POSTGRES_DB=pgkiln \
-              postgres:17 >/dev/null
+          out="$RUNNER_TEMP/upgrades"
+          mkdir -p "$out"
+          # one release on its own database (port 5440 + slot): the old release, the upgrade, QUICK_TESTS
+          upgrade() {
+            local from=$1 port=$((5440 + $2)) start=$SECONDS
+            export DATABASE_URL=postgres://pgkiln:pgkiln@localhost:$port/pgkiln
+            export RUNTIME_DATABASE_URL=postgres://pgkiln_runtime:pgkiln_runtime@localhost:$port/pgkiln
+            docker rm -f "pg$port" >/dev/null 2>&1 || true
+            docker run -d --name "pg$port" -p "$port:5432" -e POSTGRES_USER=pgkiln -e POSTGRES_PASSWORD=pgkiln \
+              -e POSTGRES_DB=pgkiln postgres:17 >/dev/null
             # pg_isready answers during the image's initdb too (on a socket only): wait for TCP and a query
             for i in $(seq 1 60); do psql "$DATABASE_URL" -qtAc 'select 1' >/dev/null 2>&1 && break; sleep 0.5; done
-            old="$RUNNER_TEMP/old-$from"
+            local old="$RUNNER_TEMP/old-$from"
             mkdir -p "$old"
             if git archive "$from" | tar -x -C "$old" \
                && npx tsx scripts/migrate.ts --seed --root "$old" \
@@ -301,12 +306,24 @@ jobs:
                && npx tsx --test --test-concurrency=1 $QUICK_TESTS; then
               echo "upgrade from $from: ok ($((SECONDS - start)) s)"
             else
-              failed+=("$from")
-              echo "::error::upgrade from $from failed"
+              echo "upgrade from $from: failed ($((SECONDS - start)) s)"
+              touch "$out/$from.failed"
             fi
-            echo "::endgroup::"
+            docker rm -f "pg$port" >/dev/null 2>&1 || true
+          }
+          read -ra rs <<< "$RELEASES"
+          # slot j takes releases j, j + PARALLEL, ...
+          for ((j = 0; j < PARALLEL; j++)); do
+            ( for ((i = j; i < ${#rs[@]}; i += PARALLEL)); do upgrade "${rs[i]}" "$j" > "$out/${rs[i]}.log" 2>&1; done ) &
           done
-          docker rm -f pg >/dev/null 2>&1 || true
+          wait
+          failed=()
+          for from in "${rs[@]}"; do
+            echo "::group::$(tail -n 1 "$out/$from.log")"
+            cat "$out/$from.log"
+            echo "::endgroup::"
+            if [ -e "$out/$from.failed" ]; then failed+=("$from"); echo "::error::upgrade from $from failed"; fi
+          done
           if [ ${#failed[@]} -gt 0 ]; then echo "failed: ${failed[*]}"; exit 1; fi
 
   # required check "upgrade (v0.31.0)" (and its twin for the newest release): the three shards of the whole suite after

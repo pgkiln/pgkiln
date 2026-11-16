@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Faster CI** (sprint 212): the test shards are balanced by each file's duration (`scripts/test-shard.ts`,
+  `test/durations.json`) instead of Node's `--test-shard`, which gave one shard twice the work of the next; the
+  releases between the oldest and the newest upgrade in at most four batch jobs, three at a time. A full run (main,
+  release branches, nightly) went from about 14 to about N minutes; a pull request's from about 8 to about M.
+
+### Fixed
+- **"tuple concurrently updated"** (sprint 212, migration 181): `meta.workspace_sync_roles()`, which runs at the commit
+  of every change to a workspace or an application's role, takes an advisory lock, as do the grants of an
+  application's new role: two transactions no longer grant the same privilege at once. The runtime login of a
+  workspace that is no longer isolated is switched off only while it can still sign in, not on every pass.
+- **Flaky tests** (sprint 212): the network access list tests wait for the refusal, which is written next to the
+  call; `test/security.test.ts` passes on its own and with `--test-name-pattern` (a top-level `await` after the first
+  test, and `async` describe callbacks, let the runner finish the file early); the hidden report column test no
+  longer finds the salary 5000 in a region id such as `R155000`.
+
 ## [0.104.0] - 2026-11-16
 
 ### Added
