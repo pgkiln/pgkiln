@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.104.0 (November 2026): a region's slots on the Page Designer layout and buttons by position in the tree (AX-4); the Oracle-to-pgkiln end-to-end run green and more of an APEX export imported (NX-F5); CI about three times faster.
+- **Current release:** 0.105.0 (November 2026): a report or grid column's condition and authorization, kept out of every download (AX-1); the Page Designer's Caching, two panes or three and developer comment (AX-5); the APEX importer brings over saved reports, LOV display values, grid validations, breadcrumbs, chart axes, ACL roles and dynamic content (NX-F5).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
