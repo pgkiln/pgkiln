@@ -14,7 +14,8 @@ import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/ru
 import { maxRows } from '../src/runtime/report.ts';
 import { lovMax } from '../src/runtime/items.ts';
 import { loadWithDefinition } from '../src/dataload.ts';
-import { Browser as FileBrowser, formFields as pageFormFields, gridForm } from './helpers.ts';
+import { Browser as FileBrowser, formFields as pageFormFields, gridForm, pdfText } from './helpers.ts';
+import { strFromU8, unzipSync } from 'fflate';
 
 let app: FastifyInstance;
 let appId: number;
@@ -18212,5 +18213,112 @@ wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(13),p_is_default=>'
     for (const code of ['l_x := 1;', "execute immediate 'drop table t';", 'select a into l_a from t;', 'insert into t values (1) returning id into l_id;',
       "begin commit; end;", "begin\n  update t set a = 1;\n  dbms_output.put_line('x');\nend;"])
       assert.equal(plsqlAsSql(code), null, code);
+  });
+});
+
+// (sprint 210, AX-1) A report or grid column's authorization scheme and server-side condition: a column that fails
+// either is not in the region for this request, so neither the page nor any download, refresh or save can reach it.
+describe('column authorization and condition', () => {
+  const regionOn = async (page: number, type: string) =>
+    (await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = $2 and r.type = $3 order by r.seq limit 1`, [appId, page, type])) as { id: number; config: Record<string, unknown> };
+  const withAccess = async (id: number, access: object, fn: () => Promise<void>) => {
+    await owner.query(`update meta.region set config = config || jsonb_build_object('column_access', $2::jsonb) where id = $1`, [id, JSON.stringify(access)]);
+    clearRegionCache();
+    try {
+      await fn();
+    } finally {
+      await owner.query(`update meta.region set config = config - 'column_access' where id = $1`, [id]);
+      clearRegionCache();
+    }
+  };
+  const xlsxText = (payload: Buffer) => {
+    const files = unzipSync(new Uint8Array(payload));
+    return Object.entries(files).filter(([n]) => n.endsWith('.xml')).map(([, f]) => strFromU8(f)).join('\n');
+  };
+
+  test('a column whose authorization fails is in no download: page, CSV, Excel, PDF, column values', async () => {
+    const r = await regionOn(2, 'report');
+    const sal = String((await owner.one(`select sal from hr.emp where ename = 'KING'`)).sal).replace(/\.0+$/, '');
+    await withAccess(r.id, { sal: { authz: 'ADMIN' } }, async () => {
+      const blake = await as('blake'); // a manager, not ADMIN
+      const page = await blake.get('/a/hr/2');
+      assert.equal(page.statusCode, 200);
+      assert.match(page.body, /KING/);
+      assert.doesNotMatch(page.body, />Salary</, 'no heading');
+      const csv = await blake.get(`/a/hr/2?r${r.id}_csv=1`);
+      assert.equal(csv.statusCode, 200);
+      const header = csv.body.replace(/^﻿/, '').split('\r\n')[0];
+      assert.match(header, /Name/);
+      assert.doesNotMatch(header, /Salary|sal/i, 'the CSV has no salary column');
+      const kingRow = csv.body.split('\r\n').find((l) => l.includes('KING'))!;
+      assert.ok(!kingRow.split(',').includes(sal), 'nor its values');
+      const xlsx = await blake.get(`/a/hr/2?r${r.id}_xlsx=1`);
+      assert.equal(xlsx.statusCode, 200);
+      assert.doesNotMatch(xlsxText(xlsx.rawPayload), /Salary/);
+      const pdf = await blake.get(`/a/hr/2?r${r.id}_pdf=1`);
+      assert.equal(pdf.statusCode, 200);
+      assert.doesNotMatch(pdfText(pdf.rawPayload), /Salary/);
+      // a filter's list of distinct values
+      const values = await blake.get(`/a/hr/2/report/${r.id}/values?col=sal`);
+      assert.ok(values.statusCode === 403 || !values.body.includes(sal), 'no values of the column');
+      assert.doesNotMatch(values.body, new RegExp(`"${sal}"`));
+      // sorting or filtering on it reveals nothing either
+      const sorted = await blake.get(`/a/hr/2?r${r.id}_x_sal=${sal}`);
+      assert.doesNotMatch(sorted.body, />Salary</);
+
+      // someone who passes the scheme sees it everywhere
+      const king = await as('king');
+      assert.match((await king.get('/a/hr/2')).body, />Salary</);
+      assert.match((await king.get(`/a/hr/2?r${r.id}_csv=1`)).body.split('\r\n')[0], /Salary/);
+      assert.match(xlsxText((await king.get(`/a/hr/2?r${r.id}_xlsx=1`)).rawPayload), /Salary/);
+    });
+  });
+
+  test('a column whose condition is false is left out; a negated scheme; a cached region keeps them apart', async () => {
+    const r = await regionOn(2, 'report');
+    await withAccess(r.id, { job: { condition_type: 'never' }, hiredate: { authz: '!ADMIN' } }, async () => {
+      const king = await as('king');
+      const body = (await king.get('/a/hr/2')).body;
+      assert.doesNotMatch(body, /PRESIDENT/, 'job is never shown');
+      const csv = (await king.get(`/a/hr/2?r${r.id}_csv=1`)).body.replace(/^﻿/, '').split('\r\n')[0];
+      assert.doesNotMatch(csv, /Job|Hiredate|Hire/i);
+      const allen = await as('allen');
+      const a = (await allen.get(`/a/hr/2?r${r.id}_csv=1`)).body.replace(/^﻿/, '').split('\r\n')[0];
+      assert.doesNotMatch(a, /Job/);
+      assert.match(a, /Hire/i, 'not ADMIN: the negated scheme passes');
+    });
+    // a region cached for all users: one cache entry per set of columns, never another user's
+    await owner.query(`update meta.region set config = config || '{"cache": {"scope": "all", "seconds": 60}}' where id = $1`, [r.id]);
+    try {
+      await withAccess(r.id, { sal: { authz: 'ADMIN' } }, async () => {
+        const king = await as('king');
+        assert.match((await king.get('/a/hr/2')).body, />Salary</);
+        const blake = await as('blake');
+        assert.doesNotMatch((await blake.get('/a/hr/2')).body, />Salary</);
+      });
+    } finally {
+      await owner.query(`update meta.region set config = config - 'cache' where id = $1`, [r.id]);
+      clearRegionCache();
+    }
+  });
+
+  test('a grid column left out can\'t be written by a forged save', async () => {
+    const r = await regionOn(10, 'grid');
+    await withAccess(r.id, { loc: { condition_type: 'never' } }, async () => {
+      const king = await as('king');
+      const page = await king.get('/a/hr/10');
+      assert.equal(page.statusCode, 200);
+      assert.doesNotMatch(page.body, />Location</);
+      const g = `g${r.id}`;
+      const form: Record<string, string> = {};
+      for (const m of page.body.matchAll(new RegExp(`<input([^>]*)name="(${g}_\\d+_[a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>`, 'g'))) form[m[2]] = m[3].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      const pk = form[`${g}_0_pk`];
+      assert.ok(pk, 'a row');
+      assert.equal(form[`${g}_0_c2`], undefined, 'no third column');
+      const before = await owner.one('select dname, loc from hr.dept where deptno = $1', [pk]);
+      const res = await king.post('/a/hr/10', { ...form, __csrf: king.lastCsrf, __request: `GRID_SAVE_${r.id}`, [`${g}_0_c2`]: 'HACKED', [`${g}_0_loc`]: 'HACKED' });
+      assert.ok(res.statusCode === 303 || res.statusCode === 422, String(res.statusCode));
+      assert.deepEqual(await owner.one('select dname, loc from hr.dept where deptno = $1', [pk]), before);
+    });
   });
 });

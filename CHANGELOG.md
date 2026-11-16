@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A column's condition and authorization** (sprint 210, AX-1; APEX: a report or grid column's Server-side Condition
+  and Security → Authorization Scheme): report, classic report, interactive grid and cards columns have a *Server-side
+  condition* and a *Security* group in the Page Designer's property editor (`config.column_access.<column>`). A column
+  that fails either is not in the region for that request: not shown, not in the CSV, Excel or PDF download, a
+  filter's list of values, a partial refresh or a cached copy, and a grid's save can't write it. The tree shows the
+  same badges as for regions.
+- **Page Designer: Caching** (sprint 210, AX-5; APEX: Server Cache): classic report, chart, cards, dynamic content,
+  tree and template component regions have a *Caching* group on the Attributes tab (lazy loading, server cache and
+  its duration), as reports had. Utilities → *Caching* lists a page's cacheable regions with their setting and what
+  this server holds now, with *Purge* for a region or the page (allowed on a locked or Run only page).
+- **Page Designer: two panes or three** (sprint 210, AX-5): Utilities → Layout switches to two panes (the tree and the
+  layout share the left column as tabs, the properties stay on the right), remembered in the browser.
+- **Page Designer: Create → Developer comment** (sprint 210, AX-5): opens the page's Lock and comments tab with the
+  comment field focused.
+
 ## [0.104.0] - 2026-11-16
 
 ### Added
