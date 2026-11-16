@@ -7,6 +7,7 @@ import { saveButton, saveRequest } from './grid.ts';
 import { selectionOf } from './report.ts';
 import { unprotectedHidden } from './items.ts';
 import { conditionHolds, conditionOf, serverConditionOf } from './logic.ts';
+import { restrictColumns } from './column-access.ts';
 
 export class Forbidden extends Error {}
 /** (sprint 131) The page needs a second step more recent than the session's: ask for one, then come back. */
@@ -96,6 +97,11 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
       vis.regions.add(r.id);
   // (172) a sub region shows only where its parent shows (its authorization, condition and build option)
   for (const r of ctx.page.regions) if (r.parent_id != null && !vis.regions.has(r.parent_id)) vis.regions.delete(r.id);
+  // (sprint 210, AX-1) a column whose authorization or condition fails is left out of its region's source; also in a
+  // region not shown (a facets region may count a report's rows), but a REST region not shown isn't fetched for it
+  const check = { authorized: (ref: string | null) => isAuthorized(ctx, ref), holds: (c: Condition, where: string) => conditionHolds(ctx, c, where) };
+  for (const r of ctx.page.regions)
+    if (vis.regions.has(r.id) || !r.rest_source) await restrictColumns(ctx, r, check);
 
   for (const i of ctx.page.items) {
     if (i.region_id !== null && !vis.regions.has(i.region_id)) continue;

@@ -13,7 +13,12 @@
 // The property editor is form#pd-form posting to /builder/pages/:pid/region/:rid/columns (the toolbar's Save, also
 // without JavaScript). Each field carries the value it was drawn with (was_<key>); only fields whose value changed are
 // applied, so several columns can be edited at once: a field shows the value they share, or "Mixed" (mixed_<key>),
-// which leaves each column's own value. Heading, link and validation are a single column's only.
+// which leaves each column's own value. Heading, link, validation and the condition are a single column's only.
+//
+// (sprint 210, AX-1; APEX: a column's Server-side Condition and Security → Authorization Scheme) Report, classic report,
+// grid and cards columns also have a Condition and an Authorization: config.column_access.<name> = {condition_type,
+// condition_expr, condition_value, authz}, the catalogue of regions and items. The runtime leaves a column that fails
+// them out of the region's source (src/runtime/column-access.ts).
 import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
@@ -21,6 +26,7 @@ import { icon } from '../icons.ts';
 import { formatMaskError } from '../runtime/format.ts';
 import { heading } from '../runtime/items.ts';
 import { COLUMN_OPTIONS } from '../runtime/template-options.ts';
+import { CONDITION_TYPES } from '../metadata.ts';
 import type { Session } from '../session.ts';
 import { tr } from './i18n.ts';
 import { linkItemsText, parseLinkItems, reportColumns } from './report-settings.ts';
@@ -45,11 +51,11 @@ export function configuredColumns(type: string, cfg: Config): string[] {
   switch (type) {
     case 'report':
     case 'classic_report':
-      return [...strings(cfg.hidden), ...keysOf(cfg.headings), ...keysOf(cfg.formats), ...keysOf(cfg.column_options), ...strings(cfg.pdf?.columns), ...keysOf(cfg.pdf?.widths)];
+      return [...strings(cfg.hidden), ...keysOf(cfg.headings), ...keysOf(cfg.formats), ...keysOf(cfg.column_options), ...strings(cfg.pdf?.columns), ...keysOf(cfg.pdf?.widths), ...keysOf(cfg.column_access)];
     case 'grid':
-      return [...strings(cfg.hidden), ...strings(cfg.readonly), ...keysOf(cfg.headings), ...keysOf(cfg.columns)];
+      return [...strings(cfg.hidden), ...strings(cfg.readonly), ...keysOf(cfg.headings), ...keysOf(cfg.columns), ...keysOf(cfg.column_access)];
     case 'cards':
-      return keysOf(cfg.formats);
+      return [...keysOf(cfg.formats), ...keysOf(cfg.column_access)];
     default:
       return [];
   }
@@ -81,10 +87,11 @@ export async function regionColumns(appId: number, r: RegionRow): Promise<Column
 
 // ---------------------------------------------------------------- the properties of a column
 
-interface Allowed { pages: { page_no: number; name: string }[]; lovs: string[] }
+interface Allowed { pages: { page_no: number; name: string }[]; lovs: string[]; authz: string[] }
+type Group = 'heading' | 'appearance' | 'link' | 'editing' | 'validation' | 'printing' | 'condition' | 'security';
 interface Field {
   key: string;
-  group: 'heading' | 'appearance' | 'link' | 'editing' | 'validation' | 'printing';
+  group: Group;
   kind: 'text' | 'bool' | 'select' | 'number' | 'textarea';
   /** a single column's only (not offered when several are selected) */
   single?: boolean;
@@ -126,14 +133,33 @@ const LOV: Field = {
   get: (c, n) => String(c.columns?.[n]?.lov ?? ''),
 };
 const VALIDATION: Field = { key: 'validation', group: 'validation', kind: 'textarea', single: true, label: (tx) => tx('rs.valid_when'), help: (tx) => tx('rs.col_validations_help'), placeholder: (n) => `:${n.toUpperCase()} is not null`, get: (c, n) => String(c.columns?.[n]?.validation ?? '') };
+const access = (c: Config, n: string, k: string) => {
+  const a = c.column_access?.[n];
+  return a && typeof a === 'object' && typeof a[k] === 'string' ? (a[k] as string) : '';
+};
+// (sprint 210) the condition of regions and items (meta.condition_ok), and an authorization scheme
+const COND_TYPE: Field = {
+  key: 'condition_type', group: 'condition', kind: 'select', single: true, label: (tx) => tx('pdc.condition_type'), help: (tx) => tx('pdc.condition_help'),
+  options: (tx) => [['', tx('pdz.none')], ...CONDITION_TYPES.map((t): [string, string] => [t, `${tx.dyn(`cond.${t}`, t, { item: 'ITEM', value: '…' })} (${t})`])],
+  get: (c, n) => access(c, n, 'condition_type'),
+};
+const COND_EXPR: Field = { key: 'condition_expr', group: 'condition', kind: 'textarea', single: true, label: (tx) => tx('pdc.condition_expr'), help: (tx) => tx('pdc.condition_expr_help'), get: (c, n) => access(c, n, 'condition_expr') };
+const COND_VALUE: Field = { key: 'condition_value', group: 'condition', kind: 'text', single: true, label: (tx) => tx('pdc.condition_value'), get: (c, n) => access(c, n, 'condition_value') };
+const AUTHZ: Field = {
+  key: 'authz', group: 'security', kind: 'select', label: (tx) => tx('pdz.authorization_scheme'), help: (tx) => tx('pdc.authz_help'),
+  options: (tx, _c, a) => [['', tx('pdz.none')], ...['MUST_NOT_BE_PUBLIC_USER', ...a.authz].flatMap((n): [string, string][] => [[n, n], [`!${n}`, tx('pdz.not_authz', { name: n })]])],
+  get: (c, n) => access(c, n, 'authz'),
+};
+const ACCESS = [COND_TYPE, COND_EXPR, COND_VALUE, AUTHZ];
+
 const VALIDATION_MESSAGE: Field = { key: 'validation_message', group: 'validation', kind: 'text', single: true, label: (tx) => tx('rs.error_message'), get: (c, n) => String(c.columns?.[n]?.validation_message ?? '') };
 
 /** The properties of a region type's columns, in the property editor's order. */
 export const COLUMN_FIELDS: Record<string, Field[]> = {
-  report: [HEADING, SHOWN, FORMAT, DISPLAY, LINK_PAGE, LINK_ITEMS, PRINT, WIDTH],
-  classic_report: [HEADING, SHOWN, FORMAT, DISPLAY, LINK_PAGE, LINK_ITEMS],
-  grid: [HEADING, SHOWN, READONLY, REQUIRED, LOV, VALIDATION, VALIDATION_MESSAGE],
-  cards: [FORMAT],
+  report: [HEADING, SHOWN, FORMAT, DISPLAY, LINK_PAGE, LINK_ITEMS, PRINT, WIDTH, ...ACCESS],
+  classic_report: [HEADING, SHOWN, FORMAT, DISPLAY, LINK_PAGE, LINK_ITEMS, ...ACCESS],
+  grid: [HEADING, SHOWN, READONLY, REQUIRED, LOV, VALIDATION, VALIDATION_MESSAGE, ...ACCESS],
+  cards: [FORMAT, ...ACCESS],
   calendar: [],
 };
 
@@ -144,7 +170,8 @@ const ROLES: Record<string, string[]> = { calendar: ['start_date', 'end_date', '
  * The region's config after a change of columns `names`: `changes` holds the fields to apply (key → posted value);
  * `all` is every column of the region (for the PDF's column list). Problems are fields that were not applied.
  */
-export function mergeColumnSettings(type: string, config: Config, names: string[], all: string[], changes: Record<string, string>, a: { pages: Set<number>; lovs: Set<string> }): { config: Config; problems: string[] } {
+export function mergeColumnSettings(type: string, config: Config, names: string[], all: string[], changes: Record<string, string>,
+  a: { pages: Set<number>; lovs: Set<string>; authz?: Set<string>; conditionOk?: boolean }): { config: Config; problems: string[] } {
   const out: Config = structuredClone(config ?? {});
   const problems: string[] = [];
   const has = (k: string) => Object.prototype.hasOwnProperty.call(changes, k) && (COLUMN_FIELDS[type] ?? []).some((f) => f.key === k && (!f.single || names.length === 1));
@@ -173,7 +200,32 @@ export function mergeColumnSettings(type: string, config: Config, names: string[
     if (out.columns?.[n] && !Object.keys(out.columns[n]).length) delete out.columns[n];
     tidy('columns');
   };
+  // (sprint 210) config.column_access.<name>: the condition (checked by meta.condition_ok: conditionOk) and authorization
+  const setAccess = (n: string, k: string, v: string | undefined) => {
+    const m = map('column_access');
+    const cur = m[n] && typeof m[n] === 'object' && !Array.isArray(m[n]) ? (m[n] as Config) : (m[n] = {});
+    if (v) cur[k] = v;
+    else delete cur[k];
+    if (!Object.keys(cur).length) delete m[n];
+    tidy('column_access');
+  };
+  const schemes = a.authz ?? new Set<string>();
   for (const n of names) {
+    if (has('condition_type') || has('condition_expr') || has('condition_value')) {
+      const t = (changes.condition_type ?? '').trim();
+      if (t && (!(CONDITION_TYPES as readonly string[]).includes(t) || a.conditionOk === false)) problems.push(`${n}: ${t}`);
+      else {
+        setAccess(n, 'condition_type', t || undefined);
+        setAccess(n, 'condition_expr', t ? (changes.condition_expr ?? '').trim().slice(0, 4000) || undefined : undefined);
+        setAccess(n, 'condition_value', t ? (changes.condition_value ?? '').trim().slice(0, 4000) || undefined : undefined);
+      }
+    }
+    if (has('authz')) {
+      const v = changes.authz.trim().toUpperCase();
+      const name = v.replace(/^!/, '');
+      if (v && name !== 'MUST_NOT_BE_PUBLIC_USER' && !schemes.has(name)) problems.push(`${n}: ${changes.authz.trim().slice(0, 63)}`);
+      else setAccess(n, 'authz', v || undefined);
+    }
     if (has('heading')) setIn('headings', n, changes.heading.trim().slice(0, 255) || undefined);
     if (has('format')) {
       const mask = changes.format.trim().slice(0, 64);
@@ -265,11 +317,12 @@ export async function columnProperties(o: { s: Session; appId: number; pageId: n
   const all = list.columns.map((c) => c.name);
   const many = names.length > 1;
   const fields = (COLUMN_FIELDS[r.type] ?? []).filter((f) => !many || !f.single);
-  const [pages, lovs] = await Promise.all([
+  const [pages, lovs, authz] = await Promise.all([
     owner.query<{ page_no: number; name: string }>('select page_no, name from meta.page where app_id = $1 order by page_no', [o.appId]).then((x) => x.rows),
     r.type === 'grid' ? owner.query<{ name: string }>('select name from meta.lov where app_id = $1 order by name', [o.appId]).then((x) => x.rows.map((l) => l.name)) : Promise.resolve([] as string[]),
+    owner.query<{ name: string }>('select name from meta.authz_scheme where app_id = $1 order by name', [o.appId]).then((x) => x.rows.map((l) => l.name)),
   ]);
-  const allowed: Allowed = { pages, lovs };
+  const allowed: Allowed = { pages, lovs, authz };
   const cols = names.map((n) => list.columns.find((c) => c.name === n)!);
   const regionLink = designerUrl(o.appId, o.pageNo, `c=region-${r.id}`);
   const info = html`<fieldset class="prop-group"><legend>${tx('pdc.identification')}</legend>
@@ -298,7 +351,7 @@ export async function columnProperties(o: { s: Session; appId: number; pageId: n
         : html`<input id="${id}" name="${f.key}"${f.kind === 'number' ? raw(' type="number" min="0" max="500"') : ''} value="${value ?? ''}" placeholder="${ph}"${f.key === 'heading' ? raw(' maxlength="255"') : f.key === 'format' ? raw(' maxlength="64" class="code"') : ''}>`;
     return html`<div class="field"${f.kind === 'textarea' || f.key === 'link_items' ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label(tx)}</label>${ctl}${keep}${help}</div>`;
   };
-  const groups = (['heading', 'appearance', 'link', 'editing', 'validation', 'printing'] as const)
+  const groups = (['heading', 'appearance', 'link', 'editing', 'validation', 'printing', 'condition', 'security'] as const)
     .map((g) => [g, fields.filter((f) => f.group === g)] as const)
     .filter(([, list]) => list.length)
     .map(([g, list]) => html`<fieldset class="prop-group"><legend>${tx.dyn(`pdc.group.${g}`, g)}</legend><div class="form-grid">${list.map(control)}</div></fieldset>`);
@@ -367,16 +420,21 @@ export async function regionColumnRoutes(app: FastifyInstance) {
       changes[f.key] = v.slice(0, 4000);
     }
     // a link's page and items, and a validation and its message, go together
-    for (const pair of [['link_page', 'link_items'], ['validation', 'validation_message']])
+    for (const pair of [['link_page', 'link_items'], ['validation', 'validation_message'], ['condition_type', 'condition_expr', 'condition_value']])
       if (pair.some((k) => k in changes)) for (const k of pair) changes[k] = typeof b[k] === 'string' ? (b[k] as string).slice(0, 4000) : '';
-    const [pages, lovs] = await Promise.all([
+    const [pages, lovs, schemes] = await Promise.all([
       owner.query('select page_no from meta.page where app_id = $1', [r.app_id]),
       owner.query('select name from meta.lov where app_id = $1', [r.app_id]),
+      owner.query('select name from meta.authz_scheme where app_id = $1', [r.app_id]),
     ]);
+    // (sprint 210) a column's condition is checked as every component's is (meta.condition_ok)
+    const conditionOk = 'condition_type' in changes && changes.condition_type.trim()
+      ? (await owner.one<{ ok: boolean }>('select meta.condition_ok($1, $2, $3) as ok', [changes.condition_type.trim(), (changes.condition_expr ?? '').trim() || null, (changes.condition_value ?? '').trim() || null]))?.ok === true
+      : true;
     // the PDF's column list: the query's columns (and those selected)
     const all = list.columns.filter((c) => !c.stale || names.includes(c.name)).map((c) => c.name);
     const { config, problems } = mergeColumnSettings(r.type, r.config ?? {}, names, all, changes,
-      { pages: new Set(pages.rows.map((x) => x.page_no)), lovs: new Set(lovs.rows.map((x) => String(x.name).toUpperCase())) });
+      { pages: new Set(pages.rows.map((x) => x.page_no)), lovs: new Set(lovs.rows.map((x) => String(x.name).toUpperCase())), authz: new Set(schemes.rows.map((x) => String(x.name).toUpperCase())), conditionOk });
     if (Object.keys(changes).length) await owner.query('update meta.region set config = $2 where id = $1', [r.id, JSON.stringify(config)]);
     if (problems.length) flash(s, tx('pdc.saved_without', { problems: problems.join('; ') }), 'error');
     else flash(s, names.length === 1 ? tx('pdc.saved', { name: names[0] }) : tx('pdc.saved_n', { n: names.length }));

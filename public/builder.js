@@ -630,6 +630,60 @@
       setMax(store.get('max') === '1');
       max.addEventListener('click', () => setMax(!document.body.classList.contains('pd-max')));
     }
+    // (sprint 210, AX-5) Utilities → Layout: three panes or two (the tree and the layout share the left column, as
+    // tabs), remembered in this browser; from 1024 pixels wide (phones have one pane at a time anyway)
+    const panesSwitch = document.querySelector('.pd-panes-switch');
+    const pd = document.querySelector('.pd');
+    if (panesSwitch && pd) {
+      panesSwitch.hidden = false;
+      const bar = document.createElement('div');
+      bar.className = 'pd-twobar';
+      bar.setAttribute('role', 'tablist');
+      bar.setAttribute('aria-label', panesSwitch.getAttribute('aria-label') || '');
+      const twoTabs = ['pd-p-tree', 'pd-p-layout'].map((id) => {
+        const t = document.createElement('button');
+        t.type = 'button';
+        t.setAttribute('role', 'tab');
+        t.setAttribute('aria-controls', id);
+        t.dataset.twoTab = id === 'pd-p-tree' ? 'tree' : 'layout';
+        t.textContent = document.querySelector(`#${id} > .pd-pane-title`)?.textContent.trim() ?? id;
+        bar.appendChild(t);
+        return t;
+      });
+      pd.prepend(bar);
+      const show = (which, remember) => {
+        document.body.classList.toggle('pd-two-layout', which === 'layout');
+        for (const t of twoTabs) {
+          const on = t.dataset.twoTab === which;
+          t.setAttribute('aria-selected', String(on));
+          t.tabIndex = on ? 0 : -1;
+        }
+        if (remember) store.set('two.shown', which === 'layout' ? 'layout' : null);
+      };
+      bar.addEventListener('click', (e) => {
+        const t = e.target.closest('[role=tab]');
+        if (t) show(t.dataset.twoTab, true);
+      });
+      bar.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        const next = document.body.classList.contains('pd-two-layout') ? 'tree' : 'layout';
+        show(next, true);
+        twoTabs.find((t) => t.dataset.twoTab === next)?.focus();
+      });
+      const setPanes = (n) => {
+        document.body.classList.toggle('pd-two', n === 2);
+        for (const b of panesSwitch.querySelectorAll('[data-panes]')) b.setAttribute('aria-pressed', String(Number(b.dataset.panes) === n));
+        store.set('panes', n === 2 ? '2' : null);
+      };
+      show(store.get('two.shown') === 'layout' ? 'layout' : 'tree', false);
+      setPanes(store.get('panes') === '2' ? 2 : 3);
+      for (const b of panesSwitch.querySelectorAll('[data-panes]'))
+        b.addEventListener('click', () => {
+          setPanes(Number(b.dataset.panes));
+          b.closest('details')?.removeAttribute('open');
+        });
+    }
 
     const toast = (message) => {
       document.querySelector('.pd-toast')?.remove();

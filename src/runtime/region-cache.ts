@@ -162,3 +162,23 @@ export function clearRegionCache() {
 
 /** Entries and bytes in the cache (tests, diagnostics). */
 export const regionCacheStats = () => ({ entries: store.size, bytes });
+
+/** (sprint 210, AX-5) A page's cached regions on this server: entries and bytes per region id (Utilities → Caching). */
+export function pageCacheEntries(appId: number, pageNo: number): Map<number, { entries: number; bytes: number }> {
+  const out = new Map<number, { entries: number; bytes: number }>();
+  const now = Date.now();
+  for (const [k, e] of store) {
+    if (e.appId !== appId || e.pageNo !== pageNo || e.expires <= now) continue;
+    const id = Number(k.split(':')[2]);
+    const x = out.get(id) ?? { entries: 0, bytes: 0 };
+    x.entries++;
+    x.bytes += e.bytes;
+    out.set(id, x);
+  }
+  return out;
+}
+
+/** (sprint 210) Drop one region's cached HTML (Utilities → Caching → Purge). */
+export function invalidateRegion(appId: number, pageNo: number, regionId: number) {
+  for (const [k, e] of store) if (e.appId === appId && e.pageNo === pageNo && Number(k.split(':')[2]) === regionId) drop(k);
+}

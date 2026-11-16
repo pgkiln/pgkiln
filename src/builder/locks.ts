@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { owner } from '../db.ts';
-import { html, type Raw } from '../html.ts';
+import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
@@ -35,10 +35,11 @@ export const appLocks = async (appId: number) =>
   (await owner.query<Lock>('select app_id, page_no, locked_by, locked_at::text, note from meta.builder_lock where app_id = $1 order by page_no', [appId])).rows;
 
 /** Builder POSTs that are allowed on a locked page or application (locking, unlocking, comments). */
-const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+)$/;
+// (sprint 210) purging a page's cached regions changes nothing of the application
+const EXEMPT = /^\/apps\/\d+\/(lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+|pages\/\d+\/caching\/purge)$/;
 /** (083) Builder POSTs allowed on a Run only application: its availability and build status, a backup, locks and comments. */
 // (086) an existing application setting stays editable: settings are what an administrator changes after deployment
-const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+|shared\/app_setting\/\d+)$/;
+const RUN_ONLY_EXEMPT = /^\/apps\/\d+\/(availability|backups|backups\/settings|lock|unlock|comments(\/\d+\/delete)?|feedback\/\d+|shared\/app_setting\/\d+|pages\/\d+\/caching\/purge)$/;
 
 /** The application (and page) a builder URL under /apps/:id or /pages/:pid is about, or null. */
 export async function appOfPath(path: string): Promise<{ appId: number; pageNo: number | null; pageId: number | null } | null> {
@@ -92,7 +93,7 @@ export async function refuseLocked(req: Req, reply: FastifyReply, s: Session, hi
 }
 
 /** Lock status, lock/unlock form and the comments of an application (pageNo 0) or a page. */
-export async function lockPanel(s: Session, appId: number, pageNo: number, opts: { headings?: boolean } = {}): Promise<Raw> {
+export async function lockPanel(s: Session, appId: number, pageNo: number, opts: { headings?: boolean; focus?: boolean } = {}): Promise<Raw> {
   const [locks, comments, admin] = await Promise.all([
     appLocks(appId),
     owner.query('select id, author, body, created_at::text from meta.dev_comment where app_id = $1 and page_no = $2 order by created_at desc, id desc limit 200', [appId, pageNo]),
@@ -122,7 +123,7 @@ export async function lockPanel(s: Session, appId: number, pageNo: number, opts:
     <h3>${tx('lk.comments')}</h3>
     <form method="post" action="${BASE}/apps/${appId}/comments">${csrf(s)}${hidden}
       <div class="field"><label class="label" for="comment-${pageNo}">${pick('lk.comment_on_page', 'lk.comment_on_app')}</label>
-        <textarea id="comment-${pageNo}" name="body" rows="3" maxlength="4000" required></textarea></div>
+        <textarea id="comment-${pageNo}" name="body" rows="3" maxlength="4000" required${opts.focus ? raw(' autofocus') : ''}></textarea></div>
       <div class="buttons"><button class="btn">${tx('lk.add_comment')}</button></div>
     </form>
     ${comments.rows.length
