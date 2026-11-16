@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.101.0 (November 2026): application users sign in with a passkey alone, with the application's look on the sign-in card (NX-U6); the SQL Workshop's developer login reads none of pgkiln's own tables and developer passwords need 12 characters (SEC-1 to SEC-3); and fixes for an empty page sent now and then and for the offline prefetch overwriting session state.
+- **Current release:** 0.102.0 (November 2026): one Save for a region and type names instead of codes in the Page Designer (AX-2, AX-3); recently edited pages and Copy application on the application home, Templates and Session State Protection in Shared Components (AX-6, AX-7); builder tokens tied to their developer's sign-in with every call logged, and an optional breached-password check (NX-F4, SEC-3).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

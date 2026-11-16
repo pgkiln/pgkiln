@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-11-15
+
 ### Added
 - **Page Designer: menus for the open page** (sprint 206, AX-5; as APEX's Page Designer Create and Utilities menus):
   *Create → Copy this page* opens Create page as copy with the page already chosen; *Create → Issue for this page*
