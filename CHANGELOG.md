@@ -26,6 +26,11 @@ All notable changes to this project are documented here. The format follows
   and import that application). All entries are links: keyboard and no-JavaScript friendly; access is the
   application's.
 
+### Fixed
+- **The Docker image builds without www.postgresql.org**: the PostgreSQL apt repository's signing key (for `pg_dump`
+  and `pg_restore` 17) is part of the repository (`keys/apt.postgresql.org.asc`) instead of a download at build time, which
+  failed the image build when that site cut the connection.
+
 ## [0.102.0] - 2026-11-15
 
 ### Added
