@@ -294,8 +294,10 @@ jobs:
             export DATABASE_URL=postgres://pgkiln:pgkiln@localhost:$port/pgkiln
             export RUNTIME_DATABASE_URL=postgres://pgkiln_runtime:pgkiln_runtime@localhost:$port/pgkiln
             docker rm -f "pg$port" >/dev/null 2>&1 || true
+            # a throwaway database: in memory, without fsync (three of them write at once)
             docker run -d --name "pg$port" -p "$port:5432" -e POSTGRES_USER=pgkiln -e POSTGRES_PASSWORD=pgkiln \
-              -e POSTGRES_DB=pgkiln postgres:17 >/dev/null
+              -e POSTGRES_DB=pgkiln --tmpfs /var/lib/postgresql/data:rw,size=2g postgres:17 \
+              -c fsync=off -c synchronous_commit=off -c full_page_writes=off >/dev/null
             # pg_isready answers during the image's initdb too (on a socket only): wait for TCP and a query
             for i in $(seq 1 60); do psql "$DATABASE_URL" -qtAc 'select 1' >/dev/null 2>&1 && break; sleep 0.5; done
             local old="$RUNNER_TEMP/old-$from"
@@ -314,7 +316,10 @@ jobs:
           read -ra rs <<< "$RELEASES"
           # slot j takes releases j, j + PARALLEL, ...
           for ((j = 0; j < PARALLEL; j++)); do
-            ( for ((i = j; i < ${#rs[@]}; i += PARALLEL)); do upgrade "${rs[i]}" "$j" > "$out/${rs[i]}.log" 2>&1; done ) &
+            ( for ((i = j; i < ${#rs[@]}; i += PARALLEL)); do
+                upgrade "${rs[i]}" "$j" > "$out/${rs[i]}.log" 2>&1
+                echo "$(date +%T) $(tail -n 1 "$out/${rs[i]}.log")"
+              done ) &
           done
           wait
           failed=()
