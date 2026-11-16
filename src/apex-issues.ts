@@ -19,6 +19,7 @@ const KIND: Record<ReportEntry['kind'], string> = {
   process: 'Process', computation: 'Computation', branch: 'Branch', dynamic_action: 'Dynamic action', lov: 'List of values',
   authorization: 'Authorization scheme', navigation: 'Navigation', app_item: 'Application item', app_process: 'Application process',
   app_computation: 'Application computation', build_option: 'Build option', app_setting: 'Application setting',
+  breadcrumb: 'Breadcrumb entry', acl_role: 'ACL role', saved_report: 'Saved report',
 };
 
 const title = (e: ReportEntry) =>

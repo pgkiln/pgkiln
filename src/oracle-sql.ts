@@ -190,20 +190,10 @@ const PG_RESERVED = new Set(('all analyse analyze and any array as asc asymmetri
   'system_user table tablesample then to trailing true union unique user using variadic verbose when where window with').split(' '));
 
 /**
- * (sprint 209, NX-F5) A PL/SQL process body that is SQL in disguise, as the SQL a pgkiln `sql` process runs (null when it
- * is real PL/SQL: a person ports it). The forms, in a `begin … end;` block or not:
- *
- *   insert / update / delete / merge …;           the statements as they are (several are fine)
- *   … ;  :P1_A := expr;  :P1_B := expr;           last: select expr as p1_a, expr as p1_b (a value a process
- *                                                 returns under an item's name sets that item); an expression may not
- *                                                 read an item assigned before it in the same group
- *   … ;  select x, y into :P1_A, :P1_B from …;    last: select x as p1_a, y as p1_b from …
- *   … ;  insert … returning id into :P1_ID;       last: insert … returning id as p1_id
- *
- * Anything else (declare, variables, if, loops, exceptions, package calls as statements …) gives null. The SQL is not
- * yet rewritten from Oracle's: the caller runs translateOracle on it.
+ * (sprint 211) A PL/SQL block's (or a bare list's) statements, split at top-level semicolons, with each statement's
+ * mask (codeMask: literals and comments blanked); null: no statements, or unbalanced parentheses.
  */
-export function plsqlAsSql(code: string | null | undefined): { sql: string; how: string } | null {
+export function plsqlStatements(code: string | null | undefined): { sql: string; mask: string }[] | null {
   if (!code?.trim()) return null;
   let text = code.trim();
   let mask = codeMask(text);
@@ -233,6 +223,26 @@ export function plsqlAsSql(code: string | null | undefined): { sql: string; how:
     }
   }
   if (!stmts.length || depth !== 0) return null;
+  return stmts;
+}
+
+/**
+ * (sprint 209, NX-F5) A PL/SQL process body that is SQL in disguise, as the SQL a pgkiln `sql` process runs (null when it
+ * is real PL/SQL: a person ports it). The forms, in a `begin … end;` block or not:
+ *
+ *   insert / update / delete / merge …;           the statements as they are (several are fine)
+ *   … ;  :P1_A := expr;  :P1_B := expr;           last: select expr as p1_a, expr as p1_b (a value a process
+ *                                                 returns under an item's name sets that item); an expression may not
+ *                                                 read an item assigned before it in the same group
+ *   … ;  select x, y into :P1_A, :P1_B from …;    last: select x as p1_a, y as p1_b from …
+ *   … ;  insert … returning id into :P1_ID;       last: insert … returning id as p1_id
+ *
+ * Anything else (declare, variables, if, loops, exceptions, package calls as statements …) gives null. The SQL is not
+ * yet rewritten from Oracle's: the caller runs translateOracle on it.
+ */
+export function plsqlAsSql(code: string | null | undefined): { sql: string; how: string } | null {
+  const stmts = plsqlStatements(code);
+  if (!stmts) return null;
   const PLSQL = /\b(begin|declare|exception|loop|if|elsif|raise|return|goto|exit|execute|open|fetch|pragma|bulk|forall)\b/i;
   if (stmts.some((s) => PLSQL.test(s.mask.replace(/\bend\s+if\b|\bend\s+loop\b/gi, '')))) return null;
   const ITEM = /^:([A-Za-z][A-Za-z0-9_$#]*)$/;
@@ -295,4 +305,37 @@ export function plsqlAsSql(code: string | null | undefined): { sql: string; how:
     } else return null;
   } else return null;
   return { sql: out.join(';\n'), how: `the PL/SQL became SQL (${hows.join(', ')})` };
+}
+
+/**
+ * (sprint 211, NX-F5) An APEX dynamic content region's PL/SQL as the SELECT of a pgkiln `dynamic` region (its first
+ * column is the HTML), or null when it is real PL/SQL. A function body (NATIVE_DYNAMIC_CONTENT) that is one
+ * `return expr;` becomes `select expr`; a PL/SQL region (NATIVE_PLSQL) that is only `htp.p(expr);` / `htp.prn(expr);`
+ * calls becomes `select expr || expr …`. The expressions are not yet rewritten from Oracle's.
+ */
+export function plsqlAsHtml(code: string | null | undefined, kind: 'function' | 'htp'): string | null {
+  const stmts = plsqlStatements(code);
+  if (!stmts) return null;
+  if (kind === 'function') {
+    if (stmts.length !== 1) return null;
+    const m = /^return\b/i.exec(stmts[0].mask);
+    const expr = m ? stmts[0].sql.slice(m[0].length).trim() : '';
+    return expr ? `select ${expr}` : null;
+  }
+  const parts: string[] = [];
+  for (const st of stmts) {
+    const m = /^(?:sys\s*\.\s*)?htp\s*\.\s*(?:p|prn|print)\s*\(/i.exec(st.mask);
+    if (!m || !st.mask.endsWith(')')) return null;
+    // the call's parentheses close at the end: nothing after it
+    let depth = 0;
+    for (let k = m[0].length - 1; k < st.mask.length; k++) {
+      if (st.mask[k] === '(') depth++;
+      else if (st.mask[k] === ')' && --depth === 0 && k !== st.mask.length - 1) return null;
+    }
+    const arg = st.sql.slice(m[0].length, -1).trim();
+    if (!arg) return null;
+    // htp.p ends the line with a newline; in HTML that is a space
+    parts.push(/^(?:sys\s*\.\s*)?htp\s*\.\s*prn/i.test(st.mask) ? `(${arg})` : `(${arg}) || chr(10)`);
+  }
+  return parts.length ? `select ${parts.join('\n    || ')}` : null;
 }

@@ -1381,6 +1381,23 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   whose values differ says *Mixed* and keeps each column's own value unless you change it. Heading, link and validation
   are a single column's. Only the fields you changed are saved, so a setting changed meanwhile on another tab is kept.
 
+  (sprint 210; APEX: a column's Server-side Condition and Security → Authorization Scheme) Report, classic report,
+  interactive grid and cards columns also have a **Server-side condition** (the condition types of regions and items:
+  `sql`, `exists`, `item_equals`, `user_signed_in`, `never` …, checked as theirs are) and a **Security** group with an
+  **Authorization scheme** (or *Not* a scheme). They are saved as `column_access` in the region's attributes:
+
+  ```json
+  "column_access": {"sal": {"authz": "SALES_MANAGER", "condition_type": "item_equals", "condition_expr": "P3_MODE", "condition_value": "FULL"}}
+  ```
+
+  A column that fails either is **not in the region at all** for that request: its query becomes `select <the other
+  columns> from (<query>)`, so the column is not shown, not in the CSV, Excel or PDF download, not in a filter's list
+  of values or a partial refresh, not sortable or searchable, and a grid's save can't write it; its values are not
+  there for `#COLUMN#` substitutions either. A region cached for all users keeps one copy per set of columns. Hiding a
+  column is not access control on the table: the table's own grants and row level security still decide what the
+  application's role can read. The tree shows the column's authorization and condition with the badges regions have.
+  The condition is a single column's; several columns can share an authorization.
+
   The settings stay in the region's attributes, where the **Attributes** tab's *Columns* group edits them too
   (`headings`, `formats`, `column_options`, `hidden`, `pdf`, `link`; a grid's `readonly` and `columns`): exports,
   application files and `diff_app` are unchanged. A column's name in that group is a link that selects its node.
@@ -1471,6 +1488,20 @@ entries for the open page, one click away. They are links, so they work with the
   import of a single page: to bring a page back, replace the page's folder in an application exported with
   `--format text` with the zip's folder and import that application (`pgkiln import --replace`, or the MCP server's
   `import_app`); the export of a page holds nothing the application's export doesn't.
+
+(sprint 210, AX-5) More of APEX's Page Designer menus:
+
+- **Create → Developer comment**: the page's [Lock and comments](#page-locks-and-comments) tab, with the comment field
+  focused (`?comment=1`).
+- **Utilities → Caching** (`/builder/apps/<id>/pages/<n>/caching`; APEX: a region's Server Cache): the page's regions
+  that can be cached or loaded lazily, with their setting (scope and duration, lazy loading) and what this server
+  process holds for each now (entries and size). **Purge** drops one region's cached HTML, or the whole page's; it
+  changes nothing of the application, so it is allowed on a locked or *Run only* page, and it is logged
+  (`cache_purge`). A region's setting is on its **Attributes** tab: a report's in its settings, the other cacheable
+  types (classic report, chart, cards, dynamic content, tree, template component) in a *Caching* group.
+- **Utilities → Layout → Two panes / Three panes** (from 1024 pixels wide): with two panes the tree and the layout
+  share the left column as tabs (*Tree* | *Layout*, the arrow keys switch) and the properties keep the right one;
+  the choice is remembered in the browser. *Maximize* still gives the layout the whole window.
 
 Access is the application's: a developer who can't open the application gets *Not found* for all of them; copying and
 the issue are the existing forms (with their CSRF token; a page or application lock and *Run only* refuse the copy, not

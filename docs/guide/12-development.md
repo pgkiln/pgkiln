@@ -37,6 +37,8 @@ src/
                            minus rewritten outside literals, q-quotes, quoted names and comments (codeMask)
                            (sprint 209) plsqlAsSql: a PL/SQL process body that is SQL in disguise (DML statements, :ITEM := expr,
                            SELECT … INTO :ITEM, RETURNING … INTO :ITEM) as the SQL of a pgkiln sql process, else null
+                           (sprint 211) plsqlStatements (top-level statements of a block); plsqlAsHtml: a dynamic content
+                           region's `return expr;` or htp.p calls as the SELECT of a dynamic region, else null
   release-check.ts         (sprint 109) "pgkiln X is available": meta.setting 'release_check' over PGKILN_RELEASE_CHECK (off by default);
                            GitHub's releases/latest (PGKILN_RELEASE_URL in tests), 5 s timeout, 1 MB, cached a day per process,
                            never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
@@ -58,6 +60,12 @@ src/
                            worksheet_rpt, report_columns, region_column, interactive_grid, ig_report_column; the column calls follow
                            their region); PL/SQL processes through plsqlProcess (oracle-sql.ts plsqlAsSql); APEX 26.2's login page
                            (Invoke API APEX_AUTHENTICATION.LOGIN) left out with its components
+                           (sprint 211) saved interactive reports as ApexSavedReport (r<id>_* parameters; apexFilter, highlightColor,
+                           savedReportUser), report columns' lists of values looked up in the query (lovDisplay), grid column
+                           validations (gridValidation), breadcrumb entries → parent_page, chart axes (chartAxes), ACL roles
+                           (aclRole, ACCESS_CONTROL_SCOPE), dynamic content regions (plsqlAsHtml)
+  apex-saved-reports.ts    (sprint 211) apexSavedReports: an import's saved reports into meta.saved_report after meta.import_app,
+                           in the import's transaction (region by page and static id; public ones owned by who imports)
   apex-check.ts            (sprint 192, NX-F5) sqlObjects (tables, sequences, pkg.proc calls of a SQL/PL/SQL text, statically),
                            soleTableColumn, qualifyTables; apexCheck: the report's uses looked up in pg_catalog (missing tables,
                            APEX views, columns, sequences, routines; a routine ora2pg converted as pkg.proc or pkg_proc is a hint),

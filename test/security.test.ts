@@ -19,7 +19,8 @@ import { cacheKey, cacheOf, clearRegionCache, regionCacheStats } from '../src/ru
 import { maxRows } from '../src/runtime/report.ts';
 import { lovMax } from '../src/runtime/items.ts';
 import { loadWithDefinition } from '../src/dataload.ts';
-import { Browser as FileBrowser, formFields as pageFormFields, gridForm } from './helpers.ts';
+import { Browser as FileBrowser, formFields as pageFormFields, gridForm, pdfText } from './helpers.ts';
+import { strFromU8, unzipSync } from 'fflate';
 
 // (sprint 212) A top-level await must come before the first test or hook: while the module waits, the runner sees
 // no pending test and may finish the file, so that with --test-name-pattern the root after() ran before before().
@@ -18209,5 +18210,166 @@ wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(13),p_is_default=>'
     for (const code of ['l_x := 1;', "execute immediate 'drop table t';", 'select a into l_a from t;', 'insert into t values (1) returning id into l_id;',
       "begin commit; end;", "begin\n  update t set a = 1;\n  dbms_output.put_line('x');\nend;"])
       assert.equal(plsqlAsSql(code), null, code);
+  });
+});
+
+describe('sprint 211 NX-F5', () => {
+  // an uploaded APEX export is untrusted text: saved reports, lists of values, grid validations and ACL roles from it
+  const exportWith = (calls: string) => `begin
+wwv_flow_imp.import_begin(p_release=>'23.2.0',p_default_application_id=>1,p_default_owner=>'SALES');
+wwv_imp_workspace.create_flow(p_id=>wwv_flow.g_flow_id,p_name=>'Evil',p_alias=>'EVIL');
+wwv_flow_imp_page.create_page(p_id=>1,p_name=>'One');
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(10),p_plug_name=>'R',p_query_type=>'TABLE',p_query_table=>'ORDERS',p_plug_source_type=>'NATIVE_IR');
+wwv_flow_imp_page.create_worksheet(p_id=>wwv_flow_imp.id(11));
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(12),p_db_column_name=>'ID',p_column_identifier=>'A');
+wwv_flow_imp_page.create_worksheet_column(p_id=>wwv_flow_imp.id(13),p_db_column_name=>'STATUS',p_column_identifier=>'B',p_display_text_as=>'LOV_ESCAPE_SC',p_rpt_lov=>'STATIC:Open'';drop table sales.orders--;O,Closed;C');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(14),p_is_default=>'Y',p_application_user=>'APXWS_DEFAULT',p_report_columns=>'ID:STATUS');
+${calls}
+end;
+/`;
+  test('saved report values stay values, columns must be the region\'s, owners must be user names', async () => {
+    const { apexToDoc } = await import('../src/apeximport.ts');
+    const { savedReports, report } = apexToDoc(exportWith(`
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(15),p_name=>'X',p_status=>'PUBLIC',p_application_user=>'APXWS_ALTERNATIVE');
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(16),p_report_id=>wwv_flow_imp.id(15),p_condition_type=>'FILTER',p_column_name=>'ID',p_operator=>'=',p_expr=>'1'' or 1=1 --');
+wwv_flow_imp_page.create_worksheet_condition(p_id=>wwv_flow_imp.id(17),p_report_id=>wwv_flow_imp.id(15),p_condition_type=>'FILTER',p_column_name=>'ID) or (1=1',p_operator=>'=',p_expr=>'1');
+wwv_flow_imp_page.create_worksheet_rpt(p_id=>wwv_flow_imp.id(18),p_name=>'Y',p_status=>'PRIVATE',p_application_user=>'x''; drop role y; --');`)) as any;
+    assert.equal(savedReports.length, 1);
+    // the value is a filter value: the runtime binds it as a literal
+    assert.deepEqual(savedReports[0].params, [['f', "id|eq|1' or 1=1 --"]]);
+    assert.equal(report.entries.find((e: any) => e.name === 'R: Y').status, 'not_mapped', 'an owner that is not a user name');
+  });
+
+  test('a static list of values\' text becomes escaped literals; grid validation values too; ACL role names are plain', async () => {
+    const { apexToDoc } = await import('../src/apeximport.ts');
+    const { doc } = apexToDoc(exportWith(`
+wwv_flow_imp_shared.create_acl_role(p_id=>wwv_flow_imp.id(20),p_static_id=>'ADMIN''); drop table x; --',p_name=>'Admin');
+wwv_flow_imp_shared.create_security_scheme(p_id=>wwv_flow_imp.id(21),p_name=>'Admins',p_scheme_type=>'NATIVE_IS_IN_GROUP',p_attributes=>wwv_flow_t_plugin_attributes(wwv_flow_t_varchar2('name', 'Admin', 'type', 'A')).to_clob);
+wwv_flow_imp_page.create_page_plug(p_id=>wwv_flow_imp.id(30),p_plug_name=>'G',p_query_type=>'TABLE',p_query_table=>'ORDERS',p_plug_source_type=>'NATIVE_IG');
+wwv_flow_imp_page.create_region_column(p_id=>wwv_flow_imp.id(31),p_name=>'ID',p_source_type=>'DB_COLUMN',p_source_expression=>'ID',p_is_primary_key=>true);
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(32),p_tabular_form_region_id=>wwv_flow_imp.id(30),p_validation_name=>'V',p_validation=>'ID',p_validation2=>'x''); drop table y; --',p_validation_type=>'ITEM_IN_VALIDATION_EQ_STRING2',p_associated_column=>'ID');
+wwv_flow_imp_page.create_page_validation(p_id=>wwv_flow_imp.id(33),p_tabular_form_region_id=>wwv_flow_imp.id(30),p_validation_name=>'W',p_validation=>'ID',p_validation_type=>'ITEM_NOT_NULL',p_associated_column=>'ID); drop table z; --');`)) as any;
+    const regions = doc.pages[0].regions;
+    const ir = regions.find((r: any) => r.title === 'R');
+    assert.ok(ir.source.includes(`('Open''', 'drop table sales.orders--', 0)`), 'display and return value are escaped literals');
+    const g = regions.find((r: any) => r.title === 'G');
+    assert.equal(g.config.columns.id.validation, `:ID = 'x''); drop table y; --'`);
+    assert.equal(Object.keys(g.config.columns).length, 1, 'a column that is not a name gets no validation');
+    assert.equal(doc.authz_schemes[0].value, 'admin_drop_table_x');
+  });
+
+  test('saved reports are only written for the imported application\'s report regions, with parameters of its own', async () => {
+    const { apexSavedReports } = await import('../src/apex-saved-reports.ts');
+    const before = (await owner.one<{ n: number }>('select count(*)::int as n from meta.saved_report'))!.n;
+    // a region that is not a report of this application (its own id, a page it does not have) writes nothing
+    assert.equal(await apexSavedReports(owner, [{ page: 99999, region: 'x', name: 'N', public: true, username: 'u', params: [['f', 'a|eq|1']] }], { appId, owner: 'dev' }), 0);
+    assert.equal((await owner.one<{ n: number }>('select count(*)::int as n from meta.saved_report'))!.n, before);
+  });
+});
+
+// (sprint 210, AX-1) A report or grid column's authorization scheme and server-side condition: a column that fails
+// either is not in the region for this request, so neither the page nor any download, refresh or save can reach it.
+describe('column authorization and condition', () => {
+  const regionOn = async (page: number, type: string) =>
+    (await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = $2 and r.type = $3 order by r.seq limit 1`, [appId, page, type])) as { id: number; config: Record<string, unknown> };
+  const withAccess = async (id: number, access: object, fn: () => Promise<void>) => {
+    await owner.query(`update meta.region set config = config || jsonb_build_object('column_access', $2::jsonb) where id = $1`, [id, JSON.stringify(access)]);
+    clearRegionCache();
+    try {
+      await fn();
+    } finally {
+      await owner.query(`update meta.region set config = config - 'column_access' where id = $1`, [id]);
+      clearRegionCache();
+    }
+  };
+  const xlsxText = (payload: Buffer) => {
+    const files = unzipSync(new Uint8Array(payload));
+    return Object.entries(files).filter(([n]) => n.endsWith('.xml')).map(([, f]) => strFromU8(f)).join('\n');
+  };
+
+  test('a column whose authorization fails is in no download: page, CSV, Excel, PDF, column values', async () => {
+    const r = await regionOn(2, 'report');
+    const sal = String((await owner.one(`select sal from hr.emp where ename = 'KING'`)).sal).replace(/\.0+$/, '');
+    await withAccess(r.id, { sal: { authz: 'ADMIN' } }, async () => {
+      const blake = await as('blake'); // a manager, not ADMIN
+      const page = await blake.get('/a/hr/2');
+      assert.equal(page.statusCode, 200);
+      assert.match(page.body, /KING/);
+      assert.doesNotMatch(page.body, />Salary</, 'no heading');
+      const csv = await blake.get(`/a/hr/2?r${r.id}_csv=1`);
+      assert.equal(csv.statusCode, 200);
+      const header = csv.body.replace(/^﻿/, '').split('\r\n')[0];
+      assert.match(header, /Name/);
+      assert.doesNotMatch(header, /Salary|sal/i, 'the CSV has no salary column');
+      const kingRow = csv.body.split('\r\n').find((l) => l.includes('KING'))!;
+      assert.ok(!kingRow.split(',').includes(sal), 'nor its values');
+      const xlsx = await blake.get(`/a/hr/2?r${r.id}_xlsx=1`);
+      assert.equal(xlsx.statusCode, 200);
+      assert.doesNotMatch(xlsxText(xlsx.rawPayload), /Salary/);
+      const pdf = await blake.get(`/a/hr/2?r${r.id}_pdf=1`);
+      assert.equal(pdf.statusCode, 200);
+      assert.doesNotMatch(pdfText(pdf.rawPayload), /Salary/);
+      // a filter's list of distinct values
+      const values = await blake.get(`/a/hr/2/report/${r.id}/values?col=sal`);
+      assert.ok(values.statusCode === 403 || !values.body.includes(sal), 'no values of the column');
+      assert.doesNotMatch(values.body, new RegExp(`"${sal}"`));
+      // sorting or filtering on it reveals nothing either
+      const sorted = await blake.get(`/a/hr/2?r${r.id}_x_sal=${sal}`);
+      assert.doesNotMatch(sorted.body, />Salary</);
+
+      // someone who passes the scheme sees it everywhere
+      const king = await as('king');
+      assert.match((await king.get('/a/hr/2')).body, />Salary</);
+      assert.match((await king.get(`/a/hr/2?r${r.id}_csv=1`)).body.split('\r\n')[0], /Salary/);
+      assert.match(xlsxText((await king.get(`/a/hr/2?r${r.id}_xlsx=1`)).rawPayload), /Salary/);
+    });
+  });
+
+  test('a column whose condition is false is left out; a negated scheme; a cached region keeps them apart', async () => {
+    const r = await regionOn(2, 'report');
+    await withAccess(r.id, { job: { condition_type: 'never' }, hiredate: { authz: '!ADMIN' } }, async () => {
+      const king = await as('king');
+      const body = (await king.get('/a/hr/2')).body;
+      assert.doesNotMatch(body, /PRESIDENT/, 'job is never shown');
+      const csv = (await king.get(`/a/hr/2?r${r.id}_csv=1`)).body.replace(/^﻿/, '').split('\r\n')[0];
+      assert.doesNotMatch(csv, /Job|Hiredate|Hire/i);
+      const allen = await as('allen');
+      const a = (await allen.get(`/a/hr/2?r${r.id}_csv=1`)).body.replace(/^﻿/, '').split('\r\n')[0];
+      assert.doesNotMatch(a, /Job/);
+      assert.match(a, /Hire/i, 'not ADMIN: the negated scheme passes');
+    });
+    // a region cached for all users: one cache entry per set of columns, never another user's
+    await owner.query(`update meta.region set config = config || '{"cache": {"scope": "all", "seconds": 60}}' where id = $1`, [r.id]);
+    try {
+      await withAccess(r.id, { sal: { authz: 'ADMIN' } }, async () => {
+        const king = await as('king');
+        assert.match((await king.get('/a/hr/2')).body, />Salary</);
+        const blake = await as('blake');
+        assert.doesNotMatch((await blake.get('/a/hr/2')).body, />Salary</);
+      });
+    } finally {
+      await owner.query(`update meta.region set config = config - 'cache' where id = $1`, [r.id]);
+      clearRegionCache();
+    }
+  });
+
+  test('a grid column left out can\'t be written by a forged save', async () => {
+    const r = await regionOn(10, 'grid');
+    await withAccess(r.id, { loc: { condition_type: 'never' } }, async () => {
+      const king = await as('king');
+      const page = await king.get('/a/hr/10');
+      assert.equal(page.statusCode, 200);
+      assert.doesNotMatch(page.body, />Location</);
+      const g = `g${r.id}`;
+      const form: Record<string, string> = {};
+      for (const m of page.body.matchAll(new RegExp(`<input([^>]*)name="(${g}_\\d+_[a-z0-9]+)"[^>]*value="([^"]*)"[^>]*>`, 'g'))) form[m[2]] = m[3].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+      const pk = form[`${g}_0_pk`];
+      assert.ok(pk, 'a row');
+      assert.equal(form[`${g}_0_c2`], undefined, 'no third column');
+      const before = await owner.one('select dname, loc from hr.dept where deptno = $1', [pk]);
+      const res = await king.post('/a/hr/10', { ...form, __csrf: king.lastCsrf, __request: `GRID_SAVE_${r.id}`, [`${g}_0_c2`]: 'HACKED', [`${g}_0_loc`]: 'HACKED' });
+      assert.ok(res.statusCode === 303 || res.statusCode === 422, String(res.statusCode));
+      assert.deepEqual(await owner.one('select dname, loc from hr.dept where deptno = $1', [pk]), before);
+    });
   });
 });

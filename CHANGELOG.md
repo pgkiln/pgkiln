@@ -5,6 +5,31 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A column's condition and authorization** (sprint 210, AX-1; APEX: a report or grid column's Server-side Condition
+  and Security → Authorization Scheme): report, classic report, interactive grid and cards columns have a *Server-side
+  condition* and a *Security* group in the Page Designer's property editor (`config.column_access.<column>`). A column
+  that fails either is not in the region for that request: not shown, not in the CSV, Excel or PDF download, a
+  filter's list of values, a partial refresh or a cached copy, and a grid's save can't write it. The tree shows the
+  same badges as for regions.
+- **Page Designer: Caching** (sprint 210, AX-5; APEX: Server Cache): classic report, chart, cards, dynamic content,
+  tree and template component regions have a *Caching* group on the Attributes tab (lazy loading, server cache and
+  its duration), as reports had. Utilities → *Caching* lists a page's cacheable regions with their setting and what
+  this server holds now, with *Purge* for a region or the page (allowed on a locked or Run only page).
+- **Page Designer: two panes or three** (sprint 210, AX-5): Utilities → Layout switches to two panes (the tree and the
+  layout share the left column as tabs, the properties stay on the right), remembered in the browser.
+- **Page Designer: Create → Developer comment** (sprint 210, AX-5): opens the page's Lock and comments tab with the
+  comment field focused.
+- **APEX import brings over more** (sprint 211, NX-F5): saved interactive reports other than the default become pgkiln
+  saved reports (public ones belong to the developer who imports, private ones to their APEX user): shown columns,
+  sort, control break and aggregates, rows per page, filters and highlights, the search and computed columns. A report
+  column with a list of values (shared, `STATIC:` or a query) shows its display value, looked up in the region's
+  query. Interactive grid column validations become the grid columns' validations. Breadcrumb entries set the pages'
+  breadcrumb parents. Chart axes give the chart's format mask and a gauge's range. ACL roles become the roles the
+  authorization schemes check (`ADMINISTRATOR` → `administrator`), and `ACCESS_CONTROL_SCOPE` = `ALL_USERS` access
+  control *any user*. Dynamic content regions whose PL/SQL is one `return` or only `htp.p` calls become `dynamic`
+  regions. `pgkiln import-apex` and Import → From Oracle APEX say how many saved reports were carried over.
+
 ### Changed
 - **Faster CI** (sprint 212): the test shards are balanced by each file's duration (`scripts/test-shard.ts`,
   `test/durations.json`) instead of Node's `--test-shard`, which gave one shard twice the work of the next; the
