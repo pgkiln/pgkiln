@@ -1005,20 +1005,34 @@ CI (`.github/workflows/ci.yml`) runs these jobs against PostgreSQL 17:
   apps, sign-in) after the others.
 
 (Sprint 208) The long suites run in **shards**, each a runner with its own database: `test (1/3)` … `test (3/3)`,
-`e2e (1/4)` … `e2e (4/4)` and `upgrade (v0.31.0, shard 1/3)` …. A shard runs the files Node's test runner gives it
-(`tsx --test --test-concurrency=1 --test-shard=i/n test/*.test.ts`: the sorted files are dealt out in turn, so
-every file runs in exactly one shard). `--test-shard` must come before the files, so `npm test --
---test-shard=…` doesn't work. To run a shard locally:
+`e2e (1/4)` … `e2e (4/4)` and `upgrade (v0.31.0, shard 1/3)` …. (Sprint 212) `scripts/test-shard.ts i/n <files>`
+gives a shard its files, balanced by duration: the weights are the seconds in `test/durations.json` and
+`test/e2e/durations.json` (a file not listed weighs the median), longest first, each to the shard with the least so
+far. Every file runs in exactly one shard, and the same list always splits the same way. (Node's own
+`--test-shard=i/n` deals the sorted files out in turn: the shard with `security.test.ts` took twice as long as the
+next.) To run a shard locally:
 
 ```bash
-npm run pretest && npx tsx --test --test-concurrency=1 --test-shard=2/3 test/*.test.ts
-npm run pretest:e2e && npx tsx --test --test-concurrency=1 --test-shard=2/4 test/e2e/*.test.ts
+npm run pretest && npx tsx --test --test-concurrency=1 $(npx tsx scripts/test-shard.ts 2/3 test/*.test.ts)
+npm run pretest:e2e && npx tsx --test --test-concurrency=1 $(npx tsx scripts/test-shard.ts 2/4 test/e2e/*.test.ts)
 ```
 
+Refresh the weights now and then, after a release or when a shard runs much longer than the others (the reporter
+`scripts/test-times.mjs` adds up each file's top-level tests):
+
+```bash
+npm run pretest && npx tsx --test --test-concurrency=1 --test-reporter=./scripts/test-times.mjs test/*.test.ts > test/durations.json
+npm run pretest:e2e && npx tsx --test --test-concurrency=1 --test-reporter=./scripts/test-times.mjs test/e2e/*.test.ts > test/e2e/durations.json
+```
+
+A test counts under the file that defines it: `test/e2e/responsive.ts`'s time is split by hand over the four
+`responsive-<width>.test.ts` (its suites `phone (390px)`, … per width).
+
 Tests in one file may depend on each other, never on another test file having run first: a shard starts on a fresh
-database with only the HR example installed. A test file that takes minutes holds up its shard: split it, as
-`test/e2e/responsive.ts` is split into one `responsive-<width>.test.ts` per width (four files next to each other in
-the list, so with four e2e shards each width runs in its own).
+database with only the HR example installed, and which files share a shard changes with the weights. A file must
+also pass on its own and with `--test-name-pattern` (a top-level `await` goes before the first `describe`; a
+`describe` callback is never `async`: the runner can finish the file while it waits). A test file that takes minutes
+holds up its shard: split it, as `test/e2e/responsive.ts` is split into one `responsive-<width>.test.ts` per width.
 
 The jobs **test**, **e2e** and **upgrade (v0.31.0)** (and `upgrade (<newest>)`) only gather their shards' results:
 `test`, `e2e`, `docker` and `upgrade (v0.31.0)` are the main branch's required checks, so keep those job names.
@@ -1027,6 +1041,10 @@ The releases to upgrade from are the `UPGRADE_FROM` line at the top of `ci.yml`,
 turns it into the upgrade matrix. A pull request runs the oldest and the newest release (whole suite) and the three
 releases before the newest; a push to `main`, a pull request from a `release-*` branch, the nightly run and a manual
 run (Actions → CI → Run workflow) run every release. Add each new release at the end of `UPGRADE_FROM`.
+The releases other than the oldest and the newest run in batches, `upgrade (v0.32.0 … v0.49.0)`: at most four jobs of
+up to 18 releases, three at a time in a job, each on a PostgreSQL container of its own (sprint 212: a full run has
+16 other jobs, and GitHub runs 20 at a time). A batch prints each release's output in a group and fails at the end,
+naming the releases that failed.
 
 A newer push to a pull request cancels the run still going for it.
 
