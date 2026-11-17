@@ -1609,3 +1609,24 @@ document.querySelectorAll('[data-copy-from]').forEach((b) => {
   });
 });
 document.querySelectorAll('[data-select-all]').forEach((f) => f.addEventListener('focus', () => f.select()));
+
+// A side list with its own scrollbar (Shared Components' tree and other .designer pages): each click is a new page,
+// which would put the list back at the top. Its position is kept per path for this tab and restored; without one (a
+// new tab, a link from elsewhere) the selected entry is scrolled into view.
+document.querySelectorAll('.designer > aside').forEach((aside, i) => {
+  const key = `pgkiln.aside.${location.pathname}.${i}`;
+  let saved = null;
+  try { saved = sessionStorage.getItem(key); } catch { /* storage blocked: only the selected entry is shown */ }
+  if (saved !== null && aside.scrollHeight > aside.clientHeight) aside.scrollTop = Number(saved) || 0;
+  else {
+    const current = aside.querySelector('[aria-current="page"]');
+    if (current && aside.scrollHeight > aside.clientHeight) {
+      const a = aside.getBoundingClientRect();
+      const c = current.getBoundingClientRect();
+      if (c.top < a.top || c.bottom > a.bottom) aside.scrollTop += c.top - a.top - aside.clientHeight / 3;
+    }
+  }
+  window.addEventListener('pagehide', () => {
+    try { sessionStorage.setItem(key, String(Math.round(aside.scrollTop))); } catch { /* storage blocked */ }
+  });
+});
