@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-11-17
+
 ### Added
 - **Sankey, NBox and picto charts** (sprint 220; Oracle JET's Sankey, NBox and Picto Chart): `sankey` draws flows from
   rows of source, target and value, nodes in the column of their longest path, ribbons as wide as their value (a cycle
