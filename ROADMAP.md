@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.107.0 (November 2026): APEX's dictionary views (activity log, access control, feedback, automations …) for imported administration pages, and more Oracle SQL rewritten by the importer; faster CI; flaky tests fixed.
+- **Current release:** 0.108.0 (November 2026): debug messages for automations, background process jobs and REST requests; the Shared Components tree keeps its scroll position.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
