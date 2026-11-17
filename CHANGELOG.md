@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-11-17
+
 ### Added
 - **An inline drawer's footer** (sprint 219; APEX 26.1): a sub region of an inline dialog or drawer with position
   *footer* shows in its footer, before its buttons; the header and footer stay in place while the body scrolls.
@@ -18,7 +20,6 @@ All notable changes to this project are documented here. The format follows
   who started it) and a REST module request are recorded with the page views, each with its `meta.debug()` messages,
   timings and outcome; a REST request records the module, the handler and its parameters' names, never their values or
   the body. Activity → Debug messages filters by kind (page views, REST requests, background work) and tags each row.
-
 
 ### Fixed
 - **Shared Components: the tree keeps its place** (sprint 218): clicking an entry (an automation action, a list
