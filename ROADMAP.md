@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.106.0 (November 2026): pg_cron out of the box in the Docker setup (the bundled PostgreSQL has it, pgkiln creates the extension at start-up), and SQL Workshop → Scheduling and Shared Components → Automations each say what the other is for.
+- **Current release:** 0.107.0 (November 2026): APEX's dictionary views (activity log, access control, feedback, automations …) for imported administration pages, and more Oracle SQL rewritten by the importer; faster CI; flaky tests fixed.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
