@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-11-17
+
 ### Added
 - **APEX views** (sprint 217, migration 182, NX-F5): schema `apex` has the APEX 26.2 dictionary views an application's
   administration pages read (`apex_activity_log`, `apex_appl_acl_users`, `apex_appl_acl_roles`,
