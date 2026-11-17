@@ -1853,7 +1853,9 @@ type. A type opens its list (`?type=…`): search by name (the rows filter while
 **Create**, and a row opens its editor. The types pgkiln keeps in the application's Settings (authentication,
 security attributes, navigation bar list, user interface attributes, PWA, globalization attributes) open the
 right Settings tab. **Breadcrumbs** shows the pages by their breadcrumb parent. **Tree view** (`?view=tree`)
-is the earlier page: every component in one rail, with **Access control** next to it.
+is the earlier page: every component in one rail, with **Access control** next to it. (sprint 218) The rail keeps its
+scroll position from one component to the next (per browser tab), and a component opened from a link elsewhere is
+scrolled into view.
 
 (sprint 203, AX-7) **User Interface → Templates** (`/builder/apps/:id/templates`; APEX: Shared Components →
 Templates) lists the templates the application's components can choose, each with a description and **Used by**: the

@@ -5,14 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.107.0] - 2026-11-17
-
 ### Added
 - **Debug messages for background work and REST requests** (sprint 218; APEX debugs jobs too): with an application's
   debug level on, an automation's run (`AUTOMATION`), a background process chain (`JOB`, with its page and the user
   who started it) and a REST module request are recorded with the page views, each with its `meta.debug()` messages,
   timings and outcome; a REST request records the module, the handler and its parameters' names, never their values or
   the body. Activity → Debug messages filters by kind (page views, REST requests, background work) and tags each row.
+
+
+### Fixed
+- **Shared Components: the tree keeps its place** (sprint 218): clicking an entry (an automation action, a list
+  entry …) opened it with the tree scrolled back to the top; the list now stays where it was (per tab), and a page
+  opened fresh scrolls the selected entry into view. The same for every builder page with a side list.
+
+## [0.107.0] - 2026-11-17
 
 ### Added
 - **APEX views** (sprint 217, migration 182, NX-F5): schema `apex` has the APEX 26.2 dictionary views an application's
