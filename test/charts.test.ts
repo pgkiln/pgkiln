@@ -5,7 +5,7 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { PageCss } from '../src/css.ts';
 import { raw } from '../src/html.ts';
-import { boxes, CHART_KINDS, gaugeStatus, quantile, niceScale, renderChartBody, timeScale, wallClock, wallClockIn, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
+import { boxes, CHART_KINDS, gaugeStatus, nboxCells, pictoUnit, quantile, niceScale, renderChartBody, sankeyLayout, timeScale, wallClock, wallClockIn, type ChartKind, type ChartOptions } from '../src/runtime/charts.ts';
 
 const fields = (...names: string[]) => names.map((name) => ({ name }));
 const render = (kind: ChartKind, rows: unknown[][], f = fields('label', 'A', 'B'), opts: ChartOptions = {}) => {
@@ -340,5 +340,60 @@ describe('sprint 63: range, box plot and stock charts', () => {
     assert.match(body, /<a class="col-group drill" href="\/p\?row=0&amp;s=null"/);
     assert.doesNotMatch(body, /chart-legend/);
     assert.match(render('stock', [['d', 1, 2, 3]], fields('l', 'a', 'b', 'c')).body, /four numeric columns/);
+  });
+});
+
+describe('(sprint 220) sankey, nbox and picto', () => {
+  test('sankey layout: columns by the longest path, sinks last, equal pairs added up, cycles and self-flows refused', () => {
+    const l = sankeyLayout([['Web', 'Signup', 60], ['Ads', 'Signup', 40], ['Web', 'Signup', 10], ['Signup', 'Paid', 30], ['Signup', 'Churned', 80], ['Web', 'Churned', 5], ['X', 'X', 9], ['Ads', 'Nowhere', 0]])!;
+    const col = Object.fromEntries(l.nodes.map((n) => [n.label, n.col]));
+    assert.deepEqual(col, { Web: 0, Signup: 1, Ads: 0, Paid: 2, Churned: 2 });
+    assert.equal(l.columns, 3);
+    assert.equal(l.links.find((x) => x.source.label === 'Web' && x.target.label === 'Signup')!.value, 70, 'equal pairs add up');
+    const signup = l.nodes.find((n) => n.label === 'Signup')!;
+    assert.equal(signup.value, 110, 'the larger side: 110 in, 110 out');
+    // every link leaves within its source and enters within its target; columns fit in 100
+    for (const x of l.links) {
+      assert.ok(x.sy >= x.source.y - 1e-9 && x.sy + x.h <= x.source.y + x.source.h + 1e-9);
+      assert.ok(x.ty >= x.target.y - 1e-9 && x.ty + x.h <= x.target.y + x.target.h + 1e-9);
+    }
+    for (const n of l.nodes) assert.ok(n.y >= -1e-9 && n.y + n.h <= 100 + 1e-9, n.label);
+    assert.equal(sankeyLayout([['A', 'B', 1], ['B', 'C', 1], ['C', 'A', 1]]), null, 'a cycle');
+    assert.equal(sankeyLayout([['A', 'A', 1], ['B', 'C', -2]]), null, 'nothing to draw');
+  });
+
+  test('sankey rendering: ribbons, focusable nodes with their total, the flows as a table; a cycle explained', () => {
+    const { body } = render('sankey', [['Web', 'Signup', 60], ['Signup', 'Paid', 25]], fields('from', 'to', 'people'));
+    assert.equal(body.match(/<path class="sankey-link s\d"/g)?.length, 2);
+    assert.match(body, /<title>Web → Signup: 60<\/title>/);
+    assert.match(body, /class="sankey-node s\d [^"]+" role="img" data-tip="Signup: 60 \(target 60, source 25\)"[^>]* tabindex="0"/);
+    assert.match(body, /<th scope="col">from<\/th><th scope="col">to<\/th><th scope="col" class="num">people<\/th>/);
+    assert.match(render('sankey', [['A', 'B', 1], ['B', 'A', 1]], fields('a', 'b', 'v')).body, /no flow back to an earlier node/);
+  });
+
+  test('nbox: a 3 by 3 grid unless a row asks for more (up to 5), row 1 at the bottom, rows outside left out', () => {
+    assert.deepEqual(nboxCells([['A', 1, 1], ['B', 3, 3], ['C', 0, 2], ['D', 2.5, 1], ['E', 6, 1]]).items.map((i) => i.label), ['A', 'B']);
+    const g = nboxCells([['A', 4, 1], ['B', 1, 5]]);
+    assert.deepEqual([g.cols, g.rows], [4, 5]);
+    const { body, sheet } = render('nbox', [['KING', 3, 3], ['SCOTT', 3, 2], ['ADAMS', 1, 1]], fields('ename', 'performance', 'potential'));
+    assert.match(body, /<ul class="nbox-items" aria-label="performance 3, potential 3: 1">.*KING/s);
+    assert.match(body, /<span class="nbox-item"[^>]* data-tip="SCOTT \(performance 3, potential 2\)"[^>]*>SCOTT<\/span>/);
+    // the top-right cell is first in the markup (row 3 at the top) and shaded highest
+    const first = body.indexOf('nbox-cell');
+    assert.match(body.slice(first, first + 80), /nbox-cell nbox-l2 /, 'top-left: column 1, row 3');
+    assert.match(body, /nbox-cell nbox-l4 [^"]*"[\s\S]*?KING/);
+    assert.match(sheet.text, /grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+    assert.match(render('nbox', [['x', 'a', 'b']], fields('l', 'c', 'r')).body, /two whole numbers from 1 to 5/);
+  });
+
+  test('picto: a round unit per icon (at most 40 for the largest value), the last icon in part, the key', () => {
+    assert.deepEqual([3, 40, 41, 120, 999, 12345, 0.5].map(pictoUnit), [1, 1, 2, 5, 50, 500, 0.02]);
+    const { body, sheet } = render('picto', [['North', 7], ['South', 2.5]], fields('region', 'stores'));
+    assert.match(body, /Each icon: 1<\/p>/);
+    const north = body.slice(body.indexOf('data-tip="North: 7"'), body.indexOf('data-tip="South'));
+    assert.equal(north.match(/class="picto-icon s1"/g)?.length, 7);
+    assert.match(body, /<span class="picto-icon picto-part s1"><span class="picto-fill ([\w-]+)"><\/span><\/span>/);
+    const cls = /picto-fill ([\w-]+)/.exec(body)![1];
+    assert.match(sheet.text, new RegExp(`\\.${cls}\\{width:50\\.000%\\}`));
   });
 });
