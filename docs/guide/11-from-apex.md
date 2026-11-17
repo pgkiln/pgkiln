@@ -128,10 +128,11 @@ validations, conditions, computations, authorization schemes and Set Value actio
 | `median(x)` | `percentile_cont(0.5) within group (order by x)` (sprint 217; not as a window function) |
 | `listagg(x, ', ') within group (order by y)` | `string_agg((x)::text, ', ' order by y)` (sprint 217; not with `on overflow` or `over`) |
 | `sysdate - 1`, `sysdate + 1/24`, `sysdate - (1/24/60/60 * :P1_SECONDS)` | `localtimestamp(0) - (1.0) * interval '1 day'` …: a number of days, as decimals (Oracle's `1/24` is an hour, not 0) (sprint 217; only a number or numbers, binds and arithmetic in parentheses: `sysdate - hire_date` is days between two dates and stays) |
+| `instr(a, b)`, `instr(a, b, 1)` | `strpos((a)::text, (b)::text)`: 0 when not found, as `instr` (sprint 217; another start position or occurrence stays) |
 | `apex_lang.message(…)`, `apex_app_setting.get_value(…)` | `meta.message(…)`, `meta.get_app_setting(…)`: the same parameters (sprint 217) |
 
 What changes the meaning or the shape of a query stays as it is and is named in the report as **needs porting**:
-`rownum`, `(+)` outer joins, `connect by`, `listagg` with `on overflow` or `over`, `instr`, `to_number` without a format, `substr` from the end,
+`rownum`, `(+)` outer joins, `connect by`, `listagg` with `on overflow` or `over`, `instr` from another position, `to_number` without a format, `substr` from the end,
 and calls to APEX and Oracle packages. Port them with the table [below](#porting-plsql-to-plpgsql); the
 [Advisor](03-builder.md#advisor) then finds what doesn't run yet.
 

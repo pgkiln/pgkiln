@@ -55,7 +55,7 @@ async function workshopHome(req: Req, reply: FastifyReply) {
     db.query<{ qname: string; schema: string; name: string; rows: number }>(
       `select c.oid::regclass::text as qname, n.nspname as schema, c.relname as name, greatest(c.reltuples, 0)::bigint as rows
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+        where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
           and has_schema_privilege(n.oid, 'USAGE') and has_table_privilege(c.oid, 'SELECT')
           and not (n.nspname = 'public' and c.relname like 'pgkiln\\_%')
         order by c.oid desc limit 15`,

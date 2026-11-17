@@ -69,7 +69,7 @@ export async function homeData(ws: number, tf: Timeframe) {
       `select (select count(*) from meta.app a where ${inWorkspaceSql('a', 1)})::int as apps,
               -- the tables of the schemas this workspace's database roles may use (as Workspace utilization counts them)
               (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
-                where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+                where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
                   and exists (select 1 from (select db_role as r from meta.app where meta.app_workspace(id) = $1 and db_role is not null
                                              union select role_name from meta.workspace_role where workspace_id = $1) x
                                join pg_roles rl on rl.rolname = x.r

@@ -612,6 +612,8 @@ describe('sprint 192: from Oracle to pgkiln (NX-F5)', () => {
     for (const keep of ['sysdate - hire_date', 'sysdate - (select max(d) from t)', 'sysdate - 2 * x'])
       assert.equal(t(`select ${keep} from t`), `select ${keep.replace('sysdate', 'localtimestamp(0)')} from t`, keep);
     assert.equal(t("select apex_lang.message('X') a, apex_app_setting.get_value(p_name => 'S') b"), "select meta.message('X') a, meta.get_app_setting(p_name => 'S') b");
+    assert.equal(t('where instr(:P1_ROLES, role_id, 1) > 0 and instr(a, \'x\') = 0'), "where strpos((:P1_ROLES)::text, (role_id)::text) > 0 and strpos((a)::text, ('x')::text) = 0");
+    assert.equal(t('select instr(a, b, 2), instr(a, b, 1, 2) from t'), 'select instr(a, b, 2), instr(a, b, 1, 2) from t', 'another start or occurrence stays');
     assert.equal(t("select 'median(x) sysdate - 1' a"), "select 'median(x) sysdate - 1' a", 'literals are not code');
   });
 

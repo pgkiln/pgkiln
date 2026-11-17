@@ -28,7 +28,7 @@ import { scopedTx as tx } from './i18n.ts';
 type Body = Record<string, string | string[] | undefined>;
 type Db = Awaited<ReturnType<typeof workshopDb>>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
-const SYSTEM = ['pg_catalog', 'information_schema', 'meta'];
+const SYSTEM = ['pg_catalog', 'information_schema', 'meta', 'apex'];
 
 const crumbs = (a: { id: number; name: string }, last?: string): [string, string?][] => [
   [tx('jsrc.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('jsrc.shared_components'), `${BASE}/apps/${a.id}/shared`],

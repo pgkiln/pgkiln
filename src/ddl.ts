@@ -72,7 +72,7 @@ const end = (s: string) => (s.trimEnd().endsWith(';') ? s.trimEnd() : `${s.trimE
 export async function userSchemas(c: { query: (sql: string) => Promise<{ rows: { name: string }[] }> }, opts: { usable?: boolean } = {}) {
   const r = await c.query(
     `select nspname as name from pg_namespace
-      where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
+      where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta', 'apex')
         and not exists (select 1 from pg_depend d where d.classid = 'pg_namespace'::regclass and d.objid = pg_namespace.oid and d.deptype = 'e')
         ${opts.usable ? `and has_schema_privilege(oid, 'USAGE')` : ''}
       order by 1`,

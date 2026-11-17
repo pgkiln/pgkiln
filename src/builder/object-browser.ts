@@ -22,7 +22,7 @@ import type { Session } from '../session.ts';
 // in the catalog before it is used, quoted.
 
 /** pgkiln's own schemas: shown with "Show system objects" only. */
-export const SYSTEM_SCHEMAS = ['meta', 'pgkiln_plugins'];
+export const SYSTEM_SCHEMAS = ['meta', 'apex', 'pgkiln_plugins'];
 
 export const OB_TYPES = [
   ['table', 'Tables', 'table'],

@@ -272,7 +272,7 @@ export async function dataLoadRoutes(app: FastifyInstance) {
     const tables = (
       await db.query(
         `select c.oid::regclass::text as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
-          where c.relkind in ('r', 'p') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+          where c.relkind in ('r', 'p') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
             and has_table_privilege(c.oid, 'INSERT') order by 1`,
       )
     ).rows.map((r) => r.name as string);

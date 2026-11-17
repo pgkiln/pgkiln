@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format follows
 - **More Oracle SQL rewritten by the APEX importer** (sprint 217): `median(x)` → `percentile_cont(0.5) within group
   (order by x)`; `listagg(x, sep) within group (order by y)` → `string_agg`; `sysdate` plus or minus a number of days
   (`sysdate - 1/24`, `sysdate - (1/24/60/60 * :P1_SECONDS)`) → plus or minus an interval, with Oracle's decimal
-  division; `apex_lang.message` → `meta.message`, `apex_app_setting.get_value` → `meta.get_app_setting`.
+  division; `instr(a, b[, 1])` → `strpos`; `apex_lang.message` → `meta.message`, `apex_app_setting.get_value` → `meta.get_app_setting`.
 
 ### Fixed
 - **APEX import: `decode(x, null, …)`** (sprint 217): the rewritten `… is not distinct from null` was read as a FROM

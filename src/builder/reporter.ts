@@ -32,7 +32,7 @@ const OBJECTS_SQL = `
                   filter (where a.attnum > 0), '[]') as columns
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     left join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
-   where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')`;
+   where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')`;
 
 /** A table or view by schema and name (null: not there, or a reserved schema). */
 export async function findObject(schema: string, table: string): Promise<DbObject | null> {
@@ -51,7 +51,7 @@ export async function objectList(dbRole: string | null) {
       `select c.oid::int as oid, format('%I.%I', n.nspname, c.relname) as name,
               $1::text is null or not exists (select 1 from pg_roles where rolname = $1) or has_table_privilege($1, c.oid, 'select') as access
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+        where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
         order by 2`,
       [dbRole],
     )

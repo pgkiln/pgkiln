@@ -13,6 +13,7 @@
 //   seq.nextval, seq.currval        nextval('seq'), currval('seq')
 //   v('P1_X'), nv('P1_X')           :P1_X  (a bind: pgkiln binds page items by name)
 //   minus (before select or ()       except
+//   instr(a, b), instr(a, b, 1)     strpos((a)::text, (b)::text)   (sprint 217; another start or occurrence stays)
 //   apex_lang.message(…)            meta.message(…)            (sprint 217: the same parameters, p_name first)
 //   apex_app_setting.get_value(…)   meta.get_app_setting(…)    (sprint 217: p_name)
 //   median(x)                       percentile_cont(0.5) within group (order by x)   (sprint 217; not as a window
@@ -27,7 +28,7 @@
 //                                   "ORDER" → "order". Mixed-case names such as "Series 1" are left as they are.)
 //
 // What stays for a person (oracleisms() in the importer still names it): ROWNUM, (+) outer joins, CONNECT BY,
-// LISTAGG with ON OVERFLOW or OVER, INSTR, TO_NUMBER without a format, SUBSTR from the end, and the APEX and Oracle packages.
+// LISTAGG with ON OVERFLOW or OVER, INSTR from another position, TO_NUMBER without a format, SUBSTR from the end, and the APEX and Oracle packages.
 
 /** The text with string literals, quoted identifiers and comments blanked out (same length, same positions). */
 export function codeMask(sql: string): string {
@@ -168,7 +169,7 @@ export function translateOracle(sql: string | null | undefined): { sql: string; 
   // (sprint 217) median and listagg: aggregates PostgreSQL writes as ordered-set or ordered aggregates
   for (let pass = 0; pass < 500; pass++) {
     const mask = codeMask(text);
-    const re = /(?<![\w$#.])(median|listagg)\s*\(/gi;
+    const re = /(?<![\w$#.])(median|listagg|instr)\s*\(/gi;
     let m: RegExpExecArray | null;
     let changed = false;
     while ((m = re.exec(mask))) {
@@ -177,7 +178,12 @@ export function translateOracle(sql: string | null | undefined): { sql: string; 
       const close = closing(mask, open);
       if (close < 0) continue;
       const a = args(text, mask, open, close);
-      if (name === 'median') {
+      if (name === 'instr') {
+        // from the start, the first occurrence: strpos (0 when not found, as instr); Oracle converts numbers to text
+        if (a.length < 2 || a.length > 3 || (a.length === 3 && a[2].trim() !== '1')) continue;
+        text = `${text.slice(0, m.index)}strpos((${a[0]})::text, (${a[1]})::text)${text.slice(close + 1)}`;
+        done.add('instr → strpos');
+      } else if (name === 'median') {
         if (a.length !== 1 || /^\s*over\b/i.test(mask.slice(close + 1))) continue;
         text = `${text.slice(0, m.index)}percentile_cont(0.5) within group (order by ${a[0]})${text.slice(close + 1)}`;
         done.add('median → percentile_cont(0.5)');

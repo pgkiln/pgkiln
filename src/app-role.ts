@@ -103,7 +103,7 @@ export async function grantSchema(c: Queryable, schema: string, role: string) {
 }
 
 /** pgkiln's and the system's schemas never become an application's parsing schema. */
-export const reservedSchema = (schema: string) => /^pg_/i.test(schema) || /^pgkiln/i.test(schema) || ['meta', 'information_schema'].includes(schema.toLowerCase());
+export const reservedSchema = (schema: string) => /^pg_/i.test(schema) || /^pgkiln/i.test(schema) || ['meta', 'apex', 'information_schema'].includes(schema.toLowerCase());
 
 export class AppRoleError extends Error {}
 

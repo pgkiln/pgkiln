@@ -100,7 +100,7 @@ export const onOwner = async (s: Session) => !!(await ownerChosen(s));
 /** Schemas the SQL Workshop's connection may use (not pgkiln's, not the system's). */
 export async function usableSchemas(db: Db) {
   return (await db.query<{ n: string }>(
-    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
+    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta', 'apex')
         and has_schema_privilege(oid, 'USAGE') order by 1`)).rows.map((r) => r.n);
 }
 
@@ -685,7 +685,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
         `select n.nspname as schema, n.nspowner::regrole::text as owner, count(c.oid)::int as tables,
                 coalesce(sum(pg_total_relation_size(c.oid)), 0)::bigint as bytes
            from pg_namespace n left join pg_class c on c.relnamespace = n.oid and c.relkind in ('r', 'p', 'm')
-          where n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+          where n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
             and exists (select 1 from (select db_role as r from meta.app where meta.app_workspace(id) = $1 and db_role is not null
                                        union select role_name from meta.workspace_role where workspace_id = $1) x
                          join pg_roles rl on rl.rolname = x.r
