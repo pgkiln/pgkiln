@@ -24,7 +24,7 @@ scripts/docker-start.ts    container entry point: checks secrets, migrates (lock
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1); (sprint 213) its db service
                            is postgres:17 + pg_cron, built inline (dockerfile_inline, pull_policy: build)
 docker/postgres/           (sprint 213) the development database's image (docker-compose.yml): postgres:17 + pg_cron + pgvector
-scripts/check-compose-pgcron.sh  (sprint 213) CI's docker job: the bundled database has pg_cron created and it runs a job
+scripts/check-compose-pgcron.sh  (sprint 213) CI's docker jobs (fresh install, upgrade): the bundled database has pg_cron created and it runs a job
 bin/pgkiln.js              the `pgkiln` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
