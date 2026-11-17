@@ -123,6 +123,19 @@ beforeEach(async () => {
   await owner.query('delete from meta.network_refusal where workspace_id = $1', [wsId]);
 });
 
+/**
+ * (sprint 212) A refusal is kept without waiting for it (src/network-acl.ts: void recordRefusal): poll for its row
+ * instead of reading it right after the call (a flaky "Cannot read properties of null").
+ */
+async function refusal(where: string, params: unknown[] = [wsId]) {
+  for (let i = 0; i < 100; i++) {
+    const r = await owner.one(`select * from meta.network_refusal where ${where} order by id desc limit 1`, params);
+    if (r) return r;
+    await new Promise((res) => setTimeout(res, 50));
+  }
+  assert.fail(`no refusal where ${where}`);
+}
+
 /** Submit page 1 with a URL: the process queues meta.web_request and the next reads its response. */
 async function callFromPage(url: string) {
   await owner.query('delete from meta.debug_view where app_id = $1', [appId]);
@@ -165,7 +178,7 @@ describe('network access lists', () => {
     assert.equal(seen.length, before, 'no request was made');
     const debug = await debugMessages();
     assert.ok(debug.some((d) => d.level === 2 && d.component === 'web' && /network access list of workspace S118 Net/.test(d.message)), JSON.stringify(debug));
-    const r = await owner.one('select * from meta.network_refusal where workspace_id = $1 order by id desc limit 1', [wsId]);
+    const r = await refusal('workspace_id = $1');
     assert.equal(r.app_id, appId);
     assert.equal(r.host, `127.0.0.1:${port}`);
     assert.equal(r.list, 'workspace');
@@ -187,7 +200,7 @@ describe('network access lists', () => {
     const row = await owner.one('select status, message from meta.web_request_log where id = $1', [id]);
     assert.equal(row.status, 'error');
     assert.match(row.message, /not on the server's allow-list/);
-    assert.equal((await owner.one(`select list from meta.network_refusal where workspace_id = $1 and host = 'evil.example'`, [wsId])).list, 'installation');
+    assert.equal((await refusal(`workspace_id = $1 and host = 'evil.example'`)).list, 'installation');
   });
 
   test('a redirect that leaves the workspace list is refused', async () => {
@@ -286,13 +299,7 @@ describe('mail queue and a workspace\'s own mail service', () => {
     assert.equal(m.status, 'error');
     assert.match(m.message, /not on the network access list of workspace S118 Net/);
     assert.equal(mail.smtpHits.length, 0);
-    // the refusal is kept without waiting (src/network-acl.ts: void recordRefusal): wait for its row
-    let kept = null;
-    for (let i = 0; i < 50 && !kept; i++) {
-      kept = await owner.one(`select 1 from meta.network_refusal where workspace_id = $1 and what like 'mail service%'`, [wsId]);
-      if (!kept) await new Promise((r) => setTimeout(r, 100));
-    }
-    assert.ok(kept, 'the refusal is kept');
+    await refusal(`workspace_id = $1 and what like 'mail service%'`);
     await restrict([`127.0.0.1:${mail.smtpPort}`]);
     const ok = (await asApp((q) => q(`select meta.send_mail('king@example.com', 'T ws allowed', 'Hello') as id`)))[0].id;
     await mailTick();

@@ -303,3 +303,42 @@ describe('isolated workspaces', { skip: !isolatedRuntime && 'needs RUNTIME_DATAB
     assert.deepEqual(missing.rows, []);
   });
 });
+
+describe('sprint 212: one role sync at a time (migration 181)', () => {
+  const NAME = 'ISO Lock 212';
+  after(async () => {
+    await owner.query('delete from meta.workspace where name = $1', [NAME]);
+  });
+
+  test('a second meta.workspace_sync_roles() waits for the first one\'s commit instead of failing with "tuple concurrently updated"', async () => {
+    await owner.query('delete from meta.workspace where name = $1', [NAME]);
+    const ws = (await owner.one(`insert into meta.workspace (name, isolated) values ($1, true) returning id, run_role`, [NAME]))!;
+    // shared again: its runtime login can't sign in; a login someone switched back on is the work for both syncs
+    await owner.query('update meta.workspace set isolated = false where id = $1', [ws.id]);
+    await owner.query(`alter role "${ws.run_role}" login`);
+    const c1 = await owner.pool.connect();
+    const c2 = await owner.pool.connect();
+    try {
+      await c1.query('begin');
+      await c1.query('select meta.workspace_sync_roles()');
+      await c2.query('begin');
+      const second = c2.query('select meta.workspace_sync_roles()');
+      // the second waits for the lock (before 181 it waited for the role's row, then failed)
+      let waiting = false;
+      for (let i = 0; i < 50 && !waiting; i++) {
+        waiting = !!(await owner.one(`select 1 from pg_locks where locktype = 'advisory' and not granted and pid = $1`, [(c2 as any).processID]));
+        if (!waiting) await new Promise((r) => setTimeout(r, 20));
+      }
+      assert.ok(waiting, 'the second sync waits for the first');
+      await c1.query('commit');
+      await second;
+      await c2.query('commit');
+      assert.equal((await owner.one('select rolcanlogin from pg_roles where rolname = $1', [ws.run_role]))!.rolcanlogin, false);
+    } finally {
+      await c1.query('rollback').catch(() => {});
+      await c2.query('rollback').catch(() => {});
+      c1.release();
+      c2.release();
+    }
+  });
+});

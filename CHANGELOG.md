@@ -5,6 +5,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Workspace role sync at the same time** (sprint 212, migration 181): `meta.workspace_sync_roles()` runs at the commit
+  of every change to a workspace or an application's role; two transactions running it at once both granted the same
+  missing privilege, and the second failed with "tuple concurrently updated". It now takes an advisory lock first (as
+  creating an application role does), and switches a no-longer-isolated workspace's runtime login off only while it
+  can still sign in.
+- **Flaky tests** (sprint 212): `security.test.ts` and `apex-import.test.ts` run on their own and with
+  `--test-name-pattern` (no async `describe`, the top-level await before the first test); the mail network tests wait
+  for the refusal row, which is written without waiting; a security test no longer finds the salary 5000 in a region
+  id such as `R155000`; the push notification browser test delivers the message again when the service worker lost
+  the first one.
+
 ## [0.106.0] - 2026-11-17
 
 ### Added

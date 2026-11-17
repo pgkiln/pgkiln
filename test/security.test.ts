@@ -6,7 +6,12 @@ import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
-import { appTx, closePools, owner, runtime } from '../src/db.ts';
+import { appTx, closePools, owner, ownerUrl, runtime, runtimeUrl } from '../src/db.ts';
+import { workspacesChanged } from '../src/workspace-db.ts';
+import { instanceChecks, ownerRoleCheck } from '../src/instance-checks.ts';
+import { AppRoleRefused, rolesChanged, setAppRole } from '../src/app-role.ts';
+import { importDoc } from '../src/cli/apps.ts';
+import { readFileSync } from 'node:fs';
 import { signText, urlChecksum } from '../src/security.ts';
 import { PageCss } from '../src/css.ts';
 import { markdownHtml, sanitizeHtml } from '../src/richtext.ts';
@@ -16,6 +21,10 @@ import { lovMax } from '../src/runtime/items.ts';
 import { loadWithDefinition } from '../src/dataload.ts';
 import { Browser as FileBrowser, formFields as pageFormFields, gridForm, pdfText } from './helpers.ts';
 import { strFromU8, unzipSync } from 'fflate';
+
+// (sprint 212) A top-level await must come before the first test or hook: while the module waits, the runner sees
+// no pending test and may finish the file, so that with --test-name-pattern the root after() ran before before().
+const HAS_PGVECTOR_136 = !!(await owner.one(`select 1 as x from pg_extension where extname = 'vector'`));
 
 let app: FastifyInstance;
 let appId: number;
@@ -6267,6 +6276,8 @@ describe('security review 2026-10-08', () => {
     const at = body.indexOf(`id="R${id}"`);
     return at < 0 ? '' : body.slice(at, body.indexOf('</section>', at));
   };
+  // KING's salary as a whole number, not a part of one: (sprint 212) the region id in id="R155000" matched /5000/
+  const HIDDEN_SAL = /\b5[,.]?000\b/;
 
   test('hidden report columns cannot be shown, searched, filtered, sorted or aggregated through URL parameters', async () => {
     const pid = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 11`, [appId])).id;
@@ -6280,18 +6291,18 @@ describe('security review 2026-10-08', () => {
       const get = async (k: string, v: string) => (await king.get(`/a/hr/11?${new URLSearchParams({ [`r${rid}_${k}`]: v })}`)).body;
       // a computed column over a hidden one is refused (shown as an error chip, no values)
       const computed = section(await get('c', 'LEAK|secret_sal'), rid);
-      assert.doesNotMatch(computed, /5000|5,000|5\.000/, 'no hidden values through a computation');
+      assert.doesNotMatch(computed, HIDDEN_SAL, 'no hidden values through a computation');
       assert.equal(rows(await get('f', 'secret_sal|gt|4999')), all, 'a filter on a hidden column is ignored');
       assert.equal(rows(await get('q', '5000')), rows(await get('q', 'no-such-text-zz')), 'the search does not look into hidden columns');
       const tbody = (body: string) => /<tbody>([\s\S]*?)<\/tbody>/.exec(section(body, rid))?.[1] ?? '';
       assert.equal(tbody(await get('s', '3')), tbody((await king.get('/a/hr/11')).body), 'sorting by a hidden column is ignored');
-      assert.doesNotMatch(section(await get('a', 'max|secret_sal'), rid), /5000|5,000|5\.000/, 'no aggregate of a hidden column');
+      assert.doesNotMatch(section(await get('a', 'max|secret_sal'), rid), HIDDEN_SAL, 'no aggregate of a hidden column');
       const group = (await king.get(`/a/hr/11?r${rid}_v=group&r${rid}_g=ename&r${rid}_ga=${encodeURIComponent('max|secret_sal')}`)).body;
-      assert.doesNotMatch(section(group, rid), /5000|5,000|5\.000/, 'no group-by aggregate of a hidden column');
+      assert.doesNotMatch(section(group, rid), HIDDEN_SAL, 'no group-by aggregate of a hidden column');
       const pivot = (await king.get(`/a/hr/11?r${rid}_v=pivot&r${rid}_pv=${encodeURIComponent('ename|secret_sal|count|empno')}`)).body;
-      assert.doesNotMatch(section(pivot, rid), /5000|5,000|5\.000/, 'no pivot on a hidden column');
+      assert.doesNotMatch(section(pivot, rid), HIDDEN_SAL, 'no pivot on a hidden column');
       const brk = (await king.get(`/a/hr/11?r${rid}_b=secret_sal`)).body;
-      assert.doesNotMatch(section(brk, rid), /5000|5,000|5\.000/, 'no control break on a hidden column');
+      assert.doesNotMatch(section(brk, rid), HIDDEN_SAL, 'no control break on a hidden column');
       // shown columns still work
       assert.match(section(await get('c', 'TWICE|empno * 2'), rid), /15678/, 'computations over shown columns work');
     } finally {
@@ -12121,7 +12132,6 @@ describe('sprint 135 AP-2', () => {
   });
 });
 
-const HAS_PGVECTOR_136 = !!(await owner.one(`select 1 as x from pg_extension where extname = 'vector'`));
 describe('sprint 136 AP-1', () => {
   // Vector search and Retrieve tools: the search text only reaches the embedding service and then the query as a
   // parameter (a vector literal of numbers); the queries run as the application's role, so row level security
@@ -15187,9 +15197,7 @@ describe('sprint 181 remote catalogues for the App Gallery (WS-8)', () => {
   });
 });
 
-describe('sprint 183 Database Users links a role to an isolated workspace (DA-13)', async () => {
-  const { ownerUrl, runtimeUrl } = await import('../src/db.ts');
-  const { workspacesChanged } = await import('../src/workspace-db.ts');
+describe('sprint 183 Database Users links a role to an isolated workspace (DA-13)', () => {
   const WS = 'SEC183 Iso';
   const ROLE = 'sec183_reader';
   const POWER = 'sec183_power';
@@ -15547,8 +15555,7 @@ describe('sprint 184 code review of 0.94.0: OAuth clients limited to REST module
   });
 });
 
-describe('sprint 185 the SQL Workshop runs as the workspace\'s developer login, not the owner (NX-S1)', async () => {
-  const { ownerRoleCheck, instanceChecks } = await import('../src/instance-checks.ts');
+describe('sprint 185 the SQL Workshop runs as the workspace\'s developer login, not the owner (NX-S1)', () => {
   const DEV = 'sec185_dev';
   const PW = 'Sec185-dev-password!';
   const S = 'sec185';
@@ -15741,10 +15748,7 @@ describe('NX-S3 a default password on a public installation changes nothing unti
   });
 });
 
-describe('sprint 186 every application runs as a database role of its own (NX-S2)', async () => {
-  const { AppRoleRefused, setAppRole, rolesChanged } = await import('../src/app-role.ts');
-  const { importDoc } = await import('../src/cli/apps.ts');
-  const { readFileSync } = await import('node:fs');
+describe('sprint 186 every application runs as a database role of its own (NX-S2)', () => {
   const S = 'sec186';
   const ROLE = 'sec186_app';
   const BYPASS = 'sec186_bypass';
@@ -15971,7 +15975,7 @@ describe('sprint 186 every application runs as a database role of its own (NX-S2
   });
 });
 
-describe('sprint 186 a clear message when row level security refuses the developer login', async () => {
+describe('sprint 186 a clear message when row level security refuses the developer login', () => {
   const DEV = 'sec186_rls';
   const PW = 'Sec186-rls-password!';
   const T = 'public.sec186_rls';
@@ -17871,16 +17875,9 @@ describe('sprint 206 AX-5 the Page Designer\'s menus on the open page (copy, iss
   before(async () => {
     hrId = (await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`))!.id;
     await cleanup();
-    // a new workspace makes its roles: GRANTs that can meet the server's own start-up role sync (tuple concurrently updated)
-    let ws = 0;
-    for (let i = 0; !ws; i++) {
-      try {
-        ws = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
-      } catch (e) {
-        if (i > 4 || !/concurrently/.test((e as Error).message)) throw e;
-        await new Promise((r) => setTimeout(r, 200));
-      }
-    }
+    // a new workspace makes its roles at the commit: (sprint 212, migration 181) one role sync at a time, so no retry
+    // for "tuple concurrently updated" next to the server's own sync
+    const ws = (await owner.one<{ id: number }>('insert into meta.workspace (name) values ($1) returning id', [WS]))!.id;
     otherId = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, db_role) values ($1, 'Sec206 other', 'hr_app') returning id`, [OTHER]))!.id;
     await owner.query('insert into meta.workspace_app (workspace_id, app_id) values ($1, $2)', [ws, otherId]);
     const op = (await owner.one<{ id: number }>(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec206 other page') returning id`, [otherId, PAGE]))!.id;
