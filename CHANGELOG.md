@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Faster CI** (sprints 212 and 216): the test shards are balanced by each file's duration (`scripts/test-shard.ts`,
+  `test/durations.json`) instead of Node's `--test-shard`, which gave one shard twice the work of the next; the
+  releases between the oldest and the newest upgrade in at most five batch jobs, three at a time, each release on a
+  database in memory with its own stdin closed and at most six minutes (a hang shows its processes at that moment
+  instead of holding the job). A full run (main, release branches, nightly) went from about 14 to about 12 minutes.
+
 ### Fixed
 - **Workspace role sync at the same time** (sprint 212, migration 181): `meta.workspace_sync_roles()` runs at the commit
   of every change to a workspace or an application's role; two transactions running it at once both granted the same
