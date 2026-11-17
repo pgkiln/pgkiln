@@ -588,9 +588,40 @@ describe('sprint 192: from Oracle to pgkiln (NX-F5)', () => {
     assert.deepEqual(sqlObjects(`select 'from x' a /* from y */ -- from z\n from t`).tables, ['t'], 'literals and comments are not code');
     assert.deepEqual(qualifyTables('select * from emp e join "DEPT" d on d.id = e.d, hr.jobs where x in (select 1 from dual)', 'oehr'),
       { sql: 'select * from oehr.emp e join oehr.dept d on d.id = e.d, hr.jobs where x in (select 1 from dual)', n: 2 });
+    // (sprint 217) APEX's views pgkiln has are in schema apex, whatever the parsing schema; the others stay; a
+    // comparison "is not distinct from null" (decode → case) is not a FROM list
+    assert.deepEqual(qualifyTables('select * from apex_activity_log l, emp e, apex_collections c where l.x is not distinct from null', 'oehr'),
+      { sql: 'select * from apex.apex_activity_log l, oehr.emp e, apex_collections c where l.x is not distinct from null', n: 2 });
+    assert.deepEqual(qualifyTables('select role_name from APEX_APPL_ACL_ROLES', ''), { sql: 'select role_name from apex.apex_appl_acl_roles', n: 1 }, 'without a schema too');
     assert.equal(soleTableColumn('select * from emp', 'ename', (t) => `s.${t}`), 's.emp.ename');
     assert.equal(soleTableColumn('select ename || job as label from emp', 'label', (t) => t), null, 'an alias is not a column');
     assert.equal(soleTableColumn('select * from emp join dept using (d)', 'x', (t) => t), null, 'two tables: not checked');
+  });
+
+  test('(sprint 217) median, listagg, sysdate ± days and two APEX functions are rewritten; what could change the meaning is not', () => {
+    const t = (sql: string) => translateOracle(sql).sql;
+    assert.equal(t('select median(elap) m from t'), 'select percentile_cont(0.5) within group (order by elap) m from t');
+    assert.equal(t('select median(sal) over (partition by d) from emp'), 'select median(sal) over (partition by d) from emp', 'a window function stays');
+    assert.equal(t("select listagg( role_name, ', ') WITHIN GROUP (ORDER BY role_name) r from x"), "select string_agg((role_name)::text, ', ' order by role_name) r from x");
+    assert.equal(t('select listagg(x) within group (order by x) from t'), "select string_agg((x)::text, '' order by x) from t");
+    for (const keep of ['select listagg(x, \',\' on overflow truncate) within group (order by x) from t', 'select listagg(x) within group (order by x) over () from t'])
+      assert.equal(t(keep), keep);
+    assert.equal(t('where t >= sysdate - ( 1/24/60/60 * :P1_SECONDS )'), "where t >= localtimestamp(0) - (( 1.0/24.0/60.0/60.0 * :P1_SECONDS )) * interval '1 day'");
+    assert.equal(t('where a > sysdate - 1 and b < sysdate + 1/24'), "where a > localtimestamp(0) - (1.0) * interval '1 day' and b < localtimestamp(0) + (1.0/24.0) * interval '1 day'");
+    // a date minus a date is a number of days in Oracle: the operand may be a date, so it stays
+    for (const keep of ['sysdate - hire_date', 'sysdate - (select max(d) from t)', 'sysdate - 2 * x'])
+      assert.equal(t(`select ${keep} from t`), `select ${keep.replace('sysdate', 'localtimestamp(0)')} from t`, keep);
+    assert.equal(t("select apex_lang.message('X') a, apex_app_setting.get_value(p_name => 'S') b"), "select meta.message('X') a, meta.get_app_setting(p_name => 'S') b");
+    assert.equal(t("select 'median(x) sysdate - 1' a"), "select 'median(x) sysdate - 1' a", 'literals are not code');
+  });
+
+  test('(sprint 217) f77536\'s administration pages read APEX\'s views from schema apex', () => {
+    const { doc } = apexToDoc(F77536) as { doc: any };
+    const sql = JSON.stringify(doc);
+    for (const v of ['apex_activity_log', 'apex_appl_acl_users', 'apex_appl_acl_roles', 'apex_application_pages', 'apex_team_feedback', 'apex_automation_log'])
+      assert.ok(sql.includes(`apex.${v}`), v);
+    assert.doesNotMatch(sql.replace(/-- [^\\]*/g, ''), /[^.\w]apex_activity_log/i, 'none left unqualified (but in a comment)');
+    assert.match(sql, /apex_collections/, 'collections: pgkiln has none');
   });
 
   test('the importer records what each component uses; quoted upper-case names become lower case; unqualified tables get the schema', () => {

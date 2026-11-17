@@ -21,7 +21,7 @@ import { codeMask, plsqlAsHtml, plsqlAsSql, translateOracle } from './oracle-sql
 import { pageAliasProblem } from './page-alias.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
-import { emptyUses, qualifyTables, soleTableColumn, sqlObjects, type Uses } from './apex-check.ts';
+import { APEX_VIEWS, emptyUses, qualifyTables, soleTableColumn, sqlObjects, type Uses } from './apex-check.ts';
 
 // ------------------------------------------------------------------ report
 
@@ -650,7 +650,9 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
   const qualified = (table: string | null, tableOwner?: string | null) => {
     if (!table) return null;
     if (table.includes('.')) return table.split('.').map(ident).join('.');
-    if (/^apex_/i.test(table)) return ident(table); // (sprint 192) APEX's own views are in no schema here
+    // (sprint 217) APEX's views pgkiln has are in schema apex; (sprint 192) the others are in no schema here
+    if (APEX_VIEWS.has(table.toLowerCase())) return `apex.${ident(table)}`;
+    if (/^apex_/i.test(table)) return ident(table);
     const sch = tableOwner && opts.schema == null ? ident(tableOwner) : schema;
     return sch ? `${sch}.${ident(table)}` : ident(table);
   };

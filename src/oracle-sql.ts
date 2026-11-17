@@ -13,12 +13,21 @@
 //   seq.nextval, seq.currval        nextval('seq'), currval('seq')
 //   v('P1_X'), nv('P1_X')           :P1_X  (a bind: pgkiln binds page items by name)
 //   minus (before select or ()       except
+//   apex_lang.message(…)            meta.message(…)            (sprint 217: the same parameters, p_name first)
+//   apex_app_setting.get_value(…)   meta.get_app_setting(…)    (sprint 217: p_name)
+//   median(x)                       percentile_cont(0.5) within group (order by x)   (sprint 217; not as a window
+//                                   function: median(x) over (…) stays)
+//   listagg(x, sep) within group (order by o)   string_agg((x)::text, sep order by o)   (sprint 217; not with
+//                                   ON OVERFLOW or OVER)
+//   sysdate ± 1/24, sysdate - (1/24/60/60 * :P1_SECONDS)   localtimestamp(0) ± (…) * interval '1 day'  (sprint 217:
+//                                   a DATE plus a number of days; only for a number, or a parenthesized expression of
+//                                   numbers, binds and arithmetic, which can't be a date)
 //   "ORDER_TOTAL" (quoted, upper case) order_total  (sprint 192: Oracle folds unquoted names to upper case, so "EMP" is
 //                                   EMP; ora2pg and PostgreSQL fold to lower case. A PostgreSQL keyword stays quoted:
 //                                   "ORDER" → "order". Mixed-case names such as "Series 1" are left as they are.)
 //
 // What stays for a person (oracleisms() in the importer still names it): ROWNUM, (+) outer joins, CONNECT BY,
-// LISTAGG, INSTR, TO_NUMBER without a format, SUBSTR from the end, and the APEX and Oracle packages.
+// LISTAGG with ON OVERFLOW or OVER, INSTR, TO_NUMBER without a format, SUBSTR from the end, and the APEX and Oracle packages.
 
 /** The text with string literals, quoted identifiers and comments blanked out (same length, same positions). */
 export function codeMask(sql: string): string {
@@ -115,6 +124,9 @@ const WORDS: [RegExp, string, string | ((m: RegExpExecArray) => string)][] = [
   [/(?<![\w$#.])((?:[a-z_][\w$#]*\.)?[a-z_][\w$#]*)\s*\.\s*(nextval|currval)(?![\w$#])/gi, 'sequence.nextval → nextval()',
     (m) => `${m[2].toLowerCase()}('${m[1].toLowerCase()}')`],
   [/(?<![\w$#.])minus(?=\s*(?:select\b|\())/gi, 'minus → except', 'except'],
+  // (sprint 217) APEX functions pgkiln has under another name, with the same parameter names
+  [/(?<![\w$#.])apex_lang\s*\.\s*message(?=\s*\()/gi, 'apex_lang.message → meta.message', 'meta.message'],
+  [/(?<![\w$#.])apex_app_setting\s*\.\s*get_value(?=\s*\()/gi, 'apex_app_setting.get_value → meta.get_app_setting', 'meta.get_app_setting'],
 ];
 
 /** Rewrite the common Oracle SQL in sql; done lists what was rewritten (empty: nothing). */
@@ -152,6 +164,63 @@ export function translateOracle(sql: string | null | undefined): { sql: string; 
       break;
     }
     if (!changed) break;
+  }
+  // (sprint 217) median and listagg: aggregates PostgreSQL writes as ordered-set or ordered aggregates
+  for (let pass = 0; pass < 500; pass++) {
+    const mask = codeMask(text);
+    const re = /(?<![\w$#.])(median|listagg)\s*\(/gi;
+    let m: RegExpExecArray | null;
+    let changed = false;
+    while ((m = re.exec(mask))) {
+      const name = m[1].toLowerCase();
+      const open = m.index + m[0].length - 1;
+      const close = closing(mask, open);
+      if (close < 0) continue;
+      const a = args(text, mask, open, close);
+      if (name === 'median') {
+        if (a.length !== 1 || /^\s*over\b/i.test(mask.slice(close + 1))) continue;
+        text = `${text.slice(0, m.index)}percentile_cont(0.5) within group (order by ${a[0]})${text.slice(close + 1)}`;
+        done.add('median → percentile_cont(0.5)');
+      } else {
+        const wg = /^\s*within\s+group\s*\(\s*order\s+by\s+/i.exec(mask.slice(close + 1));
+        if (!wg || a.length > 2 || /\boverflow\b/i.test(mask.slice(open, close))) continue;
+        const gOpen = mask.indexOf('(', close + 1);
+        const gClose = closing(mask, gOpen);
+        if (gClose < 0 || /^\s*over\b/i.test(mask.slice(gClose + 1))) continue;
+        const order = text.slice(close + 1 + wg[0].length, gClose).trim();
+        text = `${text.slice(0, m.index)}string_agg((${a[0]})::text, ${a[1] ?? "''"} order by ${order})${text.slice(gClose + 1)}`;
+        done.add('listagg → string_agg');
+      }
+      changed = true;
+      break;
+    }
+    if (!changed) break;
+  }
+  // (sprint 217) sysdate ± a number of days: PostgreSQL adds intervals to a timestamp, not numbers
+  {
+    const mask = codeMask(text);
+    const re = /(?<![\w$#.])sysdate(\s*[-+]\s*)/gi;
+    const parts: [number, number, string][] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(mask))) {
+      const at = m.index + m[0].length;
+      let operand: string | null = null;
+      const num = /^\d+(?:\.\d+)?(?![\w$#.])/.exec(mask.slice(at));
+      if (num) {
+        // a number, or a number divided (1/24): not a number times a column
+        const tail = /^\d+(?:\.\d+)?(?:\s*\/\s*\d+(?:\.\d+)?)*/.exec(mask.slice(at))![0];
+        if (!/^\s*[*/]/.test(mask.slice(at + tail.length))) operand = tail;
+      } else if (mask[at] === '(') {
+        const close = closing(mask, at);
+        const inner = close < 0 ? '' : mask.slice(at + 1, close);
+        // numbers, binds (:P1_X) and arithmetic only, with at least one number: no column or function can be a date
+        if (close > 0 && /\d/.test(inner.replace(/:[A-Za-z][\w$#]*/g, '')) && /^[\s\d.+\-*/()]*$/.test(inner.replace(/:[A-Za-z][\w$#]*/g, ''))) operand = text.slice(at, close + 1);
+      }
+      // Oracle's numbers are decimals: 1/24 is a twenty-fourth of a day, not 0 as integer division makes it
+      if (operand) parts.push([at, at + operand.length, `(${operand.replace(/(?<![\w$#.:])(\d+)(?![\d.\w$#])/g, '$1.0')}) * interval '1 day'`]);
+    }
+    for (const [a, b, r] of parts.reverse()) text = text.slice(0, a) + r + text.slice(b);
+    if (parts.length) done.add("sysdate ± days → ± interval '1 day'");
   }
   for (const [re, label, to] of WORDS) {
     const mask = codeMask(text);
