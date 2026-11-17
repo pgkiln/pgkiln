@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Sankey, NBox and picto charts** (sprint 220; Oracle JET's Sankey, NBox and Picto Chart): `sankey` draws flows from
+  rows of source, target and value, nodes in the column of their longest path, ribbons as wide as their value (a cycle
+  is explained, not drawn); `nbox` places labels in a grid by a column and a row from 1 (3 by 3, up to 5 by 5), cells
+  shaded from low to high; `picto` shows one series as rows of icons, each a round number of units. Drawn on the
+  server like the other charts, without inline styles, with a data table, keyboard focus and tips; Sample Charts has a
+  page *Flows and grids* with all three.
+
 ## [0.108.0] - 2026-11-17
 
 ### Added
