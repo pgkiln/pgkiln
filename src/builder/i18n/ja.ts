@@ -5475,7 +5475,7 @@ export const ja: BuilderMessages = {
   'rcat.from_a_rest_source_catalog': 'REST ソース・カタログから',
   'rcat.app_builder': 'App Builder',
   'rcat.workspace_utilities': 'ワークスペース・ユーティリティ',
-  'rcat.doc_intro': 'JSON 形式の {openapi} または {swagger} ドキュメント (例: {file})、または pgkiln からダウンロードしたカタログ・ファイル。',
+  'rcat.doc_intro': 'JSON または YAML 形式の {openapi} または {swagger} ドキュメント (例: {file})、または pgkiln からダウンロードしたカタログ・ファイル。',
   'rcat.doc_replacing': 'カタログのサービスはドキュメントのものに置き換えられます。以前に作成したデータ・ソースはそのままです。',
   'rcat.url_answered': 'URL が HTTP {status} を返しました。',
   'rcat.headers_help': '追加のリクエスト・ヘッダー (シークレットは不可): サインインはアプリケーションの Web 資格情報が行います。',

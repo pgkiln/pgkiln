@@ -5475,7 +5475,7 @@ export const nl: BuilderMessages = {
   'rcat.from_a_rest_source_catalog': 'Vanuit een REST-broncatalogus',
   'rcat.app_builder': 'App Builder',
   'rcat.workspace_utilities': 'Werkruimtehulpmiddelen',
-  'rcat.doc_intro': 'Een {openapi}- of {swagger}-document in JSON (bijv. {file}), of een catalogusbestand gedownload uit pgkiln.',
+  'rcat.doc_intro': 'Een {openapi}- of {swagger}-document in JSON of YAML (bijv. {file}), of een catalogusbestand gedownload uit pgkiln.',
   'rcat.doc_replacing': 'De diensten van de catalogus worden vervangen door die van het document; eerder ervan gemaakte gegevensbronnen blijven zoals ze zijn.',
   'rcat.url_answered': 'De URL antwoordde HTTP {status}.',
   'rcat.headers_help': 'Extra request headers, geen geheimen: de webreferentie van een applicatie meldt zich aan.',

@@ -5480,7 +5480,7 @@ export const en = {
   'rcat.from_a_rest_source_catalog': 'From a REST source catalog',
   'rcat.app_builder': 'App Builder',
   'rcat.workspace_utilities': 'Workspace utilities',
-  'rcat.doc_intro': 'An {openapi} or {swagger} document in JSON (e.g. {file}), or a catalog file downloaded from pgkiln.',
+  'rcat.doc_intro': 'An {openapi} or {swagger} document in JSON or YAML (e.g. {file}), or a catalog file downloaded from pgkiln.',
   'rcat.doc_replacing': 'The catalog\'s services are replaced by the document\'s; data sources made from it earlier stay as they are.',
   'rcat.url_answered': 'The URL answered HTTP {status}.',
   'rcat.headers_help': 'Extra request headers, not secrets: an application\'s web credential signs in.',
