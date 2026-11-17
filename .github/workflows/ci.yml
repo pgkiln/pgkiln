@@ -314,6 +314,10 @@ jobs:
           [ "$(docker inspect -f '{{.Image}}' "$(docker compose ps -q pgkiln)")" = "$new" ] || { echo "the container still runs the old image"; exit 1; }
           curl -fsS http://127.0.0.1:3100/healthz
           curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
+      # 0.50.0 didn't create pg_cron; the published :latest (0.106.0 or later) does, on the database compose.yaml builds
+      - name: pg_cron works after the upgrade
+        working-directory: deploy
+        run: ../scripts/check-compose-pgcron.sh
       - name: Logs
         if: always()
         working-directory: deploy
