@@ -5478,7 +5478,7 @@ export const zhTW: BuilderMessages = {
   'rcat.from_a_rest_source_catalog': '從 REST 來源目錄',
   'rcat.app_builder': '應用程式建置器',
   'rcat.workspace_utilities': '工作區公用程式',
-  'rcat.doc_intro': 'JSON 格式的 {openapi} 或 {swagger} 文件(例如 {file}),或從 pgkiln 下載的目錄檔案。',
+  'rcat.doc_intro': 'JSON 或 YAML 格式的 {openapi} 或 {swagger} 文件(例如 {file}),或從 pgkiln 下載的目錄檔案。',
   'rcat.doc_replacing': '目錄的服務會被文件中的服務取代;之前從中建立的資料來源保持不變。',
   'rcat.url_answered': '該 URL 傳回 HTTP {status}。',
   'rcat.headers_help': '額外的要求標頭,不是密鑰:由應用程式的 Web 認證登入。',

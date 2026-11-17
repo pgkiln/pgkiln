@@ -51,7 +51,7 @@ function importForm(s: Session, action: string, replacing: boolean): Raw {
   return html`<form method="post" action="${action}" enctype="multipart/form-data">${csrf(s)}
     <p class="muted u-mt0">${tx.rich('rcat.doc_intro', { openapi: html`<b>${tx('rcat.openapi_3')}</b>`, swagger: html`<b>${tx('rcat.swagger_2_0')}</b>`, file: html`<code>openapi.json</code>` })}${replacing ? ` ${tx('rcat.doc_replacing')}` : ''}</p>
     <div class="form-grid">
-      <div class="field"><label class="label" for="f_file">${tx('rcat.file')}</label><input id="f_file" type="file" name="file" accept=".json,application/json"></div>
+      <div class="field"><label class="label" for="f_file">${tx('rcat.file')}</label><input id="f_file" type="file" name="file" accept=".json,.yaml,.yml,application/json,application/yaml,text/yaml"></div>
       ${input('url', tx('rcat.or_read_it_from_a'), '', { placeholder: tx('rcat.https_api_example_com_openapi'), help: tx('rcat.the_server_reads_it_the') })}
       <div class="field" data-wide><label class="label" for="f_text">${tx('rcat.or_paste_it')}</label><textarea id="f_text" name="text" class="code" rows="4" spellcheck="false"></textarea></div>
       ${input('base_url', tx('rcat.base_url'), '', { placeholder: tx('rcat.from_the_document'), help: tx('rcat.instead_of_the_document_s') })}

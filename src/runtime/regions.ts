@@ -319,12 +319,20 @@ async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>)
     body = setting ? await renderCaching(ctx, r, setting, cacheKeyOf!, () => renderBody(ctx, r, hidden)) : await renderBody(ctx, r, hidden);
   // (172) the sub regions, each with its own cache and lazy settings, after the region's own content (a lazy
   // container loads them with itself)
+  // (sprint 219, APEX 26.1) an inline dialog's or drawer's sub regions with position footer go into its footer, which
+  // stays in place while the body scrolls (a total, a summary next to the buttons)
+  let footer: Raw | '' = '';
   if (!placeholder) {
-    const children = await renderChildren(ctx, r, hidden);
+    const inFooter = isInlineOverlay(r) ? (c: Region) => c.position === 'footer' : () => false;
+    const children = await renderChildren(ctx, r, hidden, (c) => !inFooter(c));
     if (children) body = html`${body}${children}`;
+    if (isInlineOverlay(r)) footer = await renderChildren(ctx, r, hidden, inFooter);
   }
-  return regionShell(ctx, r, hidden, body);
+  return regionShell(ctx, r, hidden, body, footer);
 }
+
+/** (sprint 219) The region templates that open over the page and have a footer slot for sub regions. */
+const isInlineOverlay = (r: Region) => r.template === 'inline_dialog' || r.template === 'inline_drawer';
 
 /** (172) The sub regions of a region, in sequence (one level: a sub region has none). */
 export const childrenOf = (ctx: PageContext, r: Region) => (r.parent_id == null ? ctx.page.regions.filter((x) => x.parent_id === r.id) : []);
@@ -335,9 +343,9 @@ export const childrenOf = (ctx: PageContext, r: Region) => (r.parent_id == null 
  * template a 12-column grid. Sub regions that are not shown (authorization, condition) leave no tab behind. Without
  * JavaScript every panel shows, under a heading when the sub region's own template (plain) has none.
  */
-async function renderChildren(ctx: PageContext, r: Region, hidden: Set<string>): Promise<Raw | ''> {
+async function renderChildren(ctx: PageContext, r: Region, hidden: Set<string>, which: (c: Region) => boolean = () => true): Promise<Raw | ''> {
   const shown: [Region, Raw][] = [];
-  for (const c of childrenOf(ctx, r)) {
+  for (const c of childrenOf(ctx, r).filter(which)) {
     const out = await renderRegion(ctx, c, hidden);
     if (out) shown.push([c, out as Raw]);
   }
@@ -486,7 +494,7 @@ const LEFT_SLOTS = new Set(['previous', 'close', 'delete']);
  */
 export const SLOTTED_TEMPLATES: ReadonlySet<string> = new Set(['standard', 'collapsible', 'plain', 'tabs_container', 'flex_container']);
 
-async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw) {
+async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, body: Raw, footerRegions: Raw | '' = '') {
   const slotted = [...ctx.vis!.buttons.values()].some((b) => b.region_id === r.id && b.slot && b.slot !== 'region');
   if (slotted && SLOTTED_TEMPLATES.has(r.template)) return slottedShell(ctx, r, hidden, body);
   const buttons = await buttonsFor(ctx, r.id);
@@ -532,7 +540,7 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
       <header class="region-header"><h2 id="${titleId}">${r.title}</h2>
         <a class="region-dialog-close icon-button" href="#" role="button" data-region-close aria-label="${ctx.locale.t('common.dismiss')}">${icon('close')}</a></header>
       <div class="region-body"${scrollable(r)}>${body}</div>
-      ${buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
+      ${buttons || footerRegions ? html`<footer class="region-footer">${footerRegions ? html`<div class="region-footer-regions">${footerRegions}</div>` : ''}${buttons ? html`<div class="region-footer-buttons">${buttons}</div>` : ''}</footer>` : ''}
     </dialog>`;
 
   const header = html`<h2 id="${titleId}">${r.title}</h2>${buttonsOnTop ? buttons : ''}`;

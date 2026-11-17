@@ -79,7 +79,8 @@ src/
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows
-  restcatalog.ts           (095) REST source catalogs: checks, fromOpenApi (OpenAPI 3 / Swagger 2 → services: parameters with "key",
+  restcatalog.ts           (095) REST source catalogs ((sprint 219) yamlDocument: OpenAPI in YAML, core schema, ≤100 aliases):
+                           checks, fromOpenApi (OpenAPI 3 / Swagger 2 → services: parameters with "key",
                            rows and columns from the response schema, write-back from collection and item paths, notes), catalog
                            files, load/insert/replace, sourceFromService
   workspace-export.ts      (sprint 67) a workspace's components as a file (pgkiln-workspace/1) and importWorkspace (one transaction);
