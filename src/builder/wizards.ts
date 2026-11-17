@@ -77,7 +77,7 @@ export async function wizardTables(dbRole: string | null) {
               $1::text is null or not exists (select 1 from pg_roles where rolname = $1)
                 or has_table_privilege($1, c.oid, 'select') as access
          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-        where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+        where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
         order by 1`,
       [dbRole],
     )
@@ -212,7 +212,7 @@ export async function wizardRoutes(app: FastifyInstance) {
     const rel = KINDS.has(kind) && table && kind !== 'dashboard'
       ? await owner.one<{ t: string; relkind: string }>(
           `select meta.wizard_qname(c.oid) as t, c.relkind::text from pg_class c join pg_namespace n on n.oid = c.relnamespace
-            where c.oid = to_regclass($1) and c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')`,
+            where c.oid = to_regclass($1) and c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')`,
           [table],
         )
       : null;

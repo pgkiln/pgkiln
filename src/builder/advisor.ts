@@ -737,7 +737,7 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
          join pg_language l on l.oid = p.prolang and l.lanname = 'plpgsql'
          cross join lateral plpgsql_check_function_tb(p.oid) r
         where p.prorettype <> 'trigger'::regtype
-          and n.nspname in (select nspname from pg_namespace ns where has_schema_privilege($1, ns.oid, 'USAGE') and nspname not in ('pg_catalog', 'information_schema', 'meta', 'public') and nspname not like 'pg\\_%')
+          and n.nspname in (select nspname from pg_namespace ns where has_schema_privilege($1, ns.oid, 'USAGE') and nspname not in ('pg_catalog', 'information_schema', 'meta', 'apex', 'public') and nspname not like 'pg\\_%')
         order by 1, r.lineno`,
       [app.db_role],
     );

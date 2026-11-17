@@ -23,7 +23,7 @@ import { SQL_TOOLS, toolDescription, toolLabel } from './sql-tools.ts';
 // Every query runs read only with a statement timeout.
 
 /** Schemas of the report queries: usable by the connection, not pgkiln's or the system's (alias n). */
-const USABLE = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta') and has_schema_privilege(n.oid, 'USAGE')`;
+const USABLE = `n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex') and has_schema_privilege(n.oid, 'USAGE')`;
 
 interface Report {
   title: string;

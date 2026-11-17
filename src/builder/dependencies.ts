@@ -61,7 +61,7 @@ interface Fragment extends Use {
   shape: SqlShape | 'relation';
 }
 
-const SYSTEM = new Set(['pg_catalog', 'information_schema', 'meta', 'pg_toast']);
+const SYSTEM = new Set(['pg_catalog', 'information_schema', 'meta', 'apex', 'pg_toast']);
 
 /** Every piece of SQL of an application, and the tables of its form and grid regions. */
 async function fragments(appId: number): Promise<Fragment[]> {

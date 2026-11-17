@@ -124,10 +124,15 @@ validations, conditions, computations, authorization schemes and Set Value actio
 | `v('P1_X')`, `nv('P1_X')` | `:P1_X` |
 | `… minus select …` | `… except select …` |
 | `"ORDER_TOTAL"`, `"OEHR_ORDERS"` (quoted, upper case) | `order_total`, `oehr_orders`: the same name in Oracle as unquoted, and lower case as ora2pg makes it; a PostgreSQL key word stays quoted (`"ORDER"` → `"order"`) (sprint 192) |
-| `from orders` (no schema) | `from sales.orders`: the `--schema` (sprint 192). An application's role has no search path of its own, and in APEX an unqualified name is the parsing schema's. APEX's views (`apex_…`) are left as they are |
+| `from orders` (no schema) | `from sales.orders`: the `--schema` (sprint 192). An application's role has no search path of its own, and in APEX an unqualified name is the parsing schema's. (sprint 217) APEX's views pgkiln has become `apex.apex_…` ([chapter 9](09-reference.md#apex-views)); the others are left as they are |
+| `median(x)` | `percentile_cont(0.5) within group (order by x)` (sprint 217; not as a window function) |
+| `listagg(x, ', ') within group (order by y)` | `string_agg((x)::text, ', ' order by y)` (sprint 217; not with `on overflow` or `over`) |
+| `sysdate - 1`, `sysdate + 1/24`, `sysdate - (1/24/60/60 * :P1_SECONDS)` | `localtimestamp(0) - (1.0) * interval '1 day'` …: a number of days, as decimals (Oracle's `1/24` is an hour, not 0) (sprint 217; only a number or numbers, binds and arithmetic in parentheses: `sysdate - hire_date` is days between two dates and stays) |
+| `instr(a, b)`, `instr(a, b, 1)` | `strpos((a)::text, (b)::text)`: 0 when not found, as `instr` (sprint 217; another start position or occurrence stays) |
+| `apex_lang.message(…)`, `apex_app_setting.get_value(…)` | `meta.message(…)`, `meta.get_app_setting(…)`: the same parameters (sprint 217) |
 
 What changes the meaning or the shape of a query stays as it is and is named in the report as **needs porting**:
-`rownum`, `(+)` outer joins, `connect by`, `listagg`, `instr`, `to_number` without a format, `substr` from the end,
+`rownum`, `(+)` outer joins, `connect by`, `listagg` with `on overflow` or `over`, `instr` from another position, `to_number` without a format, `substr` from the end,
 and calls to APEX and Oracle packages. Port them with the table [below](#porting-plsql-to-plpgsql); the
 [Advisor](03-builder.md#advisor) then finds what doesn't run yet.
 
@@ -286,8 +291,10 @@ table, chart, card, calendar and facet columns of a query on one table), **seque
 routines** (Invoke API processes, `pkg.proc(…)` calls). Oracle's upper-case names are looked up in lower case. It only
 reads the catalogue (`pg_catalog`): nothing of the export runs. It imports nothing and exits with 1 when something is
 missing (0 when nothing is), so a migration script can stop there; `--json` gives the report with `check.missing`.
-**APEX views** (`apex_applications`, `apex_collections` …) are listed apart: ora2pg doesn't move them, rebuild what
-uses them on your own tables or pgkiln's.
+**APEX views** (`apex_applications`, `apex_collections` …) are listed apart: ora2pg doesn't move them. (sprint 217)
+Those pgkiln has in schema `apex` ([chapter 9](09-reference.md#apex-views): the activity log, access control,
+feedback, automations, pages, build options …) are not missing: the importer qualifies them. Rebuild what uses the
+others (`apex_collections`, `apex_workspace_apex_users` …) on your own tables or pgkiln's.
 
 A PL/SQL routine the application calls that already exists in PostgreSQL is named with the function found: package
 `SALES_PKG`'s `RECALCULATE` as `sales_pkg.recalculate` (`PACKAGE_AS_SCHEMA 1`) or as `sales.sales_pkg_recalculate`
@@ -323,9 +330,12 @@ administration pages). After the import all 44 imported pages open as a user, an
 | 10, 12, 14, 16, 18, 20 | regions, countries, warehouses, products, jobs and departments in interactive reports, with APEX's column headings, hidden key columns, the edit link to the form page and the default report's sort |
 | 4, 9, 11, 13, 15, 17, 19, 21 | the form pages, empty for a new row or filled from the edit link |
 
-The 17 pages left with an error are APEX's own administration pages (access control, activity, feedback, theme
-styles, settings): they read APEX's views (`apex_activity_log`, `apex_appl_acl_users`, `apex_collections` …) and call
-`apex_util` and `owa_util`; rebuild them with pgkiln's own (Activity, Access control, Feedback) or leave them out.
+The pages left with an error are APEX's own administration pages (access control, activity, feedback, theme styles,
+settings). (sprint 217) They read APEX's views, which pgkiln now has in schema `apex` ([chapter 9](09-reference.md#apex-views)):
+12 of the 23 show their data (Appearance, Page Performance, Page Views, Automations Log and its messages, Manage User
+Access, Add Multiple Users, Manage Feedback, About, Help). The other 11 still need hand work: `apex_collections`
+(pgkiln has no collections), `apex_util` and `owa_util` calls, `connect by` and Oracle's implicit conversions (a number
+compared with text); rebuild them with pgkiln's own (Activity, Access control, Feedback) or leave them out.
 
 ## Users per application
 

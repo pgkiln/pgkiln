@@ -364,6 +364,30 @@ PostgreSQL's JSON functions do what `APEX_JSON` does, in SQL:
 Web services return JSON through [`meta.web_response(id) -> 'json'`](#web-requests-from-sql), and
 [`meta.parse_data`](#parsing-files-in-sql) turns a JSON file into rows.
 
+### APEX views
+
+(sprint 217) Schema `apex` has APEX 26.2's dictionary views that an application's administration pages read, with
+APEX's names and the columns pgkiln has data for, read-only over pgkiln's own tables. The APEX importer qualifies them
+(`apex_activity_log` → `apex.apex_activity_log`); in your own SQL write `apex.` too.
+
+| View | From | Notes |
+|---|---|---|
+| `apex_applications`, `apex_application_pages` | the application and its pages | `theme_number` is 42 (APEX's Universal Theme) |
+| `apex_application_build_options` | build options | `build_option_status`: `Include` or `Exclude` |
+| `apex_application_lov_entries` | static lists of values (`STATIC:`) | a query's entries are its rows |
+| `apex_application_themes`, `apex_application_theme_styles` | the base styles Standard, Iris, Lavender | `is_current` for the application's |
+| `apex_activity_log` | page views and errors of the activity log | `flow_id`, `step_id`, `time_stamp` (a timestamp in the session's time zone, as `sysdate` is), `userid`, `elap` (seconds), `sqlerrm` (an error's text) |
+| `apex_team_feedback` | feedback | `feedback_rating` 1 to 3 (pgkiln's 1–2, 3, 4–5); `feedback_status` 0 declined, 1 in progress, 3 open, 4 done |
+| `apex_appl_acl_roles`, `apex_appl_acl_user_roles`, `apex_appl_acl_users` | the roles an application uses (role authorization schemes, identity-provider groups, its users' roles) and its users | `role_id` is a number made from the role's name; `role_names` comma-separated, `role_ids` colon-separated |
+| `apex_appl_automations`, `apex_automation_log`, `apex_automation_msg_log` | automations, their runs, each run's message and row errors | `status`: `SUCCESS`, `FAILURE`, `SUCCESS_WITH_ERRORS`, `RUNNING` |
+
+**Who sees which rows:** at run time only the running application's; in the SQL Workshop a workspace's developer
+login its own workspace's applications; pgkiln's owner every application; any other login none. No password hash,
+secret or session id is in them. They are read-only: APEX's APIs that change these (`apex_acl`,
+`apex_util.set_build_option_status`, `apex_theme` …) are PL/SQL to port to pgkiln's (Access control, build options,
+the theme in Shared Components). `apex_collections` has no counterpart: pgkiln has no collections (use a table, or
+`jsonb` in session state).
+
 ## Functions for developers and scripts
 
 Run these as the owner (in the SQL Workshop, `psql` or migrations):

@@ -18373,3 +18373,53 @@ describe('column authorization and condition', () => {
     });
   });
 });
+
+describe('(sprint 217) APEX views: the running application\'s rows only', () => {
+  const VIEWS = ['apex_applications', 'apex_application_pages', 'apex_application_build_options', 'apex_application_lov_entries',
+    'apex_application_themes', 'apex_application_theme_styles', 'apex_activity_log', 'apex_team_feedback', 'apex_appl_acl_roles',
+    'apex_appl_acl_user_roles', 'apex_appl_acl_users', 'apex_appl_automations', 'apex_automation_log', 'apex_automation_msg_log'];
+  const appCol = (v: string) => (v === 'apex_activity_log' ? 'flow_id' : 'application_id');
+  let other: number;
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = 'sec217'`);
+    other = (await owner.one<{ id: number }>(`insert into meta.app (alias, name, db_role) values ('sec217', 'Sec 217', 'hr_app') returning id`))!.id;
+    await owner.query(`insert into meta.activity_log (app_id, page_no, username, event) values ($1, 1, 'someone', 'page_view')`, [other]);
+    await owner.query(`insert into meta.activity_log (app_id, page_no, username, event) values ($1, 1, 'king', 'page_view')`, [appId]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.activity_log where app_id = $1`, [other]);
+    await owner.query(`delete from meta.app where id = $1`, [other]);
+  });
+
+  test('a login with no application (the runtime login outside a request) sees no row in any of them', async () => {
+    for (const v of VIEWS) assert.equal((await runtime.one<{ n: number }>(`select count(*)::int as n from apex.${v}`))!.n, 0, v);
+  });
+
+  test('a request of one application sees that application\'s rows, as its own role too, never another\'s', async () => {
+    for (const asRole of [null, 'hr_app']) {
+      const seen = await runtime.tx(async (c) => {
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'king', true)`, [String(appId)]);
+        if (asRole) await c.query(`set local role ${asRole}`);
+        const out: Record<string, number[]> = {};
+        for (const v of VIEWS) out[v] = (await c.query(`select distinct ${appCol(v)} as a from apex.${v}`)).rows.map((r) => r.a);
+        return out;
+      });
+      for (const v of VIEWS) assert.ok(seen[v].every((a) => a === appId), `${v} as ${asRole ?? 'pgkiln_runtime'}: ${seen[v]}`);
+      assert.deepEqual(seen.apex_applications, [appId]);
+      assert.ok(seen.apex_activity_log.includes(appId), 'its own activity');
+    }
+  });
+
+  test('no password hash, secret or session token in any column', async () => {
+    const cols = (await owner.query(`select table_name || '.' || column_name as c from information_schema.columns where table_schema = 'apex'`)).rows.map((r) => r.c);
+    assert.ok(cols.length > 100);
+    assert.deepEqual(cols.filter((c) => /password|hash|secret|token|_enc$|cookie/.test(c)), []);
+  });
+
+  test('read-only: an application can\'t write through them', async () => {
+    await assert.rejects(runtime.tx(async (c) => {
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
+      await c.query(`delete from apex.apex_activity_log`);
+    }), /permission denied|cannot delete/);
+  });
+});

@@ -38,7 +38,8 @@ src/
                            (sprint 191, NX-S6) productionChecks(): the production readiness group (productionInstance: an https
                            PUBLIC_URL of a public host, or pgkiln admin check --production); every line ok or error
   oracle-sql.ts            (sprint 187) translateOracle: nvl, nvl2, decode, sysdate, systimestamp, dual, sequences, v(),
-                           minus rewritten outside literals, q-quotes, quoted names and comments (codeMask)
+                           minus rewritten outside literals, q-quotes, quoted names and comments (codeMask); (sprint 217) median,
+                           listagg, sysdate ± days, apex_lang.message, apex_app_setting.get_value
                            (sprint 209) plsqlAsSql: a PL/SQL process body that is SQL in disguise (DML statements, :ITEM := expr,
                            SELECT … INTO :ITEM, RETURNING … INTO :ITEM) as the SQL of a pgkiln sql process, else null
                            (sprint 211) plsqlStatements (top-level statements of a block); plsqlAsHtml: a dynamic content
@@ -73,7 +74,8 @@ src/
   apex-check.ts            (sprint 192, NX-F5) sqlObjects (tables, sequences, pkg.proc calls of a SQL/PL/SQL text, statically),
                            soleTableColumn, qualifyTables; apexCheck: the report's uses looked up in pg_catalog (missing tables,
                            APEX views, columns, sequences, routines; a routine ora2pg converted as pkg.proc or pkg_proc is a hint),
-                           notes on the entries; checkText for `pgkiln import-apex --check`
+                           notes on the entries; checkText for `pgkiln import-apex --check`; (sprint 217) APEX_VIEWS: the views
+                           of db/migrations/182_apex_views.sql (schema apex), qualified by qualifyTables, not reported missing
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows

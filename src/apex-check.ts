@@ -66,16 +66,29 @@ export function sqlObjects(sql: string | null | undefined): { tables: string[]; 
  * (sprint 192) Unqualified table names of a query qualified with the schema: in APEX they are the parsing schema's,
  * and an application's role in pgkiln has no search_path of its own. n: how many were qualified.
  */
+/**
+ * (sprint 217, migration 182) APEX's dictionary views pgkiln has, in schema apex, read-only over its own tables: the
+ * importer qualifies them (apex_activity_log → apex.apex_activity_log); the check doesn't report them missing.
+ */
+export const APEX_VIEWS = new Set([
+  'apex_applications', 'apex_application_pages', 'apex_application_build_options', 'apex_application_lov_entries',
+  'apex_application_themes', 'apex_application_theme_styles', 'apex_activity_log', 'apex_team_feedback',
+  'apex_appl_acl_roles', 'apex_appl_acl_user_roles', 'apex_appl_acl_users', 'apex_appl_automations',
+  'apex_automation_log', 'apex_automation_msg_log',
+]);
+
 export function qualifyTables(sql: string, schema: string): { sql: string; n: number } {
-  if (!schema || !/^[a-z_][a-z0-9_$]*$/.test(schema)) return { sql, n: 0 };
-  const at = scanSql(sql).unqualified;
+  const ok = !!schema && /^[a-z_][a-z0-9_$]*$/.test(schema);
+  // the schema's tables, and (sprint 217) APEX's views pgkiln has, which are in apex whatever the schema
+  const at = scanSql(sql).unqualified.filter(([, , own]) => own || ok);
   let text = sql;
-  for (const [pos, len] of [...at].sort((a, b) => b[0] - a[0])) text = `${text.slice(0, pos)}${schema}.${text.slice(pos, pos + len).replace(/^"|"$/g, '').toLowerCase()}${text.slice(pos + len)}`;
+  for (const [pos, len, own] of [...at].sort((a, b) => b[0] - a[0])) text = `${text.slice(0, pos)}${own ?? schema}.${text.slice(pos, pos + len).replace(/^"|"$/g, '').toLowerCase()}${text.slice(pos + len)}`;
   return { sql: text, n: at.length };
 }
 
-function scanSql(sql: string | null | undefined): { tables: string[]; sequences: string[]; routines: string[]; unqualified: [number, number][] } {
-  const unqualified: [number, number][] = [];
+function scanSql(sql: string | null | undefined): { tables: string[]; sequences: string[]; routines: string[]; unqualified: [number, number, string | null][] } {
+  // an unqualified name's position and length, and its own schema (apex for APEX's views pgkiln has) or null
+  const unqualified: [number, number, string | null][] = [];
   const tables = new Set<string>();
   const sequences = new Set<string>();
   const routines = new Set<string>();
@@ -92,10 +105,11 @@ function scanSql(sql: string | null | undefined): { tables: string[]; sequences:
     if (!name.includes('.') && ctes.has(name)) return;
     if (name.split('.').length > 2) return;
     tables.add(name);
-    // APEX's own views (apex_collections …) stay unqualified: no schema has them
-    if (!name.includes('.') && !/^apex_/.test(name)) {
+    // APEX's own views: those pgkiln has are in schema apex (sprint 217); the others (apex_collections …) stay
+    // unqualified: no schema has them
+    if (!name.includes('.') && (!/^apex_/.test(name) || APEX_VIEWS.has(name))) {
       const from = sql[x.at - 1] === '"' ? x.at - 1 : x.at;
-      unqualified.push([from, sql.slice(from).match(/^"?[A-Za-z_][\w$#]*"?/)![0].length]);
+      unqualified.push([from, sql.slice(from).match(/^"?[A-Za-z_][\w$#]*"?/)![0].length, APEX_VIEWS.has(name) ? 'apex' : null]);
     }
   };
   /** the table list after FROM (comma joins) or the one table after JOIN/UPDATE/INTO */
@@ -128,7 +142,8 @@ function scanSql(sql: string | null | undefined): { tables: string[]; sequences:
       if (!SYSTEM.test(m[2])) sequences.add(m[1] ? `${m[1]}.${m[2]}` : m[2]);
       continue;
     }
-    if (x.t === 'from' && !FROM_FUNCTIONS.has(stack[stack.length - 1] ?? '')) tableList(i + 1, true);
+    // (sprint 217) "a is [not] distinct from b" (decode → case writes it) is a comparison, not a FROM list
+    if (x.t === 'from' && prev !== 'distinct' && !FROM_FUNCTIONS.has(stack[stack.length - 1] ?? '')) tableList(i + 1, true);
     else if (x.t === 'join') {
       if (tk[i + 2]?.t !== '(') tableList(i + 1, false);
     }
@@ -281,6 +296,8 @@ export async function apexCheck(db: Queryable, report: { entries: CheckEntry[]; 
   for (const [t, es] of users.tables) {
     if (rel(t)) continue;
     const last = t.split('.').pop()!;
+    // (sprint 217) pgkiln has this one (schema apex, migration 182)
+    if (APEX_VIEWS.has(last) && !t.includes('.')) continue;
     // APEX's own views (apex_applications, apex_workspace_apex_users …): ora2pg doesn't move them
     if (/^apex_/.test(last)) for (const e of es) put(apexViews, last, e);
     else miss('table', t, es, `missing in PostgreSQL: table or view ${t} (move it with ora2pg, chapter 11)`);

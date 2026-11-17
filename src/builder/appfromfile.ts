@@ -284,7 +284,7 @@ export async function appFromFileRoutes(app: FastifyInstance) {
     }
     const sheet = sheets[0];
     const again = f.mime_type === PASTED ? html`<a href="${BASE}/create/paste">${tx('aff.paste_other_data')}</a>` : html`<a href="${BASE}/create/file">${tx('aff.choose_another_file')}</a>`;
-    const schemas = (await owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta') order by 1`)).rows;
+    const schemas = (await owner.query(`select nspname from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta', 'apex') order by 1`)).rows;
     const v = (k: string, d: string) => (b ? (b[k] ?? '') : d);
     const appRegion = region(tx('aff.application'), html`<div class="form-grid">
           ${input('name', tx('aff.name'), v('name', appNameFor(f.filename)), { required: true })}

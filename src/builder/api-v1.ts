@@ -101,7 +101,7 @@ export function serverContext(caller: TokenCaller): ToolContext {
     },
     async schema(db, name) {
       const ok = (await db.query(`select has_schema_privilege(oid, 'USAGE') as ok from pg_namespace where nspname = $1`, [name])).rows[0]?.ok;
-      if (!ok || name === 'meta' || name.startsWith('pg_') || name === 'information_schema') throw new ToolError(`no schema ${name} that workspace ${caller.workspace}'s developer login may use`);
+      if (!ok || name === 'meta' || name === 'apex' || name.startsWith('pg_') || name === 'information_schema') throw new ToolError(`no schema ${name} that workspace ${caller.workspace}'s developer login may use`);
     },
     exportDoc: (alias) =>
       withClient(owner, async (db) => {

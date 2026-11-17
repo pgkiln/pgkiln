@@ -94,7 +94,7 @@ export const getJob = async (id: number | string) =>
 export const listJobs = async (limit = 200) => (await owner.query<Job>(`select ${JOB_COLUMNS} from meta.dump_job order by id desc limit $1`, [limit])).rows;
 
 /** The schemas pgkiln keeps for itself: never exported, imported or replaced here. */
-export const reservedSchema = (name: string) => /^(pg_|pgkiln)/i.test(name) || ['meta', 'information_schema', 'pg_catalog', 'pg_toast'].includes(name.toLowerCase());
+export const reservedSchema = (name: string) => /^(pg_|pgkiln)/i.test(name) || ['meta', 'apex', 'information_schema', 'pg_catalog', 'pg_toast'].includes(name.toLowerCase());
 /** A schema name typed in a form: an identifier PostgreSQL keeps as typed (quoted when it needs to be). */
 export const SCHEMA_NAME = /^[A-Za-z_][A-Za-z0-9_$]{0,62}$/;
 

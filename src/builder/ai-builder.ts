@@ -49,7 +49,7 @@ async function ask(s: Session, req: Parameters<typeof generate>[1]) {
 async function schemas(s: Session) {
   const db = await workshopDb(s);
   return (await db.query<{ n: string }>(
-    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta')
+    `select nspname as n from pg_namespace where nspname !~ '^pg_' and nspname not in ('information_schema', 'meta', 'apex')
        ${db === owner ? '' : `and has_schema_privilege(oid, 'USAGE')`} order by 1`)).rows.map((r) => r.n);
 }
 
@@ -83,7 +83,7 @@ export async function tableInfo(where: { schema?: string; table?: string; tables
                                  col_description(c.oid, a.attnum))) order by a.attnum)
                from pg_attribute a where a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped), '[]') as columns
        from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta')
+      where c.relkind in ('r', 'p', 'v', 'm') and n.nspname !~ '^pg_' and n.nspname not in ('information_schema', 'meta', 'apex')
         and ($1::text is null or n.nspname = $1) and ($3::text is null or c.relname = $3)
         and ($2::text[] is null or format('%I.%I', n.nspname, c.relname) = any ($2))
       order by 1, 2 limit ${MAX_TABLES}`,

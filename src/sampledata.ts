@@ -162,7 +162,7 @@ export const PREVIEW_ROWS = 10;
 const EXISTING_LIMIT = 200_000;
 
 /** A schema whose tables can be filled: not pgkiln's own (meta), not the system catalogs. */
-export const allowedSchema = (s: string) => /^.{1,63}$/s.test(s) && !/^pg_/i.test(s) && !['meta', 'information_schema'].includes(s);
+export const allowedSchema = (s: string) => /^.{1,63}$/s.test(s) && !/^pg_/i.test(s) && !['meta', 'apex', 'information_schema'].includes(s);
 
 type Db = pg.ClientBase | pg.Pool;
 
@@ -171,7 +171,7 @@ export async function schemas(db: Db) {
   return (
     await db.query<{ name: string; tables: number; usable: boolean }>(
       `select n.nspname as name, count(*)::int as tables, has_schema_privilege(n.oid, 'USAGE') as usable from pg_namespace n join pg_class c on c.relnamespace = n.oid
-        where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('meta', 'information_schema')
+        where c.relkind in ('r', 'p') and not c.relispartition and n.nspname !~ '^pg_' and n.nspname not in ('meta', 'apex', 'information_schema')
         group by n.oid, n.nspname order by n.nspname`,
     )
   ).rows;

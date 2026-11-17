@@ -89,7 +89,7 @@ export function checkBlueprint(input: unknown): { blueprint: Blueprint | null; p
   const alias = typeof b.alias === 'string' ? b.alias.trim().toLowerCase() : '';
   if (!ALIAS.test(alias)) p.push('"alias": starts with a letter; a-z, 0-9, _ and -; at most 50 characters.');
   const schema = typeof b.schema === 'string' && b.schema.trim() ? b.schema.trim() : alias.replace(/-/g, '_');
-  if (!NAME.test(schema) || /^pg_/.test(schema) || ['meta', 'information_schema', 'public'].includes(schema)) p.push(`"schema": ${schema || '(none)'} can't be an application's schema (a-z, 0-9, _; not meta, public, information_schema or pg_*).`);
+  if (!NAME.test(schema) || /^pg_/.test(schema) || ['meta', 'apex', 'information_schema', 'public'].includes(schema)) p.push(`"schema": ${schema || '(none)'} can't be an application's schema (a-z, 0-9, _; not meta, public, information_schema or pg_*).`);
   const authentication = b.authentication === undefined || b.authentication === 'app_users' ? 'app_users' : b.authentication === 'none' ? 'none' : null;
   if (!authentication) p.push('"authentication": "app_users" (a login page) or "none".');
 

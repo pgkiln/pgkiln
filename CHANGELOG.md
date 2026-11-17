@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **APEX views** (sprint 217, migration 182, NX-F5): schema `apex` has the APEX 26.2 dictionary views an application's
+  administration pages read (`apex_activity_log`, `apex_appl_acl_users`, `apex_appl_acl_roles`,
+  `apex_appl_acl_user_roles`, `apex_application_pages`, `apex_applications`, `apex_application_build_options`,
+  `apex_application_lov_entries`, `apex_application_themes`, `apex_application_theme_styles`, `apex_team_feedback`,
+  `apex_appl_automations`, `apex_automation_log`, `apex_automation_msg_log`), read-only over pgkiln's own tables. At
+  run time a view shows the running application's rows only; a workspace's developer login its own workspace's; any
+  other login none. The APEX importer qualifies them (`apex.apex_activity_log`) and `import-apex --check` no longer
+  reports them missing. In the sample export f77536, 12 of the 23 administration pages show their data (5 before).
+- **More Oracle SQL rewritten by the APEX importer** (sprint 217): `median(x)` → `percentile_cont(0.5) within group
+  (order by x)`; `listagg(x, sep) within group (order by y)` → `string_agg`; `sysdate` plus or minus a number of days
+  (`sysdate - 1/24`, `sysdate - (1/24/60/60 * :P1_SECONDS)`) → plus or minus an interval, with Oracle's decimal
+  division; `instr(a, b[, 1])` → `strpos`; `apex_lang.message` → `meta.message`, `apex_app_setting.get_value` → `meta.get_app_setting`.
+
 ### Changed
 - **Faster CI** (sprints 212 and 216): the test shards are balanced by each file's duration (`scripts/test-shard.ts`,
   `test/durations.json`) instead of Node's `--test-shard`, which gave one shard twice the work of the next; the
@@ -13,6 +27,8 @@ All notable changes to this project are documented here. The format follows
   instead of holding the job). A full run (main, release branches, nightly) went from about 14 to about 12 minutes.
 
 ### Fixed
+- **APEX import: `decode(x, null, …)`** (sprint 217): the rewritten `… is not distinct from null` was read as a FROM
+  list and qualified as `schema.null`, so the query failed.
 - **Workspace role sync at the same time** (sprint 212, migration 181): `meta.workspace_sync_roles()` runs at the commit
   of every change to a workspace or an application's role; two transactions running it at once both granted the same
   missing privilege, and the second failed with "tuple concurrently updated". It now takes an advisory lock first (as
