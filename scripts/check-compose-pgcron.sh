@@ -1,5 +1,5 @@
 #!/bin/sh
-# (sprint 213) CI's docker jobs, in deploy/ after `docker compose up`: the bundled PostgreSQL has pg_cron, pgkiln
+# (sprint 213) CI's docker job, in deploy/ after `docker compose up`: the bundled PostgreSQL has pg_cron, pgkiln
 # created the extension at start-up, and pg_cron really runs a job (a seconds schedule, pg_cron 1.5 or later).
 set -eu
 psql() { docker compose exec -T db psql -U pgkiln -d pgkiln -v ON_ERROR_STOP=1 -Atc "$1"; }

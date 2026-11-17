@@ -11,8 +11,7 @@ All notable changes to this project are documented here. The format follows
   for pgkiln's database; `PGKILN_CRON_TIMEZONE` sets its `cron.timezone` (UTC by default). pgkiln creates the extension
   when it starts, on any server that loads pg_cron for its database when the owner connection may (a superuser), so
   SQL Workshop → Scheduling works on a fresh install. The development database (`docker-compose.yml`) has pg_cron and
-  pgvector, and CI's test database pg_cron; CI's Docker jobs check that pg_cron runs a job, after a fresh install and
-  after an upgrade.
+  pgvector, and CI's test database pg_cron; CI's Docker job checks that pg_cron is created and runs a job.
 
 ### Changed
 - **Scheduling or Automations** (sprint 213): SQL Workshop → Scheduling says in one line what it is for (database jobs

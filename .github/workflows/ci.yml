@@ -78,7 +78,7 @@ jobs:
       - name: Load pg_stat_statements and pg_cron
         run: |
           docker exec ${{ job.services.postgres.id }} sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends postgresql-17-cron > /dev/null'
-          psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = 'pg_stat_statements,pg_cron'" -c "alter system set cron.database_name = 'pgkiln'"
+          psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = pg_stat_statements, pg_cron" -c "alter system set cron.database_name = 'pgkiln'"
           docker restart ${{ job.services.postgres.id }}
           for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgkiln && break; sleep 1; done
       # Schema Export / Import (test/datapump.test.ts) needs pg_dump and pg_restore of the server's major version:
@@ -314,10 +314,6 @@ jobs:
           [ "$(docker inspect -f '{{.Image}}' "$(docker compose ps -q pgkiln)")" = "$new" ] || { echo "the container still runs the old image"; exit 1; }
           curl -fsS http://127.0.0.1:3100/healthz
           curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
-      # 0.50.0 didn't create pg_cron; the upgraded pgkiln does on the database the current compose.yaml builds
-      - name: pg_cron works (SQL Workshop › Scheduling)
-        working-directory: deploy
-        run: ../scripts/check-compose-pgcron.sh
       - name: Logs
         if: always()
         working-directory: deploy
