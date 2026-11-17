@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Shared Components: the tree keeps its place** (sprint 218): clicking an entry (an automation action, a list
+  entry …) opened it with the tree scrolled back to the top; the list now stays where it was (per tab), and a page
+  opened fresh scrolls the selected entry into view. The same for every builder page with a side list.
+
 ## [0.107.0] - 2026-11-17
 
 ### Added
