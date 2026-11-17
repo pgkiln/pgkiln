@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **An inline drawer's footer** (sprint 219; APEX 26.1): a sub region of an inline dialog or drawer with position
+  *footer* shows in its footer, before its buttons; the header and footer stay in place while the body scrolls.
+  HR's page 44 has one in its Help drawer.
+- **REST Source Catalogs read YAML** (sprint 219): an OpenAPI or Swagger document in YAML (`openapi.yaml`) imports
+  like its JSON twin, with YAML's core schema (custom tags ignored, at most 100 aliases, the result plain data).
+
+
 ## [0.108.0] - 2026-11-17
 
 ### Added

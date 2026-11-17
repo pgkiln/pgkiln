@@ -144,7 +144,9 @@ Region **templates**:
 An inline dialog or drawer opens with the dynamic action **Open region** (and closes with **Close
 region**), e.g. on the click of a button with action *Defined by dynamic action*, or with a link to
 `#R<id>` (which also works without JavaScript). Items in it are part of the page: a submit sends
-them along. The carousel is a style of the [display selector](#display_selector-region-display-selector)
+them along. (sprint 219; APEX 26.1: the inline drawer's footer) A [sub region](#sub-regions) of an inline dialog or
+drawer with position **footer** shows in its footer, before its buttons: the header and the footer stay in place while
+the body scrolls (a total, a short note, a link). HR's page 44 has one in its Help drawer. The carousel is a style of the [display selector](#display_selector-region-display-selector)
 region (`{"style": "carousel"}`). The HR example's page 44 (*Region templates*) shows them all.
 
 Every region also has `seq` (order), a [server-side condition](06-processing.md#server-side-conditions)

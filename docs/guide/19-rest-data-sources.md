@@ -293,7 +293,7 @@ and operations as a [REST data source](#rest-data-sources). Every developer of t
 
 A catalog comes from:
 
-- an **OpenAPI 3.x or Swagger 2.0 document** in JSON (*Import a catalog*: upload `openapi.json`, paste it, or give its
+- an **OpenAPI 3.x or Swagger 2.0 document** in JSON or (sprint 219) YAML (*Import a catalog*: upload `openapi.json` or `openapi.yaml`, paste it, or give its
   URL, which the server reads, so the host must be on the [allow-list](#server-configuration-and-the-allow-list));
 - a **catalog file** downloaded from another workspace or installation (*Download* on the catalog's page);
 - **by hand**: a name and base URL, then *Add a service*.
@@ -314,7 +314,7 @@ Reading an OpenAPI document, pgkiln takes for each `GET`, `POST`, `PUT`, `PATCH`
 
 `$ref`s inside the document and `allOf` are followed. What a data source can't use (cookie and form parameters, the
 `Authorization` header, external `$ref`s, `HEAD` and `OPTIONS`) is listed after the import, never dropped silently.
-YAML documents: convert them to JSON first (most services offer `openapi.json` too).
+(sprint 219) A YAML document is read as the JSON it stands for, with YAML's core schema: anchors and aliases are followed (at most 100), custom tags are ignored (the value stays text), and an unquoted date stays text as in JSON.
 
 **Making a data source from a catalog**: an application's Shared Components → REST data sources → ＋ Add shows *From a
 REST source catalog* when the application's workspace has catalogs: pick a service, optionally another name and one

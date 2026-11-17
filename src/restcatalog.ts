@@ -1,5 +1,6 @@
 import { owner } from './db.ts';
 import { sourceProblems, type RestColumn, type RestParam } from './websources.ts';
+import { parseDocument } from 'yaml';
 
 // REST source catalogs (migration 095; APEX: Workspace Utilities → REST Source
 // Catalogs): a workspace's descriptions of web services. A catalog has a base
@@ -514,15 +515,29 @@ export function fromCatalogDocument(doc: Json): Catalog {
   };
 }
 
-/** A file's text as a catalog: a pgkiln catalog file, or an OpenAPI / Swagger document (JSON). */
+/**
+ * (sprint 219) An OpenAPI or Swagger document in YAML, as the JSON it stands for. The document is untrusted: YAML's
+ * core schema only (no custom tags, no dates or binaries), at most 100 aliases (a "billion laughs" document is
+ * refused), and the result goes through JSON so that it is plain data (no shared nodes, __proto__ an ordinary key).
+ */
+export function yamlDocument(text: string): unknown {
+  const doc = parseDocument(text, { schema: 'core', uniqueKeys: false, prettyErrors: false });
+  if (doc.errors.length) throw new Error(`The file is not valid JSON or YAML: ${doc.errors[0].message.split('\n')[0]}`);
+  try {
+    return JSON.parse(JSON.stringify(doc.toJS({ maxAliasCount: 100 })));
+  } catch (e) {
+    throw new Error(`The YAML document can't be read: ${(e as Error).message.split('\n')[0]}`);
+  }
+}
+
+/** A file's text as a catalog: a pgkiln catalog file, or an OpenAPI / Swagger document (JSON or, sprint 219, YAML). */
 export function readCatalogText(text: string, opts: { baseUrl?: string; from?: string; name?: string } = {}): { catalog: Catalog; notes: string[] } {
   let doc: unknown;
   try {
     doc = JSON.parse(text);
   } catch {
-    throw new Error(/^\s*(openapi|swagger)\s*:/m.test(text)
-      ? 'This looks like an OpenAPI document in YAML: pgkiln reads JSON. Most services offer their document as JSON too (e.g. openapi.json), or convert it with any YAML tool.'
-      : 'The file is not valid JSON.');
+    // not JSON: YAML (a superset of JSON), the format most OpenAPI documents are published in
+    doc = yamlDocument(text);
   }
   if (isObj(doc) && doc.format === CATALOG_FORMAT) {
     const catalog = fromCatalogDocument(doc);

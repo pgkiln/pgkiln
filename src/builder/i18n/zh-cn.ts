@@ -5475,7 +5475,7 @@ export const zhCN: BuilderMessages = {
   'rcat.from_a_rest_source_catalog': '从 REST 源目录',
   'rcat.app_builder': '应用构建器',
   'rcat.workspace_utilities': '工作区实用工具',
-  'rcat.doc_intro': 'JSON 格式的 {openapi} 或 {swagger} 文档(例如 {file}),或从 pgkiln 下载的目录文件。',
+  'rcat.doc_intro': 'JSON 或 YAML 格式的 {openapi} 或 {swagger} 文档(例如 {file}),或从 pgkiln 下载的目录文件。',
   'rcat.doc_replacing': '目录的服务会被文档中的服务替换;之前从中创建的数据源保持不变。',
   'rcat.url_answered': '该 URL 返回 HTTP {status}。',
   'rcat.headers_help': '额外的请求标头,不是密钥:由应用程序的 Web 凭据登录。',

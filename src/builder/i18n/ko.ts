@@ -5475,7 +5475,7 @@ export const ko: BuilderMessages = {
   'rcat.from_a_rest_source_catalog': 'REST 소스 카탈로그에서',
   'rcat.app_builder': '앱 빌더',
   'rcat.workspace_utilities': '작업 공간 유틸리티',
-  'rcat.doc_intro': 'JSON 형식의 {openapi} 또는 {swagger} 문서(예: {file}) 또는 pgkiln에서 내려받은 카탈로그 파일.',
+  'rcat.doc_intro': 'JSON 또는 YAML 형식의 {openapi} 또는 {swagger} 문서(예: {file}) 또는 pgkiln에서 내려받은 카탈로그 파일.',
   'rcat.doc_replacing': '카탈로그의 서비스가 문서의 서비스로 바뀝니다. 이전에 만든 데이터 소스는 그대로 유지됩니다.',
   'rcat.url_answered': 'URL이 HTTP {status}(으)로 응답했습니다.',
   'rcat.headers_help': '추가 요청 헤더(비밀 값 제외): 로그인은 애플리케이션의 웹 자격 증명이 합니다.',

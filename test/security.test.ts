@@ -18423,3 +18423,24 @@ describe('(sprint 217) APEX views: the running application\'s rows only', () => 
     }), /permission denied|cannot delete/);
   });
 });
+
+describe('(sprint 219) REST source catalogs read YAML: an untrusted document is only data', () => {
+  test('a billion-laughs document is refused, quickly', async () => {
+    const { readCatalogText } = await import('../src/restcatalog.ts');
+    const lol = ['a: &a ["lol","lol","lol","lol","lol","lol","lol","lol","lol"]'];
+    for (let i = 1; i < 10; i++) lol.push(`${String.fromCharCode(97 + i)}: &${String.fromCharCode(97 + i)} [${Array(9).fill(`*${String.fromCharCode(96 + i)}`).join(',')}]`);
+    const t0 = Date.now();
+    assert.throws(() => readCatalogText(`openapi: 3.0.0\n${lol.join('\n')}\n`), /can't be read|alias/i);
+    assert.ok(Date.now() - t0 < 2000, 'refused before expanding');
+  });
+
+  test('__proto__ is an ordinary key; custom tags run nothing', async () => {
+    const { yamlDocument } = await import('../src/restcatalog.ts');
+    const doc = yamlDocument('__proto__:\n  polluted: yes\nx: 1\n') as Record<string, unknown>;
+    assert.equal(({} as Record<string, unknown>).polluted, undefined, 'Object.prototype untouched');
+    assert.equal(Object.getPrototypeOf(doc), Object.prototype);
+    // an unknown tag is no type: the value stays the text it is
+    assert.deepEqual(yamlDocument('f: !!js/function "function () { globalThis.pwned = 1 }"\n'), { f: 'function () { globalThis.pwned = 1 }' });
+    assert.equal((globalThis as Record<string, unknown>).pwned, undefined);
+  });
+});

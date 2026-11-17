@@ -5475,7 +5475,7 @@ export const it: BuilderMessages = {
   'rcat.from_a_rest_source_catalog': 'Da un catalogo di origini REST',
   'rcat.app_builder': 'App Builder',
   'rcat.workspace_utilities': 'Utilità del workspace',
-  'rcat.doc_intro': 'Un documento {openapi} o {swagger} in JSON (ad es. {file}), o un file di catalogo scaricato da pgkiln.',
+  'rcat.doc_intro': 'Un documento {openapi} o {swagger} in JSON o YAML (ad es. {file}), o un file di catalogo scaricato da pgkiln.',
   'rcat.doc_replacing': 'I servizi del catalogo vengono sostituiti da quelli del documento; le origini dati create prima da esso restano come sono.',
   'rcat.url_answered': 'L\'URL ha risposto HTTP {status}.',
   'rcat.headers_help': 'Header di richiesta aggiuntivi, non segreti: accede la credenziale web di un\'applicazione.',

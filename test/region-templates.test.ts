@@ -50,6 +50,26 @@ describe('region templates on HR page 44', () => {
     assert.match(regionOf(page, R['Personal details']), /region-wizard/);
   });
 
+  test('(sprint 219, APEX 26.1) an inline drawer\'s footer: its sub region with position footer, beside the buttons; elsewhere footer is the body', async () => {
+    const page = (await king.get('/a/hr/44')).body;
+    const drawer = regionOf(page, R.Help);
+    const body = drawer.slice(drawer.indexOf('<div class="region-body"'), drawer.indexOf('<footer'));
+    const footer = drawer.slice(drawer.indexOf('<footer class="region-footer">'));
+    assert.match(footer, /^<footer class="region-footer"><div class="region-footer-regions"><div class="t-regions region-children"><section class="region region-static region-plain [^"]*" id="R\d+" aria-label="Still stuck\?">/);
+    assert.match(footer, /Ask HR on extension 4242/);
+    assert.doesNotMatch(body, /Still stuck|4242/, 'not in the scrolling body');
+    // the same sub region under a standard region stays in that region's body (footer is the page's position there)
+    const parent = R['Personal details'];
+    const temp = (await owner.one(`insert into meta.region (page_id, seq, title, type, template, source, parent_id, position)
+      select page_id, 99, 'S219 footer child', 'static', 'plain', '<p>s219 child</p>', id, 'footer' from meta.region where id = $1 returning id`, [parent])).id;
+    try {
+      const wizard = regionOf((await king.get('/a/hr/44')).body, parent);
+      assert.match(wizard.slice(wizard.indexOf('<div class="region-body"')), /<div class="t-regions region-children">[\s\S]*s219 child/);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [temp]);
+    }
+  });
+
   test('the carousel and the wizard progress', async () => {
     const page = (await king.get('/a/hr/44')).body;
     assert.match(page, /<nav class="rds rds-carousel" id="rds\d+" aria-label="Highlights" data-rds="\d+" data-rds-remember data-rds-interval="8" aria-roledescription="carousel">/);

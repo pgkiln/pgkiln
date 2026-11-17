@@ -12,7 +12,7 @@ process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1,localhost';
 process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
-import { catalogDocument, fromOpenApi, readCatalogText, snake, serviceName, wholeCatalogProblems } from '../src/restcatalog.ts';
+import { catalogDocument, fromOpenApi, readCatalogText, snake, serviceName, wholeCatalogProblems, yamlDocument as yamlOf } from '../src/restcatalog.ts';
 import { buildRequest, type RestSource } from '../src/websources.ts';
 import { Browser } from './helpers.ts';
 
@@ -170,9 +170,65 @@ describe('reading an OpenAPI document', () => {
     assert.ok(notes.some((n) => /too deep \(or circular\)/.test(n)));
   });
 
-  test('not OpenAPI, OpenAPI 2 in YAML, an unsupported version: clear messages', () => {
+  test('(sprint 219) an OpenAPI document in YAML reads as its JSON twin; anchors work; invalid YAML is explained', () => {
+    const yaml = `openapi: 3.0.3
+info:
+  title: Pets
+  version: "1.0"
+servers:
+  - url: https://pets.example.com/v1
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      parameters:
+        - &limit
+          name: limit
+          in: query
+          schema: {type: integer}
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/Pet'}
+  /pets/{petId}:
+    get:
+      operationId: showPetById
+      parameters:
+        - {name: petId, in: path, required: true, schema: {type: string}}
+        - *limit
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Pet'}
+components:
+  schemas:
+    Pet:
+      type: object
+      properties:
+        id: {type: integer}
+        name: {type: string}
+        born: {type: string, format: date}
+`;
+    const fromYaml = readCatalogText(yaml, { name: 'Pets' });
+    const json = JSON.stringify((yamlOf(yaml)));
+    assert.deepEqual(fromYaml, readCatalogText(json, { name: 'Pets' }), 'the same catalog as from the JSON');
+    assert.deepEqual(fromYaml.catalog.services.map((x) => x.name), ['LIST_PETS', 'SHOW_PET_BY_ID']);
+    assert.equal(fromYaml.catalog.base_url, 'https://pets.example.com/v1');
+    assert.ok(fromYaml.catalog.services[1].params.some((x: any) => x.name === 'limit'), 'the anchored parameter');
+    // core schema: an unquoted date stays text, as in JSON
+    assert.deepEqual(yamlOf('d: 2026-11-17\nn: 3\nt: true\nz: null'), { d: '2026-11-17', n: 3, t: true, z: null });
+    assert.throws(() => readCatalogText('openapi: 3.0.0\ninfo: [unclosed'), /not valid JSON or YAML/);
+  });
+
+  test('not OpenAPI, an unsupported version: clear messages', () => {
     assert.throws(() => readCatalogText('{"a": 1}'), /not an OpenAPI 3 or Swagger 2\.0 document/);
-    assert.throws(() => readCatalogText('openapi: 3.0.0\ninfo:\n  title: x\n'), /YAML: pgkiln reads JSON/);
+    assert.throws(() => readCatalogText('a: 1\n'), /not an OpenAPI 3 or Swagger 2\.0 document/);
     assert.throws(() => readCatalogText(JSON.stringify({ openapi: '4.0.0', paths: {} })), /OpenAPI 4\.0\.0 is not supported/);
   });
 
