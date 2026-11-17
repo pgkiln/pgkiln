@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-11-17
+
 ### Added
 - **pg_cron out of the box** (sprint 213): the Docker setup's bundled PostgreSQL (`deploy/compose.yaml`) is PostgreSQL
   17 with pg_cron, built from the official image on the first `docker compose up` (no other file to download), loaded
