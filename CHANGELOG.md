@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Debug messages for background work and REST requests** (sprint 218; APEX debugs jobs too): with an application's
+  debug level on, an automation's run (`AUTOMATION`), a background process chain (`JOB`, with its page and the user
+  who started it) and a REST module request are recorded with the page views, each with its `meta.debug()` messages,
+  timings and outcome; a REST request records the module, the handler and its parameters' names, never their values or
+  the body. Activity → Debug messages filters by kind (page views, REST requests, background work) and tags each row.
+
+### Added
 - **APEX views** (sprint 217, migration 182, NX-F5): schema `apex` has the APEX 26.2 dictionary views an application's
   administration pages read (`apex_activity_log`, `apex_appl_acl_users`, `apex_appl_acl_roles`,
   `apex_appl_acl_user_roles`, `apex_application_pages`, `apex_applications`, `apex_application_build_options`,

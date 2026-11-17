@@ -1,6 +1,7 @@
 import { owner, runtime } from './db.ts';
 import { withAppDb } from './workspace-db.ts';
 import { setAppRole } from './app-role.ts';
+import { backgroundDebug, debugNotices, saveBackgroundDebug, type DebugLog } from './debug.ts';
 
 // Automations (Shared Components → Automations): SQL or PL/pgSQL on a cron
 // schedule, run by the pgkiln server as the application's database role.
@@ -196,13 +197,26 @@ export async function runAutomation(id: number, trigger: 'schedule' | 'manual' =
       const def: Definition | null = (await lock.query('select meta.automation_definition($1) as d', [id])).rows[0].d;
       if (!def) return { status: 'error', message: 'Automation not found.' };
       const log = (await lock.query('insert into meta.automation_log (automation_id, trigger) values ($1, $2) returning id', [id, trigger])).rows[0].id;
+      // (sprint 218) the application's debug level: the run is recorded in its debug messages (method AUTOMATION)
+      const app = (await lock.query('select id, debug_level from meta.app where id = $1', [def.app_id])).rows[0];
+      const debug = app ? backgroundDebug(app, 'AUTOMATION', `automation "${def.name}"`) : undefined;
+      if (debug) {
+        debug.username = def.binds.APP_USER ?? null;
+        debug.add(4, 'automation', `${def.name}: ${trigger === 'schedule' ? 'scheduled run' : 'run now'} (run ${log})`);
+      }
       let result: RunResult;
       try {
-        const r = await execute(def);
+        const r = await (debug ? debug.time(6, 'automation', 'actions', () => execute(def, debug)) : execute(def));
         const status = runStatus(r.rows, r.failed);
         result = { status, rows: r.rows, failed: r.failed, errors: r.errors, ...(status === 'ok' ? {} : { message: `${r.failed} of ${r.rows} row(s) failed` }) };
       } catch (e) {
         result = { status: 'error', message: (e as Error).message.slice(0, 2000) };
+      }
+      if (debug) {
+        for (const x of result.errors ?? []) debug.add(2, 'automation', `row ${x.row}, action ${x.action}: ${x.message}`);
+        debug.add(result.status === 'error' ? 1 : result.status === 'ok' ? 4 : 2, 'automation',
+          `${result.status}${result.rows !== undefined ? `: ${result.rows} row(s), ${result.failed ?? 0} failed` : ''}${result.message ? ` (${result.message})` : ''}`);
+        await saveBackgroundDebug(debug, result.status === 'error' ? 500 : 200);
       }
       const disable = result.status === 'error' && def.error_handling === 'disable';
       if (disable) result.message = `${result.message ?? 'The automation failed.'} (the automation was disabled)`;
@@ -226,16 +240,21 @@ export async function runAutomation(id: number, trigger: 'schedule' | 'manual' =
 }
 
 /** The actions, as the application's role, through meta.automation_execute() (also used by meta.run_automation). */
-async function execute(def: Definition): Promise<{ rows: number; failed: number; errors: RowError[] }> {
+async function execute(def: Definition, debug?: DebugLog): Promise<{ rows: number; failed: number; errors: RowError[] }> {
   return withAppDb(def.app_id, () => runtime.tx(async (c) => {
+    const stop = await debugNotices(c, debug);
     await c.query(
       `select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.app_id', $2, true),
               set_config('pgkiln.automation_id', $3, true), set_config('pgkiln.session_id', '', true),
               set_config('pgkiln.automation_chain', $4, true), set_config('statement_timeout', $5, true)`,
       [def.binds.APP_USER, String(def.app_id), String(def.id), `,${def.id},`, `${def.timeout_s}s`],
     );
-    await setAppRole(c, def.db_role); // (sprint 186) none or a powerful one: refused
-    return (await c.query('select meta.automation_execute($1::jsonb) as r', [JSON.stringify(def)])).rows[0].r;
+    try {
+      await setAppRole(c, def.db_role); // (sprint 186) none or a powerful one: refused
+      return (await c.query('select meta.automation_execute($1::jsonb) as r', [JSON.stringify(def)])).rows[0].r;
+    } finally {
+      stop();
+    }
   }));
 }
 

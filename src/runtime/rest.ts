@@ -15,6 +15,7 @@ import { DO_TAG, HandlerInputError, mediaResponse, runPlpgsql, setBinds } from '
 import { logActivity } from '../session.ts';
 import { MAX_BODY, receive, webhookProblems, WebhookRefused, type WebhookConfig } from '../webhooks.ts';
 import { setAppRole, AppRoleRefused } from '../app-role.ts';
+import { debugNotices, startDebug } from '../debug.ts';
 
 // REST modules (APEX: RESTful Services): handlers defined in the builder (Shared Components, or (sprint 104)
 // SQL Workshop › RESTful Services › Modules as templates and handlers; plpgsql and media types: rest-handlers.ts),
@@ -318,6 +319,10 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
     }
   }
   const query = req.query as Record<string, string | string[]>;
+  // (sprint 218) a REST request in the application's debug messages: the handler, its role checks, its meta.debug()
+  // messages and the outcome (parameter names only, never their values; startDebug logs the request line)
+  const debug = startDebug(req, a);
+  debug?.add(4, 'rest', `module ${name}, handler ${h.method} ${h.path || '/'} (${h.type}${h.auth === 'public' ? ', public' : ''})`);
   try {
     const who = moduleLimit(await caller(req, a, h.auth === 'public'), name, h.auth === 'public');
     // (083) the application's availability (no builder session here: developers only means nobody)
@@ -344,73 +349,79 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
     // the built-in names are the server's, never the caller's (?app_user=… must not set :APP_USER)
     for (const k of Object.keys(binds)) if (RESERVED_BINDS.has(k)) delete binds[k];
     Object.assign(binds, { APP_USER: who.user, APP_ID: String(a.id), APP_ALIAS: a.alias, APP_SESSION: null, APP_PAGE_ID: null, REQUEST: null });
+    if (debug) debug.username = who.user;
     const result = await runtime.tx(async (c) => {
       await c.query(
         `select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', $2, true), set_config('pgkiln.session_id', '', true),
                 set_config('request.jwt.claims', $3, true), set_config('statement_timeout', '30s', true)`,
         [String(a.id), who.user, who.claims ? JSON.stringify(who.claims) : ''],
       );
-      // (117) the module's privilege, then the handler's own roles
-      for (const roles of [mod.roles, h.roles]) if (roles?.length) {
-        const ok = (await c.query('select bool_or(meta.has_role(r)) as ok from unnest($1::text[]) r', [roles])).rows[0].ok;
-        if (!ok) throw new RestError(403, 'You do not have a role this endpoint needs.');
-      }
-      if (h.type === 'plpgsql') await setBinds(c, binds);
-      // (sprint 186) the application's role; none or a powerful one is refused
-      await setAppRole(c, a.db_role, { app: a.alias }).catch((e) => { throw e instanceof AppRoleRefused ? new RestError(503, e.message) : e; });
-      // (117) handlers run as a constrained role: never a superuser, a role that bypasses row level security, or
-      // pgkiln's owner (a runtime connection without RUNTIME_DATABASE_URL is the owner's)
-      const role = (await c.query(
-        `select r.rolsuper or r.rolbypassrls or pg_has_role(current_user, n.nspowner, 'MEMBER') as bad
-           from pg_roles r, pg_namespace n where r.rolname = current_user and n.nspname = 'meta'`)).rows[0];
-      if (!role || role.bad) throw new RestError(403, 'This endpoint would run as a role that bypasses row level security or owns pgkiln: refused. Give the application its own database role.');
-      if (h.type === 'plpgsql') {
-        const out = await runPlpgsql(c, h.source);
-        const status = out.status ?? (out.body === undefined ? 204 : h.status ?? (req.method === 'POST' ? 201 : 200));
-        return { status, body: out.body, headers: out.headers };
-      }
-      const sql = applyBinds(h.source.trim().replace(/;+\s*$/, ''), binds);
-      if (h.type === 'collection') {
-        const size = Math.max(1, Math.min(MAX_PAGE, Number(binds.LIMIT) || h.page_size || 25));
-        const offset = Math.max(0, Math.floor(Number(binds.OFFSET) || 0));
-        // streamed: a cursor in the transaction, each batch written as part of the JSON array;
-        // the query and the first batch run first, so a failing query is still an error status
-        const cursor = 'pgkiln_rest';
-        await c.query(`declare ${cursor} no scroll cursor for select * from (\n${sql}\n) "__r" limit ${size + 1} offset ${offset}`);
-        const next = async () => (await c.query(`fetch ${REST_BATCH} from ${cursor}`)).rows;
-        let batch = await next();
-        const out = new PassThrough();
-        reply.code(200).header('cache-control', 'no-store').type('application/json; charset=utf-8').send(out);
-        try {
-          let fetched = 0;
-          await writeOut(out, '{"items":[');
-          for (;;) {
-            const take = batch.slice(0, Math.max(0, size - fetched));
-            if (take.length) await writeOut(out, take.map((row, i) => (fetched + i ? ',' : '') + JSON.stringify(row)).join(''));
-            fetched += batch.length;
-            if (batch.length < REST_BATCH || fetched > size) break;
-            batch = await next();
-          }
-          await c.query(`close ${cursor}`);
-          await writeOut(out, `],"offset":${offset},"limit":${size},"has_more":${fetched > size}}`);
-          out.end();
-        } catch (e) {
-          // the client went away, or the query failed after the first rows: the response ends short
-          req.log.warn({ err: e }, 'REST collection stopped');
-          out.destroy();
+      const stopNotices = await debugNotices(c, debug);
+      try {
+        // (117) the module's privilege, then the handler's own roles
+        for (const roles of [mod.roles, h.roles]) if (roles?.length) {
+          const ok = (await c.query('select bool_or(meta.has_role(r)) as ok from unnest($1::text[]) r', [roles])).rows[0].ok;
+          if (!ok) throw new RestError(403, 'You do not have a role this endpoint needs.');
         }
-        return { status: 200, body: undefined, streamed: true };
+        if (h.type === 'plpgsql') await setBinds(c, binds);
+        // (sprint 186) the application's role; none or a powerful one is refused
+        await setAppRole(c, a.db_role, { app: a.alias }).catch((e) => { throw e instanceof AppRoleRefused ? new RestError(503, e.message) : e; });
+        // (117) handlers run as a constrained role: never a superuser, a role that bypasses row level security, or
+        // pgkiln's owner (a runtime connection without RUNTIME_DATABASE_URL is the owner's)
+        const role = (await c.query(
+          `select r.rolsuper or r.rolbypassrls or pg_has_role(current_user, n.nspowner, 'MEMBER') as bad
+             from pg_roles r, pg_namespace n where r.rolname = current_user and n.nspname = 'meta'`)).rows[0];
+        if (!role || role.bad) throw new RestError(403, 'This endpoint would run as a role that bypasses row level security or owns pgkiln: refused. Give the application its own database role.');
+        if (h.type === 'plpgsql') {
+          const out = await runPlpgsql(c, h.source);
+          const status = out.status ?? (out.body === undefined ? 204 : h.status ?? (req.method === 'POST' ? 201 : 200));
+          return { status, body: out.body, headers: out.headers };
+        }
+        const sql = applyBinds(h.source.trim().replace(/;+\s*$/, ''), binds);
+        if (h.type === 'collection') {
+          const size = Math.max(1, Math.min(MAX_PAGE, Number(binds.LIMIT) || h.page_size || 25));
+          const offset = Math.max(0, Math.floor(Number(binds.OFFSET) || 0));
+          // streamed: a cursor in the transaction, each batch written as part of the JSON array;
+          // the query and the first batch run first, so a failing query is still an error status
+          const cursor = 'pgkiln_rest';
+          await c.query(`declare ${cursor} no scroll cursor for select * from (\n${sql}\n) "__r" limit ${size + 1} offset ${offset}`);
+          const next = async () => (await c.query(`fetch ${REST_BATCH} from ${cursor}`)).rows;
+          let batch = await next();
+          const out = new PassThrough();
+          reply.code(200).header('cache-control', 'no-store').type('application/json; charset=utf-8').send(out);
+          try {
+            let fetched = 0;
+            await writeOut(out, '{"items":[');
+            for (;;) {
+              const take = batch.slice(0, Math.max(0, size - fetched));
+              if (take.length) await writeOut(out, take.map((row, i) => (fetched + i ? ',' : '') + JSON.stringify(row)).join(''));
+              fetched += batch.length;
+              if (batch.length < REST_BATCH || fetched > size) break;
+              batch = await next();
+            }
+            await c.query(`close ${cursor}`);
+            await writeOut(out, `],"offset":${offset},"limit":${size},"has_more":${fetched > size}}`);
+            out.end();
+          } catch (e) {
+            // the client went away, or the query failed after the first rows: the response ends short
+            req.log.warn({ err: e }, 'REST collection stopped');
+            out.destroy();
+          }
+          return { status: 200, body: undefined, streamed: true };
+        }
+        if (h.type === 'item' || h.type === 'media') {
+          const rows = (await c.query(`select * from (\n${sql}\n) "__r" limit 2`)).rows;
+          if (!rows.length) throw new RestError(404, 'Not found');
+          if (h.type === 'media') return { status: 200, body: undefined, media: mediaResponse(rows[0]) };
+          return { status: 200, body: rows[0] };
+        }
+        let last: pg.QueryResult | undefined;
+        for (const stmt of splitStatements(sql)) last = await c.query(stmt);
+        const row = last?.rows?.[0];
+        return row ? { status: h.status ?? (req.method === 'POST' ? 201 : 200), body: row } : { status: 204, body: undefined };
+      } finally {
+        stopNotices();
       }
-      if (h.type === 'item' || h.type === 'media') {
-        const rows = (await c.query(`select * from (\n${sql}\n) "__r" limit 2`)).rows;
-        if (!rows.length) throw new RestError(404, 'Not found');
-        if (h.type === 'media') return { status: 200, body: undefined, media: mediaResponse(rows[0]) };
-        return { status: 200, body: rows[0] };
-      }
-      let last: pg.QueryResult | undefined;
-      for (const stmt of splitStatements(sql)) last = await c.query(stmt);
-      const row = last?.rows?.[0];
-      return row ? { status: h.status ?? (req.method === 'POST' ? 201 : 200), body: row } : { status: 204, body: undefined };
     });
     if ('streamed' in result) return reply;
     // (sprint 176) the response headers a PL/pgSQL handler set with meta.rest_header
@@ -430,6 +441,7 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
     }
     return result.body === undefined ? reply.code(result.status === 204 || result.status < 200 ? 204 : result.status).send() : reply.code(result.status).send(result.body);
   } catch (e) {
+    debug?.add(e instanceof RestError && e.status < 500 ? 2 : 1, 'rest', `refused or failed: ${(e as Error).message}`);
     if (e instanceof RestError) return reply.code(e.status).send({ error: e.message });
     if (e instanceof HandlerInputError) return reply.code(400).send({ error: e.message });
     const err = e as pg.DatabaseError;

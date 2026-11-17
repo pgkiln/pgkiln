@@ -29,6 +29,9 @@ const VERSION = (() => {
   }
 })();
 
+/** (sprint 218) A debug view's kind: background work (method AUTOMATION or JOB), a REST request, or a page view. */
+const KIND_SQL = `(case when v.method in ('AUTOMATION', 'JOB') then 'background' when v.path ~ '^/a/[^/]+/rest/' then 'rest' else 'page' end)`;
+
 const appOf = async (id: string) => (/^\d+$/.test(id) ? await owner.one('select * from meta.app where id = $1', [id]) : undefined);
 
 export async function diagnosticsRoutes(app: FastifyInstance) {
@@ -42,16 +45,20 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
     const user = (req.query.user ?? '').trim().slice(0, 200) || null;
     const before = /^\d{1,18}$/.test(req.query.before ?? '') ? req.query.before : null;
     const problems = req.query.problems === '1';
+    // (sprint 218) page views, REST requests or background work (automations, background process jobs)
+    const kind = ['page', 'rest', 'background'].includes(req.query.kind ?? '') ? req.query.kind! : '';
     const views = (
       await owner.query(
         `select v.id, v.started_at, v.page_no, p.name as page_name, v.method, v.path, v.username, v.status, v.level, v.elapsed_ms::float8 as ms, v.entries,
+                ${KIND_SQL} as kind,
                 (select count(*) from meta.debug_message m where m.view_id = v.id and m.level <= 2)::int as problems
            from meta.debug_view v left join meta.page p on p.app_id = v.app_id and p.page_no = v.page_no
           where v.app_id = $1 and ($2::int is null or v.page_no = $2) and ($3::text is null or lower(v.username) = lower($3))
             and ($4::bigint is null or v.id < $4)
             and (not $5 or v.status >= 400 or exists (select 1 from meta.debug_message m where m.view_id = v.id and m.level <= 2))
+            and ($6 = '' or ${KIND_SQL} = $6)
           order by v.id desc limit ${PAGE_SIZE + 1}`,
-        [a.id, pageNo, user, before, problems],
+        [a.id, pageNo, user, before, problems, kind],
       )
     ).rows;
     const more = views.length > PAGE_SIZE;
@@ -62,6 +69,7 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
       if (pageNo !== null) q.set('page', String(pageNo));
       if (user) q.set('user', user);
       if (problems) q.set('problems', '1');
+      if (kind) q.set('kind', kind);
       for (const [k, v] of Object.entries(extra)) q.set(k, v);
       return q.toString();
     };
@@ -83,6 +91,9 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
             <div class="form-grid">
               <div class="field"><label class="label" for="f_page">${tx('diag.page')}</label><input id="f_page" name="page" type="number" min="1" value="${pageNo ?? ''}"></div>
               <div class="field"><label class="label" for="f_user">${tx('diag.user')}</label><input id="f_user" name="user" value="${user ?? ''}"></div>
+              <div class="field"><label class="label" for="f_kind">${tx('diag.kind')}</label><select id="f_kind" name="kind">
+                ${[['', tx('diag.kind_all')], ['page', tx('diag.kind_page')], ['rest', tx('diag.kind_rest')], ['background', tx('diag.kind_background')]].map(([v, l]) => html`<option value="${v}"${v === kind ? raw(' selected') : ''}>${l}</option>`)}
+              </select></div>
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="problems" value="1"${problems ? raw(' checked') : ''}> ${tx('diag.only_with_errors_or_warnings')}</label></div>
             <div class="buttons"><button class="btn">${icon('search')} ${tx('diag.filter')}</button></div>
@@ -92,14 +103,15 @@ export async function diagnosticsRoutes(app: FastifyInstance) {
               <tbody>${views.map((v) => html`<tr>
                 <td data-label="${tx('diag.when')}">${String(v.started_at).slice(0, 19)}</td>
                 <td class="num" data-label="${tx('diag.page')}">${v.page_no ?? ''}${v.page_name ? html` <span class="muted">${v.page_name}</span>` : ''}</td>
-                <td data-label="${tx('diag.request')}"><code>${v.method} ${v.path}</code></td>
+                <td data-label="${tx('diag.request')}">${v.kind === 'page' ? '' : html`<span class="tag">${v.kind === 'rest' ? tx('diag.tag_rest') : v.method === 'AUTOMATION' ? tx('diag.tag_automation') : tx('diag.tag_job')}</span> `}<code>${v.method === 'AUTOMATION' || v.method === 'JOB' ? v.path : `${v.method} ${v.path}`}</code></td>
                 <td data-label="${tx('diag.user')}">${v.username ?? ''}</td>
                 <td class="num" data-label="${tx('diag.status')}">${v.status >= 400 ? html`<span class="ev ev-error">${v.status}</span>` : v.status}</td>
                 <td class="num" data-label="ms">${v.ms}</td>
                 <td class="num" data-label="${tx('diag.entries')}">${v.entries}${v.problems ? html` <span class="ev ev-error">${v.problems} problem${v.problems === 1 ? '' : 's'}</span>` : ''}</td>
                 <td><a href="${BASE}/apps/${a.id}/debug/${v.id}">${tx('diag.view')}</a></td></tr>`)}</tbody></table></div>
               ${more ? html`<p><a class="btn" href="?${query({ before: String(views[views.length - 1].id) })}">${tx('diag.older_page_views')}</a></p>` : ''}`
-            : html`<p class="muted">No page views recorded${pageNo !== null || user || problems ? ' for this filter' : ''}.</p>`}
+            : html`<p class="muted">No page views recorded${pageNo !== null || user || problems || kind ? ' for this filter' : ''}.</p>`}
+          <p class="muted">${tx('diag.background_note')}</p>
           <p class="muted">${total} page view${total === 1 ? '' : 's'} kept for ${a.debug_retention_days} day${a.debug_retention_days === 1 ? '' : 's'} (at most 5000). <a href="${BASE}/apps/${a.id}/activity">${tx('diag.back_to_activity')}</a></p>
           ${total
             ? html`<form method="post" action="${BASE}/apps/${a.id}/debug/purge">${csrf(s)}
