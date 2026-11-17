@@ -71,10 +71,14 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
         if: matrix.shard == 1
-      # services can't pass server options: load pg_stat_statements (Top SQL) with ALTER SYSTEM and a restart
-      - name: Load pg_stat_statements
+      # services can't pass server options: load pg_stat_statements (Top SQL) and pg_cron (SQL Workshop › Scheduling,
+      # installed into the service container: pgvector's image is postgres:17 with PGDG's apt source) with ALTER SYSTEM
+      # and a restart; npm run pretest migrates, which creates the extension. The upgrade jobs (postgres:17, no
+      # pg_cron) test the Scheduling page without it
+      - name: Load pg_stat_statements and pg_cron
         run: |
-          psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = 'pg_stat_statements'"
+          docker exec ${{ job.services.postgres.id }} sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends postgresql-17-cron > /dev/null'
+          psql "$DATABASE_URL" -c "alter system set shared_preload_libraries = pg_stat_statements, pg_cron" -c "alter system set cron.database_name = 'pgkiln'"
           docker restart ${{ job.services.postgres.id }}
           for i in $(seq 1 30); do pg_isready -h localhost -p 5432 -U pgkiln && break; sleep 1; done
       # Schema Export / Import (test/datapump.test.ts) needs pg_dump and pg_restore of the server's major version:
@@ -274,6 +278,9 @@ jobs:
           curl -fsS http://127.0.0.1:3100/healthz
           curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
           curl -fsS -o /dev/null http://127.0.0.1:3100/builder/login
+      - name: pg_cron works (SQL Workshop › Scheduling)
+        working-directory: deploy
+        run: ../scripts/check-compose-pgcron.sh
       - name: Logs
         if: always()
         working-directory: deploy

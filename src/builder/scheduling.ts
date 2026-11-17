@@ -94,6 +94,7 @@ function installNote(tx: BuilderTranslate, st: Exclude<CronState, { ok: true }>)
   // element content needs only & < > escaped (quotes stay readable: shared_preload_libraries = 'pg_cron')
   const c = (x: string) => raw(`<code>${x.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>`);
   const steps = html`<ol class="u-m0">
+      <li>${tx.rich('cr.step0', { compose: c('deploy/compose.yaml'), up: c('docker compose up -d') })}</li>
       <li>${tx.rich('cr.step1', { apt: c('apt install postgresql-17-cron') })}</li>
       <li>${tx.rich('cr.step2', { conf: c('postgresql.conf'), alter: c('alter system set …'), preload: c("shared_preload_libraries = 'pg_cron'"), db: c(`cron.database_name = '${st.database}'`), tz: c('cron.timezone') })}</li>
       <li>${tx.rich('cr.step3', { create: c('create extension pg_cron;') })}</li>
@@ -106,24 +107,29 @@ function installNote(tx: BuilderTranslate, st: Exclude<CronState, { ok: true }>)
     no_access: tx.rich('cr.why.no_access', { message: st.message ?? '', grant: c('grant usage on schema cron to …') }),
     old: tx.rich('cr.why.old', { version: st.message ?? '?', fn1: c('cron.schedule_in_database'), fn2: c('cron.alter_job'), update: c('alter extension pg_cron update;') }),
   }[st.reason];
-  return html`<div class="alert alert-info" role="status"><p class="u-mt0"><strong>${why}</strong></p>
-    ${st.reason === 'no_access' || st.reason === 'old' ? '' : html`<p>${tx('cr.to_schedule')}</p>${steps}`}
-    <p class="u-m0">${tx.rich('cr.own_scheduler', { automations: html`<strong>${tx('cr.automations_path')}</strong>`, jobs: html`<strong>${tx('cr.process_jobs_lower')}</strong>` })}</p></div>`;
+  // (sprint 213) folded away below pgkiln's own scheduled work: the reason shows, the steps open on demand
+  return html`<details class="alert alert-info cron-setup" id="setup"><summary><strong>${why}</strong> ${tx('cr.setup_summary')}</summary>
+    ${st.reason === 'no_access' || st.reason === 'old' ? '' : steps}</details>`;
 }
 
-/** pgkiln's own scheduled work: automations and recent process jobs, read-only. */
-async function pgkilnWork(tx: BuilderTranslate): Promise<Raw> {
-  const automations = (await owner.query<{ app_id: number; alias: string; id: number; name: string; enabled: boolean; schedule: string; time_zone: string; next_run: string | null; last_run: string | null; last_status: string | null }>(
+/** (sprint 213) One line on top of the page: what Scheduling is for, and what Automations are for instead. */
+const versusAutomations = (tx: BuilderTranslate) =>
+  html`<p class="muted u-mt0 cron-vs">${tx.rich('cr.vs_automations', { automations: html`<a href="#automations">${tx('cr.automations')}</a>` })}</p>`;
+
+/** pgkiln's own scheduled work, read-only: the automations of every application, and/or the latest process jobs. */
+async function pgkilnWork(tx: BuilderTranslate, show: 'all' | 'automations' | 'jobs' = 'all'): Promise<Raw> {
+  const withJobs = show !== 'automations';
+  const automations = show === 'jobs' ? [] : (await owner.query<{ app_id: number; alias: string; id: number; name: string; enabled: boolean; schedule: string; time_zone: string; next_run: string | null; last_run: string | null; last_status: string | null }>(
     `select a.id as app_id, a.alias, x.id, x.name, x.enabled, x.schedule, x.time_zone,
             to_char(x.next_run_at at time zone x.time_zone, 'YYYY-MM-DD HH24:MI') as next_run,
             to_char(x.last_run_at at time zone x.time_zone, 'YYYY-MM-DD HH24:MI') as last_run, x.last_status
        from meta.automation x join meta.app a on a.id = x.app_id order by lower(a.alias), lower(x.name) limit 500`)).rows;
-  const jobs = (await owner.query<{ id: string; app_id: number; alias: string; name: string; state: string; app_user: string; queued: string; ended: string | null; error: string | null }>(
+  const jobs = !withJobs ? [] : (await owner.query<{ id: string; app_id: number; alias: string; name: string; state: string; app_user: string; queued: string; ended: string | null; error: string | null }>(
     `select j.id::text, a.id as app_id, a.alias, j.name, j.state, j.app_user, to_char(j.queued_at, 'YYYY-MM-DD HH24:MI:SS') as queued,
             to_char(j.ended_at, 'YYYY-MM-DD HH24:MI:SS') as ended, j.error
        from meta.process_job j join meta.app a on a.id = j.app_id order by j.id desc limit 20`)).rows;
   const L = { app: tx('sm.col.application'), automation: tx('cr.col.automation'), schedule: tx('cr.col.schedule'), next: tx('cr.col.next_run'), last: tx('cr.col.last_run'), job: tx('dp.col.job'), state: tx('sm.col.state'), by: tx('cr.col.started_by'), queued: tx('cr.col.queued'), ended: tx('cr.col.ended') };
-  return html`${region(tx('cr.automations'), html`<p class="muted u-mt0">${tx('cr.automations_intro')}</p>
+  return html`${show === 'jobs' ? '' : region(tx('cr.automations'), html`<p class="muted u-mt0" id="automations">${tx('cr.automations_intro')}</p>
       <div class="table-wrap"><table class="report report-reflow cron-list"><thead><tr><th>${L.app}</th><th>${L.automation}</th><th>${L.schedule}</th><th>${L.next}</th><th>${L.last}</th></tr></thead>
       <tbody>${automations.length ? automations.map((x) => html`<tr>
         <td data-label="${L.app}"><a href="${BASE}/apps/${x.app_id}">${x.alias}</a></td>
@@ -132,7 +138,7 @@ async function pgkilnWork(tx: BuilderTranslate): Promise<Raw> {
         <td data-label="${L.next}">${x.enabled ? x.next_run ?? html`<span class="muted">${tx('cr.soon')}</span>` : html`<span class="muted">${tx('cr.disabled')}</span>`}</td>
         <td data-label="${L.last}">${x.last_run ?? html`<span class="muted">${tx('scr.never')}</span>`}${x.last_status ? html` <span class="tag ${x.last_status === 'ok' ? 'tag-ok' : x.last_status === 'error' ? 'tag-error' : 'tag-warning'}">${x.last_status}</span>` : ''}</td></tr>`)
         : html`<tr><td colspan="5" class="empty">${tx('cr.no_automations')}</td></tr>`}</tbody></table></div>`)}
-    ${region(tx('cr.process_jobs'), html`<p class="muted u-mt0">${tx('cr.process_jobs_intro')}</p>
+    ${!withJobs ? '' : region(tx('cr.process_jobs'), html`<p class="muted u-mt0">${tx('cr.process_jobs_intro')}</p>
       <div class="table-wrap"><table class="report report-reflow cron-list"><thead><tr><th>${L.app}</th><th>${L.job}</th><th>${L.state}</th><th>${L.by}</th><th>${L.queued}</th><th>${L.ended}</th></tr></thead>
       <tbody>${jobs.length ? jobs.map((x) => html`<tr>
         <td data-label="${L.app}"><a href="${BASE}/apps/${x.app_id}">${x.alias}</a></td>
@@ -149,7 +155,7 @@ async function listPage(req: Req, reply: FastifyReply, s: Session) {
   const title = tx('sql.tool.scheduling');
   const st = await cronState();
   if (!st.ok) {
-    const main = html`${head(s, title)}${installNote(tx, st)}${await pgkilnWork(tx)}`;
+    const main = html`${head(s, title)}${versusAutomations(tx)}${await pgkilnWork(tx)}${installNote(tx, st)}`;
     return send(reply, s, shell(s, title, crumbs(tx), main, 'sql'));
   }
   const jobs = await listJobs(st.timeZone);
@@ -158,6 +164,7 @@ async function listPage(req: Req, reply: FastifyReply, s: Session) {
   const failing = jobs.filter((j) => j.last_status === 'failed').length;
   const L = { job: tx('dp.col.job'), schedule: tx('cr.col.schedule'), next: tx('cr.col.next_run'), last: tx('cr.col.last_run'), db: tx('su.database'), as: tx('cr.col.run_as') };
   const main = html`${head(s, title, html`<a class="btn btn-hot" href="${URL_BASE}/new">${icon('plus')} ${tx('cr.create')}</a><a class="btn" href="${URL_BASE}/history">${icon('list')} ${tx('cr.history')}</a>`)}
+    ${versusAutomations(tx)}
     <div class="stat-grid u-mb1 dbu-stats">
       <div class="stat"><b>${String(jobs.length)}</b><span>${tx('cr.jobs')}</span></div>
       <div class="stat"><b>${String(jobs.filter((j) => j.active).length)}</b><span>${tx('sm.active')}</span></div>
@@ -173,7 +180,8 @@ async function listPage(req: Req, reply: FastifyReply, s: Session) {
         <td data-label="${L.last}">${statusTag(tx, j.last_status)}${j.last_start ? html` <span class="small">${j.last_start}</span>` : ''}${j.failures > 1 ? html`<br><span class="small cron-error">${tx('cr.failures', { n: j.failures })}</span>` : ''}</td>
         <td data-label="${L.db}">${j.database}</td><td data-label="${L.as}">${j.username}</td></tr>`)
         : html`<tr><td colspan="6" class="empty">${jobs.length ? tx('cr.no_match') : tx.rich('cr.none_yet', { create: html`<a href="${URL_BASE}/new">${tx('cr.create_one')}</a>` })}</td></tr>`}</tbody></table></div>`)}
-    <details class="u-mt1"><summary>${tx('cr.own_work')}</summary>${await pgkilnWork(tx)}</details>`;
+    ${await pgkilnWork(tx, 'automations')}
+    <details class="u-mt1"><summary>${tx('cr.process_jobs')}</summary>${await pgkilnWork(tx, 'jobs')}</details>`;
   return send(reply, s, shell(s, title, crumbs(tx), main, 'sql'));
 }
 

@@ -106,11 +106,35 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
     // (090) application code in isolated workspaces gets what later migrations granted pgkiln_runtime
     if (applied.length && (await client.query(`select to_regprocedure('meta.sync_app_code_grants()') is not null as ok`)).rows[0].ok)
       await client.query('select meta.sync_app_code_grants()');
+    const cron = await ensurePgCron(client);
+    if (cron) log(`${cron}\n`);
   } finally {
     if (applied.length || failure) await recordRun(client, o.root, { startedAt, fresh, applied, failure }).catch(() => {});
     await client.end();
   }
   return applied;
+}
+
+/**
+ * (sprint 213) pg_cron for SQL Workshop › Scheduling: when the server loads it for this database
+ * (shared_preload_libraries, cron.database_name) but the extension isn't created yet, create it, as the bundled
+ * PostgreSQL of deploy/compose.yaml needs. pg_cron isn't a trusted extension: an owner that isn't a superuser
+ * can't, and the Scheduling page says what is missing. Returns a line for the log, or null when nothing was to do.
+ */
+export async function ensurePgCron(client: pg.Client): Promise<string | null> {
+  const r = (await client.query<{ todo: boolean }>(
+    `select exists (select 1 from pg_available_extensions where name = 'pg_cron')
+        and not exists (select 1 from pg_extension where extname = 'pg_cron')
+        and to_regclass('cron.job') is null
+        and current_setting('shared_preload_libraries') ~ '(^|[\\s,])"?pg_cron"?($|[\\s,])'
+        and coalesce(current_setting('cron.database_name', true), 'postgres') = current_database() as todo`)).rows[0];
+  if (!r.todo) return null;
+  try {
+    await client.query('create extension if not exists pg_cron');
+    return 'pg_cron created (SQL Workshop › Scheduling)';
+  } catch (e) {
+    return `pg_cron is loaded but could not be created: ${(e as Error).message} (a superuser runs: create extension pg_cron)`;
+  }
 }
 
 /**

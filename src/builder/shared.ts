@@ -191,6 +191,7 @@ export async function sharedRoutes(app: FastifyInstance) {
         .sort((x, y) => (desc ? -1 : 1) * x.name.localeCompare(y.name, 'en', { numeric: true }));
       const main = html`${appHeader(a, 'shared', s)}
         <div class="sc-list-head"><h1>${kindName(tx, type, true)}</h1><a class="btn btn-hot" href="?new=${type}">${icon('plus')} ${tx('sc.create')}</a></div>
+        ${type === 'automation' ? html`<p class="muted u-mt0 au-vs">${tx.rich('au.vs_scheduling', { scheduling: html`<a href="${BASE}/sql/scheduling">${tx('au.scheduling_path')}</a>` })}</p>` : ''}
         <form method="get" class="search u-mwnone u-mb1" role="search"><input type="hidden" name="type" value="${type}">
           <div class="field"><label class="label" for="f_q">${tx('sc.search')}</label><input id="f_q" name="q" type="search" value="${q}" placeholder="${tx('sc.name')}" data-filter-rows="sc-rows"></div>
           <button class="btn u-selfend">${icon('search')} ${tx('common.go')}</button></form>

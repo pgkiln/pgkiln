@@ -9,6 +9,8 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { activeSql, checkJob, dollar, jobSql, purgeSql, unscheduleSql, type JobSpec } from '../src/pgcron.ts';
+import { ensurePgCron } from '../src/migrate.ts';
+import pg from 'pg';
 import { Browser } from './helpers.ts';
 import { addRun, dropMockPgCron, mockPgCron, realPgCron } from './pgcron-mock.ts';
 
@@ -75,6 +77,21 @@ describe('SQL generation', () => {
   });
 });
 
+describe('(sprint 213) pg_cron created at start-up', () => {
+  test('ensurePgCron: nothing to do when pg_cron is created already, or not loaded for this database', async () => {
+    const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await c.connect();
+    try {
+      const loaded = (await c.query(`select current_setting('shared_preload_libraries') ~ 'pg_cron' as ok`)).rows[0].ok;
+      assert.equal(await ensurePgCron(c), null);
+      // where the server loads it (deploy/compose.yaml, docker-compose.yml), migrating created it
+      if (loaded) assert.ok(await realPgCron(), 'pg_cron is created');
+    } finally {
+      await c.end();
+    }
+  });
+});
+
 describe('without pg_cron', { skip: false }, () => {
   test('the page explains how to install it and lists pgkiln\'s own automations and process jobs', async (t) => {
     if (await realPgCron()) return t.skip('pg_cron is installed in this database');
@@ -86,6 +103,11 @@ describe('without pg_cron', { skip: false }, () => {
     assert.match(res.body, /create extension pg_cron;/);
     assert.match(res.body, /<h2>Automations<\/h2>/);
     assert.match(res.body, /<h2>Process jobs<\/h2>/);
+    // (sprint 213) one line says what Automations are for; pgkiln's own work comes first, the set-up steps folded below
+    assert.match(res.body, /class="muted u-mt0 cron-vs">Database jobs: SQL that PostgreSQL itself runs[\s\S]*<a href="#automations">Automations<\/a>/);
+    assert.ok(res.body.indexOf('<h2>Automations</h2>') < res.body.indexOf('class="alert alert-info cron-setup"'), 'automations before the set-up steps');
+    assert.match(res.body, /<details class="alert alert-info cron-setup" id="setup"><summary><strong>[^<]+<\/strong> How to set up pg_cron<\/summary>/);
+    assert.match(res.body, /<code>deploy\/compose.yaml<\/code>/, 'the Docker set-up has it');
     // the tool is on the Launchpad and in the search for administrators
     assert.match((await a.get('/builder/sql')).body, /href="\/builder\/sql\/scheduling"/);
     assert.equal((await a.get(`${URL}/new`)).statusCode, 409, 'pages that need pg_cron explain instead');
@@ -97,6 +119,14 @@ describe('with pg_cron', () => {
   before(async () => {
     real = await realPgCron();
     await mockPgCron();
+  });
+
+  test('(sprint 213) the list says what Automations are for and shows them; process jobs folded', async () => {
+    const body = (await (await admin()).get(URL)).body;
+    assert.match(body, /class="muted u-mt0 cron-vs">[\s\S]*<a href="#automations">Automations<\/a>/);
+    assert.match(body, /<h2>Automations<\/h2>[\s\S]*id="automations"/);
+    assert.match(body, /<details class="u-mt1"><summary>Process jobs<\/summary>/);
+    assert.doesNotMatch(body, /cron-setup/);
   });
 
   test('the schedule preview in words with five runs', async () => {

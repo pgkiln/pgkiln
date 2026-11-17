@@ -67,7 +67,7 @@ that includes them.
 | **[plpgsql_check](https://github.com/okbob/plpgsql_check)** | Static analysis of PL/pgSQL: wrong columns, unused variables, missing `RETURN`, hidden casts. Run it on your app's functions in CI | **Advisor** (for code) |
 
 Scheduling example with pg_cron. pg_cron must be in `shared_preload_libraries` (a server setting;
-managed services have a switch for it). A job runs **as the role that scheduled it**, outside any
+managed services have a switch for it; pgkiln's Docker setup has it, and creates the extension: sprint 213). A job runs **as the role that scheduled it**, outside any
 pgkiln session, so `meta.app_user()` is `nobody` and row level security hides rows that depend on
 the user. So give the job a narrow `security definer` function and a dedicated role:
 

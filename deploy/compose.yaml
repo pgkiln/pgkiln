@@ -7,8 +7,18 @@
 
 services:
   db:
-    image: postgres:17
+    # PostgreSQL 17 with pg_cron (SQL Workshop › Scheduling: database jobs PostgreSQL runs on a schedule), built
+    # here from the official image: no other file to download. pgkiln creates the extension at start-up
+    build:
+      dockerfile_inline: |
+        FROM postgres:17
+        RUN apt-get update && apt-get install -y --no-install-recommends postgresql-17-cron && rm -rf /var/lib/apt/lists/*
+    image: pgkiln-postgres:17-cron
+    # built here, never pulled (`docker compose pull` skips it)
+    pull_policy: build
     profiles: [db]
+    # pg_cron runs its jobs in the database pgkiln uses; cron.timezone: UTC unless PGKILN_CRON_TIMEZONE is set in .env
+    command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=pgkiln", "-c", "cron.timezone=${PGKILN_CRON_TIMEZONE:-UTC}"]
     restart: unless-stopped
     environment:
       POSTGRES_USER: pgkiln

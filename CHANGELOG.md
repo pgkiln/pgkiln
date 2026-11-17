@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **pg_cron out of the box** (sprint 213): the Docker setup's bundled PostgreSQL (`deploy/compose.yaml`) is PostgreSQL
+  17 with pg_cron, built from the official image on the first `docker compose up` (no other file to download), loaded
+  for pgkiln's database; `PGKILN_CRON_TIMEZONE` sets its `cron.timezone` (UTC by default). pgkiln creates the extension
+  when it starts, on any server that loads pg_cron for its database when the owner connection may (a superuser), so
+  SQL Workshop → Scheduling works on a fresh install. The development database (`docker-compose.yml`) has pg_cron and
+  pgvector, and CI's test database pg_cron; CI's Docker job checks that pg_cron is created and runs a job.
+
+### Changed
+- **Scheduling or Automations** (sprint 213): SQL Workshop → Scheduling says in one line what it is for (database jobs
+  PostgreSQL runs, even when pgkiln is down) and what an application's Automations are for instead (its own logic, run
+  by pgkiln as the application, exported with it), and Shared Components → Automations says the reverse, with a link.
+  Without pg_cron, Scheduling lists the automations and process jobs first and folds the set-up steps away under the
+  reason; with pg_cron, the automations are listed under the jobs. Upgrading the Docker setup: take the current
+  `compose.yaml` to get pg_cron (the data volume stays).
+
 ## [0.105.0] - 2026-11-16
 
 ### Added
