@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.105.0 (November 2026): a report or grid column's condition and authorization, kept out of every download (AX-1); the Page Designer's Caching, two panes or three and developer comment (AX-5); the APEX importer brings over saved reports, LOV display values, grid validations, breadcrumbs, chart axes, ACL roles and dynamic content (NX-F5).
+- **Current release:** 0.106.0 (November 2026): pg_cron out of the box in the Docker setup (the bundled PostgreSQL has it, pgkiln creates the extension at start-up), and SQL Workshop → Scheduling and Shared Components → Automations each say what the other is for.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
