@@ -8,7 +8,7 @@
 -- stays at the bottom while the help text scrolls.
 -- =====================================================================
 insert into meta.region (page_id, seq, title, type, template, source, config, parent_id, position)
-select r.page_id, 10, 'Still stuck?', 'static', 'plain',
+select r.page_id, 55, 'Still stuck?', 'static', 'plain',
        '<p class="u-m0">Ask HR on extension 4242.</p>',
        '{}', r.id, 'footer'
   from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
