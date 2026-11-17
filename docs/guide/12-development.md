@@ -278,7 +278,9 @@ src/
                            function provider through meta.embed on the caller's connection), embedQuery() (search texts remembered
                            10 minutes per process), vectorLiteral()
   debug.ts                 debug messages: DebugLog (levels, timed steps, NOTICEs of meta.debug from appTx), started in
-                           loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge
+                           loadContext, stored after the response (onResponse hook → meta.debug_save), hourly purge;
+                           (sprint 218) debugNotices (a transaction's meta.debug NOTICEs), backgroundDebug / saveBackgroundDebug
+                           for automations.ts (AUTOMATION) and process-jobs.ts (JOB); runtime/rest.ts starts a request's log
   icons.ts                 icon helper (sprite in public/icons.svg)
   telemetry/               (sprint 139, AP-6) OpenTelemetry without the SDK: trace.ts (the current trace in AsyncLocalStorage,
                            startTrace/endTrace, withSpan/rootSpan/recordSpan, traceApp, traceparent, a span per statement by

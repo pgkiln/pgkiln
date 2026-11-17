@@ -11,6 +11,8 @@ import { buildApp } from '../src/app.ts';
 import { closePools, owner, runtime } from '../src/db.ts';
 import { migrate } from '../src/migrate.ts';
 import { Browser } from './helpers.ts';
+import { runAutomation } from '../src/automations.ts';
+import { runProcessJobs } from '../src/process-jobs.ts';
 
 let app: FastifyInstance;
 let appId: number;
@@ -261,5 +263,119 @@ describe('builder: debug viewer and installation log', () => {
       await owner.query(`delete from public.pgkiln_install_log where version = '9.9.9-test'`);
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('(sprint 218) background work and REST requests in the debug messages', () => {
+  const rows = async (method: string) => {
+    for (let i = 0; i < 50; i++) {
+      const v = (await owner.query('select * from meta.debug_view where app_id = $1 and method = $2 order by id desc', [appId, method])).rows;
+      if (v.length) return v;
+      await new Promise((r) => setTimeout(r, 40));
+    }
+    return [];
+  };
+  before(async () => {
+    const pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [appId])).id;
+    await owner.query(`insert into meta.button (page_id, name, label) values ($1, 'LATER', 'Later')`, [pageId]);
+    await owner.query(`insert into meta.process (page_id, seq, name, type, point, when_button, config) values ($1, 5, 'Later chain', 'chain', 'submit', 'LATER', '{"background": true}')`, [pageId]);
+    await owner.query(`insert into meta.process (page_id, seq, name, type, point, parent_process, code) values ($1, 6, 'Later step', 'sql', 'submit', 'Later chain', $2)`,
+      [pageId, "select meta.debug(4, 'in the background for ' || meta.app_user())"]);
+    await owner.query(`insert into meta.rest_module (app_id, name, title, handlers) values ($1, 'm218', 'M218', $2::jsonb)`, [appId, JSON.stringify([
+      { method: 'GET', path: 'hello', type: 'item', auth: 'public', source: "select meta.debug(4, 'rest says hello') as d, 'hi' as greeting" },
+      { method: 'POST', path: 'echo', type: 'sql', auth: 'public', source: "select meta.debug(4, 'posted') as d, :SECRET_NOTE as note" },
+      { method: 'GET', path: 'boom', type: 'item', auth: 'public', source: 'select 1/0 as x' },
+    ])]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.automation where app_id = $1', [appId]);
+    await owner.query('delete from meta.process_job where app_id = $1', [appId]);
+    await owner.query('delete from meta.rest_module where app_id = $1', [appId]);
+    await level(0);
+  });
+
+  test('debug off: an automation, a background job and a REST request record nothing', async () => {
+    await level(0);
+    await clear();
+    const id = (await owner.one(`insert into meta.automation (app_id, name, code, enabled, schedule) values ($1, 'd218 off', $2, false, '* * * * *') returning id`,
+      [appId, "select meta.debug(4, 'never')"])).id;
+    assert.equal((await runAutomation(id)).status, 'ok');
+    assert.equal((await app.inject({ method: 'GET', url: `/a/${alias}/rest/m218/hello` })).statusCode, 200);
+    await settle();
+    assert.equal((await owner.query('select 1 from meta.debug_view where app_id = $1', [appId])).rowCount, 0);
+  });
+
+  test('an automation\'s run: its meta.debug messages, the outcome and each failed row', async () => {
+    await level(6);
+    await clear();
+    const ok = (await owner.one(`insert into meta.automation (app_id, name, code, enabled, schedule) values ($1, 'd218 ok', $2, false, '* * * * *') returning id`,
+      [appId, "select meta.debug(4, 'automation hello')"])).id;
+    assert.equal((await runAutomation(ok)).status, 'ok');
+    const [v] = await rows('AUTOMATION');
+    assert.equal(v.path, 'automation "d218 ok"');
+    assert.equal(v.status, 200);
+    const m = (await messages(v.id)).map((x) => `${x.level} ${x.component}: ${x.message}`);
+    assert.ok(m.some((x) => /^4 automation: d218 ok: run now \(run \d+\)$/.test(x)), m.join('\n'));
+    assert.ok(m.includes('4 meta.debug: automation hello'), m.join('\n'));
+    assert.ok(m.some((x) => /^6 automation: actions$/.test(x)), 'the actions, timed');
+    assert.ok(m.some((x) => /^4 automation: ok/.test(x)));
+    const bad = (await owner.one(`insert into meta.automation (app_id, name, code, enabled, schedule) values ($1, 'd218 bad', $2, false, '* * * * *') returning id`,
+      [appId, "select meta.debug(1, 'before the error'); select 1/0"])).id;
+    assert.equal((await runAutomation(bad)).status, 'error');
+    const v2 = (await rows('AUTOMATION')).find((x) => x.path === 'automation "d218 bad"')!;
+    assert.equal(v2.status, 500);
+    const m2 = (await messages(v2.id)).map((x) => `${x.level} ${x.component}: ${x.message}`);
+    assert.ok(m2.includes('1 meta.debug: before the error'), 'messages before the error are kept although the transaction rolled back');
+    assert.ok(m2.some((x) => /^1 automation: error.*division by zero/.test(x)), m2.join('\n'));
+  });
+
+  test('a background process job: the chain\'s steps and its meta.debug messages, as JOB with the page and the starter', async () => {
+    await level(6);
+    await clear();
+    const b = new Browser(app);
+    await b.get(`/a/${alias}/1`);
+    await b.submit(`/a/${alias}/1`, { P1_NAME: 'x', __request: 'LATER' });
+    await runProcessJobs();
+    const [v] = await rows('JOB');
+    assert.ok(v, 'a JOB view');
+    assert.match(v.path, /^process job \d+: "Later chain"$/);
+    assert.equal(v.page_no, 1);
+    assert.equal(v.status, 200);
+    const m = (await messages(v.id)).map((x) => `${x.level} ${x.component}: ${x.message}`);
+    assert.ok(m.includes('4 meta.debug: in the background for nobody'), m.join('\n'));
+    assert.ok(m.some((x) => /^4 job: completed/.test(x)), m.join('\n'));
+  });
+
+  test('a REST request: handler, meta.debug messages and status; parameter and body values are never recorded', async () => {
+    await level(9);
+    // no clear(): the viewer test after this one lists the background job too
+    assert.equal((await app.inject({ method: 'GET', url: `/a/${alias}/rest/m218/hello?token_like=supersecret123` })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'POST', url: `/a/${alias}/rest/m218/echo`, payload: { secret_note: 'do-not-log-me-42' } })).statusCode, 201);
+    assert.equal((await app.inject({ method: 'GET', url: `/a/${alias}/rest/m218/boom` })).statusCode, 400);
+    await settle();
+    const vs = (await owner.query(`select * from meta.debug_view where app_id = $1 and path like '/a/${alias}/rest/%' order by id`, [appId])).rows;
+    assert.deepEqual(vs.map((v) => `${v.method} ${v.path} ${v.status}`), [`GET /a/${alias}/rest/m218/hello 200`, `POST /a/${alias}/rest/m218/echo 201`, `GET /a/${alias}/rest/m218/boom 400`]);
+    const all: string[] = [];
+    for (const v of vs) all.push(...(await messages(v.id)).map((x) => `${x.level} ${x.component}: ${x.message}`));
+    assert.ok(all.includes('4 rest: module m218, handler GET hello (item, public)'), all.join('\n'));
+    assert.ok(all.includes('4 meta.debug: rest says hello') && all.includes('4 meta.debug: posted'));
+    assert.ok(all.some((x) => /^4 request: GET \/a\/dbg-s33\/rest\/m218\/hello \(parameters: token_like\)$/.test(x)), 'the parameter\'s name only');
+    assert.ok(all.some((x) => /^1 rest: refused or failed: division by zero/.test(x)), all.join('\n'));
+    const text = all.join('\n');
+    assert.doesNotMatch(text, /supersecret123|do-not-log-me-42/);
+  });
+
+  test('the viewer: a Kind filter (page views, REST requests, background work) and a tag per row', async () => {
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const bg = (await b.get(`/builder/apps/${appId}/debug?kind=background`)).body;
+    assert.match(bg, /<option value="background" selected>Background work<\/option>/);
+    assert.match(bg, /<span class="tag">Background job<\/span> <code>process job \d+: &quot;Later chain&quot;<\/code>/);
+    assert.doesNotMatch(bg, /\/rest\/m218/);
+    const rest = (await b.get(`/builder/apps/${appId}/debug?kind=rest`)).body;
+    assert.match(rest, /<span class="tag">REST<\/span> <code>GET \/a\/dbg-s33\/rest\/m218\/hello<\/code>/);
+    assert.doesNotMatch(rest, /Background job<\/span>/);
+    assert.match(rest, /automations&#39; runs, background process jobs and REST requests are recorded here too/);
   });
 });

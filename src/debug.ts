@@ -139,3 +139,44 @@ export async function purgeDebug(now = Date.now()) {
   lastPurge = now;
   return (await runtime.one<{ n: number }>('select meta.debug_purge() as n'))?.n ?? 0;
 }
+
+// ------------------------------------------------------------------ (sprint 218) background work and REST requests
+
+/** What a transaction client needs to report its NOTICEs (a pg.PoolClient). */
+interface NoticeClient {
+  query(sql: string, params?: unknown[]): Promise<unknown>;
+  on(event: 'notice', fn: (msg: { message?: string; detail?: string; hint?: string; severity?: string }) => void): unknown;
+  off(event: 'notice', fn: (msg: { message?: string; detail?: string; hint?: string; severity?: string }) => void): unknown;
+}
+
+/**
+ * (sprint 218) Collect a transaction's meta.debug() messages (and other notices) into log, as appTx does for a page
+ * request: sets pgkiln.debug_level and client_min_messages for the transaction. Returns the function that stops it.
+ */
+export async function debugNotices(c: NoticeClient, log: DebugLog | undefined): Promise<() => void> {
+  if (!log) return () => {};
+  await c.query(`select set_config('pgkiln.debug_level', $1, true), set_config('client_min_messages', 'notice', true)`, [String(log.level)]);
+  const listener = (msg: { message?: string; detail?: string; hint?: string; severity?: string }) => log.notice(msg);
+  c.on('notice', listener);
+  return () => void c.off('notice', listener);
+}
+
+/**
+ * (sprint 218) A debug log for work that runs without a request (APEX logs background jobs too): an automation's run
+ * (method AUTOMATION) or a background process job (method JOB). undefined when the application is not in debug.
+ */
+export function backgroundDebug(app: { id: number; debug_level?: number | null }, kind: 'AUTOMATION' | 'JOB', name: string): DebugLog | undefined {
+  const level = Number(app.debug_level ?? 0);
+  if (!(level > 0)) return undefined;
+  return new DebugLog(app.id, level, kind, name.slice(0, 500));
+}
+
+/** (sprint 218) Store a background log; never fails the work it describes. */
+export async function saveBackgroundDebug(log: DebugLog | undefined, status: number) {
+  if (!log) return;
+  try {
+    await log.save(status);
+  } catch (e) {
+    console.error('debug messages not saved:', (e as Error).message);
+  }
+}

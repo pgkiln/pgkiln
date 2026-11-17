@@ -10,6 +10,7 @@ import { publicError, type PageContext } from './runtime/context.ts';
 import { assignable, ProcessFailed, runChain } from './runtime/engine.ts';
 import { resolveLocale, translateApp, translatePage } from './runtime/locale.ts';
 import { setAppRole } from './app-role.ts';
+import { backgroundDebug, debugNotices, saveBackgroundDebug } from './debug.ts';
 
 // Background execution chains (APEX: "Execute in background"). A chain
 // process with {"background": true} is queued in meta.process_job by the
@@ -85,6 +86,14 @@ async function runJobIn(job: Job) {
     roles: job.roles, ip: 'background', errors: { page: [], items: {} }, messages: [], dialog: false, authzCache: new Map(),
     detached: [], css: new PageCss(), nonce: '', locale, background: true,
   };
+  // (sprint 218) the job in the application's debug messages (method JOB), with its processes' entries
+  const debug = backgroundDebug(app, 'JOB', `process job ${job.id}: "${chain.name}"`);
+  if (debug) {
+    debug.pageNo = job.page_no;
+    debug.username = job.app_user;
+    debug.add(4, 'job', `background chain "${chain.name}" of page ${job.page_no}${job.request ? `, request ${job.request}` : ''}`);
+    ctx.debug = debug;
+  }
   let done = 0;
   const heartbeat = setInterval(() => void owner.query('update meta.process_job set updated_at = now() where id = $1', [job.id]).catch(() => {}), HEARTBEAT_MS);
   try {
@@ -97,15 +106,24 @@ async function runJobIn(job: Job) {
       );
       await setAppRole(c, app.db_role, { app: app.alias }); // (sprint 186) none or a powerful one: refused
       ctx.client = c;
-      return runChain(ctx, chain, assignable(ctx), 0, async (kid) => {
-        await owner.query('update meta.process_job set current = $2, steps_done = $3, updated_at = now() where id = $1', [job.id, kid.name, done++]);
-      });
+      const stop = await debugNotices(c, debug);
+      try {
+        return await runChain(ctx, chain, assignable(ctx), 0, async (kid) => {
+          await owner.query('update meta.process_job set current = $2, steps_done = $3, updated_at = now() where id = $1', [job.id, kid.name, done++]);
+        });
+      } finally {
+        stop();
+      }
     });
     const message = [...messages, ...(chain.success_message ? [chain.success_message] : [])].join(' ') || null;
     await finish(job.id, 'completed', message, ctx.errors.page.join(' ') || null, done);
+    debug?.add(ctx.errors.page.length ? 2 : 4, 'job', `completed: ${done} step(s)${ctx.errors.page.length ? `, errors: ${ctx.errors.page.join(' ')}` : ''}`);
+    await saveBackgroundDebug(debug, 200);
   } catch (e) {
     const msg = e instanceof ProcessFailed ? e.message : await publicError(ctx, e, `background process "${chain.name}"`);
     await finish(job.id, 'failed', null, msg);
+    debug?.add(1, 'job', `failed, rolled back: ${(e as Error).message}`);
+    await saveBackgroundDebug(debug, 500);
   } finally {
     clearInterval(heartbeat);
   }

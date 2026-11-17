@@ -266,8 +266,19 @@ end if;
 
 `meta.debug()` raises a `NOTICE` that the runtime collects on its connection, so the messages
 written before an error, or in a transaction that rolls back, are kept too. With the level below
-the message's (or outside a page request: background jobs, automations, the REST API), it returns
-at once. Texts are cut at 4000 characters, and a request keeps at most 2000 entries.
+the message's, it returns at once. Texts are cut at 4000 characters, and a request keeps at most 2000 entries.
+
+**Background work and REST requests** (sprint 218; APEX debugs jobs too): with the application's debug level on,
+three more kinds of work are recorded with the page views, each with its `meta.debug()` messages:
+
+| Kind | Recorded as | Entries |
+|---|---|---|
+| An [automation](#automations)'s run (scheduled or Run now) | `AUTOMATION automation "name"`, the user it runs as | the run, the actions with their duration (level 6), each failed row (level 2), the outcome; status 500 when the run failed |
+| A [background process chain](#execution-chains) | `JOB process job 12: "chain"`, the page and the user who started it | the chain's processes as on a page, the outcome (status 500: failed and rolled back) |
+| A [REST module](13-rest-api.md#rest-modules-in-the-builder) request | `GET /a/hr/rest/v1/employees/7839`, the caller | the module and handler, the *names* of the parameters (never their values, nor the body's), a refusal or error, the status |
+
+Activity → Debug messages filters them with **Kind** (page views, REST requests, background work) and tags each row.
+A developer's session debug from the toolbar doesn't reach them: a job runs after the request, without the session.
 
 The entries are stored after the response is sent (`meta.debug_view`, `meta.debug_message`) and
 deleted after the retention you choose (1–90 days, default 7; at most 5000 requests per
