@@ -795,6 +795,11 @@ apostrophe, as in report downloads. Excel and PDF come from the [download proces
 nightly clean-ups, reminders, recalculations. The pgkiln server schedules them, so no extension is
 needed (pg_cron isn't available on every managed PostgreSQL service).
 
+Automations are the application's logic: pgkiln runs them as the application, and they are exported and imported with
+it. Database housekeeping that should run even when pgkiln is down (`vacuum`, refreshing materialized views, purging
+old rows) is a pg_cron job in **SQL Workshop → Scheduling** instead (administrators; [chapter 3](03-builder.md#scheduling-with-pg_cron)
+compares the two). The Automations list says so in one line, with a link.
+
 | Setting | |
 |---|---|
 | Schedule | cron syntax, `minute hour day-of-month month day-of-week`: `0 7 * * 1-5` (07:00 on weekdays), `*/15 * * * *` (every 15 minutes), `0 2 1 * *` (02:00 on the 1st), `30 6 1 jan,jul *`; or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. When both day fields are set, either may match, as in cron |
@@ -877,7 +882,8 @@ Export files of pgkiln 0.23 and older (one code field per automation) still impo
 becomes the automation's single action. Scripts may still write `meta.automation.code`: it
 creates or replaces the single action (the column itself stays empty).
 
-If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this.
+If you prefer the database to schedule work, [pg_cron](15-extensions.md) still works next to this: the Docker setup
+includes it (sprint 213), and SQL Workshop → Scheduling manages its jobs.
 
 ## Sending e-mail
 

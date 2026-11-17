@@ -166,6 +166,11 @@ describe('builder', () => {
     return b;
   }
 
+  test('(sprint 213) the list says what Scheduling (pg_cron) is for instead', async () => {
+    const body = (await (await developer()).get(`/builder/apps/${appId}/shared?type=automation`)).body;
+    assert.match(body, /class="muted u-mt0 au-vs">Automations run this application(?:'|&#39;)s logic[\s\S]*<a href="\/builder\/sql\/scheduling">SQL Workshop › Scheduling<\/a>/);
+  });
+
   test('create validates the schedule; Run now shows the result', async () => {
     const b = await developer();
     await b.get(`/builder/apps/${appId}/shared?new=automation`);

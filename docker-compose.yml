@@ -1,9 +1,12 @@
 services:
   db:
-    image: postgres:17
+    # postgres:17 with pg_cron and pgvector (docker/postgres/Dockerfile)
+    build: docker/postgres
+    image: pgkiln-dev-postgres:17
     container_name: pgkiln-db
-    # pg_stat_statements feeds App Builder → Top SQL (optional; harmless when unused)
-    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    # pg_stat_statements feeds App Builder → Top SQL; pg_cron SQL Workshop › Scheduling (pgkiln creates the
+    # extension when it migrates)
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements,pg_cron", "-c", "cron.database_name=pgkiln"]
     environment:
       POSTGRES_USER: pgkiln
       POSTGRES_PASSWORD: pgkiln

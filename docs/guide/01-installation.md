@@ -23,7 +23,7 @@ your own data and queries.
 | **Larger** | more instances behind a load balancer ([Scaling](#scaling)), PostgreSQL on its own server | | sized by your data |
 
 Memory and disk on the smallest server leave room for the operating system; with Docker the images
-take about 1.2 GB (pgkiln 570 MB, `postgres:17` 640 MB).
+take about 1.3 GB (pgkiln 570 MB, `postgres:17` with pg_cron 750 MB).
 
 **What we measured** (October 2026, with the HR example, the Docker compose stack, on a desktop CPU;
 simulated users who sign in and request pages back to back, without pausing between clicks):
@@ -283,7 +283,10 @@ which is read at startup; real environment variables take precedence.
 
 The quickest way to run pgkiln: the image [`pgkiln/pgkiln`](https://hub.docker.com/r/pgkiln/pgkiln)
 (also `ghcr.io/pgkiln/pgkiln`, for amd64 and arm64) and a compose file with PostgreSQL 17. Docker is all
-you need; no checkout of the source:
+you need; no checkout of the source. (sprint 213) The bundled PostgreSQL has
+[pg_cron](03-builder.md#scheduling-with-pg_cron): the compose file builds it from the official `postgres:17` image
+plus the `postgresql-17-cron` package on the first `up` (a minute, once), and pgkiln creates the extension at start-up,
+so SQL Workshop → Scheduling works right away:
 
 ```bash
 mkdir pgkiln && cd pgkiln
@@ -332,13 +335,18 @@ stops the container at once with a message saying so.
 | `PGKILN_DOMAIN` | | With the `https` profile: Caddy gets a certificate for this name (its DNS must point at the machine, ports 80 and 443 open). Set `PUBLIC_URL=https://…`, `COOKIE_SECURE=true` and `TRUST_PROXY=true` with it. Installing apps on phones and push notifications need HTTPS |
 | `PGKILN_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
 | `PGKILN_IMAGE` | `pgkiln/pgkiln:latest` | The image to run, e.g. a fixed version (`pgkiln/pgkiln:0.31.0`) or `ghcr.io/pgkiln/pgkiln` |
+| `PGKILN_CRON_TIMEZONE` | `UTC` | The bundled database's `cron.timezone`: the time zone of pg_cron's schedules (e.g. `Europe/Amsterdam`) |
 
 **Upgrading:** with the published image: `docker compose pull`, then `docker compose up -d` (with a
 fixed version in `PGKILN_IMAGE`, change it first); `up -d` replaces the container when the image changed, so
 `--force-recreate` isn't needed. Built from a checkout: `git pull`, then `docker compose up -d --build`. The new
 container migrates the database before it starts serving. A `compose.yaml` from pgkiln 0.51.0 or older has
 `pull_policy: missing` under `pgkiln`, which makes `docker compose pull` skip an image that is already present:
-delete that line (or take the current `deploy/compose.yaml`) before the first upgrade this way. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
+delete that line (or take the current `deploy/compose.yaml`) before the first upgrade this way. A `compose.yaml` from
+before 0.106.0 runs plain `postgres:17`, without pg_cron: take the current one to get it (same PostgreSQL major
+version and data volume; `docker compose up -d` builds the database image and restarts the database). The database
+image is built, not pulled: `docker compose pull` skips it, and `docker compose build --pull db` takes a newer
+PostgreSQL 17 minor release. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
 Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys, authenticator apps) can't
 be decrypted. Keep a copy outside the server and confirm it on Instance settings; to change it, use
 `pgkiln admin rotate-key` ([chapter 3](03-builder.md#lockout-checks)).

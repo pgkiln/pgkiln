@@ -414,11 +414,29 @@ rail opens them, each in a new tab (`rel="noopener noreferrer"`).
 
 (sprint 101; Database Actions: Scheduling) **SQL Workshop → Scheduling** (administrators only) manages the jobs of
 [pg_cron](https://github.com/citusdata/pg_cron), the PostgreSQL extension that runs SQL on a schedule inside the
-database server. pgkiln needs pg_cron 1.4 or later, created in pgkiln's database; the page says what is missing when
-it isn't (the package, `shared_preload_libraries = 'pg_cron'`, `cron.database_name`, `create extension pg_cron`).
-Without pg_cron it lists **pgkiln's own scheduled work** read-only: every application's automations (Shared Components
-→ Automations, [chapter 6](06-processing.md)) with their schedule, next and last run, and the latest background process
-jobs. With pg_cron that list is behind a toggle under the jobs.
+database server. pgkiln needs pg_cron 1.4 or later, created in pgkiln's database.
+
+**Scheduling or Automations?** (sprint 213) Both run SQL on a schedule; like APEX next to Database Actions
+(DBMS_SCHEDULER), they are for different work, and each page says so in one line with a link to the other:
+
+| | Scheduling (this page) | [Automations](06-processing.md#automations) |
+|---|---|---|
+| What | Database jobs: housekeeping such as `vacuum`, refreshing materialized views, purging old rows | An application's own logic: reminders, recalculations, clean-ups of its data |
+| Run by | PostgreSQL itself (pg_cron), even when pgkiln is down | The pgkiln server, as the application (`meta.app_user()`, its roles, row level security) |
+| Who | Administrators; a job runs as any role | The application's developers |
+| Kept in | `cron.job`, in the database | The application (Shared Components → Automations), exported and imported with it |
+
+**pg_cron out of the box** (sprint 213): the bundled PostgreSQL of the Docker setup (`deploy/compose.yaml`) and the
+development database (`docker-compose.yml`) are PostgreSQL 17 with pg_cron, loaded for pgkiln's database
+(`shared_preload_libraries=pg_cron`, `cron.database_name=pgkiln`), and pgkiln creates the extension when it starts (it
+migrates: `pg_cron created` in the log). On your own server pgkiln does the same when pg_cron is loaded for its
+database and its owner connection may create it (a superuser); otherwise the page says what is missing (the package,
+`shared_preload_libraries = 'pg_cron'`, `cron.database_name`, `create extension pg_cron`).
+
+Without pg_cron the page lists **pgkiln's own scheduled work** first, read-only: every application's automations
+(Shared Components → Automations, [chapter 6](06-processing.md)) with their schedule, next and last run, and the latest
+background process jobs; the set-up steps are folded away below it, under the reason pg_cron can't be used. With
+pg_cron the automations are listed under the jobs, and the process jobs behind a toggle.
 
 - **Jobs** (`cron.job`): name, the command, the schedule with its meaning in words (*At 02:00, every day*), the **next
   run**, the last run's status and time (and how many of the last ten failed), database and the role it runs as;

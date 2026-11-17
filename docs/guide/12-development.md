@@ -21,11 +21,15 @@ scripts/oracle-e2e.sh      (sprint 192) Oracle Free + ora2pg (Docker) → Postgr
                            leaves the Oracle container, the schema and the application
 scripts/check-sample.ts    (sprint 166) one App Gallery sample: install, sign in as demo, render every page, report errors (--keep)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
-deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1)
+deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1); (sprint 213) its db service
+                           is postgres:17 + pg_cron, built inline (dockerfile_inline, pull_policy: build)
+docker/postgres/           (sprint 213) the development database's image (docker-compose.yml): postgres:17 + pg_cron + pgvector
+scripts/check-compose-pgcron.sh  (sprint 213) CI's docker jobs: the bundled database has pg_cron created and it runs a job
 bin/pgkiln.js              the `pgkiln` command line (runs src/cli/main.ts with tsx)
 src/
   env.ts                   .env loader (imported first)
-  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); logs each run that applies
+  migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); (sprint 213) ensurePgCron creates
+                           pg_cron when the server loads it for this database; logs each run that applies
   instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
   instance-checks.ts       (sprint 133, SEC-6) lockout checks: instance key (unreadable secrets, backup confirmed per fingerprint in
                            meta.setting secret_key_backup), clock against the database and GitHub's Date header, passkeys of another
@@ -591,7 +595,8 @@ src/
                            (sprint 183) a role's Isolated workspace panel, POST /role/:name/workspace → workspaces.ts changeWorkspaceRole
     scheduling.ts          (sprint 101, DA-12) SQL Workshop → Scheduling (/builder/sql/scheduling, administrators only): pg_cron jobs
                            with next runs, create/edit with a schedule builder and preview (review the SQL, then Apply), disable,
-                           run now, unschedule, run history and purge; without pg_cron the install note and pgkiln's automations
+                           run now, unschedule, run history and purge; (sprint 213) a line on Scheduling vs Automations;
+                           without pg_cron pgkiln's automations first, the set-up steps folded below
     api.ts                 per-app REST API page (API role, tokens)
     globalization.ts       translations, XLIFF/CSV, text messages
     dataload.ts            SQL Workshop → Load Data (with definitions, save a mapping as one); data load definition spec (Shared Components)
