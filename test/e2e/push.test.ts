@@ -54,8 +54,8 @@ async function signedIn(context: BrowserContext, user = 'scott') {
 }
 
 /** The notifications the app's service worker shows with a tag (polled: they appear asynchronously). */
-async function notifications(page: Page, tag: string) {
-  for (let i = 0; i < 50; i++) {
+async function notifications(page: Page, tag: string, tries = 50) {
+  for (let i = 0; i < tries; i++) {
     const list = await page.evaluate(async (tag) => {
       const shown = await (await navigator.serviceWorker.ready).getNotifications({ tag });
       return shown.map((n) => ({ title: n.title, body: n.body, tag: n.tag, icon: n.icon, url: String(n.data && n.data.url) }));
@@ -64,6 +64,22 @@ async function notifications(page: Page, tag: string) {
     await page.waitForTimeout(100);
   }
   throw new Error(`no notification with tag ${tag}`);
+}
+
+/**
+ * Deliver a push message until its notification shows: (sprint 212) a message delivered while the registration's
+ * worker is still starting can be lost (a flaky "no notification with tag leave-1"); the same tag replaces the
+ * notification, so a second delivery shows it once.
+ */
+async function pushed(page: Page, deliver: () => Promise<unknown>, tag: string) {
+  for (let i = 0; ; i++) {
+    await deliver();
+    try {
+      return await notifications(page, tag, 20);
+    } catch (e) {
+      if (i >= 4) throw e;
+    }
+  }
 }
 
 async function controlled(page: Page) {
@@ -116,8 +132,7 @@ describe('push notifications', () => {
     await cdp.send('ServiceWorker.enable');
     const registrationId = await registration;
     const data = JSON.stringify({ title: 'Leave request', body: 'Blake asks for 3 days', url: '/a/hr/6', tag: 'leave-1' });
-    await cdp.send('ServiceWorker.deliverPushMessage', { origin: `${base}/`, registrationId, data });
-    const [n] = await notifications(page, 'leave-1');
+    const [n] = await pushed(page, () => cdp.send('ServiceWorker.deliverPushMessage', { origin: `${base}/`, registrationId, data }), 'leave-1');
     assert.equal(n.title, 'Leave request');
     assert.equal(n.body, 'Blake asks for 3 days');
     assert.equal(n.tag, 'leave-1');
@@ -125,8 +140,7 @@ describe('push notifications', () => {
     assert.equal(n.url, `${base}/a/hr/6`);
 
     // a link outside the app is not followed: the notification opens the app instead
-    await cdp.send('ServiceWorker.deliverPushMessage', { origin: `${base}/`, registrationId, data: JSON.stringify({ title: 'Elsewhere', url: 'https://evil.example.com/', tag: 'x' }) });
-    const [other] = await notifications(page, 'x');
+    const [other] = await pushed(page, () => cdp.send('ServiceWorker.deliverPushMessage', { origin: `${base}/`, registrationId, data: JSON.stringify({ title: 'Elsewhere', url: 'https://evil.example.com/', tag: 'x' }) }), 'x');
     assert.equal(other.url, `${base}/a/hr/`);
     await context.close();
   });

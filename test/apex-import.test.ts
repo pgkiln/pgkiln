@@ -18,7 +18,8 @@ import { ApexId, ApexParseError, joinSplitExport, parseApexCalls, unistr } from 
 import { apexSource, apexSourceFromDir, apexToDoc, attributeAt, conditionOk, MAPPED_PROCESS_TYPES, MAPPED_VALIDATION_TYPES, NotAnApexExport, oracleisms, parseFp, reportText, type ReportEntry } from '../src/apeximport.ts';
 import { Browser } from './helpers.ts';
 import { apexCheck, checkText, qualifyTables, soleTableColumn, sqlObjects } from '../src/apex-check.ts';
-import { plsqlAsSql } from '../src/oracle-sql.ts';
+import { codeMask, plsqlAsSql, translateOracle } from '../src/oracle-sql.ts';
+import { handWork } from '../src/apex-issues.ts';
 
 const FIX = join(root, 'test/fixtures/apex');
 const F100 = readFileSync(join(FIX, 'f100.sql'), 'utf8');
@@ -397,8 +398,7 @@ describe('importing', () => {
   });
 });
 
-describe('sprint 187: common Oracle SQL rewritten (NX-F1)', async () => {
-  const { codeMask, translateOracle } = await import('../src/oracle-sql.ts');
+describe('sprint 187: common Oracle SQL rewritten (NX-F1)', () => {
   const t = (sql: string) => translateOracle(sql).sql;
 
   test('nvl, nvl2 and decode, nested, with a null that equals null as in Oracle', () => {
@@ -441,8 +441,7 @@ describe('sprint 187: common Oracle SQL rewritten (NX-F1)', async () => {
   });
 });
 
-describe('sprint 187: Team Development issues for the hand work (NX-F1)', async () => {
-  const { handWork } = await import('../src/apex-issues.ts');
+describe('sprint 187: Team Development issues for the hand work (NX-F1)', () => {
   const issues = async (alias: string) => (await owner.query(
     `select i.title, i.body, i.page_no, i.status, i.app_id, (select string_agg(l.name, ',') from meta.team_issue_label il join meta.team_label l on l.id = il.label_id where il.issue_id = i.id) as labels
        from meta.team_issue i join meta.app a on a.id = i.app_id where a.alias = $1 order by i.id`, [alias])).rows;
