@@ -747,6 +747,35 @@ a.drill > .slice:hover, a.col-slot.drill:hover .col, a.col.drill:hover, a.bar-tr
 .status-icon { display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: var(--sc); color: #fff; font-size: 0.7rem; font-weight: 700; }
 .status-warning .status-icon { color: #1b2330; }
 
+/* (sprint 220) sankey: nodes in columns, ribbons between them (SVG, stretched to the box), labels beside the nodes */
+.sankey { position: relative; height: 22rem; margin: 0 0.25rem; }
+.sankey-links { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.sankey-link { fill: var(--c); opacity: 0.32; stroke: none; }
+.sankey-link:hover { opacity: 0.6; }
+.sankey-node { position: absolute; background: var(--c); border-radius: 2px; min-height: 2px; outline-offset: 2px; }
+.sankey-node:hover, .sankey-node:focus-visible { filter: brightness(1.15); }
+.sankey-label { position: absolute; transform: translateY(-50%); padding: 0 0.4rem; font-size: 0.8rem; white-space: nowrap; pointer-events: none; }
+.sankey-label.is-end { text-align: right; }
+.sankey-label small { color: var(--muted); }
+/* (sprint 220) nbox: a grid of cells shaded from low to high, items as chips */
+.nbox { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; gap: 0.35rem 0.5rem; }
+.nbox-axis { font-size: 0.78rem; color: var(--muted); }
+.nbox-axis-y { writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; }
+.nbox-axis-x { grid-column: 2; text-align: center; }
+.nbox-grid { display: grid; gap: 3px; }
+.nbox-cell { position: relative; padding: 0.4rem 0.5rem 0.5rem; border-radius: 4px; background: color-mix(in srgb, var(--series-1) var(--nbox-mix, 8%), var(--surface)); border: 1px solid var(--border); min-width: 0; }
+.nbox-l0 { --nbox-mix: 4%; } .nbox-l1 { --nbox-mix: 10%; } .nbox-l2 { --nbox-mix: 17%; } .nbox-l3 { --nbox-mix: 25%; } .nbox-l4 { --nbox-mix: 34%; }
+.nbox-count { position: absolute; top: 0.25rem; right: 0.45rem; font-size: 0.75rem; color: var(--muted); }
+.nbox-items { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.nbox-item { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); font-size: 0.78rem; outline-offset: 2px; }
+/* (sprint 220) picto: a row of icons per label */
+.chart-picto { display: flex; flex-direction: column; gap: 0.35rem; }
+.picto-row { display: grid; grid-template-columns: minmax(70px, 25%) 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.88rem; border-radius: 4px; outline-offset: 2px; }
+.picto-icons { display: flex; flex-wrap: wrap; gap: 3px; }
+.picto-icon { display: inline-block; width: 0.85rem; height: 0.85rem; border-radius: 50%; background: var(--c); flex: none; }
+.picto-part { position: relative; overflow: hidden; background: color-mix(in srgb, var(--c) 18%, transparent); }
+.picto-fill { position: absolute; inset: 0 auto 0 0; background: var(--c); }
+.picto-key { margin: 0; font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 0.35rem; }
 /* funnel: stages in the query's order, centred bars of one hue */
 .chart-funnel { display: flex; flex-direction: column; gap: 0.35rem; }
 .funnel-row { display: grid; grid-template-columns: minmax(70px, 25%) 1fr auto; gap: 0.75rem; align-items: center; font-size: 0.88rem; border-radius: 4px; outline-offset: 2px; }

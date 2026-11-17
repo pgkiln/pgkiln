@@ -3,7 +3,7 @@
 --
 -- Every chart type of the chart region, a page per kind of question
 -- (comparing categories, change over time, parts of a whole, relations and
--- spread, plans) and a drill-down from a chart to a report. Each page starts
+-- spread, plans, flows and grids) and a drill-down from a chart to a report. Each page starts
 -- with a text that says how the query shapes the chart.
 --
 -- Installed by an administrator from the App Gallery, or with
@@ -91,6 +91,26 @@ insert into sample_charts.project_task values
   (5, 'Test', 'Quality', current_date + 18, current_date + 32, 0, '{4}'),
   (6, 'Launch', 'Product', current_date + 33, null, 0, '{5}');
 
+-- (sprint 220) flows for the Sankey chart, a talent review for the NBox chart
+create table sample_charts.visit_flow (
+  source text not null,
+  target text not null,
+  visits int not null
+);
+insert into sample_charts.visit_flow values
+  ('Search', 'Home', 420), ('Search', 'Product', 260), ('Newsletter', 'Product', 180), ('Ads', 'Home', 150),
+  ('Home', 'Product', 390), ('Home', 'Left', 180), ('Product', 'Cart', 410), ('Product', 'Left', 420),
+  ('Cart', 'Order', 290), ('Cart', 'Left', 120);
+
+create table sample_charts.talent (
+  person      text primary key,
+  performance int not null check (performance between 1 and 3),
+  potential   int not null check (potential between 1 and 3)
+);
+insert into sample_charts.talent values
+  ('Ada', 3, 3), ('Grace', 3, 2), ('Linus', 2, 3), ('Ken', 2, 2), ('Barbara', 2, 2), ('Dennis', 1, 2),
+  ('Margaret', 3, 1), ('Edsger', 1, 1), ('Frances', 2, 1), ('Niklaus', 1, 3);
+
 -- 2. The application's database role ----------------------------------------
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_sample_charts') then create role app_sample_charts nologin; end if;
@@ -110,7 +130,8 @@ insert into meta.page (app_id, page_no, name, title, parent_page)
 select a.id, p.no, p.name, p.name, p.parent
   from meta.app a, (values
   (1, 'Sample Charts', null), (2, 'Comparing categories', 1), (3, 'Change over time', 1), (4, 'Parts of a whole', 1),
-  (5, 'Relations and spread', 1), (6, 'Plans and timelines', 1), (7, 'Drill-down', 1), (8, 'Sales by region', 7)
+  (5, 'Relations and spread', 1), (6, 'Plans and timelines', 1), (7, 'Drill-down', 1), (8, 'Sales by region', 7),
+  (9, 'Flows and grids', 1)
   ) as p (no, name, parent)
  where a.alias = 'sample-charts';
 
@@ -119,7 +140,7 @@ select a.id, n.seq, n.label, n.icon, n.page
   from meta.app a, (values
   (10, 'Home', 'home', 1), (20, 'Comparing categories', 'chart', 2), (30, 'Change over time', 'line-chart', 3),
   (40, 'Parts of a whole', 'pie-chart', 4), (50, 'Relations and spread', 'activity', 5), (60, 'Plans and timelines', 'calendar', 6),
-  (70, 'Drill-down', 'filter', 7)
+  (70, 'Drill-down', 'filter', 7), (80, 'Flows and grids', 'layers', 9)
   ) as n (seq, label, icon, page)
  where a.alias = 'sample-charts';
 
@@ -135,7 +156,8 @@ select a.id, 'CHART_TOPICS', e.seq, e.label, e.icon, e.page, e.description
   (30, 'Parts of a whole', 'pie-chart', 4, 'Pie, donut, funnel, pyramid, treemap and sunburst charts.'),
   (40, 'Relations and spread', 'activity', 5, 'Scatter, bubble, box plot, radar, polar and gauge charts.'),
   (50, 'Plans and timelines', 'calendar', 6, 'Gantt and timeline charts.'),
-  (60, 'Drill-down', 'filter', 7, 'A chart whose columns open a report of their rows.')
+  (60, 'Drill-down', 'filter', 7, 'A chart whose columns open a report of their rows.'),
+  (70, 'Flows and grids', 'layers', 9, 'Sankey, NBox and picto charts.')
   ) as e (seq, label, icon, page, description)
  where a.alias = 'sample-charts';
 
@@ -256,7 +278,21 @@ select pg_temp.page_id('sample-charts', r.page), r.seq, r.title, r.type, r.cols,
    '{"headings": {"sold_on": "Sold on"}, "formats": {"amount": "999G999G990D00"}}'),
   (8, 20, 'Per product', 'chart', 12, 'standard',
    E'select product, sum(amount) as "Sales"\n  from sample_charts.sale where :P8_REGION is null or region = :P8_REGION\n group by product order by 2 desc',
-   '{"kind": "bar", "format_mask": "999G999G990"}')
+   '{"kind": "bar", "format_mask": "999G999G990"}'),
+
+  -- 9 Flows and grids (sprint 220)
+  (9, 5, 'About these charts', 'static', 12, 'plain',
+   '<p class="lead"><strong>sankey</strong> draws flows from rows of <em>source, target, value</em>: equal pairs add up, and a node stands in the column of its longest path (a flow back to an earlier node can''t be drawn). <strong>nbox</strong> places each row''s label in a grid by two whole numbers from 1: the column and the row (row 1 at the bottom). <strong>picto</strong> shows the first series as rows of icons, each a round number of units.</p>',
+   '{}'),
+  (9, 10, 'Visitors from source to order (sankey)', 'chart', 12, 'standard',
+   E'select source, target, visits as "Visits" from sample_charts.visit_flow',
+   '{"kind": "sankey"}'),
+  (9, 20, 'Talent review: performance against potential (nbox)', 'chart', 6, 'standard',
+   E'select person, performance as "Performance", potential as "Potential"\n  from sample_charts.talent order by person',
+   '{"kind": "nbox"}'),
+  (9, 30, 'Units per region (picto)', 'chart', 6, 'standard',
+   E'select region, sum(units) as "Units"\n  from sample_charts.sale group by region order by 2 desc',
+   '{"kind": "picto"}')
   ) as r (page, seq, title, type, cols, template, source, config);
 
 insert into meta.item (page_id, region_id, seq, name, label, type, lov, config)

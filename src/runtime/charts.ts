@@ -30,8 +30,8 @@ import { cell } from './report.ts';
 // row, or one value column with a row per observation (the label repeats; the
 // statistics are computed per label); a stock chart open, high, low and close.
 
-export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar' | 'range' | 'boxplot' | 'stock' | 'treemap' | 'sunburst' | 'timeline';
-export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar', 'range', 'boxplot', 'stock', 'treemap', 'sunburst', 'timeline'];
+export type ChartKind = 'bar' | 'column' | 'stacked' | 'line' | 'area' | 'combo' | 'scatter' | 'donut' | 'pie' | 'bubble' | 'gauge' | 'funnel' | 'radar' | 'gantt' | 'pyramid' | 'polar' | 'range' | 'boxplot' | 'stock' | 'treemap' | 'sunburst' | 'timeline' | 'sankey' | 'nbox' | 'picto';
+export const CHART_KINDS: ChartKind[] = ['bar', 'column', 'stacked', 'line', 'area', 'combo', 'scatter', 'donut', 'pie', 'bubble', 'gauge', 'funnel', 'radar', 'gantt', 'pyramid', 'polar', 'range', 'boxplot', 'stock', 'treemap', 'sunburst', 'timeline', 'sankey', 'nbox', 'picto'];
 
 /** A gauge's scale and thresholds (config.gauge): warning above critical means low values are bad. */
 export interface GaugeConfig {
@@ -109,6 +109,11 @@ let texts = {
   median: 'Median',
   q3: 'Third quartile',
   max: 'Maximum',
+  noSankey: 'A Sankey chart needs a source, a target and a value column, and no flow back to an earlier node.',
+  noNbox: 'An NBox chart needs a label column and two whole numbers from 1 to 5: the column and the row.',
+  source: 'Source',
+  target: 'Target',
+  eachIcon: 'Each icon: {n}',
 };
 let chartLang = 'en';
 const pct = (v: number) => `${Math.max(0, Math.min(100, v)).toFixed(3)}%`;
@@ -489,6 +494,175 @@ function funnel(labels: string[], series: Series[]) {
     return mark('div', i, 0, 'funnel-row', t, html`<span class="bar-label" title="${l}">${l}</span>
       <span class="funnel-track"><span class="funnel-bar s1 ${css.cls(`width:${pct((values[i] / max) * 100)}`)}"></span></span>
       <span class="bar-value">${fmt.format(series[0].values[i])}${i && share ? html` <small>${share}</small>` : ''}</span>`);
+  })}</div>`;
+}
+
+// ---------------------------------------------------------------- (sprint 220) sankey
+export interface SankeyNode { label: string; col: number; value: number; y: number; h: number; k: number; row: number }
+export interface SankeyLink { source: SankeyNode; target: SankeyNode; value: number; sy: number; ty: number; h: number; row: number }
+
+/**
+ * (sprint 220; Oracle JET: Sankey) Flows between nodes from rows of (source, target, value): equal pairs add up, a
+ * flow to itself and values of zero or less are left out. A node's column is the length of the longest path to it
+ * (one with no flow out moves to the last column); its height its larger side (in or out); the tallest column fills
+ * the height less the gaps. null: no flow, or a cycle (a flow back to an earlier node), which a Sankey can't draw.
+ * Coordinates are in units of 100 (the drawing's width and height).
+ */
+export function sankeyLayout(rows: unknown[][], gap = 6): { nodes: SankeyNode[]; links: SankeyLink[]; columns: number } | null {
+  const pairs = new Map<string, { s: string; t: string; v: number; row: number }>();
+  rows.forEach((r, row) => {
+    const s = r[0] == null ? '' : String(r[0]);
+    const t = r[1] == null ? '' : String(r[1]);
+    const v = Number(r[2]);
+    if (!s || !t || s === t || !Number.isFinite(v) || v <= 0) return;
+    const key = `${s}\u0000${t}`;
+    const p = pairs.get(key);
+    if (p) p.v += v;
+    else pairs.set(key, { s, t, v, row });
+  });
+  if (!pairs.size || pairs.size > 400) return null;
+  const order: string[] = [];
+  const inSum = new Map<string, number>();
+  const outSum = new Map<string, number>();
+  const firstRow = new Map<string, number>();
+  for (const p of pairs.values()) {
+    for (const n of [p.s, p.t]) if (!firstRow.has(n)) { order.push(n); firstRow.set(n, p.row); }
+    outSum.set(p.s, (outSum.get(p.s) ?? 0) + p.v);
+    inSum.set(p.t, (inSum.get(p.t) ?? 0) + p.v);
+  }
+  // the longest path to each node; still growing after as many passes as there are nodes: a cycle
+  const col = new Map(order.map((n) => [n, 0]));
+  for (let pass = 0; ; pass++) {
+    let changed = false;
+    for (const p of pairs.values()) if (col.get(p.t)! < col.get(p.s)! + 1) { col.set(p.t, col.get(p.s)! + 1); changed = true; }
+    if (!changed) break;
+    if (pass > order.length) return null;
+  }
+  const columns = Math.max(...col.values()) + 1;
+  for (const n of order) if (!outSum.has(n)) col.set(n, columns - 1);
+  const nodes = new Map<string, SankeyNode>(order.map((n, k) => [n, { label: n, col: col.get(n)!, value: Math.max(inSum.get(n) ?? 0, outSum.get(n) ?? 0), y: 0, h: 0, k, row: firstRow.get(n)! }]));
+  const byCol: SankeyNode[][] = Array.from({ length: columns }, () => []);
+  for (const n of nodes.values()) byCol[n.col].push(n);
+  const scale = Math.min(...byCol.filter((c) => c.length).map((c) => (100 - gap * (c.length - 1)) / c.reduce((a, n) => a + n.value, 0)));
+  for (const c of byCol) {
+    const used = c.reduce((a, n) => a + n.value * scale, 0) + gap * (c.length - 1);
+    let y = (100 - used) / 2;
+    for (const n of c) { n.y = y; n.h = n.value * scale; y += n.h + gap; }
+  }
+  const links: SankeyLink[] = [...pairs.values()].map((p) => ({ source: nodes.get(p.s)!, target: nodes.get(p.t)!, value: p.v, sy: 0, ty: 0, h: p.v * scale, row: p.row }));
+  // where each link leaves and enters: in the order of the other end, top to bottom, so ribbons don't cross at a node
+  for (const n of nodes.values()) {
+    let y = n.y;
+    for (const l of links.filter((x) => x.source === n).sort((a, b) => a.target.y - b.target.y)) { l.sy = y; y += l.h; }
+    y = n.y;
+    for (const l of links.filter((x) => x.target === n).sort((a, b) => a.source.y - b.source.y)) { l.ty = y; y += l.h; }
+  }
+  return { nodes: [...nodes.values()], links, columns };
+}
+
+function sankey(title: string, rows: unknown[][], fields: { name: string }[]) {
+  const NODE_W = 2.5;
+  const layout = fields.length < 3 ? null : sankeyLayout(rows);
+  if (!layout) return html`<p class="empty">${texts.noSankey}</p>`;
+  const { nodes, links, columns } = layout;
+  const x = (c: number) => (columns > 1 ? (c / (columns - 1)) * (100 - NODE_W) : 0);
+  const colour = (n: SankeyNode) => `s${(n.k % MAX_SERIES) + 1}`;
+  const f = (v: number) => v.toFixed(3);
+  const ribbons = links.map((l) => {
+    const x0 = x(l.source.col) + NODE_W;
+    const x1 = x(l.target.col);
+    const m = (x0 + x1) / 2;
+    const d = `M${f(x0)},${f(l.sy)} C${f(m)},${f(l.sy)} ${f(m)},${f(l.ty)} ${f(x1)},${f(l.ty)} L${f(x1)},${f(l.ty + l.h)} C${f(m)},${f(l.ty + l.h)} ${f(m)},${f(l.sy + l.h)} ${f(x0)},${f(l.sy + l.h)} Z`;
+    return html`<path class="sankey-link ${colour(l.source)}" d="${d}"><title>${l.source.label} → ${l.target.label}: ${fmt.format(l.value)}</title></path>`;
+  });
+  const inOf = (n: SankeyNode) => links.filter((l) => l.target === n).reduce((a, l) => a + l.value, 0);
+  const outOf = (n: SankeyNode) => links.filter((l) => l.source === n).reduce((a, l) => a + l.value, 0);
+  const marks = nodes.map((n) => {
+    const tip = `${n.label}: ${fmt.format(n.value)}${inOf(n) && outOf(n) ? ` (${texts.target.toLowerCase()} ${fmt.format(inOf(n))}, ${texts.source.toLowerCase()} ${fmt.format(outOf(n))})` : ''}`;
+    const geo = css.cls(`left:${pct(x(n.col))};top:${pct(n.y)};width:${pct(NODE_W)};height:${pct(Math.max(n.h, 0.6))}`);
+    const end = n.col === columns - 1 && columns > 1;
+    const label = css.cls(`${end ? 'right' : 'left'}:${pct(end ? 100 - x(n.col) : x(n.col) + NODE_W)};top:${pct(n.y + n.h / 2)}`);
+    return html`${mark('div', n.row, null, `sankey-node ${colour(n)} ${geo}`, tip, '')}<span class="sankey-label${end ? ' is-end' : ''} ${label}" aria-hidden="true">${n.label} <small>${fmt.format(n.value)}</small></span>`;
+  });
+  return html`<div class="sankey"><svg class="sankey-links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${ribbons}</svg>${marks}</div>
+  <details class="chart-data"><summary>${texts.table}</summary>
+    <div class="table-wrap"><table class="report">
+      <caption class="sr-only">${title}</caption>
+      <thead><tr><th scope="col">${fields[0]?.name ?? texts.source}</th><th scope="col">${fields[1]?.name ?? texts.target}</th><th scope="col" class="num">${fields[2]?.name ?? texts.total}</th></tr></thead>
+      <tbody>${links.map((l) => html`<tr><th scope="row">${l.source.label}</th><td>${l.target.label}</td><td class="num">${fmt.format(l.value)}</td></tr>`)}</tbody>
+    </table></div></details>`;
+}
+
+// ---------------------------------------------------------------- (sprint 220) nbox
+/**
+ * (sprint 220; Oracle JET: NBox) Items in a grid of columns and rows, e.g. performance against potential: rows of
+ * (label, column, row) with whole numbers from 1; the grid is 3 by 3, or larger up to 5 when a row asks for it; row 1
+ * is at the bottom. Rows outside the grid are left out. Cells shade from low (column 1, row 1) to high.
+ */
+export function nboxCells(rows: unknown[][]) {
+  const items: { label: string; c: number; r: number; row: number }[] = [];
+  rows.forEach((x, row) => {
+    const c = Number(x[1]);
+    const r = Number(x[2]);
+    if (!Number.isInteger(c) || !Number.isInteger(r) || c < 1 || r < 1 || c > 5 || r > 5) return;
+    items.push({ label: x[0] == null ? '' : String(x[0]), c, r, row });
+  });
+  const cols = Math.max(3, ...items.map((i) => i.c));
+  const rowsN = Math.max(3, ...items.map((i) => i.r));
+  return { items, cols, rows: rowsN };
+}
+
+function nbox(title: string, rows: unknown[][], fields: { name: string }[]) {
+  const g = fields.length < 3 ? null : nboxCells(rows);
+  if (!g || !g.items.length) return html`<p class="empty">${texts.noNbox}</p>`;
+  const colName = fields[1].name;
+  const rowName = fields[2].name;
+  const cells: Raw[] = [];
+  for (let r = g.rows; r >= 1; r--)
+    for (let c = 1; c <= g.cols; c++) {
+      const here = g.items.filter((i) => i.c === c && i.r === r);
+      const level = Math.round((((c - 1) / (g.cols - 1) + (r - 1) / (g.rows - 1)) / 2) * 4); // 0 (low) … 4 (high)
+      cells.push(html`<div class="nbox-cell nbox-l${level} ${css.cls(`grid-column:${c};grid-row:${g.rows - r + 1}`)}">
+        <span class="nbox-count" aria-hidden="true">${here.length || ''}</span>
+        <ul class="nbox-items" aria-label="${colName} ${c}, ${rowName} ${r}: ${here.length}">${here.map((i) => html`<li>${mark('span', i.row, null, 'nbox-item', `${i.label} (${colName} ${c}, ${rowName} ${r})`, i.label, true, true)}</li>`)}</ul>
+      </div>`);
+    }
+  return html`<div class="nbox">
+      <span class="nbox-axis nbox-axis-y" aria-hidden="true">${rowName} →</span>
+      <div class="nbox-grid ${css.cls(`grid-template-columns:repeat(${g.cols},minmax(0,1fr));grid-template-rows:repeat(${g.rows},minmax(4.5rem,auto))`)}">${cells}</div>
+      <span class="nbox-axis nbox-axis-x" aria-hidden="true">${colName} →</span>
+    </div>
+  <details class="chart-data"><summary>${texts.table}</summary>
+    <div class="table-wrap"><table class="report">
+      <caption class="sr-only">${title}</caption>
+      <thead><tr><th scope="col">${fields[0].name}</th><th scope="col" class="num">${colName}</th><th scope="col" class="num">${rowName}</th></tr></thead>
+      <tbody>${g.items.map((i) => html`<tr><th scope="row">${i.label}</th><td class="num">${i.c}</td><td class="num">${i.r}</td></tr>`)}</tbody>
+    </table></div></details>`;
+}
+
+// ---------------------------------------------------------------- (sprint 220) picto
+/**
+ * (sprint 220) What one icon stands for: 1, 2 or 5 times a power of ten, so that the largest value takes at most 40
+ * icons; at least 1 when the largest value is (icons count things: 3 is three icons, not thirty tenths).
+ */
+export function pictoUnit(max: number) {
+  if (!(max > 0)) return 1;
+  for (let p = max >= 1 ? Math.max(1, 10 ** Math.floor(Math.log10(max / 40))) : 10 ** Math.floor(Math.log10(max / 40)); ; p *= 10)
+    for (const m of [1, 2, 5]) if (max / (m * p) <= 40) return m * p;
+}
+
+function picto(labels: string[], series: Series[]) {
+  // (Oracle JET: Picto Chart) one row per label: as many icons as the value holds units, the last one in part
+  const values = series[0].values.map((v) => Math.max(0, v));
+  const unit = pictoUnit(Math.max(...values, 0));
+  const key = html`<p class="picto-key"><span class="picto-icon s1" aria-hidden="true"></span> ${texts.eachIcon.replace('{n}', fmt.format(unit))}</p>`;
+  return html`${key}<div class="chart-picto">${labels.map((l, i) => {
+    const whole = Math.floor(values[i] / unit + 1e-9);
+    const part = values[i] / unit - whole;
+    const icons = [...Array(whole)].map(() => html`<span class="picto-icon s1"></span>`);
+    const last = part > 0.05 ? html`<span class="picto-icon picto-part s1"><span class="picto-fill ${css.cls(`width:${pct(part * 100)}`)}"></span></span>` : '';
+    return mark('div', i, 0, 'picto-row', `${l}: ${fmt.format(series[0].values[i])}`, html`<span class="bar-label" title="${l}">${l}</span>
+      <span class="picto-icons" aria-hidden="true">${icons}${last}</span><span class="bar-value">${fmt.format(series[0].values[i])}</span>`);
   })}</div>`;
 }
 
@@ -1207,7 +1381,14 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
       noGantt: t('chart.no_gantt'), noData: t('chart.no_data'), today: t('chart.today'),
       noRange: t('chart.no_range'), noBoxplot: t('chart.no_boxplot'), noStock: t('chart.no_stock'), ganttHint: t('chart.gantt_hint'), noTree: t('chart.no_tree'), noTimeline: t('chart.no_timeline'), total: t('chart.total'),
       min: t('chart.min'), q1: t('chart.q1'), median: t('chart.median'), q3: t('chart.q3'), max: t('chart.max'),
+      noSankey: t('chart.no_sankey'), noNbox: t('chart.no_nbox'), source: t('chart.source'), target: t('chart.target'),
+      eachIcon: t('chart.each_icon'),
     };
+  // (sprint 220) flows, a grid and pictograms read their columns by position, like a Gantt chart
+  if (kind === 'sankey')
+    return html`<figure class="chart chart-sankey" aria-label="${title}">${sankey(title, rows, fields)}</figure>`;
+  if (kind === 'nbox')
+    return html`<figure class="chart chart-nbox" aria-label="${title}">${nbox(title, rows, fields)}</figure>`;
   // a Gantt chart reads its date columns itself (its series are not numbers)
   if (kind === 'gantt')
     return html`<figure class="chart chart-gantt" aria-label="${title}">${gantt(title, rows, fields, opts.now ?? Date.now(), opts.edit)}</figure>`;
@@ -1276,12 +1457,15 @@ export function renderChartBody(kind: ChartKind, title: string, rows: unknown[][
     case 'stock':
       body = stock(labels, series);
       break;
+    case 'picto':
+      body = picto(labels, series);
+      break;
     default:
       body = bar(labels, series);
   }
   return html`<figure class="chart chart-${kind}" aria-label="${title}">
-    ${['donut', 'pie', 'bubble', 'gauge', 'funnel', 'stock'].includes(kind) || (kind === 'pyramid' && series.length < 2) ? '' : kind === 'range' ? legend(rangeNames(series)) : legend(kind === 'pyramid' ? series.slice(0, 2) : series)}
+    ${['donut', 'pie', 'bubble', 'gauge', 'funnel', 'stock', 'picto'].includes(kind) || (kind === 'pyramid' && series.length < 2) ? '' : kind === 'range' ? legend(rangeNames(series)) : legend(kind === 'pyramid' ? series.slice(0, 2) : series)}
     ${body}
-    ${dataTable(title, labels, kind === 'gauge' || kind === 'funnel' ? series.slice(0, 1) : kind === 'pyramid' ? series.slice(0, 2) : series, fields[0]?.name ?? texts.label, kind === 'bubble')}
+    ${dataTable(title, labels, kind === 'gauge' || kind === 'funnel' || kind === 'picto' ? series.slice(0, 1) : kind === 'pyramid' ? series.slice(0, 2) : series, fields[0]?.name ?? texts.label, kind === 'bubble')}
   </figure>`;
 }

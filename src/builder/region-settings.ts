@@ -67,6 +67,9 @@ const CHART_LABELS: Record<string, string> = {
   range: 'Range (low and high columns: floating columns)',
   boxplot: 'Box plot (one value per row, or min, Q1, median, Q3 and max)',
   stock: 'Stock (open, high, low and close columns: candlesticks)',
+  sankey: 'Sankey (source, target and value columns: flows)',
+  nbox: 'NBox (label, column and row from 1 to 5: a grid)',
+  picto: 'Picto (one series as rows of icons)',
 };
 const GAUGE_KEYS = ['min', 'max', 'warning', 'critical'] as const;
 const CARD_COLUMNS = ['title', 'subtitle', 'body', 'badge', 'icon'];

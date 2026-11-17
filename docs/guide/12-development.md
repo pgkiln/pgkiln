@@ -346,7 +346,7 @@ src/
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
     gantt-move.ts          (sprint 69) Gantt drag and drop: ganttEditable, targetTime, moveGanttTask (the task in the region's
                            query, gantt_move with :TASK_ID/:NEW_START/:NEW_END); the dragging itself is in app.js
-    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, range, box plot (quantile, boxes), stock, (sprint 70) treemap and sunburst (buildTree, squarify), timeline, drill-down marks, data table
+    charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, range, box plot (quantile, boxes), stock, (sprint 70) treemap and sunburst (buildTree, squarify), timeline, (sprint 220) sankey (sankeyLayout), nbox (nboxCells), picto (pictoUnit), drill-down marks, data table
     calendar.ts            calendar region: month/week/day/list views, create links, drag and drop (moveEvent, moveCalendarEvent;
                            the route POST …/calendar/:id/move is in routes.ts)
     links.ts               page links with checksums; fillItems() fills #column# in link items
