@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-11-17
+
 ### Added
 - **Debug messages for background work and REST requests** (sprint 218; APEX debugs jobs too): with an application's
   debug level on, an automation's run (`AUTOMATION`), a background process chain (`JOB`, with its page and the user
