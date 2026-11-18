@@ -314,3 +314,47 @@ function headersWithPrefix(index: Map<string, number>, prefix: string) {
   for (const k of index.keys()) if (k.startsWith(prefix)) return true;
   return false;
 }
+
+/**
+ * (sprint 224) A document as JSON, so REST data sources read XML with the paths they use for JSON: the root element
+ * is the one key of the result. An element with neither attributes nor child elements is its text (null when empty);
+ * otherwise an object of its attributes ("@id"), child elements by local name (an array when one repeats) and its
+ * own text ("#text", when there is any besides white space). Namespace prefixes are dropped, as everywhere here.
+ */
+export function xmlToJson(xml: string, limits: XmlLimits = {}): Record<string, unknown> {
+  type Node = { name: string; obj: Record<string, unknown>; text: string; children: number; attrs: number };
+  const root: Record<string, unknown> = {};
+  const stack: Node[] = [];
+  // a key that repeats becomes an array (values are never arrays themselves); defineProperty: "__proto__" is a plain key
+  const put = (target: Record<string, unknown>, key: string, value: unknown) => {
+    if (!Object.hasOwn(target, key)) Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+    else if (Array.isArray(target[key])) (target[key] as unknown[]).push(value);
+    else target[key] = [target[key], value];
+  };
+  scanXml(
+    xml,
+    {
+      open(name, attrs) {
+        if (stack.length) stack[stack.length - 1].children++;
+        const obj: Record<string, unknown> = {};
+        for (const [k, v] of attrs) put(obj, `@${k}`, v);
+        stack.push({ name, obj, text: '', children: 0, attrs: attrs.length });
+      },
+      text(t) {
+        if (stack.length) stack[stack.length - 1].text += t;
+      },
+      close() {
+        const n = stack.pop()!;
+        let value: unknown;
+        if (!n.children && !n.attrs) value = n.text.trim() || null;
+        else {
+          if (n.text.trim()) put(n.obj, '#text', n.text.trim());
+          value = n.obj;
+        }
+        put(stack.length ? stack[stack.length - 1].obj : root, n.name, value);
+      },
+    },
+    limits,
+  );
+  return root;
+}
