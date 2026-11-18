@@ -40,6 +40,7 @@ export function objectMenu(schema: string, o: MenuObj, tx: BuilderTranslate = tr
       ${RELATIONS.has(o.type) ? item(`${BASE}/sql/rest/object?${new URLSearchParams({ schema, name: o.name })}`, 'globe', tx('oa.rest')) : ''}
       ${item(q('ddl'), 'code', tx('oa.ddl'))}
       ${item(q('download'), 'download', tx('oa.ddl_file'))}
+      ${table && !/\./.test(o.name) ? item(`${BASE}/sql/recycle-bin/drop?${new URLSearchParams({ schema, name: o.name })}`, 'trash', tx('oa.recycle')) : ''}
       ${item(q('drop'), 'trash', tx('oa.drop'))}
     </div></div></details>`;
 }

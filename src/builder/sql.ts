@@ -30,6 +30,7 @@ import { restModuleRoutes } from './rest-modules.ts';
 import { webRequestRoutes } from './web-requests.ts';
 import { webhookEventRoutes } from './webhook-events.ts';
 import { changeLogRoutes } from './changelog.ts';
+import { recycleBinRoutes } from './recycle-bin.ts';
 import { tr, type BuilderTranslate } from './i18n.ts';
 import { currentWorkspace, sessionSchema, usableSchemas, workshopDb, workshopRunsAs } from './workspaces.ts';
 
@@ -160,4 +161,5 @@ export async function sqlRoutes(app: FastifyInstance) {
   await app.register(webhookEventRoutes);
   // (sprint 106) the change log (changelog.ts)
   await app.register(changeLogRoutes);
+  await app.register(recycleBinRoutes); // (sprint 228)
 }
