@@ -154,7 +154,7 @@ export function passwordResetRoutes(app: FastifyInstance) {
     const again = (msg: string, code = 422) => reply.code(code).type('text/html').send(newPasswordPage(a, locale, session, user, msg));
     if (b.__csrf !== session.csrf_token) return again(t('login.expired_session'), 403);
     if (b.new_password !== b.confirm_password) return again(t('password.mismatch'));
-    const problem = await passwordProblem(b.new_password, { username: user, t });
+    const problem = await passwordProblem(b.new_password, { username: user, t, appId: a.id });
     if (problem) return again(problem);
     const done = (await runtime.one<{ u: string | null }>('select meta.reset_password($1, $2, $3) as u', [a.id, hash, String(b.new_password).slice(0, 200)]))?.u;
     if (!done) return reply.code(410).type('text/html').send(invalidPage(a, locale));

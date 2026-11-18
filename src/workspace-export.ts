@@ -67,7 +67,9 @@ export async function exportWorkspace(workspaceId: number, parts: readonly Part[
   const want = (p: Part) => parts.includes(p);
   const doc: Json = { format: WORKSPACE_FORMAT, exported_at: new Date().toISOString(), pgkiln: meta.version ?? null, exported_by: meta.by ?? null, workspace: w.name };
   if (want('settings'))
-    doc.settings = { description: w.description, message: w.message, banner_label: w.banner_label, banner_color: w.banner_color, sql_workshop: w.sql_workshop, rest_services: w.rest_services, builder_home: w.builder_home ?? null };
+    doc.settings = { description: w.description, message: w.message, banner_label: w.banner_label, banner_color: w.banner_color, sql_workshop: w.sql_workshop, rest_services: w.rest_services, builder_home: w.builder_home ?? null,
+      // (sprint 223) account login controls (key names without "password": the file never carries one)
+      login_controls: { max_failures: w.login_max_failures ?? null, lifetime_days: w.password_lifetime_days ?? null, min_length: w.password_min_length ?? null } };
   if (want('developers'))
     doc.developers = (await owner.query('select username, is_admin as admin from meta.workspace_member where workspace_id = $1 order by username', [workspaceId])).rows;
   if (want('app_groups'))
@@ -166,6 +168,12 @@ export async function importWorkspace(c: Client, workspaceId: number, doc: unkno
         // (119) what /builder opens; older files have no key and keep the current value
         'builder_home' in s, s.builder_home === 'home' ? 'home' : null],
     );
+    // (sprint 223) account login controls; older files have no keys and keep the current values
+    const int = (v: unknown, min: number, max: number) => (Number.isInteger(v) && (v as number) >= min && (v as number) <= max ? (v as number) : null);
+    const lc = isObj(s.login_controls) ? s.login_controls : null;
+    if (lc)
+      await c.query('update meta.workspace set login_max_failures = $2, password_lifetime_days = $3, password_min_length = $4 where id = $1',
+        [workspaceId, int(lc.max_failures, 1, 1000), int(lc.lifetime_days, 1, 3650), int(lc.min_length, 6, 128)]);
     r.lines.push('Settings: description, message, banner and preferences set from the file.');
   }
 

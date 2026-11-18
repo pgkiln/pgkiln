@@ -147,7 +147,7 @@ export async function passkeySigninRoutes(app: FastifyInstance, deps: Deps) {
       return fail(t('login.passkey_failed'), 401);
     }
     // the passkey and the user were right: an expired password is still changed with the password first
-    if ((await passwordDaysLeft(who)) === 0) {
+    if ((await passwordDaysLeft(who, a.id)) === 0) {
       logActivity({ appId: a.id, username: who, event: 'password_expired', ip, detail: 'passkey' });
       return fail(t('login.passkey_expired'), 403);
     }

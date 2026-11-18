@@ -11,6 +11,8 @@ import { clientIp, logActivity, type BuilderWorkspace, type Session } from '../s
 import { isAdmin } from './locks.ts';
 import { setWorkspaceRequired } from '../mfa.ts';
 import { breakGlassAdmins } from '../devsso.ts';
+import { accountSettings, clearAccountSettings } from '../accounts.ts';
+import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { back, BANNER_COLORS, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 
 // Workspaces (064; APEX: workspaces). A workspace groups applications and the
@@ -226,7 +228,11 @@ function serviceRegion(s: Session, w: { id: number; message: string | null; bann
 }
 
 /** (093) Workspace preferences: the SQL Workshop and the applications' REST modules on or off. */
-function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null; mfa_required_since: Date | null; sso_only: boolean }, without: string[], unlinked: string[]) {
+type Controls = { login_max_failures: number | null; password_lifetime_days: number | null; password_min_length: number | null };
+/** The installation's rules the workspace's controls can make stricter. */
+type InstallationRules = { maxFailures: number; lifetimeDays: number; minLength: number; windowMinutes: number };
+
+function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; rest_services: boolean; builder_home: string | null; mfa_required_since: Date | null; sso_only: boolean } & Controls, without: string[], unlinked: string[], inst: InstallationRules) {
   const check = (name: string, on: boolean, label: string, help: string) =>
     html`<div class="field"><label class="check"><input type="checkbox" name="${name}" value="true"${on ? raw(' checked') : ''}> ${label}</label><small class="help">${help}</small></div>`;
   const tx = tr(s);
@@ -244,7 +250,14 @@ function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; r
     <form method="post" action="${BASE}/workspaces/${w.id}/sso">${csrf(s)}
       ${check('sso_only', w.sso_only, tx('wsp.sso_only'), tx('wsp.sso_only_help'))}
       ${w.sso_only && unlinked.length ? html`<p class="small">${tx('wsp.sso_unlinked', { list: unlinked.join(', ') })}</p>` : ''}
-      <div class="buttons"><button class="btn">${tx('wsp.sso_save')}</button></div></form>`, '', 'preferences');
+      <div class="buttons"><button class="btn">${tx('wsp.sso_save')}</button></div></form>
+    <h3 id="login-controls">${tx('wsp.lc')}</h3>
+    <p class="small muted">${tx('wsp.lc_help')}</p>
+    <form method="post" action="${BASE}/workspaces/${w.id}/login-controls">${csrf(s)}
+      ${input('login_max_failures', tx('wsp.lc_failures'), w.login_max_failures ?? '', { type: 'number', placeholder: String(inst.maxFailures), help: tx('wsp.lc_failures_help', { n: inst.maxFailures, minutes: inst.windowMinutes }) })}
+      ${input('password_lifetime_days', tx('wsp.lc_lifetime'), w.password_lifetime_days ?? '', { type: 'number', placeholder: inst.lifetimeDays ? String(inst.lifetimeDays) : '', help: inst.lifetimeDays ? tx('wsp.lc_lifetime_help', { n: inst.lifetimeDays }) : tx('wsp.lc_lifetime_help_none') })}
+      ${input('password_min_length', tx('wsp.lc_min_length'), w.password_min_length ?? '', { type: 'number', placeholder: String(inst.minLength), help: tx('wsp.lc_min_length_help', { n: inst.minLength }) })}
+      <div class="buttons"><button class="btn">${tx('wsp.lc_save')}</button></div></form>`, '', 'preferences');
 }
 
 /** (093) Extension links: links to other tools in the builder's Extensions menu. */
@@ -422,7 +435,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       ${serviceRegion(s, w)}
       ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>
         <p>${tx.rich('wsp.telemetry_text', { link: html`<a href="${BASE}/workspaces/${w.id}/telemetry">${tx('wsp.telemetry')}</a>` })}</p>`, '', 'mail-network')}
-      <div class="columns">${preferencesRegion(s, w, without, unlinked)}${linksRegion(s, w, links)}</div>
+      <div class="columns">${preferencesRegion(s, w, without, unlinked, { maxFailures: loginMaxFailuresPerUser(), lifetimeDays: (await accountSettings()).lifetimeDays, minLength: (await accountSettings()).minLength, windowMinutes: loginWindowMinutes() })}${linksRegion(s, w, links)}</div>
       ${full ? isolationRegion(s, w, roles.rows) : region(tx('wsp.isolation'), html`<p class="u-mt0">${w.isolated ? tx('wsp.iso_short_on') : tx('wsp.iso_short_off')} ${tx('wsp.admins_change')}</p>`)}
       ${!full ? '' : region(tx('wsp.applications'), html`<div class="table-wrap"><table class="report report-reflow">
         <thead><tr><th>${tx('wsp.application')}</th><th>${tx('wsp.move_to')}</th></tr></thead>
@@ -595,6 +608,35 @@ export async function workspaceRoutes(app: FastifyInstance) {
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}, /builder opens ${home ?? 'apps'}` });
     flash(s, tr(s)('wsp.prefs_saved'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
+  });
+
+  // (sprint 223, migration 185) account login controls: stricter than the installation's for the workspace's applications
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/login-controls`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const tx = tr(s);
+    const b = req.body ?? {};
+    const to = `${BASE}/workspaces/${req.params.id}#login-controls`;
+    // empty: the installation's rule; otherwise a whole number in range
+    const num = (k: string, min: number, max: number): number | null | undefined => {
+      const v = String(b[k] ?? '').trim();
+      if (!v) return null;
+      return /^\d{1,5}$/.test(v) && Number(v) >= min && Number(v) <= max ? Number(v) : undefined;
+    };
+    const failures = num('login_max_failures', 1, 1000);
+    const lifetime = num('password_lifetime_days', 1, 3650);
+    const min = num('password_min_length', 6, 128);
+    if (failures === undefined || lifetime === undefined || min === undefined) {
+      flash(s, tx('wsp.lc_bad'), 'error');
+      return back(reply, s, to);
+    }
+    const r = await owner.query('update meta.workspace set login_max_failures = $2, password_lifetime_days = $3, password_min_length = $4 where id = $1', [req.params.id, failures, lifetime, min]);
+    if (!r.rowCount) return reply.code(404).send('Not found');
+    clearAccountSettings();
+    await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req),
+      detail: `workspace ${req.params.id}: login controls: failures ${failures ?? 'installation'}, password lifetime ${lifetime ?? 'installation'}, minimum length ${min ?? 'installation'}` });
+    flash(s, tx('wsp.lc_saved'));
+    return back(reply, s, to);
   });
 
   // (sprint 128, SEC-2) a workspace requires a second factor of its developers (the instance's grace period from now)
