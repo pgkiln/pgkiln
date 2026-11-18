@@ -6,6 +6,7 @@ import { decryptSecret, encryptSecret } from './secrets.ts';
 import { checkUrl, WebError, webRequest, type OutboundScope, type WebResponse } from './webclient.ts';
 import { scopeForApp } from './network-acl.ts';
 import { resolveSource } from './remote-servers.ts';
+import { XmlError, xmlToJson } from './xml.ts';
 
 // Web credentials and REST data sources (meta.web_credential,
 // meta.rest_source): building the request (parameters, credential), OAuth2
@@ -705,6 +706,12 @@ export async function call(o: CallOptions): Promise<WebResponse> {
  * are URL-encoded into the URL, query parameters appended, header
  * parameters sent as headers, body parameters as JSON.
  */
+/** (sprint 224) A body template in XML (a SOAP envelope): it starts with "<". */
+export const isXmlTemplate = (body: string | null | undefined) => !!body && body.trimStart().startsWith('<');
+/** (sprint 224) A value for XML text or an attribute: the five markup characters escaped, control characters dropped. */
+export const xmlEscape = (v: string) =>
+  v.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+
 export function buildRequest(s: RestSource, values: Record<string, string | null | undefined>) {
   // checked again here: a definition may have come in through SQL
   const problems = sourceProblems(s);
@@ -741,13 +748,15 @@ export function buildRequest(s: RestSource, values: Record<string, string | null
   for (const [k, v] of Object.entries(s.headers ?? {})) if (!RESERVED_HEADERS.has(k.toLowerCase())) headers[k.toLowerCase()] = String(v);
   let body: string | undefined;
   if (!['GET', 'DELETE'].includes(s.method) || s.body?.trim()) {
+    // (sprint 224) an XML template (a SOAP envelope): values are XML-escaped, not JSON strings
+    const xml = isXmlTemplate(s.body);
     body = s.body?.trim()
       ? s.body.replace(/\{([a-z_][a-z0-9_]*)\}/gi, (m, name: string) => {
           const p = known.get(name);
-          return p ? JSON.stringify(val(p)) : m;
+          return p ? (xml ? xmlEscape(val(p)) : JSON.stringify(val(p))) : m;
         })
       : JSON.stringify(bodyParams);
-    headers['content-type'] ??= 'application/json';
+    headers['content-type'] ??= xml ? 'text/xml; charset=utf-8' : 'application/json';
   }
   return { url, method: s.method, headers, body };
 }
@@ -892,7 +901,7 @@ export async function fetchSource(source: RestSource, values: Record<string, str
     if (hit && Date.now() - hit.at < s.cache_seconds * 1000) return { json: hit.json, status: 200, cached: true };
   }
   const res = await call({ ...req, appId: s.app_id, scope, credential, timeoutMs: s.timeout_s * 1000 });
-  if (res.status < 200 || res.status > 299) throw new WebError(`REST data source ${s.name}: the web service answered ${res.status}.`, res.status);
+  if (res.status < 200 || res.status > 299) throw new WebError(`REST data source ${s.name}: the web service answered ${res.status}${soapFault(res)}.`, res.status);
   const json = parseJson(res, `REST data source ${s.name}`);
   if (key) {
     responses.delete(key);
@@ -903,13 +912,52 @@ export async function fetchSource(source: RestSource, values: Record<string, str
   return { json, status: res.status, cached: false };
 }
 
+/**
+ * (sprint 224) Whether a response is XML: its content type says so (text/xml, application/xml, application/soap+xml,
+ * …+xml), or it has none (or text/plain) and starts with an XML declaration or element (not HTML).
+ */
+export function isXmlResponse(res: Pick<WebResponse, 'headers' | 'body'>) {
+  const type = String(res.headers['content-type'] ?? '').toLowerCase();
+  if (/[/+]xml\b/.test(type)) return true;
+  // HTML (an error page, a login page) is not data; nor is anything else with a type of its own
+  if (type && !/^(text\/plain|application\/octet-stream)\b/.test(type)) return false;
+  return /^\s*<(\?xml|[A-Za-z_][\w.:-]*[\s>/])/.test(res.body.subarray(0, 200).toString('utf8').replace(/^\uFEFF/, '')) && !/^\s*<(!doctype\s+html|html)\b/i.test(res.body.subarray(0, 200).toString('utf8'));
+}
+
+/** The response as JSON (null when empty); (sprint 224) an XML response as the JSON of xmlToJson. */
 export function parseJson(res: WebResponse, what: string) {
-  const text = res.body.toString('utf8');
+  const text = res.body.toString('utf8').replace(/^\uFEFF/, '');
   if (!text.trim()) return null;
+  if (isXmlResponse(res)) {
+    try {
+      return xmlToJson(text);
+    } catch (e) {
+      throw new WebError(`${what}: the response is not well-formed XML${e instanceof XmlError ? `: ${e.message}` : ''}.`);
+    }
+  }
   try {
     return JSON.parse(text);
   } catch {
     throw new WebError(`${what}: the response is not JSON.`);
+  }
+}
+
+/**
+ * (sprint 224) The SOAP fault of an error response, as " (SOAP fault: <code>)", or '': SOAP 1.1 faultcode, SOAP 1.2
+ * Code/Value. Only the code (a short name), never the service's free text.
+ */
+export function soapFault(res: WebResponse): string {
+  if (!isXmlResponse(res)) return '';
+  try {
+    const doc = xmlToJson(res.body.toString('utf8').replace(/^\uFEFF/, ''), { maxElements: 10_000 });
+    const fault = valueAt(doc, 'Envelope.Body.Fault') as Record<string, unknown> | undefined;
+    if (!fault || typeof fault !== 'object') return '';
+    const code = fault.faultcode ?? valueAt(fault, 'Code.Value');
+    const c = typeof code === 'string' ? code.trim() : '';
+    const name = c.slice(c.indexOf(':') + 1);
+    return /^[A-Za-z][\w.-]{0,60}$/.test(name) ? ` (SOAP fault: ${name})` : ' (SOAP fault)';
+  } catch {
+    return '';
   }
 }
 
@@ -993,18 +1041,20 @@ export async function invoke(appId: number, conf: InvokeConfig, lookup: Lookup, 
     return encodeURIComponent(v);
   });
   const method = (conf.method ?? 'GET').toUpperCase();
+  // (sprint 224) an XML body (a SOAP envelope): values XML-escaped
+  const xml = isXmlTemplate(conf.body);
   const body = conf.body ? conf.body.replace(SUBST, (m, name: string) => {
     const v = lookup(name.toUpperCase());
-    return JSON.stringify(v ?? m);
+    return xml ? (v === undefined ? m : xmlEscape(v)) : JSON.stringify(v ?? m);
   }) : undefined;
   const credential = conf.credential ? await loadCredential(appId, conf.credential) : null;
-  const res = await call({ appId, what, url, method, headers: body ? { 'content-type': 'application/json' } : {}, body, credential, timeoutMs: (timeoutS ?? 10) * 1000 });
+  const res = await call({ appId, what, url, method, headers: body ? { 'content-type': xml ? 'text/xml; charset=utf-8' : 'application/json' } : {}, body, credential, timeoutMs: (timeoutS ?? 10) * 1000 });
   return { res, source: null };
 }
 
 /** The JSON of a successful response (null when empty); an error status fails unless the caller keeps the status. */
 export function invokeJson(res: WebResponse, what: string, keepStatus: boolean): unknown {
   const ok = res.status >= 200 && res.status <= 299;
-  if (!ok && !keepStatus) throw new WebError(`${what}: the web service answered ${res.status}.`, res.status);
+  if (!ok && !keepStatus) throw new WebError(`${what}: the web service answered ${res.status}${soapFault(res)}.`, res.status);
   return ok ? parseJson(res, what) : null;
 }

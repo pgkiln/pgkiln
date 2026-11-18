@@ -202,6 +202,36 @@ including write-back, synchronisation, the builder's *Test* and `invoke_api`.
 HR example (part 76): server **CRM** stands for the HR API on `http://127.0.0.1:3100`; DEPARTMENTS, DEPARTMENT and
 EMPLOYEES_API name it.
 
+### XML and SOAP
+
+(sprint 224; APEX: REST data sources of XML and SOAP services) A source reads **XML** as well as JSON: a response
+whose content type is XML (`text/xml`, `application/xml`, `application/soap+xml`, any `…+xml`), or that has none and
+starts with an XML declaration or element, becomes JSON first, and the row selector and column paths read it as they
+read JSON:
+
+- the root element is the one key: `<catalog><book id="b1">…` is `catalog.book`;
+- an element with only text is that text (an empty one is null); an element with attributes or children is an object
+  of its attributes (`@id`), its child elements by name (an array when one repeats) and its own text (`#text`);
+- namespace prefixes are dropped (`soap:Envelope` is `Envelope`).
+
+So for `<catalog><book id="b1"><title>…</title><price currency="EUR">39.50</price></book>…</catalog>` the row selector
+is `catalog.book` and the columns are `{"name": "id", "path": "@id"}`, `{"name": "title"}`,
+`{"name": "price", "path": "price.#text", "type": "number"}` and `{"name": "currency", "path": "price.@currency"}`.
+**Test** shows the rows and suggests the columns (an attribute's path is quoted: `["@id"]`). XML has no types: give
+numbers and dates their column type. The reader is pgkiln's own (also used by Data Load): a document type declaration
+is refused (so no entities, no external fetches), nesting and element counts are limited.
+
+**SOAP.** A SOAP service is a POST source whose **body** is the envelope, with `{name}` for its body parameters; a
+body that starts with `<` is XML: values are XML-escaped (`&`, `<`, `>`, quotes; control characters dropped) instead
+of JSON-quoted, and the content type is `text/xml; charset=utf-8` unless the source's headers set another
+(`application/soap+xml` for SOAP 1.2). Put the `SOAPAction` in the source's headers. The row selector starts at the
+envelope: `Envelope.Body.GetForecastResponse.Forecast`. A SOAP fault (an error status with a `Fault`) names its code
+in the error (`answered 500 (SOAP fault: Client)`), never the service's text. The `invoke_api` process and workflow
+step treat an XML body the same way. Write-back operations stay JSON.
+
+HR's page 23 has a report **Departments as XML** on the source `DEPARTMENTS_XML`, which reads the HR API's
+`departments.xml` (a media handler built with PostgreSQL's `xmlelement`; part 93).
+
 ### Regions on a REST data source
 
 A region's **REST data source** property (page designer → Source) makes it read the source's

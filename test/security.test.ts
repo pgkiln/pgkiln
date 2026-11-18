@@ -18687,3 +18687,37 @@ describe('sprint 223 workspace account login controls', () => {
     clearAccountSettings();
   });
 });
+
+describe('sprint 224 REST data sources of XML and SOAP', () => {
+  test('an XML response is data only: no DTD, no entity, no external fetch, limits; __proto__ is a plain key', async () => {
+    const { xmlToJson } = await import('../src/xml.ts');
+    const ws = await import('../src/websources.ts');
+    const lol = `<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;">]><lolz>&lol2;</lolz>`;
+    const xxe = `<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><foo>&xxe;</foo>`;
+    for (const doc of [lol, xxe]) {
+      assert.throws(() => xmlToJson(doc), /document type declaration/);
+      const res = { status: 200, headers: { 'content-type': 'text/xml' }, body: Buffer.from(doc), url: 'x' };
+      assert.throws(() => ws.parseJson(res, 'T'), /not well-formed XML/);
+    }
+    assert.throws(() => xmlToJson('<a>&xxe;</a>'), /Undefined entity/);
+    const t0 = Date.now();
+    assert.throws(() => xmlToJson(`<a>${'<b/>'.repeat(10)}</a>`, { maxElements: 5 }), /More than 5 elements/);
+    assert.ok(Date.now() - t0 < 1000);
+    xmlToJson('<a><__proto__><polluted>1</polluted></__proto__><constructor>x</constructor></a>');
+    assert.equal(({} as Record<string, unknown>).polluted, undefined);
+  });
+
+  test('a value can\'t break out of an XML body template; a SOAP fault\'s text is never in the error', async () => {
+    const ws = await import('../src/websources.ts');
+    const s = { id: 1, app_id: 1, name: 'X', url: 'https://x/soap', method: 'POST', credential: null, headers: {}, params: [{ name: 'city', in: 'body' as const }],
+      body: '<Envelope><city>{city}</city><role>user</role></Envelope>', row_selector: null, columns: [], cache_seconds: 0, timeout_s: 10, max_rows: 100 };
+    const r = ws.buildRequest(s, { city: '</city><role>admin</role><city>' });
+    assert.equal(r.body, '<Envelope><city>&lt;/city&gt;&lt;role&gt;admin&lt;/role&gt;&lt;city&gt;</city><role>user</role></Envelope>');
+    assert.doesNotMatch(ws.buildRequest(s, { city: ']]><x/>\u0000\u0007' }).body!, /<x\/>|\u0000|\u0007/);
+    const fault = (code: string, text: string) => ({ status: 500, url: 'x', headers: { 'content-type': 'text/xml' },
+      body: Buffer.from(`<Envelope><Body><Fault><faultcode>${code}</faultcode><faultstring>${text}</faultstring></Fault></Body></Envelope>`) });
+    assert.equal(ws.soapFault(fault('soap:Server', 'password=hunter2')), ' (SOAP fault: Server)');
+    assert.equal(ws.soapFault(fault('&lt;img src=x onerror=alert(1)&gt;', 'x')), ' (SOAP fault)');
+    assert.equal(ws.soapFault({ status: 500, url: 'x', headers: { 'content-type': 'text/html' }, body: Buffer.from('<html>oops</html>') }), '');
+  });
+});

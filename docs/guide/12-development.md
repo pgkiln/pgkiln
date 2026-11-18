@@ -170,7 +170,8 @@ src/
   sampledata.ts            Sample Data: describe() (catalog: identity, checks, enums, foreign keys), propose(), seeded generators, plan() (dependency order), insertRows() / generateAll(), SQL and CSV output
   sampledata-words.ts      built-in name, city, company and word lists of Sample Data
   unload.ts                Unload Data: unloadStatement() (one SELECT), openUnload() (cursor, batches, CSV/JSON/XLSX/XML encoders on Postgres text values)
-  xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested)
+  xml.ts                   safe XML reader (no DTDs or entities, limits) and xmlTable(): rows from a repeating element (unit tested);
+                           (sprint 224) xmlToJson(): XML responses of REST data sources as JSON (@attributes, #text, repeats as arrays)
   sqlscript.ts             SQL scripts: splitScript() (statements, line numbers and offsets, psql commands), runScript() (stop/continue, transaction, savepoints)
   sqlworksheet.ts          (sprint 91) the worksheet's runs: pickStatements() (at the cursor, a selection, all), runStatements() (a log per
                            statement, psql command tags, notices, error line and column), explainStatement() (EXPLAIN / rolled-back ANALYZE;

@@ -23,6 +23,11 @@ All notable changes to this project are documented here. The format follows
   longer minimum password for the workspace's applications, never looser than the installation's rules. Sign-in,
   My account, the expired-password form, password reset, remembered and shared sign-ins and passkeys follow them;
   `meta.password_days_left(username, app_id)`; workspace exports carry them.
+- **REST data sources of XML and SOAP services** (sprint 224; APEX: XML and SOAP data profiles): an XML response (by
+  its content type, or sniffed when it has none) is read with the same row selector and column paths as JSON
+  (`catalog.book`, `@id`, `price.#text`), through pgkiln's own safe XML reader (no DTDs or entities). A body template
+  that starts with `<` is a SOAP envelope: values are XML-escaped and the content type is `text/xml`; a SOAP fault's
+  code is named in the error. HR's page 23 reads its departments as XML (part 93).
 
 ## [0.109.0] - 2026-11-17
 
