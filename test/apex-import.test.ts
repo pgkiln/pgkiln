@@ -197,7 +197,13 @@ describe('the mapping of f100.sql', () => {
     assert.equal(entry('validation', 'Code not taken').port, false, 'nvl rewritten');
     assert.match(entry('validation', 'Code not taken').notes.join(), /Oracle SQL rewritten: nvl → coalesce/);
     assert.ok(!entry('validation', 'Customer exists').port);
-    for (const [name, type] of [['Legacy PL/SQL error', 'PLSQL_ERROR'], ['Stars plug-in', 'PLUGIN_COM_EXAMPLE_STARS_VALID']]) {
+    // (sprint 227) PL/SQL Error: a function_error body that returns the message on an exception, still to port
+    const legacy = v('Legacy PL/SQL error');
+    assert.equal(legacy.type, 'function_error');
+    assert.equal(legacy.expression, "begin\n  sales_pkg.check_order(:P3_ID);\n  return null;\nexception when others then\n  return 'Failed.';\nend");
+    assert.equal(legacy.message, '');
+    assert.ok(entry('validation', 'Legacy PL/SQL error').port);
+    for (const [name, type] of [['Stars plug-in', 'PLUGIN_COM_EXAMPLE_STARS_VALID']]) {
       assert.equal(entry('validation', name).status, 'not_mapped');
       assert.equal(entry('validation', name).apexType, type);
       assert.ok(!p3.validations.some((x: any) => x.name === name));
