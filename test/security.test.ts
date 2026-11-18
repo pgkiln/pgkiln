@@ -18444,3 +18444,86 @@ describe('(sprint 219) REST source catalogs read YAML: an untrusted document is 
     assert.equal((globalThis as Record<string, unknown>).pwned, undefined);
   });
 });
+
+describe('sprint 221 Liquibase preconditions and contexts', () => {
+  const S = 'sec221';
+  const DEV = 'sec221dev';
+  let id: number;
+  let otherWs: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (username === 'admin') await b.ownerConnection();
+    await b.get('/builder/sql/changes');
+    return b;
+  };
+  const row = async () => owner.one('select context, labels, precondition_sql, precondition_on_fail from meta.change_set where id = $1', [id]);
+  before(async () => {
+    await owner.query(`delete from meta.change_set where schema_name = $1`, [S]);
+    id = (await owner.one(`insert into meta.change_set (workspace_id, schema_name, name, author, source, sql, precondition_sql, precondition_expected, precondition_on_fail)
+      values (1, $1, 'x', 'admin', 'worksheet', 'create table sec221.t (a int);', $2, '0', 'HALT') returning id::int`, [S, `select '</textarea><script>alert(221)</script>'`])).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec221 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.change_set where schema_name = $1`, [S]);
+    await owner.query(`delete from meta.change_set_counter where schema_name = $1`, [S]);
+    await owner.query(`delete from meta.workspace where name = 'Sec221 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('CSRF: a forged token changes nothing', async () => {
+    const a = await signIn('admin');
+    const r = await a.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: 'forged', context: 'prod', labels: 'x', precondition: 'select 1' });
+    assert.equal(r.statusCode, 403);
+    assert.equal((await row()).context, null);
+  });
+
+  test('the precondition is escaped in the page and never run', async () => {
+    const a = await signIn('admin');
+    const page = (await a.get(`/builder/sql/changes?schema=${S}`)).body;
+    assert.doesNotMatch(page, /<script>alert\(221\)/);
+    assert.match(page, /&lt;\/textarea&gt;&lt;script&gt;alert\(221\)/);
+    // a precondition that would change data is only text: saving and downloading it runs nothing
+    await owner.query(`drop table if exists public.sec221_canary; create table public.sec221_canary (n int); insert into public.sec221_canary values (1)`);
+    await a.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: a.lastCsrf, precondition: 'delete from public.sec221_canary returning 0', expected: '0', on_fail: 'HALT' });
+    const lb = (await a.post('/builder/sql/changes/download', { __csrf: a.lastCsrf, schema: S, format: 'liquibase', which: 'all', contexts: 'prod' })).body;
+    assert.match(lb, /--precondition-sql-check expectedResult:0 delete from public\.sec221_canary returning 0/);
+    assert.equal((await owner.one('select count(*)::int as n from public.sec221_canary')).n, 1);
+    await owner.query('drop table public.sec221_canary');
+  });
+
+  test('no line breaks into the changelog: context, labels and expected result are one checked line', async () => {
+    const a = await signIn('admin');
+    for (const form of <Record<string, string>[]>[{ context: 'prod\n--changeset evil:1' }, { labels: 'a\n--rollback drop schema public' }, { precondition: 'select 1', expected: '0\n--changeset evil:2' }, { context: 'a"b' }]) {
+      await a.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: a.lastCsrf, precondition: 'select 1', ...form });
+      const r = await row();
+      assert.ok(!/\n|"/.test(`${r.context ?? ''}${r.labels ?? ''}`), JSON.stringify(form));
+    }
+    await assert.rejects(owner.query(`update meta.change_set set precondition_expected = E'0\\nx' where id = $1`, [id]), /check constraint/);
+    await assert.rejects(owner.query(`update meta.change_set set labels = E'a\\nb' where id = $1`, [id]), /check constraint/);
+    await assert.rejects(owner.query(`update meta.change_set set precondition_on_fail = 'DROP' where id = $1`, [id]), /check constraint/);
+    // the precondition itself is written on one line: a line comment in it can't end the check early
+    await a.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: a.lastCsrf, precondition: 'select 1 -- x\n--changeset evil:3\n', expected: '1' });
+    const lb2 = async (precondition: string) => {
+      await a.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: a.lastCsrf, precondition, expected: '1' });
+      return (await a.post('/builder/sql/changes/download', { __csrf: a.lastCsrf, schema: S, format: 'liquibase', which: 'all' })).body;
+    };
+    for (const p of ["select '\n--changeset evil:4\n'", 'select "x\r\n--changeset evil:5" from t', 'select 1 /* \n--changeset evil:6 */'])
+      assert.doesNotMatch(await lb2(p), /^--changeset evil/m, p);
+    await a.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: a.lastCsrf, precondition: 'select 1 -- x\n--changeset evil:3\n', expected: '1' });
+    const lb = (await a.post('/builder/sql/changes/download', { __csrf: a.lastCsrf, schema: S, format: 'liquibase', which: 'all' })).body;
+    assert.doesNotMatch(lb, /evil/);
+    assert.match(lb, /--precondition-sql-check expectedResult:1 select 1\n/);
+  });
+
+  test('another workspace\'s developer can\'t read or change them', async () => {
+    const d = await signIn(DEV);
+    assert.equal((await d.post(`/builder/sql/changes/${id}/liquibase`, { __csrf: d.lastCsrf, context: 'mine' })).statusCode, 404);
+    assert.notEqual((await row()).context, 'mine');
+    assert.equal((await d.post('/builder/sql/changes/download', { __csrf: d.lastCsrf, schema: S, format: 'liquibase', which: 'all', contexts: 'prod' })).statusCode, 404);
+  });
+});

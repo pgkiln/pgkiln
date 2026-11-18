@@ -2945,6 +2945,20 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   into the migration files: `--rollback` lines after the change set in the Liquibase changelog, a Flyway undo
   migration (`U0001__add_bonus.sql`, in the zip and as a button next to the change set's own file) and a comment in
   the plain script. pgkiln never runs a rollback itself.
+  (sprint 221) **Liquibase: context, labels, precondition.** Under the rollback, a change set has Liquibase's own
+  attributes. A **context** is an expression of names with `and`, `or`, a comma (or), `!` or `not`, and parentheses
+  (`dev and !prod`): Liquibase runs the change set only in a run whose `--contexts` match it. **Labels** are names
+  separated by commas (`jira-123, reporting`). A **precondition** is a query that gives one value, its **expected
+  result** and what Liquibase does **when it fails**: halt the update (Liquibase's default), skip the change set and
+  try again next time, mark it ran, or warn and run it. pgkiln proposes a precondition when every statement creates
+  something or adds a column: a count of those objects in the catalog, expected 0, else *mark it ran*, so a database
+  that already has them doesn't fail. In the changelog they become
+  `--changeset admin:0003-add_bonus context:"dev and !prod" labels:jira-123`, then `--preconditions onFail:MARK_RAN`
+  and `--precondition-sql-check expectedResult:0 select count(*) …` on one line (comments dropped, line breaks
+  folded). Flyway and the plain script have no such attributes: there they are comment lines. When change sets have
+  contexts, *Download migration* has a **Contexts** field: only the change sets that run in them are written, as
+  Liquibase decides (no contexts given, or a change set without one: always). pgkiln never runs a precondition; DDL
+  from other tools gets none proposed.
   (sprint 180) **DDL from other tools**: the Change Log can also record DDL run outside pgkiln: with psql, a
   migration tool or another IDE. Two event triggers do this, and only a superuser can create them, so it is off
   until someone turns it on. The panel *DDL from other tools* at the bottom of the page shows whether it is on. An

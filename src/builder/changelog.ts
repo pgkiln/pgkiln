@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import pg from 'pg';
 import { filesToZip } from '../appfiles.ts';
-import { flywayFile, flywayName, flywayUndoFile, flywayUndoName, liquibaseChangelog, plainScript, recordChanges, type ChangeSet } from '../changelog.ts';
+import { contextList, flywayFile, flywayName, flywayUndoFile, flywayUndoName, liquibaseChangelog, ON_FAIL, parseContext, plainScript, recordChanges, runsIn, type ChangeSet, type OnFail } from '../changelog.ts';
 import { owner } from '../db.ts';
 import { changeScript, readSchema, userSchemas } from '../ddl.ts';
 import { html, raw } from '../html.ts';
@@ -34,7 +34,8 @@ async function changeSets(s: Session, where: { schema?: string; id?: number }): 
   if (where.schema !== undefined) cond += ` and schema_name = $${params.push(where.schema)}`;
   if (where.id !== undefined) cond += ` and id = $${params.push(where.id)}`;
   return (await owner.query<ChangeSet>(
-    `select id::int, workspace_id, schema_name, seq, name, author, source, sql, object_name, created_at::text, exported_at::text, rollback_sql
+    `select id::int, workspace_id, schema_name, seq, name, author, source, sql, object_name, created_at::text, exported_at::text, rollback_sql,
+            context, labels, precondition_sql, precondition_expected, precondition_on_fail
        from meta.change_set where workspace_id = $1${cond} order by schema_name, seq`, params)).rows;
 }
 
@@ -106,6 +107,7 @@ async function listPage(s: Session, q: Record<string, unknown>) {
               <textarea id="f_rb_${c.id}" name="rollback" rows="${Math.min(8, Math.max(2, (c.rollback_sql ?? '').split('\n').length))}" maxlength="1000000" spellcheck="false" class="code">${c.rollback_sql ?? ''}</textarea>
               <small class="help">${tx('cl.rollback_help', { file: flywayUndoName(c) })}</small></div>
             <button class="btn btn-sm">${tx('cl.rollback_save')}</button></form>
+          ${liquibaseForm(s, c)}
           <div class="buttons">
             <form method="post" action="${CHANGES}/${c.id}/download" class="u-inline">${csrf(s)}<button class="btn btn-sm">${icon('download')} ${flywayName(c)}</button>${c.rollback_sql ? html` <button class="btn btn-sm" name="undo" value="1">${icon('download')} ${flywayUndoName(c)}</button>` : ''}</form>
             <form method="post" action="${CHANGES}/${c.id}/delete" class="u-inline">${csrf(s)}<button class="btn btn-sm btn-danger" data-confirm="${tx('cl.delete_confirm', { n: c.seq })}">${icon('trash')} ${tx('scr.delete')}</button></form>
@@ -135,6 +137,8 @@ async function listPage(s: Session, q: Record<string, unknown>) {
             <option value="pending">${tx('cl.which.pending', { n: pending })}</option>
             <option value="all">${tx('cl.which.all', { schema, n: list.length })}</option>
             ${exp ? html`<option value="after_export">${tx('cl.which.after', { app: exp.name, n: list.filter((c) => !inExport(c)).length })}</option>` : ''}</select></div>
+          ${list.some((c) => c.context) ? html`<div class="field"><label class="label" for="f_contexts">${tx('cl.contexts')}</label><input id="f_contexts" name="contexts" maxlength="200" placeholder="prod" aria-describedby="f_contexts_help">
+            <small class="help" id="f_contexts_help">${tx('cl.contexts_help')}</small></div>` : ''}
         </div>
         ${exp ? html`<input type="hidden" name="app" value="${exp.id}">` : ''}
         <div class="buttons"><button class="btn btn-hot">${icon('download')} ${tx('cl.download')}</button></div></form>`
@@ -145,6 +149,27 @@ async function listPage(s: Session, q: Record<string, unknown>) {
     ${schema ? region(tx('cl.change_sets_of', { schema }), html`${exportPick}${table}${downloads}`) : region(tx('cl.change_sets'), table)}
     ${await capturePanel(s)}`;
   return shell(s, tx('sql.tool.changes'), [[tx('rail.sql_workshop'), `${BASE}/sql`], [tx('sql.tool.changes')]], main, 'sql');
+}
+
+/** (sprint 221) Liquibase's attributes of a change set: context, labels and an sql-check precondition. */
+function liquibaseForm(s: Session, c: ChangeSet) {
+  const tx = tr(s);
+  const id = (k: string) => `f_${k}_${c.id}`;
+  return html`<details class="cl-liquibase"${c.context || c.labels || c.precondition_sql ? raw(' open') : ''}><summary>${tx('cl.lb.title')}${c.context ? html` <span class="tag">${tx('cl.lb.context')}: ${c.context}</span>` : ''}${c.precondition_sql ? html` <span class="tag">${tx('cl.lb.precondition')}</span>` : ''}</summary>
+    <form method="post" action="${CHANGES}/${c.id}/liquibase">${csrf(s)}
+      <div class="form-grid">
+        <div class="field"><label class="label" for="${id('ctx')}">${tx('cl.lb.context')}</label><input id="${id('ctx')}" name="context" value="${c.context ?? ''}" maxlength="200" placeholder="dev and !prod" aria-describedby="${id('ctx')}_h"><small class="help" id="${id('ctx')}_h">${tx('cl.lb.context_help')}</small></div>
+        <div class="field"><label class="label" for="${id('lbl')}">${tx('cl.lb.labels')}</label><input id="${id('lbl')}" name="labels" value="${c.labels ?? ''}" maxlength="200" placeholder="jira-123, reporting"></div>
+      </div>
+      <div class="field"><label class="label" for="${id('pre')}">${tx('cl.lb.precondition')}</label>
+        <textarea id="${id('pre')}" name="precondition" rows="${Math.min(6, Math.max(2, Math.ceil((c.precondition_sql ?? '').length / 90)))}" maxlength="100000" spellcheck="false" class="code" aria-describedby="${id('pre')}_h">${c.precondition_sql ?? ''}</textarea>
+        <small class="help" id="${id('pre')}_h">${tx('cl.lb.precondition_help')}</small></div>
+      <div class="form-grid">
+        <div class="field"><label class="label" for="${id('exp')}">${tx('cl.lb.expected')}</label><input id="${id('exp')}" name="expected" value="${c.precondition_expected ?? '0'}" maxlength="200"></div>
+        <div class="field"><label class="label" for="${id('fail')}">${tx('cl.lb.on_fail')}</label><select id="${id('fail')}" name="on_fail">${ON_FAIL.map((o) =>
+          html`<option value="${o}"${(c.precondition_on_fail ?? 'HALT') === o ? raw(' selected') : ''}>${tx(`cl.lb.fail.${o.toLowerCase()}` as BuilderKey)}</option>`)}</select></div>
+      </div>
+      <button class="btn btn-sm">${tx('cl.lb.save')}</button></form></details>`;
 }
 
 async function oneOr404(req: Req, reply: FastifyReply, s: Session) {
@@ -217,6 +242,9 @@ export async function changeLogRoutes(app: FastifyInstance) {
       const exp = (await latestExports(s)).find((e) => String(e.id) === String(b.app ?? ''));
       if (exp) list = list.filter((c) => c.created_at > exp.at);
     }
+    // (sprint 221) only the change sets that run in the given contexts (Liquibase's --contexts)
+    const contexts = contextList(String(b.contexts ?? '').slice(0, 200));
+    list = list.filter((c) => runsIn(c, contexts));
     if (!list.length) {
       flash(s, tr(s)('cl.nothing_to_write'), 'error');
       return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema })}`);
@@ -254,6 +282,37 @@ export async function changeLogRoutes(app: FastifyInstance) {
       flash(s, tr(s)(text ? 'cl.rollback_saved' : 'cl.rollback_removed', { n: c.seq }));
     }
     return back(reply, s, `${CHANGES}?${new URLSearchParams({ schema: c.schema_name })}`);
+  });
+
+  // (sprint 221) Liquibase's context, labels and precondition of a change set: text for the changelog, never run
+  app.post(`${CHANGES}/:id/liquibase`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const c = await oneOr404(req, reply, s);
+    if (!c) return;
+    const tx = tr(s);
+    const b = req.body ?? {};
+    const text = (k: string) => String(b[k] ?? '').replace(/\r\n/g, '\n').trim();
+    const context = text('context').replace(/\s+/g, ' ');
+    const labels = text('labels').replace(/\s+/g, ' ');
+    const pre = text('precondition');
+    const expected = text('expected') || '0';
+    const onFail = ON_FAIL.includes(b.on_fail as OnFail) ? (b.on_fail as OnFail) : 'HALT';
+    const to = `${CHANGES}?${new URLSearchParams({ schema: c.schema_name })}`;
+    const error = (context && (context.length > 200 || !/^[A-Za-z0-9_ ,!()-]+$/.test(context) || !parseContext(context))) ? tx('cl.lb.bad_context')
+      : (labels && (labels.length > 200 || !/^[A-Za-z0-9_ ,!()-]+$/.test(labels) || !parseContext(labels))) ? tx('cl.lb.bad_labels')
+      : pre.length > 100_000 ? tx('cl.lb.too_long')
+      : (expected.length > 200 || /[\r\n]/.test(expected)) ? tx('cl.lb.bad_expected') : '';
+    if (error) {
+      flash(s, error, 'error');
+      return back(reply, s, to);
+    }
+    await owner.query(
+      'update meta.change_set set context = $2, labels = $3, precondition_sql = $4, precondition_expected = $5, precondition_on_fail = $6 where id = $1',
+      [c.id, context || null, labels || null, pre || null, pre ? expected : null, pre ? onFail : null]);
+    await logActivity({ username: s.username, event: 'change_log_liquibase', ip: clientIp(req), detail: `${c.schema_name} #${c.seq} ${c.name}: context ${context || '-'}, labels ${labels || '-'}, precondition ${pre ? 'set' : 'none'}` });
+    flash(s, tx('cl.lb.saved', { n: c.seq }));
+    return back(reply, s, to);
   });
 
   app.post(`${CHANGES}/:id`, async (req: Req, reply) => {
