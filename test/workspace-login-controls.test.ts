@@ -143,3 +143,30 @@ describe('in the workspace\'s applications', () => {
     await reset();
   });
 });
+
+describe('a workspace file', () => {
+  test('carries the controls; an older file without them keeps the current ones', async () => {
+    const { exportWorkspace, importWorkspace } = await import('../src/workspace-export.ts');
+    await owner.query('update meta.workspace set login_max_failures = 3, password_lifetime_days = 30, password_min_length = 14 where id = $1', [wsId]);
+    const doc = await exportWorkspace(wsId, ['settings']);
+    assert.deepEqual((doc.settings as any).login_controls, { max_failures: 3, lifetime_days: 30, min_length: 14 });
+    assert.doesNotMatch(JSON.stringify(doc), /password/);
+    const target = (await owner.one(`insert into meta.workspace (name) values ('LC223 Target') returning id`)).id;
+    try {
+      await owner.tx((c) => importWorkspace(c, target, doc, ['settings'], { replace: true, by: 'admin' }));
+      const row = () => owner.one('select login_max_failures, password_lifetime_days, password_min_length from meta.workspace where id = $1', [target]);
+      assert.deepEqual(await row(), { login_max_failures: 3, password_lifetime_days: 30, password_min_length: 14 });
+      const older = structuredClone(doc) as any;
+      delete older.settings.login_controls;
+      await owner.tx((c) => importWorkspace(c, target, older, ['settings'], { replace: true, by: 'admin' }));
+      assert.deepEqual(await row(), { login_max_failures: 3, password_lifetime_days: 30, password_min_length: 14 });
+      // out of range values in a file are dropped, not stored
+      older.settings.login_controls = { max_failures: 0, lifetime_days: 99999, min_length: 2 };
+      await owner.tx((c) => importWorkspace(c, target, older, ['settings'], { replace: true, by: 'admin' }));
+      assert.deepEqual(await row(), { login_max_failures: null, password_lifetime_days: null, password_min_length: null });
+    } finally {
+      await owner.query('delete from meta.workspace where id = $1', [target]);
+      await reset();
+    }
+  });
+});
