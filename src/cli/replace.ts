@@ -35,7 +35,9 @@ export const REPLACED = [
   'component_group',
 ];
 /** Tables of an application that belong to the installation: kept. */
-export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
+export const KEPT = ['app_access', 'api_client', 'session', 'sso_pending',
+  // (184) authorization code flows of web credentials in flight
+  'web_credential_pending', 'saved_report', 'persistent_login', 'task', 'workflow', 'process_job',
   // (087) password reset links of this installation's accounts
   'password_reset',
   // (042) builder state of this installation: locks and developer comments (by page number)

@@ -12,6 +12,12 @@ All notable changes to this project are documented here. The format follows
   (the objects don't exist yet: 0, else mark it ran). The Liquibase changelog writes them (`context:`, `labels:`,
   `--preconditions`, `--precondition-sql-check` on one line); Flyway and plain SQL as comments. *Download migration*
   picks the change sets of given contexts. pgkiln never runs a precondition.
+- **The OAuth2 authorization code flow for web credentials** (sprint 222; migration 184; APEX: consent in the
+  browser): the grant `authorization_code` with an authorization URL. **Authorize** sends the developer to the
+  service with a one-time state and PKCE (S256); after consent the service sends the browser back to
+  `/builder/oauth/callback`, pgkiln exchanges the code (confidential or public client), keeps the refresh token
+  encrypted and calls the service with it from then on. For an application's credentials (its developers) and a
+  workspace's (its administrators); the state is hashed, one-time, ten minutes, bound to the builder session.
 
 ## [0.109.0] - 2026-11-17
 

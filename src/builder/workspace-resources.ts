@@ -9,7 +9,8 @@ import { includable, STATIC_MAX, STATIC_TYPES, staticType } from '../runtime/sta
 import { encryptSecret, secretKeyConfigured } from '../secrets.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { scopeProblem, urlProblem } from '../webclient.ts';
-import { clearResponseCache, clearTokens, credentialProblems, GRANT_TYPES } from '../websources.ts';
+import { clearResponseCache, clearTokens, credentialProblems, GRANT_TYPES, loadCredentialById } from '../websources.ts';
+import { consentPanel, consentRedirectUri, startConsent } from './oauth-consent.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Body, type Req } from './ui.ts';
 import { workspaceAdmin } from './workspaces.ts';
 import { scopedTx as tx } from './i18n.ts';
@@ -219,16 +220,18 @@ interface CredentialRow {
   valid_for: string[];
   grant_type: string;
   oauth_username: string | null;
+  authorize_url: string | null;
   has_secret: boolean;
   has_password: boolean;
   has_refresh: boolean;
+  token_refreshed_at: Date | null;
   updated_at: Date;
   updated_by: string | null;
 }
 
 /** Never the encrypted columns themselves: only whether they are set. */
-const CRED_COLUMNS = `id, name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username,
-  secret_enc is not null as has_secret, password_enc is not null as has_password, refresh_token_enc is not null as has_refresh, updated_at, updated_by`;
+const CRED_COLUMNS = `id, name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username, authorize_url,
+  secret_enc is not null as has_secret, password_enc is not null as has_password, refresh_token_enc is not null as has_refresh, token_refreshed_at, updated_at, updated_by`;
 
 async function credentialsPage(c: Ctx, query: Record<string, string | undefined>) {
   const { s, ws } = c;
@@ -255,6 +258,7 @@ async function credentialsPage(c: Ctx, query: Record<string, string | undefined>
           ${input('oauth_username', tx('wres.oauth2_user_name_password_grant'), v.oauth_username ?? '')}
           ${input('header_name', tx('wres.header_name_header'), v.header_name ?? '', { placeholder: tx('wres.x_api_key') })}
           ${input('token_url', tx('wres.token_url_oauth2'), v.token_url ?? '', { placeholder: tx('wres.https_login_example_com_oauth') })}
+          ${input('authorize_url', tx('oac.authorize_url'), v.authorize_url ?? '', { placeholder: 'https://login.example.com/oauth/authorize', help: tx('oac.authorize_url_help', { uri: consentRedirectUri() }) })}
           ${input('scope', tx('wres.scope_oauth2_region_aws_sigv4'), v.scope ?? '')}
           ${input('valid_for', tx('wres.valid_for_urls'), (v.valid_for ?? []).join(', '), { placeholder: tx('wres.https_crm_example_com_api_2'), help: tx('wres.comma_separated_url_prefixes_the') })}
           ${secret('secret', tx('wres.secret'), v.has_secret, tx('wres.the_password_header_value_token'))}
@@ -263,6 +267,7 @@ async function credentialsPage(c: Ctx, query: Record<string, string | undefined>
           <div class="field" data-wide><label class="label" for="f_description">${tx('wres.description')}</label><textarea id="f_description" name="description" rows="2">${v.description ?? ''}</textarea></div>
         </div>
         <div class="buttons"><a class="btn" href="${CREDS}">${tx('wres.cancel')}</a><button class="btn btn-hot">${icon('check')} ${tx('wres.save')}</button></div></form>
+        ${editing ? consentPanel(s, { ...editing, authorized: editing.has_refresh, at: editing.token_refreshed_at }, `${CREDS}/${editing.id}/authorize`) : ''}
         ${editing ? html`<form method="post" action="${CREDS}/${editing.id}/delete" class="danger-zone">${csrf(s)}
           <button class="btn btn-danger" data-confirm="${tx('wres.delete_credential_confirm', { name: editing.name })}">${tx('wres.delete_credential')}</button></form>` : ''}`, '', 'credential-form')
     : '';
@@ -467,6 +472,7 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       username: text('username'), header_name: text('header_name'), token_url: text('token_url'), scope: text('scope'),
       valid_for: [...new Set(String(b.valid_for ?? '').split(',').map((x) => x.trim()).filter(Boolean))],
       grant_type: GRANT_TYPES.includes(String(b.grant_type)) ? String(b.grant_type) : 'client_credentials', oauth_username: text('oauth_username'),
+      authorize_url: text('authorize_url'),
     };
     const problems = [...(/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name) ? [] : [tx('wres.the_name_is_upper_case')]), ...credentialProblems(v)];
     if (problems.length) {
@@ -495,6 +501,8 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
           `insert into meta.workspace_credential (workspace_id, ${cols.join(', ')}, updated_by, secret_enc, password_enc, refresh_token_enc)
            values ($1, ${cols.map((_, i) => `$${i + 2}`).join(', ')}, $12, $13, $14, $15)`,
           [c.ws.id, ...vals, s.username, secrets.secret_enc, secrets.password_enc, secrets.refresh_token_enc]);
+      // (sprint 222) the authorization code flow's endpoint (checked by credentialProblems above)
+      await owner.query('update meta.workspace_credential set authorize_url = $3 where workspace_id = $1 and name = $2', [c.ws.id, v.name, v.authorize_url]);
       clearResponseCache();
       await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${c.ws.id} web credential ${v.name} ${editId ? 'changed' : 'added'}` });
       flash(s, tx('wres.credential_saved', { name: v.name }));
@@ -503,6 +511,13 @@ export async function workspaceResourceRoutes(app: FastifyInstance) {
       flash(s, (e as Error).message.includes('workspace_credential_workspace_id_name_key') ? tx('wres.credential_exists', { name: v.name }) : (e as Error).message, 'error');
       return back(reply, s, retry);
     }
+  });
+
+  // (sprint 222) the authorization code flow of a workspace credential: its administrators
+  app.post(`${CREDS}/:cid/authorize`, async (req: Req, reply) => {
+    const c = await manager(req, reply, tx('wres.credentials_title'));
+    if (!c) return;
+    return startConsent(req, reply, c.s, await loadCredentialById({ workspaceId: c.ws.id, id: Number(id(req.params.cid) ?? -1) }), { appId: null });
   });
 
   app.post(`${CREDS}/:cid/delete`, async (req: Req, reply) => {

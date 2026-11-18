@@ -13,6 +13,7 @@ import { lockRoutes } from './builder/locks.ts';
 import { supportingRoutes } from './builder/supporting.ts';
 import { sharedRoutes } from './builder/shared.ts';
 import { webSourceRoutes } from './builder/websources.ts';
+import { oauthConsentRoutes } from './builder/oauth-consent.ts';
 import { sqlRoutes } from './builder/sql.ts';
 import { automationRoutes } from './builder/automations.ts';
 import { workflowBuilderRoutes } from './builder/workflows.ts';
@@ -274,6 +275,7 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   await app.register(regionSettingsRoutes);
   await app.register(templateRoutes);
   await app.register(webSourceRoutes);
+  await app.register(oauthConsentRoutes); // (sprint 222) web credentials: the OAuth2 authorization code flow
   await app.register(searchRoutes);
   await app.register(advisorRoutes);
   await app.register(topSqlRoutes);
