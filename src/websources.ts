@@ -30,8 +30,10 @@ export interface WebCredential {
   scope: string | null;
   valid_for: string[];
   secret_enc: string | null;
-  /** oauth2 (050): client_credentials (default), password or refresh_token */
-  grant_type?: 'client_credentials' | 'password' | 'refresh_token';
+  /** oauth2 (050): client_credentials (default), password or refresh_token; (sprint 222) authorization_code */
+  grant_type?: 'client_credentials' | 'password' | 'refresh_token' | 'authorization_code';
+  /** (sprint 222, migration 184) authorization_code: the service's authorization endpoint (consent in the browser) */
+  authorize_url?: string | null;
   oauth_username?: string | null;
   password_enc?: string | null;
   refresh_token_enc?: string | null;
@@ -208,9 +210,9 @@ export function operationProblems(s: { url?: unknown; params?: unknown; columns?
   return out;
 }
 
-export const GRANT_TYPES = ['client_credentials', 'password', 'refresh_token'];
+export const GRANT_TYPES = ['client_credentials', 'password', 'refresh_token', 'authorization_code'];
 
-export function credentialProblems(c: { type?: unknown; header_name?: unknown; token_url?: unknown; valid_for?: unknown; username?: unknown; grant_type?: unknown; oauth_username?: unknown; scope?: unknown }): string[] {
+export function credentialProblems(c: { type?: unknown; header_name?: unknown; token_url?: unknown; valid_for?: unknown; username?: unknown; grant_type?: unknown; oauth_username?: unknown; scope?: unknown; authorize_url?: unknown }): string[] {
   const out: string[] = [];
   if (c.type === 'header' && (typeof c.header_name !== 'string' || !HEADER.test(c.header_name))) out.push('An HTTP header credential needs the header\'s name, e.g. X-API-Key.');
   if (c.type === 'header' && typeof c.header_name === 'string' && RESERVED_HEADERS.has(c.header_name.toLowerCase()) && c.header_name.toLowerCase() !== 'authorization')
@@ -221,6 +223,9 @@ export function credentialProblems(c: { type?: unknown; header_name?: unknown; t
     if (typeof c.token_url !== 'string' || !/^https?:\/\//.test(c.token_url)) out.push('OAuth2 needs the token URL.');
     if (typeof c.username !== 'string' || !c.username) out.push('OAuth2 needs the client id (in "User name / client id").');
     if (grant === 'password' && (typeof c.oauth_username !== 'string' || !c.oauth_username)) out.push('The OAuth2 password flow needs the user name to sign in with (in "OAuth2 user name").');
+    // (sprint 222) the authorization code flow: where the developer gives consent
+    if (grant === 'authorization_code' && (typeof c.authorize_url !== 'string' || !/^https?:\/\/[^\s]+$/.test(c.authorize_url) || c.authorize_url.length > 2000))
+      out.push('The OAuth2 authorization code flow needs the authorization URL (in "Authorization URL"), e.g. https://login.example.com/oauth/authorize.');
   }
   if (c.type === 'basic' && (typeof c.username !== 'string' || !c.username)) out.push('Basic authentication needs a user name.');
   if (c.type === 'aws_sigv4') {
@@ -404,7 +409,7 @@ export async function loadSource(appId: number, name: string) {
   return resolveSource(s);
 }
 
-const CREDENTIAL_COLUMNS = 'id, name, type, username, header_name, token_url, scope, valid_for, secret_enc, grant_type, oauth_username, password_enc, refresh_token_enc';
+const CREDENTIAL_COLUMNS = 'id, name, type, username, header_name, token_url, scope, valid_for, secret_enc, grant_type, oauth_username, password_enc, refresh_token_enc, authorize_url';
 
 /**
  * With the (encrypted) secret: the owner connection, never the runtime role. The application's own
@@ -420,6 +425,14 @@ export async function loadCredential(appId: number, name: string) {
   ));
   if (!c) throw new WebError(`Web credential ${name} does not exist.`);
   return c;
+}
+
+/** (sprint 222) A credential by its id: an application's own, or (workspaceId) one of a workspace; null when there is none. */
+export async function loadCredentialById(where: { appId: number; id: number } | { workspaceId: number; id: number }): Promise<WebCredential | null> {
+  if (!Number.isSafeInteger(where.id)) return null;
+  if ('appId' in where)
+    return (await owner.one<WebCredential>(`select ${CREDENTIAL_COLUMNS}, app_id from meta.web_credential where app_id = $1 and id = $2`, [where.appId, where.id])) ?? null;
+  return (await owner.one<WebCredential>(`select ${CREDENTIAL_COLUMNS}, 0 as app_id, true as workspace from meta.workspace_credential where workspace_id = $1 and id = $2`, [where.workspaceId, where.id])) ?? null;
 }
 
 // ---------------------------------------------------------------- credentials
@@ -464,12 +477,24 @@ const secretOf = (c: WebCredential) => {
 
 const grantOf = (c: WebCredential) => c.grant_type ?? 'client_credentials';
 
-/** The form of a token request: the grant (or a refresh), the client's id and secret. */
-export function tokenRequest(c: WebCredential, refresh: string | null) {
+/** (sprint 222) The code the service sent back after consent, with the PKCE verifier and the redirect URI it was sent to. */
+export interface CodeGrant {
+  code: string;
+  verifier: string;
+  redirectUri: string;
+}
+
+/** The form of a token request: the grant (or a refresh, or a code after consent), the client's id and secret. */
+export function tokenRequest(c: WebCredential, refresh: string | null, code: CodeGrant | null = null) {
   const grant = grantOf(c);
   const form = new URLSearchParams();
   const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
-  if (refresh) {
+  if (code) {
+    form.set('grant_type', 'authorization_code');
+    form.set('code', code.code);
+    form.set('redirect_uri', code.redirectUri);
+    form.set('code_verifier', code.verifier);
+  } else if (refresh) {
     form.set('grant_type', 'refresh_token');
     form.set('refresh_token', refresh);
   } else if (grant === 'password') {
@@ -479,8 +504,10 @@ export function tokenRequest(c: WebCredential, refresh: string | null) {
     form.set('password', decryptSecret(c.password_enc));
   } else if (grant === 'refresh_token') {
     throw new WebError(`Web credential ${c.name} has no refresh token: enter one in the builder (Shared Components → Web credentials).`);
+  } else if (grant === 'authorization_code') {
+    throw new WebError(`Web credential ${c.name} is not authorized yet: click Authorize in the builder (${c.workspace ? 'Workspace utilities' : 'Shared Components'} → Web credentials) and give consent at the service.`);
   } else form.set('grant_type', 'client_credentials');
-  if (c.scope && !refresh) form.set('scope', c.scope);
+  if (c.scope && !refresh && !code) form.set('scope', c.scope);
   // the client authenticates with HTTP basic when it has a secret (always for client credentials);
   // a public client (password or refresh token grant without a secret) sends its id in the form
   if (c.secret_enc || grant === 'client_credentials')
@@ -489,8 +516,8 @@ export function tokenRequest(c: WebCredential, refresh: string | null) {
   return { headers, body: form.toString() };
 }
 
-async function requestToken(c: WebCredential, refresh: string | null, timeoutMs: number, scope: OutboundScope | null): Promise<Token> {
-  const { headers, body } = tokenRequest(c, refresh);
+async function requestToken(c: WebCredential, refresh: string | null, timeoutMs: number, scope: OutboundScope | null, code: CodeGrant | null = null): Promise<Token> {
+  const { headers, body } = tokenRequest(c, refresh, code);
   const res = await webRequest(c.token_url!, {
     // (sprint 118) the token endpoint is on the workspace's network access list too
     scope: scope ? { ...scope, what: `token endpoint of web credential ${c.name}` } : null,
@@ -555,6 +582,9 @@ async function oauthToken(c: WebCredential, timeoutMs: number, scope: OutboundSc
           // the refresh token may have expired: ask again with the grant (a refresh token grant has nothing else)
           if (grantOf(c) === 'refresh_token')
             throw new WebError(`${(e as Error).message} The refresh token of web credential ${c.name} may have expired: enter a new one in the builder.`, (e as WebError).status);
+          // (sprint 222) after consent: only a new consent gives a new one
+          if (grantOf(c) === 'authorization_code')
+            throw new WebError(`${(e as Error).message} The authorization of web credential ${c.name} may have expired or been revoked: click Authorize in the builder again.`, (e as WebError).status);
         }
       }
       return requestToken(c, null, timeoutMs, scope);
@@ -568,6 +598,38 @@ async function oauthToken(c: WebCredential, timeoutMs: number, scope: OutboundSc
   } finally {
     pendingTokens.delete(key);
   }
+}
+
+/**
+ * (sprint 222) The authorization code flow, after the developer's consent: exchange the code for tokens (with the
+ * PKCE verifier), keep the refresh token encrypted and the access token in the cache. Returns whether the service
+ * sent a refresh token (without one the credential works only until the access token expires) and when that expires.
+ */
+export async function exchangeAuthorizationCode(c: WebCredential, code: CodeGrant, scope: OutboundScope | null): Promise<{ refresh: boolean; expires: Date }> {
+  if (c.type !== 'oauth2' || grantOf(c) !== 'authorization_code') throw new WebError(`Web credential ${c.name} does not use the authorization code flow.`);
+  clearTokens(tokenId(c));
+  const t = await requestToken(c, null, 15_000, scope, code);
+  // no refresh token this time: one from an earlier consent is not for this one
+  if (!t.refresh && c.refresh_token_enc) {
+    await owner.query(`update meta.${c.workspace ? 'workspace_credential' : 'web_credential'} set refresh_token_enc = null, token_refreshed_at = null where id = $1`, [c.id]);
+    c.refresh_token_enc = null;
+  }
+  tokens.set(`${tokenId(c)}:${credKey(c)}`, t);
+  return { refresh: !!t.refresh, expires: new Date(t.expires) };
+}
+
+/** (sprint 222) The URL that asks the service for the developer's consent: the endpoint's own parameters are kept. */
+export function authorizationUrl(c: Pick<WebCredential, 'authorize_url' | 'username' | 'scope'>, o: { state: string; challenge: string; redirectUri: string }) {
+  const u = new URL(c.authorize_url ?? '');
+  if (!/^https?:$/.test(u.protocol)) throw new WebError('The authorization URL is not an http(s) URL.');
+  u.searchParams.set('response_type', 'code');
+  u.searchParams.set('client_id', c.username ?? '');
+  u.searchParams.set('redirect_uri', o.redirectUri);
+  if (c.scope) u.searchParams.set('scope', c.scope);
+  u.searchParams.set('state', o.state);
+  u.searchParams.set('code_challenge', o.challenge);
+  u.searchParams.set('code_challenge_method', 'S256');
+  return u.toString();
 }
 
 /** Headers that sign a request with the credential; the names in secret are secrets. */

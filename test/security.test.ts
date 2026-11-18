@@ -18527,3 +18527,107 @@ describe('sprint 221 Liquibase preconditions and contexts', () => {
     assert.equal((await d.post('/builder/sql/changes/download', { __csrf: d.lastCsrf, schema: S, format: 'liquibase', which: 'all', contexts: 'prod' })).statusCode, 404);
   });
 });
+
+describe('sprint 222 the OAuth2 authorization code flow of web credentials', () => {
+  const NAME = 'SEC222_CONSENT';
+  const DEV = 'sec222dev';
+  let appId: number;
+  let wsId: number;
+  let cid: number;
+  let wcid: number;
+  let otherWs: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    return b;
+  };
+  before(async () => {
+    appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    wsId = (await owner.one('select meta.app_workspace($1) as w', [appId])).w;
+    await owner.query('delete from meta.web_credential where app_id = $1 and name = $2', [appId, NAME]);
+    await owner.query('delete from meta.workspace_credential where name = $1', [NAME]);
+    cid = (await owner.one(`insert into meta.web_credential (app_id, name, type, username, token_url, authorize_url, grant_type)
+      values ($1, $2, 'oauth2', 'c', 'https://login.example.com/token', 'https://login.example.com/authorize', 'authorization_code') returning id`, [appId, NAME])).id;
+    wcid = (await owner.one(`insert into meta.workspace_credential (workspace_id, name, type, username, token_url, authorize_url, grant_type)
+      values ($1, $2, 'oauth2', 'c', 'https://login.example.com/token', 'https://login.example.com/authorize', 'authorization_code') returning id`, [wsId, NAME])).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec222 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.web_credential where app_id = $1 and name = $2', [appId, NAME]);
+    await owner.query('delete from meta.workspace_credential where name = $1', [NAME]);
+    await owner.query('delete from meta.web_credential_pending');
+    await owner.query(`delete from meta.workspace where name = 'Sec222 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+  const pending = async () => (await owner.one('select count(*)::int as n from meta.web_credential_pending')).n;
+
+  test('CSRF and sign-in: a forged token or no session starts nothing; the callback needs the builder session', async () => {
+    const a = await signIn('admin');
+    const before = await pending();
+    assert.equal((await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await a.post(`/builder/workspace-credentials/${wcid}/authorize`, { __csrf: 'forged' })).statusCode, 403);
+    const anon = new Browser();
+    assert.equal((await anon.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: 'x' })).headers.location, '/builder/login');
+    assert.equal((await anon.get('/builder/oauth/callback?code=x&state=y')).headers.location, '/builder/login');
+    assert.equal(await pending(), before);
+  });
+
+  test('another workspace\'s developer can\'t authorize; a workspace credential needs its administrator', async () => {
+    const d = await signIn(DEV);
+    await d.get('/builder/home');
+    assert.equal((await d.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: d.lastCsrf })).statusCode, 404);
+    // not an administrator there (403); were they one, the credential is not of their workspace (404)
+    assert.equal((await d.post(`/builder/workspace-credentials/${wcid}/authorize`, { __csrf: d.lastCsrf })).statusCode, 403);
+    await owner.query('update meta.workspace_member set is_admin = true where username = $1 and workspace_id = $2', [DEV, otherWs]);
+    const da = await signIn(DEV);
+    await da.get('/builder/workspace-credentials');
+    assert.equal((await da.post(`/builder/workspace-credentials/${wcid}/authorize`, { __csrf: da.lastCsrf })).statusCode, 404, 'not one of their workspace');
+    await owner.query('update meta.workspace_member set is_admin = false where username = $1 and workspace_id = $2', [DEV, otherWs]);
+    // a developer (not administrator) of the workspace
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2) on conflict do nothing', [wsId, DEV]);
+    await owner.query('delete from meta.workspace_member where username = $1 and workspace_id = $2', [DEV, otherWs]);
+    const d2 = await signIn(DEV);
+    await d2.get('/builder/workspace-credentials');
+    assert.equal((await d2.post(`/builder/workspace-credentials/${wcid}/authorize`, { __csrf: d2.lastCsrf })).statusCode, 403);
+    await owner.query('delete from meta.workspace_member where username = $1 and workspace_id = $2', [DEV, wsId]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [otherWs, DEV]);
+    assert.equal(await pending(), 0);
+  });
+
+  test('the redirect goes only to the stored http(s) authorization URL; state and verifier are random, hashed, builder only', async () => {
+    const a = await signIn('admin');
+    await a.get(`/builder/apps/${appId}/shared?c=web_credential-${cid}`);
+    const r = await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf, authorize_url: 'https://evil.example.com/' });
+    const u = new URL(r.headers.location as string);
+    assert.equal(u.origin, 'https://login.example.com');
+    const state = u.searchParams.get('state')!;
+    assert.ok(state.length >= 40);
+    const row = await owner.one('select state_hash, code_verifier from meta.web_credential_pending order by created_at desc limit 1');
+    assert.notEqual(row.state_hash, state);
+    assert.ok(row.code_verifier.length >= 60 && !(r.headers.location as string).includes(row.code_verifier));
+    await assert.rejects(owner.query(`update meta.web_credential set authorize_url = 'javascript:alert(1)' where id = $1`, [cid]), /check constraint/);
+    // nobody but the builder reads it
+    await assert.rejects(runtime.query('select * from meta.web_credential_pending'), /permission denied/);
+    const detail = (await owner.query(`select detail from meta.activity_log where event = 'web_credential_consent' order by id desc limit 5`)).rows.map((x) => x.detail).join(' ');
+    assert.ok(!detail.includes(state) && !detail.includes(row.code_verifier));
+  });
+
+  test('the service\'s error is a code, never its markup; an expired state is refused', async () => {
+    const a = await signIn('admin');
+    await a.get(`/builder/apps/${appId}/shared?c=web_credential-${cid}`);
+    const state = new URL((await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf })).headers.location as string).searchParams.get('state')!;
+    const r = await a.get(`/builder/oauth/callback?state=${state}&error=${encodeURIComponent('<img src=x onerror=alert(222)>')}`);
+    const page = (await a.get(r.headers.location as string)).body;
+    assert.doesNotMatch(page, /<img src=x|alert\(222\)/);
+    assert.match(page, /\(error\)/);
+    // ten minutes old: refused
+    const s2 = new URL((await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf })).headers.location as string).searchParams.get('state')!;
+    await owner.query(`update meta.web_credential_pending set created_at = now() - interval '11 minutes'`);
+    const late = await a.get(`/builder/oauth/callback?state=${s2}&code=c`);
+    assert.match((await a.get(late.headers.location as string)).body, /not valid any more/);
+  });
+});

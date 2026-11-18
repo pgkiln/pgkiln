@@ -10,6 +10,7 @@ import { runSync, syncLog, syncProblems } from '../restsync.ts';
 import { buildRequest, call, clearResponseCache, clearTokens, credentialProblems, guessColumns, loadCredential, parseJson, rowsSql, select, sourceProblems, toRows, withRest, type RestColumn, type RestSource } from '../websources.ts';
 import type { ComponentSpec } from './components.ts';
 import { back, BASE, csrf, developer, flash, type Req } from './ui.ts';
+import { consentPanel } from './oauth-consent.ts';
 import { resolveSource } from '../remote-servers.ts';
 import { scopedTx as tx } from './i18n.ts';
 
@@ -48,11 +49,14 @@ export const WEB_CREDENTIAL_SPEC: ComponentSpec = {
     { name: 'type', label: 'Authentication', kind: 'select', options: ['basic', 'header', 'bearer', 'oauth2', 'aws_sigv4'], group: 'Authentication',
       help: 'basic: HTTP basic (user name + password) · header: an HTTP header with the secret, e.g. an API key · bearer: Authorization: Bearer <secret> · oauth2: OAuth2 (pgkiln gets, caches and renews the token) · aws_sigv4: an S3-compatible object store\'s access key (AWS Signature Version 4), for file items that keep files in object storage.' },
     { name: 'username', label: 'User name / client id / access key id', kind: 'text', group: 'Authentication' },
-    { name: 'grant_type', label: 'Grant type (oauth2)', kind: 'select', options: ['client_credentials', 'password', 'refresh_token'], group: 'Authentication',
-      help: 'client_credentials: the client id and secret · password: also a user name and password to sign in with · refresh_token: a refresh token you got elsewhere (e.g. once through the service\'s consent page), entered below; pgkiln keeps the newest one.' },
+    { name: 'grant_type', label: 'Grant type (oauth2)', kind: 'select', options: ['client_credentials', 'password', 'refresh_token', 'authorization_code'], group: 'Authentication',
+      help: 'client_credentials: the client id and secret · password: also a user name and password to sign in with · refresh_token: a refresh token you got elsewhere, entered below; pgkiln keeps the newest one · authorization_code: you click Authorize below, sign in at the service and give consent in the browser; pgkiln keeps the refresh token it gets.' },
     { name: 'oauth_username', label: 'OAuth2 user name (password)', kind: 'text', group: 'Authentication', help: 'The password flow: the user pgkiln signs in as.' },
     { name: 'header_name', label: 'Header name (header)', kind: 'text', group: 'Authentication', help: 'e.g. X-API-Key' },
     { name: 'token_url', label: 'Token URL (oauth2)', kind: 'text', wide: true, group: 'Authentication', help: 'e.g. https://login.example.com/oauth/token' },
+    // (sprint 222) the authorization code flow
+    { name: 'authorize_url', label: 'Authorization URL (authorization_code)', kind: 'text', wide: true, group: 'Authentication',
+      help: 'The service\'s authorization endpoint, e.g. https://login.example.com/oauth/authorize; its own parameters (e.g. access_type=offline) are kept. Register the redirect URI shown under the credential at the service.' },
     { name: 'scope', label: 'Scope (oauth2) / region (aws_sigv4)', kind: 'text', group: 'Authentication', help: 'aws_sigv4: the region, e.g. eu-west-1 (MinIO: us-east-1, R2: auto).' },
     { name: 'secret', label: 'Secret', kind: 'secret', wide: true, group: 'Secret',
       help: 'The password, header value, token, client secret or secret access key (oauth2: optional for the password and refresh token grants of a public client). Stored encrypted; it is never shown again or exported. Leave empty to keep the stored secret.' },
@@ -138,6 +142,7 @@ export async function designSql(appId: number, r: { source: string | null; rest_
 
 /** Whether a credential needs its secret (oauth2 password and refresh token grants may be public clients). */
 export const needsSecret = (row: { type: string; grant_type?: string | null }) => row.type !== 'oauth2' || (row.grant_type ?? 'client_credentials') === 'client_credentials';
+// (sprint 222) authorization_code may be a public client too (PKCE, no secret)
 
 const CLEARABLE: Record<string, { column: string; label: string }> = {
   secret: { column: 'secret_enc', get label() { return tx('wsrc.the_secret'); } },
@@ -166,7 +171,7 @@ export function credentialExtras(
       : ''}
     ${secretKeyConfigured() ? '' : html`<div class="alert alert-error" role="alert">${tx.code('wsrc.no_secret_key')}</div>`}
     <div class="buttons">${row.secret_enc ? clear('secret') : ''}${row.password_enc ? clear('password') : ''}${row.refresh_token_enc ? clear('refresh') : ''}</div>
-  </fieldset>`;
+  </fieldset>${consentPanel(s, { ...row, authorized: !!row.refresh_token_enc, at: row.token_refreshed_at }, `${BASE}/apps/${appId}/web-credentials/${row.id}/authorize`)}`;
 }
 
 interface TestResult {

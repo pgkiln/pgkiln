@@ -80,11 +80,12 @@ Shared Components → **Web credentials** → ＋ Add.
 |---|---|
 | Name | Uppercase, e.g. `WEATHER_API`; sources and processes use the credential by this name |
 | Authentication | `basic` (user name + password), `header` (an HTTP header with the secret, e.g. `X-API-Key`), `bearer` (`Authorization: Bearer <secret>`), `oauth2`, `aws_sigv4` (an S3-compatible object store's access key: the access key id as user name, the secret access key as secret, the region as scope; signs the requests of [file items in object storage](16-files.md#object-storage), not of REST data sources) |
-| Grant type | `oauth2`: `client_credentials` (default), `password` or `refresh_token` ([below](#oauth2-grant-types)) |
+| Grant type | `oauth2`: `client_credentials` (default), `password`, `refresh_token` or `authorization_code` ([below](#oauth2-grant-types)) |
 | User name / client id | `basic`: the user name; `oauth2`: the client id |
 | OAuth2 user name | `oauth2` with `password`: the user pgkiln signs in as |
 | Header name | `header`: the header that carries the secret |
 | Token URL, Scope | `oauth2`: the token endpoint and the scope to ask for |
+| Authorization URL | `oauth2` with `authorization_code` (sprint 222): the service's authorization endpoint, where you give consent in the browser ([below](#authorization-code-flow)) |
 | Secret | The password, header value, token or client secret. **Write-only**: it is encrypted by the server, never shown again (the form says whether one is stored), never exported. Leave it empty to keep the stored one; **Remove the secret** clears it |
 | OAuth2 password, Refresh token | `oauth2`: the password of the OAuth2 user (`password` grant), or a refresh token obtained elsewhere (`refresh_token` grant). Write-only like the secret, each with its own **Remove** button |
 | Valid for URLs | URL prefixes the credential may be sent to, e.g. `https://api.example.com/v2/`. Recommended: a source or process that points elsewhere fails instead of sending the secret |
@@ -106,14 +107,36 @@ the service answers 401. Access tokens are kept in the server's memory only.
 | `client_credentials` | `grant_type=client_credentials`; the client id and secret with HTTP basic authentication |
 | `password` | `grant_type=password` with the OAuth2 user name and password (APEX: *OAuth2 resource owner password*) |
 | `refresh_token` | `grant_type=refresh_token` with the refresh token you entered, e.g. one obtained once through the service's own consent page |
+| `authorization_code` | (sprint 222) after your consent in the browser: `grant_type=authorization_code` with the code and the PKCE verifier once, then `grant_type=refresh_token` with the refresh token it gave ([below](#authorization-code-flow)) |
 
-With `password` and `refresh_token` the client authenticates with HTTP basic when the credential
+With `password`, `refresh_token` and `authorization_code` the client authenticates with HTTP basic when the credential
 has a client secret; without one (a public client) the client id is sent in the form.
 
 When the token endpoint returns a refresh token, pgkiln **stores it encrypted** in the credential
 (and replaces it when the endpoint rotates it), so it survives a restart and is shared by several
 servers. When a refresh fails, the `password` grant signs in again; the `refresh_token` grant can't,
 and the error says to enter a new refresh token in the builder.
+
+<a id="authorization-code-flow"></a>**The authorization code flow** (sprint 222; APEX: consent in the browser). For a
+service that only gives access after a person agrees (a mailbox, a calendar, a file store, most SaaS APIs), choose
+the grant `authorization_code` and fill in the client id, the **Authorization URL**, the token URL and the scope (ask
+for offline access: often the scope `offline_access`, for Google `access_type=offline&prompt=consent` in the
+authorization URL; its own parameters are kept). The credential shows the **redirect URI** to register at the service:
+`<PUBLIC_URL>/builder/oauth/callback`. Then click **Authorize**: the browser goes to the service with a one-time
+state and a PKCE challenge (S256), you sign in there and agree, and the service sends the browser back to pgkiln with
+a code. pgkiln exchanges it at the token URL (through the workspace's network access list, with the client secret
+when there is one, else as a public client with PKCE alone), keeps the refresh token encrypted, and from then on
+every call of the application uses the access token and renews it with the refresh token, as for the
+`refresh_token` grant. The credential then says *Authorized* and when; **Authorize again** replaces the consent
+(for another account, more scopes, or after the service revoked it). Without a refresh token in the answer the
+credential works until the access token expires, and the message says so.
+
+The state is kept only as a hash, for ten minutes, once, and only for the builder session that started it: a
+callback from another browser or session, a second use or a late one is refused. The code, the tokens and the
+verifier never reach a page, a log line or the activity log (which records *authorization started*, *authorized* or
+*refused* with the service's error code). An application's credential can be authorized by its developers; a
+workspace's credential (Workspace utilities → Web credentials) by the workspace's administrators. The consent is
+the developer's, for the whole application: every user of the application calls the service with it.
 
 The runtime database role can read a credential's settings but not its secret column; the server
 loads the secret with the owner connection, decrypts it only for the request, and never puts it

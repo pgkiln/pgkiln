@@ -100,7 +100,7 @@ export async function exportWorkspace(workspaceId: number, parts: readonly Part[
   if (want('web_credentials'))
     // secrets never leave the installation
     doc.web_credentials = (await owner.query(
-      'select name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username from meta.workspace_credential where workspace_id = $1 order by name', [workspaceId])).rows;
+      'select name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username, authorize_url from meta.workspace_credential where workspace_id = $1 order by name', [workspaceId])).rows;
   return doc;
 }
 
@@ -337,16 +337,18 @@ export async function importWorkspace(c: Client, workspaceId: number, doc: unkno
         username: text(x.username, 500), header_name: text(x.header_name, 64), token_url: text(x.token_url, 2000), scope: text(x.scope, 500),
         valid_for: Array.isArray(x.valid_for) ? x.valid_for.filter((u: unknown) => typeof u === 'string') : [],
         grant_type: GRANT_TYPES.includes(x.grant_type) ? x.grant_type : 'client_credentials', oauth_username: text(x.oauth_username, 500),
+        // (sprint 222) the authorization code flow's endpoint
+        authorize_url: text(x.authorize_url, 2000),
       };
       const problems = [...(/^[A-Z][A-Z0-9_]{0,59}$/.test(v.name) ? [] : ['the name is upper case letters, digits and _.']), ...credentialProblems(v)];
       if (problems.length) throw new Error(`Web credential ${v.name || '?'}: ${problems.join(' ')}`);
-      const vals = [v.description, v.type, v.username, v.header_name, v.token_url, v.scope, v.valid_for, v.grant_type, v.oauth_username];
+      const vals = [v.description, v.type, v.username, v.header_name, v.token_url, v.scope, v.valid_for, v.grant_type, v.oauth_username, v.authorize_url];
       const existing = (await c.query<{ id: number }>('select id from meta.workspace_credential where workspace_id = $1 and name = $2', [workspaceId, v.name])).rows[0];
       n[await upsert(existing,
-        () => c.query(`insert into meta.workspace_credential (workspace_id, name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username, updated_by)
-                       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`, [workspaceId, v.name, ...vals, opts.by]),
+        () => c.query(`insert into meta.workspace_credential (workspace_id, name, description, type, username, header_name, token_url, scope, valid_for, grant_type, oauth_username, authorize_url, updated_by)
+                       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, [workspaceId, v.name, ...vals, opts.by]),
         (id) => c.query(`update meta.workspace_credential set description = $2, type = $3, username = $4, header_name = $5, token_url = $6, scope = $7, valid_for = $8,
-                                grant_type = $9, oauth_username = $10, updated_by = $11, updated_at = now() where id = $1`, [id, ...vals, opts.by]))]++;
+                                grant_type = $9, oauth_username = $10, authorize_url = $11, updated_by = $12, updated_at = now() where id = $1`, [id, ...vals, opts.by]))]++;
     }
     tally('Web credentials', n.added, n.replaced, n.skipped, n.added ? '; enter their secrets under Workspace utilities → Web credentials' : '');
   }

@@ -247,7 +247,7 @@ src/
   secrets.ts               secrets at rest (web credentials): AES-256-GCM with PGKILN_SECRET_KEY (or a key given, for rotate-key);
                            keyFingerprint()
   websources.ts            web credentials (OAuth2 client credentials/password/refresh token grants, token cache, stored refresh
-                           tokens) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
+                           tokens; (sprint 222) authorization_code: authorizationUrl(), exchangeAuthorizationCode(), loadCredentialById()) and REST data sources: requests, JSON paths, typed rows, response cache, write-back operations
                            (callOperation); invoke(): the invoke API call shared by the invoke_api process and workflow step
   restsync.ts              REST data source synchronisation into a local table (merge/replace/append as the app role), run log,
                            syncTick() (scheduled and SQL-queued runs, called by the automations scheduler)
@@ -698,6 +698,10 @@ src/
     template-spec.ts       template component property form (Shared Components)
     websources.ts          web credentials and REST data sources: property specs, secret status, Test, suggested columns,
                            write-back operations, synchronisation settings, Synchronise now and run history
+    oauth-consent.ts       (sprint 222, migration 184) the OAuth2 authorization code flow of web credentials: startConsent() (state + PKCE in
+                           meta.web_credential_pending, bound to the builder session), consentPanel(), POST /apps/:id/web-credentials/:cid/authorize,
+                           GET /builder/oauth/callback (one-time, ten minutes; the code exchanged, the refresh token stored encrypted);
+                           workspace credentials: POST /workspace-credentials/:cid/authorize (workspace-resources.ts)
     templates.ts           template components: preview, plug-in export/import, region settings, report column templates
     ui-templates.ts        (sprint 203, AX-7) Shared Components → Templates (/apps/:id/templates): page, region, button, label,
                            classic report and list templates with where each is used (read-only; names in uit.* keys)

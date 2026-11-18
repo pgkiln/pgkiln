@@ -14,6 +14,7 @@ const NOT_EXPORTED = new Set([
   'session',
   'activity_log',
   'sso_pending',
+  'web_credential_pending', // (184) authorization code flows in flight: one-time, ten minutes
   'saved_report', // users' saved interactive reports
   'persistent_login', // "Remember me" tokens of this installation's accounts
   'password_reset', // (087) password reset links of this installation's accounts
