@@ -722,6 +722,8 @@ src/
                            (090) isolation and the workspace's database roles, workshopDb (the SQL Workshop's connection)
                            (093) workspace preferences (sql_workshop: checked in ui.ts developer() for /builder/sql…;
                            rest_services: checked in runtime/rest.ts) and extension links (the rail's Extensions menu in shell())
+                           (sprint 225) createDeveloperForm, POST /workspaces/:id/developers/new and /remove: workspace administrators
+                           create developers of their workspace only (never is_admin) and remove those of no other workspace
     locks.ts               page and application locks (blockingLock, checked in ui.ts developer() for every builder POST; appOfPath), developer comments, administrators
     blueprints.ts          Create → From a blueprint: list, JSON editor, AI draft, review (signed with the session), create in one transaction;
                            (sprint 66) From an application

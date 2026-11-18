@@ -28,6 +28,9 @@ All notable changes to this project are documented here. The format follows
   (`catalog.book`, `@id`, `price.#text`), through pgkiln's own safe XML reader (no DTDs or entities). A body template
   that starts with `<` is a SOAP envelope: values are XML-escaped and the content type is `text/xml`; a SOAP fault's
   code is named in the error. HR's page 23 reads its departments as XML (part 93).
+- **Developers created by a workspace administrator** (sprint 225; APEX: Manage Developers and Users): a workspace's
+  administrators create builder accounts of their workspace on its page (never installation administrators;
+  optionally workspace administrators) and remove those who belong to their workspace alone.
 
 ## [0.109.0] - 2026-11-17
 

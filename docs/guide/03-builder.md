@@ -367,6 +367,13 @@ department. Every installation has the **Default** workspace, which holds the ap
   workspace administrator opens the page from Workspace utilities (the card names the current workspace) and changes
   its name, description and developers; isolation, database roles, moving applications and deleting stay with the
   installation's administrators.
+- <a id="workspace-developers"></a>(sprint 225; APEX: Manage Developers and Users) A workspace's administrators **create
+  developers** of their workspace on its page (*Create a developer*: user name, password with the developers' policy of
+  at least 12 characters, e-mail, optionally workspace administrator). The account belongs to that workspace only and is
+  never an administrator of the installation; the workspace's two-factor and single sign-on rules apply to it. *Remove
+  a developer* deletes the builder account of a developer who belongs to this workspace alone (not one who also works
+  in another workspace, not an installation administrator, not yourself) and ends their sessions; the applications
+  stay. User names are unique in the installation.
 
 A **shared** workspace (the default) is not a security boundary between developers who write SQL: its SQL Workshop
 runs as pgkiln's owner, and its application code (processes, regions, validations) runs on the shared runtime
