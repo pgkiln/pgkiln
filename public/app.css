@@ -757,7 +757,8 @@ a.drill > .slice:hover, a.col-slot.drill:hover .col, a.col.drill:hover, a.bar-tr
 .gauge-led:has(.status-warning) .gauge-number { color: #1b2330; }
 .chart-meters { display: grid; gap: 0.45rem; }
 /* every row and the scale share one set of columns: the tracks line up */
-.meter-scale, .meter-row { display: grid; grid-template-columns: var(--bar-label, 9rem) minmax(4rem, 1fr) 4rem 7rem; align-items: center; gap: 0.5rem; }
+.meter-scale, .meter-row { display: grid; grid-template-columns: minmax(3.5rem, var(--bar-label, 9rem)) minmax(3rem, 1fr) 3.5rem minmax(0, 7rem); align-items: center; gap: 0.5rem; }
+.meter-row .bar-label, .meter-row .gauge-status { min-width: 0; overflow-wrap: anywhere; }
 .meter-scale { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 .meter-scale-range { grid-column: 2; display: flex; justify-content: space-between; }
 .meter-row { border-radius: var(--radius); outline-offset: 2px; }
