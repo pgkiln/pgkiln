@@ -6,7 +6,7 @@ import { designSql } from './websources.ts';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { CALENDAR_VIEWS, calendarViews } from '../runtime/calendar.ts';
-import { CHART_KINDS } from '../runtime/charts.ts';
+import { CHART_KINDS, GAUGE_SHAPES } from '../runtime/charts.ts';
 import { heading } from '../runtime/items.ts';
 import { positionColumns } from '../runtime/report.ts';
 import { anyBound, MAX_RANGES, type Range } from '../runtime/facet-state.ts';
@@ -142,6 +142,8 @@ export function mergeChartSettings(config: Config, b: Body, a: Allowed): Config 
     const v = Number(raw);
     if (raw && Number.isFinite(v)) gauge[k] = v;
   }
+  // (sprint 226) the gauge's shape (the dial is the default and not stored)
+  if (b.gauge_shape && b.gauge_shape !== 'dial' && (GAUGE_SHAPES as readonly string[]).includes(b.gauge_shape)) gauge.shape = b.gauge_shape;
   set('gauge', Object.keys(gauge).length ? gauge : undefined);
   // (sprint 69) Gantt drag and drop
   set('gantt_move', b.gantt_move?.trim() || undefined);
@@ -865,6 +867,8 @@ async function typeSettingsForm(pageId: number, appId: number, r: RegionRow, s: 
         <fieldset class="prop-group"><legend>${tx('rs.gauge')}</legend><div class="form-grid">
           ${GAUGE_KEYS.map((k) => html`<div class="field"><label class="label" for="${id(`gauge_${k}`)}">${tx(`rs.gauge.${k}`)}</label>
             <input id="${id(`gauge_${k}`)}" name="gauge_${k}" type="number" step="any" value="${cfg.gauge?.[k] ?? ''}" placeholder="${k === 'min' ? '0' : k === 'max' ? 'automatic' : ''}"></div>`)}
+          <div class="field"><label class="label" for="${id('gauge_shape')}">${tx('rs.gauge.shape')}</label>
+            <select id="${id('gauge_shape')}" name="gauge_shape">${GAUGE_SHAPES.map((k) => opt(k, tx(`rs.gauge.shape.${k}`), cfg.gauge?.shape ?? 'dial'))}</select></div>
         </div>
         <small class="help">${tx('rs.gauge_charts_only_a_warning')}</small></fieldset>
         ${linkFieldset(id, cfg.link, await pages(), tx('rs.w.point'))}

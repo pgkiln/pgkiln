@@ -39,7 +39,14 @@ export interface GaugeConfig {
   max?: number;
   warning?: number;
   critical?: number;
+  /**
+   * (sprint 226; Oracle JET: dial, status meter, circular status meter, LED gauge) dial: a half circle (default) ·
+   * bar: a horizontal status meter per row · circle: a full ring · led: a status light (the thresholds' colour, an icon)
+   */
+  shape?: GaugeShape;
 }
+export const GAUGE_SHAPES = ['dial', 'bar', 'circle', 'led'] as const;
+export type GaugeShape = (typeof GAUGE_SHAPES)[number];
 
 export interface ChartOptions {
   /** Drill-down: the href attributes for row i (series si, or null for the whole row), or null for no link. */
@@ -444,6 +451,8 @@ export function gaugeStatus(v: number, g: GaugeConfig): Status | null {
 
 function gauge(labels: string[], series: Series[], g: GaugeConfig) {
   // One gauge per row (up to 12): the value of the first series on a half circle from min to max.
+  if (g.shape === 'bar') return statusMeter(labels, series, g);
+  if (g.shape === 'circle' || g.shape === 'led') return roundGauges(labels, series, g, g.shape);
   const values = series[0].values.slice(0, 12);
   const min = Number.isFinite(g.min) ? g.min! : 0;
   const top = Math.max(...values, g.warning ?? -Infinity, g.critical ?? -Infinity);
@@ -478,6 +487,66 @@ function gauge(labels: string[], series: Series[], g: GaugeConfig) {
       <span class="gauge-scale" aria-hidden="true"><span>${compact.format(min)}</span><span>${compact.format(max)}</span></span>
       <span class="gauge-label">${labels[i]}</span>
       ${status ? html`<span class="gauge-status status-${status}"><span class="status-icon" aria-hidden="true">${status === 'good' ? '✓' : '!'}</span>${texts[status]}</span>` : ''}`;
+    return mark('div', i, 0, 'gauge', t, inner, true, true);
+  })}</div>`;
+}
+
+/** (sprint 226) The scale of a gauge: min, max (rounded up from the values and thresholds), a value's place in percent. */
+function gaugeScale(values: number[], g: GaugeConfig) {
+  const min = Number.isFinite(g.min) ? g.min! : 0;
+  const top = Math.max(...values, g.warning ?? -Infinity, g.critical ?? -Infinity);
+  const max = Number.isFinite(g.max) && g.max! > min ? g.max! : niceScale(min, top > min ? top : min + 1).hi;
+  return { min, max, at: (v: number) => Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100)) };
+}
+
+/** (sprint 226) The words beside a gauge: its status with an icon (never the colour alone). */
+const statusWords = (status: Status | null) =>
+  status ? html`<span class="gauge-status status-${status}"><span class="status-icon" aria-hidden="true">${status === 'good' ? '✓' : '!'}</span>${texts[status]}</span>` : '';
+
+/**
+ * (sprint 226; Oracle JET: status meter gauge, horizontal) One bar per row (up to 30): the value from min to max in
+ * its status colour, the thresholds as ticks on the track, the number and the status beside it.
+ */
+function statusMeter(labels: string[], series: Series[], g: GaugeConfig) {
+  const values = series[0].values.slice(0, 30);
+  const { min, max, at } = gaugeScale(values, g);
+  const ticks = [g.warning, g.critical].filter((x): x is number => x !== undefined && x > min && x < max);
+  return html`<div class="chart-meters">
+    <div class="meter-scale" aria-hidden="true"><span class="meter-scale-range"><span>${compact.format(min)}</span><span>${compact.format(max)}</span></span></div>
+    ${values.map((v, i) => {
+      const status = gaugeStatus(v, g);
+      const t = `${labels[i]}: ${fmt.format(v)}${status ? ` · ${texts[status]}` : ''}`;
+      return mark('div', i, 0, 'meter-row', t, html`<span class="bar-label" title="${labels[i]}">${labels[i]}</span>
+        <span class="meter-track">
+          <span class="meter-value ${status ? `status-${status}` : 's1'} ${css.cls(`width:${pct(Math.max(at(v), 0.5))}`)}"></span>
+          ${ticks.map((x) => html`<span class="meter-tick status-${gaugeStatus(x, g)} ${css.cls(`left:${pct(at(x))}`)}"></span>`)}
+        </span>
+        <span class="bar-value">${fmt.format(v)}</span>
+        ${statusWords(status)}`, true, true);
+    })}</div>`;
+}
+
+/**
+ * (sprint 226; Oracle JET: circular status meter, LED gauge) One per row (up to 12): a full ring from min to max, or a
+ * status light whose colour is the thresholds' status (the series colour without thresholds), with the number inside.
+ */
+function roundGauges(labels: string[], series: Series[], g: GaugeConfig, shape: 'circle' | 'led') {
+  const values = series[0].values.slice(0, 12);
+  const { min, max, at } = gaugeScale(values, g);
+  return html`<div class="chart-gauges">${values.map((v, i) => {
+    const status = gaugeStatus(v, g);
+    const t = `${labels[i]}: ${fmt.format(v)}${status ? ` · ${texts[status]}` : ''}`;
+    const tone = status ? `status-${status}` : 's1';
+    const figure = shape === 'circle'
+      ? html`<svg viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="gauge-track" cx="50" cy="50" r="40" pathLength="100"></circle>
+          <circle class="gauge-value gauge-ring ${tone}" cx="50" cy="50" r="40" pathLength="100" stroke-dasharray="${Math.max(at(v), 0.5).toFixed(3)} 200"></circle>
+        </svg>`
+      : html`<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="gauge-light ${tone}" cx="50" cy="50" r="44"></circle></svg>`;
+    const inner = html`<span class="gauge-figure gauge-${shape}">${figure}<span class="gauge-number">${compact.format(v)}</span></span>
+      ${shape === 'circle' ? html`<span class="gauge-scale" aria-hidden="true"><span>${compact.format(min)}</span><span>${compact.format(max)}</span></span>` : ''}
+      <span class="gauge-label">${labels[i]}</span>
+      ${statusWords(status)}`;
     return mark('div', i, 0, 'gauge', t, inner, true, true);
   })}</div>`;
 }

@@ -31,6 +31,10 @@ All notable changes to this project are documented here. The format follows
 - **Developers created by a workspace administrator** (sprint 225; APEX: Manage Developers and Users): a workspace's
   administrators create builder accounts of their workspace on its page (never installation administrators;
   optionally workspace administrators) and remove those who belong to their workspace alone.
+- **Gauge shapes** (sprint 226; Oracle JET status meter, circular status meter and LED gauges): a gauge chart's
+  `"shape"` is `dial` (default), `bar` (a horizontal status meter per row with threshold ticks), `circle` (a full
+  ring) or `led` (a status light); each keeps its status in words with an icon. Region settings → Gauge → Shape;
+  HR page 24 shows them (part 94).
 
 ## [0.109.0] - 2026-11-17
 
