@@ -12,7 +12,7 @@ import { renderItems } from './items.ts';
 import { expandShortcuts } from './shortcuts.ts';
 import { fillItems, linkAttrs, linkColumns } from './links.ts';
 import { renderCalendar } from './calendar.ts';
-import { CHART_KINDS, renderChartBody, wallClockIn, type GaugeConfig } from './charts.ts';
+import { CHART_KINDS, GAUGE_SHAPES, renderChartBody, wallClockIn, type GaugeConfig } from './charts.ts';
 import { databaseTimeZone } from './locale.ts';
 import { renderFacets } from './facets.ts';
 import { renderSmartFilters } from './smart-filters.ts';
@@ -195,6 +195,9 @@ function gaugeConfig(g: unknown): GaugeConfig {
       const v = (g as Record<string, unknown>)[k];
       if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
     }
+  // (sprint 226) the shape: one of the known ones, else the dial
+  const shape = g && typeof g === 'object' ? (g as Record<string, unknown>).shape : undefined;
+  if (typeof shape === 'string' && (GAUGE_SHAPES as readonly string[]).includes(shape)) out.shape = shape as GaugeConfig['shape'];
   return out;
 }
 

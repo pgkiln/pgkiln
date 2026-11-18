@@ -746,6 +746,33 @@ a.drill > .slice:hover, a.col-slot.drill:hover .col, a.col.drill:hover, a.bar-tr
 .gauge-status { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.78rem; color: var(--muted); }
 .status-icon { display: inline-grid; place-items: center; width: 1.05rem; height: 1.05rem; border-radius: 50%; background: var(--sc); color: #fff; font-size: 0.7rem; font-weight: 700; }
 .status-warning .status-icon { color: #1b2330; }
+/* (sprint 226) gauge shapes: a full ring, a status light, horizontal status meters */
+.gauge-ring { transform: rotate(-90deg); transform-origin: 50% 50%; }
+.gauge-circle .gauge-number, .gauge-led .gauge-number { top: 50%; bottom: auto; transform: translateY(-50%); }
+.gauge-circle, .gauge-led { max-width: 140px; }
+.gauge-led { max-width: 96px; }
+.gauge-light { fill: var(--sc, var(--c)); stroke: var(--surface); stroke-width: 3; }
+.gauge-led .gauge-number { color: #fff; }
+/* amber needs dark text (as the status icon) */
+.gauge-led:has(.status-warning) .gauge-number { color: #1b2330; }
+.chart-meters { display: grid; gap: 0.45rem; }
+/* every row and the scale share one set of columns: the tracks line up */
+.meter-scale, .meter-row { display: grid; grid-template-columns: var(--bar-label, 9rem) minmax(4rem, 1fr) 4rem 7rem; align-items: center; gap: 0.5rem; }
+.meter-scale { font-size: 0.72rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.meter-scale-range { grid-column: 2; display: flex; justify-content: space-between; }
+.meter-row { border-radius: var(--radius); outline-offset: 2px; }
+.meter-row .bar-value { text-align: right; }
+.meter-row:hover { background: color-mix(in srgb, var(--accent-soft) 60%, transparent); }
+.meter-track { position: relative; height: 0.9rem; border-radius: 999px; background: var(--chart-grid); overflow: hidden; }
+.meter-value { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--c); }
+.meter-value[class*="status-"] { background: var(--sc); }
+.meter-tick { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--sc); }
+@media (max-width: 560px) {
+  .meter-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .meter-row .meter-track { grid-column: 1 / -1; grid-row: 2; }
+  .meter-row .gauge-status { grid-column: 1 / -1; }
+  .meter-scale { display: none; }
+}
 
 /* (sprint 220) sankey: nodes in columns, ribbons between them (SVG, stretched to the box), labels beside the nodes */
 .sankey { position: relative; height: 22rem; margin: 0 0.25rem; }
