@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **The APEX importer maps PL/SQL Error validations** (sprint 227): the block becomes a `function_error` validation
+  whose exception handler returns the validation's message (`#SQLERRM#` as the error's text); the report marks it
+  for porting like other PL/SQL.
+
+### Added
 - **Liquibase contexts, labels and preconditions in the Change Log** (sprint 221; migration 183): a change set has a
   context expression (`dev and !prod`), labels and an sql-check precondition with its expected result and what to do
   when it fails (halt, continue, mark ran, warn). pgkiln proposes a precondition for a plain create or added column

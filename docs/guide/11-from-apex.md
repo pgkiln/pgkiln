@@ -195,7 +195,8 @@ Validation types (CD-1):
 | `EXISTS`, `NOT_EXISTS`, `SQL_EXPRESSION`, `EXPRESSION` (SQL) | `exists`, `not_exists`, `sql` | Oracle SQL is named in the report |
 | `EXPRESSION` (PL/SQL), `PLSQL_EXPRESSION` | `sql` | Needs porting |
 | `FUNC_BODY_RETURNING_BOOLEAN`, `FUNC_BODY_RETURNING_ERR_TEXT` | `function_body`, `function_error` | Needs porting |
-| `PLSQL_ERROR`, plug-in validations, interactive grid column validations | not mapped | Use `function_body`, or a [grid column's validation](04-pages-and-regions.md#grid-interactive-grid) |
+| `PLSQL_ERROR` | `function_error` | (sprint 227) Needs porting: the block runs inside `begin … return null; exception when others then return '<message>'; end`, so an exception fails the validation with its message (`#SQLERRM#` / `#SQLERRM_TEXT#` become the error's text; no message: the error's text) |
+| Plug-in validations, interactive grid column validations | not mapped | Use `function_body`, or a [grid column's validation](04-pages-and-regions.md#grid-interactive-grid) |
 
 The error message's `#LABEL#` becomes the item's label; *Always Execute*, *When Button Pressed*,
 the server-side condition and the display location (*Inline with Field and in Notification*, *Inline

@@ -483,6 +483,8 @@ const VALIDATION_TYPES: Record<string, { type: string; item: boolean; value?: bo
   EXPRESSION: { type: 'sql', item: false, sql: true },
   FUNC_BODY_RETURNING_BOOLEAN: { type: 'function_body', item: false, plsql: true },
   FUNC_BODY_RETURNING_ERR_TEXT: { type: 'function_error', item: false, plsql: true },
+  // (sprint 227) the block fails by raising: wrapped so that an exception returns the message (plsqlErrorBody)
+  PLSQL_ERROR: { type: 'function_error', item: false, plsql: true },
   ITEM_NOT_NULL: { type: 'not_null', item: true },
   ITEM_IS_NOT_NULL: { type: 'not_null', item: true },
   ITEM_NOT_NULL_OR_ZERO: { type: 'not_null_or_zero', item: true },
@@ -501,6 +503,18 @@ const VALIDATION_TYPES: Record<string, { type: string; item: boolean; value?: bo
   ITEM_IN_VALIDATION_CONTAINS_NO_CHAR_IN_STRING2: { type: 'chars_none', item: true, value: true },
   REGULAR_EXPRESSION: { type: 'regex', item: true, value: true },
 };
+
+/**
+ * (sprint 227) APEX's PL/SQL Error validation as a function_error body: the block (as written; it still needs porting)
+ * in a nested block whose exception handler returns the error message, #SQLERRM# / #SQLERRM_TEXT# as the error's text
+ * (APEX's own message when there is none: the error's text).
+ */
+export function plsqlErrorBody(code: string, message: string) {
+  const lit = (t: string) => `'${t.replace(/'/g, "''")}'`;
+  const parts = message.split(/#SQLERRM(?:_TEXT)?#/);
+  const returned = !message.trim() ? 'sqlerrm' : parts.map(lit).join(' || sqlerrm || ').replace(/^'' \|\| | \|\| ''$/g, '');
+  return `begin\n  ${code.trim().replace(/;?\s*$/, ';').replace(/\n/g, '\n  ')}\n  return null;\nexception when others then\n  return ${returned};\nend`;
+}
 
 /** Validation and process types the importer maps (for the guide and the tests). */
 export const MAPPED_VALIDATION_TYPES = Object.keys(VALIDATION_TYPES);
@@ -1903,7 +1917,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     }
     if (!m) {
       e.scan(str(a, 'p_validation'));
-      e.notMapped(apexType === 'PLSQL_ERROR' ? 'PL/SQL Error validations are not mapped: raise the error in a function_body validation or a PL/pgSQL function' : `validation type ${apexType || '(none)'} is not mapped`);
+      e.notMapped(`validation type ${apexType || '(none)'} is not mapped`);
       continue;
     }
     const v1 = str(a, 'p_validation');
@@ -1940,6 +1954,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     msg = msg.replace(/#LABEL#/g, label).replace(/#COLUMN_HEADER#/g, label);
     if (/#[A-Z_]+#/.test(msg)) e.note('#…# substitutions in the message are not filled in (use &ITEM.)');
     row.message = msg || (m.type === 'function_error' ? '' : 'The value is not valid.');
+    // (sprint 227) PL/SQL Error: the block in a function_error body whose exception handler returns the message
+    if (apexType === 'PLSQL_ERROR' && row.expression) {
+      row.expression = plsqlErrorBody(row.expression, msg);
+      row.message = '';
+      e.note('PL/SQL Error: the block runs in a function_error body; an exception returns the error message');
+    }
     const okItem = m.item ? isUpperName(row.item_name) : true;
     const okExpr = m.item && !m.value ? true : (row.expression ?? '').trim() !== '';
     if (!okItem || !okExpr) {

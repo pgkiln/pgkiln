@@ -18778,3 +18778,20 @@ describe('sprint 225 developers created by a workspace administrator', () => {
     assert.doesNotMatch((await b.get(`/builder/workspaces/${mine}`)).body, /<img src=x onerror/);
   });
 });
+
+describe('sprint 227 APEX PL/SQL Error validations', () => {
+  test('the imported message is a quoted literal in the body: it can\'t end the block or run SQL', async () => {
+    const { plsqlErrorBody } = await import('../src/apeximport.ts');
+    const body = plsqlErrorBody('perform 1 / 0;', "x'; end; $$ language plpgsql; drop table meta.app; --");
+    assert.match(body, /return 'x''; end; \$\$ language plpgsql; drop table meta\.app; --';\nend$/);
+    const c = await owner.pool.connect();
+    try {
+      await c.query(`create function pg_temp.s227() returns text language plpgsql as $pgkiln_s227$\n${body}\n$pgkiln_s227$`);
+      assert.equal((await c.query('select pg_temp.s227() as v')).rows[0].v, "x'; end; $$ language plpgsql; drop table meta.app; --");
+    } finally {
+      await c.query('drop function if exists pg_temp.s227()').catch(() => {});
+      c.release();
+    }
+    assert.ok(await owner.one('select 1 from meta.app limit 1'));
+  });
+});
