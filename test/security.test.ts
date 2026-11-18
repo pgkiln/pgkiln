@@ -18795,3 +18795,65 @@ describe('sprint 227 APEX PL/SQL Error validations', () => {
     assert.ok(await owner.one('select 1 from meta.app limit 1'));
   });
 });
+
+describe('sprint 228 the recycle bin', () => {
+  const S = 'sec228';
+  const DEV = 'sec228dev';
+  let id: number;
+  const signIn = async (username: string, ownerConn = false) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    if (ownerConn) await b.ownerConnection();
+    await b.get('/builder/sql/recycle-bin');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`drop schema if exists ${S} cascade; create schema ${S}; create table ${S}.keep (id int); create table ${S}.binned (id int)`);
+    await owner.query(`delete from meta.recycle_bin where schema_name = $1`, [S]);
+    await owner.query(`alter table ${S}.binned rename to "BIN$sec228aaaa"`);
+    id = (await owner.one(`insert into meta.recycle_bin (workspace_id, schema_name, original_name, bin_name, table_oid, dropped_by) values (1, $1, 'binned', 'BIN$sec228aaaa', $2::regclass, 'admin') returning id::int`, [S, `${S}."BIN$sec228aaaa"`])).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    const other = (await owner.one(`insert into meta.workspace (name) values ('Sec228 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username) values ($1, $2)', [other, DEV]);
+  });
+  after(async () => {
+    await owner.query(`drop schema if exists ${S} cascade`);
+    await owner.query(`delete from meta.recycle_bin where schema_name = $1`, [S]);
+    await owner.query(`delete from meta.workspace where name = 'Sec228 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('CSRF: a forged token drops, restores and purges nothing', async () => {
+    const a = await signIn('admin', true);
+    for (const [url, form] of [['/builder/sql/recycle-bin/drop', { schema: S, name: 'keep' }], [`/builder/sql/recycle-bin/${id}/restore`, {}], [`/builder/sql/recycle-bin/${id}/purge`, {}], ['/builder/sql/recycle-bin/purge-all', {}]] as [string, Record<string, string>][])
+      assert.equal((await a.post(url, { __csrf: 'forged', ...form })).statusCode, 403, url);
+    assert.ok((await owner.one(`select to_regclass('${S}.keep') as r`)).r);
+    assert.ok((await owner.one(`select to_regclass('${S}."BIN$sec228aaaa"') as r`)).r);
+  });
+
+  test('another workspace\'s developer sees and touches none of it; system schemas and BIN$ names are refused', async () => {
+    const d = await signIn(DEV);
+    assert.doesNotMatch((await d.get('/builder/sql/recycle-bin')).body, /sec228\.binned|BIN\$sec228/);
+    for (const url of [`/builder/sql/recycle-bin/${id}/restore`, `/builder/sql/recycle-bin/${id}/purge`])
+      assert.equal((await d.post(url, { __csrf: d.lastCsrf })).statusCode, 404, url);
+    await d.post('/builder/sql/recycle-bin/purge-all', { __csrf: d.lastCsrf });
+    assert.ok((await owner.one(`select to_regclass('${S}."BIN$sec228aaaa"') as r`)).r);
+    const a = await signIn('admin', true);
+    for (const [schema, name] of [['meta', 'app'], ['pg_catalog', 'pg_class'], [S, 'BIN$sec228aaaa'], [S, 'nope'], [`${S}"; drop schema ${S} cascade; --`, 'keep']])
+      assert.equal((await a.post('/builder/sql/recycle-bin/drop', { __csrf: a.lastCsrf, schema, name })).statusCode, 404, `${schema}.${name}`);
+    assert.ok((await owner.one(`select to_regclass('meta.app') as r`)).r);
+  });
+
+  test('the developer login can\'t bin a table it doesn\'t own: refused, nothing recorded', async () => {
+    const a = await signIn('admin');
+    const before = (await owner.one(`select count(*)::int as n from meta.recycle_bin where schema_name = $1`, [S])).n;
+    await owner.query(`grant usage on schema ${S} to public`);
+    const r = await a.post('/builder/sql/recycle-bin/drop', { __csrf: a.lastCsrf, schema: S, name: 'keep' });
+    assert.ok([303, 404].includes(r.statusCode));
+    assert.ok((await owner.one(`select to_regclass('${S}.keep') as r`)).r, 'still there');
+    assert.equal((await owner.one(`select count(*)::int as n from meta.recycle_bin where schema_name = $1`, [S])).n, before);
+    await owner.query(`revoke usage on schema ${S} from public`);
+  });
+});

@@ -285,7 +285,7 @@ export const appHeader = (a: any, active: 'pages' | 'shared' | 'settings' | 'act
 };
 
 /** Tabs of the SQL Workshop, in the session's builder language (tool names: sql.tool.<key> in i18n/en.ts). */
-export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'charts' | 'modeler' | 'rest' | 'scheduling' | 'datapump' | 'monitor' | 'changes';
+export type WorkshopTab = 'home' | 'sql' | 'scripts' | 'quicksql' | 'query' | 'objects' | 'load' | 'unload' | 'sample' | 'ai' | 'ddl' | 'compare' | 'utilities' | 'charts' | 'modeler' | 'rest' | 'scheduling' | 'datapump' | 'monitor' | 'changes' | 'recycle';
 export const workshopTabs = (active: WorkshopTab, s?: Pick<Session, 'state'> & Partial<Pick<Session, 'csrf_token'>>) => {
   const tx = tr(s);
   // (sprint 185, NX-S1) an administrator on the Owner connection: a red chip on every SQL Workshop page, with the way back

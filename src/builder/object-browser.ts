@@ -269,7 +269,9 @@ export async function listObjects(db: Awaited<ReturnType<typeof workshopDb>>, sc
        ) x order by 2`,
       [schema],
     )
-  ).rows;
+  ).rows
+    // (sprint 228) tables in the recycle bin (and their indexes, named after them) are on the Recycle Bin page
+    .filter((o) => !/^BIN\$[a-z0-9]{8,40}$/.test(o.name));
   return system ? rows : rows.filter((o) => !o.ext);
 }
 

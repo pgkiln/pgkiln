@@ -2947,6 +2947,16 @@ the SQL Workshop's connection may use. Without JavaScript the header's field ope
   ([chapter 9](09-reference.md#the-outbox-retries-callbacks-ordering)): each request's status, attempts, next attempt,
   last error and callback, with *Re-queue* for one that gave up or failed, *Cancel* for one that waits and *Call back
   again* for a failed callback. Both show the current workspace's applications only.
+- <a id="recycle-bin"></a>**Recycle Bin** (`/builder/sql/recycle-bin`, sprint 228; Oracle: the recycle bin,
+  `FLASHBACK TABLE … TO BEFORE DROP`, `PURGE`). A table's menu (⋯) in the navigator and the Object Browser has **Drop to
+  the recycle bin…**: after a confirmation the table is renamed to a hidden name (`BIN$…`) in its own schema instead
+  of being dropped. Its rows, indexes, constraints, triggers and grants stay, views and foreign keys on it keep
+  working, and its name is free again at once. The Recycle Bin page lists the workspace's dropped tables (original
+  name, when and by whom, rows, size): **Restore** renames one back (or to another name, when the original is taken
+  again), **Purge** drops it for good, **Purge all** empties the bin (a table something still depends on stays, with a
+  message: there is no cascade). Every statement runs on the SQL Workshop's connection, so only someone who may drop
+  the table can bin it; the renames are recorded in the Change Log. `BIN$` tables are left out of the navigator; one
+  renamed or dropped elsewhere is forgotten. Other objects (views, functions) are dropped as before.
 - **Change Log** (`/builder/sql/changes`, sprint 106; Database Actions: Liquibase): DDL that succeeds in the **SQL
   Worksheet**, **Table Properties** (*Apply*) and **Schema Comparison** (*Apply and record*: the change script run on
   the target in one transaction) is recorded as a *change set*: the schema it changes, its SQL, who ran it, when,

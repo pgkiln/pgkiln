@@ -650,6 +650,8 @@ src/
                            help, alignment, list of values; seed from comments; tables of the workspace's catalog only. The wizards
                            read them through meta.wizard_column_label and the meta.item trigger meta.ui_default_item
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts); (sprint 106) the Apply and record form
+    recycle-bin.ts         (sprint 228, migration 186) SQL Workshop → Recycle Bin (/builder/sql/recycle-bin): drop to the bin (rename to
+                           BIN$… on workshopDb, meta.recycle_bin by oid), restore, purge, purge all; object-browser.ts hides BIN$ tables
     changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
                            downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded);
                            (sprint 175) POST /sql/changes/:id/rollback (the rollback block; never run);

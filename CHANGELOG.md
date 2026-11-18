@@ -9,6 +9,10 @@ All notable changes to this project are documented here. The format follows
 - **The APEX importer maps PL/SQL Error validations** (sprint 227): the block becomes a `function_error` validation
   whose exception handler returns the validation's message (`#SQLERRM#` as the error's text); the report marks it
   for porting like other PL/SQL.
+- **A recycle bin in the SQL Workshop** (sprint 228; migration 186; Oracle's recycle bin): *Drop to the recycle bin*
+  on a table renames it to a hidden `BIN$…` name with its rows, indexes, constraints, triggers and grants; SQL
+  Workshop → Recycle Bin restores it (under its name or another) or purges it. Run on the SQL Workshop's connection,
+  recorded in the Change Log.
 
 ### Added
 - **Liquibase contexts, labels and preconditions in the Change Log** (sprint 221; migration 183): a change set has a
