@@ -18721,3 +18721,60 @@ describe('sprint 224 REST data sources of XML and SOAP', () => {
     assert.equal(ws.soapFault({ status: 500, url: 'x', headers: { 'content-type': 'text/html' }, body: Buffer.from('<html>oops</html>') }), '');
   });
 });
+
+describe('sprint 225 developers created by a workspace administrator', () => {
+  const A = 'sec225adm';
+  const PW = 'sec225-long-password';
+  let mine: number;
+  let theirs: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: PW });
+    await b.get('/builder/apps');
+    return b;
+  };
+  before(async () => {
+    await owner.query(`delete from meta.developer where username like 'sec225%'`);
+    await owner.query(`delete from meta.workspace where name like 'Sec225%'`);
+    mine = (await owner.one(`insert into meta.workspace (name) values ('Sec225 Mine') returning id`)).id;
+    theirs = (await owner.one(`insert into meta.workspace (name) values ('Sec225 Theirs') returning id`)).id;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false), ('sec225theirs', meta.hash_password($2), false)`, [A, PW]);
+    await owner.query(`delete from meta.workspace_member where username like 'sec225%'`);
+    await owner.query(`insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($3, 'sec225theirs', false)`, [mine, A, theirs]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.developer where username like 'sec225%'`);
+    await owner.query(`delete from meta.workspace where name like 'Sec225%'`);
+  });
+
+  test('CSRF: a forged token creates and removes nothing', async () => {
+    const b = await signIn(A);
+    assert.equal((await b.post(`/builder/workspaces/${mine}/developers/new`, { __csrf: 'forged', nd_username: 'sec225x', nd_password: 'another-long-pass-1' })).statusCode, 403);
+    assert.equal((await b.post(`/builder/workspaces/${mine}/developers/remove`, { __csrf: 'forged', rd_username: A })).statusCode, 403);
+    assert.equal(await owner.one(`select 1 from meta.developer where username = 'sec225x'`), undefined);
+  });
+
+  test('only in their own workspace; never an installation administrator; never another workspace\'s developer', async () => {
+    const b = await signIn(A);
+    assert.equal((await b.post(`/builder/workspaces/${theirs}/developers/new`, { __csrf: b.lastCsrf, nd_username: 'sec225y', nd_password: 'another-long-pass-1' })).statusCode, 403);
+    assert.equal((await b.post(`/builder/workspaces/${theirs}/developers/remove`, { __csrf: b.lastCsrf, rd_username: 'sec225theirs' })).statusCode, 403);
+    // from their own workspace's form, another workspace's developer is not removed either
+    await b.post(`/builder/workspaces/${mine}/developers/remove`, { __csrf: b.lastCsrf, rd_username: 'sec225theirs' });
+    assert.ok(await owner.one(`select 1 from meta.developer where username = 'sec225theirs'`));
+    assert.ok(await owner.one(`select 1 from meta.developer where username = 'admin'`));
+    await b.post(`/builder/workspaces/${mine}/developers/remove`, { __csrf: b.lastCsrf, rd_username: 'admin' });
+    assert.ok(await owner.one(`select 1 from meta.developer where username = 'admin'`));
+    // whatever is posted, the new developer is no installation administrator and only in this workspace
+    await b.post(`/builder/workspaces/${mine}/developers/new`, { __csrf: b.lastCsrf, nd_username: 'sec225z', nd_password: 'another-long-pass-1', is_admin: 'true', workspace: String(theirs) });
+    assert.deepEqual(await owner.one(`select is_admin from meta.developer where username = 'sec225z'`), { is_admin: false });
+    assert.deepEqual((await owner.query(`select workspace_id from meta.workspace_member where username = 'sec225z'`)).rows, [{ workspace_id: mine }]);
+  });
+
+  test('names are escaped where they are shown', async () => {
+    const b = await signIn(A);
+    await b.post(`/builder/workspaces/${mine}/developers/new`, { __csrf: b.lastCsrf, nd_username: '<img src=x onerror=alert(225)>', nd_password: 'another-long-pass-1' });
+    assert.equal(await owner.one(`select 1 from meta.developer where username like '<img%'`), undefined);
+    assert.doesNotMatch((await b.get(`/builder/workspaces/${mine}`)).body, /<img src=x onerror/);
+  });
+});

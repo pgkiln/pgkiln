@@ -11,6 +11,8 @@ import { clientIp, logActivity, type BuilderWorkspace, type Session } from '../s
 import { isAdmin } from './locks.ts';
 import { setWorkspaceRequired } from '../mfa.ts';
 import { breakGlassAdmins } from '../devsso.ts';
+import { developerPasswordMin, developerPasswordProblem } from '../accounts.ts';
+import { EMAIL } from './find-workspace.ts';
 import { accountSettings, clearAccountSettings } from '../accounts.ts';
 import { loginMaxFailuresPerUser, loginWindowMinutes } from '../security.ts';
 import { back, BANNER_COLORS, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
@@ -260,6 +262,31 @@ function preferencesRegion(s: Session, w: { id: number; sql_workshop: boolean; r
       <div class="buttons"><button class="btn">${tx('wsp.lc_save')}</button></div></form>`, '', 'preferences');
 }
 
+/**
+ * (sprint 225) A workspace's administrators create developers of their workspace (never installation administrators;
+ * APEX: Manage Developers and Users in a workspace) and remove those who belong to no other workspace.
+ */
+async function createDeveloperForm(s: Session, wsId: number, removable: string[]) {
+  const tx = tr(s);
+  return html`<h3 id="new-developer">${tx('wsp.nd')}</h3>
+    <p class="small muted">${tx('wsp.nd_help')}</p>
+    <form method="post" action="${BASE}/workspaces/${wsId}/developers/new">${csrf(s)}
+      <div class="form-grid">
+        ${input('nd_username', tx('dev.username'), '', { required: true, auto: 'off', help: tx('wsp.nd_username_help') })}
+        ${input('nd_password', tx('dev.password'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min_length', { min: String(await developerPasswordMin()) }) })}
+        ${input('nd_email', tx('dev.email'), '', { type: 'email', help: tx('dev.optional_email') })}
+      </div>
+      <div class="field"><label class="check"><input type="checkbox" name="nd_ws_admin" value="true"> ${tx('wsp.nd_ws_admin')}</label></div>
+      <div class="buttons"><button class="btn">${icon('plus')} ${tx('wsp.nd_create')}</button></div></form>
+    ${removable.length
+      ? html`<h3 id="remove-developer">${tx('wsp.rd')}</h3>
+        <p class="small muted">${tx('wsp.rd_help')}</p>
+        <form method="post" action="${BASE}/workspaces/${wsId}/developers/remove" class="search u-mwnone">${csrf(s)}
+          ${select('rd_username', tx('dev.username'), '', removable)}
+          <button class="btn btn-danger u-selfend" data-confirm="${tx('wsp.rd_confirm')}">${tx('wsp.rd_btn')}</button></form>`
+      : ''}`;
+}
+
 /** (093) Extension links: links to other tools in the builder's Extensions menu. */
 function linksRegion(s: Session, w: { id: number }, links: { id: number; label: string; url: string; description: string | null; position: number }[]) {
   const tx = tr(s);
@@ -386,7 +413,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
     if (!w) return reply.code(404).send('Not found');
     const [devs, apps, others, rolesQ] = await Promise.all([
       owner.query(
-        `select d.username, d.is_admin, m.username is not null as member, coalesce(m.is_admin, false) as ws_admin
+        `select d.username, d.is_admin, m.username is not null as member, coalesce(m.is_admin, false) as ws_admin,
+                -- (sprint 225) a developer of this workspace only: its administrators may remove them
+                m.username is not null and not d.is_admin
+                  and not exists (select 1 from meta.workspace_member o where o.username = d.username and o.workspace_id <> $1) as only_here
            from meta.developer d left join meta.workspace_member m on m.username = d.username and m.workspace_id = $1 order by d.username`,
         [w.id],
       ),
@@ -430,7 +460,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
             <fieldset class="field"><legend class="label">${tx('wsp.ws_admins')}</legend><div class="radio-group">
             ${devs.rows.filter((d) => d.member && !d.is_admin).map((d) => html`<label class="check"><input type="checkbox" name="admin" value="${d.username}"${d.ws_admin ? raw(' checked') : ''}> ${d.username}</label>`)}
             </div><small class="help">${tx('wsp.ws_admins_help')}</small></fieldset>
-            <div class="buttons"><button class="btn">${tx('wsp.save_devs')}</button></div></form>`)}
+            <div class="buttons"><button class="btn">${tx('wsp.save_devs')}</button></div></form>
+          ${await createDeveloperForm(s, w.id, devs.rows.filter((d) => d.only_here && d.username !== s.username).map((d) => d.username))}`)}
       </div>
       ${serviceRegion(s, w)}
       ${region(tx('wsp.mail_net'), html`<p class="u-mt0">${tx.rich('wsp.mail_net_text', { mail: html`<a href="${BASE}/workspaces/${w.id}/mail">${tx('wsp.mail_service')}</a>`, network: html`<a href="${BASE}/network?ws=${w.id}">${tx('wsp.network')}</a>`, queue: html`<a href="${BASE}/mail-queue${full ? `?ws=${w.id}` : ''}">${tx('wsp.queue')}</a>` })}</p>
@@ -608,6 +639,60 @@ export async function workspaceRoutes(app: FastifyInstance) {
     await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: SQL Workshop ${sql ? 'on' : 'off'}, RESTful services ${rest ? 'on' : 'off'}, /builder opens ${home ?? 'apps'}` });
     flash(s, tr(s)('wsp.prefs_saved'));
     return back(reply, s, `${BASE}/workspaces/${req.params.id}`);
+  });
+
+  // (sprint 225) a workspace's administrators create a developer of their workspace: never an installation administrator
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/developers/new`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const tx = tr(s);
+    const b = req.body ?? {};
+    const to = `${BASE}/workspaces/${req.params.id}#new-developer`;
+    const username = String(b.nd_username ?? '').trim();
+    const email = String(b.nd_email ?? '').trim();
+    const wsAdmin = b.nd_ws_admin === 'true';
+    try {
+      if (!/^[A-Za-z0-9][A-Za-z0-9._@-]{1,59}$/.test(username)) throw new Error(tx('wsp.nd_bad_name'));
+      if (email && (!EMAIL.test(email) || email.length > 254)) throw new Error(tx('dev.err.email'));
+      const problem = await developerPasswordProblem(String(b.nd_password ?? ''), { username });
+      if (problem) throw new Error(problem);
+      const ws = Number(req.params.id);
+      await owner.tx(async (c) => {
+        if (!(await c.query('select 1 from meta.workspace where id = $1', [ws])).rowCount) throw new Error(tx('wsp.not_found'));
+        if ((await c.query('select 1 from meta.developer where lower(username) = lower($1)', [username])).rowCount) throw new Error(tx('wsp.nd_exists', { user: username }));
+        await c.query('insert into meta.developer (username, password_hash, is_admin, email) values ($1, meta.hash_password($2), false, $3)', [username, String(b.nd_password), email || null]);
+        // the insert trigger put them in Default: only this workspace
+        await c.query('delete from meta.workspace_member where username = $1 and workspace_id <> $2', [username, ws]);
+        await c.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, $3) on conflict (workspace_id, username) do update set is_admin = $3', [ws, username, wsAdmin]);
+      });
+      workspacesChanged();
+      await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: developer ${username} created${wsAdmin ? ' (workspace administrator)' : ''}` });
+      flash(s, tx('wsp.nd_created', { user: username }));
+    } catch (e) {
+      flash(s, (e as Error).message, 'error');
+    }
+    return back(reply, s, to);
+  });
+
+  // (sprint 225) and remove one who belongs to this workspace only (not an installation administrator, not themselves)
+  app.post(`${BASE}/workspaces/:id(^\\d{1,9}$)/developers/remove`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s || !(await workspaceAdminOnly(s, reply, req.params.id))) return;
+    const tx = tr(s);
+    const who = String(req.body?.rd_username ?? '');
+    const r = who && who !== s.username ? await owner.one<{ username: string }>(
+      `delete from meta.developer d where d.username = $1 and not d.is_admin
+          and exists (select 1 from meta.workspace_member m where m.username = d.username and m.workspace_id = $2)
+          and not exists (select 1 from meta.workspace_member m where m.username = d.username and m.workspace_id <> $2)
+        returning d.username`, [who, req.params.id]) : null;
+    if (!r) flash(s, tx('wsp.rd_not_allowed'), 'error');
+    else {
+      await owner.query('delete from meta.session where app_id is null and username = $1', [r.username]);
+      workspacesChanged();
+      await logActivity({ appId: null, username: s.username, event: 'workspace', ip: clientIp(req), detail: `workspace ${req.params.id}: developer ${r.username} removed` });
+      flash(s, tx('wsp.rd_done', { user: r.username }));
+    }
+    return back(reply, s, `${BASE}/workspaces/${req.params.id}#remove-developer`);
   });
 
   // (sprint 223, migration 185) account login controls: stricter than the installation's for the workspace's applications
