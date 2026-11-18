@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Liquibase contexts, labels and preconditions in the Change Log** (sprint 221; migration 183): a change set has a
+  context expression (`dev and !prod`), labels and an sql-check precondition with its expected result and what to do
+  when it fails (halt, continue, mark ran, warn). pgkiln proposes a precondition for a plain create or added column
+  (the objects don't exist yet: 0, else mark it ran). The Liquibase changelog writes them (`context:`, `labels:`,
+  `--preconditions`, `--precondition-sql-check` on one line); Flyway and plain SQL as comments. *Download migration*
+  picks the change sets of given contexts. pgkiln never runs a precondition.
+
 ## [0.109.0] - 2026-11-17
 
 ### Added

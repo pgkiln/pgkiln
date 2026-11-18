@@ -182,7 +182,9 @@ src/
   changelog.ts             (sprint 106, migration 118) the change log: isSchemaDdl(), ddlTarget() (schema and object), changeName()
                            (add_bonus, create_index_x), recordChanges() (grouped per schema), Flyway / Liquibase / plain SQL writers;
                            (sprint 175, migration 157) rollbackFor() / rollbackOf() (the proposed rollback), --rollback lines,
-                           flywayUndoFile() (U0001__name.sql)
+                           flywayUndoFile() (U0001__name.sql); (sprint 221, migration 183) preconditionFor() / preconditionOf()
+                           (a catalog count, expected 0, MARK_RAN), oneLine(), parseContext() / runsIn() (Liquibase contexts),
+                           context:, labels:, --preconditions lines
   datasets.ts              (sprint 110, migration 120) Data Reporter datasets: checkDataset() (names, joins to earlier tables, columns
                            and filters on its tables, whitelisted operators; with a catalog: existing objects), datasetSql() (quoted
                            identifiers, literal values), readSchemaCatalog() (tables, views, columns, foreign keys), proposeJoin() /
@@ -648,7 +650,8 @@ src/
     ddl-tools.ts           SQL Workshop → DDL and Compare (src/ddl.ts); (sprint 106) the Apply and record form
     changelog.ts           (sprint 106) SQL Workshop → Change Log (/builder/sql/changes): change sets per schema, latest app export,
                            downloads (POST, mark exported_at), rename, delete; /sql/compare/apply (one transaction, recorded);
-                           (sprint 175) POST /sql/changes/:id/rollback (the rollback block; never run)
+                           (sprint 175) POST /sql/changes/:id/rollback (the rollback block; never run);
+                           (sprint 221) POST /sql/changes/:id/liquibase (context, labels, precondition) and the download's contexts
                            (sprint 180, migration 163) captureState(), the panel and POST /capture: the event
                            triggers meta.change_log_ddl / change_log_drop that record DDL of other tools (source external)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
