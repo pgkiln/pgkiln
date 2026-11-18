@@ -157,7 +157,8 @@ src/
                            workspace membership and the two-factor rule looked up at every request; tokenThrottled per address);
                            (sprint 204, migration 178) the sign-in a token was made after (auth_mfa / auth_sso / auth_via) and
                            signInProblem: refused when the developer must now use single sign-on or a second factor it lacked
-  accounts.ts              account settings and the password policy (passwordProblem; breachedPasswordProblem, sprint 204)
+  accounts.ts              account settings and the password policy (passwordProblem; breachedPasswordProblem, sprint 204); (sprint 223, migration 185)
+                           appLoginControls(): a workspace's stricter failures, lifetime and minimum length for its applications
   breached-passwords.ts    (sprint 204, SEC-3) Have I Been Pwned range API: 5 hex characters of the SHA-1, Add-Padding, webRequest
                            with that host only, 3 s, fail open with a warning; setBreachTransport for tests (never the network)
   i18n.ts                  pgkiln's own texts (en, nl), translator, Accept-Language

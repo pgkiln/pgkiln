@@ -31,15 +31,41 @@ export async function accountSettings(): Promise<AccountSettings> {
 /** Forget cached settings (after the builder saved them). */
 export const clearAccountSettings = () => {
   cache = undefined;
+  appControls.clear();
 };
+
+/**
+ * (sprint 223, migration 185) The account login controls of an application's workspace (APEX: Account Login
+ * Control in the workspace preferences): stricter than the installation's, never looser. Null: the installation's.
+ */
+export interface LoginControls {
+  maxFailures: number | null;
+  lifetimeDays: number | null;
+  minLength: number | null;
+}
+const appControls = new Map<number, { at: number; value: LoginControls }>();
+const NONE: LoginControls = { maxFailures: null, lifetimeDays: null, minLength: null };
+
+export async function appLoginControls(appId: number | null | undefined): Promise<LoginControls> {
+  if (appId == null) return NONE;
+  const hit = appControls.get(appId);
+  if (hit && Date.now() - hit.at < 30_000) return hit.value;
+  const r = await runtime.one<{ login_max_failures: number | null; password_lifetime_days: number | null; password_min_length: number | null }>(
+    'select * from meta.app_login_controls($1)', [appId]);
+  const value = r ? { maxFailures: r.login_max_failures, lifetimeDays: r.password_lifetime_days, minLength: r.password_min_length } : NONE;
+  appControls.set(appId, { at: Date.now(), value });
+  return value;
+}
 
 /**
  * Why a new password is not acceptable, or null. For every password set or changed (developers and application users),
  * never at sign-in.
  */
-export async function passwordProblem(password: string | undefined, { username, t = english }: { username?: string | null; t?: Translate } = {}) {
+export async function passwordProblem(password: string | undefined, { username, t = english, appId }: { username?: string | null; t?: Translate; appId?: number | null } = {}) {
   const s = await accountSettings();
-  if (!password || password.length < s.minLength) return t('password.too_short', { min: s.minLength });
+  // (sprint 223) an application's workspace may ask for longer passwords
+  const min = Math.max(s.minLength, (await appLoginControls(appId)).minLength ?? 0);
+  if (!password || password.length < min) return t('password.too_short', { min });
   if (s.requireMixed && !(/\p{L}/u.test(password) && /\d/.test(password))) return t('password.needs_mixed');
   if (username && username.length >= 3 && password.toLowerCase().includes(username.toLowerCase())) return t('password.contains_username');
   return breachedPasswordProblem(password, s, t);
@@ -69,7 +95,8 @@ export async function developerPasswordProblem(password: string | undefined, { u
   return passwordProblem(password, { username, t });
 }
 
-/** Days until the account's password expires: 0 = must change now, null = never. */
-export async function passwordDaysLeft(username: string) {
+/** Days until the account's password expires: 0 = must change now, null = never. (sprint 223) For an application: its workspace's lifetime too. */
+export async function passwordDaysLeft(username: string, appId?: number | null) {
+  if (appId != null) return (await runtime.one<{ d: number | null }>('select meta.password_days_left($1, $2) as d', [username, appId]))?.d ?? null;
   return (await runtime.one<{ d: number | null }>('select meta.password_days_left($1) as d', [username]))?.d ?? null;
 }

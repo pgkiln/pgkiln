@@ -40,10 +40,10 @@ The builder and the runtime cover what APEX offers for its accounts:
 | *Require Change of Password on First Use* | Checkbox when creating an account or setting its password in the builder (on by default). The next sign-in asks for a new password before continuing |
 | `APEX_UTIL.RESET_PASSWORD` | **Users → account → Set password**, or `meta.set_password(username, password, change_on_first_use default true)` |
 | `APEX_UTIL.EXPIRE_END_USER_ACCOUNT` / `UNEXPIRE_…` | **Expire password** / **Unexpire password**, or `meta.expire_password(username)` / `meta.unexpire_password(username)` |
-| *Account Password Lifetime (days)* | **Users → Account settings → Password lifetime** (0 = never). Expired passwords must be changed at sign-in; My account shows the days left |
+| *Account Password Lifetime (days)* | **Users → Account settings → Password lifetime** (0 = never). Expired passwords must be changed at sign-in; My account shows the days left. (sprint 223) A workspace can set a shorter one for its applications ([workspace account login controls](03-builder.md#account-login-controls)) |
 | Password complexity rules | Minimum length, *letters and digits*, and never containing the username (Account settings) |
 | — (no APEX equivalent) | **Refuse passwords known from data breaches** (Account settings, off by default): see below |
-| *Maximum Login Failures* / unlock | Sign-in locks for `LOGIN_WINDOW_MINUTES` after `LOGIN_MAX_FAILURES_PER_USER` failures. **Unlock sign-in** on the account lifts it at once |
+| *Maximum Login Failures* / unlock | Sign-in locks for `LOGIN_WINDOW_MINUTES` after `LOGIN_MAX_FAILURES_PER_USER` failures. **Unlock sign-in** on the account lifts it at once. (sprint 223) A workspace can allow fewer failures, and ask for longer passwords, in its applications ([workspace account login controls](03-builder.md#account-login-controls)) |
 
 #### Breached passwords
 

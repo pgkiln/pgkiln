@@ -398,6 +398,22 @@ Administrators and the workspace's administrators set them on the workspace's pa
 
 Both are on by default (migration 093) and are not exported.
 
+<a id="account-login-controls"></a>**Account login controls** (sprint 223, migration 185; APEX: Account Login Control in
+the workspace preferences) make the installation's sign-in rules stricter for the workspace's applications, never
+looser; an empty field keeps the installation's rule:
+
+- **Failed sign-ins per user**: after this many failed sign-ins of one user name (within the installation's
+  `LOGIN_WINDOW_MINUTES`) an application of the workspace refuses it for a while; the lower of this and
+  `LOGIN_MAX_FAILURES_PER_USER` applies. The builder keeps the installation's rule.
+- **Password lifetime (days)**: an account that signs in to an application of the workspace with an older password
+  changes it first; the shorter of this and the installation's lifetime (Users → Account settings) applies.
+  My account shows the days left for that application, and `meta.password_days_left(username, app_id)` gives them.
+- **Minimum password length**: the shortest new password the workspace's applications accept (My account, the expired
+  password form, a password reset); the longer of this and the installation's minimum applies.
+
+Accounts belong to the installation: an account that uses applications of two workspaces meets each one's rules in
+that workspace's applications. The controls travel with a [workspace export](#export-and-import) (Settings).
+
 - **Builder links open** (sprint 109, migration 119): what an address of just `/builder` (a bookmark from before the
   Workspace home) opens in this workspace: the **App Builder** (the default: it is also at `/builder/apps`) or the
   **Workspace home** (a redirect). Signing in always opens the Workspace home. It travels in a

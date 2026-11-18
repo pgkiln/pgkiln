@@ -18,6 +18,11 @@ All notable changes to this project are documented here. The format follows
   `/builder/oauth/callback`, pgkiln exchanges the code (confidential or public client), keeps the refresh token
   encrypted and calls the service with it from then on. For an application's credentials (its developers) and a
   workspace's (its administrators); the state is hashed, one-time, ten minutes, bound to the builder session.
+- **Account login controls per workspace** (sprint 223; migration 185; APEX: Account Login Control in the workspace
+  preferences): a workspace's administrators set fewer failed sign-ins per user, a shorter password lifetime and a
+  longer minimum password for the workspace's applications, never looser than the installation's rules. Sign-in,
+  My account, the expired-password form, password reset, remembered and shared sign-ins and passkeys follow them;
+  `meta.password_days_left(username, app_id)`; workspace exports carry them.
 
 ## [0.109.0] - 2026-11-17
 

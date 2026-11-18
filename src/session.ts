@@ -5,6 +5,7 @@ import { runtime, sharedRuntime } from './db.ts';
 import { runtimeForApp } from './workspace-db.ts';
 import { hashToken, loginMaxFailuresPerIp, loginMaxFailuresPerUser, loginWindowMinutes, newToken } from './security.ts';
 import { instanceSetting } from './instance.ts';
+import { appLoginControls } from './accounts.ts';
 
 /** A developer's workspace in the builder (src/builder/workspaces.ts loadWorkspaces). */
 export interface BuilderWorkspace {
@@ -178,7 +179,9 @@ export async function loginThrottled(appId: number | null, username: string, ip:
       where l.app_id is not distinct from $1 and l.event = 'login_failed' and l.at > now() - make_interval(mins => $4)`,
     [appId, username, ip, loginWindowMinutes()],
   );
-  return !!counts && (counts.user_fails >= loginMaxFailuresPerUser() || counts.ip_fails >= loginMaxFailuresPerIp());
+  // (sprint 223) an application's workspace may allow fewer failures per user
+  const perUser = Math.min(loginMaxFailuresPerUser(), (await appLoginControls(appId)).maxFailures ?? Infinity);
+  return !!counts && (counts.user_fails >= perUser || counts.ip_fails >= loginMaxFailuresPerIp());
 }
 
 // (sprint 139, AP-6) errors, refusals and failed sign-ins as OpenTelemetry logs and metrics

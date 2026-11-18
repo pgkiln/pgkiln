@@ -18631,3 +18631,59 @@ describe('sprint 222 the OAuth2 authorization code flow of web credentials', () 
     assert.match((await a.get(late.headers.location as string)).body, /not valid any more/);
   });
 });
+
+describe('sprint 223 workspace account login controls', () => {
+  const DEV = 'sec223dev';
+  let wsId: number;
+  let otherWs: number;
+  const signIn = async (username: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username, password: username === 'admin' ? 'admin' : username });
+    return b;
+  };
+  const controls = async () => owner.one('select login_max_failures, password_lifetime_days, password_min_length from meta.workspace where id = $1', [wsId]);
+  before(async () => {
+    wsId = (await owner.one(`select meta.app_workspace(id) as w from meta.app where alias = 'hr'`)).w;
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($1), false) on conflict do nothing`, [DEV]);
+    otherWs = (await owner.one(`insert into meta.workspace (name) values ('Sec223 Other') returning id`)).id;
+    await owner.query('delete from meta.workspace_member where username = $1', [DEV]);
+    await owner.query('insert into meta.workspace_member (workspace_id, username, is_admin) values ($1, $2, true), ($3, $2, false)', [otherWs, DEV, wsId]);
+  });
+  after(async () => {
+    await owner.query('update meta.workspace set login_max_failures = null, password_lifetime_days = null, password_min_length = null where id = $1', [wsId]);
+    await owner.query(`delete from meta.workspace where name = 'Sec223 Other'`);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+  });
+
+  test('CSRF: a forged token changes nothing', async () => {
+    const a = await signIn('admin');
+    assert.equal((await a.post(`/builder/workspaces/${wsId}/login-controls`, { __csrf: 'forged', login_max_failures: '1' })).statusCode, 403);
+    assert.equal((await controls()).login_max_failures, null);
+  });
+
+  test('only the workspace\'s administrators: a developer of it, or another workspace\'s administrator, changes nothing', async () => {
+    const d = await signIn(DEV);
+    await d.get('/builder/home');
+    const r = await d.post(`/builder/workspaces/${wsId}/login-controls`, { __csrf: d.lastCsrf, login_max_failures: '1000', password_min_length: '6' });
+    assert.ok([403, 404].includes(r.statusCode), String(r.statusCode));
+    assert.deepEqual(await controls(), { login_max_failures: null, password_lifetime_days: null, password_min_length: null });
+    // their own workspace: allowed
+    assert.equal((await d.post(`/builder/workspaces/${otherWs}/login-controls`, { __csrf: d.lastCsrf, login_max_failures: '4' })).statusCode, 303);
+    assert.equal((await owner.one('select login_max_failures from meta.workspace where id = $1', [otherWs])).login_max_failures, 4);
+  });
+
+  test('never looser than the installation; the database refuses values out of range', async () => {
+    const { appLoginControls, clearAccountSettings, passwordProblem } = await import('../src/accounts.ts');
+    const appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query('update meta.workspace set login_max_failures = 1000, password_min_length = 6 where id = $1', [wsId]);
+    clearAccountSettings();
+    assert.equal((await appLoginControls(appId)).maxFailures, 1000);
+    // the installation's 8 characters still apply
+    assert.match((await passwordProblem('seven77', { appId })) ?? '', /8/);
+    for (const sql of ['login_max_failures = 0', 'login_max_failures = 1001', 'password_lifetime_days = 0', 'password_min_length = 5', 'password_min_length = 129'])
+      await assert.rejects(owner.query(`update meta.workspace set ${sql} where id = $1`, [wsId]), /check constraint/, sql);
+    await owner.query('update meta.workspace set login_max_failures = null, password_min_length = null where id = $1', [wsId]);
+    clearAccountSettings();
+  });
+});

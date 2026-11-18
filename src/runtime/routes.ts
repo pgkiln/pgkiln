@@ -1375,7 +1375,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: unreachable ? 'ldap unreachable' : undefined });
       return fail(unreachable ? locale.t('login.ldap_unavailable') : locale.t('login.invalid'));
     }
-    if ((await passwordDaysLeft(r.username)) === 0) {
+    if ((await passwordDaysLeft(r.username, a.id)) === 0) {
       logActivity({ appId: a.id, username: r.username, event: 'password_expired', ip });
       return reply.type('text/html').send(expiredPage(a, locale, session, r.username, safeNext(a, next)));
     }
@@ -1390,7 +1390,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     const again = (msg: string, code = 422) => reply.code(code).type('text/html').send(expiredPage(a, locale, session, username, safeNext(a, next), msg));
     if (b.new_password !== b.confirm_password) return again(locale.t('password.mismatch'));
-    const problem = await passwordProblem(b.new_password, { username, t: locale.t });
+    const problem = await passwordProblem(b.new_password, { username, t: locale.t, appId: a.id });
     if (problem) return again(problem);
     let ok = false;
     try {

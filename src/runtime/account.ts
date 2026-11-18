@@ -56,7 +56,7 @@ async function accountPage(ctx: PageContext, reply: FastifyReply, error?: string
        from meta.account a where lower(a.username) = lower($1)`,
     [ctx.user],
   )) ?? {};
-  const days = await passwordDaysLeft(ctx.user);
+  const days = await passwordDaysLeft(ctx.user, ctx.app.id);
   const devices = ctx.app.remember_me_days ? await rememberedCount(ctx.app.id, ctx.user) : 0;
   // only the user directory's own passwords change here (not database roles, custom checks or a proxy's users)
   const hasPassword = !!acc.has_password && ownPasswords(ctx.app);
@@ -206,7 +206,7 @@ export async function accountRoutes(app: FastifyInstance) {
       return accountPage(ctx, reply, t('login.throttled', { minutes: loginWindowMinutes() }), 429);
     }
     if (b.new_password !== b.confirm_password) return accountPage(ctx, reply, t('password.mismatch'), 422);
-    const problem = await passwordProblem(b.new_password, { username: ctx.user, t });
+    const problem = await passwordProblem(b.new_password, { username: ctx.user, t, appId: ctx.app.id });
     if (problem) return accountPage(ctx, reply, problem, 422);
     let ok = false;
     try {
