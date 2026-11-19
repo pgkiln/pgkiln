@@ -1,5 +1,5 @@
 -- =====================================================================
--- HR example, part 95: "Remember username" and "Keep me signed in" on
+-- HR example, part 97: "Remember username" and "Keep me signed in" on
 -- the sign-in card (sprint 231, AX-13; migration 189;
 -- docs/guide/08-security.md "Remember username and Keep me signed in")
 --
