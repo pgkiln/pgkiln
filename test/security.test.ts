@@ -18857,3 +18857,95 @@ describe('sprint 228 the recycle bin', () => {
     await owner.query(`revoke usage on schema ${S} from public`);
   });
 });
+
+describe('sprint 231 AX-13/AX-14', () => {
+  // AX-13: "Remember username" (src/remember-username.ts) and "Keep me signed in" (remember.ts); AX-14: the template
+  // component region types of the Page Designer (src/builder/component-regions.ts)
+  let saved: { remember_me_days: number | null; remember_username: boolean };
+  const cookie = () => `pgkiln_user_${appId}`;
+  const setCookieOf = (res: { headers: Record<string, unknown> }, name: string) =>
+    ([] as string[]).concat((res.headers['set-cookie'] as string | string[] | undefined) ?? []).find((c) => c.startsWith(`${name}=`));
+  const signIn = async (form: Record<string, string>, b = new Browser()) => {
+    await b.get('/a/hr/login');
+    return { b, res: await b.post('/a/hr/login', { __csrf: b.lastCsrf, ...form }) };
+  };
+  before(async () => {
+    saved = (await owner.one('select remember_me_days, remember_username from meta.app where id = $1', [appId]))!;
+    await owner.query('update meta.app set remember_username = true, remember_me_days = null where id = $1', [appId]);
+  });
+  after(async () => {
+    await owner.query('update meta.app set remember_me_days = $2, remember_username = $3 where id = $1', [appId, saved.remember_me_days, saved.remember_username]);
+  });
+
+  test('a remembered user name is escaped when it is filled in (a forged cookie can\'t add markup)', async () => {
+    const b = new Browser();
+    b.cookies.set(cookie(), encodeURIComponent('"><script>alert(1)</script><x a="'));
+    const page = (await b.get('/a/hr/login')).body;
+    assert.doesNotMatch(page, /<script>alert/);
+    assert.match(page, /name="username" value="&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;&lt;x a=&quot;"/);
+    // control characters and an over-long name are cut, never echoed as they are
+    b.cookies.set(cookie(), encodeURIComponent(`king\r\nSet-Cookie: x=1${'a'.repeat(300)}`));
+    const v = /name="username" value="([^"]*)"/.exec((await b.get('/a/hr/login')).body)![1];
+    assert.ok(v.length <= 100 && !/[\r\n]/.test(v), v);
+  });
+
+  test('not set when unchecked, nor after a wrong password; cleared when unchecked later', async () => {
+    const plain = (await signIn({ username: 'king', password: 'king' })).res;
+    assert.ok(!/^pgkiln_user_\d+=king/.test(setCookieOf(plain, cookie()) ?? ''), 'unchecked: no name kept');
+    const wrong = (await signIn({ username: 'king', password: 'wrong', remember_username: 'true' })).res;
+    assert.equal(setCookieOf(wrong, cookie()), undefined, 'a failed sign-in keeps nothing');
+    await owner.query(`insert into meta.activity_log (username, event, detail) values ('king', 'login_unlocked', 'test')`);
+    const { b, res } = await signIn({ username: 'king', password: 'king', remember_username: 'true' });
+    assert.match(setCookieOf(res, cookie()) ?? '', /^pgkiln_user_\d+=king; Max-Age=\d+; Path=\/a\/hr; HttpOnly; SameSite=Lax/);
+    assert.doesNotMatch(setCookieOf(res, cookie())!, /king.*(password|token)/i, 'the name only');
+    const later = (await signIn({ username: 'king', password: 'king' }, b)).res;
+    assert.match(setCookieOf(later, cookie()) ?? '', /Expires=Thu, 01 Jan 1970/);
+    assert.equal(b.cookies.has(cookie()), false);
+  });
+
+  test('Secure behind HTTPS (COOKIE_SECURE)', async () => {
+    const was = process.env.COOKIE_SECURE;
+    process.env.COOKIE_SECURE = 'true';
+    try {
+      const { res } = await signIn({ username: 'king', password: 'king', remember_username: 'true' });
+      assert.match(setCookieOf(res, cookie()) ?? '', /; Secure/);
+    } finally {
+      if (was === undefined) delete process.env.COOKIE_SECURE;
+      else process.env.COOKIE_SECURE = was;
+    }
+  });
+
+  test('persistent sign-in only when the application allows it: a posted remember=true is ignored otherwise', async () => {
+    const before = (await owner.one('select count(*)::int as n from meta.persistent_login where app_id = $1', [appId])).n;
+    const { res } = await signIn({ username: 'king', password: 'king', remember: 'true' });
+    assert.equal(res.statusCode, 303);
+    assert.equal(setCookieOf(res, `pgkiln_remember_${appId}`), undefined);
+    assert.equal((await owner.one('select count(*)::int as n from meta.persistent_login where app_id = $1', [appId])).n, before);
+    // a Login region can hide the box, never offer it where the application doesn't
+    await owner.query('update meta.app set remember_me_days = 7 where id = $1', [appId]);
+    const ok = await signIn({ username: 'king', password: 'king', remember: 'true' });
+    assert.ok(setCookieOf(ok.res, `pgkiln_remember_${appId}`), 'allowed: a token');
+    await owner.query('delete from meta.persistent_login where app_id = $1 and account_id = (select id from meta.account where username = $2)', [appId, 'king']);
+    await owner.query('update meta.app set remember_me_days = null where id = $1', [appId]);
+  });
+
+  test('AX-14: a component type of no built-in component is refused; developers only, CSRF checked', async () => {
+    const pid = (await owner.one(`select p.id from meta.page p where p.app_id = $1 and p.page_no = 1`, [appId])).id;
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/pages/${pid}`);
+    const n = async () => (await owner.one('select count(*)::int as n from meta.region where page_id = $1', [pid])).n;
+    const count = await n();
+    const bad = await dev.post(`/builder/pages/${pid}/layout/create`, { __csrf: dev.lastCsrf, kind: 'region', type: 'template_component:../../etc', position: 'body' });
+    assert.equal(bad.statusCode, 400);
+    assert.equal((await dev.post(`/builder/pages/${pid}/layout/create`, { __csrf: 'forged', kind: 'region', type: 'template_component:ut_badge' })).statusCode, 403);
+    const user = await as('king');
+    const r = await user.post(`/builder/pages/${pid}/layout/create`, { __csrf: user.lastCsrf, kind: 'region', type: 'template_component:ut_badge' });
+    assert.ok(r.statusCode !== 200 && !(r.headers.location ?? '').startsWith(`/builder/pages/${pid}`), 'an application user is no developer');
+    assert.equal(await n(), count, 'nothing created');
+    // the Type list: an unknown component type is stored as it is sent and refused by the type check
+    await dev.post(`/builder/pages/${pid}/c/region`, { __csrf: dev.lastCsrf, title: 'Sec231', type: 'template_component:nope', seq: '999', columns: '12', template: 'standard' });
+    assert.equal(await owner.one(`select 1 from meta.region where page_id = $1 and title = 'Sec231'`, [pid]), undefined);
+  });
+});

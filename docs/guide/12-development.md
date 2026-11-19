@@ -132,6 +132,9 @@ src/
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
   customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
+  remember-username.ts     (sprint 231, AX-13, migration 189) "Remember username": the cookie pgkiln_user_<app id> of the app's path
+                           (the typed name only, HttpOnly, SameSite=Lax), rememberedUsername() fills the sign-in form,
+                           rememberUsernameChoice() after a successful sign-in (runtime/routes.ts POST /login)
   mfa.ts                   second factors: TOTP, recovery codes, a FactorStore per kind of user (developers, accounts);
                            the developers' policy, passkeys, trusted browsers (webauthn.ts: WebAuthn checks and the
                            session's one-time challenge)
@@ -476,7 +479,8 @@ src/
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
     home.ts                App Builder home at /builder/apps and /builder (tiles, applications report/cards, Recent; /builder redirects
                            to the Workspace home when meta.workspace.builder_home = 'home'), Create, Import, Dashboard, Utilities;
-                           (116) Updated by, working copies and the application lock in the report and the cards
+                           (116) Updated by, working copies and the application lock in the report and the cards;
+                           (sprint 231, AX-13) Updated by, Working copies and Lock are columns shown at every width (Sign-in col-low)
     app-updates.ts         (sprint 116, migration 125) who changed an application last: developer() notes a builder POST under
                            /apps/:id or /pages/:pid (or a Create / Import), an onSend hook records a success in meta.app_change
     workspace-home.ts      (sprint 109, migration 119) the Workspace home /builder/home, opened after sign-in: tool cards (Data Reporter
@@ -627,6 +631,10 @@ src/
     type-names.ts          (sprint 202, AX-3) the Page Designer's type names in the builder language: optionName(kind, field, value)
                            (region/item/button types from the gallery's labels; dynamic action events and actions, process,
                            validation and computation types, region templates: pd.* keys); componentForm's selects and the tree
+    component-regions.ts   (sprint 231, AX-14) the built-in template components as region types of the gallery and the Type list:
+                           template_component:<static id> (never stored; a template_component region with config.component),
+                           withComponentTypes(), regionTypeValue() (a region's type as named), newComponentRegion() (sample
+                           query), takeComponentType() / applyComponentType() (designer.ts POST /c/region), arrange.ts createComponent
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
@@ -660,7 +668,8 @@ src/
                            triggers meta.change_log_ddl / change_log_drop that record DDL of other tools (source external)
     sql-utilities.ts       SQL Workshop → Utilities (sprint 62): the tools' tiles, OBJECT_REPORTS (fixed catalogue SQL over the
                            connection's usable schemas), About Database; read only, with a timeout; /sql/utilities/monitor redirects to the SQL Monitor
-    login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999)
+    login-page.ts          Application settings → Login page and Forgot password; Create a login page (page 9999);
+                           (sprint 231) Offer "Remember username" (meta.app.remember_username)
     top-sql.ts             Top SQL per app role from pg_stat_statements; (sprint 102) statementsState / statementsNote (installed and loaded?)
     sql-monitor.ts         (sprint 102, DA-14) SQL Workshop → SQL Monitor (administrators): /sql/monitor (sessions, wait events, progress;
                            ?fragment=1 the live part), POST /sql/monitor/session (cancel / terminate), /sql/monitor/top (topStatements:
@@ -874,6 +883,8 @@ test/
   ai-mock.ts               a local mock of the Claude Messages API (SSE stream) and OpenAI Chat Completions; (136) OpenAI's
                            embeddings (/embeddings, also in ai-script-mock.ts): conceptEmbedding(), eight "topics", the same
                            as the HR example's hr.policy_embedding
+  sprint-231.test.ts       (sprint 231) AX-13: Remember username (cookie, prefill, off, Login region attributes, settings,
+                           an export before 189); AX-14: template components in the gallery and Type list, create, switch, export
   helpers.ts               a cookie-keeping test browser
   e2e/responsive.ts        browser tests at phone/tablet/desktop widths (Playwright), run per width by
                            e2e/responsive-<width>.test.ts (sprint 208: one file per width for the CI shards)

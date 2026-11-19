@@ -106,7 +106,8 @@ application's daily mail limit and show in the activity log (`password_reset_req
 when the application has several languages, a language picker. (NX-U6) The card takes the application's look: its
 icon (the [PWA icon](17-mobile.md) when the application is installable, else its initial on the accent colour) and the
 theme's colours from **Settings → User Interface** (the header colour behind the card, the accent on the buttons).
-*Keep me signed in* appears when **Settings → Sign-in → Keep me signed in (days)** is set, *Forgot password?* when it is
+*Remember username* appears unless it is turned off and *Keep me signed in* when **Settings → Sign-in → Keep me signed in
+(days)** is set ([both](#remember-username-and-keep-me-signed-in)), *Forgot password?* when it is
 turned on and the application has a mail service ([Forgot password](#forgot-password)); *Sign in with a passkey* when
 [users may sign in with a passkey alone](#signing-in-with-a-passkey-alone). To design your own (APEX: the
 login page, usually page 9999), choose **Application settings → Sign-in methods → Create a login
@@ -116,8 +117,10 @@ page template *Minimal (no navigation)* and a **Login** region, and makes it the
 sends visitors there.
 
 Edit it like any page: add static content, images, lists of links or any other region around the
-Login region, which is the sign-in form (*Sign in with a passkey*, identity providers, user name and password, *Keep me
-signed in*, *Forgot password?*). The form still posts to `/a/<alias>/login`, so throttling, the
+Login region, which is the sign-in form (*Sign in with a passkey*, identity providers, user name and password, *Remember
+username*, *Keep me signed in*, *Forgot password?*). (sprint 231) Its attributes `{"remember_username": false}` and
+`{"persistent_auth": false}` leave those two boxes out (a region can hide *Keep me signed in*, never offer it where the
+application doesn't). The form still posts to `/a/<alias>/login`, so throttling, the
 CSRF check and every sign-in method work as on the built-in page; a failed sign-in comes back to
 the login page with its message and the user name. A login page that requires authentication,
 or doesn't exist, is ignored (the built-in page shows) and the Advisor reports it; so does a
@@ -466,7 +469,22 @@ Management):
 The values are `meta.app.session_idle_minutes`, `session_max_hours`, `session_timeout_page` and `deep_linking`
 (migration 169), exported with the application.
 
-### Keep me signed in
+### Remember username and Keep me signed in
+
+(sprint 231, AX-13) The sign-in card has APEX's two boxes of the generated login page (`P9999_REMEMBER` and
+`P9999_PERSISTENT_AUTH`), on the built-in page and in the Login region of an own login page; the form fields are
+`remember_username` and `remember`.
+
+**Remember username** is on by default (**Settings → Sign-in methods → Staying signed in → Offer "Remember username"**,
+`meta.app.remember_username`, migration 189). After a successful sign-in with the box checked, the name that was typed is
+kept in the cookie `pgkiln_user_<app id>` of the application's path (`/a/<alias>`) for 180 days, and the form is filled
+in with it next time, the box checked and the cursor in the password field. Signing in with the box unchecked removes the
+cookie; a failed sign-in keeps nothing. The cookie holds the name only, never a token or password, so it signs nobody in;
+it is `HttpOnly` (only the server reads it), `SameSite=Lax` and `Secure` behind HTTPS (`COOKIE_SECURE`), and the name is
+escaped when it is filled in. Turned off, the box is gone and the cookie is neither read nor set. The developers' sign-in
+at `/builder/login` has its own *Remember workspace and username*.
+
+#### Keep me signed in
 
 Under **Settings → Sign-in methods**, *"Keep me signed in" for (days)* (1–365) adds a checkbox to the
 password form (APEX: persistent authentication). A browser that ticked it stays signed in for that
