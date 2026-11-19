@@ -207,6 +207,30 @@ export interface Region extends FromGlobal {
   position?: 'banner' | 'breadcrumb' | 'left' | 'body' | 'right' | 'footer' | null;
   /** (172) the region this one sits in (a sub region, one level deep); it shows only where its parent shows */
   parent_id?: number | null;
+  // (sprint 230, migration 188, AX-9..11) Layout, Appearance, Accessibility, Advanced, Header and Footer, Read Only,
+  // Customization and Comments: see src/runtime/region-props.ts
+  new_row?: boolean | null;
+  grid_column?: number | null;
+  row_css_classes?: string | null;
+  column_css_classes?: string | null;
+  column_attributes?: string | null;
+  css_classes?: string | null;
+  icon?: string | null;
+  render_components?: 'above' | 'below' | null;
+  use_landmark?: boolean | null;
+  landmark_type?: string | null;
+  landmark_label?: string | null;
+  dom_id?: string | null;
+  custom_attributes?: string | null;
+  title_no_translate?: boolean | null;
+  header_text?: string | null;
+  footer_text?: string | null;
+  readonly_type?: string | null;
+  readonly_expr?: string | null;
+  readonly_value?: string | null;
+  customization?: 'shown' | 'hidden' | null;
+  customization_name?: string | null;
+  comments?: string | null;
 }
 
 export type ItemType =

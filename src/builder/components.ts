@@ -24,6 +24,7 @@ import { BUTTON_OPTIONS, ITEM_OPTIONS, REGION_OPTIONS } from '../runtime/templat
 import { checkGroupMembers } from '../subscriptions.ts';
 import { CONDITION_TYPES } from '../metadata.ts';
 import { styleProblem } from '../runtime/da-styles.ts';
+import { REGION_APPEARANCE_FIELDS, REGION_AUDIT_FIELDS, REGION_GRID_CLASS_FIELDS, REGION_LATE_FIELDS, REGION_LAYOUT_FIELDS, REGION_MORE_FIELDS, REGION_READ_ONLY_FIELDS, regionPropsBeforeSave, regionPropsProblem } from './region-props.ts';
 
 export type FieldKind =
   | 'text' | 'int' | 'bool' | 'code' | 'json' | 'select' | 'upper'
@@ -62,6 +63,14 @@ export interface Field {
   common?: boolean;
   /** (sprint 51) help that depends on the component being edited (wins over `help` when it gives some) */
   helpBy?: (row: any) => { text: string; url: string | null } | null;
+  /** (sprint 230) shown, never saved: a value the form shows from `valueBy` (Audit Information, Server Cache) */
+  virtual?: boolean;
+  /** (sprint 230) saved as a key of the row's config (jsonb) instead of a column: a null value removes the key */
+  config?: boolean;
+  /** (sprint 230) the field's value for the form, when it is not the row's column of the field's name */
+  valueBy?: (row: any) => unknown;
+  /** (sprint 230) a select's empty option (default "- none -") */
+  emptyLabel?: string;
 }
 
 export interface ComponentSpec {
@@ -129,7 +138,8 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
     icon: 'layers',
     summary: (r) => r.title ?? `(${r.type})`,
     defaults: { type: 'report', columns: 12, template: 'standard' },
-    validate: (v) => formatSettingsProblem(v.config) ?? (v.type === 'file' ? objectStoreProblem((v.config as Record<string, unknown> | null)?.object_store) : null),
+    validate: (v) => formatSettingsProblem(v.config) ?? (v.type === 'file' ? objectStoreProblem((v.config as Record<string, unknown> | null)?.object_store) : null) ?? regionPropsProblem(v),
+    beforeSave: async (v) => regionPropsBeforeSave(v),
     fields: [
       { name: 'title', common: true, label: 'Title', kind: 'text', group: 'Identification' },
       { name: 'static_id', label: 'Static ID', kind: 'text', group: 'Identification',
@@ -143,17 +153,28 @@ export const COMPONENTS: Record<string, ComponentSpec> = {
       { name: 'pk_column', label: 'Primary key column (form, grid)', kind: 'text', group: 'Source' },
       { name: 'pk_item', label: 'Primary key item (form)', kind: 'upper', group: 'Source' },
       { name: 'seq', label: 'Sequence', kind: 'int', group: 'Layout' },
-      { name: 'columns', common: true, label: 'Column span (1-12)', kind: 'int', group: 'Layout' },
-      { name: 'template', common: true, label: 'Template', kind: 'select', options: ['standard', 'plain', 'collapsible', 'hero', 'title_bar', 'buttons_container', 'inline_dialog', 'inline_drawer', 'wizard', 'tabs_container', 'flex_container'], group: 'Layout', help: 'hero: a large banner (title, text, {"icon":"…"} in the attributes, buttons). title_bar: title and buttons on one line. buttons_container: the buttons only. inline_dialog, inline_drawer: hidden until a dynamic action Open region (or a link to #R<id>) opens it over the page. wizard: a narrow card for one step (a list region with template wizard_progress shows the steps). tabs_container: its sub regions as tabs (the sub region\'s title is the tab; give them the plain template). flex_container: its sub regions side by side, wrapping on narrow screens. Any other template shows its sub regions in a 12-column grid under its own content.' },
       { name: 'parent_id', common: true, label: 'Parent region', kind: 'region', group: 'Layout',
         help: '(APEX: Parent Region) Makes this a sub region of another region of the page, shown inside it as the parent\'s template says (tabs_container, flex_container, collapsible…). One level: a sub region holds no regions. The parent\'s authorization, condition and build option apply to its sub regions; the sub region\'s own position is not used.' },
-      { name: 'position', common: true, label: 'Position', kind: 'select', options: ['', 'banner', 'breadcrumb', 'left', 'body', 'right', 'footer'], group: 'Layout',
+      { name: 'position', common: true, label: 'Slot (position)', kind: 'select', options: ['', 'banner', 'breadcrumb', 'left', 'body', 'right', 'footer'], group: 'Layout',
         help: 'Where the region shows (APEX: Layout → Position). banner: above everything else in the page; breadcrumb: in the bar under the title; left / right: in the side column of a page with template Left or Right side column (on other pages in the body); footer: after the body (a sub region of an inline dialog or drawer: in its footer, next to its buttons, which stays in place while the body scrolls). Empty is body.' },
+      // (sprint 230, AX-9) APEX's Layout: Start New Row, Column, Column Span, Row and Column CSS Classes, Column Attributes
+      ...REGION_LAYOUT_FIELDS,
+      { name: 'columns', common: true, label: 'Column span (1-12)', kind: 'int', group: 'Layout',
+        help: '(APEX: Column Span) How many of the grid\'s 12 columns the region takes. A span that would run past column 12 from its Column is cut to fit. Phones show every region full width, tablets at most two side by side.' },
+      ...REGION_GRID_CLASS_FIELDS,
+      // (sprint 230, AX-10) Appearance: the Template first, as in APEX
+      { name: 'template', common: true, label: 'Template', kind: 'select', options: ['standard', 'plain', 'collapsible', 'hero', 'title_bar', 'buttons_container', 'inline_dialog', 'inline_drawer', 'wizard', 'tabs_container', 'flex_container'], group: 'Appearance', help: 'hero: a large banner (title, text, {"icon":"…"} in the attributes, buttons). title_bar: title and buttons on one line. buttons_container: the buttons only. inline_dialog, inline_drawer: hidden until a dynamic action Open region (or a link to #R<id>) opens it over the page. wizard: a narrow card for one step (a list region with template wizard_progress shows the steps). tabs_container: its sub regions as tabs (the sub region\'s title is the tab; give them the plain template). flex_container: its sub regions side by side, wrapping on narrow screens. Any other template shows its sub regions in a 12-column grid under its own content.' },
       { name: 'template_options', label: 'Template options', kind: 'options', choices: REGION_OPTIONS, group: 'Appearance',
         help: 'CSS classes from a fixed list, added to the region (APEX: Template Options). "Hide the header" applies to the standard template.' },
+      ...REGION_APPEARANCE_FIELDS,
+      // (sprint 230, AX-11) Accessibility, Advanced, Header and Footer
+      ...REGION_MORE_FIELDS,
       ...conditionFields('Server-side condition', 'condition', 'condition_type', 'condition_value', true),
+      ...REGION_READ_ONLY_FIELDS,
       { name: 'authz', common: true, label: 'Authorization', kind: 'authz', group: 'Security', help: AUTHZ_HELP },
-      buildOption('Security'),
+      ...REGION_LATE_FIELDS,
+      buildOption('Configuration'),
+      ...REGION_AUDIT_FIELDS,
       // (sprint 202, AX-2) the Attributes tab's fields write it; Utilities → Show as JSON shows every key
       { name: 'config', label: 'Settings', kind: 'json', wide: true, group: 'Attributes', hidden: true,
         help: ALL_REGION_CONFIG_HELP, helpBy: (row: any) => regionConfigHelp(row?.type) },
@@ -954,7 +975,10 @@ export const ICON_OPTIONS = ['', ...ICONS];
 /** Convert a submitted form into typed column values; throws on bad input. */
 export function parseFields(spec: ComponentSpec, body: Record<string, string | undefined>) {
   const values: Record<string, unknown> = {};
+  // (sprint 230) fields kept in the config: not when the config itself is posted (Utilities → Show as JSON)
+  const configPosted = typeof body.config === 'string';
   for (const f of spec.fields) {
+    if (f.virtual || (f.config && configPosted)) continue;
     // a repeated field (checkboxes) arrives as an array: only 'options' fields read it as one
     const sent = body[f.name] as unknown;
     // (sprint 202) a field the form doesn't show keeps its stored value (an insert takes the column's default)
@@ -1012,6 +1036,11 @@ export function parseFields(spec: ComponentSpec, body: Record<string, string | u
         break;
       default:
         values[f.name] = v === '' ? null : v;
+    }
+    // (sprint 230) a config key: collected under __config (saveComponent merges it into the config)
+    if (f.config) {
+      ((values.__config ??= {}) as Record<string, unknown>)[f.name] = values[f.name];
+      delete values[f.name];
     }
   }
   return values;

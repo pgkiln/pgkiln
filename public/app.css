@@ -2408,3 +2408,40 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 
 /* (sprint 231, AX-13) the sign-in form's "Remember username" and "Keep me signed in" */
 .login-checks { display: flex; flex-direction: column; gap: 0.5rem; }
+
+/* ---------- (sprint 230, AX-9..11) a region's Layout, Appearance, Header and Footer, Customization ---------- */
+/* Column (col-start-N) with the span (col-N sets --span); Start New Row is col-start-1. Narrow screens stack as before. */
+.region { --span: 12; }
+.region.col-1 { --span: 1; } .region.col-2 { --span: 2; } .region.col-3 { --span: 3; } .region.col-4 { --span: 4; }
+.region.col-5 { --span: 5; } .region.col-6 { --span: 6; } .region.col-7 { --span: 7; } .region.col-8 { --span: 8; }
+.region.col-9 { --span: 9; } .region.col-10 { --span: 10; } .region.col-11 { --span: 11; }
+/* (a region in a row of its own takes its span; a Column below wins) */
+.t-row > .region { grid-column: span var(--span); min-width: 0; }
+:is(.t-regions, .t-row) > .col-start-1 { grid-column: 1 / span var(--span); } :is(.t-regions, .t-row) > .col-start-2 { grid-column: 2 / span var(--span); }
+:is(.t-regions, .t-row) > .col-start-3 { grid-column: 3 / span var(--span); } :is(.t-regions, .t-row) > .col-start-4 { grid-column: 4 / span var(--span); }
+:is(.t-regions, .t-row) > .col-start-5 { grid-column: 5 / span var(--span); } :is(.t-regions, .t-row) > .col-start-6 { grid-column: 6 / span var(--span); }
+:is(.t-regions, .t-row) > .col-start-7 { grid-column: 7 / span var(--span); } :is(.t-regions, .t-row) > .col-start-8 { grid-column: 8 / span var(--span); }
+:is(.t-regions, .t-row) > .col-start-9 { grid-column: 9 / span var(--span); } :is(.t-regions, .t-row) > .col-start-10 { grid-column: 10 / span var(--span); }
+:is(.t-regions, .t-row) > .col-start-11 { grid-column: 11 / span var(--span); } :is(.t-regions, .t-row) > .col-start-12 { grid-column: 12 / span var(--span); }
+/* Row CSS Classes: the row is a 12-column grid of its own across the whole width */
+.t-regions > .t-row { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; align-items: start; min-width: 0; }
+@media (max-width: 1023px) {
+  .t-row > .region { grid-column: span 12 !important; }
+  .t-row > :is(.col-1, .col-2, .col-3, .col-4, .col-5, .col-6) { grid-column: span 6 !important; }
+}
+@media (max-width: 640px) { .t-row > .region { grid-column: span 12 !important; } }
+/* Icon (Appearance) beside the title */
+.region-icon { display: inline-flex; vertical-align: -0.15em; margin-inline-end: 0.4rem; color: var(--accent); }
+.region-icon .icon { width: 1.1em; height: 1.1em; }
+/* Header Text and Footer Text */
+.region-header-text { margin-bottom: 0.75rem; }
+.region-footer-text { margin-top: 0.75rem; color: var(--muted); }
+.region-header-text > :first-child, .region-footer-text > :first-child { margin-top: 0; }
+.region-header-text > :last-child, .region-footer-text > :last-child { margin-bottom: 0; }
+/* Customization: the page's Customize link */
+.t-customize { margin-top: 1.5rem; max-width: 32rem; }
+.t-customize > summary { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; color: var(--accent); }
+.t-customize-form { margin-top: 0.5rem; padding: 0.75rem 1rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.t-customize-form fieldset { border: 0; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.t-customize-form legend { font-weight: 600; margin-bottom: 0.35rem; }
+.t-customize-form .check { overflow-wrap: anywhere; }

@@ -39,6 +39,7 @@ import { renderUrlRegion } from './url-region.ts';
 import { renderSearch } from './search.ts';
 import { renderLoginRegion } from './signin.ts';
 import { renderBreadcrumbRegion, renderHelpTextRegion } from './page-regions.ts';
+import { arrangeRows, frameContent, landmarkAttrs, regionIcon, shellExtras } from './region-props.ts';
 
 // ---------------------------------------------------------------- buttons
 
@@ -331,6 +332,8 @@ async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>)
     if (children) body = html`${body}${children}`;
     if (isInlineOverlay(r)) footer = await renderChildren(ctx, r, hidden, inFooter);
   }
+  // (sprint 230, AX-11) Header Text and Footer Text around the content, the HTML DOM ID on it
+  if (!placeholder) body = await frameContent(ctx, r, body);
   return regionShell(ctx, r, hidden, body, footer);
 }
 
@@ -354,7 +357,8 @@ async function renderChildren(ctx: PageContext, r: Region, hidden: Set<string>, 
   }
   if (!shown.length) return '';
   if (r.template === 'flex_container') return html`<div class="region-children region-flex">${shown.map(([, out]) => out)}</div>`;
-  if (r.template !== 'tabs_container') return html`<div class="t-regions region-children">${shown.map(([, out]) => out)}</div>`;
+  // (sprint 230, AX-9) Row CSS Classes: the rows that have them in a <div class="t-row"> of their own
+  if (r.template !== 'tabs_container') return html`<div class="t-regions region-children">${arrangeRows(shown)}</div>`;
   const label = (c: Region) => c.title || `${ctx.locale.t('rds.region')} ${c.id}`;
   return html`<div class="region-tabs" data-region-tabs="${r.id}">
     <ul class="region-tablist" aria-label="${r.title || ctx.locale.t('rds.label')}">
@@ -474,7 +478,10 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'static': {
       const itemsHtml = await renderItems(ctx, items, hidden);
-      body = html`${raw(substitute(await expandShortcuts(ctx, r.source ?? '', 'html'), ctx, esc))}${itemsHtml.length ? html`<div class="form-grid">${itemsHtml}</div>` : ''}`;
+      const grid = itemsHtml.length ? html`<div class="form-grid">${itemsHtml}</div>` : '';
+      const text = raw(substitute(await expandShortcuts(ctx, r.source ?? '', 'html'), ctx, esc));
+      // (sprint 230, AX-10) Render Components: Above Content puts the items before the text
+      body = r.render_components === 'above' ? html`${grid}${text}` : html`${text}${grid}`;
       break;
     }
   }
@@ -482,7 +489,8 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
   // a login region's fields belong to a form of their own, so its items stay out
   if (items.length && !ITEMS_IN_BODY.has(r.type) && !restFailed) {
     const itemsHtml = await renderItems(ctx, items, hidden);
-    if (itemsHtml.length) body = html`${body!}<div class="form-grid region-items">${itemsHtml}</div>`;
+    const grid = html`<div class="form-grid region-items">${itemsHtml}</div>`;
+    if (itemsHtml.length) body = r.render_components === 'above' ? html`${grid}${body!}` : html`${body!}${grid}`;
   }
   return body!;
 }
@@ -503,15 +511,20 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   const buttons = await buttonsFor(ctx, r.id);
   const buttonsOnTop = r.type !== 'form' && r.type !== 'static';
   // (a grid renders its own Save button in its toolbar)
-  const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
+  // (sprint 230, AX-9, AX-10) the grid's column and span, CSS Classes, Column CSS Classes; Custom and Column Attributes
+  const extra = shellExtras(ctx, r);
+  const cls = `region region-${r.type} region-${r.template} ${extra.cls}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
   const titleId = `R${r.id}_title`;
   // (0.31) the region's static id, for CSS and JavaScript (the element id stays R<id>)
-  const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';
+  const staticAttr = r.static_id ? html` data-static-id="${r.static_id}"${extra.attrs}` : extra.attrs;
+  // (sprint 230, AX-11) the landmark (Accessibility), the icon (Appearance)
+  const named = (id: string | null, dialog = false) => landmarkAttrs(ctx, r, id, dialog);
+  const ic = regionIcon(r);
 
   // (172) a flexbox container is a frame-less layout: its sub regions side by side
   if (r.template === 'plain' || r.template === 'flex_container')
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(null)}>
       ${buttonsOnTop && buttons ? html`<div class="region-toolbar">${buttons}</div>` : ''}
       ${body}
       ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
@@ -519,8 +532,8 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
 
   // (088) a large banner: an icon, the title, the text and the buttons
   if (r.template === 'hero') {
-    const heroIcon = typeof r.config?.icon === 'string' ? icon(r.config.icon) : '';
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+    const heroIcon = r.icon ? icon(r.icon) : typeof r.config?.icon === 'string' ? icon(r.config.icon) : '';
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(titleId)}>
       ${heroIcon ? html`<span class="region-hero-icon">${heroIcon}</span>` : ''}
       <div class="region-hero-text"><h2 id="${titleId}">${r.title}</h2>${body}</div>
       ${buttons ? html`<div class="region-hero-buttons">${buttons}</div>` : ''}
@@ -528,36 +541,36 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
   }
   // (088) the title and buttons on one line, without a card
   if (r.template === 'title_bar')
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
-      <div class="region-title-bar"><h2 id="${titleId}">${r.title}</h2>${buttons ? html`<div class="region-title-buttons">${buttons}</div>` : ''}</div>
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(titleId)}>
+      <div class="region-title-bar"><h2 id="${titleId}">${ic}${r.title}</h2>${buttons ? html`<div class="region-title-buttons">${buttons}</div>` : ''}</div>
       ${body}
     </section>`;
   // (088) the buttons (and any text) only
   if (r.template === 'buttons_container')
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(null)}>
       ${body}${buttons ? html`<div class="region-buttons">${buttons}</div>` : ''}
     </section>`;
   // (088) hidden until opened: a dynamic action "Open region", or a link to #R<id> (CSS :target without JavaScript)
   if (r.template === 'inline_dialog' || r.template === 'inline_drawer')
-    return html`<dialog class="${cls}" id="R${r.id}"${staticAttr} aria-labelledby="${titleId}" data-inline-region>
-      <header class="region-header"><h2 id="${titleId}">${r.title}</h2>
+    return html`<dialog class="${cls}" id="R${r.id}"${staticAttr}${named(titleId, true)} data-inline-region>
+      <header class="region-header"><h2 id="${titleId}">${ic}${r.title}</h2>
         <a class="region-dialog-close icon-button" href="#" role="button" data-region-close aria-label="${ctx.locale.t('common.dismiss')}">${icon('close')}</a></header>
       <div class="region-body"${scrollable(r)}>${body}</div>
       ${buttons || footerRegions ? html`<footer class="region-footer">${footerRegions ? html`<div class="region-footer-regions">${footerRegions}</div>` : ''}${buttons ? html`<div class="region-footer-buttons">${buttons}</div>` : ''}</footer>` : ''}
     </dialog>`;
 
-  const header = html`<h2 id="${titleId}">${r.title}</h2>${buttonsOnTop ? buttons : ''}`;
+  const header = html`<h2 id="${titleId}">${ic}${r.title}</h2>${buttonsOnTop ? buttons : ''}`;
   // (166) the header buttons sit beside the summary, not in it: a summary is the toggle, and a button inside it is
   // nested interactive content (axe); they come first so they are reached before the region's body
   if (r.template === 'collapsible')
-    return html`<section class="${cls}${buttonsOnTop && buttons ? ' has-header-buttons' : ''}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+    return html`<section class="${cls}${buttonsOnTop && buttons ? ' has-header-buttons' : ''}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(titleId)}>
       ${buttonsOnTop && buttons ? html`<div class="region-header-buttons">${buttons}</div>` : ''}
-      <details open><summary class="region-header"><h2 id="${titleId}">${r.title}</h2></summary>
+      <details open><summary class="region-header"><h2 id="${titleId}">${ic}${r.title}</h2></summary>
         <div class="region-body"${scrollable(r)}>${body}</div>
         ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
       </details></section>`;
 
-  return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
+  return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(r.title ? titleId : null)}>
     ${r.title || (buttonsOnTop && buttons) ? html`<header class="region-header">${header}</header>` : ''}
     <div class="region-body"${scrollable(r)}>${body}</div>
     ${!buttonsOnTop && buttons ? html`<footer class="region-footer">${buttons}</footer>` : ''}
@@ -579,21 +592,24 @@ async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, bo
   const left = await buttonsFor(ctx, r.id, (b) => LEFT_SLOTS.has(b.slot ?? ''));
   // (167) Next is the last button of the bar, as in APEX: the region's own buttons come before it
   const right = await buttonsFor(ctx, r.id, (b) => b.slot === 'next' || (!onTop && plain(b)), (b) => (b.slot === 'next' ? 1 : 0));
-  const cls = `region region-${r.type} region-${r.template} col-${r.columns}${templateClasses('region', r.template_options)}`;
+  const extra = shellExtras(ctx, r);
+  const cls = `region region-${r.type} region-${r.template} ${extra.cls}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
-  const staticAttr = r.static_id ? raw(` data-static-id="${esc(r.static_id)}"`) : '';
+  const staticAttr = r.static_id ? html` data-static-id="${r.static_id}"${extra.attrs}` : extra.attrs;
   const titleId = `R${r.id}_title`;
+  const named = (id: string | null) => landmarkAttrs(ctx, r, id);
+  const ic = regionIcon(r);
   const footer = left || right ? html`<footer class="region-footer region-footer-split"><div class="region-footer-start">${left}</div><div class="region-footer-end">${right}</div></footer>` : '';
   if (r.template === 'plain' || r.template === 'flex_container')
-    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-label="${r.title}">
+    return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(null)}>
       ${top ? html`<div class="region-toolbar">${top}</div>` : ''}${body}${footer}</section>`;
-  const header = html`<h2 id="${titleId}">${r.title}</h2>${top}`;
+  const header = html`<h2 id="${titleId}">${ic}${r.title}</h2>${top}`;
   // (166) as above: the header buttons beside the summary, not in it
   if (r.template === 'collapsible')
-    return html`<section class="${cls}${top ? ' has-header-buttons' : ''}" id="R${r.id}"${staticAttr}${hiddenAttr} aria-labelledby="${titleId}">
+    return html`<section class="${cls}${top ? ' has-header-buttons' : ''}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(titleId)}>
       ${top ? html`<div class="region-header-buttons">${top}</div>` : ''}
-      <details open><summary class="region-header"><h2 id="${titleId}">${r.title}</h2></summary><div class="region-body"${scrollable(r)}>${body}</div>${footer}</details></section>`;
-  return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${r.title ? raw(` aria-labelledby="${titleId}"`) : ''}>
+      <details open><summary class="region-header"><h2 id="${titleId}">${ic}${r.title}</h2></summary><div class="region-body"${scrollable(r)}>${body}</div>${footer}</details></section>`;
+  return html`<section class="${cls}" id="R${r.id}"${staticAttr}${hiddenAttr}${named(r.title ? titleId : null)}>
     ${r.title || top ? html`<header class="region-header">${header}</header>` : ''}
     <div class="region-body"${scrollable(r)}>${body}</div>${footer}
   </section>`;

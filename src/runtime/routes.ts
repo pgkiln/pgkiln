@@ -59,6 +59,7 @@ import { runRefusal } from '../app-role.ts';
 import { feedbackRoutes } from './feedback.ts';
 import { dataItemRoutes, loadPreferences, savePreferences } from './data-items.ts';
 import { ajaxRoutes } from './ajax.ts';
+import { customizeRoutes } from './region-props.ts';
 import { traceApp } from '../telemetry/trace.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -724,6 +725,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
   dataItemRoutes(app, loadContext, txContext);
   // (085) Ajax callbacks and the dynamic action "download"
   ajaxRoutes(app, loadContext, txContext, applyPostedItems);
+  // (sprint 230, AX-11) the Customize link: the user's choice of the page's customizable regions
+  customizeRoutes(app, loadContext, txContext);
   // (085) "Stay signed in" of the session timeout warning: the session's last activity is now
   app.post('/a/:alias/session/extend', async (req: Req, reply) => {
     const a = await loadApp(req.params.alias);

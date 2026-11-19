@@ -49,6 +49,7 @@ const CHECK_SWITCH: Record<string, string> = {
   'validation.expression': 'type:sql=boolean,exists=select,not_exists=select,*=none',
   'region.condition': 'condition_type:=boolean,sql=boolean,exists=select,not_exists=select,*=none',
   'button.condition': 'condition_type:=boolean,sql=boolean,exists=select,not_exists=select,*=none',
+  'region.readonly_expr': 'readonly_type:sql=boolean,exists=select,not_exists=select,*=none',
 };
 /** Fields whose language follows the component's type select: "type:value=lang,…" (other values: SQL). */
 const SWITCH: Record<string, string> = {
@@ -62,6 +63,8 @@ const SWITCH: Record<string, string> = {
   ...Object.fromEntries(CONDITION_EXPRS.map((k) => [k, `${k.endsWith('server_condition_expr') ? 'server_condition_type' : 'condition_type'}:sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,=sql,*=text`])),
   'region.condition': 'condition_type:=sql,sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,*=text',
   'button.condition': 'condition_type:=sql,sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,*=text',
+  // (sprint 230) a region's Read Only condition
+  'region.readonly_expr': 'readonly_type:sql=sql,exists=sql,not_exists=sql,function_body=plpgsql,=sql,*=text',
 };
 /** Language when no SWITCH value matches. */
 const fallback = (key: string): CodeLang => (STATEMENTS.has(key) ? 'plpgsql' : 'sql');
@@ -78,7 +81,7 @@ export function codeLang(kind: string, field: { name: string; kind: string }, ro
   if (field.kind === 'json') return 'json';
   if (field.kind !== 'code') return null;
   const key = `${kind}.${field.name}`;
-  if (key === 'document_template.template') return 'html';
+  if (key === 'document_template.template' || key === 'region.header_text' || key === 'region.footer_text') return 'html';
   return ((SWITCH[key] && pick(SWITCH[key], row)) as CodeLang | undefined) ?? fallback(key);
 }
 

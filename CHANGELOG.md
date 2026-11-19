@@ -23,10 +23,21 @@ All notable changes to this project are documented here. The format follows
   text files (`pages/0000-global-page/`), working copies and the MCP tool `get_page` carry it, and the APEX importer
   now imports APEX's Global Page (page 0 of app 77536 is no longer skipped). HR: a managers' notice of pending
   leave requests on every page (`hr_95_global_page.sql`).
+- **A region's other property groups** (sprint 230, AX-9…AX-11; migration 188; APEX: the region's property groups):
+  the property editor shows a region's properties in APEX's groups and order, each with help. New: **Layout** (Start
+  new row, Column, Row and Column CSS classes, Column attributes), **Appearance** (CSS classes, Icon, Render
+  components above or below), **Accessibility** (landmark, landmark type and label), **Advanced** (HTML DOM ID,
+  Custom attributes through an allowlist, Exclude title from translation), **Header and footer** text, **Read only**
+  (a server-side condition makes the region's items read-only), **Customization** (a *Customize* link lets a signed-in
+  user show or hide regions, kept as a user preference), **Comments** and **Audit information** (read-only, kept in
+  `meta.region_audit`). The APEX importer maps `create_page_plug`'s matching arguments. HR page 57 *Region layout*
+  (`hr_96_region_properties.sql`).
 
 ### Changed
 - The App Builder's applications report shows **Updated by**, **Working copies** and a **Lock** column at every
   desktop and laptop width, as APEX (sprint 231, AX-13); Sign-in and Views give way first on narrow screens.
+- A region's Template and Template options are in the *Appearance* group of the property editor (were *Layout*), as
+  in APEX (sprint 230).
 
 ## [0.110.0] - 2026-11-18
 

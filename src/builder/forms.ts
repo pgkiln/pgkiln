@@ -7,6 +7,7 @@ import { BASE, csrf, type Body } from './ui.ts';
 import { codeAttrs } from './code-editor.ts';
 import { optionName, typeName } from './type-names.ts';
 import { withComponentTypes } from './component-regions.ts';
+import { scopedTx } from './i18n.ts';
 
 // Shared helpers of the builder pages: lookups for select lists, the generic
 // component property form and saving it.
@@ -77,8 +78,10 @@ export function iconPicker(id: string, name: string, label: string, current: str
 /** Property editor for one component, grouped like APEX's property editor. `submit` '' leaves the button out
  *  ((sprint 197, NX-U5) the Page Designer's toolbar Save submits the form through form=). */
 export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: Lookups, action: string, s: Session, submit: string, opts: { id?: string } = {}) {
-  const field = (f: Field) => {
-    const v = row?.[f.name];
+  const field = (f0: Field) => {
+    // (sprint 230) the property's name in the builder's language (pe.<kind>.<field>), when it has one
+    const f = { ...f0, label: scopedTx.dyn(`pe.${kind}.${f0.name}`, f0.label) };
+    const v = f.valueBy ? f.valueBy(row ?? {}) : row?.[f.name];
     const own = row?.id ? f.helpBy?.(row) : null;
     const help = own
       ? html`<small class="help">${own.text}${own.url ? html` <a href="${own.url}" target="_blank" rel="noopener">Guide ▸</a>` : ''}</small>`
@@ -98,7 +101,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       case 'select':
         // (sprint 202, AX-3) a type list shows the types' names (Interactive Report, Popup LOV, Set Value …), not their codes
         // (sprint 231, AX-14) a region's Type list names each built-in template component (Badge, Metric Card …)
-        control = opts((kind === 'region' && f.name === 'type' ? withComponentTypes(f.options!) : f.options!).map((o) => [o, optionName(kind, f.name, o) ?? (o || '- none -')]));
+        control = opts((kind === 'region' && f.name === 'type' ? withComponentTypes(f.options!) : f.options!).map((o) => [o, optionName(kind, f.name, o) ?? (o || (f.emptyLabel ? scopedTx.dyn(`pe.${kind}.${f.name}.none`, f.emptyLabel) : '- none -'))]));
         break;
       case 'icon':
         return iconPicker(id, f.name, f.label, String(v ?? ''), help);
@@ -168,6 +171,8 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       default:
         control = html`<input id="${id}" name="${f.name}" type="${f.kind === 'int' ? 'number' : 'text'}" value="${v ?? ''}">`;
     }
+    // (sprint 230) a value shown only (Audit Information): an output, nothing posted
+    if (f.virtual) return html`<div class="field" data-prop="${f.name}"${f.wide ? raw(' data-wide') : ''}><span class="label" id="${id}_label">${f.label}</span><output id="${id}" class="pe-value" aria-labelledby="${id}_label">${String(v ?? '') || '—'}</output>${help}</div>`;
     return html`<div class="field" data-prop="${f.name}"${f.wide ? raw(' data-wide') : ''}><label class="label" for="${id}">${f.label}</label>${control}${help}</div>`;
   };
   // (sprint 202, AX-2) a field the property editor leaves out (a region's settings: Attributes tab, Utilities → Show as JSON)
@@ -178,7 +183,7 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
   const shown = (f: Field) => (marked && !f.common ? html`<div class="pe-more" data-more>${field(f)}</div>` : field(f));
   return html`<form method="post" action="${action}" class="component-form"${opts.id ? html` id="${opts.id}"` : ''}>
     ${csrf(s)}
-    ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${g}</legend>` : ''}<div class="form-grid">${fields.filter((f) => (f.group ?? '') === g).map(shown)}</div></fieldset>`)}
+    ${groups.map((g) => html`<fieldset class="prop-group">${g ? html`<legend>${scopedTx.dyn(`pe.group.${g.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, g)}</legend>` : ''}<div class="form-grid">${fields.filter((f) => (f.group ?? '') === g).map(shown)}</div></fieldset>`)}
     ${submit ? html`<div class="buttons"><button class="btn btn-hot">${submit}</button></div>` : ''}
   </form>`;
 }
@@ -189,6 +194,19 @@ export async function saveComponent(kind: string, parentCol: 'page_id' | 'app_id
   const problem = spec.validate?.(values);
   if (problem) throw new Error(problem);
   await spec.beforeSave?.(values, cid, parentId);
+  // (sprint 230) keys of the config the form edits as fields: merged after the row is saved
+  const patch = values.__config as Record<string, unknown> | undefined;
+  delete values.__config;
+  const id = await saveRow(spec, parentCol, parentId, cid, values);
+  if (patch && Object.keys(patch).length) {
+    const drop = Object.keys(patch).filter((k) => patch[k] === null || patch[k] === undefined);
+    const keep = Object.fromEntries(Object.entries(patch).filter(([k]) => !drop.includes(k)));
+    await owner.query(`update ${spec.table} set config = (coalesce(config, '{}'::jsonb) - $2::text[]) || $3::jsonb where id = $1`, [id, drop, JSON.stringify(keep)]);
+  }
+  return id;
+}
+
+async function saveRow(spec: ComponentSpec, parentCol: 'page_id' | 'app_id', parentId: string, cid: string | undefined, values: Record<string, unknown>) {
   // region fields only take regions of the same page
   if (parentCol === 'page_id')
     for (const f of spec.fields)

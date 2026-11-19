@@ -112,7 +112,9 @@ const REPOINTED = ['saved_report.region_id', 'task.definition_id', 'workflow.def
   // (061) AI assistant conversations follow their region
   'ai_conversation.region_id',
   // (165) an OAuth client's REST modules follow their module (name)
-  'api_client_module.module_id'];
+  'api_client_module.module_id',
+  // (188) a region's Audit Information: the new region keeps the old one's creation (and, unchanged, its last change)
+  'region_audit.region_id'];
 
 type Db = pg.ClientBase | pg.Pool;
 
@@ -251,6 +253,17 @@ export async function replaceApp(db: Db, doc: unknown, alias: string, opts: Repl
     await db.query(
       `update meta.user_form s set region_id = m.neu
          from unnest($1::int[], $2::int[]) as m(old, neu) where s.region_id = m.old`,
+      [pairs.map((p) => p[0]), pairs.map((p) => p[1])],
+    );
+  if (pairs.length)
+    await db.query(
+      `update meta.region_audit n set created_on = o.created_on, created_by = o.created_by,
+              updated_on = case when same then o.updated_on else n.updated_on end, updated_by = case when same then o.updated_by else n.updated_by end
+         from unnest($1::int[], $2::int[]) as m(old, neu)
+         join meta.region_audit o on o.region_id = m.old
+         cross join lateral (select (to_jsonb(ro) - 'id' - 'page_id' - 'parent_id') = (to_jsonb(rn) - 'id' - 'page_id' - 'parent_id') as same
+                               from meta.region ro, meta.region rn where ro.id = m.old and rn.id = m.neu) x
+        where n.region_id = m.neu`,
       [pairs.map((p) => p[0]), pairs.map((p) => p[1])],
     );
   if (pairs.length)

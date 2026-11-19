@@ -77,6 +77,8 @@ src/
                            APEX views, columns, sequences, routines; a routine ora2pg converted as pkg.proc or pkg_proc is a hint),
                            notes on the entries; checkText for `pgkiln import-apex --check`; (sprint 217) APEX_VIEWS: the views
                            of db/migrations/182_apex_views.sql (schema apex), qualified by qualifyTables, not reported missing
+  apex-region-props.ts     (sprint 230, AX-9..11) apexRegionProps: create_page_plug's Layout, Appearance, Accessibility,
+                           Advanced, Header and Footer and Comments arguments → the region's migration-188 columns (with notes)
   blueprint.ts             blueprints (migration 063): checkBlueprint (names, types, references, pages, sample rows), tableOrder,
                            blueprintSql, buildBlueprint (tables, grants, rows, pages via meta.generate_page, menu), the AI draft schema
   blueprint-from-app.ts    (sprint 66) blueprintFromApp: an application's tables (catalog), pages and menu as a blueprint, notes; sample rows
@@ -358,6 +360,11 @@ src/
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts;
                            LOV_TYPES / LOV_CHECKED / MULTI_VALUE: the list item types (shuttle, select_one, select_many since 140) checked on submit and colon-separated)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
+    region-props.ts        (sprint 230, migration 188, AX-9..11) a region's other property groups at runtime: gridClasses
+                           (col-N, col-start-N), arrangeRows (Row CSS Classes: <div class="t-row">), shellExtras (CSS classes,
+                           Custom/Column Attributes through an allowlist, values escaped), landmarkAttrs, regionIcon, frameContent
+                           (Header/Footer Text, HTML DOM ID), readOnlyRegions (computeVisibility), customizedRegions,
+                           customizePanel and POST /a/:alias/:page/customize (user preference PGKILN_REGIONS_P<page>)
     gantt-move.ts          (sprint 69) Gantt drag and drop: ganttEditable, targetTime, moveGanttTask (the task in the region's
                            query, gantt_move with :TASK_ID/:NEW_START/:NEW_END); the dragging itself is in app.js
     charts.ts              server-rendered charts (SVG and CSS classes): bar … radar, gauges, Gantt (time axis, dependencies), pyramid, polar, range, box plot (quantile, boxes), stock, (sprint 70) treemap and sunburst (buildTree, squarify), timeline, (sprint 220) sankey (sankeyLayout), nbox (nboxCells), picto (pictoUnit), drill-down marks, data table
@@ -634,6 +641,10 @@ src/
                            settings forms into groups of form#pd-form (controls named "<key>:<field>", form="pd-form", no Save of
                            their own), settingsBodies() takes the post apart, settingsRoute() each form's own route; the savers
                            (saveReportSettings, saveRegionSettings, …) and saveRegionAttributes() are in the forms' modules
+    region-props.ts        (sprint 230, AX-9..11) the region's property groups in APEX's order for components.ts (Layout,
+                           Appearance, Accessibility, Advanced, Header and footer, Read only, Server cache, Customization, Comments,
+                           Audit information); Field.virtual / config / valueBy / emptyLabel (forms.ts); labels pe.region.*, groups
+                           pe.group.* in i18n/*; regionPropsProblem, withRegionAudit, stampRegionAudit (app-updates.ts)
     region-columns.ts      (sprint 205, AX-1) the Page Designer's Columns node: regionColumns() (the query's columns with their
                            types from reportColumns, then configuredColumns() no longer in the query), COLUMN_FIELDS per region
                            type, columnProperties() (form#pd-form for one column or several: shared values, Mixed, was_<key>),
@@ -796,6 +807,8 @@ test/
   item-region-types.test.ts (sprint 140) shuttle, select one/many, classic report, breadcrumb and help text: gallery, runtime, export, Advisor, HR page 50
   sub-regions.test.ts      (sprint 195) sub regions: the one-level rule, tabs/flex/grid rendering, the parent's condition, partial refresh,
                            export/import and files, copy page, the Page Designer (create, move, undo, duplicate, delete), Advisor, APEX import
+  region-properties.test.ts (sprint 230, AX-9..11) layout classes and rows, attributes, landmark, header/footer, Read Only,
+                           Customize link, the property editor's groups and saving, audit, export/import/replace, APEX mapping, HR page 57
   dataload.test.ts         parsing, Load Data, the data_load process
   sampledata.test.ts       Sample Data: CHECK parsing, proposals, option errors, seeds and streams, preview/insert/rollback, parents first, downloads, saved generators
   unload.test.ts           Unload Data: CSV/JSON/XLSX/XML output, read back with Load Data, read-only and one-statement checks, streaming

@@ -1388,6 +1388,12 @@ leaving the page with one asks first. On a window under 800 pixels high the gall
 its tabs (*Regions*, *Items*, *Buttons*): choose one to open it, choose the open one to fold it again; the
 designer remembers which you prefer.
 
+(sprint 230, AX-9..11) A region's properties come in APEX's groups and order (Identification, Source, Layout,
+Appearance with the Template first, Accessibility, Advanced, Header and footer, Server-side condition, Read only,
+Security, Server cache, Customization, Configuration, Comments, Audit information), each with its help and named in
+the builder's language; see [region properties](04-pages-and-regions.md#region-properties). *Audit information* and
+*Server cache* are shown, not edited there.
+
 (UX-6) **Delete page** is in the toolbar's page menu (the wrench), away from Save: type the page number to
 confirm. Its regions, items, buttons, dynamic actions and processes go with it, as do its lock and comments.
 
