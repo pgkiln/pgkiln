@@ -118,10 +118,10 @@ const str = (a: Args, name: string, required = false): string | undefined => {
   if (typeof v !== 'string') throw new ToolError(`${name} must be a string`);
   return v;
 };
-const int = (a: Args, name: string, dflt: number, max: number) => {
+const int = (a: Args, name: string, dflt: number, max: number, min = 1) => {
   const v = a[name] ?? dflt;
   const n = typeof v === 'string' ? Number(v) : v;
-  if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) throw new ToolError(`${name} must be a positive whole number`);
+  if (typeof n !== 'number' || !Number.isInteger(n) || n < min) throw new ToolError(min === 0 ? `${name} must be a whole number (0: the Global Page)` : `${name} must be a positive whole number`);
   return Math.min(n, max);
 };
 
@@ -343,13 +343,14 @@ export const TOOLS: Tool[] = [
     description: 'Every component of one page (page settings, regions with their SQL, items, buttons, dynamic actions, validations, processes, computations, branches) as YAML files.',
     inputSchema: {
       type: 'object',
-      properties: { ...aliasProp, page: { type: 'integer', description: 'the page number' } },
+      properties: { ...aliasProp, page: { type: 'integer', description: 'the page number (0: the Global Page, part of every page)' } },
       required: ['alias', 'page'],
     },
     annotations: { readOnlyHint: true },
     async run(a, ctx) {
       const alias = str(a, 'alias', true)!;
-      const page = int(a, 'page', 0, 1e9);
+      // (sprint 229) page 0 is the Global Page
+      const page = int(a, 'page', -1, 1e9, 0);
       return ctx.meta(async (db) => {
         await ctx.app(db, alias);
         const files = await appFiles(db, alias);

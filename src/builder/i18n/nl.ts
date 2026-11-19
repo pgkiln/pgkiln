@@ -8494,4 +8494,14 @@ export const nl: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "Medialijst",
   "gallery.region.template_component:ut_metric_card": "Metriekkaart",
   "gallery.region.template_component:ut_timeline": "Tijdlijn",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': 'Globale pagina',
+  'gp.global_page': 'Globale pagina',
+  'gp.tile_help': 'Pagina 0: regio\'s, items, dynamische acties en processen op elke pagina.',
+  'gp.create_intro': 'Pagina 0 hoort bij elke pagina van de applicatie: de regio\'s (op hun positie), items, knoppen, dynamische acties, berekeningen, validaties en processen worden aan elke pagina toegevoegd. Hij wordt nooit zelf geopend. De autorisatie en Pagina vereist aanmelding bepalen wie ze krijgt; noem de items P0_….',
+  'gp.create': 'Globale pagina maken',
+  'gp.not_modal': 'De globale pagina (pagina 0) is een normale pagina, nooit een modaal dialoogvenster.',
+  'gp.on_every_page': 'Op elke pagina',
+  'gp.designer_note': 'Pagina 0 is de globale pagina: de componenten horen bij elke andere pagina van deze applicatie, en hij wordt nooit zelf geopend. Zijn vergrendeling en opmerkingen zijn die van de applicatie.',
+  'gp.run_title': 'De startpagina (pagina {n}) uitvoeren, die de globale pagina toont',
 };

@@ -278,8 +278,32 @@ export async function jsonSourceFindings(sources: unknown, query: (sql: string, 
 /**
  * (sprint 147) Checks on the application's own rows, with no database: the login page (087) and page groups (089).
  */
-function structureFindings(x: AppRows): Finding[] {
+/**
+ * (sprint 229, AX-8) The Global Page (page 0): never opened by itself, so a link, button, menu entry or home page to
+ * page 0 goes nowhere; its branches never run (branches stay each page's own); its items are named P0_… as in APEX.
+ */
+function globalPageFindings(x: AppRows): Finding[] {
   const out: Finding[] = [];
+  const global = x.pages.find((p) => Number(p.page_no) === 0);
+  const entry = (r: Row) => x.byKey.get(`${r.kind}-${r.row.id}`) ?? null;
+  if (Number(x.app.home_page) === 0)
+    out.push({ severity: 'error', entry: null, field: 'Application settings → Home page', message: 'The home page is page 0, the Global Page, which is never opened by itself: choose another page.' });
+  for (const r of x.all) {
+    if ((r.row.build_option ?? '') === 'COMMENTED_OUT') continue;
+    if ((r.kind === 'button' && r.row.action === 'redirect') || r.kind === 'nav_entry')
+      if (r.row.target_page !== null && r.row.target_page !== undefined && Number(r.row.target_page) === 0)
+        out.push({ severity: 'error', entry: entry(r), field: 'Target page', message: 'The target is page 0, the Global Page, which is never opened by itself: choose another page.' });
+    if (!global || r.row.page_id !== global.id) continue;
+    if (r.kind === 'branch')
+      out.push({ severity: 'warning', entry: entry(r), field: 'Branch', message: 'A branch of the Global Page never runs: branches stay each page\'s own. Put it on the pages that need it.' });
+    if (r.kind === 'item' && !/^P0_/i.test(String(r.row.name)))
+      out.push({ severity: 'info', entry: entry(r), field: 'Name', message: `Item ${r.row.name} is on the Global Page: name it P0_… (as APEX does), so its references read as the Global Page's.` });
+  }
+  return out;
+}
+
+function structureFindings(x: AppRows): Finding[] {
+  const out: Finding[] = globalPageFindings(x);
   const { app, pages, all } = x;
   if (app.login_page) {
     const page = pages.find((p) => Number(p.page_no) === Number(app.login_page));
@@ -367,6 +391,8 @@ async function referenceFindings(x: AppRows, ext: {
           continue;
         }
         if (cfg?.link?.page !== undefined && !pageNos.has(Number(cfg.link.page))) missing(e, f.label, `The link goes to page ${cfg.link.page}, which doesn't exist.`);
+        // (sprint 229) page 0 is the Global Page, never opened by itself
+        else if (cfg?.link?.page !== undefined && cfg.link.page !== null && cfg.link.page !== '' && Number(cfg.link.page) === 0) missing(e, f.label, 'The link goes to page 0, the Global Page, which is never opened by itself.');
         if (cfg?.link?.items) for (const k of Object.keys(cfg.link.items)) if (!items.has(k.toUpperCase())) missing(e, f.label, `The link sets item ${k}, which doesn't exist.`, 'warning');
         if (cfg?.pdf?.layout && !layouts.has(String(cfg.pdf.layout).toUpperCase())) missing(e, f.label, `Report layout ${cfg.pdf.layout} doesn't exist (the built-in layout is used).`, 'warning');
         if (typeof cfg?.public_reports === 'string' && !schemes.has(cfg.public_reports)) missing(e, f.label, `Authorization scheme ${cfg.public_reports} doesn't exist.`);

@@ -104,7 +104,7 @@ without it answers `403` until you make a new one ([chapter 3](03-builder.md#bui
 | `pgkiln_info` | version, database, last migration, where the guide is | no |
 | `list_apps` | the applications: id, alias, name, pages | no |
 | `app_overview` | an application's settings, its pages (mode, authorization, number of regions, items, processes) and the paths of all its component files | no |
-| `get_page` | every component of one page as YAML, SQL inline | no |
+| `get_page` | every component of one page as YAML, SQL inline ((229) page 0: the Global Page) | no |
 | `read_app_files` | component files by path or prefix (`shared/lovs/`, `navigation.yaml`, …) | no |
 | `describe_schema` | schemas with tables, views and functions; or one table with columns, constraints, indexes, RLS policies and triggers | no |
 | `generate_ddl` | the DDL of a schema's objects, in an order that runs: a start for a migration script | no |

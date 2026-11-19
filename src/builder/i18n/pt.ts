@@ -8494,4 +8494,14 @@ export const pt: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "Lista de multimédia",
   "gallery.region.template_component:ut_metric_card": "Cartão de métrica",
   "gallery.region.template_component:ut_timeline": "Linha do tempo",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': 'Página global',
+  'gp.global_page': 'Página global',
+  'gp.tile_help': 'Página 0: regiões, itens, ações dinâmicas e processos em todas as páginas.',
+  'gp.create_intro': 'A página 0 faz parte de todas as páginas da aplicação: as suas regiões (na sua posição), itens, botões, ações dinâmicas, cálculos, validações e processos são adicionados a cada página. Nunca é aberta sozinha. A sua autorização e «A página exige início de sessão» decidem quem os recebe; dê aos seus itens o nome P0_….',
+  'gp.create': 'Criar página global',
+  'gp.not_modal': 'A página global (página 0) é uma página normal, nunca um diálogo modal.',
+  'gp.on_every_page': 'Em todas as páginas',
+  'gp.designer_note': 'A página 0 é a página global: os seus componentes fazem parte de todas as outras páginas desta aplicação, e nunca é aberta sozinha. O seu bloqueio e os seus comentários são os da aplicação.',
+  'gp.run_title': 'Executar a página inicial (página {n}), que mostra a página global',
 };

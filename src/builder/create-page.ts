@@ -61,6 +61,8 @@ const PREVIEWS: Record<string, string> = {
   tasks: [8, 20, 32].map((y, i) => `${rect(8, y, 7, 7, i === 0 ? 'pv-acc' : 'pv-frame', 1.5)}${rect(19, y, 34, 3)}${rect(19, y + 4.5, 22, 2.5)}${rect(60, y + 1, 14, 5, 'pv-soft', 2.5)}`).join(''),
   wizard: `<path class="pv-stroke" d="M16 9 H64"/>${[16, 40, 64].map((x, i) => circle(x, 9, 4, i === 0 ? 'pv-acc' : 'pv-soft')).join('')}${[20, 30].map((y) => `${rect(10, y, 14, 3)}${rect(28, y - 2, 42, 7, 'pv-frame', 1.5)}`).join('')}${rect(54, 41, 16, 5, 'pv-acc', 2)}`,
   workflows: `${rect(4, 19, 18, 12, 'pv-acc', 2)}${rect(31, 8, 18, 12, 'pv-soft', 2)}${rect(31, 30, 18, 12, 'pv-soft', 2)}${rect(58, 19, 18, 12, 'pv-frame', 2)}<path class="pv-stroke" d="M22 25 L31 14 M22 25 L31 36 M49 14 L58 25 M49 36 L58 25"/>`,
+  // (sprint 229, AX-8) the Global Page: a band on every page
+  global: `${[6, 30].map((y) => `${rect(4, y, 34, 16, 'pv-frame', 2)}${rect(4, y, 34, 4, 'pv-acc', 1)}`).join('')}${[6, 30].map((y) => `${rect(42, y, 34, 16, 'pv-frame', 2)}${rect(42, y, 34, 4, 'pv-acc', 1)}`).join('')}`,
   ai: `<path class="pv-acc" d="M40 6 L44 20 L58 25 L44 30 L40 44 L36 30 L22 25 L36 20 Z"/>${circle(62, 12, 3, 'pv-soft')}${circle(18, 38, 2.5, 'pv-soft')}`,
 };
 /** A page type's small picture, decorative (the label says what it is). */
@@ -77,7 +79,10 @@ export async function createPageRoutes(app: FastifyInstance) {
     if (!a) return reply.code(404).send('Not found');
     const q = req.query as Record<string, string | undefined>;
     const tab = TABS.some(([t]) => t === q.tab) ? q.tab! : 'component';
-    const type = GRID().find((g) => g.key === q.type);
+    // (sprint 229, AX-8; APEX: Create Page → Global Page) offered while the application has no page 0
+    const hasGlobal = !!(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = 0', [a.id]));
+    const globalType = hasGlobal ? [] : [{ key: 'global', label: tx('gp.global_page'), help: tx('gp.tile_help'), table: false }];
+    const type = [...GRID(), ...globalType].find((g) => g.key === q.type);
     const crumbs: [string, string?][] = [[tx('cpg.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], ['Create page', type ? `${BASE}/apps/${a.id}/create-page` : undefined]];
     const nextPage = async () => {
       const used = new Set((await owner.query('select page_no from meta.page where app_id = $1', [a.id])).rows.map((r) => r.page_no as number));
@@ -89,7 +94,16 @@ export async function createPageRoutes(app: FastifyInstance) {
     // a page type that needs a table: choose it first (APEX: the data source step)
     if (type) {
       let body: Raw;
-      if (type.key === 'blank') {
+      if (type.key === 'global') {
+        body = html`<form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
+            <input type="hidden" name="page_no" value="0"><input type="hidden" name="mode" value="normal">
+            <p class="muted u-mt0">${tx('gp.create_intro')}</p>
+            <div class="form-grid">
+              ${input('name', tx('cpg.name'), tx('gp.global_page'), { required: true })}
+            </div>
+            <div class="buttons"><a class="btn" href="${BASE}/apps/${a.id}/create-page">${tx('cpg.back')}</a><button class="btn btn-hot">${tx('gp.create')}</button></div>
+          </form>`;
+      } else if (type.key === 'blank') {
         body = html`<form method="post" action="${BASE}/apps/${a.id}/pages">${csrf(s)}
             <div class="form-grid">
               ${input('page_no', tx('cpg.page_number'), await nextPage(), { type: 'number', required: true })}
@@ -120,7 +134,7 @@ export async function createPageRoutes(app: FastifyInstance) {
     let body: Raw;
     if (tab === 'component') {
       const href = (g: ReturnType<typeof GRID>[number]) =>
-        g.key !== 'blank' && !g.table ? `${BASE}/apps/${a.id}/wizard?kind=${g.key}` : `${BASE}/apps/${a.id}/create-page?type=${g.key}`;
+        g.key !== 'blank' && g.key !== 'global' && !g.table ? `${BASE}/apps/${a.id}/wizard?kind=${g.key}` : `${BASE}/apps/${a.id}/create-page?type=${g.key}`;
       // (sprint 197, NX-U4) the two quick forms that were under the application home's Pages report: a page type
       // and a table straight to the options step, and a blank page in one step
       const tables = await wizardTables(a.db_role);
@@ -146,7 +160,7 @@ export async function createPageRoutes(app: FastifyInstance) {
             </form></section>
         </div>`;
       body = html`${quick}<p class="muted">${tx('cpg.choose_a_page_type_types')}</p>
-        <ul class="cp-grid">${GRID().map((g) => html`<li><a class="cp-type" href="${href(g)}"><span class="cp-preview">${preview(g.key)}</span><b>${g.label}</b><small>${g.help}</small></a></li>`)}
+        <ul class="cp-grid">${[...GRID(), ...globalType].map((g) => html`<li><a class="cp-type" href="${href(g)}"><span class="cp-preview">${preview(g.key)}</span><b>${g.label}</b><small>${g.help}</small></a></li>`)}
           <li><a class="cp-type" href="${BASE}/apps/${a.id}/ai-pages"><span class="cp-preview">${preview('ai')}</span><b>${tx('cpg.create_pages_with_ai')}</b><small>${tx('cpg.describe_the_pages_in_your')}</small></a></li></ul>`;
     } else if (tab === 'feature') {
       const states = await featureStates(a.id);
@@ -229,7 +243,8 @@ export async function createPageRoutes(app: FastifyInstance) {
     try {
       const page = /^\d{1,6}$/.test(String(b.page ?? '')) ? Number(b.page) : NaN;
       const no = /^\d{1,6}$/.test(String(b.new_page ?? '').trim()) ? Number(String(b.new_page).trim()) : NaN;
-      if (!(no >= 1)) throw new Error(tx('cpg.enter_a_page_number'));
+      // (sprint 229) 0: the Global Page (meta.copy_page refuses it when the application has one)
+      if (!(no >= 0)) throw new Error(tx('cpg.enter_a_page_number'));
       const name = String(b.name ?? '').trim().slice(0, 200);
       if (!name) throw new Error(tx('cpg.enter_a_name'));
       // map:<kind>:<NAME> → a name of the target's (empty: copy); only known kinds pass

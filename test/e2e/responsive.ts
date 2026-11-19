@@ -95,7 +95,7 @@ export function viewportTests(vp: keyof typeof VIEWPORTS) {
     test('application pages fit the screen', async () => {
       const page = await (await newContext({ viewport: size })).newPage();
       await login(page, '/a/hr/login', 'king', 'king');
-      const pages = (await owner.query(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.mode = 'normal' order by 1`)).rows;
+      const pages = (await owner.query(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.mode = 'normal' and p.page_no > 0 order by 1`)).rows;
       for (const { page_no: p } of pages) {
         const res = await page.goto(`${base}/a/hr/${p}`);
         assert.equal(res?.status(), 200, `page ${p}`);
@@ -1104,6 +1104,10 @@ export function viewportTests(vp: keyof typeof VIEWPORTS) {
         json_source_new: `/builder/apps/${appId}/json-sources/source`, document_view: '/builder/sql/objects/document?o=hr.dept',
         // (sprint 206, AX-5) the Page Designer's Utilities on the open page: View as text with the page checksum, the copy form of the page
         page_text: `/builder/apps/${appId}/pages/3/text`, page_copy: `/builder/apps/${appId}/copy-page?from=${appId}&page=3`,
+        // (sprint 229, AX-8) HR's Global Page in the Page Designer, its text, and the Global Page step of Create page
+        global_page: `/builder/apps/${appId}/pages/0`, global_page_text: `/builder/apps/${appId}/pages/0/text`,
+        create_page_global: `/builder/apps/${(await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ('e2e-global229', 'E2E Global Page', 'none', 'hr_app')
+                                                                on conflict (alias) do update set name = excluded.name returning id`)).id}/create-page?type=global`,
         // (sprint 205, AX-1) HR page 2 in the Page Designer: a report column, and several columns at once
         ...(await (async () => {
           const r = await owner.one(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 2 and r.type = 'report'`, [appId]);
@@ -1132,7 +1136,7 @@ export function viewportTests(vp: keyof typeof VIEWPORTS) {
         await owner.query(`update meta.workspace set telemetry = 'instance', telemetry_endpoint = null where id = 1`);
         await owner.query(`delete from meta.workflow where app_id = $1 and name = 'SALARY_CHANGE' and title like 'Salary of E2E%'`, [appId]);
         await owner.query(`delete from meta.dump_job where username = 'e2e_dump'`);
-        await owner.query(`delete from meta.app where alias = 'hr-e2e'`);
+        await owner.query(`delete from meta.app where alias = any('{hr-e2e,e2e-global229}')`);
         await owner.query(`delete from meta.dev_comment where app_id = $1 and author = 'e2e_other_developer'`, [appId]);
         await owner.query(`delete from meta.team_issue_comment where author = 'e2e_other_developer'`);
         await owner.query(`delete from meta.debug_view where app_id = $1 and path = '/a/hr/3' and username = 'king'`, [appId]);

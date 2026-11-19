@@ -147,11 +147,13 @@ describe('the mapping of f100.sql', () => {
     assert.equal(doc.app.home_page, 1);
     assert.equal(doc.app.date_format, 'DD-MON-YYYY');
     assert.equal(doc.app.version, 'Release 1.0');
-    assert.deepEqual(doc.pages.map((p: any) => p.page_no), [1, 2, 3]);
+    // (sprint 229, AX-8) APEX's Global Page is page 0
+    assert.deepEqual(doc.pages.map((p: any) => p.page_no), [0, 1, 2, 3]);
     assert.equal(p3.mode, 'modal');
     assert.equal(p3.authz, 'CONTRIBUTORS');
     assert.equal(page(2).help, 'All orders, newest first.');
-    assert.equal(entry('page', 'Global Page').status, 'not_mapped');
+    assert.equal(entry('page', 'Global Page').status, 'notes');
+    assert.equal(page(0).mode, 'normal');
     assert.equal(entry('page', 'Login Page').status, 'not_mapped');
     assert.equal(report.application.schema, 'sales');
   });
@@ -338,9 +340,9 @@ describe('importing', () => {
     const back = (await owner.one<{ d: any }>('select meta.export_app($1) as d', ['apex182-db']))!.d;
     assert.equal(back.app.name, "Order's Desk");
     const p3 = back.pages.find((p: any) => p.page_no === 3);
-    assert.equal(p3.validations.length, doc.pages[2].validations.length);
-    assert.equal(p3.processes.length, doc.pages[2].processes.length);
-    assert.equal(p3.dynamic_actions.length, doc.pages[2].dynamic_actions.length);
+    assert.equal(p3.validations.length, doc.pages.find((p: any) => p.page_no === 3).validations.length);
+    assert.equal(p3.processes.length, doc.pages.find((p: any) => p.page_no === 3).processes.length);
+    assert.equal(p3.dynamic_actions.length, doc.pages.find((p: any) => p.page_no === 3).dynamic_actions.length);
     // ids were remapped: items sit in the imported form region
     const form = (await owner.one<{ id: number }>(`select r.id from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and p.page_no = 3 and r.type = 'form'`, [id]))!.id;
     assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and i.region_id = $2`, [id, form]))!.n, 9);
@@ -500,13 +502,14 @@ describe('sprint 187: Team Development issues for the hand work (NX-F1)', () => 
 // raises them, a parser or mapping regression lowers them.
 describe('sprint 190 a real APEX 26.2 export (app 77536)', () => {
   const F77536 = readFileSync(join(FIX, 'f77536.sql'), 'utf8');
-  test('parses (wwv_flow_t_plugin_attributes(…).to_clob) and maps every page but the global page', () => {
+  test('parses (wwv_flow_t_plugin_attributes(…).to_clob) and maps every page, (sprint 229) the global page too', () => {
     const { doc, report } = apexToDoc(F77536);
     assert.equal(doc.app.name, 'Demonstration - HR');
-    assert.equal(doc.pages.length, 44, '46 pages, without page 0 and (sprint 209) the login page of APEX_AUTHENTICATION.LOGIN');
+    assert.equal(doc.pages.length, 45, '46 pages, without (sprint 209) the login page of APEX_AUTHENTICATION.LOGIN; (sprint 229) page 0 is the Global Page');
+    assert.equal(doc.pages[0].page_no, 0);
     assert.ok(report.counts.mapped >= 300, `mapped ${report.counts.mapped}`);
     assert.ok(report.counts.mapped + report.counts.notes >= 452, `mapped with or without notes ${report.counts.mapped + report.counts.notes}`);
-    assert.ok(report.counts.not_mapped <= 10, `not mapped ${report.counts.not_mapped}`); // (sprint 209) the login page is one
+    assert.ok(report.counts.not_mapped <= 9, `not mapped ${report.counts.not_mapped}`); // (sprint 209) the login page is one; (sprint 229) the global page no more
   });
 
   test('charts, cards, calendar, faceted search, lists and classic reports of APEX 26.2 become pgkiln regions', () => {

@@ -69,6 +69,7 @@ src/
                            savedReportUser), report columns' lists of values looked up in the query (lovDisplay), grid column
                            validations (gridValidation), breadcrumb entries → parent_page, chart axes (chartAxes), ACL roles
                            (aclRole, ACCESS_CONTROL_SCOPE), dynamic content regions (plsqlAsHtml)
+                           (sprint 229) APEX's Global Page (page 0) is pgkiln's page 0, with its components (always normal)
   apex-saved-reports.ts    (sprint 211) apexSavedReports: an import's saved reports into meta.saved_report after meta.import_app,
                            in the import's transaction (region by page and static id; public ones owned by who imports)
   apex-check.ts            (sprint 192, NX-F5) sqlObjects (tables, sequences, pkg.proc calls of a SQL/PL/SQL text, statically),
@@ -211,7 +212,10 @@ src/
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
   qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
-  metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here)
+  metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here);
+                           (sprint 229, AX-8) loadPage reads the Global Page (page 0) with the page and mergeGlobalPage adds
+                           its regions, items, buttons, dynamic actions, computations, validations and processes (marked
+                           global_page, by sequence; a page's own item or button of the same name wins; branches stay the page's)
   maptiles.ts              map tile server URL, attribution and CSP origin
   geocode.ts               the installation's geocoder for address items (GEOCODER_URL, Nominatim search API)
   mvt.ts                   Mapbox Vector Tile encoding for map layers served as tiles
@@ -326,6 +330,9 @@ src/
     context.ts             PageContext, dbg()/timed() debug helpers, bind values, substitutions, public error messages, writeOut (streamed responses with back pressure)
     authz.ts               authorization schemes, conditions, visibility (menu requests count as buttons); (sprint 131)
                            step-up (mfa_minutes; StepUp sends the page's user to /login/2fa?next=)
+                           (sprint 229) applyGlobalGate (in checkPageAccess and computeVisibility, once): page 0's Authorization
+                           and Page requires sign-in, else dropGlobal takes its components out (loadContext already for a user
+                           who isn't signed in, before URL items); routes.ts never shows page 0 itself (pageNo > 0)
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it; sprint 209: each load process in a savepoint), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
@@ -469,11 +476,14 @@ src/
     pages-report.ts        (sprint 193, NX-F3) the app home's Pages report: Alias, Type, Updated, Updated by (meta.page_change),
                            filters with counts (filterPages, a facet without its own filter), sortPages, the column chooser
                            (PAGE_COLUMNS, meta.developer.page_columns, POST /builder/page-columns)
-    page-type.ts           (sprint 193) pageType(): a page's type from its regions (the main region rule), pageTypeKey()
+    page-type.ts           (sprint 193) pageType(): a page's type from its regions (the main region rule), pageTypeKey();
+                           (sprint 229) 'global' for page 0 (pages-report.ts: no Run link, "On every page")
     wizards.ts             create page wizards: step 2 forms per page type (defaults from meta.wizard_defaults), POST → meta.generate_page
     create-page.ts         (137) Create page: the grid of page types with SVG previews (tabs Component / Feature / Copy), the table step,
                            Create page as copy (step per app and page, shared components mapped or copied → meta.copy_page)
                            (sprint 197, NX-U4) the quick forms Create pages from a table and Create blank page above the grid
+                           (sprint 229, AX-8) the Global Page tile (?type=global, while the app has no page 0) → POST /apps/:id/pages
+                           with page_no 0 (routes.ts: a page number must be typed; 0 is never modal); copy to and from page 0
     features.ts            (137) Add feature: review (what it adds) and install, once, of Access control, Activity reporting,
                            Configuration options, E-mail reporting, Feedback, About, Login page, Theme style selection, Push
                            (the generators are PL/pgSQL in migration 047: catalog, defaults, form/cards/calendar/chart/map/facets/master-detail)
@@ -540,6 +550,8 @@ src/
     shared.ts              Shared Components and access control
     designer.ts            page designer: component tree (with computations and branches), layout canvas and gallery, property editor, toolbar;
                            (sprint 86) GET /builder/apps/:app/pages/:no, /builder/pages/:id redirects browsers there (designerUrl in ui.ts)
+                           (sprint 229) page 0: the Global Page note, Run opens the home page, Quick edit finds a P0_ item on page 0,
+                           renumbering or deleting page 0 leaves the application's lock and comments (page_no 0) alone
     errors.ts              (sprint 86) the builder's HTML 404 and 500 pages for browsers (wantsHtml, a not-found handler and an onSend hook)
     arrange.ts             page designer layout changes: move, column span, create from the gallery, undo / redo;
                            (sprint 195) sub regions: moveComponent's parent (targetParent: one level), CONTAINER_LABELS (the gallery's
@@ -637,7 +649,8 @@ src/
                            query), takeComponentType() / applyComponentType() (designer.ts POST /c/region), arrange.ts createComponent
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
-    advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check
+    advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check; (sprint 229) globalPageFindings:
+                           links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
                            application and page checksums; Change history (filters, diffHtml of a change); the icon browser
                            /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application);

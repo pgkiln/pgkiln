@@ -48,7 +48,7 @@ try {
   const user = new Browser(app);
   const login = await user.login('demo', 'demo', alias);
   if (login.statusCode !== 303) throw new Error(`demo / demo can't sign in (${login.statusCode})`);
-  const pages = (await owner.query<{ page_no: number; name: string }>('select page_no, name from meta.page where app_id = $1 order by 1', [a.id])).rows;
+  const pages = (await owner.query<{ page_no: number; name: string }>('select page_no, name from meta.page where app_id = $1 and page_no > 0 order by 1', [a.id])).rows;
   for (const p of pages) {
     const res = await user.get(`/a/${alias}/${p.page_no}`);
     const error = /class="alert alert-error"[^>]*>([\s\S]{0,300})/.exec(res.body)?.[1];

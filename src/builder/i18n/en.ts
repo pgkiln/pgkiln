@@ -8499,4 +8499,14 @@ export const en = {
   "gallery.region.template_component:ut_media_list": "Media List",
   "gallery.region.template_component:ut_metric_card": "Metric Card",
   "gallery.region.template_component:ut_timeline": "Timeline",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': 'Global Page',
+  'gp.global_page': 'Global Page',
+  'gp.tile_help': 'Page 0: regions, items, dynamic actions and processes on every page.',
+  'gp.create_intro': 'Page 0 is part of every page of the application: its regions (in their positions), items, buttons, dynamic actions, computations, validations and processes are added to each page. It is never opened by itself. Its Authorization and Page requires sign-in decide who gets them; name its items P0_….',
+  'gp.create': 'Create Global Page',
+  'gp.not_modal': 'The Global Page (page 0) is a normal page, never a modal dialog.',
+  'gp.on_every_page': 'On every page',
+  'gp.designer_note': 'Page 0 is the Global Page: its components are part of every other page of this application, and it is never opened by itself. Its lock and comments are the application\'s.',
+  'gp.run_title': 'Run the home page (page {n}), which shows the Global Page',
 } as const;

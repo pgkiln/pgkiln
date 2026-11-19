@@ -14,6 +14,15 @@ All notable changes to this project are documented here. The format follows
 - **Template components as region types of their own** (sprint 231, AX-14): the Page Designer's gallery and region
   Type list offer Avatar, Badge, Comments, Content Row, Media List, Metric Card and Timeline, as APEX; a region of one
   shows the component as its type. Stored as before (`template_component` with `config.component`).
+- **The Global Page** (sprint 229, AX-8; migration 187; APEX: page 0): an application can have a page 0 whose
+  regions, items, buttons, dynamic actions, computations, validations and processes are part of every other page
+  (branches stay each page's own). **Create page → Global Page** makes it; the Page Designer opens it at
+  `/builder/apps/<id>/pages/0` and the Pages report shows it as *Global Page*, *On every page*. Page 0 is never
+  opened by itself; its Authorization and *Page requires sign-in* decide who gets its components. The Advisor
+  reports links, buttons and menu entries to page 0, branches on it and items not named `P0_…`. Copies, exports,
+  text files (`pages/0000-global-page/`), working copies and the MCP tool `get_page` carry it, and the APEX importer
+  now imports APEX's Global Page (page 0 of app 77536 is no longer skipped). HR: a managers' notice of pending
+  leave requests on every page (`hr_95_global_page.sql`).
 
 ### Changed
 - The App Builder's applications report shows **Updated by**, **Working copies** and a **Lock** column at every

@@ -21,6 +21,8 @@ export const PAGE_TYPES = [
   'report', 'classic_report', 'grid', 'form', 'facets', 'smart_filters', 'dashboard', 'chart', 'cards', 'calendar', 'map',
   'tree', 'tasks', 'workflows', 'workflow_diagram', 'template_component', 'list', 'search', 'data_reporter', 'form_designer',
   'ai_assistant', 'plugin', 'url', 'dynamic', 'login', 'static', 'blank',
+  // (sprint 229, AX-8) page 0: the Global Page, whatever its regions are
+  'global',
 ] as const;
 export type PageType = (typeof PAGE_TYPES)[number];
 
@@ -42,5 +44,6 @@ export function pageType(regions: readonly { type: string; seq?: number | null; 
 export function pageTypeKey(t: PageType): BuilderKey {
   if (t === 'dashboard') return 'wiz.kind.dashboard';
   if (t === 'blank') return 'app.type.blank';
+  if (t === 'global') return 'app.type.global';
   return `gallery.region.${t}` as BuilderKey;
 }

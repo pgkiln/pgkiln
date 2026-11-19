@@ -196,7 +196,7 @@ export async function pagesReport(s: Session & { username?: string | null }, a: 
   const grouped = groups.length > 0 || rows.some((p) => p.page_group);
   const typeLabel = (t: PageType) => tx(pageTypeKey(t));
   const modeLabel = (m: string) => (m === 'modal' ? tx('pdz.modal_dialog') : tx('pdz.normal'));
-  const pages = rows.map((p) => ({ ...p, type: pageType(p.region_types), locked: lockOf.has(p.page_no) }));
+  const pages = rows.map((p) => ({ ...p, type: p.page_no === 0 ? ('global' as const) : pageType(p.region_types), locked: lockOf.has(p.page_no) }));
   const shown = sortPages(filterPages(pages, f), sort, typeLabel);
   const columns = chosenColumns(dev?.page_columns ?? null).filter((c) => c !== 'group' || grouped);
 
@@ -291,7 +291,7 @@ export async function pagesReport(s: Session & { username?: string | null }, a: 
         <thead><tr>${th('page', tx('app.col.page'), 'num')}${th('name', tx('ab.col.name'))}${columns.map((c) => th(sortKey(c), tx(COLUMN_LABEL[c]), colClass(c)))}<th class="col-actions"><span class="sr-only">${tx('common.run')}</span></th></tr></thead>
         <tbody id="pages-rows">${shown.map((p) => html`<tr>
           <td class="num">${p.page_no}</td><td><a href="${designerUrl(a.id, p.page_no)}">${p.name}</a>${commentsPerPage.get(p.page_no) ? html` <span class="tag" title="${tx('app.dev_comments')}">${tx(commentsPerPage.get(p.page_no) === 1 ? 'app.comments_one' : 'app.comments', { n: commentsPerPage.get(p.page_no) })}</span>` : ''}${issues.tag(p.page_no)}</td>${columns.map((c) => cell(p, c))}
-          <td class="col-actions"><a href="/a/${a.alias}/${p.alias}" target="_blank" rel="noopener">${tx('common.run')} ▸</a></td></tr>`)}</tbody>
+          <td class="col-actions">${p.page_no === 0 ? html`<span class="muted small">${tx('gp.on_every_page')}</span>` : html`<a href="/a/${a.alias}/${p.alias}" target="_blank" rel="noopener">${tx('common.run')} ▸</a>`}</td></tr>`)}</tbody>
       </table></div>`;
 
   return html`${bar}${region(tx('app.tab.pages'), html`${filters}${body}${f.q && !shown.length ? html`<p class="muted">${tx('app.no_match', { q: f.q })}</p>` : !shown.length ? html`<p class="muted">${tx('app.filter.none')}</p>` : ''}`)}`;

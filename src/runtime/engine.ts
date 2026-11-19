@@ -48,7 +48,8 @@ const rowVersion = async (c: Client, table: string, r: Region, columns: string[]
   ((await c.query('select meta.row_version($1::regclass, $2, $3, $4, $5) as v', [table, r.pk_column, String(pk), columns, lock])).rows[0]?.v as string | null) ?? null;
 
 export function clearPageItems(ctx: PageContext) {
-  for (const i of ctx.page.items) delete ctx.session.state[i.name];
+  // (sprint 229) the Global Page's items (P0_) are not this page's: clearing the page keeps them, as in APEX
+  for (const i of ctx.page.items) if (!i.global_page) delete ctx.session.state[i.name];
 }
 
 /** Names a SQL process may assign: application items and this page's items. */

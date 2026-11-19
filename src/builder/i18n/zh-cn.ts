@@ -8494,4 +8494,14 @@ export const zhCN: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "媒体列表",
   "gallery.region.template_component:ut_metric_card": "指标卡",
   "gallery.region.template_component:ut_timeline": "时间线",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': '全局页面',
+  'gp.global_page': '全局页面',
+  'gp.tile_help': '页面 0：显示在每个页面上的区域、项、动态操作和流程。',
+  'gp.create_intro': '页面 0 是应用程序每个页面的一部分：其区域（在各自位置）、项、按钮、动态操作、计算、验证和流程会添加到每个页面。它从不单独打开。其授权和“页面需要登录”决定谁能看到它们；其项命名为 P0_…。',
+  'gp.create': '创建全局页面',
+  'gp.not_modal': '全局页面（页面 0）是普通页面，不能是模态对话框。',
+  'gp.on_every_page': '在每个页面上',
+  'gp.designer_note': '页面 0 是全局页面：其组件是此应用程序所有其他页面的一部分，且从不单独打开。其锁定和注释属于应用程序。',
+  'gp.run_title': '运行显示全局页面的主页（页面 {n}）',
 };

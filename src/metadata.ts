@@ -180,7 +180,7 @@ export interface App {
   static_files: StaticInclude[];
 }
 
-export interface Region {
+export interface Region extends FromGlobal {
   id: number;
   seq: number;
   title: string | null;
@@ -220,7 +220,7 @@ export type ItemType =
   // (151) image upload and autocomplete (presets of file and combobox, see presetItem), percent graph, display map
   | 'image_upload' | 'autocomplete' | 'percent_graph' | 'display_map';
 
-export interface Item {
+export interface Item extends FromGlobal {
   id: number;
   /** (066) CSS classes from ITEM_OPTIONS */
   template_options?: string[];
@@ -243,7 +243,7 @@ export interface Item {
   config: Record<string, any>;
 }
 
-export interface Button {
+export interface Button extends FromGlobal {
   id: number;
   region_id: number | null;
   seq: number;
@@ -302,7 +302,7 @@ export interface Condition {
   condition_value: string | null;
 }
 
-export interface Computation extends Condition {
+export interface Computation extends Condition, FromGlobal {
   id: number;
   seq: number;
   item_name: string;
@@ -334,7 +334,7 @@ export interface Branch extends Condition {
   authz: string | null;
 }
 
-export interface DynamicAction {
+export interface DynamicAction extends FromGlobal {
   id: number;
   seq: number;
   name: string;
@@ -380,7 +380,7 @@ export interface DynamicAction {
   server_condition_value?: string | null;
 }
 
-export interface Validation {
+export interface Validation extends FromGlobal {
   id: number;
   name: string;
   item_name: string | null;
@@ -401,7 +401,7 @@ export interface Validation {
   condition_value?: string | null;
 }
 
-export interface Process {
+export interface Process extends FromGlobal {
   id: number;
   name: string;
   type: 'form_dml' | 'grid_dml' | 'sql' | 'data_load' | 'invoke_api' | 'download' | 'chain' | 'workflow' | 'ai_generate' | 'plugin' | 'send_push' | 'send_email'
@@ -444,6 +444,8 @@ export interface Page extends PageSummary {
   page_template: 'standard' | 'minimal' | 'left_side_column' | 'right_side_column';
   /** (140) the page's help text (Markdown), shown by a help_text region */
   help: string | null;
+  /** (sprint 229, AX-8) merged from the Global Page (page 0): its page id, Authorization and Page requires sign-in */
+  global?: { page_id: number; authz: string | null; requires_auth: boolean; applied?: boolean };
 }
 
 /**
@@ -514,13 +516,46 @@ export function presetItem(i: Item): Item {
 }
 
 export async function loadPage(appId: number, pageNo: number) {
-  const page = await loadPageRows(appId, pageNo);
+  const rows = await loadPageRows(appId, pageNo);
+  const page = rows.find((p) => p.page_no === pageNo);
+  // (sprint 229, AX-8) the Global Page's components are part of every other page
+  const global = pageNo !== 0 ? rows.find((p) => p.page_no === 0) : undefined;
+  if (page && global) mergeGlobalPage(page, global);
   if (page) page.items = page.items.map(presetItem);
   return page;
 }
 
-function loadPageRows(appId: number, pageNo: number) {
-  return runtime.one<Page>(
+/** (sprint 229, AX-8) Marks a component that comes from the Global Page (page 0) on the page it is merged into. */
+export interface FromGlobal {
+  global_page?: true;
+}
+
+/**
+ * (sprint 229, AX-8; APEX: Global Page) The Global Page's regions, items, buttons, dynamic actions, computations,
+ * validations and processes added to a page, each marked global_page, in sequence order with the page's own (the
+ * page's own first at the same sequence); branches stay the page's own. A page's own item or button wins over the
+ * Global Page's of the same name. page.global keeps page 0's Authorization and Page requires sign-in, which decide in
+ * applyGlobalGate (runtime/authz.ts) whether the user gets them at all.
+ */
+export function mergeGlobalPage(page: Page, global: Page) {
+  const mark = <T extends object>(xs: T[]) => xs.map((x) => Object.assign(x, { global_page: true as const }));
+  const merge = <T extends { seq: number; id: number } & FromGlobal>(own: T[], g: T[]) =>
+    [...own, ...mark(g)].sort((a, b) => a.seq - b.seq || (a.global_page ? 1 : 0) - (b.global_page ? 1 : 0) || a.id - b.id);
+  const itemNames = new Set(page.items.map((i) => i.name));
+  const buttonNames = new Set(page.buttons.map((b) => b.name));
+  page.global = { page_id: global.id, authz: global.authz, requires_auth: global.requires_auth };
+  page.regions = merge(page.regions, global.regions);
+  page.items = merge(page.items, global.items.filter((i) => !itemNames.has(i.name)));
+  page.buttons = merge(page.buttons, global.buttons.filter((b) => !buttonNames.has(b.name)));
+  page.dynamic_actions = merge(page.dynamic_actions, global.dynamic_actions);
+  page.computations = merge(page.computations, global.computations);
+  page.validations = merge(page.validations as (Validation & { seq: number })[], global.validations as (Validation & { seq: number })[]);
+  page.processes = merge(page.processes as (Process & { seq: number })[], global.processes as (Process & { seq: number })[]);
+  page.static_includes = [...page.static_includes, ...global.static_includes.filter((g) => !page.static_includes.some((x) => x.name === g.name && !!x.ws === !!g.ws))];
+}
+
+async function loadPageRows(appId: number, pageNo: number) {
+  return (await runtime.query<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode, p.alias,
             p.protection, p.authz, p.warn_unsaved, p.page_template, p.help,
             ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
@@ -533,9 +568,9 @@ function loadPageRows(appId: number, pageNo: number) {
             ${agg('meta.branch', 'page_id', 'p', 'p.app_id')} as branches,
             ${includes('p.static_includes', 'p.app_id')} as static_includes
        from meta.page p
-      where p.app_id = $1 and p.page_no = $2 and meta.build_option_on(p.app_id, p.build_option)`,
+      where p.app_id = $1 and p.page_no in ($2, 0) and meta.build_option_on(p.app_id, p.build_option)`,
     [appId, pageNo],
-  );
+  )).rows;
 }
 
 /** The roles an account has in an application (resolved once, at sign-in). */

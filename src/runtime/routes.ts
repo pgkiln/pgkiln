@@ -20,7 +20,7 @@ import { english, type Translate } from '../i18n.ts';
 import { checksumExpired, checksumValid, loginWindowMinutes, urlChecksum } from '../security.ts';
 import { builderSsoFinish, enabledProviders, finishSignIn, loadProvider, ssoAccess, SsoError, startSignIn, type Provider, type SsoResult } from '../sso.ts';
 import { sessionLimits, clientIp, createSession, destroySession, getSession, loginThrottled, logActivity, saveState, takeFlash, type Session } from '../session.ts';
-import { checkPageAccess, computeVisibility, Forbidden, isAuthorized, StepUp } from './authz.ts';
+import { checkPageAccess, dropGlobal, computeVisibility, Forbidden, isAuthorized, StepUp } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
 import { startDebug } from '../debug.ts';
 import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
@@ -290,6 +290,9 @@ export async function loadContext(
   if (!page) return simplePage(reply, 404, locale.t('error.not_found'), locale.t('error.page_not_found', { page: req.params.page, app: app.name }), base, locale), null;
   if (locale.lang !== app.language) translatePage(page, locale.tr);
   const user = app.authentication === 'none' ? 'nobody' : (session.username ?? 'nobody');
+  // (sprint 229, AX-8) a Global Page that requires sign-in adds nothing for a user who isn't signed in: taken out
+  // here already, before the URL can set its items (its Authorization is checked with the page's, applyGlobalGate)
+  if (page.global?.requires_auth && app.authentication !== 'none' && user === 'nobody') dropGlobal(page);
   // (sprint 139, AP-6) the request's trace: which application (its workspace decides where it goes), page and user
   await traceApp({ appId: app.id, alias: app.alias, page: page.page_no, user });
 

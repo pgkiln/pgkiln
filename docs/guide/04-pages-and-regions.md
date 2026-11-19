@@ -2,7 +2,8 @@
 
 ## Pages
 
-A page has a number (unique in the app), a name, a title, an [alias](#page-alias), and these behaviours:
+A page has a number (unique in the app; 0 is the [Global Page](#the-global-page)), a name, a title, an
+[alias](#page-alias), and these behaviours:
 
 | Property | Values | Effect |
 |---|---|---|
@@ -41,6 +42,49 @@ to the old alias stop working. Exports carry the alias; an export made before mi
 from the page names, a copied page gets the next free variant, and an APEX import keeps APEX's page aliases
 (`LEAVE_REQUESTS` → `leave-requests`) where pgkiln can use them. The HR sample's pages have the aliases the
 migration gave them from their names: `/a/hr/dashboard`, `/a/hr/employees`, `/a/hr/leave-calendar`, …
+
+### The Global Page
+
+(sprint 229, migration 187; APEX: page 0, page type *Global Page*) An application can have one page with number
+**0**, the **Global Page**. Its components are part of every other page of the application: a notification banner,
+a help or chat drawer, an item every page reads, a dynamic action that runs everywhere, a computation that fills an
+item before each page is shown. **Create page → Global Page** makes it (the tile is there while the application has
+none; a blank page with number 0 is the same); the Page Designer opens it at `/builder/apps/<id>/pages/0`, and the
+Pages report shows it with type *Global Page* and *On every page* instead of *Run*.
+
+- **What every page gets**: page 0's regions (each in its own [display position](#side-columns-and-display-positions),
+  ordered by sequence among the page's own: at the same sequence the page's own comes first), items, buttons,
+  dynamic actions, computations, validations and processes. A process or computation of page 0 runs on every page
+  at its point (*On load*, *Before header*, *On submit*, *After submit*). **Branches** stay each page's own: one on
+  page 0 never runs (the [Advisor](03-builder.md) says so).
+- **Never opened by itself**: `/a/<app>/0` (and its alias) is *Page not found*, as is a lazy region or dynamic
+  action requested through page 0. In the Page Designer, **Run** opens the home page. A link, button or menu entry
+  to page 0 goes nowhere; the Advisor reports it.
+- **Who gets it**: page 0's **Authorization** and **Page requires sign-in** decide whether a user gets its
+  components at all; the page itself still opens. With sign-in required (the default), a public page or the login
+  page shows nothing of it to a user who isn't signed in. Then each component's own authorization scheme, server-side
+  condition and build option apply, as on any page; page 0's build option leaves all of it out. Its other settings
+  (title, mode, protection, template) have no effect, and it is always a normal page (never a modal dialog).
+- **Dialogs too**: as in APEX, modal pages get the Global Page as well. Keep a region off dialogs with the condition
+  *Current page is not a dialog* (`page_is_not_dialog`), or off chosen pages with *Current page is not in*
+  (`page_not_in`) or a SQL condition on `:APP_PAGE_ID`, the page being shown.
+- **Items** are named `P0_…` as in APEX (the Advisor notes other names). Their values are session state like any
+  page item's; clearing a page's cache (`?clear=1`, a branch's *Clear cache*) keeps them. A page's own item or button
+  of the same name wins over the Global Page's.
+- **Lock and comments**: a builder lock or developer comment on page 0 is the application's (page 0 has always
+  meant the whole application there): locking the Global Page locks the application, and deleting the Global Page
+  keeps the application's lock and comments.
+- **Copies, exports, files**: *Create page as copy* copies the Global Page into another application as its page 0
+  (or as a normal page, its items renamed `P0_` → `P<n>_`), and a page copied as page 0 becomes a Global Page (a
+  modal page becomes a normal one). Exports, imports, `pgkiln export --format text` (`pages/0000-global-page/…`),
+  `--only pages/0`, working copies and the MCP tool `get_page` (page 0) carry it like any page. The
+  [APEX importer](11-from-apex.md) maps APEX's Global Page to page 0 with its components.
+
+The HR sample's Global Page (`examples/hr/hr_95_global_page.sql`) shows managers a notice in the banner position
+on every page: how many leave requests wait for a decision (a computation on page 0 counts them into
+`P0_PENDING_LEAVE`), with *Review* (to Leave requests) and *Dismiss* (two dynamic actions: one sets
+`P0_LEAVE_NOTICE_SEEN` on the server, one hides the region). A SQL condition keeps it off Leave requests (6) and
+Leave request (7).
 
 ### Warn on unsaved changes
 

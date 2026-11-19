@@ -8494,4 +8494,14 @@ export const ja: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "メディア・リスト",
   "gallery.region.template_component:ut_metric_card": "メトリック・カード",
   "gallery.region.template_component:ut_timeline": "タイムライン",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': 'グローバル・ページ',
+  'gp.global_page': 'グローバル・ページ',
+  'gp.tile_help': 'ページ0: すべてのページに表示されるリージョン、アイテム、動的アクション、プロセス。',
+  'gp.create_intro': 'ページ0はアプリケーションのすべてのページの一部です。そのリージョン(各位置)、アイテム、ボタン、動的アクション、計算、検証、プロセスが各ページに追加されます。単独で開かれることはありません。認可と「ページにサインインが必要」で誰に表示するかが決まります。アイテム名は P0_… にします。',
+  'gp.create': 'グローバル・ページの作成',
+  'gp.not_modal': 'グローバル・ページ(ページ0)は通常のページで、モーダル・ダイアログにはできません。',
+  'gp.on_every_page': 'すべてのページ',
+  'gp.designer_note': 'ページ0はグローバル・ページです。そのコンポーネントはこのアプリケーションの他のすべてのページの一部であり、単独で開かれることはありません。ロックとコメントはアプリケーションのものです。',
+  'gp.run_title': 'グローバル・ページを表示するホーム・ページ(ページ{n})を実行',
 };
