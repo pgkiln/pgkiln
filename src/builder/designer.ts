@@ -10,6 +10,7 @@ import { wantsHtml } from './errors.ts';
 import { scopedTx as tx, tr } from './i18n.ts';
 import type { Session } from '../session.ts';
 import { buildOptionChoices, componentForm, lookups, saveComponent } from './forms.ts';
+import { withRegionAudit } from './region-props.ts';
 import { regionConfigHelp } from './region-help.ts';
 import { parseIncludes } from './static-files.ts';
 import { pageAliasProblem, type AliasProblem } from '../page-alias.ts';
@@ -99,6 +100,8 @@ export async function designerRoutes(app: FastifyInstance) {
     if (!p) return reply.code(404).send('Not found');
     const rows: Record<string, any[]> = {};
     for (const kind of PAGE_KINDS) rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where page_id = $1 order by seq, id`, [p.id])).rows;
+    // (sprint 230, AX-11) a region's Audit Information (meta.region_audit) for the property editor
+    await withRegionAudit(rows.region ?? []);
     const [lk, pages, shared] = await Promise.all([
       lookups(p.app_id, p.id),
       owner.query('select id, page_no, name from meta.page where app_id = $1 order by page_no', [p.app_id]).then((r) => r.rows),

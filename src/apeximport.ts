@@ -21,6 +21,7 @@ import { codeMask, plsqlAsHtml, plsqlAsSql, translateOracle } from './oracle-sql
 import { pageAliasProblem } from './page-alias.ts';
 import { ApexId, joinSplitExport, parseApexCalls, type ApexCall, type ApexValue } from './apexparse.ts';
 import type { Doc } from './appfiles.ts';
+import { apexRegionProps } from './apex-region-props.ts';
 import { APEX_VIEWS, emptyUses, qualifyTables, soleTableColumn, sqlObjects, type Uses } from './apex-check.ts';
 
 // ------------------------------------------------------------------ report
@@ -1005,6 +1006,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       authz: authz(a, e),
       build_option: bo(a, e),
       rest_source: null,
+      // (sprint 230, AX-9..11) Layout, Appearance, Accessibility, Advanced, Header and Footer, Comments
+      ...apexRegionProps(a, span && span >= 1 && span <= 12 ? span : 12, (m) => e.note(m)),
     };
     const point = (str(a, 'p_plug_display_point') ?? 'BODY').toUpperCase();
     if (point === 'REGION_POSITION_01') row.position = 'breadcrumb';

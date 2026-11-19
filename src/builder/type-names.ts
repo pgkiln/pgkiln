@@ -79,6 +79,10 @@ export const TYPE_NAME_LISTS: Record<string, readonly [string, Record<string, st
   'process.type': ['pd.process_type', PROCESS_TYPE_LABELS],
   'validation.type': ['pd.validation_type', VALIDATION_TYPE_LABELS],
   'computation.type': ['pd.computation_type', COMPUTATION_TYPE_LABELS],
+  // (sprint 230, AX-10, AX-11) a region's Render Components, Customization and Landmark Type
+  'region.render_components': ['pe.render', { above: 'Above content', below: 'Below content' }],
+  'region.customization': ['pe.customization', { shown: 'Customizable and shown by default', hidden: 'Customizable and hidden by default' }],
+  'region.landmark_type': ['pe.landmark', { region: 'Region', navigation: 'Navigation', search: 'Search', complementary: 'Complementary', banner: 'Banner', contentinfo: 'Content info', main: 'Main' }],
 };
 
 /**

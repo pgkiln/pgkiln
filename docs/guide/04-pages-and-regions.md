@@ -193,6 +193,9 @@ drawer with position **footer** shows in its footer, before its buttons: the hea
 the body scrolls (a total, a short note, a link). HR's page 44 has one in its Help drawer. The carousel is a style of the [display selector](#display_selector-region-display-selector)
 region (`{"style": "carousel"}`). The HR example's page 44 (*Region templates*) shows them all.
 
+(sprint 230) A region can also start a new row or a given column of the grid, and have its own classes: see
+[region properties](#region-properties).
+
 Every region also has `seq` (order), a [server-side condition](06-processing.md#server-side-conditions)
 (`condition_type`, `condition` as its expression, `condition_value`; without a type `condition` is a SQL
 boolean expression; the region renders only when it holds) and `authz` (an authorization scheme).
@@ -236,6 +239,47 @@ The HR example's page 53 (*Department overview*) has a tabs container with a rep
 refreshes only it), a form (its *Save* at the end of the bottom bar) and a chart, a tab for administrators only, a
 flexbox container with three key figures and a collapsible region with two sub regions; the containers are shown
 once a department is chosen (their condition applies to all their sub regions).
+
+### Region properties
+
+(sprint 230, migration 188; APEX: the region's property groups in the Page Designer) The property editor shows a
+region's properties in APEX's groups and order: **Identification**, **Source**, **Layout**, **Appearance**,
+**Accessibility**, **Advanced**, **Header and footer**, **Server-side condition**, **Read only**, **Security**,
+**Server cache**, **Customization**, **Configuration** (the build option), **Comments** and **Audit information**; the
+region type's own settings are on the *Attributes* tab. Every property has help in the editor; the names follow the
+builder's language. In SQL they are columns of `meta.region` (all optional: an export made before 0.111 imports
+unchanged).
+
+| Group | Property (`column`) | On the page |
+|---|---|---|
+| Layout | Slot (`position`) | Where the region shows (see [side columns and display positions](#side-columns-and-display-positions)) |
+| Layout | Start new row (`new_row`) | The region begins a new row of the 12-column grid (otherwise it goes beside the one before while they fit) |
+| Layout | Column (`grid_column`, 1–12; empty: Automatic) | The column it starts in: `4` leaves three empty columns before it; two regions of 4 columns, the second starting in column 9, have a gap between them. A span that would run past column 12 is cut to fit |
+| Layout | Column span (`columns`) | Its width in columns |
+| Layout | Row CSS classes (`row_css_classes`) | With *Start new row*: the row becomes an element of its own, `<div class="t-row …">`, holding this region and the ones after it up to the next region that starts a new row |
+| Layout | Column CSS classes, Column attributes (`column_css_classes`, `column_attributes`) | On the region's grid column: in pgkiln's grid that is the region's element itself |
+| Appearance | Template, Template options | (moved here from Layout, as in APEX) |
+| Appearance | CSS classes (`css_classes`) | Your own classes on the region (letters, digits, `_` and `-`) |
+| Appearance | Icon (`icon`) | Before the title (standard, collapsible, title bar, inline dialog and drawer) and as the hero template's icon |
+| Appearance | Render components (`render_components`: `above` / `below`) | The region's items above or below its content (static content, a chart, a map …); below by default |
+| Accessibility | Use landmark (`use_landmark`) | Off: the region is no landmark (no accessible name) |
+| Accessibility | Landmark type (`landmark_type`) | Its ARIA role: `navigation`, `search`, `complementary`, `banner`, `contentinfo`, `main` or `region` |
+| Accessibility | Landmark label (`landmark_label`) | Its accessible name (`aria-label`) instead of the title; `&ITEM.` substitutions |
+| Advanced | HTML DOM ID (`dom_id`) | The `id` of the region's content (`<div class="region-content" id="…">`). The region's own element keeps `id="R<id>"`, which pgkiln's scripts use, and `data-static-id` |
+| Advanced | Custom attributes (`custom_attributes`) | `name="value"` pairs on the region's element: `data-*`, `aria-*` (not `aria-label`, `aria-labelledby` or `aria-hidden`), `title`, `lang`, `dir`, `tabindex` and `translate`. Values may use `&ITEM.` (escaped). Event handlers (`on…`), `style`, `id`, `class`, `role` and URL attributes are refused by the builder and never written into the page |
+| Advanced | Region display selector | The region is a tab of the page's [display selector](#display_selector-region-display-selector) (`{"display_selector": true}` or a tab name in its settings) |
+| Advanced | Exclude title from translation (`title_no_translate`) | The title stays as it is in every language and is not offered for translation |
+| Header and footer | Header text, Footer text (`header_text`, `footer_text`) | HTML above and below the content, like static content: `&ITEM.` substitutions are escaped, shortcuts expanded, translated with the application |
+| Read only | Type, expression, value (`readonly_type`, `readonly_expr`, `readonly_value`) | A [server-side condition](06-processing.md#server-side-conditions): while it holds, the items of the region and of its sub regions are read-only (a submit can't change them) and an interactive grid in it has no *Save*. A broken SQL condition counts as read-only |
+| Server cache | Caching | Shown here; set on the *Attributes* tab (see [region caching](#large-tables)) |
+| Customization | Customization (`customization`: `shown` / `hidden`), Customized option name (`customization_name`) | A signed-in user may show or hide the region with the page's **Customize** link (under the page): it lists the customizable regions the user may see, shown or hidden until the user chooses. The choice is a [user preference](06-processing.md) (`PGKILN_REGIONS_P<page>`); the public user sees the defaults |
+| Comments | Comments (`comments`) | Notes for developers, not shown |
+| Audit information | Created on / by, Last updated on / by | Read-only. Kept by the builder in `meta.region_audit` (not exported; *import --replace* keeps a region's creation) |
+
+The HR example's page 57 (*Region layout*, under Administration) uses them: a row with its own classes, a region
+with a gap before it and one starting in column 4, icons, items above their text, a navigation landmark, an HTML DOM
+ID, custom attributes, header and footer text, notes that are read-only in *View* mode, two customizable regions and
+a title kept in Dutch.
 
 ### Template options
 

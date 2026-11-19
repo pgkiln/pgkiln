@@ -25,6 +25,10 @@ export interface Visibility {
   editable: Set<string>;
   buttons: Map<string, Button>;
   dynamicActions: Set<number>;
+  /** (sprint 230, AX-11) regions whose Read Only condition holds (and their sub regions) */
+  readonly?: Set<number>;
+  /** (sprint 230, AX-11) the customizable regions the user may see, and whether each shows (the Customize link) */
+  customizable?: Map<number, boolean>;
 }
 
 export interface PageContext {

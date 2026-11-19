@@ -352,7 +352,7 @@ export async function duplicateComponent(c: Q, pid: number, kind: LayoutKind, id
   if (kind === 'region') {
     const staticId = row.static_id && !same && !(await c.query('select 1 from meta.region where page_id = $1 and static_id = $2', [toPid, row.static_id])).rowCount ? row.static_id : null;
     // (172) a sub region copied to another page goes to its page level; a container brings its sub regions along
-    copy = await copyRow(c, 'region', id, { page_id: toPid, static_id: staticId, parent_id: same ? row.parent_id : null });
+    copy = await copyRow(c, 'region', id, { page_id: toPid, static_id: staticId, parent_id: same ? row.parent_id : null, ...(same ? { dom_id: null } : {}) });
     const copyRegion = async (from: number, to: number) => {
       for (const k of ['item', 'button'] as const)
         for (const x of (await c.query(`select id, name from ${COMPONENTS[k].table} where region_id = $1 order by seq, id`, [from])).rows) await copyChild(k, x, to);
@@ -360,7 +360,7 @@ export async function duplicateComponent(c: Q, pid: number, kind: LayoutKind, id
     await copyRegion(id, copy);
     for (const sub of (await c.query('select id, static_id from meta.region where parent_id = $1 order by seq, id', [id])).rows) {
       const subStatic = sub.static_id && !(await c.query('select 1 from meta.region where page_id = $1 and static_id = $2', [toPid, sub.static_id])).rowCount ? sub.static_id : null;
-      await copyRegion(sub.id, await copyRow(c, 'region', sub.id, { page_id: toPid, static_id: subStatic, parent_id: copy, position: row.position }));
+      await copyRegion(sub.id, await copyRow(c, 'region', sub.id, { page_id: toPid, static_id: subStatic, parent_id: copy, position: row.position, ...(same ? { dom_id: null } : {}) }));
     }
   } else copy = await copyChild(kind, row, same ? row.region_id : null);
   await moveComponent(c, toPid, kind, copy, place);

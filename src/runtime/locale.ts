@@ -243,7 +243,11 @@ export function translatePage(page: Page, tr: (s: string) => string) {
   page.name = tr(page.name);
   if (page.title) page.title = tr(page.title);
   for (const r of page.regions) {
-    if (r.title) r.title = tr(r.title);
+    // (sprint 230, AX-11) Exclude Title from Translation; Header Text and Footer Text are translated
+    if (r.title && !r.title_no_translate) r.title = tr(r.title);
+    if (r.header_text) r.header_text = tr(r.header_text);
+    if (r.footer_text) r.footer_text = tr(r.footer_text);
+    if (r.landmark_label) r.landmark_label = tr(r.landmark_label);
     const c = r.config ?? {};
     if (typeof c.empty === 'string') c.empty = tr(c.empty);
     if (c.headings) for (const k of Object.keys(c.headings)) c.headings[k] = tr(c.headings[k]);
@@ -290,7 +294,9 @@ export async function translatableTexts(appId: number, q: { query: (sql: string,
          union all select title, 'page ' || page_no || ' title' from meta.page where app_id = $1
          union all select label, 'navigation' from meta.nav_entry where app_id = $1
          union all select error_message, 'authorization ' || name from meta.authz_scheme where app_id = $1
-         union all select r.title, 'page ' || p.page_no || ' region' from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1
+         union all select r.title, 'page ' || p.page_no || ' region' from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1 and r.title_no_translate is not true
+         union all select x.t, 'page ' || p.page_no || ' region header, footer or landmark' from meta.region r join meta.page p on p.id = r.page_id,
+                          unnest(array[r.header_text, r.footer_text, r.landmark_label]) x(t) where p.app_id = $1
          union all select r.config->>'empty', 'page ' || p.page_no || ' region' from meta.region r join meta.page p on p.id = r.page_id where p.app_id = $1
          union all select h.value, 'page ' || p.page_no || ' heading' from meta.region r join meta.page p on p.id = r.page_id,
                           jsonb_each_text(case when jsonb_typeof(r.config->'headings') = 'object' then r.config->'headings' else '{}' end) h where p.app_id = $1

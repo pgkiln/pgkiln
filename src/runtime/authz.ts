@@ -8,6 +8,7 @@ import { selectionOf } from './report.ts';
 import { unprotectedHidden } from './items.ts';
 import { conditionHolds, conditionOf, serverConditionOf } from './logic.ts';
 import { restrictColumns } from './column-access.ts';
+import { customizedRegions, readOnlyRegions } from './region-props.ts';
 
 export class Forbidden extends Error {}
 /** (sprint 131) The page needs a second step more recent than the session's: ask for one, then come back. */
@@ -125,6 +126,9 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
   for (const r of ctx.page.regions)
     if ((await isAuthorized(ctx, r.authz)) && (await conditionHolds(ctx, conditionOf(r), `condition of region "${r.title ?? r.id}"`)))
       vis.regions.add(r.id);
+  // (sprint 230, AX-11) Customization: a customizable region the user chose to hide (or hidden by default) is left out
+  vis.customizable = await customizedRegions(ctx, vis.regions);
+  for (const [id, on] of vis.customizable) if (!on) vis.regions.delete(id);
   // (172) a sub region shows only where its parent shows (its authorization, condition and build option)
   for (const r of ctx.page.regions) if (r.parent_id != null && !vis.regions.has(r.parent_id)) vis.regions.delete(r.id);
   // (sprint 210, AX-1) a column whose authorization or condition fails is left out of its region's source; also in a
@@ -133,6 +137,8 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
   for (const r of ctx.page.regions)
     if (vis.regions.has(r.id) || !r.rest_source) await restrictColumns(ctx, r, check);
 
+  // (sprint 230, AX-11) Read Only: the items of a region whose read-only condition holds are not editable
+  const readonly = (vis.readonly = await readOnlyRegions(ctx, vis.regions));
   for (const i of ctx.page.items) {
     if (i.region_id !== null && !vis.regions.has(i.region_id)) continue;
     if (!(await isAuthorized(ctx, i.authz))) continue;
@@ -145,6 +151,7 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
       continue;
     }
     if (i.type === 'hidden' || i.type === 'display' || i.type === 'qrcode' || i.type === 'image' || i.type === 'percent_graph' || i.type === 'display_map') continue;
+    if (i.region_id !== null && readonly.has(i.region_id)) continue;
     // fail closed: a broken read-only condition makes the item read-only
     if (i.readonly_condition && (await sqlTrue(ctx, i.readonly_condition, `read-only condition of ${i.name}`, true))) continue;
     vis.editable.add(i.name);
@@ -176,7 +183,7 @@ export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
 
   // an editable grid brings its own Save button
   for (const r of ctx.page.regions)
-    if (r.type === 'grid' && vis.regions.has(r.id) && ctx.page.processes.some((p) => p.type === 'grid_dml' && p.region_id === r.id))
+    if (r.type === 'grid' && vis.regions.has(r.id) && !readonly.has(r.id) && ctx.page.processes.some((p) => p.type === 'grid_dml' && p.region_id === r.id))
       vis.buttons.set(saveRequest(r), saveButton(r));
 
   for (const d of ctx.page.dynamic_actions)

@@ -19060,3 +19060,105 @@ describe('sprint 229 AX-8', () => {
     }
   });
 });
+
+describe('sprint 230 AX-9..11', () => {
+  // a region's Custom and Column Attributes, CSS classes, header and footer text, landmark label, DOM id, Read Only and
+  // the Customize link (migration 188, src/runtime/region-props.ts)
+  let app230: FastifyInstance;
+  let page230: number;
+  const A = 'ts-sec230';
+  const reg = async (title: string, cols: Record<string, unknown>) => {
+    const keys = Object.keys(cols);
+    return (await owner.one(`insert into meta.region (page_id, seq, title, type, source, ${keys.join(', ')}) values ($1, 10, $2, 'static', '<p>x</p>', ${keys.map((_, i) => `$${i + 3}`).join(', ')}) returning id`,
+      [page230, title, ...Object.values(cols)])).id as number;
+  };
+  before(async () => {
+    app230 = await buildApp({ logger: false });
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    const a = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec 230', 'none', 'hr_app') returning id`, [A])).id;
+    page230 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [a])).id;
+    await owner.query(`insert into meta.item (page_id, seq, name, label, type) values ($1, 10, 'P1_EVIL', 'Evil', 'text')`, [page230]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    await app230.close();
+  });
+
+  test('custom and column attributes: no event handlers, style, id or class, whatever is stored; values escaped, also substituted ones', async () => {
+    await reg('Attrs', {
+      custom_attributes: `onclick="alert(1)" ONMOUSEOVER=alert(2) style="background:url(x)" id="evil" class="x" data-ok="a&quot;b" title="&P1_EVIL." srcdoc="<script>" href="javascript:x"`,
+      column_attributes: `data-v='"><script>alert(3)</script>' formaction="x" aria-label="hijack" role="button" tabindex="1 onfocus=x"`,
+    });
+    const b = new FileBrowser(app230);
+    await b.get(`/a/${A}/1`);
+    await b.submit(`/a/${A}/1`, { P1_EVIL: '"><img src=x onerror=alert(4)>' });
+    const page = (await b.get(`/a/${A}/1`)).body;
+    const tag = /<section[^>]*data-ok[^>]*>/.exec(page)?.[0] ?? '';
+    assert.ok(tag, 'the region renders');
+    // the element's attributes (names outside the quoted values): pgkiln's own and the allowed ones only
+    assert.deepEqual([...tag.matchAll(/\s([\w:-]+)(?:="[^"]*")?/g)].map((m) => m[1]), ['class', 'id', 'data-ok', 'title', 'data-v', 'aria-labelledby']);
+    assert.match(tag, / id="R\d+"/);
+    assert.match(tag, / data-ok="a&amp;quot;b"/);
+    assert.match(tag, / title="&quot;&gt;&lt;img src=x onerror=alert\(4\)&gt;"/);
+    assert.match(tag, / data-v="&quot;&gt;&lt;script&gt;alert\(3\)&lt;\/script&gt;"/);
+    assert.doesNotMatch(page, /<img src=x|<script>alert/);
+  });
+
+  test('header and footer text: substitutions escaped; landmark label escaped; the database refuses odd class lists, DOM ids and landmark types', async () => {
+    await reg('Texts', { header_text: '<p>[h:&P1_EVIL.]</p>', footer_text: '<p>[f:&P1_EVIL.]</p>', landmark_label: 'L &P1_EVIL.' });
+    const b = new FileBrowser(app230);
+    await b.get(`/a/${A}/1`);
+    await b.submit(`/a/${A}/1`, { P1_EVIL: '<script>alert(5)</script>"' });
+    const page = (await b.get(`/a/${A}/1`)).body;
+    assert.match(page, /\[h:&lt;script&gt;alert\(5\)&lt;\/script&gt;&quot;\]/);
+    assert.match(page, /\[f:&lt;script&gt;alert\(5\)&lt;\/script&gt;&quot;\]/);
+    assert.match(page, /aria-label="L &lt;script&gt;alert\(5\)&lt;\/script&gt;&quot;"/);
+    assert.doesNotMatch(page, /<script>alert\(5\)/);
+    for (const [col, v] of [['css_classes', 'a" onclick="x'], ['row_css_classes', 'a<b'], ['column_css_classes', 'a;b'], ['dom_id', 'x" onclick="y'], ['landmark_type', 'button" x="'],
+      ['icon', '"><svg onload=x>'], ['render_components', 'middle'], ['customization', 'always'], ['readonly_type', 'sql']] as const)
+      await assert.rejects(owner.query(`update meta.region set ${col} = $2 where page_id = $1`, [page230, v]), /check constraint/, col);
+  });
+
+  test('Read Only fails closed: a broken condition makes the region\'s items read-only', async () => {
+    const r = await reg('RO', { readonly_type: 'sql', readonly_expr: 'no_such_column = 1' });
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 20, 'P1_RO', 'RO', 'text')`, [page230, r]);
+    const b = new FileBrowser(app230);
+    await b.get(`/a/${A}/1`);
+    await b.submit(`/a/${A}/1`, { P1_RO: 'set-by-post' });
+    const page = (await b.get(`/a/${A}/1`)).body;
+    assert.match(page, /<div class="field field-text readonly" data-item="P1_RO">/);
+    assert.doesNotMatch(page, /set-by-post/);
+  });
+
+  test('the Customize link: token, signed-in users only, and only regions the user may see and that are customizable', async () => {
+    const hr = (await owner.one(`select p.id from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.page_no = 57`)).id;
+    const secret = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, authz, customization, static_id) values ($1, 900, 'Sec230 secret', 'static', '<p>sec230-secret</p>', 'NO_SUCH_SCHEME', 'shown', 'sec230-secret') returning id`, [hr])).id;
+    try {
+      const b = new FileBrowser(app);
+      await b.login('king');
+      assert.doesNotMatch((await b.get('/a/hr/57')).body, /sec230-secret/);
+      assert.equal((await b.post('/a/hr/57/customize', { __csrf: 'forged', show: 'sec230-secret' })).statusCode, 403);
+      await b.submit('/a/hr/57/customize', { show: ['sec230-secret', 'related', 'tips'] });
+      const page = (await b.get('/a/hr/57')).body;
+      assert.doesNotMatch(page, /sec230-secret/, 'an unauthorized region stays hidden');
+      assert.match(page, />Related pages<\/h2>/, 'a region that is not customizable can\'t be hidden');
+      const pref = JSON.parse((await owner.one(`select value from meta.user_preference where name = 'PGKILN_REGIONS_P57' and username = 'king'`)).value);
+      assert.deepEqual(Object.keys(pref).sort(), ['shortcuts', 'tips']);
+      // the public user may not store a choice
+      const pub = new FileBrowser(app230);
+      await pub.get(`/a/${A}/1`);
+      assert.equal((await pub.submit(`/a/${A}/1/customize`, { show: 'x' })).statusCode, 403);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [secret]);
+      await owner.query(`delete from meta.user_preference where name = 'PGKILN_REGIONS_P57'`);
+    }
+  });
+
+  test('the audit information is builder state: the application\'s role can\'t read it', async () => {
+    const n = await owner.tx(async (c) => {
+      await c.query('set local role hr_app');
+      return c.query('select count(*) from meta.region_audit').then(() => 'read', (e: Error) => e.message);
+    });
+    assert.match(n, /permission denied/);
+  });
+});
