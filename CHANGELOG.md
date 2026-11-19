@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-11-19
+
 ### Added
 - **Remember username on the sign-in card** (sprint 231, AX-13; migration 189; APEX: P9999_REMEMBER): after a
   successful sign-in with the box checked, the name is kept in a cookie of the application's path (180 days,
