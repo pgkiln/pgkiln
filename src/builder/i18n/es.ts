@@ -8482,4 +8482,16 @@ export const es: BuilderMessages = {
   'uit.list.tabs.d': 'Las entradas de primer nivel como pestañas.',
   'uit.list.wizard_progress': 'Progreso del asistente',
   'uit.list.wizard_progress.d': 'Pasos numerados: la entrada de la página actual es el paso actual.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "Bloqueo",
+  "ab.unlocked": "Sin bloquear",
+  "lgp.remember_username": "Ofrecer «Recordar el nombre de usuario»",
+  "lgp.remember_username_help": "Una casilla en el formulario de inicio de sesión (APEX: Remember username de la página de inicio de sesión). Marcada, el nombre de usuario se guarda 180 días en una cookie de la aplicación y se rellena la próxima vez; no se guarda nada secreto.",
+  "gallery.region.template_component:ut_avatar": "Avatar",
+  "gallery.region.template_component:ut_badge": "Insignia",
+  "gallery.region.template_component:ut_comments": "Comentarios",
+  "gallery.region.template_component:ut_content_row": "Fila de contenido",
+  "gallery.region.template_component:ut_media_list": "Lista multimedia",
+  "gallery.region.template_component:ut_metric_card": "Tarjeta de métrica",
+  "gallery.region.template_component:ut_timeline": "Cronología",
 };

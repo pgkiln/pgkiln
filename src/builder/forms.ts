@@ -6,6 +6,7 @@ import { COMPONENTS, ICON_OPTIONS, parseFields, type ComponentSpec, type Field }
 import { BASE, csrf, type Body } from './ui.ts';
 import { codeAttrs } from './code-editor.ts';
 import { optionName, typeName } from './type-names.ts';
+import { withComponentTypes } from './component-regions.ts';
 
 // Shared helpers of the builder pages: lookups for select lists, the generic
 // component property form and saving it.
@@ -96,7 +97,8 @@ export function componentForm(spec: ComponentSpec, kind: string, row: any, lk: L
       }
       case 'select':
         // (sprint 202, AX-3) a type list shows the types' names (Interactive Report, Popup LOV, Set Value …), not their codes
-        control = opts(f.options!.map((o) => [o, optionName(kind, f.name, o) ?? (o || '- none -')]));
+        // (sprint 231, AX-14) a region's Type list names each built-in template component (Badge, Metric Card …)
+        control = opts((kind === 'region' && f.name === 'type' ? withComponentTypes(f.options!) : f.options!).map((o) => [o, optionName(kind, f.name, o) ?? (o || '- none -')]));
         break;
       case 'icon':
         return iconPicker(id, f.name, f.label, String(v ?? ''), help);

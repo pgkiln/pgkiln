@@ -8482,4 +8482,16 @@ export const ja: BuilderMessages = {
   'uit.list.tabs.d': '最上位のエントリをタブとして表示。',
   'uit.list.wizard_progress': 'ウィザードの進行状況',
   'uit.list.wizard_progress.d': '番号付きのステップ。現在のページのエントリが現在のステップです。',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "ロック",
+  "ab.unlocked": "ロックなし",
+  "lgp.remember_username": "「ユーザー名を記憶する」を表示",
+  "lgp.remember_username_help": "サインイン・フォームのチェックボックス（APEX: ログイン・ページの Remember username）。チェックすると、ユーザー名がアプリケーションの Cookie に 180 日間保存され、次回入力されます。秘密情報は保存されません。",
+  "gallery.region.template_component:ut_avatar": "アバター",
+  "gallery.region.template_component:ut_badge": "バッジ",
+  "gallery.region.template_component:ut_comments": "コメント",
+  "gallery.region.template_component:ut_content_row": "コンテンツ行",
+  "gallery.region.template_component:ut_media_list": "メディア・リスト",
+  "gallery.region.template_component:ut_metric_card": "メトリック・カード",
+  "gallery.region.template_component:ut_timeline": "タイムライン",
 };

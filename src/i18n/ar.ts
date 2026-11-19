@@ -306,6 +306,7 @@ export const ar: Record<MessageKey, string> = {
   'tasks.done.failed': "تعذّر إكمال المهمة: {error}",
   'tasks.event.failed': "فشل الإكمال",
   'login.remember': "إبقائي مسجّلًا لمدة {days} يوم",
+  'login.remember_username': "تذكر اسم المستخدم",
   'error.document_unavailable': "هذا المستند غير متاح.",
   'login.sso_continue': "جارٍ إكمال تسجيل الدخول…",
   'login.ldap_unavailable': "تعذّر التحقق من تسجيل الدخول: لا يمكن الوصول إلى الدليل. حاول لاحقًا.",

@@ -873,6 +873,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${input('remember_me_days', tx('st.remember'), a.remember_me_days ?? '', { type: 'number', placeholder: tx('st.remember_ph'), help: tx('st.remember_help') })}
               ${input('session_group', tx('st.session_group'), a.session_group ?? '', { placeholder: tx('st.session_group_ph'), help: tx('st.session_group_help') })}
             </div>
+            ${signinFields.rememberUser}
             </div><div class="st-col">
             <h3 id="two-factor">${tx('st.two_factor')}</h3>
             ${signinFields.twoFactor}

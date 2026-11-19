@@ -8482,4 +8482,16 @@ export const zhCN: BuilderMessages = {
   'uit.list.tabs.d': '顶层条目显示为选项卡。',
   'uit.list.wizard_progress': '向导进度',
   'uit.list.wizard_progress.d': '编号步骤：当前页面的条目即当前步骤。',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "锁定",
+  "ab.unlocked": "未锁定",
+  "lgp.remember_username": "提供“记住用户名”",
+  "lgp.remember_username_help": "登录表单上的复选框（APEX：登录页的 Remember username）。勾选后，用户名保存在应用程序的 Cookie 中 180 天，下次自动填入；不保存任何机密信息。",
+  "gallery.region.template_component:ut_avatar": "头像",
+  "gallery.region.template_component:ut_badge": "徽章",
+  "gallery.region.template_component:ut_comments": "评论",
+  "gallery.region.template_component:ut_content_row": "内容行",
+  "gallery.region.template_component:ut_media_list": "媒体列表",
+  "gallery.region.template_component:ut_metric_card": "指标卡",
+  "gallery.region.template_component:ut_timeline": "时间线",
 };

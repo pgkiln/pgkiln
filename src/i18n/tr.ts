@@ -306,6 +306,7 @@ export const tr: Record<MessageKey, string> = {
   'tasks.done.failed': "Görev tamamlanamadı: {error}",
   'tasks.event.failed': "tamamlama başarısız oldu",
   'login.remember': "{days} gün oturumum açık kalsın",
+  'login.remember_username': "Kullanıcı adını hatırla",
   'error.document_unavailable': "Bu belge kullanılamıyor.",
   'login.sso_continue': "Oturum açma tamamlanıyor…",
   'login.ldap_unavailable': "Oturum açma doğrulanamadı: dizine ulaşılamıyor. Daha sonra tekrar deneyin.",

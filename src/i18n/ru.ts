@@ -306,6 +306,7 @@ export const ru: Record<MessageKey, string> = {
   'tasks.done.failed': "Не удалось завершить задачу: {error}",
   'tasks.event.failed': "завершение не удалось",
   'login.remember': "Не выходить {days} дн.",
+  'login.remember_username': "Запомнить имя пользователя",
   'error.document_unavailable': "Этот документ недоступен.",
   'login.sso_continue': "Завершение входа…",
   'login.ldap_unavailable': "Не удалось проверить вход: каталог недоступен. Повторите попытку позже.",

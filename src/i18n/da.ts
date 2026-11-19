@@ -306,6 +306,7 @@ export const da: Record<MessageKey, string> = {
   'tasks.done.failed': "Opgaven kunne ikke afsluttes: {error}",
   'tasks.event.failed': "afslutningen mislykkedes",
   'login.remember': "Hold mig logget ind i {days} dage",
+  'login.remember_username': "Husk brugernavn",
   'error.document_unavailable': "Dokumentet er ikke tilgængeligt.",
   'login.sso_continue': "Gennemfører login…",
   'login.ldap_unavailable': "Login kunne ikke kontrolleres: kataloget kan ikke nås. Prøv igen senere.",

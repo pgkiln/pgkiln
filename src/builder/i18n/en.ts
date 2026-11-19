@@ -8487,4 +8487,16 @@ export const en = {
   'uit.list.tabs.d': 'The top-level entries as tabs.',
   'uit.list.wizard_progress': 'Wizard progress',
   'uit.list.wizard_progress.d': 'Numbered steps: the entry of the current page is the current step.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "Lock",
+  "ab.unlocked": "Not locked",
+  "lgp.remember_username": "Offer \"Remember username\"",
+  "lgp.remember_username_help": "A checkbox on the sign-in form (APEX: the login page's Remember username). Checked, the user name is kept in a cookie of the application for 180 days and filled in next time; nothing secret is stored.",
+  "gallery.region.template_component:ut_avatar": "Avatar",
+  "gallery.region.template_component:ut_badge": "Badge",
+  "gallery.region.template_component:ut_comments": "Comments",
+  "gallery.region.template_component:ut_content_row": "Content Row",
+  "gallery.region.template_component:ut_media_list": "Media List",
+  "gallery.region.template_component:ut_metric_card": "Metric Card",
+  "gallery.region.template_component:ut_timeline": "Timeline",
 } as const;

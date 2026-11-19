@@ -2405,3 +2405,6 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 .login-passkey .login-passkey-button { width: 100%; white-space: normal; text-align: center; }
 .login-passkey-status { margin: 0; color: var(--danger, #b42318); }
 .login-passkey-status:empty { display: none; }
+
+/* (sprint 231, AX-13) the sign-in form's "Remember username" and "Keep me signed in" */
+.login-checks { display: flex; flex-direction: column; gap: 0.5rem; }

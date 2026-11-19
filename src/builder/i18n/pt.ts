@@ -8482,4 +8482,16 @@ export const pt: BuilderMessages = {
   'uit.list.tabs.d': 'As entradas de primeiro nível como abas.',
   'uit.list.wizard_progress': 'Progresso do assistente',
   'uit.list.wizard_progress.d': 'Etapas numeradas: a entrada da página atual é a etapa atual.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "Bloqueio",
+  "ab.unlocked": "Não bloqueada",
+  "lgp.remember_username": "Oferecer \"Lembrar o nome de utilizador\"",
+  "lgp.remember_username_help": "Uma caixa de seleção no formulário de início de sessão (APEX: Remember username da página de login). Marcada, o nome de utilizador fica 180 dias num cookie da aplicação e é preenchido da próxima vez; nada secreto é guardado.",
+  "gallery.region.template_component:ut_avatar": "Avatar (imagem)",
+  "gallery.region.template_component:ut_badge": "Distintivo",
+  "gallery.region.template_component:ut_comments": "Comentários",
+  "gallery.region.template_component:ut_content_row": "Linha de conteúdo",
+  "gallery.region.template_component:ut_media_list": "Lista de multimédia",
+  "gallery.region.template_component:ut_metric_card": "Cartão de métrica",
+  "gallery.region.template_component:ut_timeline": "Linha do tempo",
 };

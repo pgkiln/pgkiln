@@ -306,6 +306,7 @@ export const es: Record<MessageKey, string> = {
   'tasks.done.failed': "No se pudo completar la tarea: {error}",
   'tasks.event.failed': "la finalización falló",
   'login.remember': 'Mantener la sesión iniciada durante {days} días',
+  'login.remember_username': "Recordar el nombre de usuario",
   'error.document_unavailable': 'Este documento no está disponible.',
   'login.sso_continue': 'Completando el inicio de sesión…',
   'login.ldap_unavailable': 'No se ha podido comprobar el inicio de sesión: el directorio no está accesible. Vuelva a intentarlo más tarde.',

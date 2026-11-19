@@ -8482,4 +8482,16 @@ export const zhTW: BuilderMessages = {
   'uit.list.tabs.d': '最上層項目顯示為索引標籤。',
   'uit.list.wizard_progress': '精靈進度',
   'uit.list.wizard_progress.d': '編號步驟：目前頁面的項目即目前步驟。',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "鎖定",
+  "ab.unlocked": "未鎖定",
+  "lgp.remember_username": "提供「記住使用者名稱」",
+  "lgp.remember_username_help": "登入表單上的核取方塊（APEX：登入頁的 Remember username）。勾選後，使用者名稱會保存在應用程式的 Cookie 中 180 天，下次自動填入；不儲存任何機密資訊。",
+  "gallery.region.template_component:ut_avatar": "頭像",
+  "gallery.region.template_component:ut_badge": "徽章",
+  "gallery.region.template_component:ut_comments": "留言",
+  "gallery.region.template_component:ut_content_row": "內容列",
+  "gallery.region.template_component:ut_media_list": "媒體清單",
+  "gallery.region.template_component:ut_metric_card": "指標卡",
+  "gallery.region.template_component:ut_timeline": "時間軸",
 };

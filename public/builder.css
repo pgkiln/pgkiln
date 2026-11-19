@@ -1901,3 +1901,8 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .pd-colpick fieldset { border: 0; margin: 0 0 8px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .pd-colpick code { overflow-wrap: anywhere; }
 .pd-tree .pd-node[data-col] .pd-label { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; }
+
+/* (sprint 231, AX-13) App Builder report: the Lock column (locked: the lock and who holds it; else an open lock) */
+.ab-lock-cell .ab-lock { display: inline-flex; align-items: center; gap: 4px; }
+.ab-lock-cell .ab-unlocked { display: inline-flex; color: var(--muted); opacity: 0.6; }
+.ab-lock-cell .icon { width: 15px; height: 15px; flex: none; }
