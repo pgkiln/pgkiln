@@ -306,6 +306,7 @@ export const cs: Record<MessageKey, string> = {
   'tasks.done.failed': "Úkol nelze dokončit: {error}",
   'tasks.event.failed': "dokončení se nezdařilo",
   'login.remember': "Zůstat přihlášen {days} dní",
+  'login.remember_username': "Zapamatovat uživatelské jméno",
   'error.document_unavailable': "Tento dokument není k dispozici.",
   'login.sso_continue': "Dokončování přihlášení…",
   'login.ldap_unavailable': "Přihlášení nelze ověřit: adresář není dostupný. Zkuste to později.",

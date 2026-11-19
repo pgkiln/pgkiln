@@ -1,5 +1,6 @@
 import { PageCss } from '../css.ts';
 import { forgetRemember, issueRemember, useRemember } from '../remember.ts';
+import { rememberedUsername, rememberUsernameChoice } from '../remember-username.ts';
 import { endShared, issueShared, sharingGroup, useShared } from '../sharedlogin.ts';
 import { appDirectories, ldapAuthenticate, LdapError, resolveLdapAccount } from '../ldap.ts';
 import { finishSamlSignIn, samlMetadata, startSamlSignIn } from '../saml.ts';
@@ -357,6 +358,7 @@ export async function loadContext(
     css: new PageCss(),
     nonce: req.cspNonce,
     passkeyHost: passkeyHost(req),
+    rememberedUser: rememberedUsername(req, app),
     frameSrc: req.frameSrc,
     imgSrc: req.imgSrc,
     locale,
@@ -1215,7 +1217,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       html`<main class="login">
         <div class="card login-card">
           <div class="login-brand">${appMark(app)}<h1>${app.name}</h1></div>
-          ${await signInForm(app, locale, session, next, { error, host: passkeyHost(req) })}
+          ${await signInForm(app, locale, session, next, { error, host: passkeyHost(req), remembered: rememberedUsername(req, app) })}
           ${languagePicker(app, locale, `/a/${app.alias}/login${nextQs}`)}
         </div>
       </main>`,
@@ -1323,6 +1325,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     const { a, locale, session, username, next, ip, fail } = r0;
     const password = (req.body?.password ?? '').slice(0, 200);
     const remember = req.body?.remember === 'true';
+    // (sprint 231, AX-13) "Remember username": kept (or forgotten) once the password is right
+    const keepName = () => rememberUsernameChoice(reply, a, username, req.body?.remember_username === 'true');
     if (a.authentication === 'database') {
       // database accounts: a connection attempt as the role checks the password (never logged)
       const r = await dbAuthenticate(a, username, password);
@@ -1330,6 +1334,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: `database: ${r.detail}` });
         return fail(r.reason === 'unavailable' ? locale.t('login.db_unavailable') : locale.t('login.invalid'), r.reason === 'unavailable' ? 503 : 401);
       }
+      keepName();
       return completeLogin(req, reply, a, session, r.role, { next, method: 'database', detail: 'database' });
     }
     if (a.authentication === 'custom') {
@@ -1339,6 +1344,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: `custom: ${r.detail}` });
         return fail(locale.t('login.invalid'), 401);
       }
+      keepName();
       return completeLogin(req, reply, a, session, r.username, { next, method: 'custom', detail: 'custom' });
     }
     const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, password]);
@@ -1368,6 +1374,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
           logActivity({ appId: a.id, username: account, event: 'login_failed', ip, detail: `ldap:${d.name}: no access` });
           return fail(locale.t('login.no_access', { user: account, app: a.name }), 403);
         }
+        keepName();
         return passwordSignIn(req, reply, a, session, account, {
           next, remember, extraRoles: access.roles, groups: user.groups, method: `ldap:${d.name}`, detail: `ldap:${d.name}`,
         });
@@ -1375,6 +1382,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
       await logActivity({ appId: a.id, username, event: 'login_failed', ip, detail: unreachable ? 'ldap unreachable' : undefined });
       return fail(unreachable ? locale.t('login.ldap_unavailable') : locale.t('login.invalid'));
     }
+    keepName();
     if ((await passwordDaysLeft(r.username, a.id)) === 0) {
       logActivity({ appId: a.id, username: r.username, event: 'password_expired', ip });
       return reply.type('text/html').send(expiredPage(a, locale, session, r.username, safeNext(a, next)));

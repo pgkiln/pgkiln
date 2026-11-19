@@ -8,6 +8,7 @@ import type { Region } from '../metadata.ts';
 import { cacheOf, DEFERRABLE, invalidatePage, invalidateRegion, lazyOf, pageCacheEntries } from '../runtime/region-cache.ts';
 import { clientIp, logActivity, type Session } from '../session.ts';
 import { typeName } from './type-names.ts';
+import { regionTypeValue } from './component-regions.ts';
 import { appHeader, back, BASE, csrf, designerUrl, developer, flash, region, send, shell, type Req } from './ui.ts';
 import { scopedTx as tx } from './i18n.ts';
 
@@ -90,8 +91,8 @@ export async function pageUtilityRoutes(app: FastifyInstance) {
       const c = cacheOf(r);
       const h = held.get(r.id);
       return html`<tr>
-        <td data-label="${tx('pdca.region')}"><a href="${designerUrl(p.app_id, p.page_no, `c=region-${r.id}`)}">${r.title ?? `(${typeName('region', r.type)})`}</a></td>
-        <td data-label="${tx('pdca.type')}">${typeName('region', r.type)}</td>
+        <td data-label="${tx('pdca.region')}"><a href="${designerUrl(p.app_id, p.page_no, `c=region-${r.id}`)}">${r.title ?? `(${typeName('region', regionTypeValue(r))})`}</a></td>
+        <td data-label="${tx('pdca.type')}">${typeName('region', regionTypeValue(r))}</td>
         <td data-label="${tx('pdca.cache')}">${c ? tx('pdca.cached_for', { scope: tx.dyn(`pdca.scope.${c.scope}`, c.scope), seconds: c.seconds }) : html`<span class="muted">${tx('pdca.no_cache')}</span>`}</td>
         <td data-label="${tx('pdca.lazy')}">${lazyOf(r) ? tx('pdc.yes') : tx('pdc.no')}</td>
         <td data-label="${tx('pdca.held')}">${h ? tx('pdca.entries', { n: h.entries, kb: kb(h.bytes) }) : '-'}</td>

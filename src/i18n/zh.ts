@@ -306,6 +306,7 @@ export const zh: Record<MessageKey, string> = {
   'tasks.done.failed': "无法完成任务：{error}",
   'tasks.event.failed': "完成失败",
   'login.remember': "保持登录 {days} 天",
+  'login.remember_username': "记住用户名",
   'error.document_unavailable': "此文档不可用。",
   'login.sso_continue': "正在完成登录…",
   'login.ldap_unavailable': "无法验证登录：目录服务无法访问。请稍后重试。",

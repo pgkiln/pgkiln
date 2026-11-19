@@ -306,6 +306,7 @@ export const it: Record<MessageKey, string> = {
   'tasks.done.failed': "Impossibile completare l’attività: {error}",
   'tasks.event.failed': "il completamento non è riuscito",
   'login.remember': "Mantieni l'accesso per {days} giorni",
+  'login.remember_username': "Ricorda il nome utente",
   'error.document_unavailable': "Questo documento non è disponibile.",
   'login.sso_continue': "Completamento dell'accesso…",
   'login.ldap_unavailable': "Impossibile verificare l'accesso: la directory non è raggiungibile. Riprova più tardi.",

@@ -306,6 +306,7 @@ export const ja: Record<MessageKey, string> = {
   'tasks.done.failed': "タスクを完了できませんでした: {error}",
   'tasks.event.failed': "完了に失敗しました",
   'login.remember': "{days} 日間サインインしたままにする",
+  'login.remember_username': "ユーザー名を記憶する",
   'error.document_unavailable': "このドキュメントは利用できません。",
   'login.sso_continue': "サインインを完了しています…",
   'login.ldap_unavailable': "サインインを確認できません: ディレクトリに接続できません。後でもう一度お試しください。",

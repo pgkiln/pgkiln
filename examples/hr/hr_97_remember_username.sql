@@ -1,0 +1,24 @@
+-- =====================================================================
+-- HR example, part 97: "Remember username" and "Keep me signed in" on
+-- the sign-in card (sprint 231, AX-13; migration 189;
+-- docs/guide/08-security.md "Remember username and Keep me signed in")
+--
+-- As APEX's login page (P9999_REMEMBER and P9999_PERSISTENT_AUTH), HR's
+-- sign-in card offers both boxes:
+--   - Remember username: after a successful sign-in the name is kept in
+--     a cookie of /a/hr (nothing secret) and filled in next time, the
+--     cursor in the password field; unchecked, the cookie is removed.
+--   - Keep me signed in for 30 days: a rotating token (src/remember.ts)
+--     signs the browser in again after the session ends; My account →
+--     "Sign out on all devices" ends them all.
+-- Settings → Sign-in → Staying signed in has both settings. A Login
+-- region of an own login page shows the same boxes; its attributes
+-- {"remember_username": false} and {"persistent_auth": false} leave
+-- them out.
+--
+-- (sprint 231, AX-14) The template components of part 44 (Avatar, Badge,
+-- Metric Card, Timeline, …) are region types of their own in the Page
+-- Designer's gallery and Type list; HR's regions of them show the
+-- component's name as their type.
+-- =====================================================================
+update meta.app set remember_username = true, remember_me_days = coalesce(remember_me_days, 30) where alias = 'hr';

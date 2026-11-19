@@ -46,7 +46,8 @@ export function ago(at: Date | string | null | undefined, now = Date.now(), tx: 
   return tx('ago.now');
 }
 
-/** (116) the App Builder list's working copies count and lock state */
+/** (116) the App Builder list's working copies count and lock state; (sprint 231, AX-13) in the report view Updated by,
+ *  Working copies and Lock are columns of their own, shown at every width (Sign-in and Views give way first), as APEX */
 const copiesText = (tx: BuilderTranslate, n: number) => tx(n === 1 ? 'ab.copies_one' : 'ab.copies', { n });
 const lockedText = (tx: BuilderTranslate, by: string) => tx('ab.locked_by', { user: by });
 
@@ -144,17 +145,20 @@ export async function homeRoutes(app: FastifyInstance) {
             </div></article>`)}</div>`
         : html`<div class="table-wrap ab-table rep-fit"><table class="report ab-apps">
             <caption class="sr-only">${tx('ab.col.apps')}</caption>
-            <thead><tr>${th('id', tx('ab.col.app'), 'num')}${th('name', tx('ab.col.name'))}${th('alias', tx('ab.col.alias'))}${th('pages', tx('ab.col.pages'), 'num')}<th scope="col" class="num col-low">${tx('ab.col.views')}</th><th scope="col">${tx('ab.col.signin')}</th>${th('updated', tx('ab.col.updated'))}<th scope="col" class="col-low">${tx('ab.col.updated_by')}</th><th scope="col" class="num col-low">${tx('ab.col.copies')}</th><th scope="col" class="ab-actions-col col-actions">${tx('ab.col.actions')}</th></tr></thead>
+            <thead><tr>${th('id', tx('ab.col.app'), 'num')}${th('name', tx('ab.col.name'))}${th('alias', tx('ab.col.alias'))}${th('pages', tx('ab.col.pages'), 'num')}<th scope="col" class="num col-low">${tx('ab.col.views')}</th><th scope="col" class="col-low">${tx('ab.col.signin')}</th>${th('updated', tx('ab.col.updated'))}<th scope="col">${tx('ab.col.updated_by')}</th><th scope="col" class="num">${tx('ab.col.copies')}</th><th scope="col" class="ab-lock-col">${tx('ab.col.lock')}</th><th scope="col" class="ab-actions-col col-actions">${tx('ab.col.actions')}</th></tr></thead>
             <tbody>${rows.map((a) => html`<tr data-filter-row>
               <td class="num">${a.id}</td>
-              <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a>${a.locked_by ? html`<span class="ab-lock" role="img" aria-label="${lockedText(tx, a.locked_by)}" title="${lockedText(tx, a.locked_by)}">${icon('lock')}</span>` : ''}</td>
+              <td class="ab-name"><a href="${BASE}/apps/${a.id}">${appIcon(a)}<span>${a.name}</span></a></td>
               <td>${a.alias}${a.group_name ? html` <span class="tag">${a.group_name}</span>` : ''}</td>
               <td class="num">${a.pages}</td>
               <td class="num col-low">${a.views}</td>
-              <td>${tx(a.authentication === 'none' ? 'ab.auth.none' : a.authentication === 'header' ? 'ab.auth.header' : a.authentication === 'database' ? 'ab.auth.database' : a.authentication === 'custom' ? 'ab.auth.custom' : 'ab.auth.app_users')}</td>
+              <td class="col-low">${tx(a.authentication === 'none' ? 'ab.auth.none' : a.authentication === 'header' ? 'ab.auth.header' : a.authentication === 'database' ? 'ab.auth.database' : a.authentication === 'custom' ? 'ab.auth.custom' : 'ab.auth.app_users')}</td>
               <td title="${a.updated_at ? new Date(a.updated_at).toISOString().slice(0, 16).replace('T', ' ') : ''}">${ago(a.updated_at, Date.now(), tx)}</td>
-              <td class="ab-by col-low">${a.updated_by ?? ''}</td>
-              <td class="num col-low">${a.copies ? html`<a href="${BASE}/apps/${a.id}/working-copies" aria-label="${tx('ab.copies_of', { copies: copiesText(tx, a.copies), name: a.name })}">${a.copies}</a>` : '0'}</td>
+              <td class="ab-by">${a.updated_by ?? ''}</td>
+              <td class="num">${a.copies ? html`<a href="${BASE}/apps/${a.id}/working-copies" aria-label="${tx('ab.copies_of', { copies: copiesText(tx, a.copies), name: a.name })}">${a.copies}</a>` : '0'}</td>
+              <td class="ab-lock-cell">${a.locked_by
+                ? html`<span class="ab-lock" role="img" aria-label="${lockedText(tx, a.locked_by)}" title="${lockedText(tx, a.locked_by)}">${icon('lock')}<span class="ab-by">${a.locked_by}</span></span>`
+                : html`<span class="ab-unlocked" role="img" aria-label="${tx('ab.unlocked')}" title="${tx('ab.unlocked')}">${icon('unlock')}</span>`}</td>
               <td class="ab-actions col-actions">
                 <a class="tb-btn" href="${BASE}/apps/${a.id}" title="${tx('ab.edit', { name: a.name })}">${icon('edit')}<span class="sr-only">${tx('ab.edit', { name: a.name })}</span></a>
                 <a class="tb-btn" href="/a/${a.alias}" target="_blank" rel="noopener" title="${tx('ab.run', { name: a.name })}">${icon('play')}<span class="sr-only">${tx('ab.run', { name: a.name })}</span></a>

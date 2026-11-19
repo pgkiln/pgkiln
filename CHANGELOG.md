@@ -5,6 +5,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Remember username on the sign-in card** (sprint 231, AX-13; migration 189; APEX: P9999_REMEMBER): after a
+  successful sign-in with the box checked, the name is kept in a cookie of the application's path (180 days,
+  HttpOnly, SameSite=Lax) and filled in next time; unchecked, the cookie is removed. On by default per application
+  (Settings → Sign-in → Staying signed in), next to *Keep me signed in* (persistent auth, per application as before);
+  the Login region's attributes `remember_username` and `persistent_auth` hide either box.
+- **Template components as region types of their own** (sprint 231, AX-14): the Page Designer's gallery and region
+  Type list offer Avatar, Badge, Comments, Content Row, Media List, Metric Card and Timeline, as APEX; a region of one
+  shows the component as its type. Stored as before (`template_component` with `config.component`).
+
+### Changed
+- The App Builder's applications report shows **Updated by**, **Working copies** and a **Lock** column at every
+  desktop and laptop width, as APEX (sprint 231, AX-13); Sign-in and Views give way first on narrow screens.
+
 ## [0.110.0] - 2026-11-18
 
 ### Added

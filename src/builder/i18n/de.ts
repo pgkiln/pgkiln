@@ -8482,4 +8482,16 @@ export const de: BuilderMessages = {
   'uit.list.tabs.d': 'Die Einträge der obersten Ebene als Registerkarten.',
   'uit.list.wizard_progress': 'Assistentenfortschritt',
   'uit.list.wizard_progress.d': 'Nummerierte Schritte: der Eintrag der aktuellen Seite ist der aktuelle Schritt.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "Sperre",
+  "ab.unlocked": "Nicht gesperrt",
+  "lgp.remember_username": "„Benutzernamen merken“ anbieten",
+  "lgp.remember_username_help": "Ein Kontrollkästchen im Anmeldeformular (APEX: Remember username der Anmeldeseite). Angehakt bleibt der Benutzername 180 Tage in einem Cookie der Anwendung und wird beim nächsten Mal eingetragen; nichts Geheimes wird gespeichert.",
+  "gallery.region.template_component:ut_avatar": "Avatar",
+  "gallery.region.template_component:ut_badge": "Abzeichen",
+  "gallery.region.template_component:ut_comments": "Kommentare",
+  "gallery.region.template_component:ut_content_row": "Inhaltszeile",
+  "gallery.region.template_component:ut_media_list": "Medienliste",
+  "gallery.region.template_component:ut_metric_card": "Kennzahlkarte",
+  "gallery.region.template_component:ut_timeline": "Zeitachse",
 };

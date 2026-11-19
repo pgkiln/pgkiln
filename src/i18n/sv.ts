@@ -306,6 +306,7 @@ export const sv: Record<MessageKey, string> = {
   'tasks.done.failed': "Uppgiften kunde inte slutföras: {error}",
   'tasks.event.failed': "slutförandet misslyckades",
   'login.remember': "Håll mig inloggad i {days} dagar",
+  'login.remember_username': "Kom ihåg användarnamnet",
   'error.document_unavailable': "Dokumentet är inte tillgängligt.",
   'login.sso_continue': "Slutför inloggningen…",
   'login.ldap_unavailable': "Inloggningen kunde inte kontrolleras: katalogen går inte att nå. Försök igen senare.",

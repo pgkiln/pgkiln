@@ -306,6 +306,7 @@ export const ko: Record<MessageKey, string> = {
   'tasks.done.failed': "작업을 완료할 수 없습니다: {error}",
   'tasks.event.failed': "완료하지 못했습니다",
   'login.remember': "{days}일 동안 로그인 유지",
+  'login.remember_username': "사용자 이름 기억",
   'error.document_unavailable': "이 문서를 사용할 수 없습니다.",
   'login.sso_continue': "로그인을 완료하는 중…",
   'login.ldap_unavailable': "로그인을 확인할 수 없습니다: 디렉터리에 연결할 수 없습니다. 나중에 다시 시도하세요.",

@@ -8482,4 +8482,16 @@ export const nl: BuilderMessages = {
   'uit.list.tabs.d': 'De items op het hoogste niveau als tabbladen.',
   'uit.list.wizard_progress': 'Wizardvoortgang',
   'uit.list.wizard_progress.d': 'Genummerde stappen: het item van de huidige pagina is de huidige stap.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "Vergrendeling",
+  "ab.unlocked": "Niet vergrendeld",
+  "lgp.remember_username": "\"Gebruikersnaam onthouden\" aanbieden",
+  "lgp.remember_username_help": "Een vinkje op het aanmeldformulier (APEX: Remember username van de loginpagina). Aangevinkt blijft de gebruikersnaam 180 dagen in een cookie van de applicatie en wordt hij de volgende keer ingevuld; er wordt niets geheims bewaard.",
+  "gallery.region.template_component:ut_avatar": "Avatar (afbeelding)",
+  "gallery.region.template_component:ut_badge": "Badge (label)",
+  "gallery.region.template_component:ut_comments": "Opmerkingen",
+  "gallery.region.template_component:ut_content_row": "Inhoudsrij",
+  "gallery.region.template_component:ut_media_list": "Medialijst",
+  "gallery.region.template_component:ut_metric_card": "Metriekkaart",
+  "gallery.region.template_component:ut_timeline": "Tijdlijn",
 };

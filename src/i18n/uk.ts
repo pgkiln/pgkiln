@@ -306,6 +306,7 @@ export const uk: Record<MessageKey, string> = {
   'tasks.done.failed': "Не вдалося завершити завдання: {error}",
   'tasks.event.failed': "завершення не вдалося",
   'login.remember': "Не виходити {days} дн.",
+  'login.remember_username': "Запам'ятати ім'я користувача",
   'error.document_unavailable': "Цей документ недоступний.",
   'login.sso_continue': "Завершення входу…",
   'login.ldap_unavailable': "Не вдалося перевірити вхід: каталог недоступний. Спробуйте пізніше.",

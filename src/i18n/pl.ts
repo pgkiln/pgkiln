@@ -306,6 +306,7 @@ export const pl: Record<MessageKey, string> = {
   'tasks.done.failed': "Nie udało się ukończyć zadania: {error}",
   'tasks.event.failed': "ukończenie nie powiodło się",
   'login.remember': "Nie wylogowuj mnie przez {days} dni",
+  'login.remember_username': "Zapamiętaj nazwę użytkownika",
   'error.document_unavailable': "Ten dokument jest niedostępny.",
   'login.sso_continue': "Kończenie logowania…",
   'login.ldap_unavailable': "Nie można sprawdzić logowania: katalog jest nieosiągalny. Spróbuj później.",

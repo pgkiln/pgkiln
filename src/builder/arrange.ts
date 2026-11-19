@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { saveState, type Session } from '../session.ts';
 import { COMPONENTS } from './components.ts';
+import { newComponentRegion } from './component-regions.ts';
 import { BASE, developer, flash, type Req } from './ui.ts';
 import { scopedTx as tx } from './i18n.ts';
 
@@ -270,13 +271,16 @@ export async function createComponent(c: Q, pid: number, kind: LayoutKind, type:
   if (kind === 'region') {
     // (172) a container from the gallery is a static region with a container template
     const container = CONTAINER_TEMPLATE[type];
-    if (!REGION_TYPES().includes(type) && !container) throw new LayoutError(400, tx('arr.unknown_region_type'));
+    // (sprint 231, AX-14) a built-in template component from the gallery: a template_component region of it
+    const tc = newComponentRegion(type);
+    if (!REGION_TYPES().includes(type) && !container && !tc) throw new LayoutError(400, tx('arr.unknown_region_type'));
     const parentTemplate = o.parent ? (await c.query('select template from meta.region where id = $1 and page_id = $2', [int(o.parent) ?? 0, pid])).rows[0]?.template : null;
     id = (await c.query(`insert into meta.region (page_id, seq, title, type, source, template) values ($1, 999999, $2, $3, $4, $5) returning id`,
-      [pid, container ? CONTAINER_LABELS[type][0] : `New ${REGION_LABELS[type]?.[0].toLowerCase() ?? type}`, container ? 'static' : type,
-       container ? null : NEW_REGION_SOURCE[type] ?? null,
+      [pid, container ? CONTAINER_LABELS[type][0] : tc ? tc.title : `New ${REGION_LABELS[type]?.[0].toLowerCase() ?? type}`, container ? 'static' : tc ? 'template_component' : type,
+       container ? null : tc ? tc.source : NEW_REGION_SOURCE[type] ?? null,
        // a tab shows the sub region's title: its own frame and heading would repeat it
        container ?? (parentTemplate === 'tabs_container' ? 'plain' : 'standard')])).rows[0].id;
+    if (tc) await c.query('update meta.region set config = $2 where id = $1', [id, JSON.stringify(tc.config)]);
     // (140) a breadcrumb goes in the breadcrumb bar, without a frame of its own (unless it is dropped elsewhere)
     if (type === 'breadcrumb') {
       await c.query(`update meta.region set template = 'plain', title = 'Breadcrumb' where id = $1`, [id]);

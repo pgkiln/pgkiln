@@ -306,6 +306,7 @@ export const fi: Record<MessageKey, string> = {
   'tasks.done.failed': "Tehtävää ei voitu suorittaa: {error}",
   'tasks.event.failed': "suorittaminen epäonnistui",
   'login.remember': "Pidä minut kirjautuneena {days} päivää",
+  'login.remember_username': "Muista käyttäjätunnus",
   'error.document_unavailable': "Tämä asiakirja ei ole saatavilla.",
   'login.sso_continue': "Viimeistellään kirjautumista…",
   'login.ldap_unavailable': "Kirjautumista ei voitu tarkistaa: hakemistoon ei saada yhteyttä. Yritä myöhemmin uudelleen.",

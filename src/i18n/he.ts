@@ -306,6 +306,7 @@ export const he: Record<MessageKey, string> = {
   'tasks.done.failed': "לא ניתן היה להשלים את המשימה: {error}",
   'tasks.event.failed': "ההשלמה נכשלה",
   'login.remember': "להשאיר אותי מחובר {days} ימים",
+  'login.remember_username': "זכור את שם המשתמש",
   'error.document_unavailable': "המסמך אינו זמין.",
   'login.sso_continue': "משלים את הכניסה…",
   'login.ldap_unavailable': "לא ניתן לאמת את הכניסה: אין גישה לספרייה. נסו שוב מאוחר יותר.",

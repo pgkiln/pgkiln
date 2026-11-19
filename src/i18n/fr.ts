@@ -306,6 +306,7 @@ export const fr: Record<MessageKey, string> = {
   'tasks.done.failed': "La tâche n'a pas pu être terminée : {error}",
   'tasks.event.failed': "l'achèvement a échoué",
   'login.remember': 'Rester connecté pendant {days} jours',
+  'login.remember_username': "Mémoriser le nom d'utilisateur",
   'error.document_unavailable': 'Ce document n’est pas disponible.',
   'login.sso_continue': 'Finalisation de la connexion…',
   'login.ldap_unavailable': 'La connexion n’a pas pu être vérifiée : l’annuaire est inaccessible. Réessayez plus tard.',

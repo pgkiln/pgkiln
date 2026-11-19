@@ -95,6 +95,8 @@ export interface PageContext {
   frameSrc?: Set<string> | null;
   /** (sprint 199) the request's host can have passkeys (a host name, not an IP address): the login region's passkey button */
   passkeyHost?: boolean;
+  /** (sprint 231, AX-13) the browser's remembered user name (remember-username.ts): the login region fills it in */
+  rememberedUser?: string;
   /** (086) the https origins of images the response shows (display image items; security.ts adds them to the CSP) */
   imgSrc?: Set<string> | null;
   /** (076) per form region: the checksum of its row when it was fetched (lost update detection) */

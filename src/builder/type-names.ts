@@ -5,6 +5,7 @@
 // the other lists have their English names here and a key per value in src/builder/i18n/*.
 import { BUTTON_LABELS, ITEM_LABELS, POSITION_LABELS, REGION_LABELS, SLOT_LABELS } from './arrange.ts';
 import { scopedTx } from './i18n.ts';
+import { COMPONENT_TYPE_LABELS } from './component-regions.ts';
 
 /** Dynamic action actions (APEX's names where APEX has the action). */
 export const DA_ACTION_LABELS: Record<string, string> = {
@@ -66,7 +67,8 @@ const first = (labels: Record<string, [string, string]>) => Object.fromEntries(O
 
 /** The lists with names: `<component kind>.<field>` → the key prefix and the English names. */
 export const TYPE_NAME_LISTS: Record<string, readonly [string, Record<string, string>]> = {
-  'region.type': ['gallery.region', first(REGION_LABELS)],
+  // (sprint 231, AX-14) and the built-in template components as types of their own (component-regions.ts)
+  'region.type': ['gallery.region', first({ ...REGION_LABELS, ...COMPONENT_TYPE_LABELS })],
   'region.template': ['pd.template', REGION_TEMPLATE_LABELS],
   'region.position': ['pos', POSITION_LABELS],
   'item.type': ['gallery.item', first(ITEM_LABELS)],

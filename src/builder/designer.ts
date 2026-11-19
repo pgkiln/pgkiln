@@ -17,6 +17,7 @@ import type { BuilderKey } from './i18n.ts';
 import { regionSettingsForm, saveRegionAttributes } from './region-settings.ts';
 import { embedSettings } from './settings-save.ts';
 import { optionName, typeName } from './type-names.ts';
+import { applyComponentType, COMPONENT_TYPE_LABELS, isComponentType, newComponentRegion, regionTypeValue, takeComponentType, withComponentTypes } from './component-regions.ts';
 import { codeAttrs } from './code-editor.ts';
 import { usedInPanel } from './search.ts';
 import { SLOTTED_TEMPLATES } from '../runtime/regions.ts';
@@ -42,7 +43,9 @@ const ALIAS_PROBLEM: Record<AliasProblem, BuilderKey> = { length: 'pdz.alias_len
 
 const PAGE_KINDS = ['region', 'item', 'button', 'dynamic_action', 'validation', 'process', 'computation', 'branch'];
 
-const regionIcon = (type: string) => REGION_LABELS[type]?.[1] ?? 'region';
+// (sprint 231, AX-14) a region of a built-in template component: the component's icon and name (component-regions.ts)
+const regionIcon = (type: string) => REGION_LABELS[type]?.[1] ?? COMPONENT_TYPE_LABELS[type]?.[1] ?? 'region';
+const regionType = (r: { type: string; config?: unknown }) => typeName('region', regionTypeValue(r));
 const itemIcon = (type: string) => ITEM_LABELS[type]?.[1] ?? 'item';
 const firstLine = (text: string | null | undefined, max = 90) => {
   const t = (text ?? '').replace(/\s+/g, ' ').trim();
@@ -134,7 +137,7 @@ export async function designerRoutes(app: FastifyInstance) {
       return html`<span class="pd-tag" title="${words}" data-condition="${sc?.condition_type ?? ''}">${icon('filter')}<span class="sr-only">${words}</span></span>`;
     };
     // (sprint 202, AX-3) types by their names (Interactive Report, Select List, Submit Page …), never their codes
-    const regionTitle = (r: any) => r.title ?? `(${typeName('region', r.type)})`;
+    const regionTitle = (r: any) => r.title ?? `(${regionType(r)})`;
 
     // ------------------------------------------------------------ left: component tree
     // (sprint 77) data-kind and data-id: the node's context menu (Duplicate, Copy to other page, Delete…) and icon colour
@@ -174,7 +177,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const kids = [...columnsFolder(r), ...(subs.length ? [folder(tx('pd.tree.sub_regions'), subs.map((x, i) => regionLeaf(x, subs[i + 1])))] : []),
         ...(items.length ? [folder(tx('pd.tree.items'), items.map(itemLeaf))] : []),
         ...(bySlot.length ? [folder(tx('pd.tree.buttons'), bySlot.map(([sl, list]) => html`<li data-slot="${sl}"><span class="pd-node pd-folder"><span class="pd-label">${slotLabel(sl)}</span></span><ul>${list.map(buttonLeaf)}</ul></li>`))] : [])];
-      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${typeName('region', r.type)})"${commented(r)}>${bicon(regionIcon(r.type))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${typeName('region', r.type)}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
+      return html`<li><a class="pd-node" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} data-kind="region" data-id="${r.id}" data-position="${r.position ?? ''}" data-parent="${r.parent_id ?? ''}"${r.parent_id == null ? raw(' data-container') : ''} data-next="${next?.id ?? ''}" title="${regionTitle(r)} (${regionType(r)})"${commented(r)}>${bicon(regionIcon(regionTypeValue(r)))}<span class="pd-label">${regionTitle(r)}</span>${badges(r)}<span class="pd-note">${typeName('region', r.type)}</span></a>${kids.length ? html`<ul>${kids}</ul>` : ''}</li>`;
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
     const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
@@ -295,11 +298,11 @@ export async function designerRoutes(app: FastifyInstance) {
     const block = (r: any): Raw => html`<div class="pd-region pd-span-${r.columns}${isSel(`region-${r.id}`) ? ' is-selected' : ''}" data-kind="region" data-id="${r.id}" data-span="${r.columns}"${subsOf(r).length ? raw(' data-holds') : ''}>
         <div class="pd-region-head" draggable="true" data-kind="region" data-id="${r.id}">
           <span class="pd-grip" title="${tx('pd.drag_move')}">${bicon('grip')}</span>
-          <a class="pd-region-link" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} aria-describedby="pd-kbd">${bicon(regionIcon(r.type))}<span>${regionTitle(r)}</span></a>
+          <a class="pd-region-link" href="${url(`c=region-${r.id}`)}"${cur(`region-${r.id}`)} aria-describedby="pd-kbd">${bicon(regionIcon(regionTypeValue(r)))}<span>${regionTitle(r)}</span></a>
           <span class="pd-region-meta">${r.columns}/12</span>
         </div>
         <div class="pd-region-body">
-          <div class="pd-region-type">${typeName('region', r.type)}${r.template !== 'standard' ? ` · ${optionName('region', 'template', r.template) ?? r.template}` : ''}</div>
+          <div class="pd-region-type">${regionType(r)}${r.template !== 'standard' ? ` · ${optionName('region', 'template', r.template) ?? r.template}` : ''}</div>
           ${r.source || r.table_name ? html`<code class="pd-region-src">${firstLine(r.table_name ?? r.source)}</code>` : ''}
           ${slot('item', r.id, rows.item.filter((i) => i.region_id === r.id))}
           ${buttonSlots(r)}
@@ -349,7 +352,7 @@ export async function designerRoutes(app: FastifyInstance) {
       </div>
       <div class="pd-gallery">
         <div class="pd-tabs" data-tabs="pd-gallery" data-tabs-remember aria-label="${tx('pd.gallery')}">
-          ${tab('pd-g-regions', tx('pd.gallery.regions'), html`${gallery('region', Object.keys(CONTAINER_LABELS), CONTAINER_LABELS, 'pd.gallery.containers')}${gallery('region', REGION_TYPES(), REGION_LABELS)}`, true)}
+          ${tab('pd-g-regions', tx('pd.gallery.regions'), html`${gallery('region', Object.keys(CONTAINER_LABELS), CONTAINER_LABELS, 'pd.gallery.containers')}${gallery('region', withComponentTypes(REGION_TYPES()), { ...REGION_LABELS, ...COMPONENT_TYPE_LABELS })}`, true)}
           ${tab('pd-g-items', tx('pd.tree.items'), gallery('item', ITEM_TYPES(), ITEM_LABELS))}
           ${tab('pd-g-buttons', tx('pd.tree.buttons'), gallery('button', BUTTON_ACTIONS(), BUTTON_LABELS))}
         </div>
@@ -408,7 +411,9 @@ export async function designerRoutes(app: FastifyInstance) {
       const spec = COMPONENTS[newKind];
       const lastSeq = Math.max(0, ...rows[newKind].map((r) => r.seq));
       const typeField = newKind === 'button' ? 'action' : 'type';
-      const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') ? { [typeField]: req.query.type } : {};
+      // (sprint 231, AX-14) a built-in template component from the gallery: its type, and a sample query to start from
+      const presetType = spec.fields.find((f) => f.name === typeField)?.options?.includes(req.query.type ?? '') || (newKind === 'region' && isComponentType(req.query.type))
+        ? { [typeField]: req.query.type, ...(newKind === 'region' && isComponentType(req.query.type) ? { source: newComponentRegion(req.query.type!)!.source } : {}) } : {};
       const presetPlace = newKind === 'region' && POSITIONS().includes(req.query.position ?? '') ? { position: req.query.position } : {};
       // (172) a sub region: the region it goes in (the Sub regions slot's link)
       const presetParent = newKind === 'region' && /^\d{1,9}$/.test(req.query.parent ?? '') && rows.region.some((r) => String(r.id) === req.query.parent && r.parent_id == null)
@@ -434,7 +439,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const spec = COMPONENTS[kind];
       const row = rows[kind].find((r) => String(r.id) === cid);
       if (row) {
-        heading = html`${kind === 'region' ? bicon(regionIcon(row.type)) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${kindLabel(kind)}: ${kind === 'region' ? regionTitle(row) : spec.summary(row)}</span>`;
+        heading = html`${kind === 'region' ? bicon(regionIcon(regionTypeValue(row))) : kind === 'item' ? bicon(itemIcon(row.type)) : kind === 'button' ? bicon('button') : icon(spec.icon)}<span>${kindLabel(kind)}: ${kind === 'region' ? regionTitle(row) : spec.summary(row)}</span>`;
         // (sprint 202, AX-2) the Attributes tab is part of the property editor's form: the toolbar's Save saves both tabs.
         // Utilities → Show as JSON shows the region's settings as JSON instead (every key, also those without a field)
         const asJson = kind === 'region' && req.query.json === '1';
@@ -449,7 +454,7 @@ export async function designerRoutes(app: FastifyInstance) {
               <small class="help">${tx('pd.json.help')}</small></div></div>`;
         })() : '';
         props = html`${peTabs([
-          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, '', { id: formId }), !asJson),
+          tab('pd-r-props', kindLabel(kind), componentForm(spec, kind, kind === 'region' ? { ...row, type: regionTypeValue(row) } : row, lk, `${BASE}/pages/${p.id}/c/${kind}/${row.id}`, s, '', { id: formId }), !asJson),
           ...(settings ? [tab('pd-r-attrs', tx('pd.attributes'), settings)] : []),
           ...(jsonView ? [tab('pd-r-json', tx('pd.json.tab'), jsonView, 'force')] : []),
           ...(kind === 'process' && row.type === 'chain' && row.config?.background ? [tab('pd-r-jobs', tx('pd.jobs'), await processJobsPanel(row.id))] : []),
@@ -518,7 +523,7 @@ export async function designerRoutes(app: FastifyInstance) {
       const GUIDE = 'https://pgkiln.vargar.eu/docs';
       const k = newKind || kind;
       if (k === 'column') return regionConfigHelp(rows.region.find((r: any) => String(r.id) === cid)?.type ?? null).url ?? `${GUIDE}/pages-and-regions#region-types`;
-      if (k === 'region') return regionConfigHelp((newKind ? req.query.type : rows.region.find((r: any) => String(r.id) === cid)?.type) ?? null).url ?? `${GUIDE}/pages-and-regions#region-types`;
+      if (k === 'region') return regionConfigHelp((newKind ? (isComponentType(req.query.type) ? 'template_component' : req.query.type) : rows.region.find((r: any) => String(r.id) === cid)?.type) ?? null).url ?? `${GUIDE}/pages-and-regions#region-types`;
       return ({ item: `${GUIDE}/items`, button: `${GUIDE}/processing#buttons`, dynamic_action: `${GUIDE}/dynamic-actions`, validation: `${GUIDE}/processing#validations`,
         process: `${GUIDE}/processing#processes`, computation: `${GUIDE}/processing#computations`, branch: `${GUIDE}/processing#branches` } as Record<string, string>)[k] ?? `${GUIDE}/pages-and-regions`;
     })();
@@ -671,10 +676,14 @@ export async function designerRoutes(app: FastifyInstance) {
     // (sprint 202) the Show as JSON view (a region's config without its Attributes tab) stays open after its Save
     const json = kind === 'region' && cid && typeof req.body?.config === 'string' && !req.body.__settings ? '&json=1' : '';
     try {
+      // (sprint 231, AX-14) the Type list's Badge, Metric Card …: a template_component region of that component
+      const component = kind === 'region' ? takeComponentType(req.body ?? {}) : null;
+      const before = component && cid && /^\d{1,9}$/.test(cid) ? await owner.one('select type, config from meta.region where id = $1 and page_id = $2', [cid, pid]) : null;
       const id = await saveComponent(kind, 'page_id', pid, cid, req.body ?? {});
       flash(s, tr(s).dyn(`pd.saved.${kind}`, `${COMPONENTS[kind].label} saved.`));
       // (sprint 202, AX-2) the toolbar's Save also sends the region's Attributes tab (settings-save.ts)
       const problems = kind === 'region' && cid ? await saveRegionAttributes(pid, cid, req.body ?? {}, s) : [];
+      if (component) await applyComponentType(pid, id, component, before ?? null);
       if (problems.length) flash(s, problems.join(' '), 'error');
       return back(reply, s, `${BASE}/pages/${pid}?c=${kind}-${id}${json}`);
     } catch (e) {

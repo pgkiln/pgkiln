@@ -770,16 +770,18 @@ The App Builder's home page, `/builder/apps` (`/builder` shows it too, unless th
   the other actions beside it or in a ⋯ menu; an application's Pages tab has **Create page** as its primary action
   in the application's header (other tabs: **Run**), and its Tasks list only what the page doesn't offer already.
 - **The applications**, as a report (application id, name, alias, pages, page views of the last 24
-  hours, sign-in, last updated, **updated by**, **working copies**, and Edit / Run) or as cards. **Search** filters the list as you type
+  hours, sign-in, last updated, **updated by**, **working copies**, **lock**, and Edit / Run) or as cards. **Search** filters the list as you type
   (by name, alias or id; without JavaScript, press Enter). Click a column heading, or use
   **Actions**, to sort. The view and the sort are remembered until you sign out.
 - (sprint 116) **Updated by** is the developer who changed the application last in the builder (any change to its
   pages, shared components or settings; locks and comments don't count) or who created, imported or copied it;
   *Updated* is the later of that change and the application's own settings. An import with `pgkiln import` or the
   MCP server changes *Updated* only. **Working copies** counts the application's [working copies](#working-copies)
-  and links to them. A **lock icon** after the name shows that the application is [locked](#page-locks-and-comments),
-  with its owner in the tooltip (and for screen readers). The cards show the same as small badges. On phones the
-  report keeps the id, the name with the lock and the actions.
+  and links to them. The **Lock** column shows whether the application is [locked](#page-locks-and-comments): a lock and
+  the developer who holds it, or an open lock. (sprint 231, AX-13) As in APEX, *Updated*, *Updated by*, *Working copies*
+  and *Lock* show at every desktop and laptop width; on a narrower window *Views* and *Sign-in* give way first (and
+  the alias on tablets). The cards show the same as small badges. On phones the report keeps the id, the name and the
+  actions.
 - **A side column** (on the right on wide screens, below the list otherwise): About, **Recent** (the
   applications you opened last) and Tasks.
 - **The workspace message**, when the workspace has one, above the tiles.

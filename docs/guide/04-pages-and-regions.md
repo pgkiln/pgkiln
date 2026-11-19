@@ -1713,6 +1713,17 @@ Components → Template components → **Add** and choose **Copy into this appli
 with the same static id then replaces the built-in one everywhere in the application. HR page 39 *Team overview*
 uses all of them except the badge.
 
+(sprint 231, AX-14; APEX lists them in the gallery and the region Type list) In the Page Designer each built-in
+component is a **region type of its own**: the gallery's Regions tab and a region's **Type** list have *Avatar*, *Badge*,
+*Comments*, *Content Row*, *Media List*, *Metric Card* and *Timeline* (right after *Template Component*). Dragging one
+onto the layout, or choosing it in the create form, makes a `template_component` region of that component with a sample
+query (its columns are the component's attributes) and, for the ones with a group, *Display* `multiple`; edit the query
+and the settings as for any template component region. A region of a built-in component shows the component's name as
+its type in the tree, the layout and the Type list; choosing another one in the Type list switches the component (the
+attribute values of the old one go, its query stays). They are not stored as types: the region is `template_component`
+with `config.component`, so exports, imports and the APEX importer are unchanged. The application's own components stay
+under *Template Component*, chosen on the region's Attributes tab.
+
 #### The template language
 
 ```html

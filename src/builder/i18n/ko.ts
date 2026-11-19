@@ -8482,4 +8482,16 @@ export const ko: BuilderMessages = {
   'uit.list.tabs.d': '최상위 항목을 탭으로 표시.',
   'uit.list.wizard_progress': '마법사 진행',
   'uit.list.wizard_progress.d': '번호가 매겨진 단계: 현재 페이지의 항목이 현재 단계입니다.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "잠금",
+  "ab.unlocked": "잠기지 않음",
+  "lgp.remember_username": "\"사용자 이름 기억\" 제공",
+  "lgp.remember_username_help": "로그인 양식의 체크박스(APEX: 로그인 페이지의 Remember username). 선택하면 사용자 이름이 애플리케이션 쿠키에 180일 동안 저장되어 다음에 채워집니다. 비밀 정보는 저장되지 않습니다.",
+  "gallery.region.template_component:ut_avatar": "아바타",
+  "gallery.region.template_component:ut_badge": "배지",
+  "gallery.region.template_component:ut_comments": "댓글",
+  "gallery.region.template_component:ut_content_row": "콘텐츠 행",
+  "gallery.region.template_component:ut_media_list": "미디어 목록",
+  "gallery.region.template_component:ut_metric_card": "지표 카드",
+  "gallery.region.template_component:ut_timeline": "타임라인",
 };

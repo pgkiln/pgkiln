@@ -8482,4 +8482,16 @@ export const it: BuilderMessages = {
   'uit.list.tabs.d': 'Le voci di primo livello come linguette.',
   'uit.list.wizard_progress': 'Avanzamento procedura guidata',
   'uit.list.wizard_progress.d': 'Passi numerati: la voce della pagina corrente è il passo corrente.',
+  // (sprint 231, AX-13 / AX-14)
+  "ab.col.lock": "Blocco",
+  "ab.unlocked": "Non bloccata",
+  "lgp.remember_username": "Offri \"Ricorda il nome utente\"",
+  "lgp.remember_username_help": "Una casella nel modulo di accesso (APEX: Remember username della pagina di login). Selezionata, il nome utente resta per 180 giorni in un cookie dell'applicazione e viene compilato la volta successiva; non viene salvato nulla di segreto.",
+  "gallery.region.template_component:ut_avatar": "Avatar (immagine)",
+  "gallery.region.template_component:ut_badge": "Distintivo",
+  "gallery.region.template_component:ut_comments": "Commenti",
+  "gallery.region.template_component:ut_content_row": "Riga di contenuto",
+  "gallery.region.template_component:ut_media_list": "Elenco multimediale",
+  "gallery.region.template_component:ut_metric_card": "Scheda metrica",
+  "gallery.region.template_component:ut_timeline": "Sequenza temporale",
 };

@@ -306,6 +306,7 @@ export const pt: Record<MessageKey, string> = {
   'tasks.done.failed': "Não foi possível concluir a tarefa: {error}",
   'tasks.event.failed': "a conclusão falhou",
   'login.remember': "Manter a sessão iniciada durante {days} dias",
+  'login.remember_username': "Lembrar o nome de utilizador",
   'error.document_unavailable': "Este documento não está disponível.",
   'login.sso_continue': "A concluir o início de sessão…",
   'login.ldap_unavailable': "Não foi possível verificar o início de sessão: o diretório não está acessível. Tente mais tarde.",

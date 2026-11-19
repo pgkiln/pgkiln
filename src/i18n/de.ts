@@ -306,6 +306,7 @@ export const de: Record<MessageKey, string> = {
   'tasks.done.failed': "Die Aufgabe konnte nicht abgeschlossen werden: {error}",
   'tasks.event.failed': "der Abschluss ist fehlgeschlagen",
   'login.remember': '{days} Tage angemeldet bleiben',
+  'login.remember_username': "Benutzernamen merken",
   'error.document_unavailable': 'Dieses Dokument ist nicht verfügbar.',
   'login.sso_continue': 'Anmeldung wird abgeschlossen…',
   'login.ldap_unavailable': 'Die Anmeldung konnte nicht geprüft werden: Das Verzeichnis ist nicht erreichbar. Versuchen Sie es später erneut.',

@@ -306,6 +306,7 @@ export const el: Record<MessageKey, string> = {
   'tasks.done.failed': "Η εργασία δεν ολοκληρώθηκε: {error}",
   'tasks.event.failed': "η ολοκλήρωση απέτυχε",
   'login.remember': "Να παραμείνω συνδεδεμένος για {days} ημέρες",
+  'login.remember_username': "Απομνημόνευση ονόματος χρήστη",
   'error.document_unavailable': "Αυτό το έγγραφο δεν είναι διαθέσιμο.",
   'login.sso_continue': "Ολοκλήρωση σύνδεσης…",
   'login.ldap_unavailable': "Δεν ήταν δυνατός ο έλεγχος της σύνδεσης: ο κατάλογος δεν είναι προσβάσιμος. Δοκιμάστε αργότερα.",
