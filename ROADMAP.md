@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.110.0 (November 2026): a recycle bin in the SQL Workshop; REST data sources of XML and SOAP services; the OAuth2 authorization code flow for web credentials; Liquibase contexts, labels and preconditions; account login controls and developer accounts per workspace; gauge shapes.
+- **Current release:** 0.111.0 (November 2026): the Global Page (page 0); a region's Layout grid, Appearance, Accessibility, Advanced, Header and Footer, Read Only, Customization, Comments and Audit properties; Remember username on the sign-in card; Updated by, Working copies and Lock in the App Builder report; template components as region types of their own.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
