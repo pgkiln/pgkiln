@@ -83,7 +83,10 @@ The report, grid, calendar and facet regions add their own parameters (search, s
 
 ### Showing a page (GET)
 
-1. Load the application and the page definition; a missing app or page returns 404.
+1. Load the application and the page definition; a missing app or page returns 404. (229) The
+   [Global Page](04-pages-and-regions.md#the-global-page) (page 0), when the application has one, is loaded with
+   it: its components become part of the page (page 0 itself is never shown, `/a/<alias>/0` is 404), and from
+   step 2 on they are the page's, unless page 0's own sign-in or authorization leaves them out for this user.
 2. Find the session from the cookie; if the page requires sign-in and the user is anonymous,
    redirect to the login page.
 3. Apply **URL items** (`?P3_ID=7`). On protected pages the checksum must be valid, or the
@@ -145,7 +148,7 @@ another one (`pgkiln_dev`).
 
 - **Page items** belong to a page (e.g. `P3_ENAME`). They are rendered as fields and can be
   submitted by the browser if they're editable. By convention their names start with
-  `P<page number>_`.
+  `P<page number>_`; the [Global Page](04-pages-and-regions.md#the-global-page)'s with `P0_` (they are on every page).
 - **Application items** (e.g. `AI_EMPNO`) are not on any page and **can never be set by the
   browser**, only by server-side code (application processes, page processes and computations). Use them for
   per-session facts such as "the employee number of the signed-in user".

@@ -38,7 +38,7 @@ async function signIn(b: Browser, username: string, password: string) {
 async function everyPageRenders(alias: string, user: Browser) {
   const a = (await owner.one<{ id: number }>('select id from meta.app where alias = $1', [alias]))!;
   const logged = (await owner.one(`select coalesce(max(id), 0) as id from meta.activity_log where app_id = $1`, [a.id])).id;
-  const pages = (await owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1 order by 1', [a.id])).rows;
+  const pages = (await owner.query<{ page_no: number }>('select page_no from meta.page where app_id = $1 and page_no > 0 order by 1', [a.id])).rows;
   assert.ok(pages.length > 1, `${alias} has pages`);
   for (const p of pages) {
     const res = await user.get(`/a/${alias}/${p.page_no}`);

@@ -665,7 +665,7 @@ export async function builderRoutes(app: FastifyInstance) {
     const tx = tr(s);
     // (sprint 203, AX-6; APEX: Recently Edited Pages) five pages by their last change: the ones you changed first
     const edited = (await owner.query<{ page_no: number; name: string; mine: string | null; last: string; by: string | null }>(
-      `with e as (select page_no, changed_by as by, changed_at as at from meta.component_change where app_id = $1 and page_no > 0
+      `with e as (select page_no, changed_by as by, changed_at as at from meta.component_change where app_id = $1 and page_no >= 0
                   union all select page_no, updated_by, updated_at from meta.page_change where app_id = $1)
        select p.page_no, p.name, max(e.at) filter (where e.by = $2)::text as mine, max(e.at)::text as last,
               (array_agg(e.by order by e.at desc))[1] as by
@@ -712,6 +712,9 @@ export async function builderRoutes(app: FastifyInstance) {
     if (!s) return;
     const b = req.body ?? {};
     try {
+      // (sprint 229) 0 is the Global Page: only a number typed as such, never an empty field
+      if (!/^\d{1,6}$/.test(String(b.page_no ?? '').trim())) throw new Error(tr(s)('cpg.enter_a_page_number'));
+      if (Number(b.page_no) === 0 && b.mode === 'modal') throw new Error(tr(s)('gp.not_modal'));
       const p = await owner.one(
         'insert into meta.page (app_id, page_no, name, title, mode, parent_page) values ($1, $2, $3, $3, $4, $5) returning id',
         [req.params.id, Number(b.page_no), b.name?.trim(), b.mode === 'modal' ? 'modal' : 'normal', b.parent_page ? Number(b.parent_page) : null],

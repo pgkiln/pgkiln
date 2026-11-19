@@ -95,7 +95,7 @@ export async function designerRoutes(app: FastifyInstance) {
   });
 
   async function pageDesigner(req: Req, reply: FastifyReply, s: Session, pid: number | string) {
-    const p = await owner.one('select p.*, p.alias as page_alias, a.alias, a.name as app_name from meta.page p join meta.app a on a.id = p.app_id where p.id = $1', [pid]);
+    const p = await owner.one('select p.*, p.alias as page_alias, a.alias, a.name as app_name, a.home_page from meta.page p join meta.app a on a.id = p.app_id where p.id = $1', [pid]);
     if (!p) return reply.code(404).send('Not found');
     const rows: Record<string, any[]> = {};
     for (const kind of PAGE_KINDS) rows[kind] = (await owner.query(`select * from ${COMPONENTS[kind].table} where page_id = $1 order by seq, id`, [p.id])).rows;
@@ -389,7 +389,9 @@ export async function designerRoutes(app: FastifyInstance) {
     // (sprint 210, AX-5) Create → Developer comment: the Lock and comments tab, its comment field focused
     const comment = req.query.comment === '1';
     const commentCount = (await owner.one('select count(*)::int as n from meta.dev_comment where app_id = $1 and page_no = $2', [p.app_id, p.page_no])).n;
-    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} ${tx('pd.lock_refused')}</div>` : ''}${await pageIssuesNote(p.app_id, p.page_no)}
+    // (sprint 229, AX-8) page 0: what the Global Page is, and the pages it is part of
+    const globalNote = p.page_no === 0 ? html`<div class="alert alert-info pd-global" role="note">${icon('layers')} ${tx('gp.designer_note')}</div>` : '';
+    const center = html`${blocking ? html`<div class="alert alert-error pd-lock" role="status">${icon('key')} ${lockText(blocking)} ${tx('pd.lock_refused')}</div>` : ''}${globalNote}${await pageIssuesNote(p.app_id, p.page_no)}
       <div class="pd-tabs pd-tabs-center" data-tabs="pd-center" aria-label="${tx('pd.copy.page')}">
       ${tab('pd-c-layout', tx('pd.layout'), layout, !comment)}
       ${tab('pd-c-search', tx('pd.page_search'), pageSearch)}
@@ -594,7 +596,10 @@ export async function designerRoutes(app: FastifyInstance) {
       <div class="tb-group tb-menus">${createMenu}${utilMenu}</div>
       <div class="tb-group tb-main">
         ${hasForm ? html`<button class="btn btn-sm tb-save" form="${formId}" title="${tx('pd.save_title')}">${bicon('save')}<span>${tx('common.save')}</span></button>` : ''}
-        <a class="btn btn-sm btn-run" href="/a/${p.alias}/${p.page_no}" target="_blank" rel="noopener" title="${tx('pd.run_title', { n: p.page_no })}">${icon('play')}<span>${tx('common.run')}</span></a>
+        ${p.page_no === 0
+          // (sprint 229) the Global Page is never opened by itself: Run opens the home page, which shows it
+          ? html`<a class="btn btn-sm btn-run" href="/a/${p.alias}/${p.home_page}" target="_blank" rel="noopener" title="${tx('gp.run_title', { n: p.home_page })}">${icon('play')}<span>${tx('common.run')}</span></a>`
+          : html`<a class="btn btn-sm btn-run" href="/a/${p.alias}/${p.page_no}" target="_blank" rel="noopener" title="${tx('pd.run_title', { n: p.page_no })}">${icon('play')}<span>${tx('common.run')}</span></a>`}
       </div>`;
 
     const pane = newKind || sel ? 'pd-p-props' : 'pd-p-layout';
@@ -617,6 +622,11 @@ export async function designerRoutes(app: FastifyInstance) {
     const row = kind ? await owner.one(`select id from ${table} where page_id = $1 and name = $2 order by id limit 1`, [req.params.pid, name]) : null;
     const page = await owner.one<{ app_id: number; page_no: number }>('select app_id, page_no from meta.page where id = $1', [req.params.pid]);
     if (!page) return reply.code(404).send('Not found');
+    // (sprint 229) an item or button of the Global Page, shown on this page: opened on page 0
+    const global = !row && kind
+      ? await owner.one(`select x.id from ${table} x join meta.page g on g.id = x.page_id where g.app_id = $1 and g.page_no = 0 and x.name = $2 order by x.id limit 1`, [page.app_id, name])
+      : null;
+    if (global) return reply.redirect(designerUrl(page.app_id, 0, `c=${kind}-${global.id}`));
     return reply.redirect(designerUrl(page.app_id, page.page_no, row ? `c=${kind}-${row.id}` : ''));
   });
 
@@ -626,6 +636,9 @@ export async function designerRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       const before = await owner.one('select app_id, page_no, alias from meta.page where id = $1', [req.params.pid]);
+      // (sprint 229) 0 is the Global Page: only a number typed as such, never an empty field; it is never a dialog
+      if (!/^\d{1,6}$/.test(String(b.page_no ?? '').trim())) throw new Error(tr(s)('cpg.enter_a_page_number'));
+      if (Number(b.page_no) === 0 && b.mode === 'modal') throw new Error(tr(s)('gp.not_modal'));
       // (sprint 193) the page alias: empty takes one from the name (migration 170), else checked here for a readable message
       const alias = typeof b.page_alias === 'string' ? b.page_alias.trim().toLowerCase() : before?.alias ?? '';
       if (alias && before && alias !== before.alias) {
@@ -642,7 +655,8 @@ export async function designerRoutes(app: FastifyInstance) {
          typeof b.help === 'string' && b.help.trim() ? b.help.replace(/\r\n?/g, '\n').trim().slice(0, 20000) : null, alias || null],
       );
       // the page's lock and comments follow a new page number
-      if (before && before.page_no !== Number(b.page_no))
+      // (sprint 229) page_no 0 of a lock or comment is the application's (the Global Page's are too): those stay
+      if (before && before.page_no !== Number(b.page_no) && before.page_no !== 0 && Number(b.page_no) !== 0)
         for (const t of ['builder_lock', 'dev_comment'])
           await owner.query(`update meta.${t} set page_no = $3 where app_id = $1 and page_no = $2`, [before.app_id, before.page_no, Number(b.page_no)]);
       flash(s, tr(s)('pd.page_saved'));
@@ -663,7 +677,8 @@ export async function designerRoutes(app: FastifyInstance) {
       return back(reply, s, `${BASE}/pages/${req.params.pid}`);
     }
     const p = await owner.one('delete from meta.page where id = $1 returning app_id, page_no', [req.params.pid]);
-    if (p) for (const t of ['builder_lock', 'dev_comment']) await owner.query(`delete from meta.${t} where app_id = $1 and page_no = $2`, [p.app_id, p.page_no]);
+    // (sprint 229) page_no 0 of a lock or comment is the application's: deleting the Global Page keeps them
+    if (p && p.page_no !== 0) for (const t of ['builder_lock', 'dev_comment']) await owner.query(`delete from meta.${t} where app_id = $1 and page_no = $2`, [p.app_id, p.page_no]);
     flash(s, tr(s)('pd.page_deleted'));
     return back(reply, s, p ? `${BASE}/apps/${p.app_id}` : BASE);
   });

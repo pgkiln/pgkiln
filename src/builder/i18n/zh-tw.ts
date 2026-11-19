@@ -8494,4 +8494,14 @@ export const zhTW: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "媒體清單",
   "gallery.region.template_component:ut_metric_card": "指標卡",
   "gallery.region.template_component:ut_timeline": "時間軸",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': '全域頁面',
+  'gp.global_page': '全域頁面',
+  'gp.tile_help': '頁面 0：顯示在每個頁面上的區域、項目、動態動作和流程。',
+  'gp.create_intro': '頁面 0 是應用程式每個頁面的一部分：其區域（在各自位置）、項目、按鈕、動態動作、計算、驗證和流程會加入每個頁面。它從不單獨開啟。其授權和「頁面需要登入」決定誰能看到它們；其項目命名為 P0_…。',
+  'gp.create': '建立全域頁面',
+  'gp.not_modal': '全域頁面（頁面 0）是一般頁面，不能是強制回應對話方塊。',
+  'gp.on_every_page': '在每個頁面上',
+  'gp.designer_note': '頁面 0 是全域頁面：其元件是此應用程式所有其他頁面的一部分，且從不單獨開啟。其鎖定和註解屬於應用程式。',
+  'gp.run_title': '執行顯示全域頁面的首頁（頁面 {n}）',
 };

@@ -1,6 +1,6 @@
 import { secondStepWithin } from '../account-mfa.ts';
 import { applyBinds } from '../binds.ts';
-import type { AuthzScheme, Condition } from '../metadata.ts';
+import type { AuthzScheme, Condition, Page } from '../metadata.ts';
 import { savepoint } from '../db.ts';
 import { bindValues, publicError, stripSemicolon, type PageContext, type Visibility } from './context.ts';
 import { saveButton, saveRequest } from './grid.ts';
@@ -70,7 +70,36 @@ export function authzMessage(ctx: PageContext, ref: string | null) {
   return ctx.app.authz_schemes.find((s) => s.name === name)?.error_message ?? ctx.locale.t('error.not_authorized');
 }
 
+/**
+ * (sprint 229, AX-8) The Global Page's own Authorization and Page requires sign-in decide whether its components
+ * (merged into this page by loadPage, marked global_page) are this user's at all: when they fail, every one of them
+ * is taken out of the page before anything is shown or run. Each component's own authorization, condition and build
+ * option still apply after this, as on any page. Runs once per request (checkPageAccess and computeVisibility).
+ */
+export async function applyGlobalGate(ctx: PageContext) {
+  const g = ctx.page.global;
+  if (!g || g.applied) return;
+  g.applied = true;
+  const signedOut = ctx.app.authentication !== 'none' && g.requires_auth && ctx.user === 'nobody';
+  if (!signedOut && (await isAuthorized(ctx, g.authz))) return;
+  dropGlobal(ctx.page);
+}
+
+/** (sprint 229) Takes the Global Page's components out of a page (see applyGlobalGate). */
+export function dropGlobal(p: Page) {
+  const own = <T extends { global_page?: true }>(xs: T[]) => xs.filter((x) => !x.global_page);
+  if (p.global) p.global.applied = true;
+  p.regions = own(p.regions);
+  p.items = own(p.items);
+  p.buttons = own(p.buttons);
+  p.dynamic_actions = own(p.dynamic_actions);
+  p.computations = own(p.computations);
+  p.validations = own(p.validations);
+  p.processes = own(p.processes);
+}
+
 export async function checkPageAccess(ctx: PageContext) {
+  await applyGlobalGate(ctx);
   if (await isAuthorized(ctx, ctx.page.authz)) return;
   if (await onlyStepUpMissing(ctx, ctx.page.authz)) throw new StepUp(authzMessage(ctx, ctx.page.authz));
   throw new Forbidden(authzMessage(ctx, ctx.page.authz));
@@ -91,6 +120,7 @@ export async function pageAllowed(ctx: PageContext, pageNo: number) {
  * was not rendered cannot be pressed or set by a forged request.
  */
 export async function computeVisibility(ctx: PageContext): Promise<Visibility> {
+  await applyGlobalGate(ctx);
   const vis: Visibility = { regions: new Set(), items: new Set(), editable: new Set(), buttons: new Map(), dynamicActions: new Set() };
   for (const r of ctx.page.regions)
     if ((await isAuthorized(ctx, r.authz)) && (await conditionHolds(ctx, conditionOf(r), `condition of region "${r.title ?? r.id}"`)))

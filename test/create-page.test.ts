@@ -96,9 +96,10 @@ describe('the Create page grid (tab Component)', () => {
     assert.equal(r.statusCode, 200);
     for (const label of ['Blank page', 'Calendar', 'Cards', 'Chart', 'Comments', 'Content row', 'Dashboard', 'Data loading', 'Faceted search', 'Form',
       'Interactive grid', 'Interactive report', 'Map', 'Master detail', 'Media list', 'Search page', 'Smart filters', 'Timeline', 'Tree',
-      'Unified task list', 'Wizard', 'Workflow console', 'Create pages with AI'])
+      'Unified task list', 'Wizard', 'Workflow console', 'Create pages with AI', 'Global Page'])
       assert.match(r.body, new RegExp(`<b>${label}</b>`), label);
-    assert.equal((r.body.match(/<svg class="cp-svg"/g) ?? []).length, 24);
+    // (sprint 229) and the Global Page, while the application has no page 0
+    assert.equal((r.body.match(/<svg class="cp-svg"/g) ?? []).length, 25);
     assert.doesNotMatch(r.body, /style="/);
     // a type on a table asks for the table first; one without goes to its options at once
     assert.match(r.body, new RegExp(`href="/builder/apps/${appId}/create-page\\?type=tree"`));

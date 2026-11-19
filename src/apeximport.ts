@@ -879,10 +879,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     const name = str(a, 'p_name') ?? `Page ${no}`;
     const mode = (str(a, 'p_page_mode') ?? 'NORMAL').toUpperCase();
     const e = add(new Entry('page', no, name, mode === 'NORMAL' ? 'page' : `page (${mode})`, mode === 'NORMAL' ? 'normal' : 'modal'));
-    if (no === 0) {
-      e.notMapped('the global page (page 0) has no pgkiln equivalent: put its regions on the pages that need them, or use a template component');
-      continue;
-    }
+    // (sprint 229, AX-8) APEX's Global Page is pgkiln's page 0: its components are part of every page
+    if (no === 0) e.note('the Global Page: its regions, items, dynamic actions and processes are part of every page (page 0, chapter 4)');
     if (loginPages.has(no)) {
       e.notMapped("APEX's login page: pgkiln signs users in itself (an application's login page is a page with a Login region, chapter 8)");
       continue;
@@ -894,7 +892,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
     if (mode === 'NON_MODAL') e.note('a non-modal dialog became a modal page');
     const help = str(a, 'p_help_text');
     const prot = (str(a, 'p_protection_level') ?? 'C').toUpperCase();
-    if (prot === 'D' || prot === 'B') e.note(`page access protection ${prot === 'D' ? 'No URL Access' : 'Arguments must have checksum'} became "checksum"`);
+    if (no !== 0 && (prot === 'D' || prot === 'B')) e.note(`page access protection ${prot === 'D' ? 'No URL Access' : 'Arguments must have checksum'} became "checksum"`);
     // (sprint 193) APEX's page alias (EMPLOYEES, LEAVE_REQUESTS) as pgkiln's (employees, leave-requests); one pgkiln
     // can't use is left out, and the page gets one from its name (migration 170)
     const apexPageAlias = (str(a, 'p_alias') ?? '').toLowerCase().replace(/_/g, '-');
@@ -903,7 +901,7 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       name,
       ...(apexPageAlias && !pageAliasProblem(apexPageAlias) ? { alias: apexPageAlias } : {}),
       title: str(a, 'p_step_title') ?? name,
-      mode: mode === 'NORMAL' ? 'normal' : 'modal',
+      mode: mode === 'NORMAL' || no === 0 ? 'normal' : 'modal',
       requires_auth: !yes(a, 'p_page_is_public_y_n') && !/^(PUBLIC|NOT_REQUIRED)$/i.test(str(a, 'p_authentication') ?? ''),
       protection: prot === 'U' ? 'unrestricted' : 'checksum',
       dialog_position: 'center',

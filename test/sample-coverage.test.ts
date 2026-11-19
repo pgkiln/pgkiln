@@ -92,4 +92,10 @@ describe('every feature in a sample app', () => {
       assert.ok(!(await used(r.tbl, r.col, apps)).has(val), `${key} is used by a sample app now: remove the exemption`);
     }
   });
+
+  test('(sprint 229) a Global Page (page 0) with components is in HR or a gallery sample app', async () => {
+    assert.ok(await owner.one(`select 1 as ok from meta.page p where p.app_id = any($1) and p.page_no = 0
+                                  and exists (select 1 from meta.region r where r.page_id = p.id)
+                                  and exists (select 1 from meta.dynamic_action d where d.page_id = p.id)`, [apps]));
+  });
 });

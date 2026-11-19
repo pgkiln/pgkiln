@@ -1215,7 +1215,7 @@ shows its number and name, and these columns:
 | Column | What it shows |
 |---|---|
 | **Alias** | The page's [alias](04-pages-and-regions.md#page-alias): `/a/<app>/<alias>` opens it. **Run ▸** at the end of the row uses it |
-| **Type** | What kind of page it is, from its regions (pgkiln keeps no type on a page): *Blank* without regions; *Login* with a login region; *Faceted Search* or *Smart Filters* when such a region filters a report, cards or a map on the page; *Dashboard* when the page has two charts or more and its first content region is a chart, cards, dynamic content or a template component; otherwise the type of its **main region**: the first one by sequence that is not a breadcrumb, help text, region display selector or static content (*Interactive Report*, *Interactive Grid*, *Form*, *Calendar*, *Map*, …), and *Static Content* when there is nothing else |
+| **Type** | What kind of page it is, from its regions (pgkiln keeps no type on a page): (229) *Global Page* for page 0, the [Global Page](04-pages-and-regions.md#the-global-page), whose row says *On every page* instead of **Run ▸**; *Blank* without regions; *Login* with a login region; *Faceted Search* or *Smart Filters* when such a region filters a report, cards or a map on the page; *Dashboard* when the page has two charts or more and its first content region is a chart, cards, dynamic content or a template component; otherwise the type of its **main region**: the first one by sequence that is not a breadcrumb, help text, region display selector or static content (*Interactive Report*, *Interactive Grid*, *Form*, *Calendar*, *Map*, …), and *Static Content* when there is nothing else |
 | **Group**, **Mode** | The page group (only when the application has groups) and *Normal* or *Modal dialog* |
 | **Updated**, **Updated by** | When the page was changed last, and by which developer (*you* for yourself). Every change the change history records counts: a Page Designer save, a region, item, button, process or dynamic action added, changed or deleted on the page, an alias edited, and an **import**: the pages an `import --replace`, a restore or an upgrade changed (*import* when the command line gave no developer), and every page of an application a **Create** or **Import** made, with the developer who made it. A dash: no change recorded since the application was installed |
 | **Conditions**, **Authorization**, **Lock**, **Protection** | The server-side conditions in words (sprint 183), the page's authorization scheme (*public* without sign-in), its lock and its protection |
@@ -1339,7 +1339,17 @@ components, search configurations, data load definitions) are listed: for each, 
 page's SQL runs as this application's database role afterwards: grant it what the other application's role
 could read. From SQL: `meta.copy_page(from_app, page, to_app, new_page, name, map)`.
 
+(sprint 229) Page number **0** makes the copy the application's [Global Page](04-pages-and-regions.md#the-global-page)
+(refused when it has one; a modal page becomes a normal page), and the Global Page of another application copies as
+this one's page 0, or as a normal page with its `P0_` items renamed.
+
 (sprint 206) In the page designer, **Create → Copy this page** opens the last step with the open page chosen.
+
+### Create the Global Page
+
+(sprint 229; APEX: Create Page → Global Page) While the application has no page 0, the grid of **Create page**
+has a **Global Page** tile: give it a name and **Create Global Page** makes page 0, whose regions, items, dynamic
+actions and processes are part of every page ([The Global Page](04-pages-and-regions.md#the-global-page)).
 
 ### Create a blank page
 
@@ -2129,6 +2139,9 @@ Database code (views, functions, RLS policies) isn't part of the application, so
   component out, and the items computations set or copy); grids without a key or a save process;
   workflow `invoke_api` steps that name a REST data source, parameter or web credential that
   doesn't exist, leave a required parameter empty or use a `&VAR.` no step sets.
+- **The Global Page** (sprint 229): a link, redirect button, menu entry or home page that goes to page 0 (never
+  opened by itself) is an error; a branch on page 0 (it never runs) is a warning; an item on page 0 not named
+  `P0_…` is a note. See [The Global Page](04-pages-and-regions.md#the-global-page).
 - **Security** (sprint 144; APEX 26.2: CodeScan's checks): a page that needs no sign-in with a process that writes
   data (a form or grid save, or SQL with INSERT, UPDATE, DELETE, MERGE or TRUNCATE) is a warning; a signed-in page
   that writes data with no authorization scheme on the page or the process, in an application that has schemes, is a

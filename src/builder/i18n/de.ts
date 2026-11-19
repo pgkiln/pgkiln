@@ -8494,4 +8494,14 @@ export const de: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "Medienliste",
   "gallery.region.template_component:ut_metric_card": "Kennzahlkarte",
   "gallery.region.template_component:ut_timeline": "Zeitachse",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': 'Globale Seite',
+  'gp.global_page': 'Globale Seite',
+  'gp.tile_help': 'Seite 0: Regionen, Elemente, dynamische Aktionen und Prozesse auf jeder Seite.',
+  'gp.create_intro': 'Seite 0 gehört zu jeder Seite der Anwendung: ihre Regionen (an ihren Positionen), Elemente, Schaltflächen, dynamischen Aktionen, Berechnungen, Validierungen und Prozesse werden jeder Seite hinzugefügt. Sie wird nie selbst geöffnet. Ihre Autorisierung und „Seite erfordert Anmeldung“ entscheiden, wer sie erhält; benennen Sie ihre Elemente P0_….',
+  'gp.create': 'Globale Seite erstellen',
+  'gp.not_modal': 'Die globale Seite (Seite 0) ist eine normale Seite, nie ein modaler Dialog.',
+  'gp.on_every_page': 'Auf jeder Seite',
+  'gp.designer_note': 'Seite 0 ist die globale Seite: ihre Komponenten gehören zu jeder anderen Seite dieser Anwendung, und sie wird nie selbst geöffnet. Ihre Sperre und Kommentare sind die der Anwendung.',
+  'gp.run_title': 'Die Startseite (Seite {n}) ausführen, die die globale Seite zeigt',
 };

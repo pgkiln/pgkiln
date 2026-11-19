@@ -66,7 +66,7 @@ describe('accessibility (axe-core)', () => {
         await page.goto(`${base}/a/hr/login`);
         await audit(page, 'login', found);
         await signIn(page, '/a/hr/login', 'king', 'king');
-        const pages = (await owner.query(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.mode = 'normal' order by 1`)).rows;
+        const pages = (await owner.query(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = 'hr' and p.mode = 'normal' and p.page_no > 0 order by 1`)).rows;
         for (const { page_no: p } of pages) {
           await page.goto(`${base}/a/hr/${p}`);
           await audit(page, `page ${p}`, found);

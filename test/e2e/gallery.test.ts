@@ -84,7 +84,7 @@ async function check(page: Page, name: string) {
 }
 
 const pagesOf = async (alias: string) =>
-  (await owner.query<{ page_no: number }>(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1 order by 1`, [alias])).rows.map((r) => r.page_no);
+  (await owner.query<{ page_no: number }>(`select p.page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1 and p.page_no > 0 order by 1`, [alias])).rows.map((r) => r.page_no);
 
 describe('the sample apps of the App Gallery', () => {
   for (const [vp, size] of Object.entries(VIEWPORTS)) {

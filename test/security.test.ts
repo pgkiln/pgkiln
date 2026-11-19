@@ -2079,6 +2079,9 @@ describe('sprint 27 large tables', () => {
     clearRegionCache();
     const cached = await addRegion(25, { config: { cache: { scope: 'all', seconds: 300 } } });
     const hidden = await addRegion(25, { seq: 96, type: 'report', source: 'select 1 as x', condition: 'false' });
+    // (sprint 229) HR's Global Page shows a manager the leave requests of their own department (row level security):
+    // jones and blake would see different regions, so a different cache key; it is left out of this test
+    await owner.query(`update meta.region r set build_option = 'COMMENTED_OUT' from meta.page p where p.id = r.page_id and p.app_id = $1 and p.page_no = 0`, [appId]);
     try {
       const king = await as('king');
       const ts = (body: string) => /<p>([^<]+)<\/p>/.exec(section(body, cached))![1];
@@ -2093,6 +2096,7 @@ describe('sprint 27 large tables', () => {
       assert.equal((await new Browser().get(`/a/hr/25?r${await regionId('All readings')}_csv=1`)).statusCode, 302, 'no session, no download');
     } finally {
       await owner.query('delete from meta.region where id = any($1)', [[cached, hidden]]);
+      await owner.query(`update meta.region r set build_option = null from meta.page p where p.id = r.page_id and p.app_id = $1 and p.page_no = 0`, [appId]);
       clearRegionCache();
     }
   });
@@ -18947,5 +18951,112 @@ describe('sprint 231 AX-13/AX-14', () => {
     // the Type list: an unknown component type is stored as it is sent and refused by the type check
     await dev.post(`/builder/pages/${pid}/c/region`, { __csrf: dev.lastCsrf, title: 'Sec231', type: 'template_component:nope', seq: '999', columns: '12', template: 'standard' });
     assert.equal(await owner.one(`select 1 from meta.region where page_id = $1 and title = 'Sec231'`, [pid]), undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (sprint 229, AX-8) The Global Page (page 0): never opened by itself; its components are part of every page, but
+// only for whom its Authorization and Page requires sign-in allow (and each component's own authorization and
+// condition); what isn't added can't be fetched, run or set by a forged request.
+describe('sprint 229 AX-8', () => {
+  const A = 'sec229';
+  let id: number;
+  let p0: number;
+  let openRegion: number;
+  let secretRegion: number;
+  let openDa: number;
+  let secretDa: number;
+  before(async () => {
+    await owner.query('delete from meta.app where alias = $1', [A]);
+    id = (await owner.one(`insert into meta.app (alias, name, authentication, access_control, db_role) values ($1, 'Sec 229', 'app_users', 'any_user', 'hr_app') returning id`, [A])).id;
+    await owner.query(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'S229_ADMIN', 'role', 'admin')`, [id]);
+    await owner.query(`insert into meta.page (app_id, page_no, name, requires_auth, protection) values ($1, 1, 'Public', false, 'unrestricted'), ($1, 2, 'Signed in', true, 'checksum')`, [id]);
+    p0 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 0, 'Global Page', true) returning id`, [id])).id;
+    openRegion = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'Open global', 'static', '<p>open global &P0_NOTE.</p>', '{"lazy": true}') returning id`, [p0])).id;
+    secretRegion = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, authz) values ($1, 20, 'Secret global', 'static', '<p>secret global</p>', 'S229_ADMIN') returning id`, [p0])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 10, 'P0_NOTE', 'Note', 'text')`, [p0, openRegion]);
+    openDa = (await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, action, code, affected_items) values ($1, 10, 'Open', 'click', 'execute_sql', $$select 'da ran' as p0_note$$, 'P0_NOTE') returning id`, [p0])).id;
+    secretDa = (await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, action, code, affected_items, authz) values ($1, 20, 'Secret', 'click', 'execute_sql', $$select 'secret ran' as p0_note$$, 'P0_NOTE', 'S229_ADMIN') returning id`, [p0])).id;
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [id]);
+  });
+  // the session state of the browser that made the last request
+  const state = async (b: Browser) => {
+    assert.ok(b.cookies.size);
+    return (await owner.one<{ s: Record<string, string> }>(`select state as s from meta.session where app_id = $1 order by last_seen desc limit 1`, [id]))!.s;
+  };
+
+  test('page 0 is never opened by itself: by number, alias, a lazy region or a dynamic action of its own', async () => {
+    const b = new Browser();
+    await b.login('scott', 'scott', A);
+    assert.equal((await b.get(`/a/${A}/0`)).statusCode, 404);
+    assert.equal((await b.get(`/a/${A}/global-page`)).statusCode, 404);
+    assert.equal((await b.get(`/a/${A}/0/region/${openRegion}`)).statusCode, 404);
+    assert.equal((await b.post(`/a/${A}/0/da/${openDa}`, { __csrf: b.lastCsrf })).statusCode, 404);
+  });
+
+  test('signed out on a public page: nothing of a Global Page that requires sign-in is shown, fetched, run or set', async () => {
+    const b = new Browser();
+    const page = await b.get(`/a/${A}/1?P0_NOTE=forged`);
+    assert.equal(page.statusCode, 200);
+    assert.doesNotMatch(page.body, /open global|secret global/);
+    assert.notEqual((await state(b)).P0_NOTE, 'forged', 'the URL set no item of the Global Page');
+    assert.equal((await b.get(`/a/${A}/1/region/${openRegion}`)).statusCode, 403);
+    assert.equal((await b.post(`/a/${A}/1/da/${openDa}`, { __csrf: b.lastCsrf })).statusCode, 403);
+    await b.post(`/a/${A}/1`, { __csrf: b.lastCsrf, P0_NOTE: 'posted' });
+    assert.notEqual((await state(b)).P0_NOTE, 'posted', 'a posted value of the Global Page is not taken');
+  });
+
+  test('signed in: the Global Page\'s components follow their own authorization', async () => {
+    const b = new Browser();
+    await b.login('scott', 'scott', A);
+    const page = await b.get(`/a/${A}/1`);
+    assert.doesNotMatch(page.body, /secret global/);
+    assert.equal((await b.get(`/a/${A}/1/region/${secretRegion}`)).statusCode, 403);
+    assert.equal((await b.post(`/a/${A}/1/da/${secretDa}`, { __csrf: b.lastCsrf })).statusCode, 403);
+    const ran = await b.post(`/a/${A}/1/da/${openDa}`, { __csrf: b.lastCsrf });
+    assert.equal(ran.statusCode, 200);
+    assert.equal(JSON.parse(ran.body).items.P0_NOTE, 'da ran');
+    // CSRF: a forged token runs nothing
+    assert.equal((await b.post(`/a/${A}/1/da/${openDa}`, { __csrf: 'forged' })).statusCode, 403);
+  });
+
+  test('the Global Page\'s Authorization: a user it refuses gets none of its components, the page itself opens', async () => {
+    await owner.query(`update meta.page set authz = 'S229_ADMIN' where id = $1`, [p0]);
+    try {
+      const b = new Browser();
+      await b.login('scott', 'scott', A);
+      const page = await b.get(`/a/${A}/1`);
+      assert.equal(page.statusCode, 200);
+      assert.doesNotMatch(page.body, /open global/);
+      assert.equal((await b.post(`/a/${A}/1/da/${openDa}`, { __csrf: b.lastCsrf })).statusCode, 403);
+    } finally {
+      await owner.query('update meta.page set authz = null where id = $1', [p0]);
+    }
+  });
+
+  test('a checksum page: the URL sets an item of the Global Page only with the checksum', async () => {
+    const b = new Browser();
+    await b.login('scott', 'scott', A);
+    const res = await b.get(`/a/${A}/2?P0_NOTE=forged`);
+    assert.equal(res.statusCode, 403);
+    assert.notEqual((await state(b)).P0_NOTE, 'forged');
+  });
+
+  test('builder: CSRF on Create Global Page; a page number that is empty or modal 0 is refused', async () => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: 'admin', password: 'admin' });
+    await owner.query('delete from meta.page where id = $1', [p0]);
+    try {
+      await b.get(`/builder/apps/${id}/create-page?type=global`);
+      assert.equal((await b.post(`/builder/apps/${id}/pages`, { __csrf: 'forged', page_no: '0', name: 'Global Page' })).statusCode, 403);
+      await b.post(`/builder/apps/${id}/pages`, { __csrf: b.lastCsrf, page_no: '0', name: 'Global Page', mode: 'modal' });
+      await b.post(`/builder/apps/${id}/pages`, { __csrf: b.lastCsrf, page_no: ' ', name: 'Global Page' });
+      assert.ok(!(await owner.one('select 1 as ok from meta.page where app_id = $1 and page_no = 0', [id])));
+    } finally {
+      p0 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 0, 'Global Page', true) on conflict (app_id, page_no) do update set name = excluded.name returning id`, [id])).id;
+    }
   });
 });

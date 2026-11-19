@@ -84,7 +84,7 @@ describe('pgkiln mcp: protocol', () => {
   });
 
   test('a bad argument is a tool error the agent can read', async () => {
-    await assert.rejects(call('get_page', { alias: 'hr', page: 'x' }), /page must be a positive whole number/);
+    await assert.rejects(call('get_page', { alias: 'hr', page: 'x' }), /page must be a whole number/);
     await assert.rejects(call('get_page', { alias: 'no_such_app', page: 1 }), /application no_such_app not found/);
     await assert.rejects(call('get_page', { alias: 'hr', page: 999 }), /has no page 999/);
   });

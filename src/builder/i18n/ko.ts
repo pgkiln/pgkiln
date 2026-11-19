@@ -8494,4 +8494,14 @@ export const ko: BuilderMessages = {
   "gallery.region.template_component:ut_media_list": "미디어 목록",
   "gallery.region.template_component:ut_metric_card": "지표 카드",
   "gallery.region.template_component:ut_timeline": "타임라인",
+  // (sprint 229, AX-8) the Global Page
+  'app.type.global': '전역 페이지',
+  'gp.global_page': '전역 페이지',
+  'gp.tile_help': '페이지 0: 모든 페이지에 표시되는 영역, 항목, 동적 작업 및 프로세스.',
+  'gp.create_intro': '페이지 0은 애플리케이션의 모든 페이지에 포함됩니다. 그 영역(각 위치), 항목, 버튼, 동적 작업, 계산, 검증 및 프로세스가 각 페이지에 추가됩니다. 단독으로 열리지 않습니다. 권한 부여와 "페이지에 로그인 필요"가 누구에게 표시할지 결정합니다. 항목 이름은 P0_…로 지정하세요.',
+  'gp.create': '전역 페이지 만들기',
+  'gp.not_modal': '전역 페이지(페이지 0)는 일반 페이지이며 모달 대화 상자가 될 수 없습니다.',
+  'gp.on_every_page': '모든 페이지',
+  'gp.designer_note': '페이지 0은 전역 페이지입니다. 그 구성 요소는 이 애플리케이션의 다른 모든 페이지에 포함되며 단독으로 열리지 않습니다. 잠금과 주석은 애플리케이션의 것입니다.',
+  'gp.run_title': '전역 페이지를 표시하는 홈 페이지(페이지 {n}) 실행',
 };
