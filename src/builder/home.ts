@@ -157,7 +157,7 @@ export async function homeRoutes(app: FastifyInstance) {
               <td class="ab-by">${a.updated_by ?? ''}</td>
               <td class="num">${a.copies ? html`<a href="${BASE}/apps/${a.id}/working-copies" aria-label="${tx('ab.copies_of', { copies: copiesText(tx, a.copies), name: a.name })}">${a.copies}</a>` : '0'}</td>
               <td class="ab-lock-cell">${a.locked_by
-                ? html`<span class="ab-lock" title="${lockedText(tx, a.locked_by)}">${icon('lock')}<span class="ab-by">${a.locked_by}</span></span>`
+                ? html`<span class="ab-lock" role="img" aria-label="${lockedText(tx, a.locked_by)}" title="${lockedText(tx, a.locked_by)}">${icon('lock')}<span class="ab-by">${a.locked_by}</span></span>`
                 : html`<span class="ab-unlocked" role="img" aria-label="${tx('ab.unlocked')}" title="${tx('ab.unlocked')}">${icon('unlock')}</span>`}</td>
               <td class="ab-actions col-actions">
                 <a class="tb-btn" href="${BASE}/apps/${a.id}" title="${tx('ab.edit', { name: a.name })}">${icon('edit')}<span class="sr-only">${tx('ab.edit', { name: a.name })}</span></a>

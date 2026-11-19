@@ -88,7 +88,7 @@ describe('App Builder list: updated by, working copies, lock (WS-12)', () => {
     assert.equal(await changedBy(), 'someone');
     // the list shows the lock and its owner, in the report and in the cards
     const { row } = await reportRow(dev);
-    assert.match(row, /<td class="ab-lock-cell"><span class="ab-lock" title="Locked by admin"><svg[^]*?<\/svg><span class="ab-by">admin<\/span><\/span><\/td>/);
+    assert.match(row, /<td class="ab-lock-cell"><span class="ab-lock" role="img" aria-label="Locked by admin" title="Locked by admin"><svg[^]*?<\/svg><span class="ab-by">admin<\/span><\/span><\/td>/);
     const cards = (await dev.get(`/builder/apps?q=${alias}&view=grid`)).body;
     assert.match(cards, /<span class="tag ab-locked" title="Locked by admin">[\s\S]*?Locked by admin<\/span><\/span>/);
     await admin.get(`/builder/apps/${appId}`);
