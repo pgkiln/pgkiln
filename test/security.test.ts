@@ -19543,6 +19543,9 @@ describe('sprint 235 MG-2/MG-5/MG-9', () => {
     } finally {
       await owner.query('delete from meta.region where id = any($1)', [ids]);
       await owner.query('delete from meta.dynamic_action where id = $1', [da]);
+    }
+  });
+});
 
 describe('sprint 236 MG-1', () => {
   // several mail services per application (migration 191): an application sends only through services
