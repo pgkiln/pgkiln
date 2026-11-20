@@ -20312,3 +20312,84 @@ describe('sprint 241 MG-10/11/13/15', () => {
     }
   });
 });
+
+describe('sprint 242 MG-16', () => {
+  const ALIAS = 'sec242-mg16';
+  const pgClient = async () => {
+    const { default: pg } = await import('pg');
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    return db;
+  };
+  after(async () => {
+    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+  });
+
+  test('a page or application that leaves out its security keys gets the strict defaults (fails closed)', async () => {
+    const { loadColumnDefaults } = await import('../src/import-defaults.ts');
+    const doc = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
+    for (const k of ['access_control', 'authentication', 'debug', 'debug_level', 'api_self_tokens', 'password_reset']) delete doc.app[k];
+    const page = doc.pages.find((p: any) => p.page_no === 3);
+    page.requires_auth = false; // a sibling page that opts out keeps its choice
+    for (const p of doc.pages.filter((x: any) => x.page_no !== 3)) {
+      delete p.requires_auth;
+      delete p.protection;
+    }
+    const db = await pgClient();
+    try {
+      const d = await loadColumnDefaults(db as never);
+      assert.equal(d.page.requires_auth, true);
+      assert.equal(d.page.protection, 'checksum');
+      assert.equal(d.app.access_control, 'assigned');
+      assert.equal(d.app.debug, false);
+      const r = await importDoc(db as never, doc as never, { alias: ALIAS, replace: false });
+      assert.ok(r.filled.some((f) => f.where === 'application' && f.keys.includes('access_control') && f.keys.includes('debug')));
+    } finally {
+      await db.end();
+    }
+    const a = (await owner.one<any>(`select access_control, authentication, debug, debug_level, api_self_tokens, password_reset from meta.app where alias = $1`, [ALIAS]))!;
+    assert.deepEqual(a, { access_control: 'assigned', authentication: 'app_users', debug: false, debug_level: 0, api_self_tokens: false, password_reset: false });
+    const open = (await owner.query(`select page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1 and (not requires_auth or protection <> 'checksum') and page_no <> 3
+                                       and page_no not in (select (x->>'page_no')::int from jsonb_array_elements(meta.export_app('hr')->'pages') x where not (x->>'requires_auth')::boolean)`, [ALIAS])).rows;
+    assert.deepEqual(open, [], 'no page left open by a missing key');
+    assert.equal((await owner.one<{ r: boolean }>(`select requires_auth as r from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1 and page_no = 3`, [ALIAS]))!.r, false);
+  });
+
+  test('never filled: ids, the installation\'s state, secrets; a key given as null is not replaced by a default', async () => {
+    const { fillDefaults, loadColumnDefaults } = await import('../src/import-defaults.ts');
+    const db = await pgClient();
+    let d;
+    try {
+      d = await loadColumnDefaults(db as never);
+    } finally {
+      await db.end();
+    }
+    const doc: any = { format: 'pgkiln/2', app: { alias: 'x', name: 'x', mfa: null }, web_credentials: [{ name: 'w' }], automations: [{ name: 'a' }], rest_sources: [{ name: 'r', url: 'https://x' }], static_files: [{ name: 'f.js', mime: 'text/javascript', content: '' }], pages: [{ page_no: 1, name: 'p', alias: 'p', regions: [{ type: 'static' }] }] };
+    fillDefaults(doc, d);
+    for (const k of ['id', 'build_status', 'availability', 'availability_users', 'created_at', 'updated_at']) assert.ok(!(k in doc.app), k);
+    assert.equal(doc.app.mfa, null, 'null stays null');
+    for (const k of ['secret_enc', 'password_enc', 'refresh_token_enc', 'token_refreshed_at', 'id', 'app_id']) assert.ok(!(k in doc.web_credentials[0]), k);
+    for (const k of ['next_run_at', 'last_run_at', 'last_status', 'code']) assert.ok(!(k in doc.automations[0]), k);
+    for (const k of ['sync_next_at', 'sync_last_at', 'sync_last_status']) assert.ok(!(k in doc.rest_sources[0]), k);
+    for (const k of ['id', 'page_id', 'parent_id']) assert.ok(!(k in doc.pages[0].regions[0]), k);
+  });
+
+  test('keys named like Object.prototype members: only own keys count, nothing is polluted', async () => {
+    const { fillDefaults } = await import('../src/import-defaults.ts');
+    const doc = JSON.parse('{"format":"pgkiln/2","app":{"__proto__":{"debug":true},"name":"x"},"pages":[{"__proto__":{"requires_auth":false},"page_no":1}]}');
+    fillDefaults(doc, { app: { debug: false, constructor: 1 } as any, page: { requires_auth: true } });
+    assert.equal(Object.prototype.hasOwnProperty.call(doc.app, 'debug'), true);
+    assert.equal(doc.app.debug, false);
+    assert.equal(doc.pages[0].requires_auth, true);
+    assert.equal(({} as any).debug, undefined);
+    assert.equal(({} as any).requires_auth, undefined);
+  });
+
+  test('the builder API\'s export (with the column defaults) needs a token', async () => {
+    for (const auth of [null, 'Bearer pgkb_' + 'x'.repeat(43)]) {
+      const res = await app.inject({ method: 'GET', url: '/builder/api/v1/apps/hr/export', headers: auth ? { authorization: auth } : {} });
+      assert.equal(res.statusCode, 401);
+      assert.ok(!res.body.includes('defaults') && !res.body.includes('checksum'));
+    }
+  });
+});
