@@ -1729,6 +1729,8 @@ export const ja: BuilderMessages = {
   'st.custom_fn_help': '(p_username text, p_password text) を受け取り boolean を返す関数。小文字で、スキーマ付きも可。アプリケーションのロールにその EXECUTE 権限が必要です。下の本体より優先されます。',
   'st.custom_body': 'または関数本体',
   'st.custom_body_help': 'p_username と p_password を使い、有効なサインインに true を返す PL/pgSQL。例: {example}',
+  'st.custom_hash': 'またはパスワードハッシュのクエリ',
+  'st.custom_hash_help': 'p_username を使い、ユーザーの保存済みパスワードハッシュを返す SQL。例: {example}。サーバーがパスワードを高速かつ一定時間で照合します: Django の pbkdf2_sha256$ と pbkdf2_sha1$、bcrypt の $2a$、$2b$、$2y$ (PHP password_hash)。Argon2 は未対応です。meta.make_password_hash(password, \'pbkdf2_sha256\') で新しいハッシュを作成します。上の 2 つのフィールドがどちらも空のときに使われます。',
   'st.custom_post': '認証後コード',
   'st.custom_post_help': 'チェック成功後に p_username（および meta.app_user()）で実行される任意の PL/pgSQL。例: 最終サインインの記録。例外を発生させるとサインインは拒否されます。「ログイン後」のアプリケーション・プロセスはその後、通常どおり実行されます。 perform meta.set_auth_user(lower(p_username)); でセッションのユーザー名を決めます（Jan@X.nl と jan@x.nl は同じユーザー）。ロール、認可スキーム、APP_USER はその名前で決まります。',
   'st.signin': 'サインイン',

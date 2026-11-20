@@ -1729,6 +1729,8 @@ export const nl: BuilderMessages = {
   'st.custom_fn_help': 'Een functie (p_username text, p_password text) returns boolean, in kleine letters, eventueel met schema. De rol van de applicatie heeft EXECUTE erop nodig. Gaat voor de body hieronder.',
   'st.custom_body': 'Of functiebody',
   'st.custom_body_help': 'PL/pgSQL met p_username en p_password dat true teruggeeft bij een geldige aanmelding, bijv. {example}',
+  'st.custom_hash': 'Of query voor de wachtwoordhash',
+  'st.custom_hash_help': 'SQL met p_username die de opgeslagen wachtwoordhash van de gebruiker teruggeeft, bijv. {example}. De server controleert het wachtwoord ertegen, snel en in constante tijd: Django pbkdf2_sha256$ en pbkdf2_sha1$, bcrypt $2a$, $2b$ en $2y$ (PHP password_hash). Argon2 wordt niet ondersteund. meta.make_password_hash(wachtwoord, \'pbkdf2_sha256\') schrijft een nieuwe hash. Gebruikt als geen van beide velden hierboven is ingevuld.',
   'st.custom_post': 'Code na authenticatie',
   'st.custom_post_help': 'Optionele PL/pgSQL die draait na een geslaagde controle, met p_username (en meta.app_user()), bijv. om de laatste aanmelding vast te leggen. Een exception weigert de aanmelding. Applicatieprocessen “after login” draaien daarna zoals gewoonlijk. perform meta.set_auth_user(lower(p_username)); bepaalt de gebruikersnaam van de sessie (één gebruiker voor Jan@X.nl en jan@x.nl): diens rollen, autorisatieschema\'s en APP_USER.',
   'st.signin': 'Aanmelden',

@@ -1729,6 +1729,8 @@ export const fr: BuilderMessages = {
   'st.custom_fn_help': 'Une fonction (p_username text, p_password text) returns boolean, en minuscules, éventuellement avec son schéma. Le rôle de l’application a besoin d’EXECUTE dessus. Prioritaire sur le corps ci-dessous.',
   'st.custom_body': 'Ou corps de fonction',
   'st.custom_body_help': 'PL/pgSQL avec p_username et p_password, qui renvoie true pour une connexion valide, p. ex. {example}',
+  'st.custom_hash': 'Ou requête du hachage du mot de passe',
+  'st.custom_hash_help': 'SQL avec p_username renvoyant le hachage du mot de passe enregistré de l\'utilisateur, par ex. {example}. Le serveur vérifie le mot de passe par rapport à celui-ci, rapidement et en temps constant : Django pbkdf2_sha256$ et pbkdf2_sha1$, bcrypt $2a$, $2b$ et $2y$ (PHP password_hash). Argon2 n\'est pas pris en charge. meta.make_password_hash(mot_de_passe, \'pbkdf2_sha256\') écrit un nouveau hachage. Utilisé lorsqu\'aucun des deux champs ci-dessus n\'est renseigné.',
   'st.custom_post': 'Code après authentification',
   'st.custom_post_help': 'PL/pgSQL facultatif exécuté après une vérification réussie, avec p_username (et meta.app_user()), p. ex. pour enregistrer la dernière connexion. Lever une exception refuse la connexion. Les processus d’application « after login » s’exécutent ensuite comme d’habitude. perform meta.set_auth_user(lower(p_username)); fixe le nom d\'utilisateur de la session (un seul utilisateur pour Jan@X.nl et jan@x.nl) : ses rôles, schémas d\'autorisation et APP_USER.',
   'st.signin': 'Connexion',

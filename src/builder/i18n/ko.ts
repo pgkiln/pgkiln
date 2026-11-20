@@ -1729,6 +1729,8 @@ export const ko: BuilderMessages = {
   'st.custom_fn_help': 'boolean을 반환하는 함수(p_username text, p_password text)로, 소문자이며 선택적으로 스키마를 붙입니다. 앱의 역할에 EXECUTE 권한이 필요합니다. 아래 본문보다 우선합니다.',
   'st.custom_body': '또는 함수 본문',
   'st.custom_body_help': 'p_username과 p_password를 사용하고 올바른 로그인이면 true를 반환하는 PL/pgSQL. 예: {example}',
+  'st.custom_hash': '또는 비밀번호 해시 쿼리',
+  'st.custom_hash_help': 'p_username을 사용하여 사용자의 저장된 비밀번호 해시를 반환하는 SQL. 예: {example}. 서버가 빠르고 일정한 시간으로 비밀번호를 대조합니다: Django pbkdf2_sha256$ 및 pbkdf2_sha1$, bcrypt $2a$, $2b$, $2y$ (PHP password_hash). Argon2는 지원되지 않습니다. meta.make_password_hash(password, \'pbkdf2_sha256\')로 새 해시를 만듭니다. 위의 두 필드가 모두 비어 있을 때 사용됩니다.',
   'st.custom_post': '인증 후 코드',
   'st.custom_post_help': '확인에 성공한 후 p_username(및 meta.app_user())과 함께 실행되는 선택적 PL/pgSQL로, 예를 들어 마지막 로그인을 기록합니다. 예외를 발생시키면 로그인이 거부됩니다. "로그인 후" 애플리케이션 프로세스는 평소처럼 그 다음에 실행됩니다. perform meta.set_auth_user(lower(p_username));는 세션의 사용자 이름을 정합니다(Jan@X.nl과 jan@x.nl은 한 사용자). 역할, 권한 부여 체계, APP_USER가 그 이름을 따릅니다.',
   'st.signin': '로그인',

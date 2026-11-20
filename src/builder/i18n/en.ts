@@ -1733,6 +1733,8 @@ export const en = {
   'st.custom_fn_help': "A function (p_username text, p_password text) returns boolean, in lower case, optionally with its schema. The app's role needs EXECUTE on it. Takes precedence over the body below.",
   'st.custom_body': 'Or function body',
   'st.custom_body_help': 'PL/pgSQL with p_username and p_password, returning true for a valid sign-in, e.g. {example}',
+  'st.custom_hash': 'Or password hash query',
+  'st.custom_hash_help': 'SQL with p_username returning the user\'s stored password hash, e.g. {example}. The server checks the password against it, quickly and in constant time: Django pbkdf2_sha256$ and pbkdf2_sha1$, bcrypt $2a$, $2b$ and $2y$ (PHP password_hash). Argon2 is not supported. meta.make_password_hash(password, \'pbkdf2_sha256\') writes a new hash. Used when neither field above is set.',
   'st.custom_post': 'Post-authentication code',
   'st.custom_post_help': 'Optional PL/pgSQL run after a successful check, with p_username (and meta.app_user()), e.g. to record the last sign-in. Raising an exception refuses the sign-in. Application processes "after login" run afterwards as usual. perform meta.set_auth_user(lower(p_username)); names the session\'s user (one user for Jan@X.nl and jan@x.nl): its roles, authorization schemes and APP_USER.',
   'st.signin': 'Sign-in',

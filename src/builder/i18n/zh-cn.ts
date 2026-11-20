@@ -1729,6 +1729,8 @@ export const zhCN: BuilderMessages = {
   'st.custom_fn_help': '函数 (p_username text, p_password text) returns boolean，使用小写，可带方案名。应用程序的角色需要对其具有 EXECUTE 权限。优先于下面的函数体。',
   'st.custom_body': '或函数体',
   'st.custom_body_help': '使用 p_username 和 p_password 的 PL/pgSQL，登录有效时返回 true，例如 {example}',
+  'st.custom_hash': '或密码哈希查询',
+  'st.custom_hash_help': '使用 p_username、返回用户已存储密码哈希的 SQL，例如 {example}。服务器以恒定时间快速校验密码：Django pbkdf2_sha256$ 和 pbkdf2_sha1$，bcrypt $2a$、$2b$ 和 $2y$（PHP password_hash）。不支持 Argon2。meta.make_password_hash(password, \'pbkdf2_sha256\') 生成新哈希。上面两个字段都为空时使用。',
   'st.custom_post': '验证后代码',
   'st.custom_post_help': '可选的 PL/pgSQL，检查成功后运行，可使用 p_username（和 meta.app_user()），例如记录上次登录。引发异常将拒绝登录。“登录后”的应用程序进程随后照常运行。 perform meta.set_auth_user(lower(p_username)); 设定会话的用户名（Jan@X.nl 与 jan@x.nl 为同一用户）：其角色、授权方案和 APP_USER 都依此名。',
   'st.signin': '登录',

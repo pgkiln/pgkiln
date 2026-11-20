@@ -1729,6 +1729,8 @@ export const de: BuilderMessages = {
   'st.custom_fn_help': 'Eine Funktion (p_username text, p_password text) returns boolean, in Kleinbuchstaben, optional mit Schema. Die Rolle der Anwendung braucht EXECUTE darauf. Hat Vorrang vor dem Funktionsrumpf unten.',
   'st.custom_body': 'Oder Funktionsrumpf',
   'st.custom_body_help': 'PL/pgSQL mit p_username und p_password, das bei einer gültigen Anmeldung true zurückgibt, z. B. {example}',
+  'st.custom_hash': 'Oder Abfrage des Passwort-Hashs',
+  'st.custom_hash_help': 'SQL mit p_username, das den gespeicherten Passwort-Hash des Benutzers liefert, z. B. {example}. Der Server prüft das Passwort dagegen, schnell und in konstanter Zeit: Django pbkdf2_sha256$ und pbkdf2_sha1$, bcrypt $2a$, $2b$ und $2y$ (PHP password_hash). Argon2 wird nicht unterstützt. meta.make_password_hash(Passwort, \'pbkdf2_sha256\') schreibt einen neuen Hash. Wird verwendet, wenn keines der beiden Felder oben gesetzt ist.',
   'st.custom_post': 'Code nach der Authentifizierung',
   'st.custom_post_help': 'Optionales PL/pgSQL nach einer erfolgreichen Prüfung, mit p_username (und meta.app_user()), z. B. um die letzte Anmeldung zu speichern. Eine Exception lehnt die Anmeldung ab. Anwendungsprozesse „after login“ laufen danach wie gewohnt. perform meta.set_auth_user(lower(p_username)); legt den Benutzernamen der Sitzung fest (ein Benutzer für Jan@X.nl und jan@x.nl): seine Rollen, Autorisierungsschemata und APP_USER.',
   'st.signin': 'Anmeldung',

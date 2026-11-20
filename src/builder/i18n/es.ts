@@ -1729,6 +1729,8 @@ export const es: BuilderMessages = {
   'st.custom_fn_help': 'Una función (p_username text, p_password text) returns boolean, en minúsculas, opcionalmente con su esquema. El rol de la aplicación necesita EXECUTE sobre ella. Tiene prioridad sobre el cuerpo de abajo.',
   'st.custom_body': 'O cuerpo de la función',
   'st.custom_body_help': 'PL/pgSQL con p_username y p_password que devuelve true para un inicio de sesión válido, p. ej. {example}',
+  'st.custom_hash': 'O consulta del hash de la contraseña',
+  'st.custom_hash_help': 'SQL con p_username que devuelve el hash de contraseña guardado del usuario, p. ej. {example}. El servidor comprueba la contraseña con él, rápido y en tiempo constante: Django pbkdf2_sha256$ y pbkdf2_sha1$, bcrypt $2a$, $2b$ y $2y$ (PHP password_hash). Argon2 no es compatible. meta.make_password_hash(contraseña, \'pbkdf2_sha256\') escribe un hash nuevo. Se usa cuando ninguno de los dos campos anteriores está definido.',
   'st.custom_post': 'Código posterior a la autenticación',
   'st.custom_post_help': 'PL/pgSQL opcional que se ejecuta tras una comprobación correcta, con p_username (y meta.app_user()), p. ej. para registrar el último inicio de sesión. Lanzar una excepción rechaza el inicio de sesión. Los procesos de aplicación «after login» se ejecutan después como siempre. perform meta.set_auth_user(lower(p_username)); fija el usuario de la sesión (un solo usuario para Jan@X.nl y jan@x.nl): sus roles, esquemas de autorización y APP_USER.',
   'st.signin': 'Inicio de sesión',

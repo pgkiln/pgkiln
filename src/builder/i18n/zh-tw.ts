@@ -1729,6 +1729,8 @@ export const zhTW: BuilderMessages = {
   'st.custom_fn_help': '函數 (p_username text, p_password text) 傳回 boolean，以小寫撰寫，可選擇加上綱要。應用程式的角色需要其 EXECUTE 權限。優先於下方的主體。',
   'st.custom_body': '或函數主體',
   'st.custom_body_help': '使用 p_username 與 p_password 的 PL/pgSQL，有效登入時傳回 true，例如 {example}',
+  'st.custom_hash': '或密碼雜湊查詢',
+  'st.custom_hash_help': '使用 p_username、傳回使用者已儲存密碼雜湊的 SQL，例如 {example}。伺服器以固定時間快速驗證密碼：Django pbkdf2_sha256$ 與 pbkdf2_sha1$，bcrypt $2a$、$2b$ 與 $2y$（PHP password_hash）。不支援 Argon2。meta.make_password_hash(password, \'pbkdf2_sha256\') 產生新雜湊。上面兩個欄位皆為空時使用。',
   'st.custom_post': '認證後程式碼',
   'st.custom_post_help': '檢查成功後執行的選擇性 PL/pgSQL，可使用 p_username（及 meta.app_user()），例如記錄上次登入時間。引發例外即拒絕登入。「登入後」的應用程式處理之後照常執行。 perform meta.set_auth_user(lower(p_username)); 設定工作階段的使用者名稱（Jan@X.nl 與 jan@x.nl 為同一使用者）：其角色、授權方案和 APP_USER 皆依此名。',
   'st.signin': '登入',
