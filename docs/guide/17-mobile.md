@@ -97,10 +97,19 @@ Validations, processes and row level security run when the form arrives, as for 
 | **Location** (`location`) | The device's position: a *Use my location* button fills in `latitude,longitude` (5 decimals, about 1 m). Read-only, it shows a map link. The server checks the format | item type `location` |
 | **Photo from the camera** | File items open the camera on phones | `{"capture": "environment"}` (the back camera) or `"user"` |
 | **Smaller photos** | Photos are scaled down (JPEG) on the phone before they are uploaded: much less mobile data and faster forms | `{"max_px": 1600}` (the longest side) |
-| **Barcode / QR code scan** | A *Scan* button on a text item reads a code with the camera (parcels, pallets, assets). It appears only where the browser can read codes (`BarcodeDetector`, e.g. Chrome on Android) | `{"scan": true}` on a text item |
+| **Barcode / QR code scan** | A *Scan* button on a text item reads a code with the camera (parcels, pallets, assets). The browser's `BarcodeDetector` reads it where there is one (Chrome on Android); elsewhere (Safari on iPhone and iPad, Firefox, desktop browsers) pgkiln's bundled decoder does (see below) | `{"scan": true}` on a text item |
+| **Signature** | A pad to sign on with a finger ([chapter 5](05-items.md#signature)) | item type `signature` |
 
 The page's `Permissions-Policy` allows the camera and the position for the application itself and
 nothing else; the browser asks the user for permission the first time.
+
+**The barcode decoder** (sprint 239). Where the browser has no `BarcodeDetector`, the *Scan* button loads
+[zxing-wasm](https://github.com/Sec-ant/zxing-wasm) (ZXing-C++ compiled to WebAssembly: QR codes, EAN/UPC, Code 128,
+Code 39, DataMatrix, PDF417, Aztec and more) the first time it is pressed. pgkiln serves it from its own package
+(`/static/vendor/zxing/`, about 1 MB, cached), never from a CDN. Compiling WebAssembly needs `'wasm-unsafe-eval'` in
+the Content-Security-Policy's `script-src`: only pages that show a scan item get it, and it allows WebAssembly only
+(not `eval()` or `new Function`). The camera picture is decoded in the browser; nothing is sent to the server but the
+code, in the text field.
 
 ## Push notifications
 

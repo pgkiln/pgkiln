@@ -2916,6 +2916,7 @@ export const zhCN: BuilderMessages = {
   'gallery.item.autocomplete': '带自动完成的文本字段',
   'gallery.item.percent_graph': '百分比图',
   'gallery.item.display_map': '显示地图',
+  'gallery.item.signature': '签名',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'SQL 监视器视图',
   'sm.sessions': '会话',

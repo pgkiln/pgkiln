@@ -2916,6 +2916,7 @@ export const zhTW: BuilderMessages = {
   'gallery.item.autocomplete': '具自動完成的文字欄位',
   'gallery.item.percent_graph': '百分比圖',
   'gallery.item.display_map': '顯示地圖',
+  'gallery.item.signature': '簽名',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'SQL 監視器檢視',
   'sm.sessions': '工作階段',

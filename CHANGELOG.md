@@ -41,6 +41,16 @@ All notable changes to this project are documented here. The format follows
   every position as a drop zone in APEX's order and lists the rendering tree the same way. A minimal or modal page
   leaves the header positions out, and the Advisor warns about regions there and about items or submit buttons in the
   header (outside the page's form). The APEX importer maps the named display points. HR page 70 shows them all.
+- **Signature items** (sprint 239, MG-12, migration 195): item type `signature`, a pad to sign on with a finger, a
+  pen or the mouse, with *Clear signature* and a PNG upload for those who can't draw. The drawing is posted as a PNG
+  (at most 1 MB and 4096 px each way, checked by its bytes on the server) and becomes a temporary file, like a file
+  upload's; a form region saves it into a `bytea` column, and a read-only item shows it. HR: a leave request (page 7)
+  is signed when it is submitted.
+- **Barcode scanning without `BarcodeDetector`** (sprint 239, MG-4): where the browser has none (Safari on iPhone and
+  iPad, Firefox, desktop browsers), a text item's *Scan* button uses the bundled
+  [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) decoder, served by pgkiln (never a CDN) and loaded the first
+  time it is pressed. Pages with a scan item add `'wasm-unsafe-eval'` to the Content-Security-Policy's `script-src`
+  (WebAssembly only, not `eval()`); no other page gets it. New dependency: `zxing-wasm` (MIT; ZXing-C++, Apache-2.0; see `NOTICE`).
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the

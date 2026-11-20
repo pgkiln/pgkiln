@@ -34,7 +34,8 @@ src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); (sprint 213) ensurePgCron creates
                            pg_cron when the server loads it for this database; logs each run that applies; (sprint 232) needsSuperuser: installing
-                           (migrations before 175) needs a superuser, said before anything is applied
+                           (migrations before 175) needs a superuser, said before anything is applied; (sprint 239) byNumber: script
+                           files in the order of their numbers (HR part 102 after 97)
   owner-role.ts            (sprint 232) pgkiln's owner without SUPERUSER, on a superuser connection: planOwner (the statements:
                            role, database, the old owner's objects one by one, default privileges, ADMIN OPTION on pgkiln's
                            roles and memberships granted again by the owner, pg_cron, statistics roles), applyOwner (one
@@ -222,6 +223,9 @@ src/
   html.ts                  auto-escaping html`` templates
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser (named references, simple tables), Markdown renderer
   qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
+  zxing.ts                 (sprint 239, MG-4) the zxing-wasm barcode decoder's two files (/static/vendor/zxing/reader.js and
+                           zxing_reader.wasm, from the npm package) for scan buttons without BarcodeDetector; a scan item turns
+                           on the page's 'wasm-unsafe-eval' (ctx.wasmEval → security.ts)
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   page-positions.ts        (sprint 234, AX-12) PAGE_POSITIONS (APEX's Slot order), HEADER_POSITIONS, pageHasPosition() (which page
                            template has which; page 0 all), positionDropped(): shared by render.ts, designer.ts and the Advisor
@@ -404,7 +408,9 @@ src/
     account.ts             My account (details, own password, preferences), the light/dark and style switches (POST …/account/theme, …/account/style)
     locale.ts              language, theme, text messages, translations, number symbols and time zone of a request
     format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
-    files.ts               file items: multipart parsing, temporary files, signed downloads
+    files.ts               file items: multipart parsing, temporary files, signed downloads; (sprint 239) signature items (the
+                           signature preset of a file item, metadata.ts presetItem; migration 195): pngSize, a real PNG of at most
+                           1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads)
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
     documents.ts           ?doc=NAME: a template filled with the page's values
     document-pdf.ts        meta.document_pdf references drawn after each process into mail attachments; send_email document attachments (sprint 237)
@@ -839,6 +845,7 @@ test/
   numformat.test.ts        number format masks: every element, rounding, parsing, separators
   globalization.test.ts    masks on HR page 29, time zones, the de/fr/es texts
   files.test.ts            file items: storage, limits, downloads, temporary files
+  signature-scan-239.test.ts (sprint 239) signature items (preset, pad, temporary file, HR page 7) and the zxing files and CSP
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   item-region-types.test.ts (sprint 140) shuttle, select one/many, classic report, breadcrumb and help text: gallery, runtime, export, Advisor, HR page 50
   sub-regions.test.ts      (sprint 195) sub regions: the one-level rule, tabs/flex/grid rendering, the parent's condition, partial refresh,
@@ -953,6 +960,8 @@ test/
   sprint-231.test.ts       (sprint 231) AX-13: Remember username (cookie, prefill, off, Login region attributes, settings,
                            an export before 189); AX-14: template components in the gallery and Type list, create, switch, export
   helpers.ts               a cookie-keeping test browser
+  e2e/signature-scan.test.ts (sprint 239) a signature drawn by touch at 390 px and stored; a QR code read by zxing-wasm without
+                           BarcodeDetector, within the CSP
   e2e/responsive.ts        browser tests at phone/tablet/desktop widths (Playwright), run per width by
                            e2e/responsive-<width>.test.ts (sprint 208: one file per width for the CI shards)
   e2e/settings-layout.test.ts (sprint 198, NX-U3) Settings' right rail: Sign-in in two screens and the checklist in view at

@@ -243,7 +243,9 @@ export type ItemType =
   // (086) display image, geocoded address
   | 'image' | 'address'
   // (151) image upload and autocomplete (presets of file and combobox, see presetItem), percent graph, display map
-  | 'image_upload' | 'autocomplete' | 'percent_graph' | 'display_map';
+  | 'image_upload' | 'autocomplete' | 'percent_graph' | 'display_map'
+  // (195) a signature pad: a file item whose value is a PNG drawn on a canvas (see presetItem)
+  | 'signature';
 
 export interface Item extends FromGlobal {
   id: number;
@@ -539,11 +541,17 @@ async function loadAppRow(alias: string) {
 /**
  * (151, CD-5) APEX's item types that are presets of pgkiln's: an Image Upload is a file item for pictures (image/*,
  * cropping, a maximum size before upload), a Text Field with autocomplete a one-value combobox. The runtime sees the
- * preset (every file and list check applies); the builder and exports keep the type as chosen.
+ * preset (every file and list check applies); the builder and exports keep the type as chosen. (sprint 239) A Signature is
+ * a file item that takes one PNG drawn on a pad.
  */
 export function presetItem(i: Item): Item {
   if (i.type === 'image_upload')
     return { ...i, type: 'file', config: { accept: 'image/*', crop: 'free', max_px: 1600, ...(i.config ?? {}), preset: 'image_upload' } };
+  // (sprint 239, MG-12) a signature: the PNG drawn on the pad is the file (at most 1 MB, one file, no cropping or resizing)
+  if (i.type === 'signature') {
+    const { crop: _crop, max_px: _px, capture: _cap, multiple: _m, ...rest } = (i.config ?? {}) as Record<string, unknown>;
+    return { ...i, type: 'file', config: { ...rest, accept: 'image/png', max_mb: Math.min(Number(rest.max_mb) || 1, 1), preset: 'signature' } };
+  }
   if (i.type === 'autocomplete') return { ...i, type: 'combobox', config: { ...(i.config ?? {}), multiple: false, preset: 'autocomplete' } };
   return i;
 }

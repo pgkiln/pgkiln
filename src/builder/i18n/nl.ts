@@ -2916,6 +2916,7 @@ export const nl: BuilderMessages = {
   'gallery.item.autocomplete': 'Tekstveld met automatisch aanvullen',
   'gallery.item.percent_graph': 'Percentagegrafiek',
   'gallery.item.display_map': 'Kaart weergeven',
+  'gallery.item.signature': 'Handtekening',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'Weergaven van SQL Monitor',
   'sm.sessions': 'Sessies',

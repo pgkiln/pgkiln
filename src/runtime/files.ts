@@ -72,6 +72,8 @@ interface FileConfig {
   /** (0.31) object storage: the source column holds the object key */
   object_store?: ObjectStoreConfig;
   size_column?: string;
+  /** (151, 239) set by presetItem: image_upload, signature */
+  preset?: string;
 }
 const cfg = (item: Item) => (item.config ?? {}) as FileConfig;
 export const maxMb = (item: Item) => Math.min(Number(cfg(item).max_mb) || MAX_UPLOAD_MB, MAX_UPLOAD_MB);
@@ -121,14 +123,41 @@ function accepted(item: Item, u: Upload) {
     .some((a) => (a.startsWith('.') ? name.endsWith(a) : a.endsWith('/*') ? mime.startsWith(a.slice(0, -1)) : mime === a));
 }
 
+/** (sprint 239) A signature item (the signature preset of a file item, src/metadata.ts presetItem). */
+export const isSignature = (item: Item) => item.type === 'file' && cfg(item).preset === 'signature';
+/** The largest signature picture, in pixels each way (a pad is at most a few hundred pixels at 3x). */
+export const SIGNATURE_MAX_PX = 4096;
+
+/**
+ * The width and height of a PNG file, read from its header (signature and IHDR chunk), or null when the bytes are not
+ * a PNG. The posted MIME type and file name are the browser's word; these bytes are what is stored and shown.
+ */
+export function pngSize(data: Buffer): { width: number; height: number } | null {
+  const SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  if (data.length < 33 || SIG.some((b, i) => data[i] !== b)) return null;
+  if (data.readUInt32BE(8) !== 13 || data.toString('latin1', 12, 16) !== 'IHDR') return null;
+  return { width: data.readUInt32BE(16), height: data.readUInt32BE(20) };
+}
+
 /** Why an upload is refused, if it is. */
 function refusal(ctx: PageContext, item: Item, u: Upload) {
   if (u.truncated || u.data.length > maxMb(item) * 1024 * 1024) return ctx.locale.t('file.too_large', { max: String(maxMb(item)) });
   if (!accepted(item, u)) return ctx.locale.t('file.wrong_type');
+  if (isSignature(item)) {
+    // a real PNG of a sensible size, whatever the browser says it is
+    const size = pngSize(u.data);
+    if (!size || size.width < 1 || size.height < 1 || size.width > SIGNATURE_MAX_PX || size.height > SIGNATURE_MAX_PX) return ctx.locale.t('file.wrong_type');
+  }
   return null;
 }
 
 const cleanName = (u: Upload) => u.filename.replace(/^.*[\\/]/, '').replace(/[\u0000-\u001f"]/g, '_') || 'file';
+/** The stored name and type: a signature is always "<item>.png", image/png. */
+const nameOf = (item: Item, u: Upload) => (isSignature(item) ? `${item.name.toLowerCase()}.png` : cleanName(u));
+/** A stored file's name and type when the table has no columns for them (a signature: a PNG). */
+const storedName = (item: Item) => (isSignature(item) ? `${item.name.toLowerCase()}.png` : item.name.toLowerCase());
+const storedMime = (item: Item) => (isSignature(item) ? 'image/png' : 'application/octet-stream');
+const mimeOf = (item: Item, u: Upload) => (isSignature(item) ? 'image/png' : u.mimetype || 'application/octet-stream');
 
 /**
  * Store the uploads of editable file items as temporary files and set the
@@ -149,7 +178,7 @@ export async function applyUploads(ctx: PageContext, files: Map<string, Upload[]
         continue;
       }
       // committed on its own, so the upload survives a validation error
-      const r = await appTx(tx(ctx), (c) => c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, cleanName(u), u.mimetype || 'application/octet-stream', u.data]));
+      const r = await appTx(tx(ctx), (c) => c.query('select meta.save_temp_file($1, $2, $3, $4) as id', [item.name, nameOf(item, u), mimeOf(item, u), u.data]));
       ctx.session.state[item.name] = r.rows[0].id;
       await unpackForSql(u.data); // a zip or .xlsx: readable in SQL (meta.zip_entry, meta.parse_data)
     } else if (body[`${item.name}__REMOVE`] === 'true') {
@@ -344,7 +373,7 @@ export async function fileInfo(ctx: PageContext, item: Item): Promise<FileInfo |
   );
   const [size, filename, mime] = res.rows[0] ?? [];
   if (size === null || size === undefined) return null;
-  return { filename: filename ?? `${item.name.toLowerCase()}`, mime: mime ?? 'application/octet-stream', size: Number(size), key: String(pk), pending: false };
+  return { filename: filename ?? storedName(item), mime: mime ?? storedMime(item), size: Number(size), key: String(pk), pending: false };
 }
 
 export const canPreview = (f: FileInfo) => f.mime.startsWith('image/') && INLINE.has(f.mime);
@@ -407,7 +436,7 @@ export function fileRoutes(app: FastifyInstance, loadContext: Loader, txContext:
           });
           const [content, filename, mime] = r.rows[0] ?? [];
           const data = content ? await contentOf(content) : null;
-          return data ? { content: data, filename: filename ?? name.toLowerCase(), mime: mime ?? 'application/octet-stream' } : null;
+          return data ? { content: data, filename: filename ?? storedName(item), mime: mime ?? storedMime(item) } : null;
         });
       } catch (e) {
         if (e instanceof Forbidden) return forbidden(ctx, reply, e.message, `file download on page ${ctx.page.page_no}`);

@@ -2916,6 +2916,7 @@ export const ja: BuilderMessages = {
   'gallery.item.autocomplete': 'オートコンプリート付きテキスト・フィールド',
   'gallery.item.percent_graph': 'パーセント・グラフ',
   'gallery.item.display_map': 'マップの表示',
+  'gallery.item.signature': '署名',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'SQL モニターのビュー',
   'sm.sessions': 'セッション',

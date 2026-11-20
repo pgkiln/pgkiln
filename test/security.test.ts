@@ -19999,3 +19999,99 @@ describe('sprint 234 AX-12: the Standard page template\'s other positions', () =
     assert.doesNotMatch(page, /Admins only|t-pos-after_navigation_bar/);
   });
 });
+
+describe('sprint 239 MG-12/MG-4', () => {
+  // signature items: the posted drawing is a file upload (a PNG of at most 1 MB and 4096 px each way, whatever the
+  // browser calls it), kept as a temporary file of the session that posted it; scan pages: WebAssembly, no eval
+  const PNG_239 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  /** A PNG header claiming w × h pixels (the server reads only the header), padded to `size` bytes. */
+  const fakePng = (w: number, h: number, size = 64) => {
+    const b = Buffer.alloc(size);
+    PNG_239.copy(b, 0, 0, 33);
+    b.writeUInt32BE(w, 16);
+    b.writeUInt32BE(h, 20);
+    return b;
+  };
+  const REASON_239 = 'sprint 239 security';
+  const week = () => {
+    const day = 7100 + Math.floor(Math.random() * 3000);
+    return { P7_START_DATE: new Date(Date.now() + day * 864e5).toISOString().slice(0, 10), P7_END_DATE: new Date(Date.now() + (day + 6) * 864e5).toISOString().slice(0, 10) };
+  };
+  const signer = async (user = 'allen') => {
+    const b = new FileBrowser(app);
+    assert.equal((await b.login(user)).statusCode, 303);
+    await b.get('/a/hr/7?clear=1');
+    return b;
+  };
+  const tempCount = async () => Number((await owner.one(`select count(*) as n from meta.temp_file where item_name = 'P7_SIGNATURE'`)).n);
+  after(async () => {
+    await owner.query(`delete from hr.leave_request where reason like $1`, [`${REASON_239}%`]);
+  });
+
+  test('a signature that is not a PNG, too large, or too many pixels is refused and not kept', async () => {
+    const b = await signer();
+    const before = await tempCount();
+    const cases: [string, { name: string; type: string; data: Buffer }, RegExp][] = [
+      ['HTML posted as image/png', { name: 'signature.png', type: 'image/png', data: Buffer.from('<script>alert(1)</script>'.padEnd(64, ' ')) }, /This type of file is not allowed/],
+      ['a GIF posted as image/png', { name: 'signature.png', type: 'image/png', data: Buffer.from('GIF89a'.padEnd(64, '\0')) }, /This type of file is not allowed/],
+      ['a JPEG type', { name: 'signature.jpg', type: 'image/jpeg', data: PNG_239 }, /This type of file is not allowed/],
+      ['5000 px wide', { name: 'signature.png', type: 'image/png', data: fakePng(5000, 100) }, /This type of file is not allowed/],
+      ['0 px high', { name: 'signature.png', type: 'image/png', data: fakePng(100, 0) }, /This type of file is not allowed/],
+      ['over 1 MB', { name: 'signature.png', type: 'image/png', data: fakePng(400, 160, 1024 * 1024 + 10) }, /larger than 1 MB/],
+    ];
+    for (const [what, file, error] of cases) {
+      const res = await b.upload('/a/hr/7', { __request: 'CREATE', ...week(), P7_REASON: `${REASON_239} refused` }, { P7_SIGNATURE: file });
+      assert.equal(res.statusCode, 422, what);
+      assert.match(res.body, error, what);
+    }
+    assert.equal(await tempCount(), before, 'nothing kept');
+    assert.equal(await owner.one(`select 1 from hr.leave_request where reason = $1`, [`${REASON_239} refused`]), undefined, 'no request made');
+  });
+
+  test('a signature is a temporary file of the session that posted it: no one else can use or download it', async () => {
+    const allen = await signer();
+    // a validation error (no start date): the signature is kept for allen's session
+    const res = await allen.upload('/a/hr/7', { __request: 'CREATE', P7_START_DATE: '', P7_END_DATE: '', P7_REASON: `${REASON_239} first` }, { P7_SIGNATURE: { name: 'x.png', type: 'image/png', data: PNG_239 } });
+    assert.equal(res.statusCode, 422);
+    const tempId = (await owner.one(`select id from meta.temp_file where item_name = 'P7_SIGNATURE' order by created_at desc limit 1`)).id as string;
+    assert.ok(res.body.includes(`temp%3A${tempId}`), 'previewed for allen');
+    // the item takes uploads only: its id posted as a field (by allen in another session, or by anyone) is ignored
+    for (const user of ['allen', 'jones']) {
+      const other = await signer(user);
+      const reason = `${REASON_239} forged ${user}`;
+      const r = await other.post('/a/hr/7', { __csrf: other.lastCsrf, __request: 'CREATE', ...week(), P7_REASON: reason, P7_SIGNATURE: tempId });
+      assert.equal(r.statusCode, 303, r.body.slice(0, 300));
+      const row = await owner.one(`select signature from hr.leave_request where reason = $1`, [reason]);
+      assert.equal(row.signature, null, `${user}: no signature taken from another session`);
+      // a correctly signed download link for this user and the temporary file: the file is not this session's
+      const q = { __FILE: 'P7_SIGNATURE', __KEY: `temp:${tempId}` };
+      const url = `/a/hr/7/file/P7_SIGNATURE?${new URLSearchParams({ k: q.__KEY, cs: urlChecksum(appId, 7, user, q), inline: '1' })}`;
+      const dl = await other.get(url);
+      assert.equal(dl.statusCode, 404, `${user}: another session's temporary file`);
+    }
+    // allen's own session still has it and stores it with the request
+    const mine = await allen.upload('/a/hr/7', { __request: 'CREATE', ...week(), P7_REASON: `${REASON_239} first` }, {});
+    assert.equal(mine.statusCode, 303, mine.body.slice(0, 300));
+    assert.deepEqual((await owner.one(`select signature from hr.leave_request where reason = $1`, [`${REASON_239} first`])).signature, PNG_239);
+  });
+
+  test('a stored signature downloads as a sandboxed PNG, only with a checksum for the user', async () => {
+    const row = await owner.one(`select id from hr.leave_request where reason = $1`, [`${REASON_239} first`]);
+    const allen = await signer();
+    const view = await allen.get(link('allen', 7, { P7_ID: String(row.id) }));
+    const url = /href="(\/a\/hr\/7\/file\/P7_SIGNATURE\?[^"]+)"/.exec(view.body)![1].replace(/&amp;/g, '&');
+    const dl = await allen.get(url);
+    assert.equal(dl.statusCode, 200);
+    assert.match(String(dl.headers['content-security-policy']), /sandbox/);
+    assert.equal(dl.headers['x-content-type-options'], 'nosniff');
+    const jones = await signer('jones');
+    assert.equal((await jones.get(url)).statusCode, 403, 'allen\'s checksum is not jones\'s');
+  });
+
+  test('scan pages allow WebAssembly only (wasm-unsafe-eval, never unsafe-eval); the decoder path serves two fixed files', async () => {
+    const res = await new FileBrowser(app).get('/static/vendor/zxing/..%2F..%2F..%2Fpackage.json');
+    assert.equal(res.statusCode, 404);
+    const csp = String((await (await as('king')).get('/a/hr/1')).headers['content-security-policy']);
+    assert.doesNotMatch(csp, /unsafe-eval/, 'HR has no scan item');
+  });
+});

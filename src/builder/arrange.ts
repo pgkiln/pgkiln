@@ -58,7 +58,7 @@ export const ITEM_LABELS: Record<string, [string, string]> = {
   checkbox: ['Checkbox', 'check'], switch: ['Switch', 'check'], checkbox_group: ['Checkbox Group', 'check'], multiselect: ['Multi Select', 'list'],
   email: ['E-mail', 'inbox'], tel: ['Phone Number', 'item'], url: ['URL', 'item'], color: ['Color Picker', 'item'], file: ['File Upload', 'upload'],
   location: ['Location', 'map'], richtext: ['Rich Text Editor', 'edit'], markdown: ['Markdown Editor', 'code'], rating: ['Star Rating', 'check'],
-  combobox: ['Combobox (Tags)', 'list'], daterange: ['Date Range', 'calendar'], qrcode: ['QR Code', 'scan'], image: ['Display Image', 'file'], address: ['Geocoded Address', 'map'], hidden: ['Hidden', 'item'], display: ['Display Only', 'file'], password: ['Password', 'key'],
+  combobox: ['Combobox (Tags)', 'list'], daterange: ['Date Range', 'calendar'], qrcode: ['QR Code', 'scan'], image: ['Display Image', 'file'], address: ['Geocoded Address', 'map'], signature: ['Signature', 'edit'], hidden: ['Hidden', 'item'], display: ['Display Only', 'file'], password: ['Password', 'key'],
   shuttle: ['Shuttle', 'arrow-right'], select_one: ['Select One', 'search'], select_many: ['Select Many', 'check'],
 };
 export const BUTTON_LABELS: Record<string, [string, string]> = {

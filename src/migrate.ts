@@ -94,7 +94,7 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
   async function apply(dir: string, table: string) {
     await client.query(`create table if not exists public.${table} (name text primary key, applied_at timestamptz not null default now())`);
     const done = new Set((await client.query(`select name from public.${table}`)).rows.map((r) => r.name));
-    for (const file of readdirSync(join(o.root, dir)).filter((f) => f.endsWith('.sql')).sort()) {
+    for (const file of byNumber(readdirSync(join(o.root, dir)).filter((f) => f.endsWith('.sql')))) {
       if (done.has(file)) continue;
       log(`applying ${dir}/${file} ... `);
       try {
@@ -129,6 +129,15 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
     await client.end();
   }
   return applied;
+}
+
+/**
+ * (sprint 239) Script files in the order of their numbers: HR's part 102 after part 97 (a plain sort puts hr_102_… before
+ * hr_10_…); names of equal-length numbers (the migrations) keep their order.
+ */
+export function byNumber(files: string[]): string[] {
+  const key = (f: string) => f.replace(/\d+/g, (d) => d.padStart(8, '0'));
+  return [...files].sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
 }
 
 /**
