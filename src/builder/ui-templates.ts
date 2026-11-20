@@ -21,7 +21,7 @@ interface Use { label: string; href: string }
 interface Tpl { key: string; name: string; desc: string; uses: Use[] }
 
 const REGION_TEMPLATES = ['standard', 'plain', 'collapsible', 'hero', 'title_bar', 'buttons_container', 'inline_dialog', 'inline_drawer', 'wizard', 'tabs_container', 'flex_container'] as const;
-const PAGE_TEMPLATES = ['standard', 'left_side_column', 'right_side_column', 'minimal'] as const;
+const PAGE_TEMPLATES = ['standard', 'left_side_column', 'right_side_column', 'minimal', 'no_navigation'] as const;
 
 /** The templates of one kind, their names and descriptions from uit.<kind>.<key> and uit.<kind>.<key>.d. */
 const catalog = (kind: string, keys: readonly string[], usesOf: (key: string) => Use[]): Tpl[] =>

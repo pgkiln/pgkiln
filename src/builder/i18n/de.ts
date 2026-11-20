@@ -1730,7 +1730,7 @@ export const de: BuilderMessages = {
   'st.custom_body': 'Oder Funktionsrumpf',
   'st.custom_body_help': 'PL/pgSQL mit p_username und p_password, das bei einer gültigen Anmeldung true zurückgibt, z. B. {example}',
   'st.custom_post': 'Code nach der Authentifizierung',
-  'st.custom_post_help': 'Optionales PL/pgSQL nach einer erfolgreichen Prüfung, mit p_username (und meta.app_user()), z. B. um die letzte Anmeldung zu speichern. Eine Exception lehnt die Anmeldung ab. Anwendungsprozesse „after login“ laufen danach wie gewohnt.',
+  'st.custom_post_help': 'Optionales PL/pgSQL nach einer erfolgreichen Prüfung, mit p_username (und meta.app_user()), z. B. um die letzte Anmeldung zu speichern. Eine Exception lehnt die Anmeldung ab. Anwendungsprozesse „after login“ laufen danach wie gewohnt. perform meta.set_auth_user(lower(p_username)); legt den Benutzernamen der Sitzung fest (ein Benutzer für Jan@X.nl und jan@x.nl): seine Rollen, Autorisierungsschemata und APP_USER.',
   'st.signin': 'Anmeldung',
   'st.methods': 'Anmeldemethoden',
   'st.signin_page': 'Anmeldeseite',
@@ -8613,4 +8613,8 @@ export const de: BuilderMessages = {
   'gp.on_every_page': 'Auf jeder Seite',
   'gp.designer_note': 'Seite 0 ist die globale Seite: ihre Komponenten gehören zu jeder anderen Seite dieser Anwendung, und sie wird nie selbst geöffnet. Ihre Sperre und Kommentare sind die der Anwendung.',
   'gp.run_title': 'Die Startseite (Seite {n}) ausführen, die die globale Seite zeigt',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Standard ohne Navigation',
+  'uit.page.no_navigation': 'Standard ohne Navigation',
+  'uit.page.no_navigation.d': 'Die Standardseite ohne Kopfzeile, Navigationsmenü und Titelleiste. Anders als Minimal behält sie die Installations- und Push-Benachrichtigungsfunktionen der Anwendung, Live-Badges und die Fußzeile (ein Formular aus einem Link, ein Kioskbildschirm).',
 };

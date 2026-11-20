@@ -1730,7 +1730,7 @@ export const pt: BuilderMessages = {
   'st.custom_body': 'Ou corpo da função',
   'st.custom_body_help': 'PL/pgSQL com p_username e p_password, retornando true para um login válido, por exemplo {example}',
   'st.custom_post': 'Código pós-autenticação',
-  'st.custom_post_help': 'PL/pgSQL opcional executado após uma verificação bem-sucedida, com p_username (e meta.app_user()), por exemplo para registrar o último login. Lançar uma exceção recusa o login. Processos de aplicação “after login” são executados depois, como de costume.',
+  'st.custom_post_help': 'PL/pgSQL opcional executado após uma verificação bem-sucedida, com p_username (e meta.app_user()), por exemplo para registrar o último login. Lançar uma exceção recusa o login. Processos de aplicação “after login” são executados depois, como de costume. perform meta.set_auth_user(lower(p_username)); define o utilizador da sessão (um só utilizador para Jan@X.nl e jan@x.nl): as suas funções, esquemas de autorização e APP_USER.',
   'st.signin': 'Login',
   'st.methods': 'Métodos de login',
   'st.signin_page': 'Página de acesso',
@@ -8613,4 +8613,8 @@ export const pt: BuilderMessages = {
   'gp.on_every_page': 'Em todas as páginas',
   'gp.designer_note': 'A página 0 é a página global: os seus componentes fazem parte de todas as outras páginas desta aplicação, e nunca é aberta sozinha. O seu bloqueio e os seus comentários são os da aplicação.',
   'gp.run_title': 'Executar a página inicial (página {n}), que mostra a página global',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Padrão sem navegação',
+  'uit.page.no_navigation': 'Padrão sem navegação',
+  'uit.page.no_navigation.d': 'A página padrão sem cabeçalho, menu de navegação e barra de título. Ao contrário de Mínima, mantém a instalação e as notificações push da aplicação, os emblemas ao vivo e o rodapé (um formulário aberto a partir de um link, um ecrã de quiosque).',
 };

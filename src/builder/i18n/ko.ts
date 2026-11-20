@@ -1730,7 +1730,7 @@ export const ko: BuilderMessages = {
   'st.custom_body': '또는 함수 본문',
   'st.custom_body_help': 'p_username과 p_password를 사용하고 올바른 로그인이면 true를 반환하는 PL/pgSQL. 예: {example}',
   'st.custom_post': '인증 후 코드',
-  'st.custom_post_help': '확인에 성공한 후 p_username(및 meta.app_user())과 함께 실행되는 선택적 PL/pgSQL로, 예를 들어 마지막 로그인을 기록합니다. 예외를 발생시키면 로그인이 거부됩니다. "로그인 후" 애플리케이션 프로세스는 평소처럼 그 다음에 실행됩니다.',
+  'st.custom_post_help': '확인에 성공한 후 p_username(및 meta.app_user())과 함께 실행되는 선택적 PL/pgSQL로, 예를 들어 마지막 로그인을 기록합니다. 예외를 발생시키면 로그인이 거부됩니다. "로그인 후" 애플리케이션 프로세스는 평소처럼 그 다음에 실행됩니다. perform meta.set_auth_user(lower(p_username));는 세션의 사용자 이름을 정합니다(Jan@X.nl과 jan@x.nl은 한 사용자). 역할, 권한 부여 체계, APP_USER가 그 이름을 따릅니다.',
   'st.signin': '로그인',
   'st.methods': '로그인 방법',
   'st.signin_page': '로그인 페이지',
@@ -8613,4 +8613,8 @@ export const ko: BuilderMessages = {
   'gp.on_every_page': '모든 페이지',
   'gp.designer_note': '페이지 0은 전역 페이지입니다. 그 구성 요소는 이 애플리케이션의 다른 모든 페이지에 포함되며 단독으로 열리지 않습니다. 잠금과 주석은 애플리케이션의 것입니다.',
   'gp.run_title': '전역 페이지를 표시하는 홈 페이지(페이지 {n}) 실행',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': '표준(탐색 없음)',
+  'uit.page.no_navigation': '표준(탐색 없음)',
+  'uit.page.no_navigation.d': '헤더, 탐색 메뉴, 제목 표시줄이 없는 표준 페이지입니다. 최소와 달리 애플리케이션의 설치 및 푸시 알림 기능, 실시간 배지, 바닥글을 유지합니다(링크에서 여는 양식, 키오스크 화면).',
 };

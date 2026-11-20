@@ -23,6 +23,7 @@ import { arrayTriggerArg, CATALOG_TYPE, jsonSourceProblems, POSITION, ROW_KEY, v
 import { DISTANCES, PGVECTOR_MISSING, vectorColumnDims, vectorSchema, type Distance } from '../vector.ts';
 import { entriesOf, type Entry } from './search.ts';
 import { LOV_CHECKED } from '../runtime/items.ts';
+import { itemPageFindings } from './advisor-items-pages.ts';
 import { appHeader, BASE, developer, region, send, shell, type Req } from './ui.ts';
 
 // App Builder → Advisor (APEX: Advisor): checks an application without
@@ -329,7 +330,7 @@ function positionFindings(x: AppRows): Finding[] {
 }
 
 function structureFindings(x: AppRows): Finding[] {
-  const out: Finding[] = [...globalPageFindings(x), ...positionFindings(x)];
+  const out: Finding[] = [...globalPageFindings(x), ...positionFindings(x), ...itemPageFindings(x)];
   const { app, pages, all } = x;
   if (app.login_page) {
     const page = pages.find((p) => Number(p.page_no) === Number(app.login_page));

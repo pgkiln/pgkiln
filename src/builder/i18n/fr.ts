@@ -1730,7 +1730,7 @@ export const fr: BuilderMessages = {
   'st.custom_body': 'Ou corps de fonction',
   'st.custom_body_help': 'PL/pgSQL avec p_username et p_password, qui renvoie true pour une connexion valide, p. ex. {example}',
   'st.custom_post': 'Code après authentification',
-  'st.custom_post_help': 'PL/pgSQL facultatif exécuté après une vérification réussie, avec p_username (et meta.app_user()), p. ex. pour enregistrer la dernière connexion. Lever une exception refuse la connexion. Les processus d’application « after login » s’exécutent ensuite comme d’habitude.',
+  'st.custom_post_help': 'PL/pgSQL facultatif exécuté après une vérification réussie, avec p_username (et meta.app_user()), p. ex. pour enregistrer la dernière connexion. Lever une exception refuse la connexion. Les processus d’application « after login » s’exécutent ensuite comme d’habitude. perform meta.set_auth_user(lower(p_username)); fixe le nom d\'utilisateur de la session (un seul utilisateur pour Jan@X.nl et jan@x.nl) : ses rôles, schémas d\'autorisation et APP_USER.',
   'st.signin': 'Connexion',
   'st.methods': 'Méthodes de connexion',
   'st.signin_page': 'Page de connexion',
@@ -8613,4 +8613,8 @@ export const fr: BuilderMessages = {
   'gp.on_every_page': 'Sur chaque page',
   'gp.designer_note': 'La page 0 est la page globale : ses composants font partie de toutes les autres pages de cette application, et elle n\'est jamais ouverte seule. Son verrou et ses commentaires sont ceux de l\'application.',
   'gp.run_title': 'Exécuter la page d\'accueil (page {n}), qui affiche la page globale',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Standard sans navigation',
+  'uit.page.no_navigation': 'Standard sans navigation',
+  'uit.page.no_navigation.d': 'La page standard sans en-tête, menu de navigation ni barre de titre. Contrairement à Minimal, elle garde l\'installation et les notifications push de l\'application, les badges en direct et le pied de page (un formulaire ouvert depuis un lien, un écran de borne).',
 };

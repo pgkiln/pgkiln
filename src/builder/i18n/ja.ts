@@ -1730,7 +1730,7 @@ export const ja: BuilderMessages = {
   'st.custom_body': 'または関数本体',
   'st.custom_body_help': 'p_username と p_password を使い、有効なサインインに true を返す PL/pgSQL。例: {example}',
   'st.custom_post': '認証後コード',
-  'st.custom_post_help': 'チェック成功後に p_username（および meta.app_user()）で実行される任意の PL/pgSQL。例: 最終サインインの記録。例外を発生させるとサインインは拒否されます。「ログイン後」のアプリケーション・プロセスはその後、通常どおり実行されます。',
+  'st.custom_post_help': 'チェック成功後に p_username（および meta.app_user()）で実行される任意の PL/pgSQL。例: 最終サインインの記録。例外を発生させるとサインインは拒否されます。「ログイン後」のアプリケーション・プロセスはその後、通常どおり実行されます。 perform meta.set_auth_user(lower(p_username)); でセッションのユーザー名を決めます（Jan@X.nl と jan@x.nl は同じユーザー）。ロール、認可スキーム、APP_USER はその名前で決まります。',
   'st.signin': 'サインイン',
   'st.methods': 'サインイン方法',
   'st.signin_page': 'サインイン・ページ',
@@ -8613,4 +8613,8 @@ export const ja: BuilderMessages = {
   'gp.on_every_page': 'すべてのページ',
   'gp.designer_note': 'ページ0はグローバル・ページです。そのコンポーネントはこのアプリケーションの他のすべてのページの一部であり、単独で開かれることはありません。ロックとコメントはアプリケーションのものです。',
   'gp.run_title': 'グローバル・ページを表示するホーム・ページ(ページ{n})を実行',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': '標準（ナビゲーションなし）',
+  'uit.page.no_navigation': '標準（ナビゲーションなし）',
+  'uit.page.no_navigation.d': 'ヘッダー、ナビゲーションメニュー、タイトルバーのない標準ページ。最小とは異なり、アプリケーションのインストールとプッシュ通知の機能、ライブバッジ、フッターを保持します（リンクから開くフォーム、キオスク画面）。',
 };

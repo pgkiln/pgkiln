@@ -1768,6 +1768,8 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       seq: int(num(a, 'p_item_sequence'), 10),
       region_id: region?.id ?? null,
       label: stripTags(str(a, 'p_prompt') ?? '') || null,
+      // (sprint 241, MG-10) Value Placeholder
+      ...(str(a, 'p_placeholder')?.trim() && str(a, 'p_placeholder')!.length <= 500 ? { placeholder: str(a, 'p_placeholder') } : {}),
       type,
       lov: lov && LOV_TYPES.has(type) ? lov : null,
       source_column: region && ['form', 'grid'].includes(region.row.type) ? sourceColumn : null,

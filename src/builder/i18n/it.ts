@@ -1730,7 +1730,7 @@ export const it: BuilderMessages = {
   'st.custom_body': 'Oppure corpo della funzione',
   'st.custom_body_help': 'PL/pgSQL con p_username e p_password, che restituisce true per un accesso valido, ad es. {example}',
   'st.custom_post': 'Codice post-autenticazione',
-  'st.custom_post_help': 'PL/pgSQL facoltativo eseguito dopo una verifica riuscita, con p_username (e meta.app_user()), ad es. per registrare l’ultimo accesso. Sollevare un’eccezione rifiuta l’accesso. I processi dell’applicazione "after login" vengono poi eseguiti come di consueto.',
+  'st.custom_post_help': 'PL/pgSQL facoltativo eseguito dopo una verifica riuscita, con p_username (e meta.app_user()), ad es. per registrare l’ultimo accesso. Sollevare un’eccezione rifiuta l’accesso. I processi dell’applicazione "after login" vengono poi eseguiti come di consueto. perform meta.set_auth_user(lower(p_username)); stabilisce l\'utente della sessione (un solo utente per Jan@X.nl e jan@x.nl): i suoi ruoli, schemi di autorizzazione e APP_USER.',
   'st.signin': 'Accesso',
   'st.methods': 'Metodi di accesso',
   'st.signin_page': 'Pagina di accesso',
@@ -8613,4 +8613,8 @@ export const it: BuilderMessages = {
   'gp.on_every_page': 'Su ogni pagina',
   'gp.designer_note': 'La pagina 0 è la pagina globale: i suoi componenti fanno parte di ogni altra pagina di questa applicazione, e non viene mai aperta da sola. Il suo blocco e i suoi commenti sono quelli dell\'applicazione.',
   'gp.run_title': 'Esegui la pagina iniziale (pagina {n}), che mostra la pagina globale',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Standard senza navigazione',
+  'uit.page.no_navigation': 'Standard senza navigazione',
+  'uit.page.no_navigation.d': 'La pagina standard senza intestazione, menu di navigazione e barra del titolo. A differenza di Minima, mantiene l\'installazione e le notifiche push dell\'applicazione, i badge in tempo reale e il piè di pagina (un modulo aperto da un link, uno schermo chiosco).',
 };
