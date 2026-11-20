@@ -9,7 +9,8 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { parseHash, verifyPasswordHash, type BcryptFn } from '../src/password-hashes.ts';
-import { Browser } from './helpers.ts';
+import { Browser, formFields } from './helpers.ts';
+import { dropSample, installSample, SAMPLES } from './gallery-samples.ts';
 
 const PW = 'Sesam-öpen 248!';
 const FIXTURES = {
@@ -181,5 +182,35 @@ describe('custom authentication: hash query', () => {
     assert.equal(doc.app.custom_auth_hash_query, `${QUERY} and true`);
     await owner.query('update meta.app set custom_auth_hash_query = $2 where id = $1', [appId, QUERY]);
     await clearLog();
+  });
+});
+
+describe('the gallery sample Sample Sign-in', () => {
+  const x = SAMPLES.find((s) => s.key === 'sample-sign-in')!;
+  before(async () => {
+    await dropSample(x);
+    await installSample(x);
+  });
+  after(() => dropSample(x));
+
+  test('demo (a Django hash) and php (a PHP hash) sign in; former is inactive; a new password is stored as bcrypt and works', async () => {
+    const php = new Browser(app);
+    assert.equal((await php.login('PHP', 'php', x.alias)).statusCode, 303);
+    assert.match((await php.get(`/a/${x.alias}/1`)).body, /signed in as <strong>php<\/strong>/i);
+    assert.equal((await new Browser(app).login('former', 'former', x.alias)).statusCode, 401);
+    const demo = new Browser(app);
+    assert.equal((await demo.login('demo', 'demo', x.alias)).statusCode, 303);
+    const users = (await demo.get(`/a/${x.alias}/2`)).body;
+    assert.match(users, /Django PBKDF2-SHA256, 1000000 iterations/);
+    assert.doesNotMatch(users, /pgkilnsampledemo|\$2y\$10\$/, 'no hash on the page');
+    const page = (await demo.get(`/a/${x.alias}/3`)).body;
+    const differ = await demo.submit(`/a/${x.alias}/3`, { ...formFields(page), __request: 'SAVE', P3_PASSWORD: 'New-demo-pw-248', P3_CONFIRM: 'other-pw-248', P3_FORMAT: 'bcrypt' });
+    assert.match(differ.body, /The two passwords differ/);
+    const fresh = (await demo.get(`/a/${x.alias}/3`)).body;
+    const res = await demo.submit(`/a/${x.alias}/3`, { ...formFields(fresh), __request: 'SAVE', P3_PASSWORD: 'New-demo-pw-248', P3_CONFIRM: 'New-demo-pw-248', P3_FORMAT: 'bcrypt' });
+    assert.equal(res.statusCode, 303);
+    assert.match((await owner.one(`select password from sample_sign_in.auth_user where username = 'demo'`)).password, /^\$2a\$12\$/);
+    assert.equal((await new Browser(app).login('demo', 'demo', x.alias)).statusCode, 401);
+    assert.equal((await new Browser(app).login('demo', 'New-demo-pw-248', x.alias)).statusCode, 303);
   });
 });
