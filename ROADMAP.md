@@ -37,6 +37,20 @@ Partial features first, then the missing ones, roughly in this order:
      tokens for the command line and MCP; then the builder UX findings NX-U1, NX-U3 … NX-U6.
    - More real APEX exports to test the importer against (each one so far showed gaps the samples didn't).
 
+7. **A second Appsmith migration (November 2026, planned):** the Hewa-Techniek app (46 pages, a Django REST API and
+   Microsoft Graph) rebuilt in 0.113.0 found thirteen more gaps, MG-17 … MG-29 in the
+   [parity list](docs/apex-feature-parity.md#still-open). Planned in this order:
+   - **243** binary request bodies for `meta.web_request` (MG-17);
+   - **244** OneDrive / SharePoint as object storage for file items, through Microsoft Graph (MG-29);
+   - **245** document templates: the PDF as a temporary file in SQL (MG-18), images in table cells, line breaks and
+     reserved names (MG-26);
+   - **246** a form region from a JSON schema, answers as `jsonb` (MG-19);
+   - **247** multi-file items on a shared child table, and a picture gallery (MG-20);
+   - **248** password hashes of other systems for custom authentication (MG-21);
+   - **249** back to the calling page, branches from a dialog to another page, `&ITEM.` in button labels (MG-22, MG-23, MG-27);
+   - **250** a mail redirect for test environments and absolute links in SQL (MG-24, MG-25);
+   - **251** import errors that name the file and key, condition keys either way (MG-28).
+
 Priorities can change with what users need: open an
 [issue](https://github.com/pgkiln/pgkiln/issues) for a feature you miss, or see
 [CONTRIBUTING.md](CONTRIBUTING.md) to help build one.
