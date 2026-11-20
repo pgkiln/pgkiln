@@ -19939,3 +19939,63 @@ describe('sprint 238 MG-6/MG-14', () => {
     assert.doesNotMatch(res.body, /data-open-region/);
   });
 });
+
+describe('sprint 234 AX-12: the Standard page template\'s other positions', () => {
+  const NO = 9234;
+  const devLogin = async () => {
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    return dev;
+  };
+  let p = 0;
+  const R: Record<string, number> = {};
+  before(async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no = $2', [appId, NO]);
+    p = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, $2, 'Sec234') returning id`, [appId, NO])).id;
+    const region = async (title: string, position: string, extra = '') =>
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, source, position${extra ? ', authz' : ''}) values ($1, 10, $2, 'static', '<p>sec234</p>', $3${extra ? ', $4' : ''}) returning id`,
+        extra ? [p, title, position, extra] : [p, title, position])).id as number;
+    R.logo = await region('<img src=x onerror=alert(234)>', 'after_logo');
+    R.top = await region('Top "bar"', 'top_navigation');
+    R.secret = await region('Admins only', 'after_navigation_bar', 'NO_SUCH_SCHEME_SEC234');
+  });
+  after(async () => {
+    await owner.query('delete from meta.page where app_id = $1 and page_no = $2', [appId, NO]);
+  });
+
+  test('only the fixed positions are stored: the layout\'s move and create, the property editor, the database', async () => {
+    const dev = await devLogin();
+    await dev.get(`/builder/pages/${p}`);
+    const post = (op: string, form: Record<string, string>) => dev.post(`/builder/pages/${p}/layout/${op}`, { ...form, __csrf: dev.lastCsrf });
+    for (const position of ['AFTER_LOGO', 'after_logo ', "top_navigation'; --", '__proto__', 'constructor', 'header', 't-hpos'])
+      assert.equal((await post('move', { kind: 'region', id: String(R.top), position, before: '' })).statusCode, 400, position);
+    assert.equal((await post('create', { kind: 'region', type: 'static', position: 'dialogs"><script>' })).statusCode, 400);
+    assert.equal((await owner.one('select position from meta.region where id = $1', [R.top])).position, 'top_navigation');
+    // without the form's token nothing moves into the new positions
+    assert.equal((await dev.post(`/builder/pages/${p}/layout/move`, { kind: 'region', id: String(R.top), position: 'full_width', before: '', __csrf: 'forged' })).statusCode, 403);
+    assert.equal((await owner.one('select position from meta.region where id = $1', [R.top])).position, 'top_navigation');
+    // an application user can't use the builder's move
+    const king = await as('king');
+    assert.equal((await king.post(`/builder/pages/${p}/layout/move`, { kind: 'region', id: String(R.top), position: 'dialogs', before: '', __csrf: king.lastCsrf })).statusCode, 302);
+    // the property editor's Position: the database's list decides
+    await dev.post(`/builder/pages/${p}/c/region/${R.top}`, { __csrf: dev.lastCsrf, title: 'Top "bar"', type: 'static', position: 'navbar' });
+    assert.equal((await owner.one('select position from meta.region where id = $1', [R.top])).position, 'top_navigation');
+    await assert.rejects(owner.query(`update meta.region set position = 'after_logo; x' where id = $1`, [R.top]), /check constraint/);
+    // a position in the URL of a new region is only preselected when it is one of the list
+    const form = (await dev.get(`/builder/pages/${p}?new=region&position=${encodeURIComponent('"><script>alert(1)</script>')}`)).body;
+    assert.doesNotMatch(form, /<script>alert\(1\)<\/script>/);
+    assert.doesNotMatch(form, /<option value="[^"]*" selected>[^<]*script/);
+  });
+
+  test('regions in the header are escaped like any other and keep their authorization', async () => {
+    const page = (await (await as('king')).get(`/a/hr/${NO}`)).body;
+    const header = /<header class="t-header"[\s\S]*?<\/header>/.exec(page)![0];
+    assert.match(header, /t-pos-after_logo/);
+    assert.ok(!page.includes('<img src=x onerror=alert(234)>'), 'the title is escaped');
+    assert.match(page, /&lt;img src=x onerror=alert\(234\)&gt;/);
+    assert.match(page, /t-pos-top_navigation[\s\S]*Top &quot;bar&quot;|Top &quot;bar&quot;[\s\S]*t-pos-top_navigation/);
+    // an authorization the user doesn't pass (here: a scheme that doesn't exist) leaves the region out, in the header too
+    assert.doesNotMatch(page, /Admins only|t-pos-after_navigation_bar/);
+  });
+});
