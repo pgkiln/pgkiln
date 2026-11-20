@@ -139,6 +139,46 @@ hr/
 Edit the files with any editor and import them again; the directory is the source of truth for the
 application, the database objects (tables, views, functions) stay in your own migration scripts.
 
+### Keys you leave out (hand-written files)
+
+An export writes every column of every component, but a file you write by hand (or generate from
+another tool) doesn't have to. On import, **a key that is absent takes the column's default**, read
+from the database's catalog for every kind of component: leave `debug` out of `app.yaml` and the
+application gets `debug: false`; leave `protection` and `requires_auth` out of a `page.yaml` and the
+page gets `checksum` and `true`; leave `seq` out of an item and it gets `10`. Two rules keep this
+predictable:
+
+- **Absent is not null.** Only a key that is missing is filled. A key that is present with `null`
+  (`protection: null`, or `protection:` with nothing after it) stays null, and a column that may not
+  be null refuses it as before.
+- **Constant defaults only.** Literals such as `'checksum'`, `false`, `10`, `{}` or `[]`. Ids,
+  references (`region`, `parent`), and what an export leaves out on purpose (the application's
+  build status and availability, web credentials' secrets, an automation's next run) are never filled.
+
+The defaults are those of a new component in the builder, and the security ones are the strict ones:
+a page that doesn't say `requires_auth` needs a sign-in, one that doesn't say `protection` gets
+checksum protection, an application that doesn't say `access_control` admits only assigned users.
+With `import --replace`, a key you leave out is set to its default, not kept at the installed value.
+
+`import` lists what it filled, per file, so you can see it (an export has every key, so a normal
+import lists nothing):
+
+```
+Filled from column defaults (keys the files leave out):
+  app.yaml: debug, mfa
+  pages/0003-employees/page.yaml: protection, requires_auth
+```
+
+`pgkiln advise` notes the same as `INFO` findings at their file, and `diff` compares a key that is
+left out as the default the import would give it, so leaving out a key whose value is the default
+shows no change. A column that may not be null and has **no** default (a list of values' `query`,
+an application's `name`) must be in the file; when it isn't, the import names the file, the
+component and the key:
+
+```
+shared/lovs/jobs.yaml (lov jobs): "query" is missing: meta.lov.query may not be null. Give the key a value (…)
+```
+
 ### Text files (APEXlang)
 
 APEX 26.1 writes applications in APEXlang, a human-readable text format. `pgkiln export hr
@@ -389,6 +429,9 @@ D pages/0009-audit-trail/page.json
 `--replace` removes it), `M`: different. JSON files compare by content, so key order and spacing
 don't count. `--name-only` lists the files, `--quiet` only sets the exit code (for CI). An
 imported copy differs from its source in `app.json` (the alias) and in automations' `enabled`.
+(sprint 242) A key a hand-written file leaves out compares as its column default, the value an
+import gives it ([keys you leave out](#keys-you-leave-out-hand-written-files)): only a left-out key
+whose default differs from the application's value shows as a change.
 
 ### In the builder
 

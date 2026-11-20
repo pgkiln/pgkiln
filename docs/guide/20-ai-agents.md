@@ -117,7 +117,7 @@ without it answers `403` until you make a new one ([chapter 3](03-builder.md#bui
 | `advise_app` | (0.77) the Advisor on an application or an export (imported and rolled back): SQL planned as the application's role, references, security checks, each finding with its file; `offline: true` with a `path` checks the files without the database (0.79) | no |
 | `working_copy` | (0.77) `list`, `create`, `compare`, `merge`, `refresh` or `delete` working copies; conflicts need `prefer` (copy or main) or `take` (component ids); a merge is refused while another developer has a lock on it | the database |
 | `lock_app` | (0.77) locks an application or a page (`unlock: true` removes it; another developer's lock only with `force: true`, logged) | the database |
-| `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place. It checks the application first (the Advisor, in the import's transaction): errors refuse the import and are listed; `force: true` imports anyway, `dry_run: true` only checks | the database |
+| `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place; (sprint 242) a key a file leaves out takes the column default, listed per file. It checks the application first (the Advisor, in the import's transaction): errors refuse the import and are listed; `force: true` imports anyway, `dry_run: true` only checks | the database |
 
 The files are the [directory format](18-cli.md#the-directory-format) of the command line, in the
 [text style](18-cli.md#text-files-apexlang): one YAML file per component, with SQL, PL/pgSQL and
@@ -125,6 +125,15 @@ templates inline, so a region and its query are one file an agent reads top to b
 [sub region](04-pages-and-regions.md#sub-regions) names its container with `parent: <static id>`). An import with
 `replace` is [the same as the command line's](18-cli.md#updating-an-application-in-place): one transaction,
 users, sessions and saved reports kept, supporting objects and plug-in install SQL never run.
+
+(sprint 242) **A new or hand-written file may leave keys out**: an import gives a key that is absent the column's
+default (`debug: false`, a page's `protection: checksum` and `requires_auth: true`, an item's `seq: 10`; see
+[keys you leave out](18-cli.md#keys-you-leave-out-hand-written-files)), and `import_app` lists the keys it filled per
+file. A key written as `null` stays null. Only keys without a default (a region's `type`, a list of values' `query`)
+must be there; when one is missing the import names the file, the component and the key, and changes nothing.
+`diff_app` compares a left-out key as its default, so a file that leaves out default values shows no change. Agents
+that change an exported file should still keep its keys: an existing application's value is only kept when the key
+is in the file.
 
 ### The workflow an agent follows
 

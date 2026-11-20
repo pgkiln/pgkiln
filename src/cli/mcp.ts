@@ -474,6 +474,7 @@ export const TOOLS: Tool[] = [
       'With replace=true the application with that alias is updated in place in one transaction: its pages, shared components and settings ' +
       'become those of the files; its id, users and access, sessions, saved reports and running workflows are kept. ' +
       'Supporting object scripts and plug-in install SQL are never run. Run diff_app first. ' +
+      'A key a component file leaves out takes the column default (listed in the result); a key given as null stays null. ' +
       'Before it commits, the Advisor checks the imported application (every SQL fragment planned as the application\'s role: ' +
       'unknown tables, columns, functions, types, grants; references to pages, items, lists of values): errors refuse the import ' +
       'and nothing changes. Fix the files (or the database objects, in a migration) and import again; force=true imports anyway, dry_run=true only checks.',
