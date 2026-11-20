@@ -6649,8 +6649,8 @@ describe('sprint 50 mail', () => {
   const setup = async () => {
     await owner.query('delete from meta.mail_service where name = $1', [SVC]);
     const id = (await owner.one(`insert into meta.mail_service (name, provider, senders, secret_enc) values ($1, 'log', '{@example.com}', 'v1:not-a-real-secret') returning id`, [SVC])).id;
-    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [appId, id]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)
+                       on conflict (app_id, service_id) do update set is_default = true, from_address = excluded.from_address, max_per_day = null`, [appId, id]);
     return id;
   };
   const asRole = async (roleName: string, app: number, sql: string, params: unknown[] = []) => {
@@ -6736,7 +6736,7 @@ describe('sprint 50 mail', () => {
       // a sender outside the service's list is refused for an application
       await admin.get(`/builder/mail/${id}`);
       await admin.post(`/builder/mail/${id}/apps`, { __csrf: admin.lastCsrf, allow: String(appId), [`from_${appId}`]: 'ceo@other.example' });
-      assert.equal((await owner.one('select from_address from meta.app_mail_service where app_id = $1', [appId])).from_address, 'hr@example.com');
+      assert.equal((await owner.one('select from_address from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, id])).from_address, 'hr@example.com');
     } finally {
       await owner.query('delete from meta.app where id = $1', [other]);
       await owner.query('delete from meta.developer where username = $1', [DEV]);
@@ -7103,8 +7103,8 @@ describe('sprint 55 login page and forgot password', () => {
     kingHash = (await owner.one(`select password_hash from meta.account where username = 'king'`)).password_hash;
     await owner.query('delete from meta.mail_service where name = $1', [SERVICE]);
     const id = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{@example.com}') returning id`, [SERVICE])).id;
-    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address`, [appId, id]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)
+                       on conflict (app_id, service_id) do update set is_default = true, from_address = excluded.from_address`, [appId, id]);
     await owner.query('update meta.app set password_reset = true, login_page = null where id = $1', [appId]);
   });
   after(async () => {
@@ -19543,6 +19543,135 @@ describe('sprint 235 MG-2/MG-5/MG-9', () => {
     } finally {
       await owner.query('delete from meta.region where id = any($1)', [ids]);
       await owner.query('delete from meta.dynamic_action where id = $1', [da]);
+    }
+  });
+});
+
+describe('sprint 236 MG-1', () => {
+  // several mail services per application (migration 191): an application sends only through services
+  // linked to it, never another workspace's; the builder's endpoints are for administrators
+  const MINE = 'SEC236_MINE';
+  const NOT_LINKED = 'SEC236_NOT_LINKED';
+  const WS = 'SEC236 other workspace';
+  const DEV = 'sec236_dev';
+  const PW = 'Sec236-dev-password!';
+  let hrRole: string;
+  let saved: { service_id: number; from_address: string | null; max_per_day: number | null; is_default: boolean }[] = [];
+  let mine: number;
+  let notLinked: number;
+  let wsService: number;
+  let wsId: number;
+  const asHr = async (sql: string, params: unknown[] = []) => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true)`, [String(appId)]);
+      await c.query(`set local role ${hrRole}`);
+      return (await c.query(sql, params)).rows;
+    } finally {
+      await c.query('rollback');
+      c.release();
+    }
+  };
+  const builder = async (user: string, password: string) => {
+    const b = new Browser();
+    await b.get('/builder/login');
+    await b.post('/builder/login', { __csrf: b.lastCsrf, username: user, password });
+    await b.get('/builder');
+    return b;
+  };
+  before(async () => {
+    hrRole = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    saved = (await owner.query('select service_id, from_address, max_per_day, is_default from meta.app_mail_service where app_id = $1 order by is_default desc', [appId])).rows;
+    await owner.query('delete from meta.mail_service where name = any($1)', [[MINE, NOT_LINKED, 'WORKSPACE_SEC236']]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    mine = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{hr@mine.example}') returning id`, [MINE])).id;
+    notLinked = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{ceo@corp.example, @corp.example}') returning id`, [NOT_LINKED])).id;
+    wsId = (await owner.one('insert into meta.workspace (name) values ($1) returning id', [WS])).id;
+    wsService = (await owner.one(`insert into meta.mail_service (name, provider, senders, workspace_id) values ('WORKSPACE_SEC236', 'log', '{@ws.example}', $1) returning id`, [wsId])).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@mine.example')`, [appId, mine]);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false) on conflict do nothing`, [DEV, PW]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.mail_service where name = any($1)', [[MINE, NOT_LINKED, 'WORKSPACE_SEC236']]);
+    await owner.query('delete from meta.workspace where name = $1', [WS]);
+    await owner.query('delete from meta.developer where username = $1', [DEV]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    for (const r of saved)
+      await owner.query('insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day, is_default) values ($1, $2, $3, $4, $5)',
+        [appId, r.service_id, r.from_address, r.max_per_day, r.is_default]);
+  });
+
+  test('an application can\'t send as a sender of a service it isn\'t linked to', async () => {
+    assert.ok((await asHr(`select meta.send_mail('a@example.com', 'x', 'y', p_from => 'hr@mine.example') as id`))[0].id);
+    for (const from of ['ceo@corp.example', 'anyone@corp.example', 'x@ws.example'])
+      await assert.rejects(asHr(`select meta.send_mail('a@example.com', 'x', 'y', p_from => $1)`, [from]), /may not send as .* \(nor may another mail service/, from);
+    await assert.rejects(asHr(`select meta.send_mail_template('NO_SUCH', '{}', 'a@example.com', p_from => 'ceo@corp.example')`), /no e-mail template|may not send as/);
+    // a disabled linked service is no way around it either
+    await owner.query(`update meta.mail_service set senders = '{hr@mine.example, ceo@corp.example}', enabled = false where id = $1`, [notLinked]);
+    try {
+      await assert.rejects(asHr(`select meta.send_mail('a@example.com', 'x', 'y', p_from => 'ceo@corp.example')`), /may not send as/);
+    } finally {
+      await owner.query(`update meta.mail_service set senders = '{ceo@corp.example, @corp.example}', enabled = true where id = $1`, [notLinked]);
+    }
+    // the sender never uses a service the mail's application isn't linked to, whatever service_id the row says
+    const forged = (await owner.one(`insert into meta.mail_queue (app_id, from_address, to_addresses, subject, body_text, service_id)
+      values ($1, 'hr@mine.example', '{a@example.com}', 'SEC236 forged', 'x', $2) returning id`, [appId, notLinked])).id;
+    try {
+      assert.equal((await owner.one('select meta.mail_service_for_mail($1, $2, $3) as s', [appId, notLinked, 'ceo@corp.example'])).s, mine);
+    } finally {
+      await owner.query('delete from meta.mail_queue where id = $1', [forged]);
+    }
+  });
+
+  test('an application can\'t link, see or use another workspace\'s services', async () => {
+    await assert.rejects(owner.query(`insert into meta.app_mail_service (app_id, service_id) values ($1, $2)`, [appId, wsService]), /another workspace/);
+    await assert.rejects(owner.query(`update meta.app_mail_service set service_id = $2 where app_id = $1`, [appId, wsService]), /another workspace/);
+    assert.equal((await owner.one('select meta.mail_service_for_app($1, $2::text) as s', [appId, 'x@ws.example'])).s, mine);
+    // the builder only lists the workspace's own applications for its service, and ignores a forged one
+    const admin = await builder('admin', 'admin');
+    const page = (await admin.get(`/builder/mail/${wsService}`)).body;
+    assert.doesNotMatch(page, new RegExp(`name="allow" value="${appId}"`));
+    await admin.post(`/builder/mail/${wsService}/apps`, { __csrf: admin.lastCsrf, allow: String(appId), default: String(appId) });
+    assert.equal(await owner.one('select 1 from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, wsService]), undefined);
+    // the application's roles read none of it and call none of the internal functions
+    for (const r of ['pgkiln_runtime', hrRole]) {
+      await assert.rejects((async () => {
+        const c = await owner.pool.connect();
+        try {
+          await c.query('begin');
+          await c.query(`set local role ${r}`);
+          await c.query('select service_id, is_default from meta.app_mail_service');
+        } finally {
+          await c.query('rollback');
+          c.release();
+        }
+      })(), /permission denied/);
+      for (const fn of ['meta.mail_service_for_app(int, text)', 'meta.mail_service_for_mail(int, int, text)', 'meta.mail_caller(text)', 'meta.mail_service_for_app(int)'])
+        assert.equal((await owner.one(`select has_function_privilege($1, $2, 'execute') as ok`, [r, fn])).ok, false, `${r} ${fn}`);
+    }
+  });
+
+  test('the builder\'s endpoints: only administrators link services or set the default', async () => {
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'ceo@corp.example')`, [appId, notLinked]);
+    try {
+      const dev = await builder(DEV, PW);
+      assert.equal((await dev.get(`/builder/mail/${notLinked}`)).statusCode, 403);
+      const res = await dev.post(`/builder/mail/${notLinked}/apps`, { __csrf: dev.lastCsrf, allow: String(appId), default: String(appId) });
+      assert.equal(res.statusCode, 403);
+      assert.equal((await owner.one('select is_default from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, notLinked])).is_default, false);
+      // without the form's token nothing changes, even for an administrator
+      const admin = await builder('admin', 'admin');
+      assert.notEqual((await admin.post(`/builder/mail/${notLinked}/apps`, { __csrf: 'forged', allow: String(appId), default: String(appId) })).statusCode, 303);
+      assert.equal((await owner.one('select is_default from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, notLinked])).is_default, false);
+      // a From address outside the service's senders is refused, the default stays
+      await admin.get(`/builder/mail/${notLinked}`);
+      await admin.post(`/builder/mail/${notLinked}/apps`, { __csrf: admin.lastCsrf, allow: String(appId), default: String(appId), [`from_${appId}`]: 'hr@mine.example' });
+      assert.deepEqual(await owner.one('select from_address, is_default from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, notLinked]),
+        { from_address: 'ceo@corp.example', is_default: false });
+    } finally {
+      await owner.query('delete from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, notLinked]);
     }
   });
 });

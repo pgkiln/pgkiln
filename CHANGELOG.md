@@ -13,6 +13,11 @@ All notable changes to this project are documented here. The format follows
 - **Pictures from other https sites** (sprint 235, MG-2): template components, report column templates and cached
   regions add the origins of their https image URLs to the page's Content-Security-Policy `img-src` (normalised
   origins only, at most 50), as image items already did.
+- **Several mail services per application** (sprint 236, MG-1, migration 191): an administrator links more than one
+  mail service to an application under Mail services → Applications and picks its default. `meta.send_mail`,
+  `meta.send_mail_template` and the Send E-Mail process send through the linked service whose allowed senders match the
+  From address, otherwise through the default; the daily limit counts per service. Applications with one service behave
+  as before. HR part 99 adds a second service, `SAFETY_LOG`.
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the

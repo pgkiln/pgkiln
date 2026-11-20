@@ -163,11 +163,12 @@ grant execute on function sales.order_sent(bigint) to sales_app;
 ### E-mail from SQL
 
 [Sending e-mail](06-processing.md#sending-e-mail) (APEX: `APEX_MAIL`). The application needs a mail
-service (an administrator chooses it under Workspace utilities → Mail services).
+service (an administrator chooses it under Workspace utilities → Mail services); with [several](06-processing.md#several-mail-services),
+the From address chooses the service, else the application's default.
 
 | Function | Returns |
 |---|---|
-| `meta.send_mail(p_to, p_subject, p_body, p_body_html, p_from, p_cc, p_bcc, p_reply_to)` | Queues a mail and returns its id (APEX_MAIL.SEND). `p_to`, `p_cc`, `p_bcc`: addresses separated by commas or semicolons, at most 50 together (plain addresses, no display names); `p_subject`: one line, at most 998 characters; `p_body` (plain text) and/or `p_body_html`, each at most 1 MB; `p_from`: an address the service may send as (default: the application's); `p_reply_to`: one address |
+| `meta.send_mail(p_to, p_subject, p_body, p_body_html, p_from, p_cc, p_bcc, p_reply_to)` | Queues a mail and returns its id (APEX_MAIL.SEND). `p_to`, `p_cc`, `p_bcc`: addresses separated by commas or semicolons, at most 50 together (plain addresses, no display names); `p_subject`: one line, at most 998 characters; `p_body` (plain text) and/or `p_body_html`, each at most 1 MB; `p_from`: an address one of the application's services may send as, which chooses that service (default: the default service's From address); `p_reply_to`: one address |
 | `meta.send_mail_template(p_template, p_placeholders jsonb, p_to, p_cc, p_bcc, p_from, p_reply_to)` | The same with an [e-mail template](06-processing.md#e-mail-templates) and its placeholder values (APEX_MAIL.SEND with `p_template_static_id`) |
 | `meta.add_mail_attachment(p_mail_id, p_content bytea, p_filename, p_mime)` | Adds a file to a mail queued **in the same transaction** (APEX_MAIL.ADD_ATTACHMENT); at most 20 files and 20 MB per mail, 10 MB per file |
 | `meta.mail_status(p_mail_id)` | `queued`, `sending`, `sent`, `error` or `cancelled`; NULL for another application's mail |

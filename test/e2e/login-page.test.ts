@@ -31,8 +31,8 @@ before(async () => {
   await owner.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 5, 'About', 'static', '<p>Sign in with your company account.</p>')`, [pageId]);
   await owner.query(`insert into meta.region (page_id, seq, title, type) values ($1, 10, 'HR Demo', 'login')`, [pageId]);
   const svc = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{@example.com}') returning id`, [SERVICE])).id;
-  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                     on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address`, [appId, svc]);
+  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)
+                     on conflict (app_id, service_id) do update set is_default = true, from_address = excluded.from_address`, [appId, svc]);
   await owner.query('update meta.app set login_page = 9997, password_reset = true where id = $1', [appId]);
   close = async () => {
     await owner.query('update meta.app set login_page = $2, password_reset = $3 where id = $1', [appId, saved.login_page, saved.password_reset]);

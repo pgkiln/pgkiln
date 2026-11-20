@@ -922,7 +922,8 @@ Microsoft retires basic authentication (a password) for SMTP in Exchange Online:
 or the Graph provider. Secrets are stored encrypted with `PGKILN_SECRET_KEY`, are write-only in the
 builder, never exported and never readable by applications. Each service lists the **From
 addresses** it may send as (an address, or `@example.com` for a whole domain); an administrator
-chooses each application's service, its From address and an optional **limit per day**. A
+chooses each application's services, their From addresses and an optional **limit per day** (an application
+may have [several](#several-mail-services)). A
 workspace's administrators can also set up the [workspace's own mail
 service](03-builder.md#a-workspaces-own-mail-service) (sprint 118): the workspace's applications that
 an administrator gave no service send through it, with its default From address. Administration →
@@ -959,6 +960,34 @@ See [chapter 9](09-reference.md#e-mail-from-sql) for every function and its limi
 work for the **current application** only when the caller runs as that application's database role
 (pages, processes, automations, workflows and background chains do); the SQL Workshop is not an
 application.
+
+### Several mail services
+
+An application can send through more than one mail service (sprint 236): orders as `orders@example.com` through
+one SMTP account and safety notices as `safety@example.com` through another, or two providers. An administrator
+links each service to the application under Workspace utilities → [Mail services](03-builder.md#mail-services) →
+*Applications*; one of them is the application's **default** (the first one linked, until another is made the
+default there). Which service a mail goes through follows from its **From address**:
+
+- `meta.send_mail` and `meta.send_mail_template` (`p_from`) and the *Send e-mail* process (`"from"`) choose the
+  linked, enabled service whose allowed senders include the From address (the default first when several do);
+- without a From address (also a workflow's `send_mail` step and task events), or when none of the others may send
+  as it, the mail goes through the **default** service, with its From address. A From address that the default may not send as either is refused, as before;
+- an application with one service sends exactly as before. Its workspace's own service is used only when an
+  administrator linked none; a service of another workspace can't be linked;
+- the **limit per day** is per service: the application's mail of the day through that service;
+- the service is noted with the queued mail; the server sends through it while it is still one of the application's
+  services (else through the service for the From address at that moment). Sign-in codes and password reset mail go
+  through the default service. `meta.mail_available()` answers for the default service.
+
+```sql
+select meta.send_mail('jane@example.com', 'Fire drill at 10:00', 'Please leave by the stairs.',
+                      p_from => 'safety@example.com');   -- through the service that may send as safety@
+```
+
+**HR example** (part 99, `examples/hr/hr_99_mail_services.sql`): HR has a second service `SAFETY_LOG` (senders
+`@safety.example.org`, not the default) next to `DEVELOPMENT_LOG`; `hr.send_safety_notice(to, text)` sends from
+`alerts@safety.example.org` and so goes through `SAFETY_LOG`, all other HR mail through `DEVELOPMENT_LOG`.
 
 ### The activity report by mail
 

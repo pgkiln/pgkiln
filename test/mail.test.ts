@@ -43,8 +43,8 @@ async function useService(provider: string, settings: Record<string, unknown>, s
   const id = (await owner.one(
     'insert into meta.mail_service (name, provider, settings, secret_enc, senders) values ($1, $2, $3, $4, $5) returning id',
     [SERVICE, provider, JSON.stringify(settings), secret ? encryptSecret(secret) : null, senders])).id;
-  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                     on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [appId, id]);
+  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)
+                     on conflict (app_id, service_id) do update set is_default = true, from_address = excluded.from_address, max_per_day = null`, [appId, id]);
   return id;
 }
 
@@ -137,9 +137,9 @@ describe('mail: SQL API', () => {
     });
     assert.equal((await owner.one('select filename from meta.mail_attachment where mail_id = $1', [id])).filename, 'x_.._evil_name.bin');
     await assert.rejects(asApp((q) => q(`select meta.add_mail_attachment($1, '\\x00'::bytea, 'late.bin')`, [id])), /was not queued in this transaction/);
-    await owner.query('update meta.app_mail_service set max_per_day = 0 where app_id = $1', [appId]);
+    await owner.query('update meta.app_mail_service set max_per_day = 0 where app_id = $1 and is_default', [appId]);
     await assert.rejects(asApp((q) => q(`select meta.send_mail('a@example.com', 'T limited', 'b')`)), /limit of 0 mails per day/);
-    await owner.query('update meta.app_mail_service set max_per_day = null where app_id = $1', [appId]);
+    await owner.query('update meta.app_mail_service set max_per_day = null where app_id = $1 and is_default', [appId]);
   });
 });
 
@@ -396,7 +396,7 @@ describe('mail: the send_email process and the builder', () => {
     assert.doesNotMatch(res.body, /resend-key-secret/, 'the stored secret never reaches the page');
     // the application, its From address and limit
     res = await dev.submit(`/builder/mail/${x.id}/apps`, { allow: String(appId), [`from_${appId}`]: 'hr@example.com', [`max_${appId}`]: '100' });
-    assert.equal((await owner.one('select service_id, max_per_day from meta.app_mail_service where app_id = $1', [appId])).max_per_day, 100);
+    assert.equal((await owner.one('select service_id, max_per_day from meta.app_mail_service where app_id = $1 and service_id = $2', [appId, x.id])).max_per_day, 100);
     // the application's mail page: retry an error, cancel a queued one
     const failed = (await owner.one(`insert into meta.mail_queue (app_id, from_address, to_addresses, subject, body_text, status, attempts) values ($1, 'hr@example.com', '{a@example.com}', 'T failed', 'x', 'error', 5) returning id`, [appId])).id;
     const mailPage = (await dev.get(`/builder/apps/${appId}/mail`)).body;

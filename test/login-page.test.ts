@@ -139,8 +139,8 @@ describe('forgot password', () => {
     await owner.query('update meta.app set login_page = null, password_reset = false where id = $1', [appId]);
     await owner.query('delete from meta.mail_service where name = $1', [SERVICE]);
     const id = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{@example.com}') returning id`, [SERVICE])).id;
-    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address`, [appId, id]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)
+                       on conflict (app_id, service_id) do update set is_default = true, from_address = excluded.from_address`, [appId, id]);
   });
 
   test('offered only when turned on and the application has an enabled mail service', async () => {
