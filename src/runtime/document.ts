@@ -279,9 +279,19 @@ function runsOf(nodes: (El | string)[], style: Omit<Run, 'text'>, out: Run[] = [
     if (n.tag === 'small') s.scale *= 0.85;
     if (c.has('muted')) s.muted = true;
     if (n.tag === 'a' && /^(https?:|mailto:)/i.test(n.attrs.href ?? '')) s.link = n.attrs.href;
-    // a block inside inline content (e.g. a <p> in a table cell) starts a new line
-    if (BLOCK.has(n.tag) && out.length && !out[out.length - 1].text.endsWith('\n')) out.push({ ...style, text: '\n' });
+    // (sprint 245) a heading inside inline content (a table cell): bold and at its size
+    if (HEADING[n.tag]) {
+      s.bold = true;
+      s.scale *= HEADING[n.tag];
+    }
+    // a block inside inline content (e.g. a <p> in a table cell) starts a new line, and (sprint 245) what follows it too
+    const isBlock = BLOCK.has(n.tag);
+    const newline = () => {
+      if (out.length && !out[out.length - 1].text.endsWith('\n')) out.push({ ...style, text: '\n' });
+    };
+    if (isBlock) newline();
     runsOf(n.children, s, out);
+    if (isBlock) newline();
   }
   return out;
 }
@@ -417,7 +427,8 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
     const flushText = () => {
       if (tidy(text).length) {
         const bold = text.some((r) => r.bold);
-        font(bold, false).fontSize(size);
+        // (measured at the largest size of the text: a heading in a cell)
+        font(bold, false).fontSize(size * Math.max(1, ...text.map((r) => r.scale)));
         parts.push({ runs: text, h: doc.heightOfString(printable(plain(text)) || ' ', { width, lineGap: size * 0.15 }) });
       }
       text = [];
