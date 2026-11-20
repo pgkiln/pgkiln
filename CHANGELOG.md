@@ -24,6 +24,16 @@ All notable changes to this project are documented here. The format follows
   E-Mail process's `attachments` also take `{"document": "INVOICE", "items": {…}, "filename": "…"}`. The value is a
   reference that becomes the PDF in mail attachments only; mail queued outside a page process (automations, pg_cron)
   can't draw it and fails with a clear message. HR: *Mail sheet* on the employee form.
+- **Report link columns and row actions** (sprint 238, MG-6): reports and classic reports take `link_columns`, up to
+  10 columns of links of their own (label with `#column#`, target page and items with a checksum, style `link`,
+  `button`, `hot`, `danger` or `icon`, `position`, and `when` to show a link only in some rows), and `row_actions`, the
+  grid's ⋮ menu (*Edit* and further links). A link is left out when the user may not open its page, and opens as a
+  dialog when the page is modal. On a phone each is a labelled line of the row's card. HR page 66 (*Row links*).
+- **Inline dialogs opened by their static ID** (sprint 238, MG-14, migration 194): a link to `#<static id>`, a redirect
+  button's **Open inline dialog** (`target_region`, on this page or on the target page), a process's **Then open inline
+  dialog** ("Save and add another") and a branch's **Open inline dialog** (`open_region`) open an inline dialog or
+  drawer region. A submit that fails from inside an inline dialog shows the page again with that dialog open and the
+  error in it. The Advisor warns when no region of the page has that static ID.
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the
