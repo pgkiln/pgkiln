@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-11-20
+
 ### Security
 - **The Docker setup no longer runs pgkiln as a superuser** (sprint 232): `deploy/compose.yaml`'s database has a
   superuser of its own (`postgres`, `POSTGRES_PASSWORD`) that only the start signs in as
