@@ -8,5 +8,6 @@ affiliates. This project is not affiliated with, endorsed by, or sponsored
 by Oracle.
 
 Third-party components shipped with pgkiln keep their own licences: Leaflet
-(BSD-2-Clause) for map regions and Lucide icons (ISC, https://lucide.dev/license),
-served from their npm packages.
+(BSD-2-Clause) for map regions, Lucide icons (ISC, https://lucide.dev/license) and
+zxing-wasm (MIT; ZXing-C++, Apache-2.0) for barcode scanning, served from their npm
+packages.
