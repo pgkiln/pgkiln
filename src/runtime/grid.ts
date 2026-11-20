@@ -71,6 +71,8 @@ export const saveRequest = (r: Region) => `GRID_SAVE_${r.id}`;
 export const saveButton = (r: Region): Button => ({
   id: -r.id, region_id: r.id, seq: 0, name: saveRequest(r), label: 'Save', action: 'submit',
   target_page: null, target_items: {}, condition: null, authz: null, hot: true, confirm: null,
+  // (sprint 240, MG-7) as in APEX, a grid's Save on a modal dialog page keeps the dialog open
+  stay_in_dialog: true,
 });
 
 // a grid on a REST data source also needs the source's operation (rest-sources.ts)
