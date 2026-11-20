@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.111.0 (November 2026): the Global Page (page 0); a region's Layout grid, Appearance, Accessibility, Advanced, Header and Footer, Read Only, Customization, Comments and Audit properties; Remember username on the sign-in card; Updated by, Working copies and Lock in the App Builder report; template components as region types of their own.
+- **Current release:** 0.112.0 (November 2026): the Docker setup runs pgkiln as an owner without SUPERUSER (and moves a 0.111 install over on start), `pgkiln admin demote-owner`; removing a developer releases their page and application locks; a tidier Developers page.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
