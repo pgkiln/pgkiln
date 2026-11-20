@@ -19349,3 +19349,95 @@ describe('sprint 232 the owner without SUPERUSER', () => {
     }
   });
 });
+
+describe('sprint 233 removing a developer releases their locks', () => {
+  let app233: FastifyInstance;
+  const GONE = 'dev_s233_gone';
+  const STAY = 'dev_s233_stay';
+  const PW = 'Sec233-developer-pw!';
+  let appId: number;
+  const builder = async (user = 'admin', password = 'admin') => {
+    const b = new FileBrowser(app233);
+    await b.get('/builder/login');
+    assert.equal((await b.submit('/builder/login', { username: user, password })).statusCode, 303, `builder sign-in as ${user}`);
+    await b.get('/builder');
+    return b;
+  };
+  before(async () => {
+    app233 = await buildApp({ logger: false });
+    for (const u of [GONE, STAY]) {
+      await owner.query('delete from meta.developer where username = $1', [u]);
+      await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [u, PW]);
+    }
+    appId = (await owner.one<{ id: number }>(`select id from meta.app where alias = 'hr'`))!.id;
+    await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no in (0, 3, 5, 7)`, [appId]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no in (0, 3, 5, 7)`, [appId]);
+    await owner.query(`delete from meta.activity_log where event = 'lock_released' and detail like '%s233%'`);
+    await owner.query('delete from meta.developer where username = any($1)', [[GONE, STAY]]);
+    await app233.close();
+  });
+
+  test('a developer can neither remove another developer nor release locks', async () => {
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 7, 'cli_s233')`, [appId]);
+    try {
+      const d = await builder(STAY, PW);
+      assert.equal((await d.submit('/builder/developers/delete', { username: GONE })).statusCode, 403);
+      assert.equal((await d.submit('/builder/developers/release-locks', { holder: 'cli_s233' })).statusCode, 403);
+      assert.ok(await owner.one('select 1 from meta.builder_lock where app_id = $1 and page_no = 7', [appId]));
+      assert.ok(await owner.one('select 1 from meta.developer where username = $1', [GONE]));
+      // a forged form is refused before anything
+      assert.notEqual((await d.post('/builder/developers/release-locks', { __csrf: 'forged', holder: 'cli_s233' })).statusCode, 303);
+    } finally {
+      await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no = 7`, [appId]);
+    }
+  });
+
+  test('removing releases exactly that developer\'s locks, logs each one and says so; re-adding the name gives nothing back', async () => {
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 0, $2), ($1, 3, $2), ($1, 5, $3)`, [appId, GONE, STAY]);
+    const admin = await builder();
+    const page = (await admin.get('/builder/developers')).body;
+    // the confirmation names what is released; the name is escaped like any other text
+    assert.match(page, new RegExp(`Remove developer ${GONE}\\? Their 2 lock\\(s\\) are released: [^"]*application, pages 3`));
+    const res = await admin.submit('/builder/developers/delete', { username: GONE });
+    assert.equal(res.statusCode, 303);
+    assert.match((await admin.get('/builder/developers')).body, /Developer removed; 2 lock\(s\) released\./);
+    const left = (await owner.query('select page_no, locked_by from meta.builder_lock where app_id = $1 and page_no in (0, 3, 5) order by 1', [appId])).rows;
+    assert.deepEqual(left, [{ page_no: 5, locked_by: STAY }]);
+    const log = (await owner.query(`select page_no, username, detail from meta.activity_log where app_id = $1 and event = 'lock_released' and detail like $2 order by page_no nulls first`, [appId, `%${GONE}%`])).rows;
+    assert.equal(log.length, 2);
+    assert.equal(log[0].username, 'admin');
+    assert.match(log[0].detail, /developer removed by admin/);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [GONE, PW]);
+    assert.equal(await owner.one('select 1 from meta.builder_lock where locked_by = $1', [GONE]), undefined);
+  });
+
+  test('any other delete of a developer releases their locks too (migration 190 trigger)', async () => {
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 7, $2)`, [appId, GONE]);
+    await owner.query('delete from meta.developer where username = $1', [GONE]);
+    assert.equal(await owner.one('select 1 from meta.builder_lock where locked_by = $1', [GONE]), undefined);
+    await owner.query(`insert into meta.developer (username, password_hash, is_admin) values ($1, meta.hash_password($2), false)`, [GONE, PW]);
+  });
+
+  test('locks of a name that is no developer: listed for an administrator, released and logged; a developer\'s are refused', async () => {
+    await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no in (5, 7)`, [appId]);
+    await owner.query(`insert into meta.builder_lock (app_id, page_no, locked_by) values ($1, 7, '<b>cli_s233</b>'), ($1, 5, $2)`, [appId, STAY]);
+    try {
+      const admin = await builder();
+      const page = (await admin.get('/builder/developers')).body;
+      assert.match(page, /Locks of names that are no developer/);
+      assert.match(page, /&lt;b&gt;cli_s233&lt;\/b&gt;/);
+      assert.doesNotMatch(page, /<b>cli_s233<\/b>/);
+      await admin.submit('/builder/developers/release-locks', { holder: STAY });
+      assert.ok(await owner.one('select 1 from meta.builder_lock where app_id = $1 and page_no = 5', [appId]), 'a developer\'s lock is not released here');
+      assert.match((await admin.get('/builder/developers')).body, /That is a developer/);
+      await admin.submit('/builder/developers/release-locks', { holder: '<b>cli_s233</b>' });
+      assert.equal(await owner.one('select 1 from meta.builder_lock where app_id = $1 and page_no = 7', [appId]), undefined);
+      assert.ok(await owner.one(`select 1 from meta.activity_log where app_id = $1 and event = 'lock_released' and detail like '%cli_s233%released by admin'`, [appId]));
+    } finally {
+      await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no in (5, 7)`, [appId]);
+      await owner.query(`delete from meta.activity_log where event = 'lock_released' and detail like '%cli_s233%'`);
+    }
+  });
+});

@@ -1906,3 +1906,11 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .ab-lock-cell .ab-lock { display: inline-flex; align-items: center; gap: 4px; }
 .ab-lock-cell .ab-unlocked { display: inline-flex; color: var(--muted); opacity: 0.6; }
 .ab-lock-cell .icon { width: 15px; height: 15px; flex: none; }
+
+/* (sprint 233) Developers: another developer's e-mail form in the reflow table keeps a usable input; the Administrator
+   checkbox sits in the Add developer form's grid, level with the other fields */
+.columns > #dev-accounts { grid-column: 1 / -1; } /* the table needs the page's width, not one column of three */
+.dev-email { flex-wrap: wrap; }
+.dev-email input[type="email"] { flex: 1 1 14rem; min-width: min(14rem, 100%); }
+.dev-admin-field { justify-content: center; }
+@media (min-width: 640px) { .dev-email { min-width: 16rem; } } /* the table's E-mail column grows to fit it */

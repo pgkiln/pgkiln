@@ -34,7 +34,17 @@ On the **Developers** page you can:
 - as an **administrator**: add developer accounts (developers or administrators, with an e-mail address), change
   their e-mail addresses, make a developer
   an administrator or the other way round, and remove other developers (their sessions end
-  immediately).
+  immediately). Removing a developer also **releases their page and application locks** in the same transaction:
+  the confirmation names them ("Their 2 lock(s) are released: Sales: application, pages 3, 5"), the row shows
+  *holds N lock(s)*, each released lock is written to its application's activity log (`lock_released`, "developer
+  removed by …"), and the message says how many were released. Their working copies and comments keep their name
+  (history). Adding the same username later gives nothing back.
+- **Locks of names that are no developer**: locks held by a developer removed before pgkiln 0.112.0, or taken on the
+  command line (`pgkiln lock --as`, `PGKILN_DEVELOPER`, the operating system user) or by the MCP server under a name
+  that has no developer account. An administrator sees them listed under the accounts table and releases each
+  holder's locks with **Release** (logged as `lock_released`). A developer's own locks are broken on the application
+  or page instead. (A trigger on `meta.developer`, migration 190, releases a developer's locks however the row is
+  deleted.)
 
 All developers have full rights in the builder and the SQL Workshop; administrators also manage
 developer accounts and [workspaces](#workspaces) and can break other developers' [locks](#page-locks-and-comments). Accounts
@@ -1575,7 +1585,7 @@ to it are refused (with a message, or `423` for JSON requests) and the designer 
 and since when; the page list shows a lock column. Locking an application refuses changes to every
 page, the settings, shared components and deleting it. Only the developer who locked it or an
 **administrator** unlocks it; an administrator breaking another developer's lock is logged in the
-activity log (`lock_broken`). Running the application, the SQL Workshop and the command line are
+activity log (`lock_broken`); removing a developer releases their locks ([above](#signing-in-and-developer-accounts)). Running the application, the SQL Workshop and the command line are
 not affected.
 
 **Comments** are notes for the team on a page or the application: any developer adds one, the
