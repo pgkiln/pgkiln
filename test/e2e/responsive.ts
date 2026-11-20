@@ -1335,6 +1335,15 @@ export function viewportTests(vp: keyof typeof VIEWPORTS) {
         await owner.query(`delete from meta.builder_lock where app_id = $1 and page_no = 0 and locked_by = 'admin'`, [hr]);
       }
     });
+
+    test('sprint 240: the import dialog (page 67) with a file item in its grid\'s toolbar fits', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/67?dialog=1`);
+      await page.locator('.grid-toolbar #P67_FILE').waitFor({ state: 'attached' });
+      await check(page, 'app-67-import-dialog', vp);
+      await page.context().close();
+    });
   });
 }
 
