@@ -12,6 +12,8 @@ import { closePools, owner } from '../src/db.ts';
 import { advise, adviseDoc } from '../src/builder/advisor.ts';
 import { POSITIONS } from '../src/builder/arrange.ts';
 import { PAGE_POSITIONS, pageHasPosition } from '../src/page-positions.ts';
+import { readFileSync } from 'node:fs';
+import { apexToDoc } from '../src/apeximport.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -208,5 +210,33 @@ describe('the Advisor', () => {
       await setPage(`page_template = 'standard'`);
       await owner.query('delete from meta.item where id = $1', [item]);
     }
+  });
+});
+
+describe('the APEX importer', () => {
+  test('maps the Universal Theme\'s After Logo, Before / After Navigation Bar, Dialogs and Footer display points', () => {
+    const F100 = readFileSync(new URL('fixtures/apex/f100.sql', import.meta.url), 'utf8');
+    const plug = (n: number, name: string, point: string) => `wwv_flow_imp_page.create_page_plug(
+ p_id=>wwv_flow_imp.id(1370000000000099${n})
+,p_plug_name=>'${name}'
+,p_plug_display_sequence=>${n}0
+,p_plug_display_point=>'${point}'
+,p_plug_source=>'<p>${name}</p>'
+,p_plug_query_options=>'DERIVED_REPORT_COLUMNS'
+);
+`;
+    const points: [string, string | null][] = [['AFTER_LOGO', 'after_logo'], ['BEFORE_NAVIGATION_BAR', 'before_navigation_bar'], ['AFTER_NAVIGATION_BAR', 'after_navigation_bar'],
+      ['REGION_POSITION_04', 'dialogs'], ['REGION_POSITION_05', 'footer'], ['REGION_POSITION_01', 'breadcrumb'], ['BODY', null]];
+    const src = F100.replace(`,p_page_component_map=>'14'
+);
+end;
+/`, `,p_page_component_map=>'14'
+);
+${points.map(([pt], i) => plug(i + 1, `R ${pt}`, pt)).join('')}end;
+/`);
+    assert.notEqual(src, F100, 'the fixture has the page this test extends');
+    const { doc } = apexToDoc(src, { alias: `${alias}-apex`, dbRole: 'hr_app' });
+    const regions = doc.pages.flatMap((p: any) => p.regions ?? []);
+    for (const [pt, pos] of points) assert.equal(regions.find((r: any) => r.title === `R ${pt}`)?.position ?? null, pos, pt);
   });
 });
