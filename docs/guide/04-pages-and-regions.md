@@ -188,7 +188,27 @@ Region **templates**:
 An inline dialog or drawer opens with the dynamic action **Open region** (and closes with **Close
 region**), e.g. on the click of a button with action *Defined by dynamic action*, or with a link to
 `#R<id>` (which also works without JavaScript). Items in it are part of the page: a submit sends
-them along. (sprint 219; APEX 26.1: the inline drawer's footer) A [sub region](#sub-regions) of an inline dialog or
+them along.
+
+(sprint 238) Give the region a **static ID** and it opens by that name, which an exported file keeps (a region's id
+changes on import):
+
+- a link to `#<static id>` (in static content, a list entry's URL) opens it; a list entry's link becomes `#R<id>`
+  on the page that has the region, so it works without JavaScript too;
+- a button with action *redirect* and **Open inline dialog** (`target_region`) set to the static ID opens it on this
+  page (a link to `#R<id>`), or, with a target page, on that page once it shows;
+- a process with **Then open inline dialog** (`open_region`) opens it on the page that comes back after a submit in
+  which the process ran: "Save and add another" (the [process](06-processing.md#processes) clears the item and the
+  dialog is there again);
+- a [branch](06-processing.md#branches) with **Open inline dialog** (`open_region`) opens it on its target page; a
+  branch's wins over a process's;
+- a submit that fails (a validation, a process error) from a button inside an inline dialog, or with an error on an
+  item or grid inside one, shows the page again with that dialog open and the error in it.
+
+The page that comes back renders the dialog with `open` (shown without JavaScript too) and app.js shows it as a modal
+dialog. Not after a submit that closes a [modal page](#dialogs-and-drawers): the page below may not reload. The
+Advisor warns when no inline dialog or drawer region of that page has the static ID. HR's page 66 (*Row links*)
+opens its *Department note* dialog in each of these ways. (sprint 219; APEX 26.1: the inline drawer's footer) A [sub region](#sub-regions) of an inline dialog or
 drawer with position **footer** shows in its footer, before its buttons: the header and the footer stay in place while
 the body scrolls (a total, a short note, a link). HR's page 44 has one in its Help drawer. The carousel is a style of the [display selector](#display_selector-region-display-selector)
 region (`{"style": "carousel"}`). The HR example's page 44 (*Region templates*) shows them all.
@@ -646,6 +666,8 @@ Attributes (most of them are also in the page designer's **Report settings** for
 | `headings` | `{}` | Column headings, e.g. `{"sal": "Salary"}`; by default `hire_date` becomes "Hire Date" |
 | `formats` | `{}` | Format masks per column, e.g. `{"sal": "FML999G990D00", "hiredate": "DD-MON-YYYY"}` (see [number formats](14-globalization.md#number-formats)) |
 | `link` | none | Makes one column a link: `{"column": "empno", "page": 3, "items": {"P3_EMPNO": "#empno#"}}`. `#col#` is replaced by the row's value; the link carries a checksum and is hidden when the user may not open that page |
+| `link_columns` | none | (sprint 238) Columns of links or buttons of their own: see [link columns and row actions](#link-columns-and-row-actions) |
+| `row_actions` | none | (sprint 238) A ⋮ menu per row, as a grid's: `{"edit": {"page": 3, "items": {"P3_ID": "#id#"}}, "links": [{"label": "Reviews", "page": 20, "items": {…}}]}` |
 | `empty` | "No data found" | Text when there are no rows |
 | `preformatted` | `[]` | Columns shown with preserved spaces (e.g. indented trees) |
 | `saved_reports` | `true` | `false` hides saved reports for this report |
@@ -663,6 +685,38 @@ They are streamed from a database cursor, so the server holds one batch of 1,000
 [downloads and printing](16-files.md#downloads-and-printing). Computed columns are included in the
 downloads; highlights, aggregates and the group by, pivot and chart views are shown on screen only.
 
+### Link columns and row actions
+
+(sprint 238; APEX: link columns, Appsmith's button columns) A report can have several links per row, each in a
+column of its own, besides the one column `link` makes a link:
+
+```json
+{"link_columns": [
+  {"label": "Edit #dname#", "heading": "Edit", "page": 5, "items": {"P5_DEPTNO": "#deptno#"}, "style": "icon", "icon": "edit", "position": "start"},
+  {"label": "Employees", "page": 2, "items": {"P2_DEPTNO": "#deptno#"}, "style": "button", "icon": "users", "when": "has_staff"},
+  {"label": "Overview", "page": 53, "items": {"P53_DEPTNO": "#deptno#"}, "style": "hot"}],
+ "row_actions": {"edit": {"page": 5, "items": {"P5_DEPTNO": "#deptno#"}},
+                 "links": [{"label": "Employees of #dname#", "page": 2, "items": {"P2_DEPTNO": "#deptno#"}}]}}
+```
+
+| Key | Meaning |
+|---|---|
+| `label` | The link's text; `#column#` takes the row's value (escaped) and the text is translated like other texts ([Text Messages](14-globalization.md)) |
+| `page`, `items` | The target page and the item values it sets, `#column#` taking the row's values (also of hidden columns). The values carry a checksum, as `link`'s; the link is left out when the user may not open that page, and opens as a dialog when the page is modal |
+| `style` | `link` (default), `button`, `hot` (a primary button), `danger`, or `icon`: the icon alone, the label being its accessible name and tooltip |
+| `icon` | An icon before the label (needed for `icon`) |
+| `heading` | The column's heading (default: the label without its `#column#` parts) |
+| `position` | `end` (default): after the report's columns; `start`: before them |
+| `when` | A column of the query: the link shows only in rows where it is true (not null, `false`, empty, `N` or `0`); hide the column with `hidden` |
+
+At most 10 link columns; an entry without a label or a page is left out. `row_actions` gives each row the grid's ⋮
+menu: *Edit* (with an `edit` link; its `label` is optional) and the `links`, each shown only when the user may open its
+page. A grid's `duplicate` and `delete` don't apply to a report. Link columns and the menu show in the report view
+(not in group by, pivot or chart, nor in downloads); on a phone each is a labelled line of the row's card. A classic
+report has them too: in its table, and with the `value_pairs` and `media_list` templates as links under each row. The
+Advisor reports a link to a page that doesn't exist. HR's page 66 (*Row links*) shows each style, `when`, the menu and
+both classic templates.
+
 ---
 
 ### `classic_report` (classic report)
@@ -678,7 +732,7 @@ heading (`"sortable": false` leaves that out) and page; a search field only with
 | `report_template` | `"standard"` | `standard`: a table (a card per row on phones, `"mobile": "scroll"` keeps the table); `value_pairs`: each row as headings and values (APEX: Value Attribute Pairs); `badges`: the first column as the label and the second as a large value (APEX: Badge List); `media_list`: a title (column `title`, else the first) and a text (`description`, `text` or `body`, else the second), the title a link with `link` |
 | `pagination` | `"total"` | `total`: rows X–Y of Z; `range`: rows X–Y without counting them all; `none`: every row on one page (at most `max_rows`, 500) and no pager |
 | `page_size` | 15 | Rows per page (the user has no rows-per-page choice) |
-| `headings`, `hidden`, `formats`, `link`, `empty`, `max_rows`, `lazy`, `cache` | | As for [`report`](#report-interactive-report) |
+| `headings`, `hidden`, `formats`, `link`, `link_columns`, `row_actions`, `empty`, `max_rows`, `lazy`, `cache` | | As for [`report`](#report-interactive-report) |
 
 ```json
 {"report_template": "badges", "pagination": "none"}

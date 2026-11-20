@@ -87,6 +87,10 @@ export interface PageContext {
   closeDialog?: Record<string, string>;
   /** (157) a reset_pagination process ran: reports and grids start on their first page after the submit */
   resetPagination?: boolean;
+  /** (sprint 238, MG-14) a process or branch with open_region: the static id the page that comes back opens */
+  openRegion?: string;
+  /** (sprint 238, MG-14) the inline dialog regions this response renders open (by region id) */
+  openRegions?: Set<number>;
   /** running a background chain (process-jobs.ts): no request, no browser */
   background?: boolean;
   /** debug messages of this request, when the app's debug level is on (src/debug.ts) */

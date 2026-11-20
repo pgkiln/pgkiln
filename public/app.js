@@ -2115,18 +2115,31 @@ document.addEventListener('click', (e) => {
     close.closest('dialog')?.close();
     return;
   }
-  const a = e.target.closest?.('a[href^="#R"]');
-  const d = a && document.getElementById(a.getAttribute('href').slice(1));
-  if (d?.matches('dialog[data-inline-region]')) {
+  // (sprint 238, MG-14) also #<static id>: the region whose data-static-id it is
+  const a = e.target.closest?.('a[href^="#"]');
+  const d = a && inlineRegion(a.getAttribute('href').slice(1));
+  if (d) {
     e.preventDefault();
-    if (!d.open) d.showModal();
+    showInlineRegion(d);
     return;
   }
   if (e.target.matches?.('dialog[data-inline-region]')) e.target.close();
 });
-if (location.hash) {
-  const d = document.getElementById(location.hash.slice(1));
-  if (d?.matches('dialog[data-inline-region]')) d.showModal();
+function inlineRegion(name) {
+  if (!name) return null;
+  const d = document.getElementById(name) ?? document.querySelector(`[data-static-id="${CSS.escape(name)}"]`);
+  return d?.matches('dialog[data-inline-region]') ? d : null;
+}
+function showInlineRegion(d) {
+  if (!d.open) d.showModal();
+}
+{
+  const reopen = document.querySelector('dialog[data-inline-region][data-open-region]') ?? (location.hash ? inlineRegion(location.hash.slice(1)) : null);
+  if (reopen) {
+    // rendered open (shown without JavaScript): shown again as a modal dialog
+    if (reopen.open) reopen.close();
+    reopen.showModal();
+  }
 }
 
 // Region display selector: the links to the regions become ARIA tabs (or a

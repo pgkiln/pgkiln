@@ -394,11 +394,32 @@ async function referenceFindings(x: AppRows, ext: {
         // (sprint 229) page 0 is the Global Page, never opened by itself
         else if (cfg?.link?.page !== undefined && cfg.link.page !== null && cfg.link.page !== '' && Number(cfg.link.page) === 0) missing(e, f.label, 'The link goes to page 0, the Global Page, which is never opened by itself.');
         if (cfg?.link?.items) for (const k of Object.keys(cfg.link.items)) if (!items.has(k.toUpperCase())) missing(e, f.label, `The link sets item ${k}, which doesn't exist.`, 'warning');
+        // (sprint 238, MG-6) a report's link columns and row actions
+        const rowLinks = [...(Array.isArray(cfg?.link_columns) ? cfg.link_columns : []), ...(cfg?.row_actions && typeof cfg.row_actions === 'object' ? [cfg.row_actions.edit, ...(Array.isArray(cfg.row_actions.links) ? cfg.row_actions.links : [])] : [])];
+        for (const l of rowLinks) {
+          if (!l || typeof l !== 'object' || l.page === undefined || l.page === null) continue;
+          if (!pageNos.has(Number(l.page)) || Number(l.page) === 0) missing(e, f.label, `The link "${l.label ?? 'Edit'}" goes to page ${l.page}, which doesn't exist.`);
+          if (l.items && typeof l.items === 'object') for (const k of Object.keys(l.items)) if (!items.has(k.toUpperCase())) missing(e, f.label, `The link "${l.label ?? 'Edit'}" sets item ${k}, which doesn't exist.`, 'warning');
+        }
         if (cfg?.pdf?.layout && !layouts.has(String(cfg.pdf.layout).toUpperCase())) missing(e, f.label, `Report layout ${cfg.pdf.layout} doesn't exist (the built-in layout is used).`, 'warning');
         if (typeof cfg?.public_reports === 'string' && !schemes.has(cfg.public_reports)) missing(e, f.label, `Authorization scheme ${cfg.public_reports} doesn't exist.`);
         if (e.kind === 'region' && cfg?.report !== undefined && !regionIds.has(Number(cfg.report))) missing(e, f.label, `Region ${cfg.report} doesn't exist.`);
       }
     }
+  }
+  // (sprint 238, MG-14) the inline dialog a button, process or branch opens: a region with that static id on the page
+  const pageIdOf = new Map<number, number>(x.pages.map((p) => [Number(p.page_no), Number(p.id)]));
+  const overlays = new Set(all.filter((x) => x.kind === 'region' && x.row.static_id && (x.row.template === 'inline_dialog' || x.row.template === 'inline_drawer'))
+    .map((x) => `${x.row.page_id}:${x.row.static_id}`));
+  const globalId = pageIdOf.get(0);
+  for (const { kind, row } of all) {
+    const sid = kind === 'button' ? row.target_region : kind === 'process' || (kind === 'branch' && row.target_type !== 'app') ? row.open_region : null;
+    if (!sid) continue;
+    const pageId = (kind === 'button' || kind === 'branch') && row.target_page != null ? pageIdOf.get(Number(row.target_page)) : row.page_id;
+    if (pageId === undefined || overlays.has(`${pageId}:${sid}`) || (globalId !== undefined && overlays.has(`${globalId}:${sid}`))) continue;
+    if (kind === 'branch' && row.target_type !== 'page') continue;
+    missing(byKey.get(`${kind}-${row.id}`) ?? null, kind === 'process' ? 'Then open inline dialog (static ID)' : 'Open inline dialog (static ID)',
+      `The page has no inline dialog or drawer region with static ID ${sid}.`, 'warning');
   }
   // forms and grids
   for (const { kind, row } of all) {

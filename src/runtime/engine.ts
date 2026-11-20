@@ -601,8 +601,11 @@ export async function runChain(ctx: PageContext, chain: Process, names: Set<stri
   return messages;
 }
 
-function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
-  return timed(ctx, 6, 'process', () => `process "${p.name}" (${p.type})`, () => runOneStep(ctx, p, names, depth));
+async function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+  const msg = await timed(ctx, 6, 'process', () => `process "${p.name}" (${p.type})`, () => runOneStep(ctx, p, names, depth));
+  // (sprint 238, MG-14) the page that comes back after the submit opens this inline dialog region (the last one wins)
+  if (p.open_region && p.point === 'submit' && !ctx.background) ctx.openRegion = p.open_region;
+  return msg;
 }
 
 async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {

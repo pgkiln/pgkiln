@@ -32,6 +32,7 @@ What's missing is listed in the [feature parity matrix](../apex-feature-parity.m
 | Automatic row processing (DML) | Process type `form_dml` |
 | Interactive grid DML | Process type `grid_dml` |
 | Interactive grid: aggregates, frozen columns, column reorder/resize/hide, saved reports, row actions menu, copy/paste | Grid `aggregates`, `layout`/`frozen`, Actions → Columns (or drag), saved grid reports, `row_actions`; copy/paste of cell ranges in the browser ([chapter 4](04-pages-and-regions.md#grid-interactive-grid)) |
+| Report link columns (a column of type Link, several per report); Inline Dialog opened with `#static_id` | (sprint 238) Report and classic report `link_columns` (label, page, items, style, `when`) and `row_actions` ([chapter 4](04-pages-and-regions.md#link-columns-and-row-actions)); a link to `#<static id>`, a redirect button's `target_region`, a process's or branch's `open_region` ([chapter 4](04-pages-and-regions.md#layout)) |
 | Master-detail (a detail region with a master region) | Master grid `select_row` (column → item), detail `master` (item, and the column new rows get) |
 | PL/SQL process | Process type `sql` calling PL/pgSQL (`select my_fn(:P1_X)`) |
 | `apex_error.add_error` / raising errors | `raise exception '…' using column = 'col'` |

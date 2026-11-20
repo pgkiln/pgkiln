@@ -26,6 +26,7 @@ import { startDebug } from '../debug.ts';
 import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
 import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
+import { openAfterError, openByStaticId } from './open-region.ts';
 import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
 import { parseNumber } from '../numformat.ts';
 import { parseDateMask } from './format.ts';
@@ -507,6 +508,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
       if (flashError) ctx.errors.page.push(flashError);
       const saved = takeFlash(ctx.session, '__GRID_SAVED');
       if (typeof saved === 'string') ctx.savedGrids = saved.split(',').map(Number).filter(Number.isInteger);
+      // (sprint 238, MG-14) a process's or branch's open_region: this page opens that inline dialog
+      openByStaticId(ctx, takeFlash(ctx.session, '__OPEN_REGION'));
     }
     // Actions → Download CSV / Excel / PDF: r<region id>_csv=1, _xlsx=1 or _pdf=1
     const downloadKey = [...ctx.params.keys()].find((k) => /^r\d+_(csv|xlsx|pdf)$/.test(k));
@@ -530,6 +533,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
           const to = await branchTarget(ctx, 'before_header');
           if (to) {
             dbg(ctx, 4, 'branch', `before header: redirect to ${to.split('?')[0]}`);
+            if (ctx.openRegion) ctx.session.state.__OPEN_REGION = ctx.openRegion;
             return { redirect: to };
           }
         }
@@ -686,6 +690,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (e.item) ctx.errors.items[e.item] = e.message;
         else ctx.errors.page.push(e.message);
       } else throw e;
+      // (sprint 238, MG-14) an error inside an inline dialog: the page comes back with that dialog open
+      openAfterError(ctx, body.__request);
       return renderResponse(ctx, reply, 422);
     }
 
@@ -706,6 +712,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
     // (161) the page that comes back runs the saved grids' grid_save dynamic actions
     if (ctx.savedGrids?.length && !ctx.dialog) ctx.session.state.__GRID_SAVED = ctx.savedGrids.join(',');
+    // (sprint 238, MG-14) a process's or branch's open_region: the page that comes back opens that inline dialog
+    // (not after a submit that closes a modal page: the page below may not reload)
+    if (ctx.openRegion && !ctx.dialog) ctx.session.state.__OPEN_REGION = ctx.openRegion;
     await saveState(ctx.session);
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx, ctx.closeDialog));
     // (sprint 54) a grid's Save comes back to the grid's search, page, sort and view

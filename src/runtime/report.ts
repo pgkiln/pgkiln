@@ -12,6 +12,7 @@ import { bindValues, publicError, stripSemicolon, type PageContext } from './con
 import { appDateMask, appDateReader, heading, splitValues } from './items.ts';
 import { monthNames } from './format.ts';
 import { linkAttrs } from './links.ts';
+import { reportLinks } from './link-columns.ts';
 import type { Translate } from '../i18n.ts';
 import type { Formatter } from './format.ts';
 import { XlsxWriter, xlsxWidths, type XlsxCell } from '../xlsx.ts';
@@ -1040,7 +1041,12 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);
   // (097) {"link": {"icon": true}}: a pencil link in a column of its own; the key column is plain text
   const editIcon = linkIdx >= 0 && link!.icon === true && st.view === 'report';
-  const lead = (selIdx >= 0 ? 1 : 0) + (editIcon ? 1 : 0);
+  // (sprint 238, MG-6) link columns and row actions (the report view only)
+  const fieldIdx = (col: string) => fields.findIndex((f) => f.name.toLowerCase() === col.toLowerCase());
+  const lk = st.view === 'report'
+    ? await reportLinks(ctx, r, (row, col) => { const i = fieldIdx(col); return i === -1 ? undefined : cell(row[i]); }, (row, col) => { const i = fieldIdx(col); return i === -1 ? undefined : row[i]; })
+    : null;
+  const lead = (selIdx >= 0 ? 1 : 0) + (editIcon ? 1 : 0) + (lk ? lk.lead + lk.trail : 0);
   // columns rendered through a template component (config.column_templates)
   const fmtOf = columnFormats(ctx, r);
   const templated = st.view === 'report' ? await columnTemplates(ctx, r, fields, (v, oid) => cell(v, oid, ctx.locale.format), (v) => cell(v)) : new Map();
@@ -1083,17 +1089,21 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       : '';
     return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"${menu}><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
   });
+  if (lk) {
+    header.unshift(...lk.headLead);
+    header.push(...lk.headTrail);
+  }
   if (editIcon) header.unshift(html`<th scope="col" class="row-edit" aria-label="${t('report.edit')}"></th>`);
   if (selIdx >= 0) header.unshift(html`<th scope="col" class="row-select"><label><input type="checkbox" data-select-all="${selection!.item}" aria-label="${t('report.select_all')}"><span class="row-select-label" aria-hidden="true">${t('report.select_all')}</span></label></th>`);
 
   // an aggregate row (totals, or a control break's subtotals): the values
   // under their columns, the label in the first cell
   const aggRow = (values: unknown[], label: string, cls: string) =>
-    html`<tr class="${cls}">${selIdx >= 0 ? html`<td class="row-select"></td>` : ''}${editIcon ? html`<td class="row-edit"></td>` : ''}${cols.map(({ f }, ci) => {
+    html`<tr class="${cls}">${selIdx >= 0 ? html`<td class="row-select"></td>` : ''}${editIcon ? html`<td class="row-edit"></td>` : ''}${lk?.blankLead ?? ''}${cols.map(({ f }, ci) => {
       const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], aggregateFormat(a.fn, f.name, fmtOf, ctx.locale.format))}`] : []));
       const text = [ci === 0 ? label : '', ...parts].filter(Boolean).join(' · ');
       return html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`;
-    })}</tr>`;
+    })}${lk?.blankTrail ?? ''}</tr>`;
   const breakKey = (v: unknown) => (v === null || v === undefined ? '\u0000' : String(v));
   const breakField = breakIdx >= 0 ? fields[breakIdx] : undefined;
   const lastPage = !info.more;
@@ -1118,7 +1128,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     const edit = editIcon
       ? html`<td class="row-edit"><a ${linkAttrs(ctx, link!.page, rowItems(row))} aria-label="${t('report.edit')} ${cell(row[linkIdx])}" title="${t('report.edit')}">${icon('edit')}</a></td>`
       : '';
-    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${edit}${cols.map(({ f, i }) => {
+    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${edit}${lk ? lk.rowLead(row, rowNum) : ''}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
       const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name)].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
@@ -1127,7 +1137,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       return i === linkIdx && !editIcon
         ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
         : html`<td class="${cls}" data-label="${label}">${text}</td>`;
-    })}</tr>`);
+    })}${lk ? lk.rowTrail(row) : ''}</tr>`);
   }
   // the last group's subtotal once the group has ended (on the last page)
   if (breakField && group !== undefined && lastPage && agg?.groups.has(group)) body.push(aggRow(agg.groups.get(group)!, t('report.subtotal'), 'agg-row subtotal'));
@@ -1394,7 +1404,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     const pager = r.config.pagination === 'none'
       ? (info.more ? html`<p class="region-limit">${t('region.first_rows', { n: st.size })}</p>` : '')
       : info.more || info.page > 1 || searchable ? pagerNav(ctx, r, info) : '';
-    const shaped = classicTemplate(ctx, r, cols, info.rows, fmtOf, linkIdx >= 0 ? (row) => linkAttrs(ctx, link!.page, rowItems(row)) : null);
+    const shaped = classicTemplate(ctx, r, cols, info.rows, fmtOf, linkIdx >= 0 ? (row) => linkAttrs(ctx, link!.page, rowItems(row)) : null, lk ? lk.linksOf : null);
     if (shaped) return html`${toolbar}${shaped}${pager}`;
     return html`${toolbar}<div class="table-wrap"><table class="report report-classic${r.config.mobile === 'scroll' ? '' : ' report-reflow'}">
       <thead><tr>${header}</tr></thead>
@@ -1420,13 +1430,17 @@ export const CLASSIC_TEMPLATES = ['standard', 'value_pairs', 'badges', 'media_li
  * description, text or body, else the second), the title a link when the report has one.
  */
 function classicTemplate(ctx: PageContext, r: Region, cols: { f: pg.FieldDef; i: number }[], rows: unknown[][], fmtOf: (name: string) => Formatter,
-  linkOf: ((row: unknown[]) => Raw) | null): Raw | null {
+  linkOf: ((row: unknown[]) => Raw) | null, linksOf: ((row: unknown[]) => Raw | '') | null = null): Raw | null {
   const tpl = r.config.report_template;
   if (!tpl || tpl === 'standard' || !(CLASSIC_TEMPLATES as readonly string[]).includes(tpl)) return null;
   const text = (row: unknown[], c: { f: pg.FieldDef; i: number } | undefined) => (c ? cell(row[c.i], c.f.dataTypeID, fmtOf(c.f.name)) : '');
   if (!rows.length) return html`<p class="empty">${r.config.empty ?? ctx.locale.t('report.no_data')}</p>`;
   if (tpl === 'value_pairs')
-    return html`<div class="cr-pairs">${rows.map((row) => html`<dl>${cols.map((c) => html`<dt>${headingOf(r, c.f.name, ctx.locale.tr)}</dt><dd>${text(row, c)}</dd>`)}</dl>`)}</div>`;
+    return html`<div class="cr-pairs">${rows.map((row) => {
+      // (sprint 238) the row's link columns under its values, in the last value's group
+      const links = linksOf ? linksOf(row) : '';
+      return html`<dl>${cols.map((c) => html`<dt>${headingOf(r, c.f.name, ctx.locale.tr)}</dt><dd>${text(row, c)}</dd>`)}${links ? html`<dd class="cr-pairs-links">${links}</dd>` : ''}</dl>`;
+    })}</div>`;
   if (tpl === 'badges')
     return html`<ul class="cr-badges">${rows.map((row) => {
       const inner = html`<span class="cr-badge-value">${text(row, cols[1] ?? cols[0])}</span><span class="cr-badge-label">${cols[1] ? text(row, cols[0]) : ''}</span>`;
@@ -1436,5 +1450,5 @@ function classicTemplate(ctx: PageContext, r: Region, cols: { f: pg.FieldDef; i:
   const titleCol = named('title') ?? cols[0];
   const textCol = named('description', 'text', 'body') ?? cols.find((c) => c !== titleCol);
   return html`<ul class="cr-media">${rows.map((row) => html`<li><div class="cr-media-title">${linkOf ? html`<a ${linkOf(row)}>${text(row, titleCol)}</a>` : text(row, titleCol)}</div>${
-    textCol ? html`<p class="cr-media-text">${text(row, textCol)}</p>` : ''}</li>`)}</ul>`;
+    textCol ? html`<p class="cr-media-text">${text(row, textCol)}</p>` : ''}${linksOf ? linksOf(row) : ''}</li>`)}</ul>`;
 }

@@ -19840,3 +19840,102 @@ end $b$`);
     assert.equal(await mailOf('S237 other'), undefined);
   });
 });
+
+describe('sprint 238 MG-6/MG-14', () => {
+  // a report's link columns and row actions (src/runtime/link-columns.ts) and inline dialogs opened by their static id
+  // (src/runtime/open-region.ts; migration 194: button.target_region, process.open_region, branch.open_region)
+  let app238: FastifyInstance;
+  let page1: number;
+  let page2: number;
+  let report: number;
+  const A = 'ts-sec238';
+  before(async () => {
+    app238 = await buildApp({ logger: false });
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    const a = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec 238', 'none', 'hr_app') returning id`, [A])).id;
+    page1 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth) values ($1, 1, 'Home', false) returning id`, [a])).id;
+    page2 = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth, protection) values ($1, 2, 'Target', false, 'checksum') returning id`, [a])).id;
+    await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth, authz) values ($1, 3, 'Admins', false, 'ADMINS') returning id`, [a]);
+    await owner.query(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'ADMINS', 'role', 'admin')`, [a]);
+    await owner.query(`insert into meta.item (page_id, seq, name, label, type) values ($1, 10, 'P2_ID', 'Id', 'text'), ($1, 20, 'P2_NAME', 'Name', 'text')`, [page2]);
+    await owner.query(`insert into meta.region (page_id, seq, title, type, source) values ($1, 10, 'Shown', 'static', '<p>[&P2_ID.|&P2_NAME.]</p>')`, [page2]);
+    report = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'Rows', 'report', $2, $3) returning id`, [page1,
+      `select 1 as id, '"><script>alert(1)</script>' as name, 'javascript:alert(2)' as url union all select 2, 'x'' onmouseover=''a', 'y'`,
+      JSON.stringify({
+        link_columns: [
+          { label: 'Open #name#', page: 2, items: { P2_ID: '#id#', P2_NAME: '#name#' }, style: 'button' },
+          { label: 'Via #url#', page: 2, items: { P2_NAME: '#url#' } },
+          { label: 'Admins', page: 3, items: { P2_ID: '#id#' } },
+          { label: 'Script', page: 'javascript:alert(3)' },
+          { label: 'Class', page: 2, style: 'button" onclick="x', icon: '"><svg onload=x>' },
+        ],
+        row_actions: { edit: { page: 3 }, links: [{ label: 'Elsewhere', page: 2, items: { P2_ID: '#id#' } }, { label: 'Admin only', page: 3 }] },
+      })])).id;
+    const note = (await owner.one(`insert into meta.region (page_id, seq, title, type, template, static_id, source) values ($1, 20, 'Note', 'static', 'inline_dialog', 'note', '<p>n</p>') returning id`, [page1])).id;
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'SAVE', 'Save', 'submit')`, [page1, note]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    await app238.close();
+  });
+
+  test('link columns: row values are escaped in labels and URLs, links are signed, no link to a page the user may not open', async () => {
+    const page = (await new FileBrowser(app238).get(`/a/${A}/1`)).body;
+    const html = page.slice(page.indexOf(`id="R${report}"`));
+    assert.doesNotMatch(html, /<script>alert|onmouseover='a|<svg onload/);
+    assert.match(html, />Open &quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;<\/a>/);
+    // a value in a URL is a query parameter (encoded), never the link's scheme
+    assert.doesNotMatch(html, /href="javascript:/i);
+    assert.match(html, /href="\/a\/ts-sec238\/2\?P2_NAME=javascript%3Aalert%282%29&amp;cs=[0-9a-f]+"/);
+    // a page that isn't a number, and a style or icon that isn't on the lists, are dropped
+    assert.doesNotMatch(html, />Script</);
+    assert.match(html, /<a href="\/a\/ts-sec238\/2">Class<\/a>/);
+    assert.doesNotMatch(html, /onclick/);
+    // the user may not open page 3: no column, no menu entry, no Edit
+    assert.doesNotMatch(html, /Admins|Admin only|\/a\/ts-sec238\/3/);
+    assert.match(html, />Elsewhere<\/a>/);
+  });
+
+  test('a link column\'s item values carry a checksum: a changed value is refused', async () => {
+    const b = new FileBrowser(app238);
+    const page = (await b.get(`/a/${A}/1`)).body;
+    const href = /href="(\/a\/ts-sec238\/2\?P2_ID=1&amp;P2_NAME=[^"]+)"/.exec(page)![1].replace(/&amp;/g, '&');
+    assert.equal((await b.get(href)).statusCode, 200);
+    const forged = await b.get(href.replace('P2_ID=1', 'P2_ID=2'));
+    assert.equal(forged.statusCode, 403);
+    assert.doesNotMatch(forged.body, /\[2\|/);
+    // the checksum is bound to the session's user: another browser can't use this link's values changed either
+    assert.equal((await new FileBrowser(app238).get(href.replace('P2_ID=1', 'P2_ID=2'))).statusCode, 403);
+  });
+
+  test('target_region, open_region: only a static id (the database refuses anything else)', async () => {
+    for (const bad of ['"><script>', 'Note', '#note', 'a b', 'x'.repeat(51), 'javascript:alert(1)']) {
+      await assert.rejects(owner.query(`update meta.button set target_region = $1 where page_id = $2`, [bad, page1]), /check constraint/);
+      await assert.rejects(owner.query(`insert into meta.process (page_id, seq, name, type, code, open_region) values ($1, 90, 'p', 'sql', 'select 1', $2)`, [page1, bad]), /check constraint/);
+      await assert.rejects(owner.query(`insert into meta.branch (page_id, seq, name, target_type, target_page, open_region) values ($1, 90, 'b', 'page', 1, $2)`, [page1, bad]), /check constraint/);
+    }
+  });
+
+  test('the dialog to open comes from the application only: a posted or URL __OPEN_REGION does nothing; a session value is checked', async () => {
+    const b = new FileBrowser(app238);
+    await b.get(`/a/${A}/1`);
+    await b.submit(`/a/${A}/1`, { __OPEN_REGION: 'note', __request: 'SAVE' });
+    let page = (await b.get(`/a/${A}/1?__OPEN_REGION=note`)).body;
+    assert.doesNotMatch(page, /data-open-region/);
+    // a stored value that isn't a static id (an older session, a bug) is ignored
+    const { hashToken } = await import('../src/security.ts');
+    const token = [...b.cookies].find(([k]) => /^pgkiln_app_\d+$/.test(k))![1];
+    const set = await owner.query(`update meta.session set state = state || jsonb_build_object('__OPEN_REGION', $2::text) where token_hash = $1`, [hashToken(token), '"><b>x']);
+    assert.equal(set.rowCount, 1);
+    page = (await b.get(`/a/${A}/1`)).body;
+    assert.doesNotMatch(page, /data-open-region|<b>x/);
+  });
+
+  test('a failed submit opens only the dialog of the button pressed: a forged request opens nothing', async () => {
+    const b = new FileBrowser(app238);
+    await b.get(`/a/${A}/1`);
+    const res = await b.submit(`/a/${A}/1`, { __request: 'NOPE' });
+    assert.notEqual(res.statusCode, 422);
+    assert.doesNotMatch(res.body, /data-open-region/);
+  });
+});

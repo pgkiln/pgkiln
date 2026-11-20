@@ -294,6 +294,8 @@ export interface Button extends FromGlobal {
   template_options?: string[];
   /** (099) a region button's position: create, edit, change, copy, help, up, previous, close, delete, next or region (null) */
   slot?: string | null;
+  /** (sprint 238, migration 194) redirect: the static id of an inline dialog region it opens (on its target page, else this one) */
+  target_region?: string | null;
 }
 
 export interface MenuEntry {
@@ -357,6 +359,8 @@ export interface Branch extends Condition {
   /** app: the alias of another application of this installation */
   target_app?: string | null;
   authz: string | null;
+  /** (sprint 238, migration 194) the static id of an inline dialog region the target page opens */
+  open_region?: string | null;
 }
 
 export interface DynamicAction extends FromGlobal {
@@ -448,6 +452,8 @@ export interface Process extends FromGlobal {
   condition_type?: Condition['condition_type'];
   condition_expr?: string | null;
   condition_value?: string | null;
+  /** (sprint 238, migration 194) the static id of an inline dialog region the page that comes back opens after this ran */
+  open_region?: string | null;
 }
 
 export interface Page extends PageSummary {
