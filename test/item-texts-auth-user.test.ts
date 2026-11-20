@@ -229,12 +229,21 @@ describe('sprint 241 MG-13: the page template No navigation', () => {
     const body = /<body[^>]*>/.exec(page)![0];
     assert.match(body, /class="t-nonav"/);
     assert.match(body, /data-sw="\/a\/hr\/sw.js"/);
-    assert.match(body, /data-push="/);
     assert.match(body, /data-live="30"/);
     assert.match(page, /<link rel="manifest"/);
     assert.doesNotMatch(page, /class="t-header"|id="t-nav"|class="t-titlebar"|class="skip-link"/);
     assert.match(page, /<h1 class="sr-only">Welcome<\/h1>/);
     assert.match(page, /<main class="t-main t-nonav-main" id="main">/);
+    // push: the same attributes as the Standard template (data-push needs HR's push key and pwa_push, which another
+    // test file or a server without PGKILN_SECRET_KEY may not give)
+    const pushOf = (b: string) => (b.match(/ data-push(-user)?="[^"]*"/g) ?? []).join('');
+    try {
+      await owner.query(`update meta.page set page_template = 'standard' where id = $1`, [p68]);
+      const standard = /<body[^>]*>/.exec((await (await king()).get('/a/hr/68')).body)![0];
+      assert.equal(pushOf(body), pushOf(standard));
+    } finally {
+      await owner.query(`update meta.page set page_template = 'no_navigation' where id = $1`, [p68]);
+    }
   });
 
   test('minimal (a sign-in page) still drops push; Standard keeps everything', async () => {
