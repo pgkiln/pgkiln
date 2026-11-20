@@ -9,6 +9,7 @@
 | `action` | `submit`: submit the page with this request. `redirect`: go to `target_page` without submitting. `da`: do nothing except trigger [dynamic actions](07-dynamic-actions.md). `document`: download a document template. `menu`: a [menu](#menu-buttons-and-badges) of links and submit requests |
 | `target_page` | For `redirect`: where to go. For `submit`: where to go **after** success when no [branch](#branches) applies; empty = stay on the page |
 | `target_items` | For `redirect`: items to set on the target page, e.g. `{"P3_ID": "&P2_ID."}` |
+| `target_region` | (sprint 238) For `redirect`: the static ID of an [inline dialog or drawer region](04-pages-and-regions.md#layout) it opens, on this page (empty `target_page`), else on the target page once it shows |
 | `condition` | SQL expression; the button only exists when it is true |
 | `authz` | Authorization scheme |
 | `hot` | Primary styling. The first visible hot submit button is also the one **Enter** presses |
@@ -155,6 +156,7 @@ two combine well; see error handling below.
 | `region_id` | The form or grid region, for `form_dml` / `grid_dml` |
 | `config` | Settings of a `data_load`, `invoke_api`, `download`, `chain`, `workflow`, `send_push` or `plugin` process (JSON) |
 | `success_message` | Shown after the redirect; messages of several processes are joined. (sprint 166) `&ITEM.` substitutions are filled in with the values after the process (`Order &P3_ID. created.`) |
+| `open_region` | (sprint 238) `submit`: the static ID of an [inline dialog region](04-pages-and-regions.md#layout) the page that comes back opens, after a submit in which this process ran ("Save and add another"); a branch's `open_region` wins |
 | `authz` | Skipped when the user isn't authorized |
 | `seq` | Order |
 
@@ -640,6 +642,7 @@ dialog closes instead, and the calling page reloads.
 | `target_page`, `target_items` | A page of the application (empty = this page) and the items to set there, e.g. `{"P7_EMPNO": "&P22_EMPNO."}`; the link is signed with a checksum. For `app`: the page and items in the other application |
 | `target_url` | A path inside the application (after `/a/<alias>/`), e.g. `12?view=month` or `account`; `&ITEM.` values are URL-encoded. Other sites are refused (no scheme, `//`, `\` or `..`) |
 | `target_function` | `function`: a PL/pgSQL function body that returns such a path (APEX: *Function returning a URL*), run as the application's role with binds; checked like `target_url` (`meta.branch_path_ok`). An empty result: the branch doesn't apply; a refused one shows a message and is logged |
+| `open_region` | (sprint 238) The static ID of an [inline dialog or drawer region](04-pages-and-regions.md#layout) the target page (of this application) opens when it shows, e.g. a confirmation after the save |
 | `target_app` | `app`: the alias of another application of this installation (APEX: *Branch to page in another application*). It must exist with that page (else the branch doesn't apply and a message is shown); the items are signed for that application, page and user. That application's own sign-in and authorization apply when the browser gets there |
 | `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#server-side-conditions) holds |
 | `authz`, `seq`, `build_option` | As for other components |
