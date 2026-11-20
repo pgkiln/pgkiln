@@ -92,7 +92,7 @@ items, in the browser. A tree of departments that filters an employee report, wi
 | `show` / `hide` | browser | Show or hide the affected items/region. **With a condition, the opposite happens when the condition is false**, so one dynamic action gives "show commission only for salesmen". Also applied when the page loads (and already on the server, so there's no flicker) |
 | `enable` / `disable` | browser | Enable or disable the controls, reversed when the condition is false |
 | `set_value` | server | Runs `code` (a SELECT); its first row's columns set the affected items, in order. A protected `hidden` item (the default) gets the value in its session state only (the browser never sees it); (167) a hidden item with `{"value_protected": false}` is a hidden input that browser-side actions set too ([Hidden items](05-items.md#hidden-items)) |
-| `execute_sql` | server | Runs `code`; returned columns named like items set those items |
+| `execute_sql` | server | Runs `code`; returned columns named like items set those items. (sprint 240) Web requests it queues are made right after it, so the next action reads `meta.web_response()` ([Ajax callbacks](#ajax-callbacks)) |
 | `refresh_region` | server | Re-renders `affected_region_id` with the current session state (e.g. a report filtered by the changed item) |
 | `refresh_item` | server | Re-renders the affected items (e.g. a list whose LOV depends on another item) |
 | `alert` | browser | Shows `message` |
@@ -164,7 +164,9 @@ wait popup around an Ajax call.
 
 A page process with point **ajax** (APEX: an On Demand process) runs only when JavaScript calls it by
 name, and answers JSON; an application process with point *ajax* can be called from every page (a
-page's own process of that name wins). Only processes of type `sql` answer.
+page's own process of that name wins). Only processes of type `sql` answer, and (sprint 240) a **chain**
+of `sql` processes: its steps run in sequence, each with its own button, authorization and condition, and
+the answer is the last step's rows. A step of such a chain can't be called by its own name.
 
 ```js
 // in a static application file
@@ -183,6 +185,26 @@ select sum(qty * price) as total, :X01 as currency from sales.order_line where o
 user may change are set, as on a submit. The process runs as the application's role with its
 authorization, condition and build option; errors come back as `{ "error": "…" }` (the promise
 rejects). The request carries the page's CSRF token and needs page access.
+
+**Web requests in an Ajax callback** (sprint 240). A [`meta.web_request()`](09-reference.md#web-requests-from-sql)
+queued by the callback (or by a step of the chain) is made by the server right after it, in the same
+transaction, as after a page process; so the chain's next step reads the answer with `meta.web_response()`
+and the callback answers with it, in one call (no polling from JavaScript):
+
+```sql
+-- the chain LOOKUP_CONTACT (point ajax), step 1
+select meta.web_request('https://crm.example.com/contacts/' || (:P5_ID)::int, p_timeout_s => 5) as p5_request;
+-- step 2: its rows are the answer
+select r -> 'json' ->> 'name' as name, (r ->> 'status_code')::int = 200 as found
+  from meta.web_response(:P5_REQUEST::bigint) r;
+```
+
+The requests of one call get **30 seconds together**: each request's time limit is cut to what is left,
+and one with less than a second left is made by the server after the commit (its `message` says so;
+`meta.web_response()` shows `retry`). A request with a callback or an ordering key is always the
+[outbox's](09-reference.md#the-outbox-retries-callbacks-ordering): sent after the commit. The same holds
+for an `execute_sql` action: the next action of the event (a `set_value`, say) reads the response.
+HR page 67 has both (`examples/hr/hr_103_import_dialog.sql`).
 
 ## Execute JavaScript
 
@@ -270,7 +292,8 @@ These are conveniences: the server still validates on submit.
 ## Dialog closed
 
 When a modal dialog page is submitted successfully, the dialog closes and the page that opened it
-**reloads**. With `dialog_closed` dynamic actions for that dialog, the page runs them instead,
+**reloads** (unless the button or the branch taken has *Stay in the dialog*, sprint 240: see
+[chapter 6](06-processing.md#staying-in-the-dialog)). With `dialog_closed` dynamic actions for that dialog, the page runs them instead,
 typically `refresh_region` on a report that shows what the dialog changed (APEX: *Dialog Closed*).
 The dialog's success message comes along with the first action that goes to the server
 (`refresh_region`, `refresh_item`, `set_value`, `execute_sql`) and is shown at the top of the page.
