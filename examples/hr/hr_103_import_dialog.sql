@@ -155,7 +155,8 @@ pgkiln.actions.register('hr.lookupContact', async () => {
 });
 $js$, 'utf8')
   from meta.app a where a.alias = 'hr';
-update meta.app set static_includes = array_append(static_includes, 'import-dialog.js') where alias = 'hr';
+-- loaded by page 67 only
+update meta.page p set static_includes = '{import-dialog.js}' from meta.app a where a.id = p.app_id and a.alias = 'hr' and p.page_no = 67;
 
 -- page 35 opens the dialog
 insert into meta.button (page_id, region_id, seq, name, label, action, target_page)
