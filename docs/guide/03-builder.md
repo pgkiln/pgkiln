@@ -3250,6 +3250,9 @@ that directory as a zip from `/builder/apps/<id>/export?format=dir`.
 The format is `"format": "pgkiln/2"`, and it's stable: files exported by pgkiln 0.2.0 and later
 import into every later version. New versions only **add** sections, and a missing section
 imports as empty. Import refuses other formats.
+(sprint 242) A missing **key** of a component takes the column's default on import (the builder's Import, `pgkiln
+import`, the MCP server's `import_app`); a key given as `null` stays null. `meta.import_app()` called directly in SQL
+doesn't fill keys. See [keys you leave out](18-cli.md#keys-you-leave-out-hand-written-files).
 
 | Section | Contents |
 |---|---|

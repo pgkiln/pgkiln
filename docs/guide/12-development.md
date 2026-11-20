@@ -59,6 +59,16 @@ src/
                            never under node --test without PGKILN_RELEASE_URL; parseRelease keeps a semver and an https link only
                            or fails a file in public.pgkiln_install_log
   appfiles.ts              application export as one file per component (dir layout, static ids) and back
+                           ((sprint 242) sourceOf(row): the file a row of filesToDoc's document came from, kept in a WeakMap)
+  import-defaults.ts       (sprint 242, MG-16) keys a component file leaves out take the column's constant default from the
+                           catalog (loadColumnDefaults; never ids, references or what export_app leaves out): fillDefaults on a
+                           document (importDoc, adviseTarget; the filled keys per file), fillFiles on the files (diff, diff_app),
+                           explainNotNull turns a NOT NULL violation of meta.import_app into one naming file, component and key;
+                           a key present with null is never filled; MUST_GIVE: columns whose default is the open value for
+                           access (rest_module roles/enabled, web_credential valid_for, app mfa/mfa_roles/local_login) are
+                           not filled: absent or null refuses the import naming file and key, unless the component has none
+                           of the rule's `since` keys (added with or after the column: an older pgkiln's export), which
+                           gets the default as before
   apexparse.ts             (sprint 182) an APEX SQL export read as text, never run: a tokenizer ('' and q'[…]' quotes, unistr,
                            comments, SQL*Plus lines) and every wwv_* call as an ApexCall with its named arguments evaluated
                            (wwv_flow_imp.id → ApexId with every digit, wwv_flow_string.join, ||, nvl); joinSplitExport (install.sql order)
@@ -1222,6 +1232,12 @@ browser enhancements at the end of `public/app.js` (the item must work without t
   `src/cli/replace.ts` (replaced with the application's definition, or kept as installation data);
   `test/cli.test.ts` fails until it is. The directory format ([chapter 18](18-cli.md)) needs no
   change: unknown sections and columns travel along.
+- (sprint 242) A new column's constant default is what an import gives a hand-written file that leaves the key
+  out (`src/import-defaults.ts` reads it from the catalog). A column the export leaves out on purpose (installation
+  state, a secret) must also be listed in `NOT_EXPORTED` there, or such a file would get its default. A new column whose default
+  is the open value for access (no roles, any URL, enabled, off for a second factor) goes in `MUST_GIVE`, with `since`: the
+  keys added in the same migration (older exports lack them and keep importing). Add a new application column to the
+  `since` list of `mfa` / `mfa_roles` too.
 - (sprint 201) Grant a new meta *table* to `pgkiln_runtime` (or nobody), never to `PUBLIC` or an application's role: a
   role with any right on a meta table is powerful (`meta.role_reaches_meta`), and the workspaces' developer logins
   read none. A new view for application code granted to `PUBLIC` must show only the rows of `meta.app_id()` (or the

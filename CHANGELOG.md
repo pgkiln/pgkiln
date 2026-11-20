@@ -73,6 +73,14 @@ All notable changes to this project are documented here. The format follows
   callback or an `execute_sql` dynamic action is made right after it, in the same transaction (within 30 seconds per
   call), so the next step reads `meta.web_response()` without polling. An Ajax callback may also be a chain of SQL
   processes, run in sequence, each with its own button, authorization and condition.
+- **Application files may leave keys out** (sprint 242, MG-16): `pgkiln import`, the MCP server's `import_app`, the
+  builder API and the builder's Import give a key a hand-written file leaves out the column's default, read from the
+  catalog for every component kind. A key written as `null` stays null. The import lists the filled keys per file,
+  `pgkiln advise` notes them, and `diff` / `diff_app` compare a left-out key as its default. A required key without a
+  default names the file, component and key instead of a raw not-null error. Keys whose default would widen access
+  (a REST module's `roles` and `enabled`, a web credential's `valid_for`, the application's `mfa`, `mfa_roles` and
+  `local_login`) are never filled: a file must give them, except an older pgkiln's export written before the column
+  existed, which imports as before.
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the
@@ -80,6 +88,8 @@ All notable changes to this project are documented here. The format follows
   allow-list on the server and in the editor.
 - A custom sign-in whose final user name is `nobody` is refused (sprint 241).
 - Item labels containing `&NAME.` are now substituted; names that aren't items or built-ins stay as typed (sprint 241).
+- `pgkiln import --replace` (and `import_app` with `replace`) sets a key left out of a file to its column default
+  instead of keeping the value it had; JSON exports without a key get the default instead of NULL (sprint 242).
 - A checkbox group's value in JavaScript (`$v`, client-side conditions) is now its ticked values joined with colons, as
   for multiselects and shuttles; a single checkbox still gives `true` / `false`.
 

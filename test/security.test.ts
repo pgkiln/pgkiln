@@ -20313,6 +20313,143 @@ describe('sprint 241 MG-10/11/13/15', () => {
   });
 });
 
+describe('sprint 242 MG-16', () => {
+  const ALIAS = 'sec242-mg16';
+  const pgClient = async () => {
+    const { default: pg } = await import('pg');
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    return db;
+  };
+  after(async () => {
+    await owner.query('delete from meta.app where alias = $1', [ALIAS]);
+  });
+
+  test('a page or application that leaves out its security keys gets the strict defaults (fails closed)', async () => {
+    const { loadColumnDefaults } = await import('../src/import-defaults.ts');
+    const doc = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
+    for (const k of ['access_control', 'authentication', 'debug', 'debug_level', 'api_self_tokens', 'password_reset']) delete doc.app[k];
+    const page = doc.pages.find((p: any) => p.page_no === 3);
+    page.requires_auth = false; // a sibling page that opts out keeps its choice
+    for (const p of doc.pages.filter((x: any) => x.page_no !== 3)) {
+      delete p.requires_auth;
+      delete p.protection;
+    }
+    const db = await pgClient();
+    try {
+      const d = await loadColumnDefaults(db as never);
+      assert.equal(d.page.requires_auth, true);
+      assert.equal(d.page.protection, 'checksum');
+      assert.equal(d.app.access_control, 'assigned');
+      assert.equal(d.app.debug, false);
+      const r = await importDoc(db as never, doc as never, { alias: ALIAS, replace: false });
+      assert.ok(r.filled.some((f) => f.where === 'application' && f.keys.includes('access_control') && f.keys.includes('debug')));
+    } finally {
+      await db.end();
+    }
+    const a = (await owner.one<any>(`select access_control, authentication, debug, debug_level, api_self_tokens, password_reset from meta.app where alias = $1`, [ALIAS]))!;
+    assert.deepEqual(a, { access_control: 'assigned', authentication: 'app_users', debug: false, debug_level: 0, api_self_tokens: false, password_reset: false });
+    const open = (await owner.query(`select page_no from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1 and (not requires_auth or protection <> 'checksum') and page_no <> 3
+                                       and page_no not in (select (x->>'page_no')::int from jsonb_array_elements(meta.export_app('hr')->'pages') x where not (x->>'requires_auth')::boolean)`, [ALIAS])).rows;
+    assert.deepEqual(open, [], 'no page left open by a missing key');
+    assert.equal((await owner.one<{ r: boolean }>(`select requires_auth as r from meta.page p join meta.app a on a.id = p.app_id where a.alias = $1 and page_no = 3`, [ALIAS]))!.r, false);
+  });
+
+  test('never filled: ids, the installation\'s state, secrets; a key given as null is not replaced by a default', async () => {
+    const { fillDefaults, loadColumnDefaults } = await import('../src/import-defaults.ts');
+    const db = await pgClient();
+    let d;
+    try {
+      d = await loadColumnDefaults(db as never);
+    } finally {
+      await db.end();
+    }
+    const doc: any = { format: 'pgkiln/2', app: { alias: 'x', name: 'x', debug: null, mfa: 'off', mfa_roles: [], local_login: false }, web_credentials: [{ name: 'w', valid_for: ['https://x/'] }], automations: [{ name: 'a', roles: [] }], rest_sources: [{ name: 'r', url: 'https://x' }], static_files: [{ name: 'f.js', mime: 'text/javascript', content: '' }], pages: [{ page_no: 1, name: 'p', alias: 'p', regions: [{ type: 'static' }] }] };
+    fillDefaults(doc, d);
+    for (const k of ['id', 'build_status', 'availability', 'availability_users', 'created_at', 'updated_at']) assert.ok(!(k in doc.app), k);
+    assert.equal(doc.app.debug, null, 'null stays null');
+    for (const k of ['secret_enc', 'password_enc', 'refresh_token_enc', 'token_refreshed_at', 'id', 'app_id']) assert.ok(!(k in doc.web_credentials[0]), k);
+    for (const k of ['next_run_at', 'last_run_at', 'last_status', 'code']) assert.ok(!(k in doc.automations[0]), k);
+    for (const k of ['sync_next_at', 'sync_last_at', 'sync_last_status']) assert.ok(!(k in doc.rest_sources[0]), k);
+    for (const k of ['id', 'page_id', 'parent_id']) assert.ok(!(k in doc.pages[0].regions[0]), k);
+  });
+
+  test('keys named like Object.prototype members: only own keys count, nothing is polluted', async () => {
+    const { fillDefaults } = await import('../src/import-defaults.ts');
+    const doc = JSON.parse('{"format":"pgkiln/2","app":{"__proto__":{"debug":true},"name":"x","mfa":"off","mfa_roles":[],"local_login":true},"pages":[{"__proto__":{"requires_auth":false},"page_no":1}]}');
+    fillDefaults(doc, { app: { debug: false, constructor: 1 } as any, page: { requires_auth: true } });
+    assert.equal(Object.prototype.hasOwnProperty.call(doc.app, 'debug'), true);
+    assert.equal(doc.app.debug, false);
+    assert.equal(doc.pages[0].requires_auth, true);
+    assert.equal(({} as any).debug, undefined);
+    assert.equal(({} as any).requires_auth, undefined);
+  });
+
+  test('a key whose default would widen access is never filled: absent or null refuses the import, naming file and key', async () => {
+    const { MUST_GIVE } = await import('../src/import-defaults.ts');
+    assert.deepEqual(Object.fromEntries(Object.entries(MUST_GIVE).map(([t, c]) => [t, Object.keys(c).sort()])), {
+      rest_module: ['enabled', 'roles'], web_credential: ['valid_for'], app: ['local_login', 'mfa', 'mfa_roles'],
+    });
+    const { docToFiles, filesToDoc } = await import('../src/appfiles.ts');
+    const base = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
+    const before = (await owner.one<{ n: number }>(`select count(*)::int as n from meta.app where alias = 'sec242-open'`))!.n;
+    const cases: [string, (d: any) => void, RegExp][] = [
+      ['rest module roles left out', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [], templates: [] }), name: 'sec242', title: 'S' }); delete d.rest_modules.at(-1).roles; }, /"roles" is missing \(meta\.rest_module\.roles/],
+      ['rest module roles null', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [], templates: [] }), name: 'sec242', title: 'S', roles: null }); }, /"roles" is null/],
+      ['rest module enabled left out', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [], templates: [] }), name: 'sec242', title: 'S', roles: [] }); delete d.rest_modules.at(-1).enabled; }, /"enabled" is missing/],
+      ['web credential valid_for left out', (d) => { d.web_credentials.push({ name: 'sec242', type: 'basic', username: 'u' }); }, /"valid_for" is missing \(meta\.web_credential\.valid_for/],
+      ['application mfa left out', (d) => { delete d.app.mfa; }, /application: "mfa" is missing/],
+      ['application local_login left out', (d) => { delete d.app.local_login; }, /"local_login" is missing/],
+      ['application mfa_roles left out', (d) => { delete d.app.mfa_roles; }, /"mfa_roles" is missing/],
+    ];
+    const { default: pg } = await import('pg');
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      for (const [what, change, msg] of cases) {
+        const doc = structuredClone(base);
+        change(doc);
+        await assert.rejects(importDoc(db as never, doc as never, { alias: 'sec242-open', replace: false }), (e: Error) => msg.test(e.message) && /Give the key a value/.test(e.message), what);
+      }
+      // from files: the error names the file
+      const files = docToFiles(base, 'text');
+      files.set('app.yaml', Buffer.from(files.get('app.yaml')!.toString('utf8').split('\n').filter((l) => !l.startsWith('mfa:')).join('\n')));
+      await assert.rejects(importDoc(db as never, filesToDoc(files) as never, { alias: 'sec242-open', replace: false }), /app\.yaml \(application\): "mfa" is missing/);
+    } finally {
+      await db.end();
+    }
+    assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from meta.app where alias = 'sec242-open'`))!.n, before, 'nothing imported');
+  });
+
+  test('an export from before such a column (none of the keys that came with it) imports as it did before', async () => {
+    const { MUST_GIVE } = await import('../src/import-defaults.ts');
+    const doc = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
+    // a pgkiln before 0.64 (132) wrote no mfa, nor any application column after it; before 0.49 (117) a module had no roles or templates
+    for (const k of ['mfa', ...MUST_GIVE.app.mfa.since!]) delete doc.app[k];
+    doc.rest_modules.push({ name: 'sec242old', title: 'Old', base_path: 'sec242old/', handlers: [], enabled: true });
+    const { default: pg } = await import('pg');
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      const r = await importDoc(db as never, doc as never, { alias: 'sec242-old', replace: false });
+      assert.ok(r.committed);
+    } finally {
+      await db.end();
+    }
+    const row = (await owner.one<any>(`select a.mfa, a.mfa_roles, m.roles from meta.app a join meta.rest_module m on m.app_id = a.id and m.name = 'sec242old' where a.alias = 'sec242-old'`))!;
+    assert.deepEqual(row, { mfa: 'off', mfa_roles: [], roles: [] });
+    await owner.query(`delete from meta.app where alias = 'sec242-old'`);
+  });
+
+  test('the builder API\'s export (with the column defaults) needs a token', async () => {
+    for (const auth of [null, 'Bearer pgkb_' + 'x'.repeat(43)]) {
+      const res = await app.inject({ method: 'GET', url: '/builder/api/v1/apps/hr/export', headers: auth ? { authorization: auth } : {} });
+      assert.equal(res.statusCode, 401);
+      assert.ok(!res.body.includes('defaults') && !res.body.includes('checksum'));
+    }
+  });
+});
+
 describe('sprint 240 MG-7/MG-8', () => {
   const ajax = (b: Awaited<ReturnType<typeof as>>, name: string, form: Record<string, string> = {}) =>
     b.post(`/a/hr/67/ajax/${encodeURIComponent(name)}`, { __csrf: b.lastCsrf, ...form });
