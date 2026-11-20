@@ -27,7 +27,7 @@ import { breadcrumbLinks, hasBreadcrumbRegion } from './page-regions.ts';
 import { devbarHtml } from './devbar.ts';
 import { feedbackNode } from './feedback.ts';
 import { sessionLimits } from '../session.ts';
-import { HEADER_POSITIONS } from '../page-positions.ts';
+import { HEADER_POSITIONS, pageHasPosition } from '../page-positions.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -421,7 +421,8 @@ export async function renderPage(ctx: PageContext) {
   // (099) regions by display position; the side column of a side-column page template, else its regions in the body
   const side = ctx.page.page_template === 'left_side_column' ? 'left' : ctx.page.page_template === 'right_side_column' ? 'right' : null;
   // (sprint 234, AX-12) the header's positions and the top navigation bar: only where the page has the header
-  const header = !ctx.dialog && ctx.page.page_template !== 'minimal';
+  // (sprint 241) Standard without navigation has no header either: as the designer and the Advisor (pageHasPosition)
+  const header = !ctx.dialog && pageHasPosition({ page_template: ctx.page.page_template }, 'after_logo');
   const placed: Record<string, [Region, Raw][]> = {
     banner: [], breadcrumb: [], full_width: [], side: [], body: [], footer: [], dialogs: [],
     ...(header ? Object.fromEntries(HEADER_POSITIONS.map((p) => [p, []])) : {}),

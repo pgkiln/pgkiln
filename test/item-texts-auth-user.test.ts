@@ -8,6 +8,7 @@ import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
 import '../src/env.ts';
+import { pageHasPosition } from '../src/page-positions.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { authUserProblem } from '../src/customauth.ts';
@@ -243,6 +244,18 @@ describe('sprint 241 MG-13: the page template No navigation', () => {
       assert.equal(pushOf(body), pushOf(standard));
     } finally {
       await owner.query(`update meta.page set page_template = 'no_navigation' where id = $1`, [p68]);
+    }
+  });
+
+  test('the header positions (sprint 234) are not on a No navigation page', async () => {
+    assert.equal(pageHasPosition({ page_no: 68, page_template: 'no_navigation' }, 'after_logo'), false);
+    assert.equal(pageHasPosition({ page_no: 68, page_template: 'no_navigation' }, 'top_navigation'), false);
+    assert.equal(pageHasPosition({ page_no: 68, page_template: 'no_navigation' }, 'full_width'), true);
+    const r = (await owner.one(`insert into meta.region (page_id, title, type, position, source) values ($1, 'S241 header', 'static', 'after_logo', '<p>S241HDR</p>') returning id`, [p68])).id;
+    try {
+      assert.doesNotMatch((await (await king()).get('/a/hr/68')).body, /S241HDR|t-hpos/);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [r]);
     }
   });
 
