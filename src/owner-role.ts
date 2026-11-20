@@ -113,11 +113,12 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
       steps.push({ sql: `alter role ${id(X)} login createrole nosuperuser nobypassrls noreplication`, why: role.rolsuper ? 'the owner is no superuser' : 'the owner signs in and creates roles' });
     if (o.password && !(await passwordMatches(c, X, o.password))) steps.push({ sql: `alter role ${id(X)}${pw}`, shown: `alter role ${id(X)}${pwShown}`, why: 'the password of DATABASE_URL' });
   }
-  // (16+) roles the owner creates later: it may SET ROLE to them (create schema … authorization, alter … owner to)
+  // (16+) roles the owner creates later: it may SET ROLE to them (create schema … authorization, alter … owner to) and
+  // has their privileges (REASSIGN OWNED and DROP OWNED, Database Users' Drop), as a superuser had
   if (pg16) {
     const set = (await c.query(`select coalesce((select array_to_string(s.setconfig, ',') from pg_db_role_setting s join pg_roles r on r.oid = s.setrole
-                                                  where r.rolname = $1 and s.setdatabase = 0), '') ~ 'createrole_self_grant=set' as ok`, [X])).rows[0].ok;
-    if (!set) steps.push({ sql: `alter role ${id(X)} set createrole_self_grant = 'set'`, why: 'it may switch to the roles it creates (application roles, schemas owned by them)' });
+                                                  where r.rolname = $1 and s.setdatabase = 0), '') ~ 'createrole_self_grant=set, *inherit' as ok`, [X])).rows[0].ok;
+    if (!set) steps.push({ sql: `alter role ${id(X)} set createrole_self_grant = 'set, inherit'`, why: 'it may switch to the roles it creates and has their privileges (application roles, schemas owned by them, Database Users)' });
   }
 
   const db = (await c.query(`select pg_get_userbyid(datdba) as owner from pg_database where datname = current_database()`)).rows[0];
@@ -132,13 +133,13 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
     const to = ` owner to ${id(X)}`;
     const add = (rows: { sql: string }[], why: string) => rows.forEach((r) => steps.push({ sql: r.sql + to, why }));
     add((await c.query(`select format('alter schema %I', n.nspname) as sql from pg_namespace n
-                          where n.nspowner = $1::regrole and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_namespace', 'n.oid')}
+                          where n.nspowner = (select oid from pg_roles where rolname = $1) and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_namespace', 'n.oid')}
                           order by n.nspname = 'meta' desc, n.nspname`, [Y])).rows, `schemas of ${Y}`);
     // tables, views, sequences (not those of a serial or identity column: they follow their table)
     add((await c.query(`select format('alter %s %I.%I', case k.relkind when 'v' then 'view' when 'm' then 'materialized view'
                                        when 'f' then 'foreign table' when 'S' then 'sequence' when 'c' then 'type' else 'table' end, n.nspname, k.relname) as sql
                           from pg_class k join pg_namespace n on n.oid = k.relnamespace
-                         where k.relowner = $1::regrole and k.relkind in ('r', 'p', 'v', 'm', 'f', 'S', 'c') and not ${SYSTEM_SCHEMA}
+                         where k.relowner = (select oid from pg_roles where rolname = $1) and k.relkind in ('r', 'p', 'v', 'm', 'f', 'S', 'c') and not ${SYSTEM_SCHEMA}
                            and not ${IN_EXTENSION('pg_class', 'k.oid')}
                            and not (k.relkind = 'S' and exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = k.oid
                                                                   and d.refclassid = 'pg_class'::regclass and d.deptype in ('a', 'i')))
@@ -147,42 +148,42 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
                                               when 'a' then format('alter aggregate %I.%I(%s)', n.nspname, p.proname, coalesce(nullif(pg_get_function_identity_arguments(p.oid), ''), '*'))
                                               else format('alter function %s', p.oid::regprocedure) end as sql
                           from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-                         where p.proowner = $1::regrole and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_proc', 'p.oid')}
+                         where p.proowner = (select oid from pg_roles where rolname = $1) and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_proc', 'p.oid')}
                          order by n.nspname, p.proname, p.oid`, [Y])).rows, `functions and procedures of ${Y}`);
     // domains, enums, ranges, base types (not row types of tables, arrays or multiranges: they follow)
     add((await c.query(`select format('alter %s %I.%I', case t.typtype when 'd' then 'domain' else 'type' end, n.nspname, t.typname) as sql
                           from pg_type t join pg_namespace n on n.oid = t.typnamespace
-                         where t.typowner = $1::regrole and t.typtype in ('d', 'e', 'r', 'b') and not ${SYSTEM_SCHEMA}
+                         where t.typowner = (select oid from pg_roles where rolname = $1) and t.typtype in ('d', 'e', 'r', 'b') and not ${SYSTEM_SCHEMA}
                            and not (t.typcategory = 'A' and t.typelem <> 0) and not ${IN_EXTENSION('pg_type', 't.oid')}
                          order by n.nspname, t.typname`, [Y])).rows, `types and domains of ${Y}`);
     add((await c.query(`select format('alter statistics %I.%I', n.nspname, s.stxname) as sql from pg_statistic_ext s join pg_namespace n on n.oid = s.stxnamespace
-                         where s.stxowner = $1::regrole`, [Y])).rows, `statistics objects of ${Y}`);
+                         where s.stxowner = (select oid from pg_roles where rolname = $1)`, [Y])).rows, `statistics objects of ${Y}`);
     add((await c.query(`select format('alter collation %I.%I', n.nspname, k.collname) as sql from pg_collation k join pg_namespace n on n.oid = k.collnamespace
-                         where k.collowner = $1::regrole and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_collation', 'k.oid')}`, [Y])).rows, `collations of ${Y}`);
+                         where k.collowner = (select oid from pg_roles where rolname = $1) and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_collation', 'k.oid')}`, [Y])).rows, `collations of ${Y}`);
     add((await c.query(`select format('alter text search configuration %I.%I', n.nspname, k.cfgname) as sql from pg_ts_config k join pg_namespace n on n.oid = k.cfgnamespace
-                         where k.cfgowner = $1::regrole and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_ts_config', 'k.oid')}`, [Y])).rows, `text search configurations of ${Y}`);
+                         where k.cfgowner = (select oid from pg_roles where rolname = $1) and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_ts_config', 'k.oid')}`, [Y])).rows, `text search configurations of ${Y}`);
     add((await c.query(`select format('alter text search dictionary %I.%I', n.nspname, k.dictname) as sql from pg_ts_dict k join pg_namespace n on n.oid = k.dictnamespace
-                         where k.dictowner = $1::regrole and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_ts_dict', 'k.oid')}`, [Y])).rows, `text search dictionaries of ${Y}`);
-    add((await c.query(`select format('alter server %I', srvname) as sql from pg_foreign_server where srvowner = $1::regrole`, [Y])).rows, `foreign servers of ${Y} (Remote databases)`);
-    add((await c.query(`select format('alter large object %s', oid) as sql from pg_largeobject_metadata where lomowner = $1::regrole`, [Y])).rows, `large objects of ${Y}`);
-    const evt = (await c.query(`select count(*)::int as n from pg_event_trigger where evtowner = $1::regrole`, [Y])).rows[0].n;
+                         where k.dictowner = (select oid from pg_roles where rolname = $1) and not ${SYSTEM_SCHEMA} and not ${IN_EXTENSION('pg_ts_dict', 'k.oid')}`, [Y])).rows, `text search dictionaries of ${Y}`);
+    add((await c.query(`select format('alter server %I', srvname) as sql from pg_foreign_server where srvowner = (select oid from pg_roles where rolname = $1)`, [Y])).rows, `foreign servers of ${Y} (Remote databases)`);
+    add((await c.query(`select format('alter large object %s', oid) as sql from pg_largeobject_metadata where lomowner = (select oid from pg_roles where rolname = $1)`, [Y])).rows, `large objects of ${Y}`);
+    const evt = (await c.query(`select count(*)::int as n from pg_event_trigger where evtowner = (select oid from pg_roles where rolname = $1)`, [Y])).rows[0].n;
     if (evt) notes.push(`${evt} event trigger(s) stay ${Y}'s: an event trigger belongs to a superuser`);
 
     // default privileges: the old owner's, repeated for the new one (its own privileges and PUBLIC's defaults aside)
     const acl = (await c.query<{ schema: string | null; objtype: string; grantee: string | null; privs: string[]; grantable: boolean[] }>(
-      `select case when d.defaclnamespace = 0 then null else d.defaclnamespace::regnamespace::text end as schema, d.defaclobjtype as objtype,
+      `select (select nspname from pg_namespace where oid = d.defaclnamespace) as schema, d.defaclobjtype as objtype,
               case when a.grantee = 0 then null else pg_get_userbyid(a.grantee) end as grantee,
               array_agg(a.privilege_type order by a.privilege_type) as privs, array_agg(a.is_grantable order by a.privilege_type) as grantable
          from pg_default_acl d, aclexplode(d.defaclacl) a
-        where d.defaclrole = $1::regrole and a.grantee <> d.defaclrole
+        where d.defaclrole = (select oid from pg_roles where rolname = $1) and a.grantee <> d.defaclrole
         group by 1, 2, 3 order by 1 nulls first, 2, 3`, [Y])).rows;
     const kinds: Record<string, string> = { r: 'tables', S: 'sequences', f: 'functions', T: 'types', n: 'schemas' };
     for (const a of acl) {
       if (!kinds[a.objtype]) continue;
       const already = (await c.query(
         `select exists (select 1 from pg_default_acl d, aclexplode(d.defaclacl) x
-                         where d.defaclrole = $1::regrole and d.defaclobjtype = $2
-                           and d.defaclnamespace = coalesce(to_regnamespace($3), 0) and x.grantee = coalesce($4::regrole, 0)
+                         where d.defaclrole = (select oid from pg_roles where rolname = $1) and d.defaclobjtype = $2
+                           and d.defaclnamespace = coalesce((select oid from pg_namespace where nspname = $3), 0) and x.grantee = coalesce((select oid from pg_roles where rolname = $4), 0)
                          group by d.oid having array_agg(x.privilege_type::text order by x.privilege_type) = $5::text[]) as ok`,
         [X, a.objtype, a.schema, a.grantee, a.privs])).rows[0].ok;
       if (already) continue;
@@ -195,9 +196,9 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
     }
     // a global entry without PUBLIC's EXECUTE on functions or USAGE on types revoked it
     for (const g of (await c.query<{ objtype: string }>(
-      `select d.defaclobjtype as objtype from pg_default_acl d where d.defaclrole = $1::regrole and d.defaclnamespace = 0 and d.defaclobjtype in ('f', 'T')
+      `select d.defaclobjtype as objtype from pg_default_acl d where d.defaclrole = (select oid from pg_roles where rolname = $1) and d.defaclnamespace = 0 and d.defaclobjtype in ('f', 'T')
           and not exists (select 1 from aclexplode(d.defaclacl) a where a.grantee = 0)`, [Y])).rows) {
-      const done = (await c.query(`select exists (select 1 from pg_default_acl d where d.defaclrole = $1::regrole and d.defaclnamespace = 0 and d.defaclobjtype = $2
+      const done = (await c.query(`select exists (select 1 from pg_default_acl d where d.defaclrole = (select oid from pg_roles where rolname = $1) and d.defaclnamespace = 0 and d.defaclobjtype = $2
                                      and not exists (select 1 from aclexplode(d.defaclacl) a where a.grantee = 0)) as ok`, [X, g.objtype])).rows[0].ok;
       if (!done) steps.push({ sql: `alter default privileges for role ${id(X)} revoke ${g.objtype === 'f' ? 'execute on functions' : 'usage on types'} from public`, why: `default privileges of ${Y}` });
     }
@@ -205,14 +206,15 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
 
   // (16+) ADMIN OPTION on pgkiln's roles, and memberships in them granted by the owner
   if (pg16) {
-    const roles = (await c.query<{ rolname: string; admin: boolean; set: boolean }>(
+    const roles = (await c.query<{ rolname: string; admin: boolean; set: boolean; inherit: boolean }>(
       `select x.rolname,
-              exists (select 1 from pg_auth_members m where m.roleid = x.rolname::regrole and m.member = (select oid from pg_roles where rolname = $1) and m.admin_option) as admin,
-              exists (select 1 from pg_auth_members m where m.roleid = x.rolname::regrole and m.member = (select oid from pg_roles where rolname = $1) and m.set_option) as set
+              exists (select 1 from pg_auth_members m where m.roleid = (select oid from pg_roles where rolname = x.rolname) and m.member = (select oid from pg_roles where rolname = $1) and m.admin_option) as admin,
+              exists (select 1 from pg_auth_members m where m.roleid = (select oid from pg_roles where rolname = x.rolname) and m.member = (select oid from pg_roles where rolname = $1) and m.set_option) as set,
+              exists (select 1 from pg_auth_members m where m.roleid = (select oid from pg_roles where rolname = x.rolname) and m.member = (select oid from pg_roles where rolname = $1) and m.inherit_option) as inherit
          from (${pgkilnRolesSql(await hasMeta(c))}) x order by 1`, [X])).rows;
     for (const r of roles) {
-      if (r.admin && r.set) continue;
-      steps.push({ sql: `grant ${id(r.rolname)} to ${id(X)} with admin option, inherit false, set true`, why: 'the owner manages pgkiln\'s roles (PostgreSQL 16+)' });
+      if (r.admin && r.set && r.inherit) continue;
+      steps.push({ sql: `grant ${id(r.rolname)} to ${id(X)} with admin option, inherit true, set true`, why: 'the owner manages pgkiln\'s roles (PostgreSQL 16+)' });
     }
     // memberships in those roles that another role granted: granted again by the owner, so that it can revoke them
     const names = roles.map((r) => r.rolname);
@@ -247,7 +249,7 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
     // explicit grants, not has_schema_privilege: a superuser (the owner while it installs) has every privilege
     const usage = !!role && cron.created && (await c.query(
       `select exists (select 1 from pg_namespace n where n.nspname = 'cron'
-                        and (n.nspowner = $1::regrole or exists (select 1 from aclexplode(n.nspacl) a where a.grantee = $1::regrole and a.privilege_type = 'USAGE'))) as ok`, [X])).rows[0].ok;
+                        and (n.nspowner = (select oid from pg_roles where rolname = $1) or exists (select 1 from aclexplode(n.nspacl) a where a.grantee = (select oid from pg_roles where rolname = $1) and a.privilege_type = 'USAGE'))) as ok`, [X])).rows[0].ok;
     if (!usage) steps.push({ sql: `grant usage on schema cron to ${id(X)}`, why: 'Scheduling: the owner schedules jobs' });
     if (Y && cron.created) {
       const jobs = (await c.query(`select count(*)::int as n from cron.job where username = $1`, [Y])).rows[0].n;
@@ -261,15 +263,15 @@ export async function planOwner(c: Q, o: OwnerOptions): Promise<OwnerPlan> {
   if (cron.pss_created || (cron.pss_available && cron.pss_loaded)) {
     const resets = cron.pss_created
       ? (await c.query(`select p.oid::regprocedure::text as f from pg_proc p where p.proname = 'pg_stat_statements_reset'
-                           and ($1::text is null or not (p.proowner = $1::regrole
-                                or exists (select 1 from aclexplode(p.proacl) a where a.grantee = $1::regrole and a.privilege_type = 'EXECUTE')))`, [role ? X : null])).rows
+                           and ($1::text is null or not (p.proowner = (select oid from pg_roles where rolname = $1)
+                                or exists (select 1 from aclexplode(p.proacl) a where a.grantee = (select oid from pg_roles where rolname = $1) and a.privilege_type = 'EXECUTE')))`, [role ? X : null])).rows
       : [];
     for (const r of resets) steps.push({ sql: `grant execute on function ${r.f} to ${id(X)}`, why: 'Top SQL: Reset the statistics' });
     // created in this plan: the function's signature isn't known yet
     if (!cron.pss_created) steps.push({ sql: `do $g$ declare f regprocedure; begin for f in select oid from pg_proc where proname = 'pg_stat_statements_reset' loop execute format('grant execute on function %s to ${id(X).replace(/'/g, "''")}', f); end loop; end $g$`, why: 'Top SQL: Reset the statistics' });
   }
   for (const r of ['pg_read_all_stats', 'pg_signal_backend']) {
-    const has = role && (await c.query(`select exists (select 1 from pg_auth_members where roleid = $2::regrole and member = $1::regrole) as ok`, [X, r])).rows[0].ok;
+    const has = role && (await c.query(`select exists (select 1 from pg_auth_members where roleid = (select oid from pg_roles where rolname = $2) and member = (select oid from pg_roles where rolname = $1)) as ok`, [X, r])).rows[0].ok;
     if (!has) steps.push({ sql: `grant ${r} to ${id(X)}`, why: r === 'pg_read_all_stats' ? 'Top SQL and Sessions: other roles\' statements' : 'Sessions: end an application\'s session' });
   }
   for (const e of o.extensions ?? []) {
@@ -325,7 +327,7 @@ export async function ownerProblems(c: Q, owner: string, elevated = false): Prom
   if (r.foreign_meta) out.push(`${r.foreign_meta} of meta's tables don't belong to ${owner}`);
   if (r.pg16 && r.meta_owner && !elevated) {
     const missing = (await c.query(`select x.rolname from (${pgkilnRolesSql(await hasMeta(c))}) x
-                                     where not exists (select 1 from pg_auth_members m where m.roleid = x.rolname::regrole and m.member = $1::text::regrole and m.admin_option)
+                                     where not exists (select 1 from pg_auth_members m where m.roleid = (select oid from pg_roles where rolname = x.rolname) and m.member = (select oid from pg_roles where rolname = $1) and m.admin_option)
                                      order by 1 limit 5`, [owner])).rows.map((x) => x.rolname);
     if (missing.length) out.push(`${owner} has no ADMIN OPTION on ${missing.join(', ')}`);
   }

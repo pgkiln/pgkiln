@@ -110,6 +110,7 @@ async function connectSuperuser(url: URL): Promise<pg.Client> {
       throw e;
     });
     say('the bundled database was made by pgkiln 0.111.0 or older: its superuser is pgkiln (POSTGRES_SUPERUSER=pgkiln in .env skips the first try)');
+    url.username = old.username;
     return c;
   }
 }

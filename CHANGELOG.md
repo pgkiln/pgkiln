@@ -5,6 +5,35 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+- **The Docker setup no longer runs pgkiln as a superuser** (sprint 232): `deploy/compose.yaml`'s database has a
+  superuser of its own (`postgres`, `POSTGRES_PASSWORD`) that only the start signs in as
+  (`SUPERUSER_DATABASE_URL`); pgkiln runs as `pgkiln_owner` (`OWNER_PASSWORD`, a new required secret), which owns
+  the database with `LOGIN CREATEROLE` and **without `SUPERUSER`**. The start makes it and keeps it so, is a superuser
+  only while it installs pgkiln (migrations 166–167 need one), creates pg_cron and the extensions of the new
+  `PGKILN_EXTENSIONS`, and starts the server without the superuser's URL and password in its environment
+  (`scripts/docker-entrypoint.sh`, the image's new CMD). Instance settings → Lockout checks no longer warns
+  "DATABASE_URL is a superuser" for a Docker install.
+- **Upgrading a Docker install of 0.111.0 or older:** take the current `compose.yaml`, add `OWNER_PASSWORD` to
+  `.env` and `docker compose up -d`: the start finds the old superuser `pgkiln`, moves pgkiln's schemas, tables,
+  functions, default privileges, role memberships and pg_cron jobs to `pgkiln_owner` in one transaction, and from
+  then on pgkiln runs as that (docs/guide/01-installation.md, "Docker"). With the old `compose.yaml` nothing changes.
+
+### Added
+- **`pgkiln admin demote-owner [--dry-run]`** (sprint 232): makes `DATABASE_URL`'s role pgkiln's owner without
+  `SUPERUSER`, on a superuser connection (`SUPERUSER_DATABASE_URL`), automating the guide's former manual SQL: the
+  role and the database, the old owner's objects one by one (also when it is the bootstrap superuser, which
+  `REASSIGN OWNED` can't move), its default privileges, `ADMIN OPTION` on pgkiln's roles (PostgreSQL 16+) with
+  `createrole_self_grant = 'set, inherit'`, memberships granted again by the new owner, pg_cron, Top SQL's and
+  Sessions' statistics roles, and `NOSUPERUSER NOLOGIN` for the old owner. One transaction that checks the result
+  and refuses (changing nothing) when pgkiln would be locked out; idempotent; `--dry-run` prints the statements.
+
+### Fixed
+- Installing pgkiln as an owner that isn't a superuser failed halfway, at migration 166 ("Only roles with the
+  SUPERUSER attribute may change the SUPERUSER attribute"), although the guide said `CREATEROLE` was enough: the
+  migrations now say before applying anything that installing needs a superuser (upgrades don't), and the guide says
+  so (sprint 232).
+
 ## [0.111.0] - 2026-11-19
 
 ### Added

@@ -165,8 +165,9 @@ In one transaction it
 - (PostgreSQL 16 and later) gives it `ADMIN OPTION` on pgkiln's roles (`pgkiln_runtime`, `pgkiln_app_code`,
   `pgkiln_authenticator`, `pgkiln_anon`, the workspaces' logins, the applications' roles, the masking roles): a
   `CREATEROLE` role may only change, grant and set the password of roles it has that on. Memberships in those roles
-  another role granted are granted again by the owner, so it can revoke them later; and `createrole_self_grant = 'set'`
-  lets it switch to the roles it creates;
+  another role granted are granted again by the owner, so it can revoke them later; and `createrole_self_grant = 'set,
+  inherit'` lets it switch to the roles it creates and gives it their privileges (`REASSIGN OWNED` and `DROP OWNED`, as
+  Database Users' *Drop* runs, need them), as a superuser had;
 - moves pg_cron jobs that ran as the old owner to it, creates pg_cron when the server loads it for this database,
   grants `usage on schema cron`, `pg_read_all_stats`, `pg_signal_backend` and execute on `pg_stat_statements_reset`
   (Scheduling, Top SQL, Sessions), and creates the extensions in `PGKILN_EXTENSIONS`;
