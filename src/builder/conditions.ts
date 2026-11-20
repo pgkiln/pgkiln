@@ -25,7 +25,7 @@ const listOf = (v: string | null, sep: string) => (v ?? '').split(sep).map((x) =
 export function conditionWords(tx: BuilderTranslate, c: Condition): string {
   const type = c.condition_type ?? 'always';
   const item = (c.condition_expr ?? '').trim();
-  const value = type === 'item_in_list' || type === 'item_not_in_list' ? listOf(c.condition_value, ':')
+  const value = type === 'item_in_list' || type === 'item_not_in_list' || type === 'item_contains_any' ? listOf(c.condition_value, ':')
     : /^(request|page|language)_/.test(type) && !/dialog/.test(type) ? listOf(c.condition_value, ',')
     : (c.condition_value ?? '').trim();
   return tx(`cond.${type}` as BuilderKey, { item, value });

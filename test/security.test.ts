@@ -19499,4 +19499,50 @@ describe('sprint 235 MG-2/MG-5/MG-9', () => {
     assert.ok((deep.match(/<td>/g) ?? []).length <= 20);
     assert.equal(sanitizeHtml('&amp;lt;script&amp;gt;'), '&amp;lt;script&amp;gt;');
   });
+
+  test('MG-9: the database refuses malformed contains conditions', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 50', [appId])).id;
+    const da = (type: string, value: string | null) => owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, condition_type, condition_value, action, affected_items)
+      values ($1, 990, 's235 bad', 'change', 'P50_NEEDS', $2, $3, 'show', 'P50_NEEDS_OTHER')`, [page, type, value]);
+    try {
+      for (const [t, v] of [['CONTAINS', 'A'], ['contains;', 'A'], ['contains', null], ['contains', ''], ['contains', '  '], ['contains_any', ' , ,'], ['not_contains', 'x'.repeat(4001)]] as const)
+        await assert.rejects(da(t, v), /check constraint/, `${t} ${v?.slice(0, 10)}`);
+    } finally {
+      await owner.query(`delete from meta.dynamic_action where page_id = $1 and name = 's235 bad'`, [page]);
+    }
+    const ok = async (t: string, e: string | null, v: string | null) => (await owner.one('select meta.condition_ok($1, $2, $3) as ok', [t, e, v])).ok;
+    for (const [t, e, v] of [
+      ['item_contains', 'P50_NEEDS', null], ['item_contains', 'P50_NEEDS', ' '], ['item_contains', 'P50_NEEDS', 'A:B'], ['item_contains', 'P50_NEEDS', 'x'.repeat(4001)],
+      ['item_contains', 'p50_needs', 'A'], ['item_contains', "P50_NEEDS'; drop table hr.emp; --", 'A'], ['item_contains', null, 'A'],
+      ['item_contains_any', 'P50_NEEDS', ''], ['item_contains_any', 'P50_NEEDS', ': :'], ['item_contains_any', 'P50_NEEDS', 'A:'.repeat(2001)],
+    ] as const) assert.equal(await ok(t, e, v), false, `${t} ${e} ${String(v).slice(0, 10)}`);
+    await assert.rejects(owner.query(`insert into meta.region (page_id, seq, title, type, condition_type, condition, condition_value) values ($1, 990, 's235', 'static', 'item_contains', 'P50_NEEDS', 'A:B')`, [page]), /check constraint/);
+  });
+
+  test('MG-9: condition values are compared as text, never run as SQL or placed in the page as markup', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 50', [appId])).id;
+    const evil = "x') or true; select pg_sleep(3); --";
+    const ids = [
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, condition_type, condition, condition_value)
+        values ($1, 990, 'S235 literal', 'static', 4, 'standard', '<p>literal</p>', 'item_contains_any', 'P50_NEEDS_OTHER', $2) returning id`, [page, evil])).id,
+    ];
+    const da = (await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, condition_type, condition_value, action, affected_items)
+      values ($1, 991, 's235 markup', 'change', 'P50_NEEDS', 'contains_any', '</script><script>alert(1)</script>', 'show', 'P50_NEEDS_OTHER') returning id`, [page])).id;
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/50');
+      const t0 = Date.now();
+      let res = await king.get('/a/hr/50');
+      assert.ok(Date.now() - t0 < 2500, 'no pg_sleep ran');
+      assert.ok(!res.body.includes('S235 literal'), 'a value that is not there');
+      assert.doesNotMatch(res.body, /<script>alert\(1\)/);
+      // the item holding exactly that text: the condition holds (compared as text)
+      await king.post('/a/hr/50', { __csrf: king.lastCsrf, __request: 'SAVE', P50_DEPTNO: '20', P50_NEEDS_OTHER: evil });
+      res = await king.get('/a/hr/50');
+      assert.ok(res.body.includes('S235 literal'));
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [ids]);
+      await owner.query('delete from meta.dynamic_action where id = $1', [da]);
+    }
+  });
 });

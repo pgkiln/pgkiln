@@ -319,6 +319,9 @@ export function conditionOk(type: string | null, expr: string | null, value: str
   if (['sql', 'exists', 'not_exists', 'function_body'].includes(type)) return (expr ?? '').trim() !== '';
   if (['item_null', 'item_not_null', 'item_zero', 'item_not_zero', 'item_null_or_zero', 'item_not_null_or_zero', 'item_equals', 'item_not_equals'].includes(type)) return item.test(expr ?? '');
   if (['item_in_list', 'item_not_in_list'].includes(type)) return item.test(expr ?? '') && !!value && value.length <= 4000;
+  // (193) a multi-value item contains a value (no colon) / one of the colon-separated values
+  if (type === 'item_contains') return item.test(expr ?? '') && !!value?.trim() && value.length <= 4000 && !value.includes(':');
+  if (type === 'item_contains_any') return item.test(expr ?? '') && !!value && /[^:\s]/.test(value) && value.length <= 4000;
   if (['request_in', 'request_not_in'].includes(type)) return /^ *[A-Z][A-Z0-9_]* *(, *[A-Z][A-Z0-9_]* *)*$/.test(value ?? '');
   if (['page_in', 'page_not_in'].includes(type)) return /^ *[0-9]{1,9} *(, *[0-9]{1,9} *)*$/.test(value ?? '');
   if (['language_in', 'language_not_in'].includes(type)) return /^ *[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})? *(, *[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})? *)*$/.test(value ?? '');

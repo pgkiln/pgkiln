@@ -263,6 +263,8 @@ const pgkilnUnsaved = (() => {
     // a date range item: two date inputs with the same name, "from:to"
     if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
+    // (sprint 235) a checkbox group: the ticked values colon-separated, like a multiselect
+    if (el.type === 'checkbox' && el.closest('.radio-group')) return els.filter((e) => e.checked).map((e) => e.value).join(':');
     if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
     // (140) a multi-value list (multiselect, shuttle, select many): its values colon-separated, in order
     if (el.tagName === 'SELECT' && el.multiple) return [...el.selectedOptions].map((o) => o.value).join(':');
@@ -282,7 +284,10 @@ const pgkilnUnsaved = (() => {
       const parts = String(value ?? '').split(':');
       els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
     } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
-    else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
+    else if (el.type === 'checkbox' && el.closest('.radio-group')) {
+      const values = String(value ?? '').split(':');
+      els.forEach((e) => (e.checked = values.includes(e.value)));
+    } else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
     else if (el.tagName === 'SELECT' && el.multiple) {
       const values = String(value ?? '').split(':').filter(Boolean);
       for (const o of el.options) o.selected = values.includes(o.value);
@@ -347,6 +352,13 @@ const pgkilnUnsaved = (() => {
       case 'less': return v !== '' && compare(v, da.cond.value) < 0;
       case 'less_equal': return v !== '' && compare(v, da.cond.value) <= 0;
       case 'not_in_list': return !da.cond.value.split(',').map((s) => s.trim()).includes(v);
+      // (sprint 235) a multi-value item (checkbox group, multiselect, shuttle, select many): one of its values
+      case 'contains': return da.cond.value.trim() !== '' && v.split(':').includes(da.cond.value.trim());
+      case 'not_contains': return !(da.cond.value.trim() !== '' && v.split(':').includes(da.cond.value.trim()));
+      case 'contains_any': {
+        const values = v.split(':');
+        return da.cond.value.split(',').map((s) => s.trim()).some((x) => x !== '' && values.includes(x));
+      }
       default: return true;
     }
   }

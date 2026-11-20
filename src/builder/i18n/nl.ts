@@ -2889,6 +2889,8 @@ export const nl: BuilderMessages = {
   'cond.item_not_equals_item': 'Als {item} verschilt van {value}',
   'cond.item_in_list': 'Als {item} een van {value} is',
   'cond.item_not_in_list': 'Als {item} geen van {value} is',
+  'cond.item_contains': 'Als {item} {value} bevat',
+  'cond.item_contains_any': 'Als {item} een van {value} bevat',
   'cond.request_in': 'Als de request {value} is',
   'cond.request_not_in': 'Als de request niet {value} is',
   'cond.page_in': 'Op pagina {value}',

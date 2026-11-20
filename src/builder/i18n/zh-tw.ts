@@ -2889,6 +2889,8 @@ export const zhTW: BuilderMessages = {
   'cond.item_not_equals_item': '當 {item} 不同於 {value} 時',
   'cond.item_in_list': '當 {item} 是 {value} 之一時',
   'cond.item_not_in_list': '當 {item} 不是 {value} 中的任何一個時',
+  'cond.item_contains': '當 {item} 包含 {value} 時',
+  'cond.item_contains_any': '當 {item} 包含 {value} 中的任何一個時',
   'cond.request_in': '當要求為 {value} 時',
   'cond.request_not_in': '當要求不是 {value} 時',
   'cond.page_in': '在頁面 {value} 上',

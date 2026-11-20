@@ -2889,6 +2889,8 @@ export const zhCN: BuilderMessages = {
   'cond.item_not_equals_item': '当 {item} 不同于 {value} 时',
   'cond.item_in_list': '当 {item} 是 {value} 之一时',
   'cond.item_not_in_list': '当 {item} 不是 {value} 中的任何一个时',
+  'cond.item_contains': '当 {item} 包含 {value} 时',
+  'cond.item_contains_any': '当 {item} 包含 {value} 中的任何一个时',
   'cond.request_in': '当请求为 {value} 时',
   'cond.request_not_in': '当请求不是 {value} 时',
   'cond.page_in': '在页面 {value} 上',

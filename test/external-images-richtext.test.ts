@@ -1,6 +1,6 @@
-// Sprint 235 (MG-2, MG-5): pictures from other sites in template components and report column templates
-// (their https origins join the page's CSP img-src), and the rich text display sanitizer's named character
-// references and simple tables.
+// Sprint 235 (MG-2, MG-5, MG-9): pictures from other sites in template components and report column templates
+// (their https origins join the page's CSP img-src), the rich text display sanitizer's named character
+// references and simple tables, and conditions on one value of a multi-value item (migration 193; HR part 98).
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -12,17 +12,21 @@ import { allowImage, MAX_IMG_ORIGINS } from '../src/runtime/img-origins.ts';
 import { compileTemplate, renderInstances, rowLookup } from '../src/runtime/template-components.ts';
 import { builtinComponents } from '../src/runtime/builtin-components.ts';
 import { clearRegionCache } from '../src/runtime/region-cache.ts';
+import { conditionWords } from '../src/builder/conditions.ts';
+import { builderTranslator } from '../src/builder/i18n.ts';
 import { Browser } from './helpers.ts';
 
 let app: FastifyInstance;
 let appId: number;
 let pageId: number;
+let pageOf50: number;
 const added: number[] = [];
 
 before(async () => {
   app = await buildApp({ logger: false });
   appId = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
   pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 19', [appId])).id;
+  pageOf50 = (await owner.one('select id from meta.page where app_id = $1 and page_no = 50', [appId])).id;
 });
 
 after(async () => {
@@ -146,5 +150,54 @@ describe('MG-2: pictures from other sites', () => {
     const shown = await b.get(`/a/hr/19?r${cached}_load=1`);
     assert.ok(imgSrc(shown.headers['content-security-policy']).includes('https://cached.example.com'));
     assert.match(shown.body, /"img":\[[^\]]*"https:\/\/cached\.example\.com"/);
+  });
+});
+
+describe('MG-9: contains conditions on multi-value items (HR page 50)', () => {
+  const hidden = (page: string, item: string) => new RegExp(`data-item="${item}" hidden`).test(page);
+  const region = (page: string, title: string) => page.includes(`>${title}</h2>`);
+
+  test('the catalogue: client-side contains / not_contains / contains_any, server-side item_contains / item_contains_any', async () => {
+    const ok = async (t: string, e: string | null, v: string | null) => (await owner.one('select meta.condition_ok($1, $2, $3) as ok', [t, e, v])).ok;
+    assert.equal(await ok('item_contains', 'P1_X', 'A'), true);
+    assert.equal(await ok('item_contains_any', 'P1_X', 'A:B'), true);
+    const das = (await owner.query(`select d.condition_type, d.condition_value from meta.dynamic_action d join meta.page p on p.id = d.page_id
+      where p.app_id = $1 and p.page_no = 50 and d.condition_type like '%contains%' order by d.seq`, [appId])).rows;
+    assert.deepEqual(das.map((d) => d.condition_type), ['contains', 'not_contains', 'contains_any']);
+  });
+
+  test('the first paint follows the session\'s values; server-side conditions look at one value', async () => {
+    const b = await king();
+    await b.get('/a/hr/50');
+    await b.submit('/a/hr/50', { __request: 'SAVE', P50_DEPTNO: '20', P50_SKILLS: ['TS', 'DESIGN'], P50_NEEDS: ['DESK'] });
+    let page = (await b.get('/a/hr/50')).body;
+    assert.ok(hidden(page, 'P50_NEEDS_OTHER'), 'DESK only: no description');
+    assert.ok(!hidden(page, 'P50_SQL_TIP'), 'no SQL: the tip');
+    assert.ok(hidden(page, 'P50_LAB_NOTE'));
+    assert.ok(!region(page, 'Laptop order') && !region(page, 'Quality checklist'));
+    await b.submit('/a/hr/50', { __request: 'SAVE', P50_DEPTNO: '20', P50_SKILLS: ['SQL', 'A11Y'], P50_NEEDS: ['LAPTOP', 'OTHER'] });
+    page = (await b.get('/a/hr/50')).body;
+    assert.ok(!hidden(page, 'P50_NEEDS_OTHER'), 'LAPTOP:OTHER contains OTHER');
+    assert.ok(hidden(page, 'P50_SQL_TIP'));
+    assert.ok(!hidden(page, 'P50_LAB_NOTE'), 'A11Y is one of TEST, A11Y');
+    assert.ok(region(page, 'Laptop order'), 'item_contains LAPTOP');
+    assert.ok(region(page, 'Quality checklist'), 'item_contains_any TEST:A11Y');
+    // a value that only starts like one of them is not one
+    await b.submit('/a/hr/50', { __request: 'SAVE', P50_DEPTNO: '20', P50_SKILLS: ['SQL'], P50_NEEDS: ['DESK'] });
+    page = (await b.get('/a/hr/50')).body;
+    assert.ok(!region(page, 'Laptop order') && !region(page, 'Quality checklist'));
+  });
+
+  test('the builder offers the new types and says them in words', async () => {
+    const tx = builderTranslator('en');
+    assert.equal(conditionWords(tx, { condition_type: 'item_contains_any', condition_expr: 'P50_SKILLS', condition_value: 'TEST:A11Y' }), 'When P50_SKILLS includes one of TEST, A11Y');
+    assert.equal(conditionWords(builderTranslator('nl'), { condition_type: 'item_contains', condition_expr: 'P50_NEEDS', condition_value: 'LAPTOP' }), 'Als P50_NEEDS LAPTOP bevat');
+    const b = new Browser(app);
+    await b.get('/builder/login');
+    await b.submit('/builder/login', { username: 'admin', password: 'admin' });
+    const da = (await owner.one(`select d.id from meta.dynamic_action d join meta.page p on p.id = d.page_id where p.app_id = $1 and p.page_no = 50 and d.condition_type = 'contains'`, [appId])).id;
+    const page = (await b.get(`/builder/pages/${pageOf50}?c=dynamic_action-${da}`)).body;
+    for (const v of ['contains', 'not_contains', 'contains_any']) assert.match(page, new RegExp(`<option value="${v}"`), v);
+    assert.match(page, /<option value="item_contains_any"/);
   });
 });

@@ -2889,6 +2889,8 @@ export const fr: BuilderMessages = {
   'cond.item_not_equals_item': 'Lorsque {item} diffère de {value}',
   'cond.item_in_list': 'Lorsque {item} est l\'un de {value}',
   'cond.item_not_in_list': 'Lorsque {item} n\'est aucun de {value}',
+  'cond.item_contains': 'Lorsque {item} contient {value}',
+  'cond.item_contains_any': 'Lorsque {item} contient l\'un de {value}',
   'cond.request_in': 'Lorsque la requête est {value}',
   'cond.request_not_in': 'Lorsque la requête n\'est pas {value}',
   'cond.page_in': 'Sur la page {value}',
