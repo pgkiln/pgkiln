@@ -1,6 +1,7 @@
 import { runtime } from './db.ts';
 import { rememberUrlEpoch } from './security.ts';
 import type { Plugin } from './runtime/plugins.ts';
+import type { PagePosition } from './page-positions.ts';
 
 export interface AuthzScheme {
   name: string;
@@ -203,8 +204,8 @@ export interface Region extends FromGlobal {
   rest_source?: string | null;
   /** (053) template options: CSS classes from REGION_OPTIONS (others are ignored) */
   template_options?: string[];
-  /** (099) where the region shows: banner, breadcrumb, left, body (null), right or footer */
-  position?: 'banner' | 'breadcrumb' | 'left' | 'body' | 'right' | 'footer' | null;
+  /** (099, sprint 234) where the region shows: a display position of page-positions.ts (null: body) */
+  position?: PagePosition | null;
   /** (172) the region this one sits in (a sub region, one level deep); it shows only where its parent shows */
   parent_id?: number | null;
   // (sprint 230, migration 188, AX-9..11) Layout, Appearance, Accessibility, Advanced, Header and Footer, Read Only,

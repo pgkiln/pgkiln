@@ -31,6 +31,9 @@ export const POSITIONS = () => options('region', 'position');
 export const SLOTS = () => options('button', 'slot');
 export const POSITION_LABELS: Record<string, string> = {
   banner: 'Banner', breadcrumb: 'Breadcrumb bar', left: 'Left column', body: 'Body', right: 'Right column', footer: 'Footer',
+  // (sprint 234, AX-12) the Standard page template's other positions
+  after_logo: 'After logo', before_navigation_bar: 'Before navigation bar', after_navigation_bar: 'After navigation bar',
+  top_navigation: 'Top navigation', full_width: 'Full width content', dialogs: 'Dialogs, drawers and popups',
 };
 export const SLOT_LABELS: Record<string, string> = {
   region: 'Region buttons', create: 'Create', edit: 'Edit', change: 'Change', copy: 'Copy', help: 'Help', up: 'Up',

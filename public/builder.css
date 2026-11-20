@@ -1914,3 +1914,10 @@ a.cp-type:hover, a.cp-type:focus-visible { border-color: var(--accent); }
 .dev-email input[type="email"] { flex: 1 1 14rem; min-width: min(14rem, 100%); }
 .dev-admin-field { justify-content: center; }
 @media (min-width: 640px) { .dev-email { min-width: 16rem; } } /* the table's E-mail column grows to fit it */
+
+/* (sprint 234, AX-12) the header's display positions side by side, as on the page; a position the page template
+   doesn't have (shown while it holds regions) dimmed */
+.pd-header-zones { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 10px; margin-bottom: 10px; padding: 0.35em; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); }
+.pd-header-zones > .pd-zone { margin-bottom: 0; min-width: 0; }
+.pd-header-zones .pd-grid > .pd-region { grid-column: 1 / -1; }
+.pd-zone.is-off > .pd-grid { opacity: 0.6; }

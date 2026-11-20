@@ -26,6 +26,7 @@ import { columnProperties, COLUMN_REGION_TYPES, regionColumns, selectedColumns, 
 import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
 import { pageCreateLinks, pageUtilityLinks } from './page-utilities.ts';
+import { HEADER_POSITIONS, pageHasPosition, PAGE_POSITIONS, positionDropped } from '../page-positions.ts';
 import { arrangeRoutes, CONTAINER_LABELS, CONTAINER_TEMPLATES, deleteRegion, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
 
 /** (sprint 193) why an alias was refused, in the builder's words */
@@ -184,7 +185,8 @@ export async function designerRoutes(app: FastifyInstance) {
     };
     // (sprint 77, APEX: the rendering tree by display position) the page template's positions, and others in use
     const treeSide = p.page_template === 'left_side_column' ? 'left' : p.page_template === 'right_side_column' ? 'right' : null;
-    const regionFolders = ['banner', 'breadcrumb', 'left', 'body', 'right', 'footer'].map((pos) => {
+    // (sprint 234, AX-12) every display position in APEX's order (page-positions.ts)
+    const regionFolders = PAGE_POSITIONS.map((pos) => {
       const list = rows.region.filter((r) => r.parent_id == null && (r.position ?? 'body') === pos);
       if (!list.length && pos !== 'body' && pos !== treeSide) return '';
       return folder(posLabel(pos), list.length ? list.map((r, i) => regionLeaf(r, list[i + 1])) : none(tx(pos === 'body' ? 'pd.tree.no_regions_yet' : 'pd.tree.no_regions')), list.length > 0);
@@ -320,18 +322,27 @@ export async function designerRoutes(app: FastifyInstance) {
     const zone = (pos: string) => {
       const list = byPos(pos);
       const off = (pos === 'left' || pos === 'right') && pos !== side;
-      return html`<section class="pd-zone pd-zone-${pos}${list.length ? '' : ' is-empty'}" aria-label="${posLabel(pos)}">
-        <div class="pd-zone-label">${posLabel(pos)}${off ? html` <small>${tx('pd.zone_off')}</small>` : ''}</div>
+      // (sprint 234) a header position on a page without the header (minimal template, modal page): its regions don't show
+      const dropped = positionDropped(p, pos);
+      return html`<section class="pd-zone pd-zone-${pos}${list.length ? '' : ' is-empty'}${dropped ? ' is-off' : ''}" aria-label="${posLabel(pos)}">
+        <div class="pd-zone-label">${posLabel(pos)}${off ? html` <small>${tx('pd.zone_off')}</small>` : dropped ? html` <small>${tx('pd.zone_dropped')}</small>` : ''}</div>
         <div class="pd-grid" data-drop="region" data-position="${pos}">
           ${list.map(block)}
           <div class="pd-grid-end" data-end><a href="${url(`new=region${pos === 'body' ? '' : `&position=${pos}`}`)}">${icon('plus')} ${kindLabel('region')}${pos === 'body' ? '' : html`<span class="sr-only"> ${tx('pd.in_position', { position: posLabel(pos) })}</span>`}</a></div>
         </div></section>`;
     };
     const extra = (pos: string) => pos !== side && byPos(pos).length > 0;
-    const zones = html`${zone('banner')}${zone('breadcrumb')}
+    // (sprint 234, AX-12; APEX: the page template's Slot list) in APEX's order: Banner; the header's After logo, Before
+    // and After navigation bar side by side; Top navigation; Breadcrumb bar; Full width content; the columns; Footer;
+    // Dialogs, drawers and popups. A position the page template doesn't have is drawn only while it holds regions.
+    const shown = (pos: string) => pageHasPosition(p, pos) || byPos(pos).length > 0;
+    const headerZones = HEADER_POSITIONS.filter((pos) => pos !== 'top_navigation' && shown(pos));
+    const zones = html`${zone('banner')}
+      ${headerZones.length ? html`<div class="pd-header-zones">${headerZones.map(zone)}</div>` : ''}
+      ${shown('top_navigation') ? zone('top_navigation') : ''}${zone('breadcrumb')}${zone('full_width')}
       <div class="pd-columns${side ? ` pd-columns-${side}` : ''}">
         ${side === 'left' || extra('left') ? zone('left') : ''}${zone('body')}${side === 'right' || extra('right') ? zone('right') : ''}
-      </div>${zone('footer')}`;
+      </div>${zone('footer')}${zone('dialogs')}`;
     const gallery = (k: 'region' | 'item' | 'button', types: string[], labels: Record<string, [string, string]>, listLabel?: 'pd.gallery.containers') =>
       html`<ul class="pd-gallery-list" aria-label="${listLabel ? tx(listLabel) : tx.dyn(`comp.${k}.plural`, COMPONENTS[k].plural)}">${types.map((t) => {
         const name = tx.dyn(`gallery.${k}.${t}`, labels[t]?.[0] ?? t);
