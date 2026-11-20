@@ -116,6 +116,10 @@ async function sendOneTraced(m: Claimed) {
     if (!service) throw new MailError('The application has no mail service any more.', false);
     const attachments = (await owner.query<{ filename: string; mime: string; content: Buffer }>(
       'select filename, mime, content from meta.mail_attachment where mail_id = $1 order by id', [m.id])).rows;
+    // (sprint 237) a reference of meta.document_pdf that no process of the server drew (SQL outside a page's
+    // processes: an automation, pg_cron, the SQL Workshop) is never sent as it is
+    if (attachments.some((a) => a.content.length < 100 && a.content.subarray(0, 20).toString('latin1') === 'pgkiln:document_pdf:'))
+      throw new MailError('A document attachment (meta.document_pdf) was not drawn: call meta.document_pdf in a process, Ajax callback or dynamic action of a page, where the server draws the PDF when the process ends.', false);
     const id = await sendWith(service, {
       from: m.from_address, to: m.to_addresses, cc: m.cc_addresses, bcc: m.bcc_addresses, replyTo: m.reply_to,
       subject: m.subject, text: m.body_text, html: m.body_html, attachments,

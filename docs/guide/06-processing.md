@@ -422,8 +422,20 @@ the application has an enabled mail service with a From address.
 `to`, `cc`, `bcc` (several addresses separated by commas), `from`, `reply_to`, `subject` and `body`
 take `&ITEM.` substitutions as they are; in `body_html` the item values are HTML-escaped.
 `attachments` is a SELECT (binds allowed) with the columns `content` (bytea), `filename` and `mime`,
-one attachment per row. The mail is queued in the page's transaction: when a later process fails,
-nothing is sent. It can run in a background chain too.
+one attachment per row; (sprint 237) a [document template](16-files.md#document-templates) drawn as
+PDF; or a list of both:
+
+```json
+{"to": "&P5_EMAIL.", "subject": "Invoice &P5_ID.", "body": "Attached is your invoice.",
+ "attachments": [{"document": "INVOICE", "items": {"P5_ID": "&P5_ID."}, "filename": "invoice-&P5_ID."},
+                 "select content, filename, mime from sales.terms where current"]}
+```
+
+A document attachment is drawn on the server like the template's download: its query runs as the
+application's role with the session state, `items` (`&ITEM.` filled in) over it; `filename` (`.pdf` is
+added) defaults to the template's. The template's authorization applies to the user. The mail is
+queued in the page's transaction: when a later process fails, nothing is sent. It can run in a
+background chain too.
 
 ### Send push notification
 
@@ -955,6 +967,39 @@ with m as (select meta.send_mail('jane@example.com', 'Invoice 42', 'Attached.') 
 select meta.add_mail_attachment(m.id, i.pdf, 'invoice-42.pdf', 'application/pdf')
   from m, sales.invoice i where i.id = 42;
 ```
+
+### A document as attachment
+
+(sprint 237) `meta.document_pdf(template, items)` (APEX: `APEX_PRINT.GENERATE_DOCUMENT`) gives the PDF of
+one of the application's [document templates](16-files.md#document-templates) for
+`meta.add_mail_attachment`, from SQL or PL/pgSQL, without building the PDF in the browser:
+
+```sql
+-- a process of the order page
+select meta.add_mail_attachment(m.id,
+         meta.document_pdf('INVOICE', jsonb_build_object('P5_ID', :P5_ID)),
+         'invoice-' || :P5_ID || '.pdf', 'application/pdf')
+  from (select meta.send_mail(:P5_EMAIL, 'Your invoice', 'Attached is your invoice.') as id) m
+```
+
+The renderer is pgkiln's (in the server, not in the database), so the function returns a short
+**reference**, and the server draws the PDF **when the process ends**: in the same transaction, on the
+same connection, as the application's role (grants and RLS apply), with the data as the process left it
+(a row the process just inserted is in the document), the session state and `items` over it. It puts
+the PDF in place of every mail attachment that holds the reference, before the submit commits; a
+template that fails, or one the user's authorization doesn't allow, fails the process and rolls the
+submit back. The same happens after an application process, an Ajax callback and a dynamic action's
+SQL. The function names only the current application's templates and works only as the application's
+role.
+
+Use the value as a mail attachment only: stored anywhere else it stays the reference. The server
+draws references in the processes it runs; SQL that runs elsewhere (an automation, a workflow
+activity, pg_cron, the SQL Workshop) can queue the mail, but the server sends no mail with an undrawn
+reference: it marks it *error* ("was not drawn"). A send_email process can attach a template without
+SQL (`{"document": …}`, [above](#send-e-mail)).
+
+**HR example.** The employee form (page 3) has *Mail sheet*: a process queues a mail to the
+employee with `EMPLOYEE_SHEET` attached, drawn this way.
 
 See [chapter 9](09-reference.md#e-mail-from-sql) for every function and its limits. The functions
 work for the **current application** only when the caller runs as that application's database role

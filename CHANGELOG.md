@@ -18,6 +18,12 @@ All notable changes to this project are documented here. The format follows
   `meta.send_mail_template` and the Send E-Mail process send through the linked service whose allowed senders match the
   From address, otherwise through the default; the daily limit counts per service. Applications with one service behave
   as before. HR part 99 adds a second service, `SAFETY_LOG`.
+- **Document templates as mail attachments** (sprint 237, MG-3, migration 192): `meta.document_pdf(template, items)`
+  gives a template's PDF for `meta.add_mail_attachment`. The server draws it when the process ends, in the same
+  transaction and as the application's role, so a migrated application no longer builds PDFs in the browser. A Send
+  E-Mail process's `attachments` also take `{"document": "INVOICE", "items": {…}, "filename": "…"}`. The value is a
+  reference that becomes the PDF in mail attachments only; mail queued outside a page process (automations, pg_cron)
+  can't draw it and fails with a clear message. HR: *Mail sheet* on the employee form.
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the

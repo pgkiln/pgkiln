@@ -5,6 +5,8 @@ import { esc } from '../html.ts';
 import type { Process } from '../metadata.ts';
 import { bindValues, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
 import { exportDownload, exportProblems, type ExportConfig } from './data-export.ts';
+import { documentFilename } from './document.ts';
+import { documentAttachment } from './document-pdf.ts';
 
 // Declarative page processes of migration 039: download (a file from a
 // query), workflow (start / terminate / retry) and the configuration checks
@@ -355,7 +357,30 @@ interface SendEmailConfig {
   body_html?: string;
   template?: string;
   placeholders?: Record<string, string>;
-  attachments?: string;
+  /** a SELECT of content, filename and mime; (sprint 237) or a document template, or a list of both */
+  attachments?: string | DocumentAttachment | (string | DocumentAttachment)[];
+}
+
+/** (sprint 237, MG-3) a document template drawn as PDF: {"document": "INVOICE", "items": {"P5_ID": "&P5_ID."}, "filename": "…"} */
+interface DocumentAttachment {
+  document: string;
+  items?: Record<string, string>;
+  filename?: string;
+}
+
+const ATTACHMENT_HELP = '"attachments" is a SELECT of content (bytea), filename and mime, a document template ({"document": "INVOICE", "items": {"P5_ID": "&P5_ID."}, "filename": "invoice-&P5_ID."}), or a list of these.';
+
+function attachmentProblem(a: unknown): string | null {
+  if (typeof a === 'string') return /^\s*(select|with)\b/i.test(a) ? null : ATTACHMENT_HELP;
+  if (typeof a !== 'object' || a === null || Array.isArray(a)) return ATTACHMENT_HELP;
+  const d = a as Record<string, unknown>;
+  if (Object.keys(d).some((k) => !['document', 'items', 'filename'].includes(k))) return `${ATTACHMENT_HELP} A document attachment has "document", "items" and "filename" only.`;
+  if (typeof d.document !== 'string' || !/^[A-Za-z][A-Za-z0-9_]{0,99}$/.test(d.document)) return '"document" is the name of a document template (Shared Components → Document templates).';
+  if (d.items !== undefined && (typeof d.items !== 'object' || d.items === null || Array.isArray(d.items)
+      || Object.entries(d.items).some(([k, v]) => !/^[A-Za-z][A-Za-z0-9_$]{0,127}$/.test(k) || typeof v !== 'string')))
+    return '"items" of a document attachment maps item names to values, e.g. {"P5_ID": "&P5_ID."}.';
+  if (d.filename !== undefined && typeof d.filename !== 'string') return '"filename" of a document attachment is text.';
+  return null;
 }
 
 const PLACEHOLDER = /^[A-Za-z][A-Za-z0-9_]{0,59}$/;
@@ -365,7 +390,7 @@ export function sendEmailProblems(conf: unknown): string[] {
   const out: string[] = [];
   const text = (k: string) => c[k] !== undefined && typeof c[k] !== 'string' && out.push(`"${k}" is text.`);
   if (typeof c.to !== 'string' || !c.to.trim()) out.push('"to" is the recipients, e.g. "&P5_EMAIL." (several: separated by commas).');
-  for (const k of ['cc', 'bcc', 'from', 'reply_to', 'subject', 'body', 'body_html', 'template', 'attachments']) text(k);
+  for (const k of ['cc', 'bcc', 'from', 'reply_to', 'subject', 'body', 'body_html', 'template']) text(k);
   if (c.template !== undefined) {
     if (typeof c.template === 'string' && !/^[A-Za-z][A-Za-z0-9_]{0,59}$/.test(c.template)) out.push('"template" is the name of an e-mail template (Shared Components → E-mail templates).');
     if (c.subject !== undefined || c.body !== undefined || c.body_html !== undefined) out.push('With a "template", the subject and bodies come from it: leave out "subject", "body" and "body_html".');
@@ -376,7 +401,12 @@ export function sendEmailProblems(conf: unknown): string[] {
   if (c.placeholders !== undefined && (typeof c.placeholders !== 'object' || Array.isArray(c.placeholders) || c.placeholders === null
       || Object.entries(c.placeholders).some(([k, v]) => !PLACEHOLDER.test(k) || typeof v !== 'string')))
     out.push('"placeholders" maps the template\'s #NAMES# to values, e.g. {"NAME": "&P5_NAME."}.');
-  if (typeof c.attachments === 'string' && !/^\s*(select|with)\b/i.test(c.attachments)) out.push('"attachments" is a SELECT of content (bytea), filename and mime.');
+  if (c.attachments !== undefined) {
+    const list = Array.isArray(c.attachments) ? c.attachments : [c.attachments];
+    if (list.length > 20) out.push('At most 20 attachments.');
+    const problem = list.map(attachmentProblem).find((x) => x);
+    if (problem) out.push(problem);
+  }
   return out;
 }
 
@@ -385,7 +415,8 @@ export function sendEmailProblems(conf: unknown): string[] {
  * meta.send_mail_template in the page's transaction, so it is sent only when
  * the submit commits. Values take &ITEM. substitutions (escaped in the HTML
  * body); "attachments" is a SELECT (binds allowed) of content, filename and
- * mime, one attachment per row.
+ * mime, one attachment per row, (sprint 237) a document template drawn as PDF,
+ * or a list of these.
  */
 export async function sendEmailProcess(ctx: PageContext, p: Process): Promise<string | null> {
   const conf = (p.config ?? {}) as unknown as SendEmailConfig;
@@ -406,8 +437,16 @@ export async function sendEmailProcess(ctx: PageContext, p: Process): Promise<st
       value(conf.from), value(conf.cc), value(conf.bcc), value(conf.reply_to),
     ])).rows[0].id;
   }
-  if (conf.attachments) {
-    const rows = (await c.query(stripSemicolon(applyBinds(conf.attachments, bindValues(ctx))))).rows as Record<string, unknown>[];
+  for (const a of conf.attachments === undefined ? [] : Array.isArray(conf.attachments) ? conf.attachments : [conf.attachments]) {
+    if (typeof a !== 'string') {
+      // (sprint 237) a document template, drawn now with its items (&ITEM. substituted) over the session state
+      const items = Object.fromEntries(Object.entries(a.items ?? {}).map(([k, v]) => [k.toUpperCase(), value(v)]));
+      const doc = await documentAttachment(ctx, a.document, items);
+      const filename = a.filename ? documentFilename(value(a.filename) ?? '') : doc.name;
+      await c.query('select meta.add_mail_attachment($1, $2, $3, $4)', [id, doc.file, filename, 'application/pdf']);
+      continue;
+    }
+    const rows = (await c.query(stripSemicolon(applyBinds(a, bindValues(ctx))))).rows as Record<string, unknown>[];
     for (const row of rows) {
       const get = (name: string) => Object.entries(row).find(([k]) => k.toLowerCase() === name)?.[1];
       await c.query('select meta.add_mail_attachment($1, $2, $3, $4)', [id, get('content'), get('filename') ?? 'attachment', get('mime') ?? 'application/octet-stream']);

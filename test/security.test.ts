@@ -19675,3 +19675,168 @@ describe('sprint 236 MG-1', () => {
     }
   });
 });
+
+describe('sprint 237 MG-3', () => {
+  // meta.document_pdf (migration 192, src/runtime/document-pdf.ts): an application draws only its own templates, as its
+  // own role; a reference is drawn only when this transaction's meta.document_pdf registered it for this application;
+  // forged bytes and undrawn references are never sent
+  let app237: FastifyInstance;
+  let hr: number;
+  let other: number;
+  const A = 'ts-sec237';
+  const made: { processes: number[]; buttons: number[] } = { processes: [], buttons: [] };
+  /** SQL as an application's role in a transaction of its own, committed. */
+  const asRole = async <T>(appIdOf: number, role: string | null, fn: (q: (sql: string, p?: unknown[]) => Promise<any[]>) => Promise<T>) => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true)`, [String(appIdOf)]);
+      if (role) await c.query(`set local role ${role}`);
+      const r = await fn(async (sql, p) => (await c.query(sql, p)).rows);
+      await c.query('commit');
+      return r;
+    } catch (e) {
+      await c.query('rollback');
+      throw e;
+    } finally {
+      c.release();
+    }
+  };
+  /** A submit button and a process on HR's home page; pressed by king. */
+  const pressWith = async (name: string, type: string, code: string | null, config: unknown = {}) => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 1', [hr])).id;
+    made.buttons.push((await owner.one(`insert into meta.button (page_id, seq, name, label, action) values ($1, 990, $2, $2, 'submit') returning id`, [page, name])).id);
+    made.processes.push((await owner.one(`insert into meta.process (page_id, seq, name, type, point, when_button, code, config) values ($1, 990, $2, $3, 'submit', $2, $4, $5) returning id`,
+      [page, name, type, code, JSON.stringify(config)])).id);
+    const b = new FileBrowser(app237);
+    await b.login('king');
+    await b.get('/a/hr/1');
+    return b.submit('/a/hr/1', { __request: name });
+  };
+  let restoreMail237: () => Promise<void>;
+  const mailOf = (subject: string) => owner.one('select * from meta.mail_queue where app_id = $1 and subject = $2 order by id desc limit 1', [hr, subject]);
+
+  before(async () => {
+    app237 = await buildApp({ logger: false });
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    other = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'Sec 237', 'hr_app') returning id`, [A])).id;
+    await owner.query(`insert into meta.document_template (app_id, name, query, template) values ($1, 'OTHER_DOC', 'select ''secret of the other app'' as s', '<p>{{s}}</p>')`, [other]);
+    await owner.query(`update meta.mail_queue set status = 'cancelled' where app_id = $1 and status = 'queued'`, [hr]);
+    // HR sends through a "log only" service of this block's own (another test may have removed HR's)
+    const was = (await owner.query('select service_id, from_address, max_per_day, is_default from meta.app_mail_service where app_id = $1 order by is_default desc', [hr])).rows;
+    await owner.query(`delete from meta.mail_service where name = 'S237_LOG'`);
+    const sid = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ('S237_LOG', 'log', '{@example.com}', '{"default_from": "hr@example.com"}') returning id`)).id;
+    // (sprint 236) HR may link several services: keep them all, send only through this one meanwhile
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [hr]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)`, [hr, sid]);
+    restoreMail237 = async () => {
+      await owner.query(`delete from meta.mail_service where name = 'S237_LOG'`);
+      await owner.query('delete from meta.app_mail_service where app_id = $1', [hr]);
+      for (const r of was)
+        await owner.query('insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day, is_default) values ($1, $2, $3, $4, $5)',
+          [hr, r.service_id, r.from_address, r.max_per_day, r.is_default]);
+    };
+  });
+  after(async () => {
+    for (const id of made.processes) await owner.query('delete from meta.process where id = $1', [id]);
+    for (const id of made.buttons) await owner.query('delete from meta.button where id = $1', [id]);
+    await owner.query(`delete from meta.document_template where app_id = $1 and name = 'T237_WHO'`, [hr]);
+    await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_SHEET'`, [hr]);
+    await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'S237 %'`, [hr]);
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    await restoreMail237();
+    await app237.close();
+  });
+
+  test('only the current application\'s own templates, only as its own role; items are checked', async () => {
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q(`select meta.document_pdf('OTHER_DOC', '{}')`)), /has no document template OTHER_DOC/);
+    await assert.rejects(asRole(other, 'hr_app', (q) => q(`select meta.document_pdf('EMPLOYEE_SHEET', '{}')`)), /has no document template/);
+    // the runtime login without the application's role, and no application at all
+    await assert.rejects(asRole(hr, null, (q) => q(`set local role pgkiln_runtime; select meta.document_pdf('EMPLOYEE_SHEET', '{}')`)), /outside the application's own database role/);
+    await assert.rejects(asRole(0, 'hr_app', (q) => q(`select set_config('pgkiln.app_id', '', true), meta.document_pdf('EMPLOYEE_SHEET', '{}')`)), /no current application/);
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q(`select meta.document_pdf('EMPLOYEE_SHEET', '[1]')`)), /JSON object/);
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q(`select meta.document_pdf('EMPLOYEE_SHEET', '{"x; drop": 1}')`)), /not an item name/);
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q(`select meta.document_pdf('EMPLOYEE_SHEET', '{"P3_EMPNO": {"a": 1}}')`)), /text, a number/);
+    // a reference is a random id, not the template or its data
+    const [{ r }] = await asRole(hr, 'hr_app', (q) => q(`select convert_from(meta.document_pdf('EMPLOYEE_SHEET', '{"P3_EMPNO": 7839}'), 'UTF8') as r`));
+    assert.match(r, /^pgkiln:document_pdf:[0-9a-f-]{36}$/);
+    // the internal helpers are the owner's only
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q('select meta.document_pdf_caller()')), /permission denied/);
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q('select meta.document_pdf_requests()')), /permission denied/);
+  });
+
+  test('forged reference bytes (an upload, a literal) are never drawn and never sent', async () => {
+    const id = await asRole(hr, 'hr_app', async (q) => {
+      // a real reference registered in this transaction, so the pending check runs
+      await q(`select meta.document_pdf('EMPLOYEE_SHEET', '{"P3_EMPNO": 7839}')`);
+      const [{ id }] = await q(`select meta.send_mail('king@example.com', 'S237 forged', 'x') as id`);
+      await q(`select meta.add_mail_attachment($1, convert_to('pgkiln:document_pdf:' || gen_random_uuid(), 'UTF8'), 'f.pdf')`, [id]);
+      assert.deepEqual(await q('select * from meta.document_pdf_pending($1)', [hr]), []);
+      return id as string;
+    });
+    const att = (await owner.one('select id from meta.mail_attachment where mail_id = $1', [id])).id;
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q('select meta.document_pdf_fill($1, $2)', [att, Buffer.from('%PDF-evil')])), /no document reference of this transaction/);
+    const { mailTick } = await import('../src/mail/mail.ts');
+    await mailTick();
+    const m = await owner.one('select status, message from meta.mail_queue where id = $1', [id]);
+    assert.equal(m.status, 'error');
+    assert.match(m.message, /was not drawn/);
+  });
+
+  test('a reference registered for another application (same role, app id switched) is not drawn by this one', async () => {
+    const res = await pressWith('S237_SWITCH', 'sql', `do $b$
+declare v bytea;
+begin
+  perform set_config('pgkiln.app_id', '${other}', true);
+  v := meta.document_pdf('OTHER_DOC', '{}');
+  perform set_config('pgkiln.app_id', '${hr}', true);
+  perform meta.add_mail_attachment(meta.send_mail('king@example.com', 'S237 switch', 'x'), v, 'o.pdf');
+end $b$`);
+    assert.equal(res.statusCode, 303);
+    const m = await mailOf('S237 switch');
+    const a = await owner.one('select content from meta.mail_attachment where mail_id = $1', [m.id]);
+    assert.doesNotMatch(a.content.toString('latin1'), /%PDF-/);
+    assert.doesNotMatch(pdfText(a.content), /secret of the other app/);
+    await owner.query(`update meta.mail_queue set status = 'cancelled' where id = $1`, [m.id]);
+  });
+
+  test('pending and fill reach only this application\'s mails of this transaction', async () => {
+    const id = await asRole(hr, 'hr_app', async (q) => {
+      const [{ id }] = await q(`select meta.send_mail('king@example.com', 'S237 scope', 'x') as id`);
+      await q(`select meta.add_mail_attachment($1, meta.document_pdf('EMPLOYEE_SHEET', '{"P3_EMPNO": 7839}'), 'k.pdf')`, [id]);
+      assert.equal((await q('select * from meta.document_pdf_pending($1)', [hr])).length, 1);
+      assert.deepEqual(await q('select * from meta.document_pdf_pending($1)', [other]), [], 'another application id');
+      return id as string;
+    });
+    // a later transaction: the reference is no longer registered, the mail no longer this transaction's
+    const att = (await owner.one('select id from meta.mail_attachment where mail_id = $1', [id])).id;
+    await assert.rejects(asRole(hr, 'hr_app', (q) => q('select meta.document_pdf_fill($1, $2)', [att, Buffer.from('%PDF-x')])), /no document reference of this transaction/);
+    await owner.query(`update meta.mail_queue set status = 'cancelled' where id = $1`, [id]);
+  });
+
+  test('the server draws as the application\'s role, and the template\'s authorization applies', async () => {
+    await owner.query(`delete from meta.document_template where app_id = $1 and name = 'T237_WHO'`, [hr]);
+    await owner.query(`insert into meta.document_template (app_id, name, query, template) values ($1, 'T237_WHO', 'select current_user as who', '<p>role {{who}}</p>')`, [hr]);
+    let res = await pressWith('S237_WHO', 'sql',
+      `select meta.add_mail_attachment(meta.send_mail('king@example.com', 'S237 who', 'x'), meta.document_pdf('T237_WHO', '{}'), 'who.pdf')`);
+    assert.equal(res.statusCode, 303);
+    const a = await owner.one('select content from meta.mail_attachment where mail_id = $1', [(await mailOf('S237 who')).id]);
+    assert.equal(a.content.subarray(0, 5).toString('latin1'), '%PDF-');
+    assert.match(pdfText(a.content).replace(/\s+/g, ' '), /role hr_app/);
+    // a template the user may not have: neither from SQL nor from send_email, and nothing is queued
+    await owner.query(`update meta.document_template set authz = 'NO_SUCH_SCHEME' where app_id = $1 and name = 'EMPLOYEE_SHEET'`, [hr]);
+    res = await pressWith('S237_AUTHZ', 'sql',
+      `select meta.add_mail_attachment(meta.send_mail('king@example.com', 'S237 authz', 'x'), meta.document_pdf('EMPLOYEE_SHEET', '{"P3_EMPNO": 7839}'), 'x.pdf')`);
+    assert.equal(res.statusCode, 422);
+    res = await pressWith('S237_AUTHZ2', 'send_email', null, { to: 'king@example.com', subject: 'S237 authz2', body: 'x', attachments: { document: 'EMPLOYEE_SHEET', items: { P3_EMPNO: '7839' } } });
+    assert.equal(res.statusCode, 422);
+    assert.equal(await mailOf('S237 authz'), undefined);
+    assert.equal(await mailOf('S237 authz2'), undefined);
+    await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_SHEET'`, [hr]);
+    // send_email names only the application's own templates
+    res = await pressWith('S237_OTHER', 'send_email', null, { to: 'king@example.com', subject: 'S237 other', body: 'x', attachments: { document: 'OTHER_DOC' } });
+    assert.equal(res.statusCode, 422);
+    assert.equal(await mailOf('S237 other'), undefined);
+  });
+});
