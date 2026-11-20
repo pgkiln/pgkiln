@@ -233,20 +233,36 @@ const leadingPage = (path: string) => {
  * (it would loop).
  */
 export async function branchTarget(ctx: PageContext, point: Branch['point']): Promise<string | null> {
+  return (await branchTaken(ctx, point))?.href ?? null;
+}
+
+/** (sprint 240, MG-7) A branch that keeps a modal page's dialog open: to a target of this application. */
+export const staysInDialog = (b: Branch) => !!b.stay_in_dialog && b.target_type !== 'app';
+
+/** (sprint 240, MG-7) A URL of this application, shown inside the dialog (dialog=1, before any #fragment). */
+export function inDialog(href: string) {
+  const hash = href.indexOf('#');
+  const [path, frag] = hash === -1 ? [href, ''] : [href.slice(0, hash), href.slice(hash)];
+  if (/[?&]dialog=1(&|$)/.test(path)) return href;
+  return `${path}${path.includes('?') ? '&' : '?'}dialog=1${frag}`;
+}
+
+/** (sprint 240) The branch taken and where it goes (branchTarget), or null. */
+export async function branchTaken(ctx: PageContext, point: Branch['point']): Promise<{ branch: Branch; href: string } | null> {
   for (const b of ctx.page.branches ?? []) {
-    if (b.point !== point) continue;
-    if (point === 'after_processing' && b.when_button && b.when_button !== ctx.request) continue;
-    if (!(await isAuthorized(ctx, b.authz))) continue;
-    if (!(await conditionHolds(ctx, b, `condition of branch "${b.name}"`))) continue;
-    const to = await branchTo(ctx, b, point);
+    const href = await branchHref(ctx, b, point);
     // (sprint 238, MG-14) the target page (of this application) opens this inline dialog region; a branch's wins over a process's
-    if (to !== null && b.open_region && b.target_type !== 'app') ctx.openRegion = b.open_region;
-    if (to !== null) return to;
+    if (href !== null && b.open_region && b.target_type !== 'app') ctx.openRegion = b.open_region;
+    if (href !== null) return { branch: b, href };
   }
   return null;
 }
 
-async function branchTo(ctx: PageContext, b: Branch, point: Branch['point']): Promise<string | null> {
+async function branchHref(ctx: PageContext, b: Branch, point: Branch['point']): Promise<string | null> {
+  if (b.point !== point) return null;
+  if (point === 'after_processing' && b.when_button && b.when_button !== ctx.request) return null;
+  if (!(await isAuthorized(ctx, b.authz))) return null;
+  if (!(await conditionHolds(ctx, b, `condition of branch "${b.name}"`))) return null;
   if (b.target_type === 'function') {
     const path = await branchFunction(ctx, b);
     if (path === null || (point === 'before_header' && leadingPage(path) === ctx.page.page_no)) return null;

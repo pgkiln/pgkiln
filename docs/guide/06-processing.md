@@ -26,6 +26,25 @@ like `:P3_ID is null` on *Create* really does prevent creating from an existing 
 In a modal dialog, a `redirect` button whose target is not a modal page (typically *Cancel*)
 simply closes the dialog.
 
+### Staying in the dialog
+
+(sprint 240) A submit from a modal dialog page closes the dialog. A button with **Stay in the dialog**
+(`stay_in_dialog`, Behaviour group) shows the dialog page again after its processes instead, with their
+success message, so one dialog can hold several steps: *upload → preview → import*. Validation errors keep
+the dialog open as always. Rules:
+
+- A **close_dialog** process that runs still closes the dialog.
+- When a **branch** applies, the branch decides: one with *Stay in the dialog* (Target group) opens its
+  target inside the dialog (also a `before_header` branch of a dialog page); one without closes the dialog as
+  before. A branch to another application never stays.
+- An editable **grid's own Save** stays in the dialog (as an APEX interactive grid's Save does).
+- Outside a dialog (the page opened by itself, or without JavaScript) the option changes nothing.
+
+The Advisor notes *Stay in the dialog* on a page that isn't a modal page, and on a branch to another
+application. **HR example, page 67** (*Import contacts*, opened from page 35): *Read the file* stays,
+*Start over* stays through its branch, the grid's Save stays, and *Import* closes the dialog
+(`examples/hr/hr_103_import_dialog.sql`).
+
 ### Menu buttons and badges
 
 A button with action `menu` opens a dropdown (an HTML `<details>` element, so it works without
@@ -177,7 +196,8 @@ Procedures work too (`call my_proc(:P1_X)`), as do several statements separated 
 
 A web request queued in a process with [`meta.web_request()`](09-reference.md#web-requests-from-sql)
 is made by the server right after that process, so the **next** process can read
-`meta.web_response(id)`; the process that queued it can't wait for it. A request with a callback or an
+`meta.web_response(id)`; the process that queued it can't wait for it. (sprint 240) The same holds for
+Ajax callbacks (also a chain of them) and `execute_sql` dynamic actions, within 30 seconds per call. A request with a callback or an
 ordering key is sent after the submit commits instead, with retries: the
 [outbox](09-reference.md#the-outbox-retries-callbacks-ordering) (sprint 177).
 
@@ -233,7 +253,9 @@ the real error and doesn't call it.
 
 A process with point **ajax** runs when JavaScript calls it by name, `pgkiln.server.process('NAME')`
 (APEX: On Demand processes, `apex.server.process`), and answers JSON; see
-[chapter 7](07-dynamic-actions.md#ajax-callbacks).
+[chapter 7](07-dynamic-actions.md#ajax-callbacks). (sprint 240) It may also be a chain of SQL processes,
+and the web requests it queues are made right after it (or after each step of the chain), so the
+callback answers with their responses.
 
 ### Debug messages
 
@@ -631,7 +653,8 @@ computation at the same point.
 After a successful submit pgkiln redirects (POST-redirect-GET). **Branches** decide where to: the
 first branch, in sequence, whose button, authorization and condition match is taken; when none
 applies, the pressed button's `target_page`, or back to the same page. In a modal dialog, the
-dialog closes instead, and the calling page reloads.
+dialog closes instead, and the calling page reloads, unless the button or the branch taken
+[stays in the dialog](#staying-in-the-dialog) (sprint 240).
 
 | Property | Meaning |
 |---|---|
@@ -645,6 +668,7 @@ dialog closes instead, and the calling page reloads.
 | `open_region` | (sprint 238) The static ID of an [inline dialog or drawer region](04-pages-and-regions.md#layout) the target page (of this application) opens when it shows, e.g. a confirmation after the save |
 | `target_app` | `app`: the alias of another application of this installation (APEX: *Branch to page in another application*). It must exist with that page (else the branch doesn't apply and a message is shown); the items are signed for that application, page and user. That application's own sign-in and authorization apply when the browser gets there |
 | `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#server-side-conditions) holds |
+| `stay_in_dialog` | (sprint 240) In a modal dialog page: open the target inside the dialog instead of closing it ([Staying in the dialog](#staying-in-the-dialog)) |
 | `authz`, `seq`, `build_option` | As for other components |
 
 A `before_header` branch to the page itself is skipped (it would loop).

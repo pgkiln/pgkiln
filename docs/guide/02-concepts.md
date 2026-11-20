@@ -122,7 +122,8 @@ page is loaded, as if they did not exist.
    7. run the **processes** for this button, in sequence;
    8. pick the first **branch** (point *after processing*) for this button whose condition holds.
 3. On success, commit, store the success message and **redirect** to the branch's target, or else
-   the button's target page (POST-redirect-GET). In a modal dialog, the dialog closes and the page below reloads. On an
+   the button's target page (POST-redirect-GET). In a modal dialog, the dialog closes and the page below reloads
+   (a button or branch with *Stay in the dialog* shows the dialog page again instead). On an
    error, everything is rolled back and the page is shown again with the entered values and the
    error.
 

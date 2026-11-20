@@ -63,6 +63,16 @@ All notable changes to this project are documented here. The format follows
   only during sign-in: the server reads the name right after the post-authentication code, in the same transaction,
   and checks it again (1–100 characters, no control or invisible characters, not `nobody`). The App Gallery's Sample
   Processes uses it; HR part 104 (page 68, *Visitor sign-in*).
+- **Staying in the dialog** (sprint 240, MG-7, migration 196): a button or branch with **Stay in the dialog**
+  (`stay_in_dialog`) shows the modal dialog page again after its processes (or goes to the branch's target inside the
+  dialog) instead of closing it, so one dialog can hold several steps (*upload → preview → import*). A `close_dialog`
+  process still closes it, and an editable grid's own Save stays in the dialog. HR page 67 (*Import contacts*).
+- **Items in a grid's toolbar** (sprint 240, MG-7): items placed in an interactive grid region stand in its toolbar,
+  before the search, and are submitted with the page.
+- **Web requests from Ajax callbacks and `execute_sql`** (sprint 240, MG-8): a `meta.web_request()` queued by an Ajax
+  callback or an `execute_sql` dynamic action is made right after it, in the same transaction (within 30 seconds per
+  call), so the next step reads `meta.web_response()` without polling. An Ajax callback may also be a chain of SQL
+  processes, run in sequence, each with its own button, authorization and condition.
 - **Application files may leave keys out** (sprint 242, MG-16): `pgkiln import`, the MCP server's `import_app`, the
   builder API and the builder's Import give a key a hand-written file leaves out the column's default, read from the
   catalog for every component kind. A key written as `null` stays null. The import lists the filled keys per file,

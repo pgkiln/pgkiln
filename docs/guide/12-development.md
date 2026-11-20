@@ -292,7 +292,9 @@ src/
                            syncTick() (scheduled and SQL-queued runs, called by the automations scheduler)
   webrequests.ts           web requests from SQL (meta.web_request, migration 052): runPending() after each sql page process
                            (same transaction), webRequestTick() for committed ones (automations scheduler), retention purge;
-                           calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials)
+                           calls go through websources.ts call()/invoke() (allow-list, SSRF checks, credentials); (sprint 240)
+                           runPending(…, budgetMs): Ajax callbacks and execute_sql dynamic actions (INTERACTIVE_BUDGET_MS, a request
+                           with no time left becomes 'retry' for after the commit, DEFERRED_MESSAGE)
                            (sprint 177, migration 160) the outbox: outcome() (retry, gave_up), leases, ordering keys, the
                            idempotency header, callbackTick() (schema.function(id) as the app role), startWebRequestRunner()
   mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
@@ -348,7 +350,9 @@ src/
                            (sprint 193) notePageChanges(): meta.page_change (who changed a page last) for the pages a change touched,
                            and (builder/app-updates.ts) every page of a new application (Create, Import)
   runtime/
-    routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login
+    routes.ts              HTTP handlers: show, submit, dynamic actions, cascading lists, login; (sprint 240, MG-7) a dialog submit
+                           stays in the dialog (button / branch stay_in_dialog, migration 196; not after a close_dialog process);
+                           execute_sql dynamic actions make their queued web requests (makeWebRequests)
     signin.ts              the sign-in form (built-in page and the login region of an application's own login page), safeNext, passwordResetAvailable
     passkey-signin.ts      (sprint 199, NX-U6) signing in with a passkey alone (meta.app.passkey_signin): the button above
                            the password fields (passkeyBlock), /login/passkey/options and /login/passkey (user-verified,
@@ -368,7 +372,8 @@ src/
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it; sprint 209: each load process in a savepoint), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
-                           (conditionHolds: the server-side condition types; sprint 235 item_contains / item_contains_any split a multi-value item on colons)
+                           (conditionHolds: the server-side condition types; sprint 235 item_contains / item_contains_any split a multi-value item on colons);
+                           (sprint 240, MG-7) branchTaken (the branch and its href), staysInDialog, inDialog (dialog=1 on a URL)
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     static-files.ts        (068) static application files (/a/<alias>/static/<name>), the <script>/<link> tags of a page; (141) static
                            workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
@@ -393,7 +398,7 @@ src/
     item-texts.ts          (sprint 241, MG-10/11) itemLabel (&ITEM. substitutions in labels, also in the messages engine.ts gives),
                            itemPlaceholder (meta.item.placeholder, migration 197, or the older {"placeholder"} setting), PLACEHOLDER_TYPES,
                            NULL_CHOICE_TYPES (a select list's empty choice); items.ts renderItem uses them
-    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
+    report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm; sprint 240: the region's items in its toolbar, Save stays in a dialog), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
                            pagination total/range/none;
@@ -496,7 +501,8 @@ src/
     url-region.ts          URL region (migration 078): literal origins only (urlTarget), &ITEM. URL-encoded, sandbox and height,
                            frameOrigins() for the CSP's frame-src (security.ts)
     ajax.ts                Ajax callbacks (migration 085: POST …/ajax/:name, point "ajax" processes, x01 … x10 binds) and the
-                           download dynamic action (POST …/da/:id/download)
+                           download dynamic action (POST …/da/:id/download); (sprint 240, MG-8) a chain of SQL processes as a callback
+                           (chainChildren, shouldRun; a chain's step is not callable by name), engine.ts makeWebRequests after each step
     availability.ts        availabilityRefusal(): who may use an application (migration 083); loadContext, the login page
                            and REST modules ask it (PostgREST: meta.api_check)
     feedback.ts            users' feedback page and the navigation bar entry (migration 084)
@@ -722,7 +728,8 @@ src/
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check; (sprint 229) globalPageFindings:
                            links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0;
                            (sprint 234) positionFindings: a header position the page has not, items and submit buttons in a
-                           header region (outside the page's form)
+                           header region (outside the page's form); (sprint 240) stay_in_dialog off a modal page or on a branch
+                           to another app, Ajax callbacks that aren't SQL or a chain of SQL processes
     advisor-items-pages.ts (sprint 241) itemPageFindings: a placeholder no type shows, meta.set_auth_user outside custom
                            authentication's post-authentication code, No navigation on a modal page
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,

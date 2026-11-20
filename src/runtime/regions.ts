@@ -373,8 +373,8 @@ async function renderChildren(ctx: PageContext, r: Region, hidden: Set<string>, 
   </div>`;
 }
 
-/** Region types that place their items themselves (and login, whose fields post to a form of their own). */
-const ITEMS_IN_BODY = new Set(['report', 'classic_report', 'form', 'static', 'login']);
+/** Region types that place their items themselves (and login, whose fields post to a form of their own; sprint 240: a grid, in its toolbar). */
+const ITEMS_IN_BODY = new Set(['report', 'classic_report', 'form', 'static', 'login', 'grid']);
 
 /** The region's content (what the region's type renders), without its frame and buttons. */
 async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Promise<Raw> {
@@ -415,7 +415,7 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       body = await renderCards(ctx, r);
       break;
     case 'grid':
-      body = await renderGrid(ctx, r);
+      body = await renderGrid(ctx, r, await renderItems(ctx, items, hidden));
       break;
     case 'calendar':
       body = await renderCalendar(ctx, r);

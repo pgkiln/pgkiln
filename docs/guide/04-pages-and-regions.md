@@ -7,7 +7,7 @@ A page has a number (unique in the app; 0 is the [Global Page](#the-global-page)
 
 | Property | Values | Effect |
 |---|---|---|
-| `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
+| `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message), unless the button or branch [stays in the dialog](06-processing.md#staying-in-the-dialog) (sprint 240). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
 | `dialog_position` | `center`, `left`, `right`, `top`, `bottom` | Modal pages: a centred dialog (the default) or a **drawer** that slides in from that edge (APEX: the Drawer page template; 26.1: top and bottom drawers). See [Dialogs and drawers](#dialogs-and-drawers) |
 | `dialog_size` | `small`, `medium`, `large` | Modal pages: the dialog's or side drawer's width, the height of a top or bottom drawer |
 | `parent_page` | page number | Breadcrumb trail, and which menu entry is highlighted |
@@ -449,7 +449,8 @@ on an interval, use a dynamic action with the [`timer`](07-dynamic-actions.md) e
 | [`dynamic`](#static-and-dynamic-content) | HTML produced by a SELECT |
 
 (167) Items can be placed in any region. Reports, forms and static content place them themselves; in the other
-types (a tree, chart, map, cards, calendar …) they show under the region's content, as in APEX. A `login`
+types (a tree, chart, map, cards, calendar …) they show under the region's content, as in APEX; (sprint 240) in an
+interactive grid they stand in its toolbar, before the search (a file item next to the rows it imports, say). A `login`
 region's fields post to a form of their own, so items placed in it are not shown: put them in a region next to it.
 
 Region-specific options go in the region's **attributes** (`config`, a JSON object). In the Page Designer the
@@ -783,6 +784,10 @@ select deptno, dname, loc from hr.dept
 
 It is saved by a **process of type `grid_dml`** whose region is the grid, which the wizard
 creates. **Without such a process the grid is read-only.**
+
+(sprint 240) **Items** placed in the grid region stand in its toolbar, before the search, and are submitted
+with the page like any item (HR page 67 has its CSV file item there). On a modal dialog page the grid's
+Save keeps the dialog open ([staying in the dialog](06-processing.md#staying-in-the-dialog)).
 
 A grid can also edit the rows of a **REST data source** (region property *REST data source*
 instead of a table; the key column is `pk_column` or the source's first key column): Save, Add

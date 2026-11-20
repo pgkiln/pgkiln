@@ -173,16 +173,32 @@ export function outcome(res: RequestResult, attempts: number, maxAttempts: numbe
 const describe = (res: RequestResult, o: Outcome) =>
   res.message ?? (o.status === 'ok' ? null : `The web service answered ${res.statusCode}.`);
 
+/** (sprint 240) A request an Ajax call had no time left for: the server's queue makes it after the commit. */
+export const DEFERRED_MESSAGE = 'Not made within the time limit of the Ajax call: the server makes it after the commit.';
+/** (sprint 240, MG-8) The time an Ajax callback or a dynamic action gives the web requests it queued, together. */
+export const INTERACTIVE_BUDGET_MS = 30_000;
+
 /**
- * The requests the current transaction queued (a page process): made now,
+ * The requests the current transaction queued (a page process; sprint 240: also an Ajax callback, an execute_sql
+ * dynamic action, with a time budget): made now,
  * their results written in the same transaction. `onRequest` reports each
  * (debug messages). (160) A request queued with max_attempts whose attempt
  * failed waits for the server's next attempt after the commit.
  */
-export async function runPending(c: Client, appId: number, onRequest?: (r: PendingRequest, res: RequestResult, ms: number) => void) {
+export async function runPending(c: Client, appId: number, onRequest?: (r: PendingRequest, res: RequestResult, ms: number) => void, budgetMs?: number) {
   const taken = (await c.query<PendingRequest>('select * from meta.web_request_take(5)')).rows;
+  const deadline = budgetMs === undefined ? null : Date.now() + budgetMs;
   for (const r of taken) {
     const t0 = Date.now();
+    // (sprint 240, MG-8) an Ajax callback or a dynamic action waits at most budgetMs for its requests together: each gets
+    // what is left of it as its time limit, and one with less than a second left is made by the server after the commit
+    const left = deadline === null ? null : Math.floor((deadline - t0) / 1000);
+    if (left !== null && left < 1) {
+      await c.query('select meta.web_request_done($1, $2, null, null, null, null, $3, 1)', [r.id, 'retry', DEFERRED_MESSAGE]);
+      onRequest?.(r, { status: 'error', statusCode: null, url: null, headers: null, body: null, message: DEFERRED_MESSAGE }, 0);
+      continue;
+    }
+    if (left !== null && left < r.timeout_s) r.timeout_s = left;
     const res = await execute(appId, r);
     await unpackForSql(res.body); // a zip or .xlsx response, for meta.zip_entry / meta.parse_data
     const o: Outcome = r.max_attempts == null ? { status: res.status } : outcome(res, r.attempts ?? 1, r.max_attempts);

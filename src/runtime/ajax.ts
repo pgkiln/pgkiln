@@ -8,7 +8,9 @@
 // The caller may post the page's items it may change (as a submit would) and
 // x01 … x10, which are binds :X01 … :X10. CSRF token, page access, the
 // process's authorization, condition and build option all apply; only SQL
-// processes answer (other types are refused).
+// processes answer (other types are refused). (sprint 240, MG-8) A chain of
+// SQL processes answers too (the last step's rows); the web requests a step
+// queues are made right after it, as after a page process.
 //
 // POST /a/:alias/:page/da/:id/download runs the download process a dynamic
 // action of type "download" names and sends its file (app.js saves it).
@@ -16,7 +18,9 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { appTx, savepoint } from '../db.ts';
 import { checkPageAccess, computeVisibility, Forbidden, isAuthorized } from './authz.ts';
 import { publicError, toState, type PageContext } from './context.ts';
-import { assignable, processConditionHolds, runSql } from './engine.ts';
+import { assignable, chainChildren, makeWebRequests, processConditionHolds, runSql, shouldRun } from './engine.ts';
+import { INTERACTIVE_BUDGET_MS } from '../webrequests.ts';
+import type { Process } from '../metadata.ts';
 import { downloadFile, downloadHeaders } from './processes.ts';
 import { saveState } from '../session.ts';
 import { renderPendingDocuments } from './document-pdf.ts';
@@ -45,22 +49,37 @@ export function ajaxRoutes(app: FastifyInstance, loadContext: Loader, txContext:
         ctx.client = c;
         await checkPageAccess(ctx);
         await computeVisibility(ctx);
-        const p = ctx.page.processes.find((x) => x.point === 'ajax' && x.name === name);
+        // (sprint 240) a chain's child runs only inside its chain (with the chain's authorization and condition)
+        const p = ctx.page.processes.find((x) => x.point === 'ajax' && x.name === name && !x.parent_process);
         const ap = p ? undefined : ctx.app.app_processes.find((x) => x.point === 'ajax' && x.name === name);
         if (!p && !ap) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         if (p) {
-          if (p.type !== 'sql') throw new Error(`Process "${p.name}": an Ajax callback runs SQL processes only.`);
+          if (p.type !== 'sql' && (p.type !== 'chain' || (p.config as { background?: boolean } | null)?.background))
+            throw new Error(`Process "${p.name}": an Ajax callback runs an SQL process or a chain of SQL processes only.`);
           if (!(await isAuthorized(ctx, p.authz)) || !(await processConditionHolds(ctx, p))) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         } else if (!(await isAuthorized(ctx, ap!.authz))) throw new Forbidden(ctx.locale.t('error.unknown_da'));
         // the page's items the caller may change, as a submit would set them
         applyPostedItems(ctx, body, ctx.page.items.map((i) => i.name).filter((n) => n in body));
         const before = { ...ctx.session.state };
         const names = p ? assignable(ctx) : new Set(ctx.app.app_items);
-        const res = await savepoint(c, async () => {
-          const r = await runSql(ctx, (p ?? ap)!.code ?? '', names);
-          await renderPendingDocuments(ctx); // (sprint 237) meta.document_pdf for mail
-          return r;
-        });
+        // (sprint 240, MG-8) a chain's SQL processes run in sequence, each with its button, authorization and condition;
+        // the web requests a step queued are made right after it (within INTERACTIVE_BUDGET_MS for the whole call),
+        // so the next step reads meta.web_response(); the answer is the last step's rows
+        const steps = p?.type === 'chain' ? chainChildren(ctx, p) : [(p ?? ap)!];
+        const deadline = Date.now() + INTERACTIVE_BUDGET_MS;
+        let res: Awaited<ReturnType<typeof runSql>> = undefined;
+        for (const step of steps) {
+          if (step !== p && step !== ap) {
+            if ((step as Process).type !== 'sql') throw new Error(`Process "${step.name}": a chain called as an Ajax callback runs SQL processes only.`);
+            if (!(await shouldRun(ctx, step as Process))) continue;
+          }
+          res = await savepoint(c, async () => {
+            const r = await runSql(ctx, step.code ?? '', names);
+            await renderPendingDocuments(ctx); // (sprint 237) meta.document_pdf for mail
+            return r;
+          });
+          await makeWebRequests(ctx, Math.max(0, deadline - Date.now()));
+        }
         const rows = ((res?.rows ?? []) as Record<string, unknown>[]).slice(0, AJAX_MAX_ROWS)
           .map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, jsonSafe(v)])));
         const items = Object.fromEntries([...names].filter((n) => ctx.session.state[n] !== before[n]).map((n) => [n, toState(ctx.session.state[n]) ?? '']));

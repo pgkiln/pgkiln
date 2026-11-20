@@ -20449,3 +20449,91 @@ describe('sprint 242 MG-16', () => {
     }
   });
 });
+
+describe('sprint 240 MG-7/MG-8', () => {
+  const ajax = (b: Awaited<ReturnType<typeof as>>, name: string, form: Record<string, string> = {}) =>
+    b.post(`/a/hr/67/ajax/${encodeURIComponent(name)}`, { __csrf: b.lastCsrf, ...form });
+  const queued = async () => Number((await owner.one('select count(*) from meta.web_request_log where app_id = $1', [appId])).count);
+
+  test("MG-8: a chain's step can't be called on its own (it would skip the chain's authorization and condition)", async () => {
+    const king = await as('king');
+    await king.get('/a/hr/67');
+    const n = await queued();
+    for (const step of ['Ask the CRM', 'Read the answer']) assert.equal((await ajax(king, step, { P67_CRM_ID: '1' })).statusCode, 403, step);
+    assert.equal(await queued(), n, 'nothing queued');
+  });
+
+  test("MG-8: the chain's condition decides before any step runs or any request is queued", async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 67', [appId])).id;
+    await owner.query(`update meta.process set condition_type = 'sql', condition_expr = 'false' where page_id = $1 and name = 'LOOKUP_CONTACT'`, [page]);
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/67');
+      const n = await queued();
+      assert.equal((await ajax(king, 'LOOKUP_CONTACT', { P67_CRM_ID: '1' })).statusCode, 403);
+      assert.equal(await queued(), n);
+    } finally {
+      await owner.query(`update meta.process set condition_type = null, condition_expr = null where page_id = $1 and name = 'LOOKUP_CONTACT'`, [page]);
+    }
+  });
+
+  test('MG-8: requests made after an Ajax callback go through the allow-list like any other', async () => {
+    const env = { allowed: process.env.PGKILN_REST_ALLOWED_HOSTS, url: process.env.PUBLIC_URL };
+    process.env.PGKILN_REST_ALLOWED_HOSTS = 'api.example.com';
+    process.env.PUBLIC_URL = 'http://127.0.0.1:1';
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/67');
+      const res = await ajax(king, 'LOOKUP_CONTACT', { P67_CRM_ID: '1' });
+      assert.equal(res.statusCode, 200, res.body);
+      const out = JSON.parse(res.body);
+      assert.equal(out.data.found, null);
+      assert.match(out.data.p67_crm_found, /allow-list/);
+      // a non-number can't reach the URL: the cast fails before anything is queued
+      const n = await queued();
+      const bad = await ajax(king, 'LOOKUP_CONTACT', { P67_CRM_ID: '1/../../x' });
+      assert.equal(bad.statusCode, 400);
+      assert.equal(await queued(), n);
+    } finally {
+      for (const [k, v] of [['PGKILN_REST_ALLOWED_HOSTS', env.allowed], ['PUBLIC_URL', env.url]] as const)
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+    }
+  });
+
+  test('MG-7: staying in the dialog redirects to the page itself; a stay branch to another application closes the dialog', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/67?dialog=1');
+    // a request of a button the page doesn't have is refused as before, stay or not
+    assert.equal((await king.post('/a/hr/67', { __csrf: king.lastCsrf, __request: 'NOPE', __dialog: '1' })).statusCode, 403);
+    await king.get('/a/hr/67?dialog=1');
+    const res = await king.post('/a/hr/67?dialog=1&next=//evil.example', { __csrf: king.lastCsrf, __request: 'CLEAR', __dialog: '1', __url_params: 'next=//evil.example' });
+    assert.equal(res.statusCode, 303);
+    assert.match(String(res.headers.location), /^\/a\/hr\/67\?.*dialog=1/);
+    assert.doesNotMatch(String(res.headers.location), /evil/);
+    // a branch to another application never stays (its own sign-in, its own pages)
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 67', [appId])).id;
+    await owner.query(`update meta.branch set target_type = 'app', target_app = 'hr', target_page = 1 where page_id = $1 and name = 'Start over in the dialog'`, [page]);
+    try {
+      await king.get('/a/hr/67?dialog=1');
+      const away = await king.post('/a/hr/67', { __csrf: king.lastCsrf, __request: 'CLEAR', __dialog: '1' });
+      assert.equal(away.statusCode, 200);
+      assert.match(away.body, /data-dialog-close/);
+    } finally {
+      await owner.query(`update meta.branch set target_type = 'page', target_app = null, target_page = 67 where page_id = $1 and name = 'Start over in the dialog'`, [page]);
+    }
+  });
+
+  test('MG-7: an item in a grid toolbar keeps its own authorization', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 67', [appId])).id;
+    await owner.query(`update meta.item set authz = 'ADMIN' where page_id = $1 and name = 'P67_FILE'`, [page]);
+    try {
+      const allen = await as('allen');
+      const res = await allen.get('/a/hr/67');
+      assert.equal(res.statusCode, 200);
+      assert.doesNotMatch(res.body, /id="P67_FILE"/);
+    } finally {
+      await owner.query(`update meta.item set authz = null where page_id = $1 and name = 'P67_FILE'`, [page]);
+    }
+  });
+});
