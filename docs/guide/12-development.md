@@ -21,6 +21,10 @@ scripts/oracle-e2e.sh      (sprint 192) Oracle Free + ora2pg (Docker) → Postgr
                            leaves the Oracle container, the schema and the application
 scripts/check-sample.ts    (sprint 166) one App Gallery sample: install, sign in as demo, render every page, report errors (--keep)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
+                           (sprint 232) with SUPERUSER_DATABASE_URL: makes the owner without SUPERUSER first (src/owner-role.ts),
+                           a superuser only while installing; --prepare stops before the server
+scripts/docker-entrypoint.sh  the image's CMD: docker-start.ts --prepare, then the server without SUPERUSER_DATABASE_URL and
+                           POSTGRES_PASSWORD in its environment
 deploy/                    compose.yaml and .env.example for Docker (Dockerfile at the root; chapter 1); (sprint 213) its db service
                            is postgres:17 + pg_cron, built inline (dockerfile_inline, pull_policy: build)
 docker/postgres/           (sprint 213) the development database's image (docker-compose.yml): postgres:17 + pg_cron + pgvector
@@ -29,7 +33,12 @@ bin/pgkiln.js              the `pgkiln` command line (runs src/cli/main.ts with 
 src/
   env.ts                   .env loader (imported first)
   migrate.ts               applies db/migrations and examples (scripts/migrate.ts, pgkiln migrate); (sprint 213) ensurePgCron creates
-                           pg_cron when the server loads it for this database; logs each run that applies
+                           pg_cron when the server loads it for this database; logs each run that applies; (sprint 232) needsSuperuser: installing
+                           (migrations before 175) needs a superuser, said before anything is applied
+  owner-role.ts            (sprint 232) pgkiln's owner without SUPERUSER, on a superuser connection: planOwner (the statements:
+                           role, database, the old owner's objects one by one, default privileges, ADMIN OPTION on pgkiln's
+                           roles and memberships granted again by the owner, pg_cron, statistics roles), applyOwner (one
+                           transaction, ownerProblems refuses a lockout); used by the Docker start and pgkiln admin demote-owner
   instance.ts              instance settings (meta.setting over environment variables, cached 30 s) and the configuration overview
   instance-checks.ts       (sprint 133, SEC-6) lockout checks: instance key (unreadable secrets, backup confirmed per fingerprint in
                            meta.setting secret_key_backup), clock against the database and GitHub's Date header, passkeys of another

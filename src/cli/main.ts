@@ -760,7 +760,7 @@ const COMMANDS: Record<string, Command> = {
   },
   // (sprint 126, SEC-6) lockout recovery on the server, when nobody can sign in to the builder
   admin: {
-    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all | builder-sign-in password | rotate-key | key-backed-up | check [options]',
+    usage: 'pgkiln admin reset-2fa <developer> | set-2fa-policy off|admins|all | builder-sign-in password | rotate-key | key-backed-up | check | demote-owner [options]',
     summary: 'lockout recovery and checks: two-factor reset and policy, the builder password, the instance key',
     details:
       'pgkiln admin reset-2fa <developer> [--reason <text>]\n' +
@@ -768,7 +768,8 @@ const COMMANDS: Record<string, Command> = {
       'pgkiln admin builder-sign-in password\n' +
       'pgkiln admin rotate-key [--dry-run]\n' +
       'pgkiln admin key-backed-up\n' +
-      'pgkiln admin check [--url <public url>] [--production]\n\n' +
+      'pgkiln admin check [--url <public url>] [--production]\n' +
+      'pgkiln admin demote-owner [--dry-run]\n\n' +
       "reset-2fa removes the developer's authenticator apps and recovery codes and ends their builder\n" +
       'sessions; they sign in with the password and set up an app again. set-2fa-policy off always works\n' +
       "(and clears the workspaces' own two-factor rules); admins and all need at least two administrators\n" +
@@ -780,16 +781,49 @@ const COMMANDS: Record<string, Command> = {
       'them with the new key. key-backed-up records that the current key is kept outside the server.\n' +
       'check prints the lockout checks of Instance settings (instance key, clock, passkey domain,\n' +
       'break-glass administrators); --url shows which passkeys a move to that address would break.\n' +
-      'Exit code 1 when a check needs attention.',
+      'Exit code 1 when a check needs attention.\n\n' +
+      "demote-owner makes DATABASE_URL's role pgkiln's owner without SUPERUSER, on the superuser connection\n" +
+      'SUPERUSER_DATABASE_URL (its server and role; DATABASE_URL\'s database): creates the role or takes SUPERUSER\n' +
+      "from it, gives it the database and the old owner's objects, ADMIN OPTION on pgkiln's roles, pg_cron and the\n" +
+      'statistics it needs, and takes SUPERUSER from the old owner. One transaction; it refuses when pgkiln would be\n' +
+      'locked out, and running it again changes nothing. Stop the servers first.',
     options: { reason: { type: 'string' }, grace: { type: 'string' }, 'dry-run': { type: 'boolean' }, url: { type: 'string' }, production: { type: 'boolean' } },
     optionHelp: [
       ['--reason <text>', 'reset-2fa: why (in the activity log and the mail)'],
       ['--grace <days>', 'set-2fa-policy: days developers have to set up an app (0 to 90, default 7)'],
-      ['--dry-run', 'rotate-key: count what would be re-encrypted, change nothing'],
+      ['--dry-run', 'rotate-key: count what would be re-encrypted; demote-owner: print the statements; change nothing'],
       ['--url <url>', 'check: the public address to check passkeys against (default PUBLIC_URL)'],
     ],
     positionals: [1, 2],
     async run(v, [action, arg]) {
+      // (sprint 232) on a superuser connection, before any pool of the owner's
+      if (action === 'demote-owner') {
+        if (arg !== undefined) throw new UsageError('demote-owner takes no argument');
+        const { demoteOwner, describePlan, ownerSignsIn, extensionsSetting } = await import('../owner-role.ts');
+        const ownerUrl = process.env.DATABASE_URL ?? '';
+        const su = process.env.SUPERUSER_DATABASE_URL ?? '';
+        if (!URL.canParse(ownerUrl) || !URL.canParse(su))
+          throw new UsageError('set DATABASE_URL to the owner pgkiln should use (a new role, e.g. pgkiln_owner, with its password) and SUPERUSER_DATABASE_URL to a superuser of the same server');
+        const dry = !!v['dry-run'];
+        const plan = await demoteOwner({ ownerUrl, superuserUrl: su, dryRun: dry, extensions: extensionsSetting() });
+        const lines = describePlan(plan);
+        out(lines.length ? `${lines.join('\n')}\n` : '');
+        if (!plan.steps.length) {
+          out(`${plan.owner} is pgkiln's owner without SUPERUSER already; nothing to do.\n`);
+          return EXIT.ok;
+        }
+        if (dry) {
+          out(`Dry run: ${plan.steps.length} statement(s) would run in one transaction; nothing changed.\n`);
+          return EXIT.ok;
+        }
+        const problem = await ownerSignsIn(ownerUrl);
+        if (problem) {
+          out(`${plan.steps.length} statement(s) applied, but DATABASE_URL can't be used yet: ${problem}. Check pg_hba.conf and the password in DATABASE_URL.\n`);
+          return EXIT.differences;
+        }
+        out(`${plan.owner} is pgkiln's owner now, without SUPERUSER (${plan.steps.length} statement(s) applied${plan.oldOwner ? `; objects moved from ${plan.oldOwner}` : ''}). Start pgkiln with this DATABASE_URL; keep SUPERUSER_DATABASE_URL out of its settings.\n`);
+        return EXIT.ok;
+      }
       process.env.RUNTIME_DATABASE_URL ??= process.env.DATABASE_URL; // the CLI runs as the owner
       const mfa = await import('../mfa.ts');
       const { logActivity } = await import('../session.ts');
@@ -879,7 +913,7 @@ const COMMANDS: Record<string, Command> = {
           if (!rpId) out('(passkey domain not checked: set PUBLIC_URL or pass --url)\n');
           return checks.attention(list) ? EXIT.differences : EXIT.ok;
         }
-        throw new UsageError(`unknown action ${action}: use reset-2fa, set-2fa-policy, builder-sign-in, rotate-key, key-backed-up or check`);
+        throw new UsageError(`unknown action ${action}: use reset-2fa, set-2fa-policy, builder-sign-in, rotate-key, key-backed-up, check or demote-owner`);
       } finally {
         await closePools();
       }

@@ -380,6 +380,7 @@ jobs:
         run: |
           cp .env.example .env
           sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/; s/^RUNTIME_PASSWORD=$/RUNTIME_PASSWORD=$(openssl rand -hex 24)/" .env
+          sed -i "s/^OWNER_PASSWORD=$/OWNER_PASSWORD=$(openssl rand -hex 24)/" .env
           sed -i "s/^PGKILN_SECRET_KEY=$/PGKILN_SECRET_KEY=$(openssl rand -hex 24)/; s/^PGKILN_ADMIN_PASSWORD=$/PGKILN_ADMIN_PASSWORD=ci-admin-password-0123/" .env
           echo PGKILN_EXAMPLE=hr >> .env
           docker compose up -d --build --wait --wait-timeout 300
@@ -388,43 +389,65 @@ jobs:
           curl -fsS http://127.0.0.1:3100/healthz
           curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
           curl -fsS -o /dev/null http://127.0.0.1:3100/builder/login
+      # (sprint 232) pgkiln_owner, not the superuser postgres
+      - name: The owner is no superuser
+        working-directory: deploy
+        run: ../scripts/check-compose-owner.sh
       - name: pg_cron works (SQL Workshop › Scheduling)
         working-directory: deploy
         run: ../scripts/check-compose-pgcron.sh
+      - name: A second start changes nothing
+        working-directory: deploy
+        run: |
+          since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          docker compose restart pgkiln
+          docker compose up -d --wait --wait-timeout 300
+          docker compose logs pgkiln --since "$since" | tee /tmp/second.log
+          if grep -q "database owner pgkiln_owner:" /tmp/second.log; then echo "the second start changed the owner again"; exit 1; fi
       - name: Logs
         if: always()
         working-directory: deploy
         run: docker compose logs
 
   docker-upgrade:
-    # what a user runs to upgrade: docker compose pull, then docker compose up -d. An older release stands in for
-    # a stale :latest; the pull must replace it (it didn't with pull_policy: missing) and up -d must recreate the
-    # container on the new image, which migrates the database
+    # (sprint 232) what a user of 0.111.0 runs to upgrade: that release's compose.yaml and image made the volume (its
+    # superuser pgkiln was also pgkiln's owner); then the current compose.yaml, OWNER_PASSWORD added to .env, and
+    # docker compose up -d with this commit's image. The start must move pgkiln to pgkiln_owner (no superuser) and keep
+    # the data, the applications and pg_cron working
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Start an older release as :latest
+        with:
+          fetch-depth: 0
+      - name: Start 0.111.0 with its own compose.yaml
         working-directory: deploy
         run: |
-          cp .env.example .env
+          git show v0.111.0:deploy/compose.yaml > compose.yaml
+          git show v0.111.0:deploy/.env.example > .env
           sed -i "s/^POSTGRES_PASSWORD=$/POSTGRES_PASSWORD=$(openssl rand -hex 24)/; s/^RUNTIME_PASSWORD=$/RUNTIME_PASSWORD=$(openssl rand -hex 24)/" .env
           sed -i "s/^PGKILN_SECRET_KEY=$/PGKILN_SECRET_KEY=$(openssl rand -hex 24)/; s/^PGKILN_ADMIN_PASSWORD=$/PGKILN_ADMIN_PASSWORD=ci-admin-password-0123/" .env
           echo PGKILN_EXAMPLE=hr >> .env
-          docker pull pgkiln/pgkiln:0.50.0
-          docker tag pgkiln/pgkiln:0.50.0 pgkiln/pgkiln:latest
+          echo PGKILN_IMAGE=pgkiln/pgkiln:0.111.0 >> .env
           docker compose up -d --wait --wait-timeout 300
-      - name: Upgrade with docker compose pull
+          curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
+          # a pg_cron job of the old owner, to be moved to the new one
+          docker compose exec -T db psql -U pgkiln -d pgkiln -v ON_ERROR_STOP=1 -c "select cron.schedule('ci old job', '0 3 * * *', 'select 1')"
+      - name: Upgrade to this commit's compose.yaml and image
         working-directory: deploy
         run: |
-          old=$(docker image inspect -f '{{.Id}}' pgkiln/pgkiln:0.50.0)
-          docker compose pull pgkiln
-          new=$(docker image inspect -f '{{.Id}}' pgkiln/pgkiln:latest)
-          [ "$new" != "$old" ] || { echo "docker compose pull kept the old image"; exit 1; }
-          docker compose up -d --wait --wait-timeout 300
-          [ "$(docker inspect -f '{{.Image}}' "$(docker compose ps -q pgkiln)")" = "$new" ] || { echo "the container still runs the old image"; exit 1; }
+          git checkout compose.yaml
+          sed -i '/^PGKILN_IMAGE=/d' .env
+          echo "OWNER_PASSWORD=$(openssl rand -hex 24)" >> .env
+          docker compose up -d --build --wait --wait-timeout 300
           curl -fsS http://127.0.0.1:3100/healthz
           curl -fsS -o /dev/null http://127.0.0.1:3100/a/hr/login
-      # 0.50.0 didn't create pg_cron; the published :latest (0.106.0 or later) does, on the database compose.yaml builds
+          docker compose logs pgkiln | grep -q "its superuser is pgkiln" || { echo "the start didn't find the old superuser"; exit 1; }
+          [ "$(docker compose exec -T db psql -U pgkiln -d pgkiln -Atc "select username from cron.job where jobname = 'ci old job'")" = pgkiln_owner ] \
+            || { echo "the old owner's pg_cron job wasn't moved"; exit 1; }
+          [ "$(docker compose exec -T db psql -U pgkiln -d pgkiln -Atc "select count(*) from hr.emp")" -gt 0 ] || { echo "HR's data is gone"; exit 1; }
+      - name: The owner is no superuser
+        working-directory: deploy
+        run: ../scripts/check-compose-owner.sh
       - name: pg_cron works after the upgrade
         working-directory: deploy
         run: ../scripts/check-compose-pgcron.sh

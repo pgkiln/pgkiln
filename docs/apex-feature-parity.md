@@ -437,6 +437,9 @@ Small but real differences, for teams comparing the two:
   passkeys of another domain (also before a move, with `--url`) and single sign-on without a break-glass
   administrator; `pgkiln admin rotate-key` changes the instance key in one transaction
   ([chapter 3](guide/03-builder.md#lockout-checks)).
+- (sprint 232) **No superuser at run time**: the Docker setup runs pgkiln as an owner without `SUPERUSER`; a
+  superuser connection is used only by the start (and `pgkiln admin demote-owner`) and never reaches the server
+  ([chapter 1](guide/01-installation.md#a-non-superuser-owner)). APEX's runtime schemas are not DBA accounts either.
 - One RLS policy set protects both the web UI and the REST API.
 - An import can be checked before it commits (`pgkiln import --check`): SQL that names a missing
   table or column refuses the deployment instead of failing at run time.

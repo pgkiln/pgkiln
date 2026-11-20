@@ -43,4 +43,5 @@ EXPOSE 3100
 # start period: the start script waits up to 2 minutes for the database, then migrates
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5m --retries=3 \
   CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3100) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
-CMD ["node", "--import", "tsx", "scripts/docker-start.ts"]
+# (sprint 232) prepares the database, then runs the server without the superuser's settings
+CMD ["sh", "scripts/docker-entrypoint.sh"]

@@ -17,10 +17,19 @@
 // 4. Replaces the builder's admin / admin with PGKILN_ADMIN_PASSWORD; while
 //    admin still has that password, the server doesn't start.
 // 5. Installs an example application (PGKILN_EXAMPLE=hr) when asked.
+//
+// (sprint 232) With SUPERUSER_DATABASE_URL (deploy/compose.yaml sets it for the bundled database), DATABASE_URL's
+// role is no superuser: before migrating, the start makes it one with LOGIN CREATEROLE NOSUPERUSER that owns the
+// database (and pgkiln's objects, when an older install made a superuser their owner: src/owner-role.ts), does once
+// what needs a superuser (pg_cron, PGKILN_EXTENSIONS) and migrates as the owner; installing pgkiln needs a
+// superuser (migrate.ts needsSuperuser), so the owner is one during that run only. The superuser's URL and password
+// never reach the server: `--prepare` stops after preparing, and the image's entry point starts the server without
+// them (scripts/docker-entrypoint.sh); started without it, they are removed from the environment first.
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { root } from '../src/env.ts';
-import { connectWhenReady, migrate } from '../src/migrate.ts';
+import { connectWhenReady, migrate, needsSuperuser, pendingMigrations } from '../src/migrate.ts';
+import { applyOwner, describePlan, extensionsSetting, planOwner } from '../src/owner-role.ts';
 
 const say = (s: string) => console.log(`pgkiln: ${s}`);
 const fail = (s: string): never => {
@@ -45,9 +54,19 @@ function dbUrl(name: string, hint: string) {
 
 if ((process.env.PGKILN_SECRET_KEY ?? '').length < 32)
   problems.push('PGKILN_SECRET_KEY needs at least 32 characters (e.g. `openssl rand -hex 24`); it encrypts stored secrets: keep it, and keep it out of database backups');
-const ownerUrl = dbUrl('DATABASE_URL', 'set POSTGRES_PASSWORD, or DATABASE_URL for your own server');
+// the variables the server must not see
+const SUPERUSER_ENV = ['SUPERUSER_DATABASE_URL', 'POSTGRES_PASSWORD'];
+const superuser = (process.env.SUPERUSER_DATABASE_URL ?? '').trim();
+const ownerUrl = dbUrl('DATABASE_URL', superuser ? 'set OWNER_PASSWORD, new in pgkiln 0.112.0: the password of pgkiln_owner, the database owner without SUPERUSER (e.g. `openssl rand -hex 24`)' : 'set POSTGRES_PASSWORD, or DATABASE_URL for your own server');
 const runtimeUrl = dbUrl('RUNTIME_DATABASE_URL', 'set RUNTIME_PASSWORD, or RUNTIME_DATABASE_URL for your own server');
 if (ownerUrl.username && runtimeUrl.username === ownerUrl.username) problems.push('RUNTIME_DATABASE_URL must use the runtime role (pgkiln_runtime), not the owner');
+// the superuser connection: its server and role, DATABASE_URL's database
+const suUrl = superuser ? dbUrl('SUPERUSER_DATABASE_URL', 'set POSTGRES_PASSWORD, the bundled database\'s superuser password') : null;
+if (suUrl) {
+  suUrl.pathname = ownerUrl.pathname;
+  if (suUrl.username && suUrl.username === ownerUrl.username)
+    problems.push(`DATABASE_URL and SUPERUSER_DATABASE_URL both sign in as ${decodeURIComponent(ownerUrl.username)}: pgkiln's owner is a role of its own without SUPERUSER (deploy/compose.yaml: pgkiln_owner, with OWNER_PASSWORD)`);
+}
 const adminPassword = process.env.PGKILN_ADMIN_PASSWORD ?? '';
 if (adminPassword && (adminPassword.length < 12 || adminPassword === 'admin')) problems.push('PGKILN_ADMIN_PASSWORD needs at least 12 characters');
 if (problems.length) fail(`can't start; fix these in .env (see deploy/.env.example):\n  - ${problems.join('\n  - ')}`);
@@ -78,16 +97,34 @@ async function signsIn(url: URL): Promise<'yes' | 'no' | 'any' | 'unknown'> {
   }
 }
 
-// wait for the database (it may still be starting), then hold the lock while migrating
-const lock = await connectWhenReady(ownerUrl.href, 'pgkiln-start', 120, () => say('waiting for the database …')).catch((e) =>
+// wait for the database (it may still be starting); the bundled database of pgkiln 0.111.0 and older has no role
+// postgres: its superuser is pgkiln (POSTGRES_USER then), with the same password
+async function connectSuperuser(url: URL): Promise<pg.Client> {
+  try {
+    return await connectWhenReady(url.href, 'pgkiln-start', 120, () => say('waiting for the database …'));
+  } catch (e) {
+    if ((e as { code?: string }).code !== '28P01' || url.username !== 'postgres' || url.hostname !== 'db') throw e;
+    const old = new URL(url.href);
+    old.username = 'pgkiln';
+    const c = await connectWhenReady(old.href, 'pgkiln-start', 5).catch(() => {
+      throw e;
+    });
+    say('the bundled database was made by pgkiln 0.111.0 or older: its superuser is pgkiln (POSTGRES_SUPERUSER=pgkiln in .env skips the first try)');
+    url.username = old.username;
+    return c;
+  }
+}
+const connectFailed = (e: unknown, url: URL, name: string) =>
   fail(
     (e as { code?: string }).code === '28P01'
-      ? ownerUrl.hostname === 'db'
-        ? `the database refused the password in DATABASE_URL. The bundled database keeps the POSTGRES_PASSWORD of its first start (in the volume pgdata): put that one back, or change it inside the database first (docs/guide/01-installation.md, "Docker").`
-        : `the database at ${ownerUrl.hostname} refused the user or password in DATABASE_URL.`
+      ? url.hostname === 'db'
+        ? `the database refused the password in ${name}. The bundled database keeps the POSTGRES_PASSWORD of its first start (in the volume pgdata): put that one back, or change it inside the database first (docs/guide/01-installation.md, "Docker").`
+        : `the database at ${url.hostname} refused the user or password in ${name}.`
       : `can't connect to the database: ${(e as Error).message}`,
-  ),
-);
+  );
+const lock = suUrl
+  ? await connectSuperuser(suUrl).catch((e) => connectFailed(e, suUrl, 'SUPERUSER_DATABASE_URL'))
+  : await connectWhenReady(ownerUrl.href, 'pgkiln-start', 120, () => say('waiting for the database …')).catch((e) => connectFailed(e, ownerUrl, 'DATABASE_URL'));
 const q = (sql: string, params: unknown[] = []) => lock.query(sql, params);
 await q(`select pg_advisory_lock(hashtext('pgkiln-migrate'))`);
 try {
@@ -95,9 +132,31 @@ try {
   const roles = [runtimeRole, 'pgkiln_authenticator'];
   const existing = async () => new Set<string>((await q(`select rolname from pg_roles where rolname = any($1)`, [roles])).rows.map((r) => r.rolname));
   const before = await existing();
+  // (232) the owner without SUPERUSER, made by the superuser connection; a superuser only while it installs
+  const owner = { owner: decodeURIComponent(ownerUrl.username), password: decodeURIComponent(ownerUrl.password), extensions: extensionsSetting() };
+  const ownerStep = async (elevated: boolean) => {
+    const plan = await planOwner(lock, { ...owner, elevated });
+    if (plan.problems.length) fail(`can't make ${owner.owner} pgkiln's owner: ${plan.problems.join('; ')}`);
+    try {
+      await applyOwner(lock, plan, elevated);
+    } catch (e) {
+      fail(`can't make ${owner.owner} pgkiln's owner: ${(e as Error).message}`);
+    }
+    if (plan.steps.length || plan.notes.length) say(`database owner ${owner.owner}:\n  ${describePlan(plan, { brief: true }).join('\n  ')}`);
+  };
+  let elevated = false;
+  if (suUrl) {
+    if (!(await q(`select rolsuper from pg_roles where rolname = session_user`)).rows[0].rolsuper)
+      fail(`SUPERUSER_DATABASE_URL signs in as ${decodeURIComponent(suUrl.username)}, which is not a superuser`);
+    elevated = needsSuperuser(await pendingMigrations(root, suUrl.href));
+    await ownerStep(elevated);
+  }
   const applied = await migrate({ root, databaseUrl: ownerUrl.href, example: example || null, log: (s) => process.stdout.write(s) });
   const fresh = applied.some((f) => f.endsWith('/001_meta.sql'));
   say(applied.length ? `${applied.length} file(s) applied${fresh ? ' (new install)' : ''}` : 'the database is up to date');
+  if (suUrl) await ownerStep(false);
+  else if ((await q(`select rolsuper from pg_roles where rolname = session_user`)).rows[0].rolsuper)
+    say('DATABASE_URL signs in as a superuser: give pgkiln an owner without SUPERUSER (SUPERUSER_DATABASE_URL, or pgkiln admin demote-owner; docs/guide/01-installation.md, "A non-superuser owner")');
 
   const setPassword = async (role: string, password: string, done: string, what: string) => {
     try {
@@ -153,4 +212,7 @@ try {
   await lock.end();
 }
 
+if (process.argv.includes('--prepare')) process.exit(0);
+// (232) the server never sees the superuser's password
+for (const k of SUPERUSER_ENV) delete process.env[k];
 await import('../src/server.ts');

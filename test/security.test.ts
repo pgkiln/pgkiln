@@ -19162,3 +19162,190 @@ describe('sprint 230 AX-9..11', () => {
     assert.match(n, /permission denied/);
   });
 });
+
+describe('sprint 232 the owner without SUPERUSER', () => {
+  // a scratch database on the tests' server; roles are the server's, so whatever touches pgkiln's roles runs inside a
+  // transaction that is rolled back
+  const DB = 'pgkiln_sec232';
+  const at = (db: string, user?: string, password?: string) => {
+    const u = new URL(ownerUrl);
+    u.pathname = `/${db}`;
+    if (user) {
+      u.username = user;
+      u.password = password ?? '';
+    }
+    return u.href;
+  };
+  let superuser = false;
+  let su: import('pg').Client;
+  before(async () => {
+    superuser = !!(await owner.one<{ s: boolean }>(`select rolsuper as s from pg_roles where rolname = session_user`))?.s;
+    if (!superuser) return;
+    await owner.query(`drop database if exists ${DB} with (force)`);
+    await owner.query(`create database ${DB}`);
+    const pg = (await import('pg')).default;
+    su = new pg.Client({ connectionString: at(DB) });
+    await su.connect();
+  });
+  after(async () => {
+    if (!superuser) return;
+    await su.end();
+    await owner.query(`drop database if exists ${DB} with (force)`);
+    await owner.query(`drop role if exists sec232_nosuper`);
+  });
+
+  test('the lockout check points at the Docker setup and pgkiln admin demote-owner', () => {
+    const c = ownerRoleCheck({ name: 'pgkiln', superuser: true });
+    assert.match(c.detail, /OWNER_PASSWORD/);
+    assert.match(c.detail, /pgkiln admin demote-owner/);
+  });
+
+  test('installing (migrations before 175) needs a superuser; upgrades from 175 on do not', async () => {
+    const { needsSuperuser } = await import('../src/migrate.ts');
+    assert.equal(needsSuperuser(['001_meta.sql', '190_x.sql']), true);
+    assert.equal(needsSuperuser(['db/migrations/166_workshop_developer_login.sql']), true);
+    assert.equal(needsSuperuser(['175_developer_login_meta_lockdown.sql', '190_x.sql']), false);
+    assert.equal(needsSuperuser([]), false);
+  });
+
+  test('a non-superuser owner installing pgkiln is told so before anything is applied', async (t) => {
+    if (!superuser) return t.skip('needs a superuser connection');
+    const db = `${DB}_b`;
+    await owner.query(`drop database if exists ${db} with (force)`);
+    await owner.query(`drop role if exists sec232_nosuper`);
+    await owner.query(`create role sec232_nosuper login createrole password 'sec232-pw'`);
+    await owner.query(`create database ${db} owner sec232_nosuper`);
+    try {
+      const { migrate } = await import('../src/migrate.ts');
+      await assert.rejects(migrate({ root: process.cwd(), databaseUrl: at(db, 'sec232_nosuper', 'sec232-pw'), log: () => {} }), /needs a superuser/);
+      const pg = (await import('pg')).default;
+      const c = new pg.Client({ connectionString: at(db) });
+      await c.connect();
+      try {
+        assert.equal((await c.query(`select to_regnamespace('meta') is null as none`)).rows[0].none, true, 'nothing was applied');
+      } finally {
+        await c.end();
+      }
+    } finally {
+      await owner.query(`drop database if exists ${db} with (force)`);
+    }
+  });
+
+  test('planOwner refuses a connection that is no superuser, the bootstrap superuser and the same role twice', async (t) => {
+    if (!superuser) return t.skip('needs a superuser connection');
+    const { planOwner } = await import('../src/owner-role.ts');
+    const boot = (await su.query(`select rolname from pg_roles where oid = 10`)).rows[0].rolname;
+    const me = (await su.query(`select session_user as u`)).rows[0].u;
+    assert.match((await planOwner(su, { owner: me })).problems.join(), /both sign in as/);
+    // (when the tests' superuser is the bootstrap superuser itself, the check above comes first)
+    if (boot !== me) assert.match((await planOwner(su, { owner: boot })).problems.join(), /bootstrap superuser/);
+    const pg = (await import('pg')).default;
+    const rt = new pg.Client({ connectionString: runtimeUrl });
+    await rt.connect();
+    try {
+      assert.match((await planOwner(rt, { owner: 'sec232_owner' })).problems.join(), /is not a superuser/);
+    } finally {
+      await rt.end();
+    }
+  });
+
+  test('a superuser owner of an older install: its objects, default privileges and memberships move to the new owner (rolled back)', async (t) => {
+    if (!superuser) return t.skip('needs a superuser connection');
+    const { planOwner, ownerProblems, describePlan } = await import('../src/owner-role.ts');
+    await su.query('begin');
+    try {
+      await su.query(`create role sec232_old login superuser password 'old-pw'`);
+      await su.query(`create role sec232_app nologin`);
+      await su.query(`create role sec232_member nologin`);
+      await su.query(`grant sec232_app to sec232_member`);
+      await su.query(`set role sec232_old`);
+      await su.query(`create schema meta`);
+      await su.query(`create table meta.app (id serial primary key, db_role text)`);
+      await su.query(`create table meta.workspace_role (role_name text)`);
+      await su.query(`insert into meta.app (db_role) values ('sec232_app')`);
+      await su.query(`create view meta.app_v as select * from meta.app`);
+      await su.query(`create type meta.colour as enum ('red')`);
+      await su.query(`create domain meta.positive as int check (value > 0)`);
+      await su.query(`create function meta.f() returns int language sql as 'select 1'`);
+      await su.query(`create schema sec232_data`);
+      await su.query(`alter default privileges in schema sec232_data grant select on tables to sec232_app`);
+      await su.query(`reset role`);
+
+      const plan = await planOwner(su, { owner: 'sec232_owner', password: 'new-owner-pw' });
+      assert.deepEqual(plan.problems, []);
+      assert.equal(plan.oldOwner, 'sec232_old');
+      const sql = plan.steps.map((s) => s.sql).join('\n');
+      assert.match(sql, /create role "sec232_owner" login createrole password/);
+      assert.match(sql, /alter database "pgkiln_sec232" owner to "sec232_owner"/);
+      for (const o of ['alter schema meta', 'alter schema sec232_data', 'alter table meta.app ', 'alter view meta.app_v', 'alter type meta.colour', 'alter domain meta.positive', 'alter function meta.f()'])
+        assert.ok(sql.includes(`${o}${o.endsWith(' ') ? '' : ' '}owner to "sec232_owner"`.replace('  ', ' ')), o);
+      assert.doesNotMatch(sql, /alter sequence meta\.app_id_seq/, "a serial column's sequence follows its table");
+      assert.match(sql, /alter default privileges for role "sec232_owner" in schema "sec232_data" grant SELECT on tables to "sec232_app"/);
+      assert.match(sql, /grant "sec232_app" to "sec232_owner" with admin option, inherit true, set true/);
+      assert.match(sql, /grant "sec232_app" to "sec232_member" with admin false, inherit true, set true granted by "sec232_owner"/);
+      assert.match(sql, /alter role "sec232_old" nosuperuser nologin/);
+      // the password never shows in the log or a dry run
+      assert.doesNotMatch(describePlan(plan).join('\n'), /new-owner-pw/);
+
+      for (const s of plan.steps) await su.query(s.sql);
+      assert.deepEqual(await ownerProblems(su, 'sec232_owner'), []);
+      const r = (await su.query(`select (select rolsuper from pg_roles where rolname = 'sec232_owner') as owner_super,
+                                        (select rolsuper or rolcanlogin from pg_roles where rolname = 'sec232_old') as old_power,
+                                        (select count(*)::int from pg_class where relnamespace = 'meta'::regnamespace and relowner <> 'sec232_owner'::regrole) as foreign_meta,
+                                        (select grantor::regrole::text from pg_auth_members where roleid = 'sec232_app'::regrole and member = 'sec232_member'::regrole) as grantor`)).rows[0];
+      assert.deepEqual(r, { owner_super: false, old_power: false, foreign_meta: 0, grantor: 'sec232_owner' });
+      // the owner manages the application's role (ADMIN OPTION) and switches to it
+      // createrole_self_grant is the role's setting, applied when it signs in (set role doesn't): as the server's pool
+      assert.match((await su.query(`select array_to_string(setconfig, ',') as c from pg_db_role_setting where setrole = 'sec232_owner'::regrole`)).rows[0]?.c ?? '', /createrole_self_grant=set, *inherit/);
+      await su.query(`set role sec232_owner`);
+      await su.query(`set local createrole_self_grant = 'set, inherit'`);
+      await su.query(`grant sec232_app to sec232_member granted by sec232_owner`);
+      await su.query(`revoke sec232_app from sec232_member`);
+      await su.query(`create role sec232_new nologin`);
+      await su.query(`create schema sec232_new authorization sec232_new`);
+      // Database Users' Drop: REASSIGN OWNED and DROP OWNED need the role's privileges
+      await su.query(`reassign owned by sec232_new to sec232_owner`);
+      await su.query(`drop owned by sec232_app`);
+      await su.query(`reset role`);
+      // again: nothing left to do (the password is the same)
+      const again = await planOwner(su, { owner: 'sec232_owner', password: 'new-owner-pw' });
+      assert.deepEqual(again.steps.map((s) => s.sql).filter((s) => !/pg_read_all_stats|pg_signal_backend|sec232_new/.test(s)), []);
+    } finally {
+      await su.query('rollback');
+    }
+  });
+
+  test('applyOwner refuses, and changes nothing, when pgkiln would be locked out', async (t) => {
+    if (!superuser) return t.skip('needs a superuser connection');
+    const { planOwner, applyOwner } = await import('../src/owner-role.ts');
+    const plan = await planOwner(su, { owner: 'sec232_lock', password: 'lock-pw' });
+    // without the database's owner change, the owner would not own pgkiln's database
+    plan.steps = plan.steps.filter((s) => !/^alter database/.test(s.sql));
+    await assert.rejects(applyOwner(su, plan), /locked out: .*the database belongs to/);
+    assert.equal((await su.query(`select count(*)::int as n from pg_roles where rolname = 'sec232_lock'`)).rows[0].n, 0, 'rolled back');
+  });
+
+  test('pgkiln admin demote-owner needs both connections, and refuses the bootstrap superuser as the owner', async (t) => {
+    const { execFileSync } = await import('node:child_process');
+    const run = (env: Record<string, string>) => {
+      try {
+        return { code: 0, out: execFileSync('npx', ['tsx', 'src/cli/main.ts', 'admin', 'demote-owner', '--dry-run'], { env: { ...process.env, SUPERUSER_DATABASE_URL: '', ...env }, encoding: 'utf8', stdio: 'pipe' }) };
+      } catch (e) {
+        const x = e as { status: number; stdout: string; stderr: string };
+        return { code: x.status, out: `${x.stdout}${x.stderr}` };
+      }
+    };
+    const none = run({ SUPERUSER_DATABASE_URL: 'not a url' });
+    assert.notEqual(none.code, 0);
+    assert.match(none.out, /SUPERUSER_DATABASE_URL/);
+    if (!superuser) return t.skip('needs a superuser connection');
+    const boot = (await su.query(`select rolname from pg_roles where oid = 10`)).rows[0].rolname;
+    const me = (await su.query(`select session_user as u`)).rows[0].u;
+    if (boot === me) {
+      // the tests' own owner is the bootstrap superuser (CI): it can't be pgkiln's owner without SUPERUSER
+      const r = run({ DATABASE_URL: at(DB), SUPERUSER_DATABASE_URL: at(DB) });
+      assert.notEqual(r.code, 0);
+      assert.match(r.out, /both sign in as/);
+    }
+  });
+});

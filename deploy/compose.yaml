@@ -21,13 +21,16 @@ services:
     command: ["postgres", "-c", "shared_preload_libraries=pg_cron", "-c", "cron.database_name=pgkiln", "-c", "cron.timezone=${PGKILN_CRON_TIMEZONE:-UTC}"]
     restart: unless-stopped
     environment:
-      POSTGRES_USER: pgkiln
+      # (0.112.0) the superuser: only pgkiln's start signs in as it (SUPERUSER_DATABASE_URL below). pgkiln itself runs
+      # as pgkiln_owner, which owns the database without SUPERUSER. A volume made by pgkiln 0.111.0 or older has the
+      # superuser pgkiln instead (the start finds it; POSTGRES_SUPERUSER=pgkiln in .env says so)
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
       POSTGRES_DB: pgkiln
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "pgkiln", "-d", "pgkiln"]
+      test: ["CMD", "pg_isready", "-d", "pgkiln"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -49,7 +52,11 @@ services:
       - path: .env
         required: false
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgres://pgkiln:${POSTGRES_PASSWORD:-}@db:5432/pgkiln}
+      # the owner (migrations, the builder): a role without SUPERUSER, made and kept so by the start
+      DATABASE_URL: ${DATABASE_URL:-postgres://pgkiln_owner:${OWNER_PASSWORD:-}@db:5432/pgkiln}
+      # the bundled database's superuser, for the start only (scripts/docker-entrypoint.sh keeps it from the server);
+      # empty without POSTGRES_PASSWORD (your own server: set it there, or leave it out)
+      SUPERUSER_DATABASE_URL: ${SUPERUSER_DATABASE_URL:-${POSTGRES_PASSWORD:+postgres://${POSTGRES_SUPERUSER:-postgres}:${POSTGRES_PASSWORD}@db:5432/pgkiln}}
       RUNTIME_DATABASE_URL: ${RUNTIME_DATABASE_URL:-postgres://pgkiln_runtime:${RUNTIME_PASSWORD:-}@db:5432/pgkiln}
       # fixed inside the container (ports, Caddy); PGKILN_PORT sets the published port
       HOST: 0.0.0.0

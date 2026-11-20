@@ -80,8 +80,11 @@ The tests use it as their fixture: `npm test` and `npm run test:e2e` install it 
 2. Point `DATABASE_URL` in `.env` at it, then run `npm run db:migrate` (and `npm run example:hr` for the example application).
 3. Set `RUNTIME_DATABASE_URL` for the `pgkiln_runtime` role that the first migration creates (see below).
 
-The owner doesn't have to be a superuser: a role with `CREATEROLE` that owns the database is enough
-(`pgcrypto` is a trusted extension).
+(sprint 232) **Installing** pgkiln needs a superuser: two of its first migrations (166, 167) set the attributes of the
+workspaces' login roles in a way PostgreSQL only allows a superuser. Upgrades don't: once installed, the owner is
+better a role with `CREATEROLE` that owns the database and isn't a superuser. `pgkiln admin demote-owner` makes it one
+([below](#a-non-superuser-owner)); `npm run db:migrate` as a role that isn't a superuser says so before it changes
+anything.
 
 ### Installing into an existing database
 
@@ -136,38 +139,50 @@ falls back to the owner connection and prints a warning; don't run like that in 
 
 (sprint 185) Instance settings → *Lockout checks* (and `pgkiln admin check`) warn when `DATABASE_URL` signs in as a
 **superuser**: then migrations, the builder and an administrator's Owner connection could also read files on the
-server, run programs and change every database of the PostgreSQL server. The Docker image's bundled database makes
-`pgkiln` a superuser (the image's `POSTGRES_USER`); on a server of your own, make an owner without it:
+server, run programs and change every database of the PostgreSQL server. (sprint 232) The Docker setup doesn't run
+like that since 0.112.0 ([Docker](#docker)); on a server of your own, **`pgkiln admin demote-owner`** makes the owner a
+role without it. Stop pgkiln, then, with `DATABASE_URL` set to the owner pgkiln should use (a new role, e.g.
+`pgkiln_owner`, with its password; or the current owner when it isn't the server's bootstrap superuser) and
+`SUPERUSER_DATABASE_URL` to a superuser of the same server (its database part is ignored: the command works in
+`DATABASE_URL`'s database):
 
-```sql
--- as a superuser, in pgkiln's database (stop pgkiln first)
-create role pgkiln_owner login createrole password 'a-long-random-password';
-alter database pgkiln owner to pgkiln_owner;
-reassign owned by pgkiln to pgkiln_owner;
--- (PostgreSQL 16+) a CREATEROLE role may only change, grant and set the password of roles it has ADMIN OPTION on;
--- the roles the old owner made don't give it that: pgkiln's own, the workspaces' logins, the applications' roles
-do $$
-declare r text;
-begin
-  for r in select rolname from pg_roles
-            where rolname in ('pgkiln_runtime', 'pgkiln_app_code', 'pgkiln_authenticator', 'pgkiln_anon')
-               or rolname ~ '^pgkiln_ws[0-9]+_(run|dev)_'
-               or rolname in (select db_role from meta.app union select role_name from meta.workspace_role)
-  loop
-    execute format('grant %I to pgkiln_owner with admin option', r);
-  end loop;
-end $$;
--- the old owner keeps no power
-alter role pgkiln nosuperuser nologin;
+```bash
+export DATABASE_URL=postgres://pgkiln_owner:a-long-random-password@db-server:5432/pgkiln
+export SUPERUSER_DATABASE_URL=postgres://postgres:…@db-server:5432/pgkiln
+pgkiln admin demote-owner --dry-run   # the statements, nothing changed
+pgkiln admin demote-owner
 ```
 
-Then point `DATABASE_URL` at `pgkiln_owner` and start pgkiln again. Without the `ADMIN OPTION` grants (PostgreSQL 16
-and later) the server can't set the workspace logins' passwords, so the SQL Workshop doesn't connect ("permission
-denied to alter role"), and a new application's role can't be given to the logins. Default privileges the old owner
-set with `ALTER DEFAULT PRIVILEGES` (the application schemas' grants for tables made later) stay the old role's:
-`REASSIGN OWNED` doesn't move them. List them with `select pg_get_userbyid(defaclrole), defaclnamespace::regnamespace,
-defaclacl from pg_default_acl` and repeat them `for role pgkiln_owner`; drop the old role only after that
-(`drop owned by pgkiln; drop role pgkiln;`).
+In one transaction it
+
+- creates the role (`LOGIN CREATEROLE`, the password of `DATABASE_URL`), or takes `SUPERUSER` (and `BYPASSRLS`,
+  `REPLICATION`) from it, and makes it own the database;
+- moves every object of the old owner (the owner of schema `meta`) in this database to it: schemas, tables, views,
+  sequences, functions, types, foreign servers, large objects, one by one (`REASSIGN OWNED` can't move the objects of
+  the bootstrap superuser, which also owns the system catalogs). Event triggers stay a superuser's;
+- repeats the old owner's default privileges (`ALTER DEFAULT PRIVILEGES`, the application schemas' grants for tables
+  made later) for the new one;
+- (PostgreSQL 16 and later) gives it `ADMIN OPTION` on pgkiln's roles (`pgkiln_runtime`, `pgkiln_app_code`,
+  `pgkiln_authenticator`, `pgkiln_anon`, the workspaces' logins, the applications' roles, the masking roles): a
+  `CREATEROLE` role may only change, grant and set the password of roles it has that on. Memberships in those roles
+  another role granted are granted again by the owner, so it can revoke them later; and `createrole_self_grant = 'set,
+  inherit'` lets it switch to the roles it creates and gives it their privileges (`REASSIGN OWNED` and `DROP OWNED`, as
+  Database Users' *Drop* runs, need them), as a superuser had;
+- moves pg_cron jobs that ran as the old owner to it, creates pg_cron when the server loads it for this database,
+  grants `usage on schema cron`, `pg_read_all_stats`, `pg_signal_backend` and execute on `pg_stat_statements_reset`
+  (Scheduling, Top SQL, Sessions), and creates the extensions in `PGKILN_EXTENSIONS`;
+- takes `SUPERUSER` and `LOGIN` from the old owner, unless it is the server's bootstrap superuser or
+  `SUPERUSER_DATABASE_URL`'s own role.
+
+Before it commits, it checks that the owner can sign in, isn't a superuser, can create roles, owns the database,
+`meta` and its tables, and has `ADMIN OPTION` on pgkiln's roles; otherwise it rolls back and says what is wrong
+(nothing changed). Afterwards it signs in as `DATABASE_URL`. Running it again changes nothing. Then start pgkiln with
+the new `DATABASE_URL`, and keep `SUPERUSER_DATABASE_URL` out of its settings. Drop the old role once nothing needs
+it (`drop owned by pgkiln; drop role pgkiln;`).
+
+Without the `ADMIN OPTION` grants (PostgreSQL 16 and later) the server can't set the workspace logins' passwords, so
+the SQL Workshop doesn't connect ("permission denied to alter role"), and a new application's role can't be given to
+the logins.
 
 The owner needs `CREATEROLE` (application roles, workspace logins), `ADMIN OPTION` on those roles, and to own the
 database. It must be the owner of the `meta` schema and its tables itself, not a member of that role: row
@@ -190,7 +205,9 @@ which is read at startup; real environment variables take precedence.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `DATABASE_URL` | `postgres://pgkiln:pgkiln@localhost:5434/pgkiln` | Owner connection (builder, migrations; not the SQL Workshop since sprint 185: see above). Not a superuser, ideally |
+| `DATABASE_URL` | `postgres://pgkiln:pgkiln@localhost:5434/pgkiln` | Owner connection (builder, migrations; not the SQL Workshop since sprint 185: see above). Not a superuser, ideally ([a non-superuser owner](#a-non-superuser-owner)) |
+| `SUPERUSER_DATABASE_URL` | *(none)* | (0.112) A superuser of the same server, for the Docker start and `pgkiln admin demote-owner` only (never the server): it makes `DATABASE_URL`'s role the owner without `SUPERUSER`. Its database part is ignored |
+| `PGKILN_EXTENSIONS` | *(none)* | (0.112) Extensions the Docker start (or `demote-owner`) creates as the superuser, comma-separated, e.g. `postgres_fdw` for [Remote databases](03-builder.md); the owner can't create untrusted ones |
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
@@ -292,7 +309,7 @@ so SQL Workshop → Scheduling works right away:
 mkdir pgkiln && cd pgkiln
 curl -fsSLO https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/compose.yaml
 curl -fsSL -o .env https://raw.githubusercontent.com/pgkiln/pgkiln/main/deploy/.env.example
-# fill in POSTGRES_PASSWORD, RUNTIME_PASSWORD, PGKILN_SECRET_KEY (e.g. `openssl rand -hex 24` each)
+# fill in POSTGRES_PASSWORD, OWNER_PASSWORD, RUNTIME_PASSWORD, PGKILN_SECRET_KEY (e.g. `openssl rand -hex 24` each)
 # and PGKILN_ADMIN_PASSWORD (12+ characters) in .env
 docker compose up -d
 ```
@@ -302,9 +319,18 @@ builds the image from your copy instead.
 
 Open http://127.0.0.1:3100/builder and sign in as `admin` with `PGKILN_ADMIN_PASSWORD`.
 
+**Three database roles** (sprint 232, 0.112.0): the bundled database's superuser `postgres` (`POSTGRES_PASSWORD`),
+which only the start signs in as; `pgkiln_owner` (`OWNER_PASSWORD`), which owns pgkiln's database, runs the
+migrations and the builder, and is **not a superuser**; and `pgkiln_runtime` (`RUNTIME_PASSWORD`), which runs the
+applications. The start makes `pgkiln_owner` and keeps it as it should be ([a non-superuser
+owner](#a-non-superuser-owner): it is a superuser only while it installs pgkiln, which needs one), creates pg_cron
+and the extensions of `PGKILN_EXTENSIONS`, then starts the server without the superuser's URL and password
+(`scripts/docker-entrypoint.sh`): not even a program the server runs (pg_dump for Schema Export) gets them. On your own
+server, set `SUPERUSER_DATABASE_URL` for the same, or leave it out when an administrator has made the owner already.
+
 **What happens at each start** (`scripts/docker-start.ts`): the container checks the settings and
 lists everything missing at once (it doesn't start on empty or too short secrets), waits for the
-database, applies new migrations (with a lock, so several containers migrate once), and replaces
+database, makes the owner (see above), applies new migrations as it (with a lock, so several containers migrate once), and replaces
 the builder's `admin` / `admin` with `PGKILN_ADMIN_PASSWORD` (a password changed later in the
 builder is kept). `pgkiln_runtime` gets the password in `RUNTIME_DATABASE_URL` unless it
 already signs in with it; `pgkiln_authenticator` (PostgREST) gets `PGKILN_AUTHENTICATOR_PASSWORD`,
@@ -321,8 +347,9 @@ check uses it.
 
 **`POSTGRES_PASSWORD` counts at the first start only**: the bundled database keeps it in the volume
 `pgdata`. To change it later, change it in the database first
-(`docker compose exec db psql -U pgkiln -c "\password pgkiln"`), then in `.env`. A wrong password
-stops the container at once with a message saying so.
+(`docker compose exec db psql -U postgres -d pgkiln -c "\password postgres"`; `-U pgkiln` and `\password pgkiln` for a
+volume made by 0.111.0 or older), then in `.env`. A wrong password stops the container at once with a message saying
+so. `OWNER_PASSWORD` can change any time: the start sets it.
 
 **Settings** go in `deploy/.env`: the ones in `.env.example`, and any other setting of the
 [configuration reference](#configuration-reference).
@@ -335,7 +362,20 @@ stops the container at once with a message saying so.
 | `PGKILN_DOMAIN` | | With the `https` profile: Caddy gets a certificate for this name (its DNS must point at the machine, ports 80 and 443 open). Set `PUBLIC_URL=https://…`, `COOKIE_SECURE=true` and `TRUST_PROXY=true` with it. Installing apps on phones and push notifications need HTTPS |
 | `PGKILN_EXAMPLE` | | `hr` installs the HR example (its demo users have weak passwords: not on a public server) |
 | `PGKILN_IMAGE` | `pgkiln/pgkiln:latest` | The image to run, e.g. a fixed version (`pgkiln/pgkiln:0.31.0`) or `ghcr.io/pgkiln/pgkiln` |
+| `OWNER_PASSWORD` | | (0.112) The password of `pgkiln_owner`, pgkiln's database owner without `SUPERUSER`; required with the bundled database |
+| `POSTGRES_SUPERUSER` | `postgres` | (0.112) The bundled database's superuser. A volume made by pgkiln 0.111.0 or older has `pgkiln` (the start tries that one when `postgres` doesn't exist; setting it skips the try) |
+| `SUPERUSER_DATABASE_URL` | the bundled database's superuser | Your own server's superuser, for the start only ([a non-superuser owner](#a-non-superuser-owner)) |
+| `PGKILN_EXTENSIONS` | | Extensions the start creates as the superuser, e.g. `postgres_fdw` (Remote databases) |
 | `PGKILN_CRON_TIMEZONE` | `UTC` | The bundled database's `cron.timezone`: the time zone of pg_cron's schedules (e.g. `Europe/Amsterdam`) |
+
+**Upgrading from 0.111.0 or older** (sprint 232): in those versions the bundled database's superuser `pgkiln` was
+also pgkiln's owner. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`), take the current
+`deploy/compose.yaml`, add `OWNER_PASSWORD` (a new secret, `openssl rand -hex 24`) to `.env`, and
+`docker compose up -d`: the start signs in as `pgkiln` with `POSTGRES_PASSWORD` (the superuser it finds there), makes
+`pgkiln_owner`, moves pgkiln's schemas, tables, functions and pg_cron jobs to it in one transaction, and from then on
+pgkiln runs as `pgkiln_owner`; `pgkiln` stays the database's superuser (the server's first role can't lose that). The
+log lists what it did, and Instance settings → Lockout checks no longer warns "DATABASE_URL is a superuser". With the
+old `compose.yaml` pgkiln keeps running as before, with that warning.
 
 **Upgrading:** with the published image: `docker compose pull`, then `docker compose up -d` (with a
 fixed version in `PGKILN_IMAGE`, change it first); `up -d` replaces the container when the image changed, so
@@ -346,7 +386,8 @@ delete that line (or take the current `deploy/compose.yaml`) before the first up
 before 0.106.0 runs plain `postgres:17`, without pg_cron: take the current one to get it (same PostgreSQL major
 version and data volume; `docker compose up -d` builds the database image and restarts the database). The database
 image is built, not pulled: `docker compose pull` skips it, and `docker compose build --pull db` takes a newer
-PostgreSQL 17 minor release. Back up first (`docker compose exec db pg_dump -U pgkiln pgkiln > backup.sql`).
+PostgreSQL 17 minor release. Back up first (`docker compose exec db pg_dump -U postgres pgkiln > backup.sql`; `-U pgkiln` for a volume made by 0.111.0
+or older).
 Keep `PGKILN_SECRET_KEY`: without it, stored secrets (web credentials, AI keys, push keys, authenticator apps) can't
 be decrypted. Keep a copy outside the server and confirm it on Instance settings; to change it, use
 `pgkiln admin rotate-key` ([chapter 3](03-builder.md#lockout-checks)).
