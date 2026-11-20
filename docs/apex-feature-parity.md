@@ -27,6 +27,29 @@ the rows' notes, so they can be picked up without reading every row. Each links 
 | APEX import | **APEXlang** files; plug-in validations; legacy form processes, web service references, User Preferences, Print Report, geocoding, workflow and human task processes and plug-ins are reported, not mapped | [App Builder](#app-builder-and-development), [Logic and processing](#logic-and-processing) |
 | APEX dictionary views | The other ~200 APEX views (14 are in schema `apex`) | [App Builder](#app-builder-and-development) |
 
+**Open: found migrating a second Appsmith app (MG-17 … MG-29, planned as sprints 243–251)**
+
+(2026-11-21) The Appsmith app *Hewa-Techniek* (46 pages, ~450 queries, a Django REST API and Microsoft Graph) was
+rebuilt in pgkiln 0.113.0 as app `hewa`. It works, but these gaps needed a workaround in the app's own SQL or
+JavaScript, or changed how it behaves. Most go beyond what APEX offers; they are listed here because a team migrating
+from another low-code tool will hit them.
+
+| Card | Area | What's missing | Sprint |
+|---|---|---|---|
+| MG-17 | Web requests | A **binary request body**: `meta.web_request` takes text of at most 1 MB, so files can't be uploaded to another service (OneDrive, S3-like APIs, document stores) | 243 |
+| MG-18 | Document templates | The **PDF as data**: `meta.document_pdf` works in mail attachments only, so a drawn PDF can't be stored in a table or sent elsewhere | 245 |
+| MG-19 | Forms | A **form from a JSON schema** (Appsmith's JSON Form): fields defined as data, answers saved as `jsonb`, repeating rows for arrays; the Form Designer works on table columns only | 246 |
+| MG-20 | File items | A multi-file item whose **child table is shared** by several record types (`related_type` + `related_id`), and the files shown as a **gallery** of pictures; the child table now needs a foreign key to the record | 247 |
+| MG-21 | Custom authentication | **Password hashes of other systems** (Django `pbkdf2_sha256`, bcrypt, argon2id) checked by the server; in PL/pgSQL PBKDF2 takes ~1.5 s per sign-in | 248 |
+| MG-22 | Branches, links | **Back to the calling page**: a branch's target is a fixed page number, so a page opened from several pages needs a branch per origin; links back can't carry item values | 249 |
+| MG-23 | Modal dialog pages | A branch from a dialog to **another page** only closes the dialog; the page below should go to the target | 249 |
+| MG-24 | Mail | A **test redirect**: all mail of an application (or installation) to one address, with a subject prefix, for test and acceptance environments | 250 |
+| MG-25 | Mail, links | **Absolute links** in SQL (`meta.page_url` gives a path) for links in mails | 250 |
+| MG-26 | Document templates | **Images in table cells** (a logo beside the title, two signatures side by side), `<br>` inside a paragraph, and a warning when a query column hides a built-in name (`rows`) | 245 |
+| MG-27 | Buttons | **`&ITEM.` in button labels** (item labels have them since MG-11): a translated form's submit button | 249 |
+| MG-28 | File import (developer experience) | Import errors that **name the file and key** (a cast, a duplicate item, a check constraint); `condition` (regions, buttons) and `condition_expr` (other components) accepted either way; a clear message for a process point that only computations have | 251 |
+| MG-29 | File items | **OneDrive / SharePoint as object storage** for file items (Microsoft Graph with a web credential), next to S3-compatible buckets; needs MG-17 | 244 |
+
 **Not planned: a deliberate choice**
 
 | What | Instead |
