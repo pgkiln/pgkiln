@@ -102,6 +102,8 @@ export async function adviseTarget(db: Db, target: string, o: { source?: { doc: 
   let id: number;
   let checked = 0;
   const findings: AdviseFinding[] = [];
+  // (sprint 242) the keys filled from column defaults: their file is known (or there is none), not looked up
+  const notes = new Set<AdviseFinding>();
   const collect = async (appId: number) => {
     const r = await advise(appId, db, o.planDb ? { db: o.planDb } : {});
     checked = r.checked;
@@ -119,7 +121,20 @@ export async function adviseTarget(db: Db, target: string, o: { source?: { doc: 
       // (sprint 186) a file without a role checks as app_<alias> (made in this transaction, which is rolled back)
       const { importRole } = await import('../app-role.ts');
       await importRole(db, source.doc, { alias: temp });
-      id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(source.doc), temp])).rows[0].id;
+      // (sprint 242, MG-16) keys the files leave out take the column defaults, as on import; each file is noted
+      const { explainNotNull, fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
+      for (const f of fillDefaults(source.doc, await loadColumnDefaults(db)))
+        notes.add({
+          severity: 'info', where: f.where, field: f.keys.join(', '), kind: null, label: '', pageNo: null, file: f.file,
+          message: `not in the file: the import gives ${f.keys.length === 1 ? 'it' : 'them'} the column default${f.keys.length === 1 ? '' : 's'}`,
+        });
+      findings.push(...notes);
+      try {
+        id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(source.doc), temp])).rows[0].id;
+      } catch (e) {
+        const why = explainNotNull(e, source.doc);
+        throw why ? new UsageError(why) : e;
+      }
       await collect(id);
     } finally {
       await db.query('rollback');
@@ -139,7 +154,7 @@ export async function adviseTarget(db: Db, target: string, o: { source?: { doc: 
     }
   }
   const paths = [...files.keys()];
-  for (const f of findings) f.file = fileOf(paths, f);
+  for (const f of findings) if (!notes.has(f)) f.file = fileOf(paths, f);
   return { alias, dir, checked, findings };
 }
 

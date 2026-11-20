@@ -283,6 +283,8 @@ const COMMANDS: Record<string, Command> = {
       if (!alias) throw new Error('the export has no alias: use --alias');
       const check = v['dry-run'] ? 'dry-run' : v.check ? (v.force ? 'force' : 'check') : 'off';
       const r = await withDb((db) => importDoc(db, doc, { alias, replace: !!v.replace, check, by: `pgkiln import (${userInfo().username})` }));
+      // (sprint 242, MG-16) keys the files leave out, filled from the column defaults
+      out((await import('../import-defaults.ts')).formatFilled(r.filled));
       if (check !== 'off') out(formatFindings(r.findings));
       if (!r.committed) {
         out(check === 'dry-run'
@@ -428,10 +430,14 @@ const COMMANDS: Record<string, Command> = {
     async run(v, [alias, path]) {
       const { compareFiles, unifiedDiff } = await import('./diff.ts');
       const source = await readSource(path);
-      const theirs = source.files ?? docToFiles(source.doc);
+      // (sprint 242, MG-16) a key the files leave out compares as the column default the import gives it
+      const { fillDefaults, fillFiles, loadColumnDefaults } = await import('../import-defaults.ts');
+      const [doc, defaults] = await withDb(async (db) => [await exportDoc(db, alias), await loadColumnDefaults(db)] as const);
+      if (!source.files) fillDefaults(source.doc, defaults);
+      const theirs = source.files ? fillFiles(source.files, defaults) : docToFiles(source.doc);
       // in the directory's style: a text-style directory compares with YAML files
       const style = theirs && [...theirs.keys()].some((p) => p.endsWith('.yaml')) ? 'text' : 'json';
-      const ours = docToFiles(await withDb((db) => exportDoc(db, alias)), style);
+      const ours = docToFiles(doc, style);
       const changes = compareFiles(ours, theirs);
       if (!v.quiet) {
         for (const c of changes) {

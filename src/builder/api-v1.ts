@@ -108,6 +108,7 @@ export function serverContext(caller: TokenCaller): ToolContext {
         await ctx.app(db, alias);
         return exportDoc(db, alias);
       }),
+    columnDefaults: () => withClient(owner, async (db) => (await import('../import-defaults.ts')).loadColumnDefaults(db)),
     async importDoc(doc, o) {
       const planDb = await devDbForWorkspace(ws);
       const { lockedFor } = await import('../cli/working-copy.ts');
@@ -243,9 +244,11 @@ export async function builderApiRoutes(app: FastifyInstance) {
     const c = await caller(req, reply, 'read', 'export');
     if (!c) return;
     try {
-      const doc = await serverContext(c).exportDoc(req.params.alias);
+      const ctx = serverContext(c);
+      const doc = await ctx.exportDoc(req.params.alias);
       await logCall(req, c, 'export', req.params.alias, 'ok', 200);
-      return answer(reply, 200, { doc });
+      // (sprint 242) the column defaults an import fills absent keys with, for diff_app on the developer's machine
+      return answer(reply, 200, { doc, defaults: await ctx.columnDefaults() });
     } catch (e) {
       if (errorText(e) === null) req.log.error({ err: e }, 'builder API export');
       await logCall(req, c, 'export', req.params.alias, refused(e), errorText(e) === null ? 500 : 404);
