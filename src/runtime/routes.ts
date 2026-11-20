@@ -23,9 +23,10 @@ import { sessionLimits, clientIp, createSession, destroySession, getSession, log
 import { checkPageAccess, dropGlobal, computeVisibility, Forbidden, isAuthorized, StepUp } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
 import { startDebug } from '../debug.ts';
-import { assignable, clearPageItems, fetchForms, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
+import { assignable, clearPageItems, fetchForms, makeWebRequests, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
+import { INTERACTIVE_BUDGET_MS } from '../webrequests.ts';
 import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
-import { branchTarget, ComputationFailed, runComputations } from './logic.ts';
+import { branchTaken, ComputationFailed, inDialog, runComputations, staysInDialog } from './logic.ts';
 import { openAfterError, openByStaticId } from './open-region.ts';
 import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
 import { parseNumber } from '../numformat.ts';
@@ -531,8 +532,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await loadPreferences(ctx);
         // before header (as in APEX): branches, then computations and processes
         if (!docName && !downloadKey) {
-          const to = await branchTarget(ctx, 'before_header');
-          if (to) {
+          const taken = await branchTaken(ctx, 'before_header');
+          if (taken) {
+            const to = ctx.dialog && staysInDialog(taken.branch) ? inDialog(taken.href) : taken.href;
             dbg(ctx, 4, 'branch', `before header: redirect to ${to.split('?')[0]}`);
             if (ctx.openRegion) ctx.session.state.__OPEN_REGION = ctx.openRegion;
             return { redirect: to };
@@ -640,6 +642,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     let messages: string[] = [];
     let button;
     let branchTo: string | null = null;
+    // (sprint 240, MG-7) the branch taken stays in the dialog (stay_in_dialog)
+    let branchStays = false;
     let snapshot: Session['state'] = {};
     try {
       button = await appTx(txContext(ctx), async (c) => {
@@ -672,7 +676,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
         await timed(ctx, 4, 'page', 'validations', () => validate(ctx));
         messages = await timed(ctx, 4, 'page', 'processes (submit)', () => runProcesses(ctx, 'submit'));
         // after processing: the first branch that applies; else the button's target page
-        branchTo = await branchTarget(ctx, 'after_processing');
+        const taken = await branchTaken(ctx, 'after_processing');
+        branchTo = taken?.href ?? null;
+        branchStays = !!taken && staysInDialog(taken.branch);
         if (branchTo) dbg(ctx, 4, 'branch', `after processing: ${branchTo.split('?')[0]}`);
         // (086) items kept per user: saved with the page's changes
         await savePreferences(ctx);
@@ -711,12 +717,20 @@ export async function runtimeRoutes(app: FastifyInstance) {
       return reply.headers(downloadHeaders(ctx.download)).send(ctx.download.content);
     }
     if (messages.length) ctx.session.state.__FLASH = messages.join(' ');
+    // (sprint 240, MG-7) a submit in a modal page closes it, unless the button or the branch taken stays in it (a
+    // close_dialog process still closes it): the dialog page comes back (or the branch's target, in the dialog)
+    const stay = ctx.dialog && !ctx.closeDialog && (branchTo ? branchStays : !!button.stay_in_dialog);
     // (161) the page that comes back runs the saved grids' grid_save dynamic actions
-    if (ctx.savedGrids?.length && !ctx.dialog) ctx.session.state.__GRID_SAVED = ctx.savedGrids.join(',');
+    if (ctx.savedGrids?.length && (!ctx.dialog || stay)) ctx.session.state.__GRID_SAVED = ctx.savedGrids.join(',');
     // (sprint 238, MG-14) a process's or branch's open_region: the page that comes back opens that inline dialog
-    // (not after a submit that closes a modal page: the page below may not reload)
-    if (ctx.openRegion && !ctx.dialog) ctx.session.state.__OPEN_REGION = ctx.openRegion;
+    // (not after a submit that closes a modal page: the page below may not reload; sprint 240: unless it stays open)
+    if (ctx.openRegion && (!ctx.dialog || stay)) ctx.session.state.__OPEN_REGION = ctx.openRegion;
     await saveState(ctx.session);
+    if (stay) {
+      dbg(ctx, 4, 'branch', 'stays in the dialog');
+      const back = branchTo ? '' : gridReturn(ctx, button.name);
+      return reply.redirect(branchTo ? inDialog(branchTo) : back ? `${self}&${back}` : self, 303);
+    }
     if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx, ctx.closeDialog));
     // (sprint 54) a grid's Save comes back to the grid's search, page, sort and view
     const back = branchTo || button.target_page || ctx.resetPagination ? '' : gridReturn(ctx, button.name);
@@ -778,6 +792,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
               await runSql(ctx, da.code ?? '');
               await renderPendingDocuments(ctx); // (sprint 237) meta.document_pdf for mail
             });
+            // (sprint 240, MG-8) the web requests it queued: made now, so the next action reads meta.web_response()
+            await makeWebRequests(ctx, INTERACTIVE_BUDGET_MS);
             break;
           case 'ai_generate': {
             // the page process it names, with that process's authorization and condition (not its button)

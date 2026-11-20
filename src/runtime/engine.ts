@@ -558,7 +558,7 @@ function errorItem(ctx: PageContext, e: unknown) {
 }
 
 /** Whether a process runs for this request: its button, authorization and server-side condition. */
-async function shouldRun(ctx: PageContext, p: Process) {
+export async function shouldRun(ctx: PageContext, p: Process) {
   if (p.when_button && p.when_button !== ctx.request) return false;
   // a grid's DML runs on that grid's Save button unless a button is named
   if (p.type === 'grid_dml' && !p.when_button && ctx.request !== `GRID_SAVE_${p.region_id}`) return false;
@@ -664,10 +664,7 @@ async function runOneType(ctx: PageContext, p: Process, names: Set<string>, dept
       default:
         await runSql(ctx, p.code ?? '', names);
         // web requests the process queued (meta.web_request): made now, before the next process
-        // (sprint 118) a request an allow-list refused is a warning (level 2), the others trace (level 6)
-        await runPending(ctx.client!, ctx.app.id, (r, res, ms) =>
-          dbg(ctx, res.status === 'error' && /allow-list|network access list/.test(res.message ?? '') ? 2 : 6, 'web',
-            () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`));
+        await makeWebRequests(ctx);
         // AI requests it queued (meta.ai_generate): likewise
         await runPendingAi(ctx.client!, { appId: ctx.app.id, pageNo: ctx.page.page_no, user: ctx.user, debug: (level, text) => dbg(ctx, level, 'ai', text) });
         return p.success_message;
@@ -676,6 +673,19 @@ async function runOneType(ctx: PageContext, p: Process, names: Set<string>, dept
     if (e instanceof ProcessFailed) throw e;
     throw new ProcessFailed(await publicError(ctx, e, `process "${p.name}"`), ctx.vis ? errorItem(ctx, e) : null);
   }
+}
+
+/**
+ * The web requests the current transaction queued (meta.web_request, without a callback or an ordering key): made
+ * now, their responses written in the same transaction, so the next process (or statement, or the next action of a
+ * dynamic action) reads them with meta.web_response(). (sprint 240, MG-8) Ajax callbacks and execute_sql dynamic
+ * actions pass a time budget (INTERACTIVE_BUDGET_MS). (sprint 118) A request an allow-list refused is a warning
+ * (debug level 2), the others trace (level 6).
+ */
+export function makeWebRequests(ctx: PageContext, budgetMs?: number) {
+  return runPending(ctx.client!, ctx.app.id, (r, res, ms) =>
+    dbg(ctx, res.status === 'error' && /allow-list|network access list/.test(res.message ?? '') ? 2 : 6, 'web',
+      () => `web request ${r.id} (${r.source ? `source ${r.source}` : r.method}): ${res.status === 'ok' ? `HTTP ${res.statusCode}` : res.message} in ${ms} ms`), budgetMs);
 }
 
 /** A background chain: queued in this transaction (it runs only if the submit commits). */

@@ -179,7 +179,15 @@ export function gridViews(r: Region): View[] {
   return Array.isArray(listed) ? all.filter((v) => listed.includes(v)) : all;
 }
 
-export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
+export async function renderGrid(ctx: PageContext, r: Region, items: Raw[] = []): Promise<Raw> {
+  // (sprint 240, MG-7) the region's items stand in its toolbar, before the search (as an interactive report's
+  // filter items); a grid that can't be shown (an error) shows them above the message
+  const placed = { done: false };
+  const out = await gridBody(ctx, r, items, placed);
+  return placed.done || !items.length ? out : html`<div class="form-grid region-items">${items}</div>${out}`;
+}
+
+async function gridBody(ctx: PageContext, r: Region, items: Raw[], placedItems: { done: boolean }): Promise<Raw> {
   const c = ctx.client!;
   const t = ctx.locale.t;
   const tr = ctx.locale.tr;
@@ -503,7 +511,9 @@ export async function renderGrid(ctx: PageContext, r: Region): Promise<Raw> {
         else p.delete(key(r, 'p'));
       })}" data-grid-leave${v === view ? raw(' aria-current="true"') : ''}>${t(v === 'report' ? 'grid.view_grid' : v === 'row' ? 'grid.view_row' : `report.view_${v}`)}</a>`)}</nav>`
     : '';
+  placedItems.done = true;
   const toolbar = (buttons: Raw | '') => html`<div class="report-toolbar grid-toolbar">
+      ${items}
       <div class="search" role="search">
         <input type="search" name="${key(r, 'q')}" value="${st.search}" placeholder="${t('report.search_placeholder')}" form="${searchForm}" aria-label="${t('report.search')} ${r.title ?? ''}">
         <button class="btn" form="${searchForm}">${t('report.go')}</button>

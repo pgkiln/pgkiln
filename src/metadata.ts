@@ -301,6 +301,8 @@ export interface Button extends FromGlobal {
   slot?: string | null;
   /** (sprint 238, migration 194) redirect: the static id of an inline dialog region it opens (on its target page, else this one) */
   target_region?: string | null;
+  /** (sprint 240, MG-7) a submit from a modal dialog page shows the dialog page again instead of closing it */
+  stay_in_dialog?: boolean | null;
 }
 
 export interface MenuEntry {
@@ -366,6 +368,8 @@ export interface Branch extends Condition {
   authz: string | null;
   /** (sprint 238, migration 194) the static id of an inline dialog region the target page opens */
   open_region?: string | null;
+  /** (sprint 240, MG-7) in a modal dialog page: go to the target inside the dialog instead of closing it */
+  stay_in_dialog?: boolean | null;
 }
 
 export interface DynamicAction extends FromGlobal {
