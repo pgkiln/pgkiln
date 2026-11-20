@@ -1,6 +1,7 @@
 import { advise } from './advisor.ts';
 import { appChecksum } from '../history.ts';
 import { appLocks, isAdmin, lockPanel, lockText } from './locks.ts';
+import { describeLocks, heldLocks, releaseLocksOf, removeDeveloper, type HeldLock } from './developer-locks.ts';
 import { parseRoleList, validRoleName } from '../dbauth.ts';
 import { DEFAULT_HEADER, headerProxiesConfigured } from '../headerauth.ts';
 import { appIssues } from './team.ts';
@@ -1188,6 +1189,20 @@ export async function builderRoutes(app: FastifyInstance) {
     const admin = devs.some((d) => d.username === s.username && d.is_admin);
     const me = devs.find((d) => d.username === s.username);
     const tx = tr(s);
+    // (sprint 233) what removing a developer releases, and locks of names that are no developer
+    const locksBy = new Map<string, HeldLock[]>();
+    const others = new Map<string, HeldLock[]>();
+    if (admin) {
+      for (const d of devs) locksBy.set(d.username, []);
+      for (const l of await heldLocks(null)) others.set(l.locked_by, [...(others.get(l.locked_by) ?? []), l]);
+      for (const l of (await owner.query<HeldLock>(`select k.app_id, a.name as app_name, k.page_no, k.locked_by from meta.builder_lock k join meta.app a on a.id = k.app_id
+                                                    join meta.developer d on d.username = k.locked_by order by a.name, k.app_id, k.page_no`)).rows)
+        locksBy.get(l.locked_by)?.push(l);
+    }
+    const removeConfirm = (u: string) => {
+      const held = locksBy.get(u) ?? [];
+      return held.length ? tx('dev.remove_confirm_locks', { user: u, n: String(held.length), locks: describeLocks(held, tx) }) : tx('dev.remove_confirm', { user: u });
+    };
     const main = html`<h1 class="u-mb1">${tx('dev.title')}</h1>
       <div class="columns">
         ${region(tx('dev.change_pw'), html`<form method="post" action="${BASE}/developers/password">${csrf(s)}
@@ -1201,26 +1216,34 @@ export async function builderRoutes(app: FastifyInstance) {
           <div class="buttons"><button class="btn">${tx('dev.save')}</button></div></form>`)}
         ${region(tx('dev.accounts'), html`
           <p class="muted u-mt0">${tx('dev.accounts_help')}</p>
+          <p class="muted">${tx('dev.remove_help')}</p>
           <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('dev.username')}</th><th>${tx('dev.role')}</th><th>${tx('dev.email_col')}</th><th>${tx('mfa.column')}</th><th></th></tr></thead><tbody>
             ${devs.map((d) => html`<tr><td data-label="${tx('dev.username')}">${d.username}${d.username === s.username ? ` ${tx('dev.you')}` : ''}</td><td data-label="${tx('dev.role')}">${d.is_admin ? tx('dev.administrator') : tx('dev.developer')}${d.break_glass ? html` <span class="badge badge-warn" title="${tx('bsso.break_glass_help')}">${tx('bsso.break_glass')}</span>` : ''}${d.identities ? html`<br><span class="muted small">${icon('log-in')} ${d.identities}</span>` : ''}</td>
               <td data-label="${tx('dev.email_col')}">${admin && d.username !== s.username
-                ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="${tx('dev.email_of', { user: d.username })}" placeholder="${tx('dev.none')}"><button class="btn">${tx('dev.save')}</button></form>`
+                ? html`<form method="post" action="${BASE}/developers/email" class="search u-m0 u-mwnone dev-email">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input name="email" type="email" value="${d.email ?? ''}" aria-label="${tx('dev.email_of', { user: d.username })}" placeholder="${tx('dev.none')}"><button class="btn">${tx('dev.save')}</button></form>`
                 : html`<span class="wrap-anywhere">${d.email ?? ''}</span>`}</td>
               <td data-label="${tx('mfa.column')}">${d.mfa ? html`${icon('lock')} ${tx('mfa.on')}${admin && d.username !== s.username ? html` <details class="menu u-inline"><summary class="link-button">${tx('mfa.reset')}</summary><div class="menu-panel"><form method="post" action="${BASE}/developers/reset-2fa" class="menu-section">${csrf(s)}<input type="hidden" name="username" value="${d.username}">
                   ${input(`reason_${d.username}`.replace(/[^\w]/g, '_'), tx('mfa.reason'), '', { required: true, help: tx('mfa.reset_help', { user: d.username }) })}
                   <button class="btn btn-sm btn-danger">${tx('mfa.reset_btn')}</button></form></div></details>` : ''}` : html`<span class="muted">${tx('mfa.off')}</span>`}</td><td>${d.username === s.username || !admin ? '' : html`
               <form method="post" action="${BASE}/developers/admin" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="is_admin" value="${d.is_admin ? 'false' : 'true'}"><button class="link-button">${d.is_admin ? tx('dev.make_dev') : tx('dev.make_admin')}</button></form>
               ${d.is_admin ? html`· <form method="post" action="${BASE}/developers/break-glass" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><input type="hidden" name="break_glass" value="${d.break_glass ? 'false' : 'true'}"><button class="link-button" title="${tx('bsso.break_glass_help')}">${d.break_glass ? tx('bsso.break_glass_remove') : tx('bsso.break_glass_make')}</button></form>` : ''}
-              · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="${tx('dev.remove_confirm', { user: d.username })}">${tx('dev.remove')}</button></form>`}</td></tr>`)}
+              · <form method="post" action="${BASE}/developers/delete" class="u-inline">${csrf(s)}<input type="hidden" name="username" value="${d.username}"><button class="link-button" data-confirm="${removeConfirm(d.username)}">${tx('dev.remove')}</button></form>${(locksBy.get(d.username) ?? []).length ? html`<br><span class="muted small">${icon('lock')} ${tx('dev.holds_locks', { n: String(locksBy.get(d.username)!.length) })}</span>` : ''}`}</td></tr>`)}
           </tbody></table></div>
+          ${admin && others.size
+            ? html`<h3>${tx('dev.other_locks')}</h3><p class="muted u-mt0">${tx('dev.other_locks_help')}</p>
+              <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('dev.holder')}</th><th>${tx('dev.locks')}</th><th></th></tr></thead><tbody>
+              ${[...others].map(([holder, held]) => html`<tr><td data-label="${tx('dev.holder')}">${holder}</td><td data-label="${tx('dev.locks')}" class="wrap-anywhere">${describeLocks(held, tx)}</td>
+                <td><form method="post" action="${BASE}/developers/release-locks" class="u-inline">${csrf(s)}<input type="hidden" name="holder" value="${holder}"><button class="link-button" data-confirm="${tx('dev.release_confirm', { user: holder, n: String(held.length) })}">${tx('dev.release')}</button></form></td></tr>`)}
+              </tbody></table></div>`
+            : ''}
           ${admin
             ? html`<h3>${tx('dev.add')}</h3>
               <form method="post" action="${BASE}/developers">${csrf(s)}
-                <div class="form-grid">${input('username', tx('dev.username'), '', { required: true })}${input('password', tx('dev.password'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min_length', { min: String(await developerPasswordMin()) }) })}${input('email', tx('dev.email'), '', { type: 'email', help: tx('dev.optional_email') })}</div>
-                <div class="field"><label class="check"><input type="checkbox" name="is_admin" value="true"> ${tx('dev.administrator')}</label></div>
+                <div class="form-grid">${input('username', tx('dev.username'), '', { required: true })}${input('password', tx('dev.password'), '', { type: 'password', required: true, auto: 'new-password', help: tx('dev.min_length', { min: String(await developerPasswordMin()) }) })}${input('email', tx('dev.email'), '', { type: 'email', help: tx('dev.optional_email') })}
+                <div class="field dev-admin-field"><label class="check"><input type="checkbox" name="is_admin" value="true"> ${tx('dev.administrator')}</label><small class="help">${tx('dev.administrator_help')}</small></div></div>
                 <div class="buttons"><button class="btn btn-hot">${tx('dev.add')}</button></div>
               </form>`
-            : html`<p class="muted">${tx('dev.admins_only')}</p>`}`)}
+            : html`<p class="muted">${tx('dev.admins_only')}</p>`}`, '', 'dev-accounts')}
         ${admin ? await adminTokensRegion(s) : ''}
       </div>`;
     return send(reply, s, shell(s, tx('dev.title'), [[tx('rte.developers')]], main, 'developers'));
@@ -1322,9 +1345,22 @@ export async function builderRoutes(app: FastifyInstance) {
         flash(s, tr(s)('mfa.keep_admins'), 'error');
         return back(reply, s, `${BASE}/developers`);
       }
-      await owner.query('delete from meta.developer where username = $1', [req.body.username]);
-      await owner.query('delete from meta.session where app_id is null and username = $1', [req.body.username]);
-      flash(s, tr(s)('dev.removed'));
+      // (sprint 233) their locks are released and logged; working copies and comments keep their name
+      const released = await removeDeveloper(req.body.username, s.username ?? '', clientIp(req));
+      flash(s, released.length ? tr(s)('dev.removed_locks', { n: String(released.length) }) : tr(s)('dev.removed'));
+    }
+    return back(reply, s, `${BASE}/developers`);
+  });
+
+  // (sprint 233) release the locks of a name that is no developer (removed before 0.112.0, or the command line's)
+  app.post(`${BASE}/developers/release-locks`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    if (!(await isAdmin(s.username))) return reply.code(403).send('Only administrators release other developers\' locks.');
+    const holder = String(req.body?.holder ?? '');
+    if (holder) {
+      const released = await releaseLocksOf(holder, s.username ?? '', clientIp(req));
+      flash(s, released === null ? tr(s)('dev.release_developer') : tr(s)('dev.released', { n: String(released.length), user: holder }), released === null ? 'error' : 'ok');
     }
     return back(reply, s, `${BASE}/developers`);
   });

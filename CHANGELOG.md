@@ -33,6 +33,17 @@ All notable changes to this project are documented here. The format follows
   SUPERUSER attribute may change the SUPERUSER attribute"), although the guide said `CREATEROLE` was enough: the
   migrations now say before applying anything that installing needs a superuser (upgrades don't), and the guide says
   so (sprint 232).
+- **Removing a developer releases their page and application locks** (sprint 233). Before, the locks stayed, held by
+  a name nobody could sign in as: only an administrator could break them one by one, and adding the same username
+  again gave them back. Developers → Remove now names the locks in its confirmation, releases them in the same
+  transaction, writes each to its application's activity log (`lock_released`) and says how many it released; a
+  trigger on `meta.developer` (migration 190) does the same for any other delete. Locks of names that are no
+  developer (removed before this release, or taken by the command line or the MCP server under such a name) are
+  listed for an administrator with a **Release** button; they are not released automatically, since a command-line
+  user's name need not be a developer account.
+- Developers page layout: the Developer accounts region spans the page (another developer's e-mail input was
+  squashed to a few pixels in a column of three), its introduction says what administrators do and what removing a
+  developer does, and the Add developer form's Administrator checkbox sits in the form grid with its own help text.
 
 ## [0.111.0] - 2026-11-19
 
