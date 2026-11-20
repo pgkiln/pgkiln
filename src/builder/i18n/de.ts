@@ -2916,6 +2916,7 @@ export const de: BuilderMessages = {
   'gallery.item.autocomplete': 'Textfeld mit Autovervollständigung',
   'gallery.item.percent_graph': 'Prozentgrafik',
   'gallery.item.display_map': 'Karte anzeigen',
+  'gallery.item.signature': 'Unterschrift',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'Ansichten des SQL-Monitors',
   'sm.sessions': 'Sitzungen',

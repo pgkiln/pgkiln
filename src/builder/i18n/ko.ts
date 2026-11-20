@@ -2916,6 +2916,7 @@ export const ko: BuilderMessages = {
   'gallery.item.autocomplete': '자동 완성 텍스트 필드',
   'gallery.item.percent_graph': '백분율 그래프',
   'gallery.item.display_map': '지도 표시',
+  'gallery.item.signature': '서명',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'SQL 모니터 보기',
   'sm.sessions': '세션',

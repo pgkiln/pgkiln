@@ -2921,6 +2921,7 @@ export const en = {
   'gallery.item.autocomplete': 'Text Field with Autocomplete',
   'gallery.item.percent_graph': 'Percent Graph',
   'gallery.item.display_map': 'Display Map',
+  'gallery.item.signature': 'Signature',
   // ------------------------------------------------------------ SQL Monitor, Top SQL (sprint 162, CD-8)
   'sm.views': 'SQL Monitor views',
   'sm.sessions': 'Sessions',
