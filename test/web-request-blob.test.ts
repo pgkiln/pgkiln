@@ -283,7 +283,7 @@ describe('REST module handlers with "body": "blob"', () => {
         const res = await b.upload('/a/hr/71', { __request: button }, { P71_FILE: { name, type: button === 'SEND' ? 'image/png' : 'application/pdf', data } });
         assert.equal(res.statusCode, 303, res.body.slice(0, 800));
         const after = await b.get(res.headers.location as string);
-        assert.match(after.body, new RegExp(`HTTP 201: ${size} of ${size} bytes stored`), after.body.match(/P71_STATUS[\s\S]{0,400}/)?.[0]);
+        assert.match(after.body, new RegExp(`HTTP 201: ${size} of ${size} bytes stored`), after.body.match(/P71_STATUS[\s\S]{0,400}/)?.[0] ?? 'no status');
         if (button === 'SEND_RANGES') assert.match(after.body, /sent in ranges of 65536 bytes/);
         const row = await owner.one('select content, content_type from hr.crm_file where name = $1', [name]);
         assert.ok(row.content.equals(data), name);

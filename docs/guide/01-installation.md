@@ -267,6 +267,7 @@ which is read at startup; real environment variables take precedence.
 | `PGKILN_PUSH_SUBJECT` | `PUBLIC_URL` when it is https | The contact the push services see (`mailto:ops@example.com` or an https URL); Apple refuses notifications without one |
 | `PGKILN_PUSH_PRIVATE_HOSTS` | *(none)* | For tests only: a push service on a private or loopback address, also over plain http |
 | `PGKILN_REST_MAX_BYTES` | `5000000` | Largest web service response read (also after decompression) |
+| `PGKILN_REST_MAX_UPLOAD_BYTES` | `26214400` | (sprint 243) Largest binary body `meta.web_request(..., p_body_blob)` sends, 25 MB ([chapter 9](09-reference.md#binary-request-bodies-files)) |
 | `MIGRATE_ON_START` | `false` | `true` applies missing migrations when the server starts. Without it, a server whose database lacks migrations answers every request with 503 and names the missing files until they are applied (`npm run db:migrate` or `pgkiln migrate`; no restart needed) |
 | `LOG_LEVEL` | `info` | `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
 | `PGKILN_RELEASE_CHECK` | `off` | `on`: the server asks GitHub once a day for a newer pgkiln release and the [Workspace home](03-builder.md#the-release-check) announces it. Administrators can also set it in the builder (Instance settings → *New versions*), which wins over the variable. Keep it off where the server may not reach the internet |

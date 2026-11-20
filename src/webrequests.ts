@@ -54,6 +54,12 @@ import { setAppRole } from './app-role.ts';
 //   request itself is never sent again.
 // - NOTIFY pgkiln_web_request wakes startWebRequestRunner(); the scheduler
 //   pass remains as the fallback.
+//
+// (sprint 243, migration 200) A binary body (body_blob, p_body_blob) is sent
+// with src/webupload.ts sendBinary(): its own size limit
+// (PGKILN_REST_MAX_UPLOAD_BYTES), optionally in ranges (chunk_bytes), the same
+// checks through call(). The blob stays in the row for retries and re-queueing
+// until the request is 'ok'.
 
 export interface PendingRequest {
   id: string;
