@@ -263,6 +263,8 @@ const pgkilnUnsaved = (() => {
     // a date range item: two date inputs with the same name, "from:to"
     if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
+    // (sprint 235) a checkbox group: the ticked values colon-separated, like a multiselect
+    if (el.type === 'checkbox' && el.closest('.radio-group')) return els.filter((e) => e.checked).map((e) => e.value).join(':');
     if (el.type === 'checkbox') return el.checked ? 'true' : 'false';
     // (140) a multi-value list (multiselect, shuttle, select many): its values colon-separated, in order
     if (el.tagName === 'SELECT' && el.multiple) return [...el.selectedOptions].map((o) => o.value).join(':');
@@ -282,7 +284,10 @@ const pgkilnUnsaved = (() => {
       const parts = String(value ?? '').split(':');
       els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
     } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
-    else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
+    else if (el.type === 'checkbox' && el.closest('.radio-group')) {
+      const values = String(value ?? '').split(':');
+      els.forEach((e) => (e.checked = values.includes(e.value)));
+    } else if (el.type === 'checkbox') el.checked = ['true', 't', 'on', '1', 'yes', 'y'].includes(String(value).toLowerCase());
     else if (el.tagName === 'SELECT' && el.multiple) {
       const values = String(value ?? '').split(':').filter(Boolean);
       for (const o of el.options) o.selected = values.includes(o.value);
@@ -347,6 +352,13 @@ const pgkilnUnsaved = (() => {
       case 'less': return v !== '' && compare(v, da.cond.value) < 0;
       case 'less_equal': return v !== '' && compare(v, da.cond.value) <= 0;
       case 'not_in_list': return !da.cond.value.split(',').map((s) => s.trim()).includes(v);
+      // (sprint 235) a multi-value item (checkbox group, multiselect, shuttle, select many): one of its values
+      case 'contains': return da.cond.value.trim() !== '' && v.split(':').includes(da.cond.value.trim());
+      case 'not_contains': return !(da.cond.value.trim() !== '' && v.split(':').includes(da.cond.value.trim()));
+      case 'contains_any': {
+        const values = v.split(':');
+        return da.cond.value.split(',').map((s) => s.trim()).some((x) => x !== '' && values.includes(x));
+      }
       default: return true;
     }
   }
@@ -1438,6 +1450,13 @@ const pgkilnUnsaved = (() => {
       const res = await fetch(holder.dataset.lazy, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
       const json = await res.json().catch(() => ({ error: res.statusText }));
       if (!res.ok) throw new Error(json.error || res.statusText);
+      // (sprint 235) pictures from a site this page's Content-Security-Policy doesn't allow yet:
+      // the "Show" link renders the page with the region, and a CSP that allows them
+      const allowed = new Set(meta.img || []);
+      if (link && (json.img || []).some((o) => !allowed.has(o))) {
+        location.assign(link.href);
+        return;
+      }
       const sheet = document.getElementById('pgkiln-css')?.sheet;
       if (sheet && json.css) for (const rule of json.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
       if (json.detached) {
@@ -4176,7 +4195,9 @@ function areaFilter(map, f) {
   // Rich text: an editable area in place of the textarea, kept in sync with it. Content always goes in
   // through a small allow-list (the server rebuilds it again on submit), never as raw HTML.
   const ALLOWED = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'STRIKE', 'SUB', 'SUP', 'UL', 'OL', 'LI',
-    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'DIV']);
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'DIV',
+    // (sprint 235) simple tables, as on the server: their structure, no attributes
+    'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD']);
   const DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'SVG', 'MATH', 'TITLE', 'TEXTAREA', 'SELECT']);
   const safeHref = (h) => {
     const u = String(h || '').replace(/[\u0000-\u0020\u007f-\u00a0\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, '');

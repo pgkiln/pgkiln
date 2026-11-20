@@ -2889,6 +2889,8 @@ export const ja: BuilderMessages = {
   'cond.item_not_equals_item': '{item} が {value} と異なる場合',
   'cond.item_in_list': '{item} が {value} のいずれかの場合',
   'cond.item_not_in_list': '{item} が {value} のいずれでもない場合',
+  'cond.item_contains': '{item} に {value} が含まれる場合',
+  'cond.item_contains_any': '{item} に {value} のいずれかが含まれる場合',
   'cond.request_in': 'リクエストが {value} の場合',
   'cond.request_not_in': 'リクエストが {value} でない場合',
   'cond.page_in': 'ページ {value} の場合',

@@ -21,6 +21,7 @@ import { icon } from '../icons.ts';
 import type { Item } from '../metadata.ts';
 import { checkPageAccess, computeVisibility, Forbidden } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, toState, type PageContext } from './context.ts';
+import { allowImage } from './img-origins.ts';
 
 type Loader = (req: any, reply: FastifyReply, opts?: { json?: boolean }) => Promise<PageContext | null>;
 type Tx = (ctx: PageContext) => Parameters<typeof appTx>[0];
@@ -48,15 +49,8 @@ export function imageUrl(ctx: PageContext, item: Item, value: string): string | 
   if (!s) return null;
   if (DATA_IMAGE.test(s)) return s;
   if (/^\/(?![/\\])/.test(s)) return s;
-  try {
-    const u = new URL(s);
-    if (u.protocol !== 'https:' || u.username || u.password) return null;
-    // the page's Content-Security-Policy allows this picture's origin (and no other)
-    ctx.imgSrc?.add(u.origin);
-    return u.href;
-  } catch {
-    return null;
-  }
+  // the page's Content-Security-Policy allows this picture's origin (and no other)
+  return allowImage(ctx.imgSrc, s);
 }
 
 /** The picture of an image item, or a blank display value. */

@@ -2889,6 +2889,8 @@ export const it: BuilderMessages = {
   'cond.item_not_equals_item': 'Quando {item} è diverso da {value}',
   'cond.item_in_list': 'Quando {item} è uno tra {value}',
   'cond.item_not_in_list': 'Quando {item} non è nessuno tra {value}',
+  'cond.item_contains': 'Quando {item} include {value}',
+  'cond.item_contains_any': 'Quando {item} include uno tra {value}',
   'cond.request_in': 'Quando la richiesta è {value}',
   'cond.request_not_in': 'Quando la richiesta non è {value}',
   'cond.page_in': 'Nella pagina {value}',

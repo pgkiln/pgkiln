@@ -19441,3 +19441,108 @@ describe('sprint 233 removing a developer releases their locks', () => {
     }
   });
 });
+
+describe('sprint 235 MG-2/MG-5/MG-9', () => {
+  const imgSrcOf = (csp: unknown) => /img-src ([^;]*)/.exec(String(csp))?.[1] ?? '';
+
+  test('MG-2: only https origins of rendered pictures reach the CSP img-src, never a wildcard, a path or another directive', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 19', [appId])).id;
+    const values = [
+      'http://plain.example.com/a.png', 'javascript:alert(1)', 'data:text/html;base64,PHNjcmlwdD4=', '//proto.example.com/a.png',
+      'https://u:p@creds.example.com/a.png', 'https://semi.example.com;script-src *', "https://quote.example.com' 'unsafe-inline",
+      'https://*.example.com/a.png', 'https://[::1]/a.png', 'https://ok.example.com/a.png" onerror="alert(1)',
+    ];
+    const source = `select * from (values ${values.map((v) => `('${v.replace(/'/g, "''")}')`).join(', ')}) v(image)`;
+    const ids = [
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, config) values ($1, 991, 'S235 sec', 'template_component', 12, 'standard', $2, $3) returning id`,
+        [page, source, JSON.stringify({ component: 'ut_avatar', display: 'multiple', attributes: { NAME: 'x', IMAGE: '#image#' } })])).id,
+      // a link's URL, and a picture that is not rendered (its region's condition is false), add nothing
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, config) values ($1, 992, 'S235 link', 'report', 12, 'standard', $2, $3) returning id`,
+        [page, `select 'https://linked.example.com/' as site`, JSON.stringify({ column_templates: { site: { component: 'ut_badge', attributes: { LABEL: '#site#' } } } })])).id,
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, condition, config) values ($1, 993, 'S235 off', 'template_component', 12, 'standard', $2, 'false', $3) returning id`,
+        [page, `select 'https://hidden.example.com/a.png' as image`, JSON.stringify({ component: 'ut_avatar', attributes: { NAME: 'x', IMAGE: '#image#' } })])).id,
+    ];
+    try {
+      const king = await as('king');
+      // a URL in the query string is not a rendered picture either
+      const res = await king.get('/a/hr/19?image=https%3A%2F%2Fparam.example.com%2Fa.png');
+      assert.equal(res.statusCode, 200);
+      const img = imgSrcOf(res.headers['content-security-policy']);
+      for (const o of img.split(' ')) assert.ok(o === "'self'" || o === 'data:' || /^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(o), o);
+      for (const bad of ['plain.', 'proto.', 'creds.', 'semi.', 'quote.', '*', '[', 'linked.', 'hidden.', 'param.', 'unsafe', 'script-src *'])
+        assert.ok(!img.includes(bad), bad);
+      assert.ok(img.split(' ').includes('https://ok.example.com'), 'the escaped value is still a picture of that origin');
+      assert.doesNotMatch(res.body, /javascript:alert|data:text\/html|onerror="alert/);
+      assert.match(String(res.headers['content-security-policy']), /script-src 'self'; /, 'script-src unchanged');
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [ids]);
+    }
+  });
+
+  test('MG-5: tables keep no attributes, scripts and handlers stay out, references never become markup', () => {
+    const cases: [string, RegExp][] = [
+      ['<table onclick="alert(1)" style="x" background="javascript:alert(1)"><tr onmouseover="alert(1)"><td onfocus=alert(1) autofocus tabindex=1>a</td></tr></table>', /on\w+=|style=|javascript:|autofocus|tabindex|background/i],
+      ['<table><tr><td><script>alert(1)</script><img src=x onerror=alert(1)><svg onload=alert(1)></svg></td></tr></table>', /<script|<img|<svg|alert/],
+      ['<table><caption>c</caption><colgroup><col span=2></colgroup><tfoot><tr><td>f</td></tr></tfoot></table>', /<caption|<colgroup|<col|<tfoot/],
+      ['<table><tr><td><a href="javascript:alert(1)">x</a><a href="&#106;avascript:alert(1)">y</a></td></tr></table>', /href/],
+      ['&lt;script&gt;alert(1)&lt;/script&gt; &#x3c;img src=x onerror=alert(1)&#x3e; &LT;b&GT;', /<script|<img|<b>/],
+      ['&foo;<script>alert(1)</script>&bar"onx=1;<table><th>x</th></table>', /<script|alert|"onx|<th>/],
+    ];
+    for (const [input, bad] of cases) {
+      const out = sanitizeHtml(input);
+      assert.doesNotMatch(out, bad, input);
+      // every tag that survives is a bare allowed one (a link's href aside)
+      for (const t of out.match(/<[^>]*>/g) ?? []) assert.match(t, /^<\/?(p|br|b|strong|i|em|u|s|del|strike|sub|sup|ul|ol|li|h[1-6]|blockquote|pre|code|hr|div|table|thead|tbody|tr|th|td)>$|^<a href="[^"]*" rel="noopener noreferrer nofollow">$|^<\/a>$/, t);
+    }
+    // nesting is bounded: a deep table doesn't open more than MAX_DEPTH elements
+    const deep = sanitizeHtml('<table><tr><td>'.repeat(200) + 'x');
+    assert.ok((deep.match(/<td>/g) ?? []).length <= 20);
+    assert.equal(sanitizeHtml('&amp;lt;script&amp;gt;'), '&amp;lt;script&amp;gt;');
+  });
+
+  test('MG-9: the database refuses malformed contains conditions', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 50', [appId])).id;
+    const da = (type: string, value: string | null) => owner.query(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, condition_type, condition_value, action, affected_items)
+      values ($1, 990, 's235 bad', 'change', 'P50_NEEDS', $2, $3, 'show', 'P50_NEEDS_OTHER')`, [page, type, value]);
+    try {
+      for (const [t, v] of [['CONTAINS', 'A'], ['contains;', 'A'], ['contains', null], ['contains', ''], ['contains', '  '], ['contains_any', ' , ,'], ['not_contains', 'x'.repeat(4001)]] as const)
+        await assert.rejects(da(t, v), /check constraint/, `${t} ${v?.slice(0, 10)}`);
+    } finally {
+      await owner.query(`delete from meta.dynamic_action where page_id = $1 and name = 's235 bad'`, [page]);
+    }
+    const ok = async (t: string, e: string | null, v: string | null) => (await owner.one('select meta.condition_ok($1, $2, $3) as ok', [t, e, v])).ok;
+    for (const [t, e, v] of [
+      ['item_contains', 'P50_NEEDS', null], ['item_contains', 'P50_NEEDS', ' '], ['item_contains', 'P50_NEEDS', 'A:B'], ['item_contains', 'P50_NEEDS', 'x'.repeat(4001)],
+      ['item_contains', 'p50_needs', 'A'], ['item_contains', "P50_NEEDS'; drop table hr.emp; --", 'A'], ['item_contains', null, 'A'],
+      ['item_contains_any', 'P50_NEEDS', ''], ['item_contains_any', 'P50_NEEDS', ': :'], ['item_contains_any', 'P50_NEEDS', 'A:'.repeat(2001)],
+    ] as const) assert.equal(await ok(t, e, v), false, `${t} ${e} ${String(v).slice(0, 10)}`);
+    await assert.rejects(owner.query(`insert into meta.region (page_id, seq, title, type, condition_type, condition, condition_value) values ($1, 990, 's235', 'static', 'item_contains', 'P50_NEEDS', 'A:B')`, [page]), /check constraint/);
+  });
+
+  test('MG-9: condition values are compared as text, never run as SQL or placed in the page as markup', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 50', [appId])).id;
+    const evil = "x') or true; select pg_sleep(3); --";
+    const ids = [
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, condition_type, condition, condition_value)
+        values ($1, 990, 'S235 literal', 'static', 4, 'standard', '<p>literal</p>', 'item_contains_any', 'P50_NEEDS_OTHER', $2) returning id`, [page, evil])).id,
+    ];
+    const da = (await owner.one(`insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, condition_type, condition_value, action, affected_items)
+      values ($1, 991, 's235 markup', 'change', 'P50_NEEDS', 'contains_any', '</script><script>alert(1)</script>', 'show', 'P50_NEEDS_OTHER') returning id`, [page])).id;
+    try {
+      const king = await as('king');
+      await king.get('/a/hr/50');
+      const t0 = Date.now();
+      let res = await king.get('/a/hr/50');
+      assert.ok(Date.now() - t0 < 2500, 'no pg_sleep ran');
+      assert.ok(!res.body.includes('S235 literal'), 'a value that is not there');
+      assert.doesNotMatch(res.body, /<script>alert\(1\)/);
+      // the item holding exactly that text: the condition holds (compared as text)
+      await king.post('/a/hr/50', { __csrf: king.lastCsrf, __request: 'SAVE', P50_DEPTNO: '20', P50_NEEDS_OTHER: evil });
+      res = await king.get('/a/hr/50');
+      assert.ok(res.body.includes('S235 literal'));
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [ids]);
+      await owner.query('delete from meta.dynamic_action where id = $1', [da]);
+    }
+  });
+});

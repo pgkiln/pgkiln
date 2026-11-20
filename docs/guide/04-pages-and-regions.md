@@ -1894,6 +1894,20 @@ and `#LINK#` is the report's link. Stored in the region's `config`:
 
 Column templates apply to the report view (not to downloads, which keep the plain value).
 
+#### Pictures from other sites
+
+(sprint 235) A component's `<img src="#IMAGE#">` (the built-in **Avatar**, **Content row** and **Media list**,
+or your own) may show a picture from another site, e.g. a column with `https://images.example.com/p/7.png`. The
+page's Content-Security-Policy normally allows pictures from the application's own server only; pgkiln adds the
+**origin** of every `https` picture a region or report column template actually renders (`https://images.example.com`)
+to that page's `img-src`, like a [display image item](05-items.md) does. Only `https` URLs without a user name or
+password count, and only their origin (never a path, a wildcard or another scheme): an `http:` picture, or one
+over the limit of 50 origins per page, is blocked by the browser. A [cached](#large-tables) region keeps its
+origins with its HTML. A [lazy](#large-tables) region whose pictures come from a site the page didn't allow yet
+loads the page again with the region in it (as its *Show* link does without JavaScript); after a *Refresh region*
+dynamic action, a master-detail selection or a search region's update, pictures from an origin the page didn't
+show when it loaded stay blocked until the page is loaded again.
+
 #### Plug-ins
 
 A component travels as one JSON **plug-in file** (`"format": "pgkiln-plugin/1"`, `"type":

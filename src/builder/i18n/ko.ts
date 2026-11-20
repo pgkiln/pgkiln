@@ -2889,6 +2889,8 @@ export const ko: BuilderMessages = {
   'cond.item_not_equals_item': '{item}이(가) {value}와(과) 다른 경우',
   'cond.item_in_list': '{item}이(가) {value} 중 하나인 경우',
   'cond.item_not_in_list': '{item}이(가) {value} 중 어느 것도 아닌 경우',
+  'cond.item_contains': '{item}에 {value}이(가) 포함된 경우',
+  'cond.item_contains_any': '{item}에 {value} 중 하나가 포함된 경우',
   'cond.request_in': '요청이 {value}인 경우',
   'cond.request_not_in': '요청이 {value}이(가) 아닌 경우',
   'cond.page_in': '페이지 {value}에서',

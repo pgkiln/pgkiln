@@ -69,6 +69,11 @@ function pluginAction(ctx: PageContext, name: string | null, config: Record<stri
 }
 }
 
+const containsValue = (value: string, wanted: string | null) => {
+  const w = (wanted ?? '').trim();
+  return w !== '' && value.split(':').includes(w);
+};
+
 function conditionHolds(type: string | null, expected: string | null, value: string) {
   switch (type) {
     case 'equals': return value === (expected ?? '');
@@ -82,6 +87,10 @@ function conditionHolds(type: string | null, expected: string | null, value: str
     case 'less': return value !== '' && compareValues(value, expected ?? '') < 0;
     case 'less_equal': return value !== '' && compareValues(value, expected ?? '') <= 0;
     case 'not_in_list': return !(expected ?? '').split(',').map((x) => x.trim()).includes(value);
+    // (sprint 235) a multi-value item's values (colon-separated) contain the value / one of the comma-separated values
+    case 'contains': return containsValue(value, expected);
+    case 'not_contains': return !containsValue(value, expected);
+    case 'contains_any': return (expected ?? '').split(',').some((x) => containsValue(value, x));
     default: return true;
   }
 }
@@ -441,7 +450,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}${customizePanel(ctx)}
     </div>
     <script type="application/json" id="pgkiln-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, ...(ctx.savedGrids?.length ? { savedGrids: ctx.savedGrids } : {}), texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, ...(ctx.savedGrids?.length ? { savedGrids: ctx.savedGrids } : {}), texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...(ctx.imgSrc?.size ? { img: [...ctx.imgSrc] } : {}), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }

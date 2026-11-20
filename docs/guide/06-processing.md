@@ -669,6 +669,8 @@ application computations. In the Page Designer it is the **Server-side condition
 | `item_equals` / `item_not_equals` | that item's value is / is not the value |
 | `item_equals_item` / `item_not_equals_item` | that item's value is / is not the value of the item named in the value |
 | `item_in_list` / `item_not_in_list` | that item's value is / is not one of the value's entries, separated by colons (`CLERK:ANALYST`) |
+| `item_contains` | (sprint 235) that item is a multi-value item (checkbox group, multiselect, shuttle, select many: values separated by colons, `DESK:LAPTOP`) and has the value among its values (`LAPTOP`; one value, no colon) |
+| `item_contains_any` | (sprint 235) that multi-value item has one of the value's entries, separated by colons (`TEST:A11Y`) |
 | `page_in` / `page_not_in` | the current page is / is not one of the value's page numbers (`1,3`) |
 | `page_is_dialog` / `page_is_not_dialog` | the page is / is not a modal dialog |
 | `user_signed_in` / `user_public` | the user is signed in / is the public user |
@@ -690,6 +692,11 @@ P3_JOB is one of CLERK, ANALYST*), in the builder's language. The
 [Advisor](03-builder.md#advisor) names SQL conditions a type can say exactly (`:P3_ID is not null`,
 `:REQUEST in ('SAVE', 'CREATE')`, `:P3_JOB = 'CLERK'`) as information; `<>` and `not in` stay SQL,
 because in SQL an empty item makes them false.
+
+`item_equals` and `item_in_list` compare a multi-value item's whole value (`DESK:LAPTOP` is not `LAPTOP`);
+`item_contains` and `item_contains_any` look at its values one by one, as text (the value is never run as SQL).
+**HR example, page 50 (Project team, part 98):** a *Laptop order* region shows when the needs checkbox group
+`item_contains` `LAPTOP`, a *Quality checklist* when the skills `item_contains_any` `TEST:A11Y`.
 
 **HR example, page 22 (Leave planner).** Computations fill the employee (yours, when none is
 chosen: `sql_query` with condition `item_null`), the name (`function_body`) and the pending

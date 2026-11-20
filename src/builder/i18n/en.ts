@@ -2894,6 +2894,8 @@ export const en = {
   'cond.item_not_equals_item': 'When {item} differs from {value}',
   'cond.item_in_list': 'When {item} is one of {value}',
   'cond.item_not_in_list': 'When {item} is none of {value}',
+  'cond.item_contains': 'When {item} includes {value}',
+  'cond.item_contains_any': 'When {item} includes one of {value}',
   'cond.request_in': 'When the request is {value}',
   'cond.request_not_in': 'When the request is not {value}',
   'cond.page_in': 'On page {value}',

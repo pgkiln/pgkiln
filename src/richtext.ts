@@ -2,9 +2,12 @@
 // Text Editor, Markdown Editor). Everything is made safe on the server:
 //
 //   sanitizeHtml()  rebuilds HTML from an allow-list. Text is always
-//                   escaped; only the tags below survive, with no attributes
-//                   except a link's href (http, https, mailto, tel or a
-//                   relative URL). Scripts, styles, event handlers,
+//                   escaped (named character references stay as they are,
+//                   so &ouml; shows ö); only the tags below survive, with no
+//                   attributes except a link's href (http, https, mailto, tel
+//                   or a relative URL). Simple tables (table, thead, tbody,
+//                   tr, th, td; sprint 235) keep their structure: a cell only
+//                   in a row, a row only in a table. Scripts, styles, event handlers,
 //                   javascript: URLs, comments and unknown tags are dropped
 //                   (the contents of script, style, iframe, svg… with them).
 //   markdownHtml()  renders a Markdown subset (headings, paragraphs, lists,
@@ -19,7 +22,17 @@ import { esc } from './html.ts';
 const ALLOWED = new Set([
   'p', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'del', 'strike', 'sub', 'sup', 'ul', 'ol', 'li',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'a', 'hr', 'div',
+  'table', 'thead', 'tbody', 'tr', 'th', 'td',
 ]);
+/** (sprint 235) Table parts and the elements each may be directly inside. */
+const TABLE_PARENT: Record<string, string[]> = { thead: ['table'], tbody: ['table'], tr: ['table', 'thead', 'tbody'], td: ['tr'], th: ['tr'] };
+/** The parts that a new part ends implicitly (a <td> ends the cell before it, a <tr> the row…). */
+const TABLE_ENDS: Record<string, string[]> = {
+  td: ['td', 'th'], th: ['td', 'th'], tr: ['td', 'th', 'tr'], thead: ['td', 'th', 'tr', 'thead', 'tbody'], tbody: ['td', 'th', 'tr', 'thead', 'tbody'],
+};
+const TABLE_PARTS = new Set(['table', 'thead', 'tbody', 'tr', 'td', 'th']);
+/** Directly inside these, only table parts may open (other tags are dropped, their text kept). */
+const TABLE_ONLY = new Set(['table', 'thead', 'tbody', 'tr']);
 const VOID = new Set(['br', 'hr']);
 /** Tags whose contents are dropped with them. */
 const DROP = new Set([
@@ -34,14 +47,65 @@ const MAX_DEPTH = 40;
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', colon: ':', tab: '\t', newline: '\n' };
 
-/** Decode character references (named ones of the small set above, decimal and hex). */
+/**
+ * (sprint 235) More named references, case-sensitive and with their ";":
+ * Latin-1 (&ouml; &eacute; &copy;…) and common typography (&rsquo; &ndash;
+ * &hellip; &euro;…). Others that look like a reference are kept as they are
+ * in sanitised text, where the browser reads them (see escText).
+ */
+const LATIN1 = (
+  'nbsp iexcl cent pound curren yen brvbar sect uml copy ordf laquo not shy reg macr deg plusmn sup2 sup3 acute micro para ' +
+  'middot cedil sup1 ordm raquo frac14 frac12 frac34 iquest Agrave Aacute Acirc Atilde Auml Aring AElig Ccedil Egrave Eacute ' +
+  'Ecirc Euml Igrave Iacute Icirc Iuml ETH Ntilde Ograve Oacute Ocirc Otilde Ouml times Oslash Ugrave Uacute Ucirc Uuml Yacute ' +
+  'THORN szlig agrave aacute acirc atilde auml aring aelig ccedil egrave eacute ecirc euml igrave iacute icirc iuml eth ntilde ' +
+  'ograve oacute ocirc otilde ouml divide oslash ugrave uacute ucirc uuml yacute thorn yuml'
+).split(' ');
+const NAMED_EXACT: Record<string, string> = {
+  ...Object.fromEntries(LATIN1.map((n, k) => [n, String.fromCharCode(160 + k)])),
+  OElig: '\u0152', oelig: '\u0153', Scaron: '\u0160', scaron: '\u0161', Yuml: '\u0178', fnof: '\u0192', circ: '\u02c6',
+  tilde: '\u02dc', ensp: '\u2002', emsp: '\u2003', thinsp: '\u2009', zwnj: '\u200c', zwj: '\u200d', lrm: '\u200e', rlm: '\u200f',
+  ndash: '\u2013', mdash: '\u2014', lsquo: '\u2018', rsquo: '\u2019', sbquo: '\u201a', ldquo: '\u201c', rdquo: '\u201d',
+  bdquo: '\u201e', dagger: '\u2020', Dagger: '\u2021', bull: '\u2022', hellip: '\u2026', permil: '\u2030', prime: '\u2032',
+  Prime: '\u2033', lsaquo: '\u2039', rsaquo: '\u203a', oline: '\u203e', euro: '\u20ac', trade: '\u2122', larr: '\u2190',
+  uarr: '\u2191', rarr: '\u2192', darr: '\u2193', harr: '\u2194', minus: '\u2212', le: '\u2264', ge: '\u2265', ne: '\u2260',
+  asymp: '\u2248', infin: '\u221e', check: '\u2713', hearts: '\u2665',
+};
+
+/** Decode character references (named ones of the sets above, decimal and hex). */
 export function decodeEntities(s: string) {
   if (!s.includes('&')) return s;
-  return s.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z]{2,8}));?/g, (m, dec, hex, name) => {
-    if (name) return NAMED[name.toLowerCase()] ?? m;
+  return s.replace(/&(?:#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6})|([a-zA-Z][a-zA-Z0-9]{1,31}))(;?)/g, (m, dec, hex, name, semi) => {
+    if (name) {
+      if (semi && NAMED_EXACT[name]) return NAMED_EXACT[name];
+      // the small set as before: its letters, with or without the ";"
+      const letters = /^[a-zA-Z]{2,8}/.exec(name)![0];
+      const v = NAMED[letters.toLowerCase()];
+      return v === undefined ? m : v + m.slice(1 + letters.length + (letters.length === name.length ? semi.length : 0));
+    }
     const cp = dec ? Number(dec) : parseInt(hex, 16);
     return cp > 0 && cp <= 0x10ffff && (cp < 0xd800 || cp > 0xdfff) ? String.fromCodePoint(cp) : '�';
   });
+}
+
+const REF = /&(?:#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|([a-zA-Z][a-zA-Z0-9]{1,31}))(;?)/g;
+
+/**
+ * Text as HTML: references decoded and the result escaped, except a named
+ * reference we don't know (&alefsym;), which stays as written: in text the
+ * browser turns it into a character (never into markup), and an unknown
+ * name shows as written, as it did before.
+ */
+export function escText(t: string) {
+  if (!t.includes('&')) return esc(t);
+  let out = '';
+  let last = 0;
+  for (const m of t.matchAll(REF)) {
+    out += esc(t.slice(last, m.index));
+    const d = decodeEntities(m[0]);
+    out += d === m[0] && m[1] && m[2] ? m[0] : esc(d);
+    last = m.index + m[0].length;
+  }
+  return out + esc(t.slice(last));
 }
 
 /**
@@ -59,6 +123,12 @@ export function safeHref(value: string): string | null {
   return url;
 }
 
+/** The innermost open table part, or -1. */
+function tablePart(open: string[]) {
+  for (let k = open.length - 1; k >= 0; k--) if (TABLE_PARTS.has(open[k])) return k;
+  return -1;
+}
+
 const ATTR = /[\s/]*([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"?|'([^']*)'?|([^\s>]*)))?/y;
 
 /** Rebuild HTML from the allow-list (see the top of this file). */
@@ -70,7 +140,7 @@ export function sanitizeHtml(input: string | null | undefined): string {
   let skip: string[] = []; // drop-content tags we are inside of
   let i = 0;
   const text = (t: string) => {
-    if (!skip.length && t) out.push(esc(decodeEntities(t)));
+    if (!skip.length && t) out.push(escText(t));
   };
   while (i < s.length) {
     const lt = s.indexOf('<', i);
@@ -147,6 +217,15 @@ export function sanitizeHtml(input: string | null | undefined): string {
       continue;
     }
     if (!ALLOWED.has(name)) continue; // unknown tag: keep its text, drop the tag
+    // (sprint 235) tables: a part ends the cells and rows before it, and opens only in its place
+    if (TABLE_PARENT[name]) {
+      let k = tablePart(open);
+      while (k >= 0 && TABLE_ENDS[name].includes(open[k])) {
+        while (open.length > k) out.push(`</${open.pop()}>`);
+        k = tablePart(open);
+      }
+      if (k < 0 || k !== open.length - 1 || !TABLE_PARENT[name].includes(open[k])) continue;
+    } else if (open.length && TABLE_ONLY.has(open[open.length - 1])) continue;
     if (VOID.has(name)) {
       out.push(`<${name}>`);
       continue;

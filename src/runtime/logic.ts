@@ -97,6 +97,15 @@ export async function conditionHolds(ctx: PageContext, cond: Condition, where: s
       const found = (cond.condition_value ?? '').split(':').includes(item);
       return cond.condition_type === 'item_in_list' ? found : !found;
     }
+    // (sprint 235) a multi-value item (checkbox group, multiselect, shuttle, select many) has the value / one of the values
+    case 'item_contains': {
+      const want = (cond.condition_value ?? '').trim();
+      return want !== '' && item.split(':').includes(want);
+    }
+    case 'item_contains_any': {
+      const values = item.split(':');
+      return (cond.condition_value ?? '').split(':').map((x) => x.trim()).some((x) => x !== '' && values.includes(x));
+    }
     case 'request_in':
       return list(cond.condition_value).includes(ctx.request);
     case 'request_not_in':
