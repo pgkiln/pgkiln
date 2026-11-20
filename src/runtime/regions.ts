@@ -10,7 +10,8 @@ import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
 import { expandShortcuts } from './shortcuts.ts';
-import { fillItems, linkAttrs, linkColumns } from './links.ts';
+import { fillItems, linkAttrs, linkColumns, pageHref } from './links.ts';
+import { isInlineOverlay, overlayHash, STATIC_ID } from './open-region.ts';
 import { renderCalendar } from './calendar.ts';
 import { CHART_KINDS, GAUGE_SHAPES, renderChartBody, wallClockIn, type GaugeConfig } from './charts.ts';
 import { databaseTimeZone } from './locale.ts';
@@ -91,11 +92,16 @@ export async function renderButton(ctx: PageContext, b: Button) {
   const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
   if (b.action === 'menu') return renderMenu(ctx, b, cls, badge);
   if (b.action === 'redirect') {
+    // (sprint 238, MG-14) opens an inline dialog region: on this page, or on the target page after the link
+    if (b.target_region && (b.target_page == null || b.target_page === ctx.page.page_no))
+      return html`<a class="${cls}" href="${overlayHash(ctx, b.target_region)}"${confirm}>${b.label}${badge}</a>`;
     const target = b.target_page ?? ctx.page.page_no;
     // Cancel/close in a dialog returning to the page that opened it just closes the dialog.
     if (!(await pageAllowed(ctx, target))) return '';
     if (ctx.dialog && !(ctx.app.pages.find((p) => p.page_no === target)?.mode === 'modal'))
       return html`<a class="${cls}" href="${ctx.base}/${target}" data-dialog-cancel>${b.label}${badge}</a>`;
+    if (b.target_region && STATIC_ID.test(b.target_region))
+      return html`<a class="${cls}" href="${pageHref(ctx, target, b.target_items ?? {}, true)}#${b.target_region}"${confirm}>${b.label}${badge}</a>`;
     return html`<a class="${cls}" ${linkAttrs(ctx, target, b.target_items ?? {}, true)}${confirm}>${b.label}${badge}</a>`;
   }
   if (b.action === 'da') return html`<button type="button" class="${cls}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
@@ -338,7 +344,6 @@ async function renderRegionNow(ctx: PageContext, r: Region, hidden: Set<string>)
 }
 
 /** (sprint 219) The region templates that open over the page and have a footer slot for sub regions. */
-const isInlineOverlay = (r: Region) => r.template === 'inline_dialog' || r.template === 'inline_drawer';
 
 /** (172) The sub regions of a region, in sequence (one level: a sub region has none). */
 export const childrenOf = (ctx: PageContext, r: Region) => (r.parent_id == null ? ctx.page.regions.filter((x) => x.parent_id === r.id) : []);
@@ -552,7 +557,7 @@ async function regionShell(ctx: PageContext, r: Region, hidden: Set<string>, bod
     </section>`;
   // (088) hidden until opened: a dynamic action "Open region", or a link to #R<id> (CSS :target without JavaScript)
   if (r.template === 'inline_dialog' || r.template === 'inline_drawer')
-    return html`<dialog class="${cls}" id="R${r.id}"${staticAttr}${named(titleId, true)} data-inline-region>
+    return html`<dialog class="${cls}" id="R${r.id}"${staticAttr}${named(titleId, true)} data-inline-region${ctx.openRegions?.has(r.id) ? raw(' open data-open-region') : ''}>
       <header class="region-header"><h2 id="${titleId}">${ic}${r.title}</h2>
         <a class="region-dialog-close icon-button" href="#" role="button" data-region-close aria-label="${ctx.locale.t('common.dismiss')}">${icon('close')}</a></header>
       <div class="region-body"${scrollable(r)}>${body}</div>

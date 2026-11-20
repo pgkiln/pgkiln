@@ -238,28 +238,35 @@ export async function branchTarget(ctx: PageContext, point: Branch['point']): Pr
     if (point === 'after_processing' && b.when_button && b.when_button !== ctx.request) continue;
     if (!(await isAuthorized(ctx, b.authz))) continue;
     if (!(await conditionHolds(ctx, b, `condition of branch "${b.name}"`))) continue;
-    if (b.target_type === 'function') {
-      const path = await branchFunction(ctx, b);
-      if (path === null || (point === 'before_header' && leadingPage(path) === ctx.page.page_no)) continue;
-      return `${ctx.base}/${path}`;
-    }
-    if (b.target_type === 'app') {
-      const href = await otherApp(ctx, b);
-      if (href === null) continue;
-      return href;
-    }
-    if (b.target_type === 'url') {
-      const path = substitute(b.target_url ?? '', ctx, encodeURIComponent);
-      if (point === 'before_header' && leadingPage(path) === ctx.page.page_no) continue;
-      // the database refuses schemes, "//", "\" and ".." in target_url; a substituted value is encoded
-      return `${ctx.base}/${path}`;
-    }
-    const target = b.target_page ?? ctx.page.page_no;
-    if (point === 'before_header' && target === ctx.page.page_no) continue;
-    const items = b.target_items ?? {};
-    return pageHref(ctx, target, items);
+    const to = await branchTo(ctx, b, point);
+    // (sprint 238, MG-14) the target page (of this application) opens this inline dialog region; a branch's wins over a process's
+    if (to !== null && b.open_region && b.target_type !== 'app') ctx.openRegion = b.open_region;
+    if (to !== null) return to;
   }
   return null;
+}
+
+async function branchTo(ctx: PageContext, b: Branch, point: Branch['point']): Promise<string | null> {
+  if (b.target_type === 'function') {
+    const path = await branchFunction(ctx, b);
+    if (path === null || (point === 'before_header' && leadingPage(path) === ctx.page.page_no)) return null;
+    return `${ctx.base}/${path}`;
+  }
+  if (b.target_type === 'app') {
+    const href = await otherApp(ctx, b);
+    if (href === null) return null;
+    return href;
+  }
+  if (b.target_type === 'url') {
+    const path = substitute(b.target_url ?? '', ctx, encodeURIComponent);
+    if (point === 'before_header' && leadingPage(path) === ctx.page.page_no) return null;
+    // the database refuses schemes, "//", "\" and ".." in target_url; a substituted value is encoded
+    return `${ctx.base}/${path}`;
+  }
+  const target = b.target_page ?? ctx.page.page_no;
+  if (point === 'before_header' && target === ctx.page.page_no) return null;
+  const items = b.target_items ?? {};
+  return pageHref(ctx, target, items);
 }
 
 /**

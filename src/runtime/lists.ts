@@ -6,6 +6,7 @@ import type { Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed, sqlTrue } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
 import { isModal, pageHref } from './links.ts';
+import { overlayHash, STATIC_HASH } from './open-region.ts';
 
 // Lists (APEX: Shared Components > Lists): links with a label, a target (a
 // page of the app with item values, a path inside the app, or an http(s)
@@ -167,7 +168,8 @@ export async function listTree(ctx: PageContext, name: string): Promise<ListNode
       const safe = safeListUrl(substitute(e.url, ctx, encodeURIComponent));
       if (safe) {
         external = safe.kind === 'external';
-        href = external ? safe.url : `${ctx.base}/${safe.url}`;
+        // (sprint 238, MG-14) #<static id>: an inline dialog region of this page (app.js opens it; #R<id> without JavaScript)
+        href = external ? safe.url : STATIC_HASH.test(safe.url) ? overlayHash(ctx, safe.url.slice(1)) : `${ctx.base}/${safe.url}`;
       }
     }
     if (!href && !children.length) return null;
