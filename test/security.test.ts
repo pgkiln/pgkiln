@@ -19724,16 +19724,18 @@ describe('sprint 237 MG-3', () => {
     await owner.query(`insert into meta.document_template (app_id, name, query, template) values ($1, 'OTHER_DOC', 'select ''secret of the other app'' as s', '<p>{{s}}</p>')`, [other]);
     await owner.query(`update meta.mail_queue set status = 'cancelled' where app_id = $1 and status = 'queued'`, [hr]);
     // HR sends through a "log only" service of this block's own (another test may have removed HR's)
-    const was = await owner.one('select * from meta.app_mail_service where app_id = $1', [hr]);
+    const was = (await owner.query('select service_id, from_address, max_per_day, is_default from meta.app_mail_service where app_id = $1 order by is_default desc', [hr])).rows;
     await owner.query(`delete from meta.mail_service where name = 'S237_LOG'`);
     const sid = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ('S237_LOG', 'log', '{@example.com}', '{"default_from": "hr@example.com"}') returning id`)).id;
-    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                       on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [hr, sid]);
+    // (sprint 236) HR may link several services: keep them all, send only through this one meanwhile
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [hr]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)`, [hr, sid]);
     restoreMail237 = async () => {
-      if (was) await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day) values ($1, $2, $3, $4)
-                                  on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = excluded.max_per_day`,
-        [hr, was.service_id, was.from_address, was.max_per_day]);
       await owner.query(`delete from meta.mail_service where name = 'S237_LOG'`);
+      await owner.query('delete from meta.app_mail_service where app_id = $1', [hr]);
+      for (const r of was)
+        await owner.query('insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day, is_default) values ($1, $2, $3, $4, $5)',
+          [hr, r.service_id, r.from_address, r.max_per_day, r.is_default]);
     };
   });
   after(async () => {

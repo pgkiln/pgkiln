@@ -18,16 +18,18 @@ const made: { processes: number[]; buttons: number[] } = { processes: [], button
 
 /** (sprint 237) HR sends through a "log only" service of the test's own (another test file may have removed HR's). */
 async function useLogService(appId: number, name: string) {
-  const before = await owner.one('select * from meta.app_mail_service where app_id = $1', [appId]);
+  // (sprint 236) an application may link several services: keep them all, send only through this one meanwhile
+  const before = (await owner.query('select service_id, from_address, max_per_day, is_default from meta.app_mail_service where app_id = $1 order by is_default desc', [appId])).rows;
   await owner.query('delete from meta.mail_service where name = $1', [name]);
   const sid = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ($1, 'log', '{@example.com}', '{"default_from": "hr@example.com"}') returning id`, [name])).id;
-  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                     on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = null`, [appId, sid]);
+  await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)`, [appId, sid]);
   return async () => {
-    if (before) await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day) values ($1, $2, $3, $4)
-                                   on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = excluded.max_per_day`,
-      [appId, before.service_id, before.from_address, before.max_per_day]);
     await owner.query('delete from meta.mail_service where name = $1', [name]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    for (const r of before)
+      await owner.query('insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day, is_default) values ($1, $2, $3, $4, $5)',
+        [appId, r.service_id, r.from_address, r.max_per_day, r.is_default]);
   };
 }
 
