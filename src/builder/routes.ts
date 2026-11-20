@@ -622,7 +622,13 @@ export async function builderRoutes(app: FastifyInstance) {
       const r = await owner.tx(async (c) => {
         // (sprint 186, NX-S2) a file without a database role gets app_<alias>, never the owner's or the runtime's
         roleNote = await importRole(c, doc, { alias: req.body?.alias?.trim() || String(doc?.app?.alias ?? ''), ws });
-        const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null])).rows[0];
+        // (sprint 242, MG-16) keys the document leaves out take the column defaults; a missing required key is named
+        const { explainNotNull, fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
+        fillDefaults(doc, await loadColumnDefaults(c));
+        const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null]).catch((e) => {
+          const why = explainNotNull(e, doc);
+          throw why ? new Error(why) : e;
+        })).rows[0];
         await placeApp(c, made.id, ws);
         // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
         if (req.body?.check === 'true') {
