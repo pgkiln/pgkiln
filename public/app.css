@@ -2470,15 +2470,18 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
    Drawers and Popups) the Standard page template's other display positions. In the header a region is a flat,
    one-line part of the bar (its title and frame left out); it never widens the bar on a phone. */
 .t-hpos { display: flex; align-items: center; gap: 0.5rem; min-width: 0; max-height: 52px; overflow: hidden; flex: 0 1 auto; }
+.t-hpos.t-pos-after_logo { flex: 0 3 auto; min-width: 2.5rem; }
 .t-hpos > .region { background: none; border: 0; box-shadow: none; min-width: 0; color: inherit; }
 .t-hpos > .region > .region-header { display: none; }
 .t-hpos .region-body { padding: 0; }
-.t-hpos .region-body > :is(p, ul, ol) { margin: 0; }
-.t-hpos .region-body > :is(ul, ol) { display: flex; gap: 0.75rem; list-style: none; padding: 0; }
+.t-hpos .region :is(p, ul, ol) { margin: 0; }
+.t-hpos .region :is(ul, ol) { display: flex; gap: 0.75rem; list-style: none; padding: 0; }
 .t-hpos :is(p, span, a, li) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 640px) { .t-hpos.t-pos-before_navigation_bar, .t-hpos.t-pos-after_navigation_bar { display: none; } }
 .t-topnav { padding: 0.5rem 1.5rem; background: var(--surface); border-bottom: 1px solid var(--border); }
 .t-topnav .t-regions { gap: 0.5rem; }
+.t-topnav :is(.region-plain, .region-body) > :is(ul, ol) { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; list-style: none; margin: 0; padding: 0; }
+.t-topnav :is(.region-plain, .region-body) > p { margin: 0; }
 @media (max-width: 640px) { .t-topnav { padding: 0.5rem 0.75rem; } }
 .t-pos-full_width { margin: 0 -1.5rem 1rem; }
 @media (max-width: 640px) { .t-pos-full_width { margin-inline: -0.75rem; } }
