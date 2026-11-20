@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Conditions on one value of a multi-value item** (sprint 235, MG-9, migration 193): dynamic actions get the
+  client-side conditions `contains`, `not_contains` and `contains_any`, and every component gets the server-side
+  condition types `item_contains` and `item_contains_any`, for checkbox groups, multiselects, shuttles and Select Many.
+  Values are compared as text, never run as SQL. HR part 98 (page 50) uses all five.
+- **Pictures from other https sites** (sprint 235, MG-2): template components, report column templates and cached
+  regions add the origins of their https image URLs to the page's Content-Security-Policy `img-src` (normalised
+  origins only, at most 50), as image items already did.
+
+### Changed
+- **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the
+  like survive, and `table`, `thead`, `tbody`, `tr`, `th` and `td` (no attributes, structure enforced) are kept by the
+  allow-list on the server and in the editor.
+- A checkbox group's value in JavaScript (`$v`, client-side conditions) is now its ticked values joined with colons, as
+  for multiselects and shuttles; a single checkbox still gives `true` / `false`.
+
 ## [0.112.0] - 2026-11-20
 
 ### Security
