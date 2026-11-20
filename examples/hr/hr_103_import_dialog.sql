@@ -63,11 +63,11 @@ select p.id, r.id, i.seq, i.name, i.label, i.type, i.config::jsonb, i.help
   from (values
   -- in the grid's toolbar (sprint 240)
   (10, 'Contacts to import', 'P67_FILE', 'CSV file', 'file', '{"accept": ".csv,text/csv", "max_mb": 1}', 'Columns: name, company, e-mail (a heading line first).'),
-  (10, 'Look up a CRM contact', 'P67_CRM_ID', 'Contact number', 'number', '{}', 'The number of a contact in the sample CRM, e.g. 2.'),
-  (20, 'Look up a CRM contact', 'P67_CRM_FOUND', 'Found', 'display', '{}', null),
-  (30, 'Look up a CRM contact', 'P67_CRM_COUNT', 'In the CRM', 'display', '{}', null),
-  (40, 'Look up a CRM contact', 'P67_CRM_REQUEST', 'Request', 'hidden', '{}', null),
-  (50, 'Look up a CRM contact', 'P67_COUNT_REQUEST', 'Count request', 'hidden', '{}', null)
+  (20, 'Look up a CRM contact', 'P67_CRM_ID', 'Contact number', 'number', '{}', 'The number of a contact in the sample CRM, e.g. 2.'),
+  (30, 'Look up a CRM contact', 'P67_CRM_FOUND', 'Found', 'display', '{}', null),
+  (40, 'Look up a CRM contact', 'P67_CRM_COUNT', 'In the CRM', 'display', '{}', null),
+  (50, 'Look up a CRM contact', 'P67_CRM_REQUEST', 'Request', 'hidden', '{}', null),
+  (60, 'Look up a CRM contact', 'P67_COUNT_REQUEST', 'Count request', 'hidden', '{}', null)
   ) as i (seq, region, name, label, type, config, help)
   join meta.page p on p.page_no = 67 join meta.app a on a.id = p.app_id and a.alias = 'hr'
   join meta.region r on r.page_id = p.id and r.title = i.region;
@@ -78,8 +78,8 @@ select p.id, r.id, b.seq, b.name, b.label, b.action, b.hot, b.stay, b.confirm
   (10, 'Contacts to import', 'PREVIEW', 'Read the file', 'submit', false, true, null),
   (20, 'Contacts to import', 'CLEAR', 'Start over', 'submit', false, null, 'Remove the lines read so far?'),
   (30, 'Contacts to import', 'IMPORT', 'Import', 'submit', true, null, null),
-  (10, 'Look up a CRM contact', 'LOOKUP', 'Look up', 'da', false, null, null),
-  (20, 'Look up a CRM contact', 'COUNT', 'Count the CRM''s contacts', 'da', false, null, null)
+  (40, 'Look up a CRM contact', 'LOOKUP', 'Look up', 'da', false, null, null),
+  (50, 'Look up a CRM contact', 'COUNT', 'Count the CRM''s contacts', 'da', false, null, null)
   ) as b (seq, region, name, label, action, hot, stay, confirm)
   join meta.page p on p.page_no = 67 join meta.app a on a.id = p.app_id and a.alias = 'hr'
   join meta.region r on r.page_id = p.id and r.title = b.region;
@@ -130,7 +130,7 @@ select p.id, 10, 'Start over in the dialog', 'after_processing', 'CLEAR', 'page'
   from meta.page p join meta.app a on a.id = p.app_id
  where a.alias = 'hr' and p.page_no = 67;
 
--- Look up: the Ajax callback, from hr-import.js; Count: execute_sql, then set_value reads the response
+-- Look up: the Ajax callback, from import-dialog.js; Count: execute_sql, then set_value reads the response
 insert into meta.dynamic_action (page_id, seq, name, event, trigger_element, action, affected_items, code)
 select p.id, d.seq, d.name, 'click', d.btn, d.action, d.items, d.code
   from (values
@@ -145,7 +145,7 @@ select p.id, d.seq, d.name, 'click', d.btn, d.action, d.items, d.code
   join meta.page p on p.page_no = 67 join meta.app a on a.id = p.app_id and a.alias = 'hr';
 
 insert into meta.static_file (app_id, name, mime, content)
-select a.id, 'hr-import.js', 'text/javascript', convert_to($js$// HR example, page 67: the Ajax callback LOOKUP_CONTACT (a chain of two SQL processes).
+select a.id, 'import-dialog.js', 'text/javascript', convert_to($js$// HR example, page 67: the Ajax callback LOOKUP_CONTACT (a chain of two SQL processes).
 // The web request its first step queues is made before its second step runs: one call, no polling.
 pgkiln.actions.register('hr.lookupContact', async () => {
   if (!pgkiln.getValue('P67_CRM_ID')) return pgkiln.showError('Enter a contact number.', 'P67_CRM_ID');
@@ -155,7 +155,7 @@ pgkiln.actions.register('hr.lookupContact', async () => {
 });
 $js$, 'utf8')
   from meta.app a where a.alias = 'hr';
-update meta.app set static_includes = array_append(static_includes, 'hr-import.js') where alias = 'hr';
+update meta.app set static_includes = array_append(static_includes, 'import-dialog.js') where alias = 'hr';
 
 -- page 35 opens the dialog
 insert into meta.button (page_id, region_id, seq, name, label, action, target_page)
