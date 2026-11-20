@@ -45,6 +45,7 @@ import { gridReturn, layoutFromForm, statePart } from './grid.ts';
 import { PassThrough } from 'node:stream';
 import { reportPdf } from './pdf.ts';
 import { renderDocument } from './documents.ts';
+import { renderPendingDocuments } from './document-pdf.ts';
 import { pwaHead } from './pwa.ts';
 import { resolveLocale, THEME_COOKIE, themeCookieOptions, translateApp, translatePage, validTimeZone, type Locale } from './locale.ts';
 import { chrome, dialogClosePage, languagePicker, renderPage } from './render.ts';
@@ -763,7 +764,10 @@ export async function runtimeRoutes(app: FastifyInstance) {
             break;
           }
           case 'execute_sql':
-            await savepoint(c, () => runSql(ctx, da.code ?? ''));
+            await savepoint(c, async () => {
+              await runSql(ctx, da.code ?? '');
+              await renderPendingDocuments(ctx); // (sprint 237) meta.document_pdf for mail
+            });
             break;
           case 'ai_generate': {
             // the page process it names, with that process's authorization and condition (not its button)

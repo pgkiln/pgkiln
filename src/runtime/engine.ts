@@ -18,6 +18,7 @@ import { parseDateMask } from './format.ts';
 import { conditionHolds, functionBody } from './logic.ts';
 import { runPluginProcess } from './plugins.ts';
 import { runDeclarative } from './process-types.ts';
+import { renderPendingDocuments } from './document-pdf.ts';
 import { BACKGROUND_TYPES, downloadFile, sendEmailProcess, sendNotificationProcess, sendPushProcess, workflowProcess, type ChainConfig } from './processes.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type Errors, type PageContext } from './context.ts';
 
@@ -605,6 +606,18 @@ function runOne(ctx: PageContext, p: Process, names: Set<string>, depth: number)
 }
 
 async function runOneStep(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
+  const msg = await runOneType(ctx, p, names, depth);
+  // (sprint 237) documents meta.document_pdf asked for that became mail attachments: drawn now, with the data as
+  // the process left it (any type: a form's table may have a trigger that queues the mail)
+  try {
+    await renderPendingDocuments(ctx);
+  } catch (e) {
+    throw new ProcessFailed(await publicError(ctx, e, `process "${p.name}"`), null);
+  }
+  return msg;
+}
+
+async function runOneType(ctx: PageContext, p: Process, names: Set<string>, depth: number): Promise<string | null> {
   try {
     if (ctx.background && !BACKGROUND_TYPES.has(p.type)) throw new Error(ctx.locale.t('process.background_type', { name: p.name, type: p.type }));
     switch (p.type) {
@@ -699,7 +712,10 @@ export async function runAppProcesses(ctx: PageContext, point: 'after_login' | '
   for (const p of ctx.app.app_processes) {
     if (p.point !== point || !(await isAuthorized(ctx, p.authz))) continue;
     try {
-      await timed(ctx, 6, 'process', () => `application process "${p.name}"`, () => savepoint(ctx.client!, () => runSql(ctx, p.code, new Set(ctx.app.app_items))));
+      await timed(ctx, 6, 'process', () => `application process "${p.name}"`, () => savepoint(ctx.client!, async () => {
+        await runSql(ctx, p.code, new Set(ctx.app.app_items));
+        await renderPendingDocuments(ctx); // (sprint 237)
+      }));
     } catch (e) {
       ctx.errors.page.push(await publicError(ctx, e, `application process "${p.name}"`));
     }

@@ -625,6 +625,12 @@ page's own access rules apply. Users who haven't signed in (on a page that doesn
 get the documents that page offers with a visible document button. The HR sample's employee form (page 3) has a *Print* button for the
 `EMPLOYEE_SHEET` template.
 
+**As a mail attachment.** (sprint 237) A *Send e-mail* process attaches a template as PDF with
+`"attachments": {"document": "EMPLOYEE_SHEET", "items": {"P3_EMPNO": "&P3_EMPNO."}}`, and SQL with
+`meta.add_mail_attachment(id, meta.document_pdf('EMPLOYEE_SHEET', jsonb_build_object('P3_EMPNO', 7839)), …)`:
+drawn on the server as for a download ([Sending e-mail](06-processing.md#a-document-as-attachment)).
+The HR sample's *Mail sheet* button does the latter.
+
 In the builder, **Preview PDF** under the template fills it with item values you type
 (`P3_EMPNO=7839`), as the application's role, in a transaction that is rolled back. The template's
 tags are checked when you save it; the Advisor also checks the query and templates that buttons

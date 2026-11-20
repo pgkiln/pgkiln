@@ -46,6 +46,16 @@ export async function renderDocument(ctx: PageContext, name: string, offered = f
     // sent like a download process's file (sandboxed, never shown as a page of the application)
     return { download: { ...d, inline: false } };
   }
+  return templatePdf(ctx, tpl);
+}
+
+/**
+ * A document template drawn as PDF with the context's session state (binds, file name), on the context's
+ * connection (the page's transaction, as the app's role). (sprint 237) Also meta.document_pdf and a
+ * send_email process's document attachments (document-pdf.ts), with their items over the session state.
+ */
+export async function templatePdf(ctx: PageContext, tpl: DocumentTemplate) {
+  const c = ctx.client!;
   const now = new Date().toISOString();
   const data = await savepoint(c, () =>
     documentData(c, stripSemicolon(applyBinds(tpl.query, bindValues(ctx))), {

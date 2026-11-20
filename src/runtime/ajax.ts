@@ -19,6 +19,7 @@ import { publicError, toState, type PageContext } from './context.ts';
 import { assignable, processConditionHolds, runSql } from './engine.ts';
 import { downloadFile, downloadHeaders } from './processes.ts';
 import { saveState } from '../session.ts';
+import { renderPendingDocuments } from './document-pdf.ts';
 
 type Loader = (req: any, reply: FastifyReply, opts?: { json?: boolean }) => Promise<PageContext | null>;
 type Tx = (ctx: PageContext) => Parameters<typeof appTx>[0];
@@ -55,7 +56,11 @@ export function ajaxRoutes(app: FastifyInstance, loadContext: Loader, txContext:
         applyPostedItems(ctx, body, ctx.page.items.map((i) => i.name).filter((n) => n in body));
         const before = { ...ctx.session.state };
         const names = p ? assignable(ctx) : new Set(ctx.app.app_items);
-        const res = await savepoint(c, () => runSql(ctx, (p ?? ap)!.code ?? '', names));
+        const res = await savepoint(c, async () => {
+          const r = await runSql(ctx, (p ?? ap)!.code ?? '', names);
+          await renderPendingDocuments(ctx); // (sprint 237) meta.document_pdf for mail
+          return r;
+        });
         const rows = ((res?.rows ?? []) as Record<string, unknown>[]).slice(0, AJAX_MAX_ROWS)
           .map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, jsonSafe(v)])));
         const items = Object.fromEntries([...names].filter((n) => ctx.session.state[n] !== before[n]).map((n) => [n, toState(ctx.session.state[n]) ?? '']));
