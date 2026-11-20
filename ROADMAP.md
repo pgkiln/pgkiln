@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.112.0 (November 2026): the Docker setup runs pgkiln as an owner without SUPERUSER (and moves a 0.111 install over on start), `pgkiln admin demote-owner`; removing a developer releases their page and application locks; a tidier Developers page.
+- **Current release:** 0.113.0 (November 2026): gaps found migrating an Appsmith application — several mail services per application, document templates as mail attachments (`meta.document_pdf`), report link columns and row actions, inline dialogs opened by static ID, a signature item and a bundled barcode decoder for iOS, value placeholders and `&ITEM.` in labels, the Standard without navigation page template, `meta.set_auth_user`, staying in a dialog, web requests after Ajax callbacks, `contains` conditions, keys left out of application files take column defaults; and the Standard page template's other positions in the Page Designer (AX-12).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
