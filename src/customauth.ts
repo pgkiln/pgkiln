@@ -15,7 +15,27 @@ import type { App } from './metadata.ts';
 
 type CustomAuthApp = Pick<App, 'id' | 'alias' | 'db_role' | 'custom_auth_function' | 'custom_auth_code' | 'custom_auth_post_code'>;
 
-export type CustomAuthResult = { ok: true; username: string } | { ok: false; reason: 'invalid' | 'denied'; detail: string };
+/** `typed`: what the user typed, when post-authentication named the user otherwise (meta.set_auth_user, sprint 241) */
+export type CustomAuthResult = { ok: true; username: string; typed?: string } | { ok: false; reason: 'invalid' | 'denied'; detail: string };
+
+/** btrim(): spaces only (String.trim would also drop the formatting characters checked below) */
+const trimSpaces = (s: string) => s.replace(/^ +| +$/g, '');
+
+const NOBODY = 'nobody is the name of a user who is not signed in';
+
+/**
+ * (sprint 241, MG-15) Why a user name can't be a session's user (null: it can): as meta.auth_user_problem in
+ * migration 197. Empty, longer than 100 characters, a control, line-separator, zero-width or bidirectional
+ * formatting character (which would make one name look like another in the activity log), or "nobody".
+ */
+export function authUserProblem(name: string): string | null {
+  const v = trimSpaces(name);
+  if (!v) return 'the user name is empty';
+  if ([...v].length > 100) return 'the user name is longer than 100 characters';
+  if (/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/.test(v)) return 'the user name contains a control or formatting character';
+  if (v.toLowerCase() === 'nobody') return NOBODY;
+  return null;
+}
 
 /** A function name as stored (lower case, optionally schema-qualified), quoted for SQL. */
 export const FUNCTION_NAME = /^[a-z_][a-z0-9_$]{0,62}(\.[a-z_][a-z0-9_$]{0,62})?$/;
@@ -67,17 +87,30 @@ export async function customAuthenticate(a: CustomAuthApp, username: string, pas
         throw new Refused({ ok: false, reason: 'invalid', detail: `check failed (${code(e)})` });
       }
       if (ok !== true) throw new Refused({ ok: false, reason: 'invalid', detail: 'check returned false' });
+      let name = username;
       if (a.custom_auth_post_code?.trim()) {
+        let set: string | null;
         try {
-          await c.query(`select set_config('pgkiln.app_user', $1, true)`, [username]);
+          // (sprint 241, MG-15) meta.set_auth_user works only now: the phase is set, and the name it records is read
+          // right after this code, in this transaction (anything set before, e.g. by the check, is cleared first)
+          await c.query(`select set_config('pgkiln.app_user', $1, true), set_config('pgkiln.auth_user', '', true), set_config('pgkiln.auth_phase', 'post_authentication', true)`, [username]);
           const fn = await tempFunction(c, a.custom_auth_post_code, 'p_username text', 'void');
           await c.query(`select ${fn}($1)`, [username]);
           await c.query(`drop function ${fn}(text)`);
+          set = (await c.query(`select current_setting('pgkiln.auth_user', true) as name, set_config('pgkiln.auth_phase', '', true)`)).rows[0]?.name || null;
         } catch (e) {
           throw new Refused({ ok: false, reason: 'denied', detail: `post-authentication failed (${code(e)})` });
         }
+        if (set !== null) {
+          // checked again here: the setting may have been written with set_config instead of meta.set_auth_user
+          const problem = authUserProblem(set);
+          if (problem) throw new Refused({ ok: false, reason: 'denied', detail: `post-authentication set no valid user name (${problem})` });
+          name = trimSpaces(set);
+        }
       }
-      return { ok: true, username } as const;
+      // "nobody" is the user who isn't signed in: never a session's user
+      if (authUserProblem(name) === NOBODY) throw new Refused({ ok: false, reason: 'denied', detail: 'the user name nobody is reserved' });
+      return { ok: true, username: name, ...(name !== username ? { typed: username } : {}) } as const;
     });
   } catch (e) {
     if (e instanceof Refused) return e.result;

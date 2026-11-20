@@ -15,6 +15,7 @@ import { runAiProcess } from './ai.ts';
 import { itemMask, LOV_CHECKED, lovContains, MULTI_VALUE, ratingMax, splitValues } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { parseDateMask } from './format.ts';
+import { itemLabel } from './item-texts.ts';
 import { conditionHolds, functionBody } from './logic.ts';
 import { runPluginProcess } from './plugins.ts';
 import { runDeclarative } from './process-types.ts';
@@ -224,6 +225,8 @@ export async function validate(ctx: PageContext) {
   const errors: Errors = { page: [], items: {} };
   const state = ctx.session.state;
   const vis = ctx.vis!;
+  // (sprint 241, MG-11) the label as the page shows it, with &ITEM. substitutions (the message is escaped where shown)
+  const errLabel = (i: Item) => (i.label == null ? i.name : itemLabel(ctx, i));
   const fail = (itemName: string | null, msg: string) => {
     if (itemName && vis.items.has(itemName) && !errors.items[itemName]) errors.items[itemName] = msg;
     else errors.page.push(msg);
@@ -240,13 +243,13 @@ export async function validate(ctx: PageContext) {
       const r = formRegion(ctx, i);
       missing = state[i.name] === REMOVE || (missing && !(r && (await storedFileExists(ctx, r, i.source_column!))));
     }
-    if (missing) fail(i.name, ctx.locale.t('error.required', { label: i.label ?? i.name }));
+    if (missing) fail(i.name, ctx.locale.t('error.required', { label: errLabel(i) }));
   }
   // a location is "latitude,longitude"; a rating a whole number of stars; a date range "from:to"
   for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (!v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
-    const label = i.label ?? i.name;
+    const label = errLabel(i);
     if (i.type === 'rating' && !(/^\d{1,2}$/.test(v) && Number(v) >= 1 && Number(v) <= ratingMax(i, ctx.app.component_settings)))
       fail(i.name, ctx.locale.t('error.rating', { label, max: ratingMax(i, ctx.app.component_settings) }));
     // a list item posts return values: each must be one its list of values returns (config.any_value: true allows others)
@@ -267,7 +270,7 @@ export async function validate(ctx: PageContext) {
   for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'number' || !v || !vis.editable.has(i.name) || errors.items[i.name] || isPlainNumber(v)) continue;
-    const label = i.label ?? i.name;
+    const label = errLabel(i);
     const mask = itemMask(i);
     const example = mask ? formatNumber('1234.5', mask, ctx.locale.numbers) : undefined;
     fail(i.name, example && !example.startsWith('#') ? ctx.locale.t('error.number_format', { label, example }) : ctx.locale.t('error.not_number', { label }));
@@ -276,13 +279,13 @@ export async function validate(ctx: PageContext) {
   for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'date' || !v || !vis.editable.has(i.name) || errors.items[i.name] || /^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
-    fail(i.name, ctx.locale.t('error.not_date', { label: i.label ?? i.name }));
+    fail(i.name, ctx.locale.t('error.not_date', { label: errLabel(i) }));
   }
   for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];
     if (i.type !== 'location' || !v || !vis.editable.has(i.name) || errors.items[i.name]) continue;
     const m = /^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/.exec(v);
-    if (!m || Math.abs(Number(m[1])) > 90 || Math.abs(Number(m[2])) > 180) fail(i.name, ctx.locale.t('error.location', { label: i.label ?? i.name }));
+    if (!m || Math.abs(Number(m[1])) > 90 || Math.abs(Number(m[2])) > 180) fail(i.name, ctx.locale.t('error.location', { label: errLabel(i) }));
   }
 
   for (const v of ctx.page.validations) {

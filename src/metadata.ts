@@ -255,6 +255,8 @@ export interface Item extends FromGlobal {
   seq: number;
   name: string;
   label: string | null;
+  /** (197, sprint 241 MG-10) Value Placeholder: the hint in an empty field, a select list's empty choice */
+  placeholder?: string | null;
   type: ItemType;
   lov: string | null;
   source_column: string | null;
@@ -475,8 +477,8 @@ export interface Page extends PageSummary {
   static_includes: StaticInclude[];
   /** (077) ask before leaving the page with unsaved changes */
   warn_unsaved: boolean;
-  /** (087) 'minimal': no header and navigation */
-  page_template: 'standard' | 'minimal' | 'left_side_column' | 'right_side_column';
+  /** (087) 'minimal': no header and navigation; (197) 'no_navigation': Standard without header, menu and title bar */
+  page_template: 'standard' | 'minimal' | 'left_side_column' | 'right_side_column' | 'no_navigation';
   /** (140) the page's help text (Markdown), shown by a help_text region */
   help: string | null;
   /** (sprint 229, AX-8) merged from the Global Page (page 0): its page id, Authorization and Page requires sign-in */
