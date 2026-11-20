@@ -20388,19 +20388,19 @@ describe('sprint 242 MG-16', () => {
   test('a key whose default would widen access is never filled: absent or null refuses the import, naming file and key', async () => {
     const { MUST_GIVE } = await import('../src/import-defaults.ts');
     assert.deepEqual(Object.fromEntries(Object.entries(MUST_GIVE).map(([t, c]) => [t, Object.keys(c).sort()])), {
-      rest_module: ['enabled', 'roles'], web_credential: ['valid_for'], app: ['local_login', 'mfa', 'mfa_roles'], automation: ['roles'],
+      rest_module: ['enabled', 'roles'], web_credential: ['valid_for'], app: ['local_login', 'mfa', 'mfa_roles'],
     });
     const { docToFiles, filesToDoc } = await import('../src/appfiles.ts');
     const base = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
     const before = (await owner.one<{ n: number }>(`select count(*)::int as n from meta.app where alias = 'sec242-open'`))!.n;
     const cases: [string, (d: any) => void, RegExp][] = [
-      ['rest module roles left out', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [] }), name: 'sec242', title: 'S' }); delete d.rest_modules.at(-1).roles; }, /"roles" is missing \(meta\.rest_module\.roles/],
-      ['rest module roles null', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [] }), name: 'sec242', title: 'S', roles: null }); }, /"roles" is null/],
-      ['rest module enabled left out', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [] }), name: 'sec242', title: 'S', roles: [] }); delete d.rest_modules.at(-1).enabled; }, /"enabled" is missing/],
+      ['rest module roles left out', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [], templates: [] }), name: 'sec242', title: 'S' }); delete d.rest_modules.at(-1).roles; }, /"roles" is missing \(meta\.rest_module\.roles/],
+      ['rest module roles null', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [], templates: [] }), name: 'sec242', title: 'S', roles: null }); }, /"roles" is null/],
+      ['rest module enabled left out', (d) => { d.rest_modules.push({ ...structuredClone(d.rest_modules[0] ?? { name: 'm', title: 'M', base_path: 'm/', handlers: [], templates: [] }), name: 'sec242', title: 'S', roles: [] }); delete d.rest_modules.at(-1).enabled; }, /"enabled" is missing/],
       ['web credential valid_for left out', (d) => { d.web_credentials.push({ name: 'sec242', type: 'basic', username: 'u' }); }, /"valid_for" is missing \(meta\.web_credential\.valid_for/],
       ['application mfa left out', (d) => { delete d.app.mfa; }, /application: "mfa" is missing/],
       ['application local_login left out', (d) => { delete d.app.local_login; }, /"local_login" is missing/],
-      ['automation roles left out', (d) => { d.automations.push({ name: 'sec242', schedule: '0 * * * *' }); }, /"roles" is missing \(meta\.automation\.roles/],
+      ['application mfa_roles left out', (d) => { delete d.app.mfa_roles; }, /"mfa_roles" is missing/],
     ];
     const { default: pg } = await import('pg');
     const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
@@ -20419,6 +20419,26 @@ describe('sprint 242 MG-16', () => {
       await db.end();
     }
     assert.equal((await owner.one<{ n: number }>(`select count(*)::int as n from meta.app where alias = 'sec242-open'`))!.n, before, 'nothing imported');
+  });
+
+  test('an export from before such a column (none of the keys that came with it) imports as it did before', async () => {
+    const { MUST_GIVE } = await import('../src/import-defaults.ts');
+    const doc = (await owner.one<{ d: Record<string, any> }>(`select meta.export_app('hr') as d`))!.d;
+    // a pgkiln before 0.64 (132) wrote no mfa, nor any application column after it; before 0.49 (117) a module had no roles or templates
+    for (const k of ['mfa', ...MUST_GIVE.app.mfa.since!]) delete doc.app[k];
+    doc.rest_modules.push({ name: 'sec242old', title: 'Old', base_path: 'sec242old/', handlers: [], enabled: true });
+    const { default: pg } = await import('pg');
+    const db = new pg.Client({ connectionString: process.env.DATABASE_URL });
+    await db.connect();
+    try {
+      const r = await importDoc(db as never, doc as never, { alias: 'sec242-old', replace: false });
+      assert.ok(r.committed);
+    } finally {
+      await db.end();
+    }
+    const row = (await owner.one<any>(`select a.mfa, a.mfa_roles, m.roles from meta.app a join meta.rest_module m on m.app_id = a.id and m.name = 'sec242old' where a.alias = 'sec242-old'`))!;
+    assert.deepEqual(row, { mfa: 'off', mfa_roles: [], roles: [] });
+    await owner.query(`delete from meta.app where alias = 'sec242-old'`);
   });
 
   test('the builder API\'s export (with the column defaults) needs a token', async () => {

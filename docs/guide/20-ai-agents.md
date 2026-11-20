@@ -131,7 +131,7 @@ default (`debug: false`, a page's `protection: checksum` and `requires_auth: tru
 [keys you leave out](18-cli.md#keys-you-leave-out-hand-written-files)), and `import_app` lists the keys it filled per
 file. A key written as `null` stays null. Only keys without a default (a region's `type`, a list of values' `query`)
 must be there, and so must the keys whose default would widen access (a REST module's `roles` and `enabled`, a web
-credential's `valid_for`, the application's `mfa`, `mfa_roles` and `local_login`, an automation's `roles`); when one is
+credential's `valid_for`, the application's `mfa`, `mfa_roles` and `local_login`); when one is
 missing the import names the file, the component and the key, and changes nothing.
 `diff_app` compares a left-out key as its default, so a file that leaves out default values shows no change. Agents
 that change an exported file should still keep its keys: an existing application's value is only kept when the key

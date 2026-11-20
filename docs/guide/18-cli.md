@@ -163,8 +163,12 @@ With `import --replace`, a key you leave out is set to its default, not kept at 
 **A missing key never widens access.** A few columns default to the open value, so they are never filled: a file must
 give them, and when one is missing (or `null`) the import is refused with the file, the component and the key, and
 nothing changes. They are a REST module's `roles` (none: any token may call it) and `enabled`, a web credential's
-`valid_for` (none: sent to any URL), the application's `mfa`, `mfa_roles` and `local_login`, and an automation's
-`roles`. An export always has them.
+`valid_for` (none: sent to any URL), and the application's `mfa`, `mfa_roles` and `local_login`. An export always has
+them. An export made by an older pgkiln, from before such a column existed, still imports as it did: a component that
+has none of the keys added together with the column (a REST module without `templates`, from before 0.49; an
+application without `mfa`, `mfa_roles` or any setting added after them, from before 0.64) gets the default, which is
+what that version meant (no module roles, no second factor). A component that has those keys was written by a pgkiln
+that had the column, so its missing key is an omission and is refused.
 
 `import` lists what it filled, per file, so you can see it (an export has every key, so a normal
 import lists nothing):

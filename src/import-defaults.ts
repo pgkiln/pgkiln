@@ -52,22 +52,40 @@ const TABLES = [...new Set(['app', 'page', ...SECTIONS.map(([, t]) => t), ...PAG
 /** Columns an import never fills: ids and references (the importer sets them), and what meta.export_app() leaves out. */
 const NEVER = new Set(['id', 'app_id', 'page_id', 'parent_id', 'region_id', 'affected_region_id']);
 /**
- * Columns whose default is the open value for access: never filled. A file must give them (absent or null: the import
- * is refused, naming the file, the component and the key), so a key that is left out never widens access.
+ * Columns whose default is the open value for access: a component must give them, so a key that is left out never
+ * widens access. Absent (or null) refuses the import, naming the file, the component and the key.
+ * Older exports: `since` lists the keys a pgkiln that had the column always wrote with it (added in the same migration
+ * or later). A component that has none of them was written before the column existed (an export of an older pgkiln):
+ * it gets the default, as meta.import_app gave it before (the trigger of 117, the NULL path), with the meaning that
+ * version had (no MFA before 132, no module roles before 117). No `since`: the column is as old as its table, so every
+ * export has it.
  */
-export const MUST_GIVE: Record<string, Record<string, string>> = {
+export const MUST_GIVE: Record<string, Record<string, { why: string; since?: string[] }>> = {
   rest_module: {
-    roles: 'its default, no roles, lets any token call the module',
-    enabled: 'its default serves the module\'s endpoints',
+    // (117) roles came with templates
+    roles: { why: 'its default, no roles, lets any token call the module', since: ['templates'] },
+    enabled: { why: 'its default serves the module\'s endpoints' },
   },
-  web_credential: { valid_for: 'its default, no URLs, sends the credential to any URL' },
+  web_credential: { valid_for: { why: 'its default, no URLs, sends the credential to any URL' } },
   app: {
-    mfa: 'its default, off, signs users in with a password only',
-    mfa_roles: 'its default, no roles, asks no role for a second factor',
-    local_login: 'its default allows signing in with a password of the application',
+    // (132) mfa and mfa_roles, and every application column added after them (133 … 189)
+    mfa: { why: 'its default, off, signs users in with a password only', since: APP_SINCE_132('mfa') },
+    mfa_roles: { why: 'its default, no roles, asks no role for a second factor', since: APP_SINCE_132('mfa_roles') },
+    local_login: { why: 'its default allows signing in with a password of the application' },
   },
-  automation: { roles: 'it decides the roles the automation runs with' },
 };
+
+function APP_SINCE_132(self: string) {
+  return ['mfa', 'mfa_roles', 'mfa_email', 'api_self_tokens', 'vector_providers', 'json_sources', 'notifications', 'pwa_prefetch_hours',
+    'session_idle_minutes', 'passkey_signin', 'remember_username'].filter((k) => k !== self);
+}
+
+/** Whether a MUST_GIVE key of this row is held back from its default: the row was written by a pgkiln that had it. */
+function mustGive(table: string, row: object, key: string) {
+  const rule = MUST_GIVE[table]?.[key];
+  if (!rule) return false;
+  return !rule.since || rule.since.some((k) => has(row, k));
+}
 
 const NOT_EXPORTED: Record<string, string[]> = {
   app: ['created_at', 'updated_at', 'availability', 'availability_message', 'availability_users', 'build_status'],
@@ -95,7 +113,7 @@ export async function loadColumnDefaults(db: Q): Promise<ColumnDefaults> {
       order by 1, 2`,
     [TABLES],
   )).rows as { t: string; c: string; expr: string }[];
-  const use = cols.filter((r) => !NEVER.has(r.c) && !(NOT_EXPORTED[r.t] ?? []).includes(r.c) && !MUST_GIVE[r.t]?.[r.c] && isConstantDefault(r.expr));
+  const use = cols.filter((r) => !NEVER.has(r.c) && !(NOT_EXPORTED[r.t] ?? []).includes(r.c) && isConstantDefault(r.expr));
   const out: ColumnDefaults = {};
   if (!use.length) return out;
   // the expressions are the catalog's own (pgkiln's migrations), constants only: evaluated as they are
@@ -112,12 +130,9 @@ const has = (row: object, key: string) => Object.prototype.hasOwnProperty.call(r
 /** Fills the absent keys of one row; the keys it filled. */
 function fillRow(row: unknown, defaults: Record<string, unknown> | undefined, skip: (key: string) => boolean = () => false): string[] {
   if (!row || typeof row !== 'object' || Array.isArray(row) || !defaults) return [];
-  const filled: string[] = [];
-  for (const [key, value] of Object.entries(defaults)) {
-    if (has(row, key) || skip(key)) continue;
-    (row as Record<string, unknown>)[key] = structuredClone(value);
-    filled.push(key);
-  }
+  // decided on the row as given, before any key is added (a skip may look at other keys)
+  const filled = Object.keys(defaults).filter((key) => !has(row, key) && !skip(key));
+  for (const key of filled) (row as Record<string, unknown>)[key] = structuredClone(defaults[key]);
   return filled;
 }
 
@@ -149,8 +164,8 @@ export function fillDefaults(doc: Doc, defaults: ColumnDefaults): FilledKeys[] {
   const refused: string[] = [];
   for (const { table, row, label } of rowsOf(doc)) {
     if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
-    for (const [key, why] of Object.entries(MUST_GIVE[table] ?? {}))
-      if (!has(row, key) || row[key] === null) {
+    for (const [key, { why }] of Object.entries(MUST_GIVE[table] ?? {}))
+      if (has(row, key) ? row[key] === null : mustGive(table, row, key)) {
         const file = sourceOf(row);
         refused.push(`${file ? `${file} (${label})` : label}: "${key}" is ${has(row, key) ? 'null' : 'missing'} (meta.${table}.${key}: ${why})`);
       }
@@ -160,7 +175,7 @@ export function fillDefaults(doc: Doc, defaults: ColumnDefaults): FilledKeys[] {
       'Give the key a value: a key whose default would widen access is never filled from the default.');
   const byWhere = new Map<string, FilledKeys>();
   for (const { table, row, label } of rowsOf(doc)) {
-    const keys = fillRow(row, defaults[table]);
+    const keys = fillRow(row, defaults[table], (k) => mustGive(table, row, k));
     if (!keys.length) continue;
     const file = sourceOf(row) ?? null;
     const where = file ?? label;
@@ -245,7 +260,7 @@ export function fillFiles(files: FileMap, defaults: ColumnDefaults): FileMap {
     const d = defaults[shape.table];
     let changed = false;
     const fill = (row: unknown, skip?: (k: string) => boolean) => {
-      if (fillRow(row, d, skip).length) changed = true;
+      if (row && typeof row === 'object' && fillRow(row, d, (k) => !!skip?.(k) || mustGive(shape.table, row, k)).length) changed = true;
     };
     const tree = (rows: unknown) => {
       if (Array.isArray(rows)) for (const r of rows) {

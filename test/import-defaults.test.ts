@@ -32,15 +32,17 @@ const put = (files: FileMap, path: string, v: unknown) => files.set(path, Buffer
 function strip(files: FileMap) {
   const out: FileMap = new Map(files);
   let n = 0;
+  let table = '';
   const drop = (row: any, d: Record<string, unknown>) => {
     if (!row || typeof row !== 'object' || Array.isArray(row)) return;
-    for (const [k, v] of Object.entries(d)) if (k in row && isDeepStrictEqual(row[k], v)) { delete row[k]; n++; }
+    for (const [k, v] of Object.entries(d)) if (k in row && !MUST_GIVE[table]?.[k] && isDeepStrictEqual(row[k], v)) { delete row[k]; n++; }
     if (Array.isArray(row.children)) for (const c of row.children) drop(c, d);
   };
   for (const path of files.keys()) {
     const shape = shapeOf(path);
     if (!shape || !path.endsWith('.yaml') || !defaults[shape.table]) continue;
     const v = yaml(files, path);
+    table = shape.table;
     if (shape.kind === 'record') drop(v, defaults[shape.table]);
     else if (shape.kind === 'trees') for (const rows of Object.values(v)) for (const r of rows as any[]) drop(r, defaults[shape.table]);
     else for (const r of v) drop(r, defaults[shape.table]);
@@ -74,8 +76,15 @@ describe('sprint 242 MG-16: keys left out of the files take the column defaults'
     assert.equal(defaults.item.seq, 10);
     for (const t of Object.values(defaults)) assert.ok(!('id' in t) && !('app_id' in t) && !('created_at' in t));
     assert.ok(!('build_status' in defaults.app) && !('availability' in defaults.app));
-    // the open value for access is never a default to fill
-    for (const [t, cols] of Object.entries(MUST_GIVE)) for (const c of Object.keys(cols)) assert.ok(!(c in (defaults[t] ?? {})), `${t}.${c}`);
+    // the open value for access is never filled for a component of a pgkiln that had the column
+    const current = filesToDoc(exported);
+    delete current.app.mfa;
+    assert.throws(() => fillDefaults(current, defaults), /"mfa" is missing/);
+    // an export from before the column (no mfa, nor any application column of 132 or later) gets it, as before
+    const old = filesToDoc(exported);
+    for (const k of ['mfa', ...MUST_GIVE.app.mfa.since!]) delete old.app[k];
+    fillDefaults(old, defaults);
+    assert.equal(old.app.mfa, 'off');
   });
 
   test('an export has every key: nothing is filled', () => {
