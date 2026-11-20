@@ -38,6 +38,14 @@ export async function pendingMigrations(root: string, databaseUrl?: string): Pro
   }
 }
 
+/**
+ * (sprint 232) Whether these pending migrations need a superuser: installing pgkiln, or upgrading a database from
+ * before migration 175. Migrations 166 and 167 (released) set the attributes of the workspaces' login roles with
+ * ALTER ROLE … NOSUPERUSER NOCREATEDB … NOBYPASSRLS, which PostgreSQL refuses from a role that isn't a superuser even
+ * when nothing changes; from 175 on, pgkiln changes only what differs, and a CREATEROLE owner is enough.
+ */
+export const needsSuperuser = (pending: string[]) => pending.some((f) => f.endsWith('.sql') && f.replace(/^.*\//, '') < '175_');
+
 // errors waiting won't fix: a wrong password or user (28P01, 28000), a missing
 // database (3D000) or role, too few privileges (42501)
 const permanent = new Set(['28P01', '28000', '3D000', '42501']);
@@ -74,6 +82,14 @@ export async function migrate(o: MigrateOptions): Promise<string[]> {
   const startedAt = new Date();
   // an empty database: this run installs pgkiln, else it upgrades it
   const fresh = !(await client.query(`select to_regclass('public.pgkiln_migration') is not null as ok`)).rows[0].ok;
+  // (232) say so before applying anything, not halfway at migration 166
+  if (!(await client.query(`select rolsuper from pg_roles where rolname = current_user`)).rows[0].rolsuper) {
+    const done = fresh ? new Set<string>() : new Set((await client.query('select name from public.pgkiln_migration')).rows.map((r) => r.name));
+    if (needsSuperuser(readdirSync(join(o.root, 'db/migrations')).filter((f) => f.endsWith('.sql') && !done.has(f)))) {
+      await client.end();
+      throw new Error(`${fresh ? 'installing pgkiln' : 'these migrations (from before 175)'} need${fresh ? 's' : ''} a superuser: run them as one once, then make the owner a role without SUPERUSER (pgkiln admin demote-owner; docs/guide/01-installation.md, "A non-superuser owner")`);
+    }
+  }
   let failure: string | null = null;
   async function apply(dir: string, table: string) {
     await client.query(`create table if not exists public.${table} (name text primary key, applied_at timestamptz not null default now())`);

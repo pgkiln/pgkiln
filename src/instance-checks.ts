@@ -306,7 +306,7 @@ export async function ownerRole() {
  */
 export function ownerRoleCheck(r: { name: string; superuser: boolean; bypassrls?: boolean }): Check {
   return r.superuser
-    ? { key: 'owner_role', level: 'warning', title: 'DATABASE_URL is a superuser', detail: `pgkiln's owner connection signs in as ${r.name}, a superuser: migrations, the builder and an administrator's Owner connection in the SQL Workshop can read and write files on the server, run programs and change every database of the PostgreSQL server. Make a role that owns pgkiln's database with CREATEROLE but not SUPERUSER, reassign pgkiln's objects to it, and use it in DATABASE_URL (docs/guide/01-installation.md, "A non-superuser owner").` }
+    ? { key: 'owner_role', level: 'warning', title: 'DATABASE_URL is a superuser', detail: `pgkiln's owner connection signs in as ${r.name}, a superuser: migrations, the builder and an administrator's Owner connection in the SQL Workshop can read and write files on the server, run programs and change every database of the PostgreSQL server. With Docker, take deploy/compose.yaml of pgkiln 0.112.0 or later and set OWNER_PASSWORD: the start moves pgkiln to pgkiln_owner. Elsewhere, stop pgkiln and run pgkiln admin demote-owner with DATABASE_URL set to the new owner and SUPERUSER_DATABASE_URL to a superuser (docs/guide/01-installation.md, "A non-superuser owner").` }
     : { key: 'owner_role', level: 'ok', title: 'Owner connection', detail: `pgkiln's owner connection signs in as ${r.name}, not a superuser.` };
 }
 
