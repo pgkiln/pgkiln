@@ -63,5 +63,5 @@ export async function renderTemplateRegion(ctx: PageContext, r: Region) {
   const wrapperLookup = rowLookup(ctx, attrs, new Map(), { APEX$ROW_COUNT: String(lookups.length) });
   const layout = (c.css_classes ?? []).filter((k) => (LAYOUT_CLASSES as readonly string[]).includes(k));
   const cls = ['tc-region', ...(layout.length ? layout : ['tc-list'])].join(' ');
-  return html`<div class="${cls}">${raw(renderInstances(comp, lookups, wrapperLookup, cfg.display === 'multiple', modal))}</div>`;
+  return html`<div class="${cls}">${raw(renderInstances(comp, lookups, wrapperLookup, cfg.display === 'multiple', modal, ctx.imgSrc))}</div>`;
 }

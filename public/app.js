@@ -1438,6 +1438,13 @@ const pgkilnUnsaved = (() => {
       const res = await fetch(holder.dataset.lazy, { headers: { accept: 'application/json' }, credentials: 'same-origin' });
       const json = await res.json().catch(() => ({ error: res.statusText }));
       if (!res.ok) throw new Error(json.error || res.statusText);
+      // (sprint 235) pictures from a site this page's Content-Security-Policy doesn't allow yet:
+      // the "Show" link renders the page with the region, and a CSP that allows them
+      const allowed = new Set(meta.img || []);
+      if (link && (json.img || []).some((o) => !allowed.has(o))) {
+        location.assign(link.href);
+        return;
+      }
       const sheet = document.getElementById('pgkiln-css')?.sheet;
       if (sheet && json.css) for (const rule of json.css.split('\n')) if (rule) sheet.insertRule(rule, sheet.cssRules.length);
       if (json.detached) {
@@ -4176,7 +4183,9 @@ function areaFilter(map, f) {
   // Rich text: an editable area in place of the textarea, kept in sync with it. Content always goes in
   // through a small allow-list (the server rebuilds it again on submit), never as raw HTML.
   const ALLOWED = new Set(['P', 'BR', 'B', 'STRONG', 'I', 'EM', 'U', 'S', 'DEL', 'STRIKE', 'SUB', 'SUP', 'UL', 'OL', 'LI',
-    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'DIV']);
+    'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE', 'CODE', 'A', 'HR', 'DIV',
+    // (sprint 235) simple tables, as on the server: their structure, no attributes
+    'TABLE', 'THEAD', 'TBODY', 'TR', 'TH', 'TD']);
   const DROP = new Set(['SCRIPT', 'STYLE', 'TEMPLATE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'SVG', 'MATH', 'TITLE', 'TEXTAREA', 'SELECT']);
   const safeHref = (h) => {
     const u = String(h || '').replace(/[\u0000-\u0020\u007f-\u00a0\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, '');

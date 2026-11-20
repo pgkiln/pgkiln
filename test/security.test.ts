@@ -19441,3 +19441,62 @@ describe('sprint 233 removing a developer releases their locks', () => {
     }
   });
 });
+
+describe('sprint 235 MG-2/MG-5/MG-9', () => {
+  const imgSrcOf = (csp: unknown) => /img-src ([^;]*)/.exec(String(csp))?.[1] ?? '';
+
+  test('MG-2: only https origins of rendered pictures reach the CSP img-src, never a wildcard, a path or another directive', async () => {
+    const page = (await owner.one('select id from meta.page where app_id = $1 and page_no = 19', [appId])).id;
+    const values = [
+      'http://plain.example.com/a.png', 'javascript:alert(1)', 'data:text/html;base64,PHNjcmlwdD4=', '//proto.example.com/a.png',
+      'https://u:p@creds.example.com/a.png', 'https://semi.example.com;script-src *', "https://quote.example.com' 'unsafe-inline",
+      'https://*.example.com/a.png', 'https://[::1]/a.png', 'https://ok.example.com/a.png" onerror="alert(1)',
+    ];
+    const source = `select * from (values ${values.map((v) => `('${v.replace(/'/g, "''")}')`).join(', ')}) v(image)`;
+    const ids = [
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, config) values ($1, 991, 'S235 sec', 'template_component', 12, 'standard', $2, $3) returning id`,
+        [page, source, JSON.stringify({ component: 'ut_avatar', display: 'multiple', attributes: { NAME: 'x', IMAGE: '#image#' } })])).id,
+      // a link's URL, and a picture that is not rendered (its region's condition is false), add nothing
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, config) values ($1, 992, 'S235 link', 'report', 12, 'standard', $2, $3) returning id`,
+        [page, `select 'https://linked.example.com/' as site`, JSON.stringify({ column_templates: { site: { component: 'ut_badge', attributes: { LABEL: '#site#' } } } })])).id,
+      (await owner.one(`insert into meta.region (page_id, seq, title, type, columns, template, source, condition, config) values ($1, 993, 'S235 off', 'template_component', 12, 'standard', $2, 'false', $3) returning id`,
+        [page, `select 'https://hidden.example.com/a.png' as image`, JSON.stringify({ component: 'ut_avatar', attributes: { NAME: 'x', IMAGE: '#image#' } })])).id,
+    ];
+    try {
+      const king = await as('king');
+      // a URL in the query string is not a rendered picture either
+      const res = await king.get('/a/hr/19?image=https%3A%2F%2Fparam.example.com%2Fa.png');
+      assert.equal(res.statusCode, 200);
+      const img = imgSrcOf(res.headers['content-security-policy']);
+      for (const o of img.split(' ')) assert.ok(o === "'self'" || o === 'data:' || /^https:\/\/[a-z0-9.-]+(:\d+)?$/.test(o), o);
+      for (const bad of ['plain.', 'proto.', 'creds.', 'semi.', 'quote.', '*', '[', 'linked.', 'hidden.', 'param.', 'unsafe', 'script-src *'])
+        assert.ok(!img.includes(bad), bad);
+      assert.ok(img.split(' ').includes('https://ok.example.com'), 'the escaped value is still a picture of that origin');
+      assert.doesNotMatch(res.body, /javascript:alert|data:text\/html|onerror="alert/);
+      assert.match(String(res.headers['content-security-policy']), /script-src 'self'; /, 'script-src unchanged');
+    } finally {
+      await owner.query('delete from meta.region where id = any($1)', [ids]);
+    }
+  });
+
+  test('MG-5: tables keep no attributes, scripts and handlers stay out, references never become markup', () => {
+    const cases: [string, RegExp][] = [
+      ['<table onclick="alert(1)" style="x" background="javascript:alert(1)"><tr onmouseover="alert(1)"><td onfocus=alert(1) autofocus tabindex=1>a</td></tr></table>', /on\w+=|style=|javascript:|autofocus|tabindex|background/i],
+      ['<table><tr><td><script>alert(1)</script><img src=x onerror=alert(1)><svg onload=alert(1)></svg></td></tr></table>', /<script|<img|<svg|alert/],
+      ['<table><caption>c</caption><colgroup><col span=2></colgroup><tfoot><tr><td>f</td></tr></tfoot></table>', /<caption|<colgroup|<col|<tfoot/],
+      ['<table><tr><td><a href="javascript:alert(1)">x</a><a href="&#106;avascript:alert(1)">y</a></td></tr></table>', /href/],
+      ['&lt;script&gt;alert(1)&lt;/script&gt; &#x3c;img src=x onerror=alert(1)&#x3e; &LT;b&GT;', /<script|<img|<b>/],
+      ['&foo;<script>alert(1)</script>&bar"onx=1;<table><th>x</th></table>', /<script|alert|"onx|<th>/],
+    ];
+    for (const [input, bad] of cases) {
+      const out = sanitizeHtml(input);
+      assert.doesNotMatch(out, bad, input);
+      // every tag that survives is a bare allowed one (a link's href aside)
+      for (const t of out.match(/<[^>]*>/g) ?? []) assert.match(t, /^<\/?(p|br|b|strong|i|em|u|s|del|strike|sub|sup|ul|ol|li|h[1-6]|blockquote|pre|code|hr|div|table|thead|tbody|tr|th|td)>$|^<a href="[^"]*" rel="noopener noreferrer nofollow">$|^<\/a>$/, t);
+    }
+    // nesting is bounded: a deep table doesn't open more than MAX_DEPTH elements
+    const deep = sanitizeHtml('<table><tr><td>'.repeat(200) + 'x');
+    assert.ok((deep.match(/<td>/g) ?? []).length <= 20);
+    assert.equal(sanitizeHtml('&amp;lt;script&amp;gt;'), '&amp;lt;script&amp;gt;');
+  });
+});

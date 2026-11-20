@@ -5,6 +5,7 @@ import { pageAllowed } from './authz.ts';
 import { bindValues, type PageContext } from './context.ts';
 import { isModal, pageHref } from './links.ts';
 import { builtinComponents } from './builtin-components.ts';
+import { allowImageAttribute } from './img-origins.ts';
 
 // Template components (APEX 23.1+): an HTML template with #NAME#
 // substitutions and {if}/{case}/{loop} directives, used as a region type
@@ -500,10 +501,11 @@ function renderNodes(nodes: Node[], get: Lookup, out: string[], rows?: string) {
 /**
  * The second line of defence: the rendered markup's URL attributes are
  * checked after substitution (a value may have been "javascript:…"), and
- * links to modal pages get data-dialog. Tags are whole and every attribute
+ * links to modal pages get data-dialog; an <img>'s https origin goes into
+ * `imgSrc` (the response's CSP img-src, img-origins.ts). Tags are whole and every attribute
  * value is quoted (scan() made sure), and substituted values contain no < > " '.
  */
-export function finish(markup: string, modal: Set<string> = new Set()) {
+export function finish(markup: string, modal: Set<string> = new Set(), imgSrc?: Set<string> | null) {
   return markup.replace(/<([a-z][a-z0-9]*)(\s[^>]*)?>/g, (whole, tag: string, attrs: string | undefined) => {
     if (!attrs) return whole;
     let dialog = false;
@@ -512,6 +514,8 @@ export function finish(markup: string, modal: Set<string> = new Set()) {
       const value = quoted.slice(1, -1);
       if (!urlOk(value, name)) return '';
       if (tag === 'a' && name === 'href' && modal.has(value)) dialog = true;
+      // (sprint 235) a picture from another site: the page's CSP allows its https origin
+      if (tag === 'img' && name === 'src') allowImageAttribute(imgSrc, value);
       return a;
     });
     return `<${tag}${kept}${dialog ? ' data-dialog' : ''}>`;
@@ -519,16 +523,16 @@ export function finish(markup: string, modal: Set<string> = new Set()) {
 }
 
 /** One instance per lookup, inside the wrapper when there is one and `multiple`. */
-export function renderInstances(c: Compiled, rows: Lookup[], wrapperLookup: Lookup, multiple: boolean, modal?: Set<string>): string {
+export function renderInstances(c: Compiled, rows: Lookup[], wrapperLookup: Lookup, multiple: boolean, modal?: Set<string>, imgSrc?: Set<string> | null): string {
   const items = rows.map((get) => {
     const out: string[] = [];
     renderNodes(c.item, get, out);
     return out.join('');
   });
-  if (!(multiple && c.wrapper)) return finish(items.join(''), modal);
+  if (!(multiple && c.wrapper)) return finish(items.join(''), modal, imgSrc);
   const out: string[] = [];
   renderNodes(c.wrapper, wrapperLookup, out, items.join(''));
-  return finish(out.join(''), modal);
+  return finish(out.join(''), modal, imgSrc);
 }
 
 // ---------------------------------------------------------------- in an application
@@ -636,7 +640,7 @@ export async function columnTemplates(
         APEX$ROW_NUM: String(n),
         LINK: linker?.((x) => raws.get(x)),
       });
-      return raw(renderInstances(comp, [get], get, false, modal));
+      return raw(renderInstances(comp, [get], get, false, modal, ctx.imgSrc));
     });
   }
   return out;

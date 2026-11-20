@@ -441,7 +441,7 @@ export async function renderPage(ctx: PageContext) {
       ${ctx.detached}${customizePanel(ctx)}
     </div>
     <script type="application/json" id="pgkiln-meta">${raw(
-      JSON.stringify({ csrf: ctx.session.csrf_token, das, ...(ctx.savedGrids?.length ? { savedGrids: ctx.savedGrids } : {}), texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
+      JSON.stringify({ csrf: ctx.session.csrf_token, das, ...(ctx.savedGrids?.length ? { savedGrids: ctx.savedGrids } : {}), texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...(ctx.imgSrc?.size ? { img: [...ctx.imgSrc] } : {}), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
   return chrome(ctx, main, title);
 }

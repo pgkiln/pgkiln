@@ -974,6 +974,9 @@ and travel with the application's export.
 
 What can't be weakened per application: pages always carry pgkiln's Content-Security-Policy (only `frame-ancestors`
 changes), `nosniff`, the `Permissions-Policy` and `Cache-Control: no-store` (a page holds the session's CSRF token).
+Its `img-src` grows only with what the page renders: the `https` origins of display image items and of the pictures
+of template components and report column templates (sprint 235; at most 50 per page, never a wildcard; see
+[pictures from other sites](04-pages-and-regions.md#pictures-from-other-sites)).
 Extra headers may not be one pgkiln sets for security or one the protocol needs (`Content-Security-Policy`,
 `X-Frame-Options`, `Referrer-Policy`, `X-Robots-Tag`, `Set-Cookie`, `Cache-Control`, `Strict-Transport-Security`,
 `Access-Control-*`, `Cross-Origin-*`, `Content-Type`, `Location` …), and a value has no line breaks. `unsafe-url`

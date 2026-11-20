@@ -3,6 +3,7 @@ import { raw, type Raw } from '../html.ts';
 import type { Region } from '../metadata.ts';
 import { PageCss } from '../css.ts';
 import { bindValues, type PageContext } from './context.ts';
+import { MAX_IMG_ORIGINS } from './img-origins.ts';
 
 // Region caching and lazy loading (like APEX's region "Server Cache" and
 // "Lazy Loading").
@@ -55,6 +56,8 @@ interface Entry {
   body: string;
   css: [string, string][];
   detached: string[];
+  /** (sprint 235) the https origins of its pictures, for the CSP's img-src of the page that shows it */
+  img: string[];
   bytes: number;
 }
 
@@ -102,6 +105,7 @@ export function useCached(ctx: PageContext, key: string): Raw | null {
   store.set(key, e);
   const fill = (s: string) => s.split(CSRF_MARK).join(ctx.session.csrf_token);
   ctx.css.addAll(e.css);
+  for (const o of e.img) if (ctx.imgSrc && ctx.imgSrc.size < MAX_IMG_ORIGINS) ctx.imgSrc.add(o);
   for (const d of e.detached) ctx.detached.push(raw(fill(d)));
   return raw(fill(e.body));
 }
@@ -116,13 +120,19 @@ export async function renderCaching(ctx: PageContext, r: Region, setting: CacheS
   const detachedFrom = ctx.detached.length;
   const errorsBefore = ctx.errors.page.length;
   const userBound = ctx.userBound;
+  // the region's own picture origins: kept with it, and added to the page's
+  const outerImg = ctx.imgSrc;
+  const img = new Set<string>();
   ctx.css = css;
   ctx.userBound = false;
+  if (outerImg) ctx.imgSrc = img;
   let body: Raw;
   try {
     body = await render();
   } finally {
     ctx.css = outerCss;
+    ctx.imgSrc = outerImg;
+    if (outerImg) for (const o of img) if (outerImg.size < MAX_IMG_ORIGINS) outerImg.add(o);
   }
   outerCss.addAll(css.entries());
   const perUser = ctx.userBound;
@@ -135,7 +145,7 @@ export async function renderCaching(ctx: PageContext, r: Region, setting: CacheS
   const hide = (s: string) => (token ? s.split(token).join(CSRF_MARK) : s);
   const entry: Entry = {
     appId: ctx.app.id, pageNo: ctx.page.page_no, expires: Date.now() + setting.seconds * 1000,
-    body: hide(text), css: css.entries(), detached: detached.map(hide), bytes: 0,
+    body: hide(text), css: css.entries(), detached: detached.map(hide), img: [...img], bytes: 0,
   };
   entry.bytes = 2 * (entry.body.length + entry.detached.reduce((n, d) => n + d.length, 0) + entry.css.reduce((n, [a, b]) => n + a.length + b.length, 0)) + key.length + 200;
   if (entry.bytes > ENTRY_MAX_BYTES) return body;

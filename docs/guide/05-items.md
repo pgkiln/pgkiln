@@ -110,8 +110,12 @@ Attributes (`config`):
 APEX's Rich Text Editor stores HTML; pgkiln's `richtext` item does too, but never stores or shows
 HTML it did not rebuild itself. On submit and every time it is displayed, the HTML goes through a
 strict allow-list (`src/richtext.ts`): paragraphs, line breaks, headings, bold/italic/underline/
-strikethrough, sub/superscript, lists, quotes, code, horizontal rules and links. Text is always
-escaped; links keep only `href` (`http`, `https`, `mailto`, `tel` or a relative URL) and get
+strikethrough, sub/superscript, lists, quotes, code, horizontal rules, links and (sprint 235) simple
+tables: `table`, `thead`, `tbody`, `tr`, `th` and `td`, without any attribute (no `colspan`, `style`
+or `border`; a cell only inside a row, a row only inside a table, other tags directly inside a table
+are left out with their text kept; on a phone a wide table scrolls on its own). Text is always
+escaped, and named character references show their character: `&ouml;` is ö, `&rsquo;` ’ (a name
+pgkiln doesn't know is left for the browser to read, as text, never as markup). Links keep only `href` (`http`, `https`, `mailto`, `tel` or a relative URL) and get
 `rel="noopener noreferrer nofollow"`; scripts, styles, event handlers, `style` attributes,
 `javascript:`/`data:` URLs, images, frames, SVG and comments are dropped. An empty editor stores
 nothing (NULL). The value may come from a table that other programs write: it is cleaned again

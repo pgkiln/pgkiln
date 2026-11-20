@@ -220,7 +220,7 @@ src/
   automations.ts           cron parser, next run in a time zone, scheduler (also meta.task_expire_tick, 094), running automations (the actions run
                            in PL/pgSQL: meta.automation_execute, shared with meta.run_automation; migration 044)
   html.ts                  auto-escaping html`` templates
-  richtext.ts              rich text and Markdown items: allow-list HTML sanitiser, Markdown renderer
+  richtext.ts              rich text and Markdown items: allow-list HTML sanitiser (named references, simple tables), Markdown renderer
   qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
   metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here);
@@ -461,6 +461,9 @@ src/
                            /a/:alias/notifications, POST …/notifications/:id/open (the user's own only, marks read, its signed
                            link under the current alias) and …/notifications/read; GET …/:page/live (liveState: list entry
                            badges n:/b:<key>, buttons btn:<id>, the bell) with loadContext touch: false (no last_seen, no new session)
+    img-origins.ts         (sprint 235) allowImage / allowImageAttribute: the https origins of rendered pictures (image items,
+                           template components' <img src>, also in report column templates and cached regions) into ctx.imgSrc,
+                           which security.ts adds to the CSP's img-src (normalised origins only, at most 50)
     data-items.ts          display image and address items (migration 086): imageUrl (https origins into the CSP's img-src),
                            GET …/image/:item (a BLOB from the item's query), POST …/geocode/:item, and items kept per user
                            (loadPreferences / savePreferences through meta.get_preference / set_preference)

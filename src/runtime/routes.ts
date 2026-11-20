@@ -945,7 +945,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (!r || !(lazyOf(r) || detail || r.type === 'search') || !vis.regions.has(r.id)) throw new Forbidden(ctx.locale.t('error.access_denied'));
         ctx.loadNow = r.id;
         const markup = (await renderRegion(ctx, r)).toString();
-        return { html: markup, css: ctx.css.text, detached: ctx.detached.map(String).join('') };
+        // (sprint 235) the origins of its pictures: app.js loads the whole page when the page's CSP lacks one
+        return { html: markup, css: ctx.css.text, detached: ctx.detached.map(String).join(''), img: [...(ctx.imgSrc ?? [])] };
       });
       if (selected) await saveState(ctx.session);
       return reply.send(out);

@@ -1799,6 +1799,10 @@ td.tc-cell { overflow-wrap: anywhere; }
 .rich-text > :last-child, .rte-area > :last-child { margin-bottom: 0; }
 .rich-text pre, .rte-area pre { white-space: pre-wrap; background: var(--surface-2); padding: 0.5rem; border-radius: 6px; }
 .rich-text blockquote, .rte-area blockquote { margin: 0.5rem 0; padding-left: 0.8rem; border-left: 3px solid var(--border); color: var(--muted); }
+/* (sprint 235) simple tables in rich text: they scroll on their own when wider than the column */
+.rich-text table, .rte-area table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0.5rem 0; }
+.rich-text th, .rich-text td, .rte-area th, .rte-area td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; text-align: start; vertical-align: top; }
+.rich-text th, .rte-area th { background: var(--surface-2); }
 
 .rating { position: relative; display: flex; align-items: center; gap: 0.1rem; padding: 0.2rem 0; flex-wrap: wrap; }
 .rating input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
