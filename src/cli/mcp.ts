@@ -54,6 +54,8 @@ export interface ImportOutcome {
   findings: ImportFinding[];
   committed: boolean;
   roleNote: string | null;
+  /** (sprint 242) keys the files leave out, filled from the column defaults (older servers: absent) */
+  filled?: import('../import-defaults.ts').FilledKeys[];
 }
 
 /** What the Advisor checks: an application in the database, or an export read from disk. */
@@ -86,6 +88,8 @@ export interface ToolContext {
   exportDoc(alias: string): Promise<Doc>;
   importDoc(doc: Doc, o: { alias: string; replace: boolean; check: ImportCheck }): Promise<ImportOutcome>;
   advise(target: AdviseTarget): Promise<AdviseResult>;
+  /** (sprint 242) the column defaults an import fills absent keys with (diff_app); null when the server can't say */
+  columnDefaults(): Promise<import('../import-defaults.ts').ColumnDefaults | null>;
 }
 
 /** The local server: the owner connection of DATABASE_URL, every application (as before sprint 194). */
@@ -101,6 +105,7 @@ export const LOCAL: ToolContext = {
   },
   schema: async () => {},
   exportDoc: (alias) => withDb((db) => exportDoc(db, alias)),
+  columnDefaults: async () => withDb(async (db) => (await import('../import-defaults.ts')).loadColumnDefaults(db)),
   importDoc: (doc, o) => withDb((db) => importDoc(db, doc, { ...o, by: 'MCP import_app' })),
   async advise(target) {
     const { adviseTarget } = await import('./advise.ts');
@@ -446,9 +451,13 @@ export const TOOLS: Tool[] = [
       const path = resolve(str(a, 'path') ?? join('apps', alias));
       const { compareFiles, unifiedDiff } = await import('./diff.ts');
       const source = await readSource(path);
-      const theirs = source.files ?? docToFiles(source.doc);
-      const style = [...theirs.keys()].some((p) => p.endsWith('.yaml')) ? 'text' : 'json';
+      const style = (source.files ? [...source.files.keys()].some((p) => p.endsWith('.yaml')) : false) ? 'text' : 'json';
       const ours = docToFiles(await ctx.exportDoc(alias), style);
+      // (sprint 242) a key the files leave out is compared as the column default the import gives it
+      const { fillDefaults, fillFiles } = await import('../import-defaults.ts');
+      const defaults = await ctx.columnDefaults();
+      if (defaults && !source.files) fillDefaults(source.doc, defaults);
+      const theirs = source.files ? (defaults ? fillFiles(source.files, defaults) : source.files) : docToFiles(source.doc);
       const changes = compareFiles(ours, theirs);
       if (!changes.length) return 'No differences.\n';
       return cap(
@@ -505,7 +514,8 @@ export const TOOLS: Tool[] = [
         onlyNote = `Only ${merged.labels.join(', ')}: ${merged.changed.length} file(s).\n`;
       }
       const r = await ctx.importDoc(doc, { alias, replace: a.replace === true, check });
-      const report = onlyNote + (check === 'off' ? '' : formatFindings(r.findings));
+      const { formatFilled } = await import('../import-defaults.ts');
+      const report = onlyNote + formatFilled(r.filled) + (check === 'off' ? '' : formatFindings(r.findings));
       if (!r.committed)
         return report + (check === 'dry-run'
           ? 'Dry run: nothing was imported.\n'
@@ -900,6 +910,8 @@ export class RemoteClient {
     const nope = async (): Promise<never> => {
       throw new ToolError('this tool runs on the server');
     };
+    // (sprint 242) the export's answer carries the column defaults (diff_app); an older server's doesn't
+    let defaults: import('../import-defaults.ts').ColumnDefaults | null = null;
     return {
       meta: nope,
       sql: nope,
@@ -907,7 +919,12 @@ export class RemoteClient {
       developer: null,
       app: nope,
       schema: nope,
-      exportDoc: async (alias) => (await this.request('GET', `apps/${encodeURIComponent(alias)}/export`)).doc,
+      exportDoc: async (alias) => {
+        const r = await this.request('GET', `apps/${encodeURIComponent(alias)}/export`);
+        if (r.defaults && typeof r.defaults === 'object') defaults = r.defaults;
+        return r.doc;
+      },
+      columnDefaults: async () => defaults,
       importDoc: async (doc, o) => (await this.request('POST', `apps/${encodeURIComponent(o.alias)}/import`, { doc, replace: o.replace, check: o.check })).result,
       advise: async (target) => {
         if ('alias' in target) return (await this.request('POST', 'advise', { alias: target.alias })).result;

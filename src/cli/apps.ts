@@ -89,6 +89,9 @@ export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off
 }) {
   await db.query('begin');
   try {
+    // (sprint 242, MG-16) keys the files leave out take the column defaults (src/import-defaults.ts)
+    const { fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
+    const filled = fillDefaults(doc, await loadColumnDefaults(db));
     const exists = (await db.query('select id, meta.app_workspace(id) as ws from meta.app where alias = $1', [alias])).rows[0];
     let id: number;
     if (exists && workspace !== undefined && exists.ws !== workspace) throw new UsageError(`the alias ${alias} is taken by an application of another workspace`);
@@ -118,13 +121,17 @@ export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off
       }));
       if (check === 'dry-run' || (check === 'check' && findings.some((f) => f.severity === 'error'))) {
         await db.query('rollback');
-        return { id, replaced: !!exists, scripts, findings, committed: false, roleNote };
+        return { id, replaced: !!exists, scripts, findings, committed: false, roleNote, filled };
       }
     }
     await db.query('commit');
-    return { id, replaced: !!exists, scripts, findings, committed: true, roleNote };
+    return { id, replaced: !!exists, scripts, findings, committed: true, roleNote, filled };
   } catch (e) {
     await db.query('rollback').catch(() => {});
+    // (sprint 242) a required key that a file leaves out: name the file, the component and the key
+    const { explainNotNull } = await import('../import-defaults.ts');
+    const why = explainNotNull(e, doc);
+    if (why) throw new UsageError(why);
     throw e;
   }
 }

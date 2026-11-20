@@ -171,7 +171,7 @@ class Writer {
 // ------------------------------------------------------------------ sections
 
 /** Shared components with a unique name: one file each. */
-const NAMED: [section: string, dir: string, table: string][] = [
+export const NAMED: [section: string, dir: string, table: string][] = [
   ['authz_schemes', 'shared/authorizations', 'authz_scheme'],
   ['app_items', 'shared/app-items', 'app_item'],
   ['lovs', 'shared/lovs', 'lov'],
@@ -205,7 +205,7 @@ const NAMED: [section: string, dir: string, table: string][] = [
 ];
 
 /** Components of a page: [array in the document, directory, table, key source]. */
-const PAGE_PARTS: [section: string, dir: string, table: string, key: (r: any) => unknown][] = [
+export const PAGE_PARTS: [section: string, dir: string, table: string, key: (r: any) => unknown][] = [
   ['regions', 'regions', 'region', () => null], // keys from regionKeys()
   ['items', 'items', 'item', (r) => r.name],
   ['buttons', 'buttons', 'button', (r) => r.name || r.label],
@@ -217,15 +217,15 @@ const PAGE_PARTS: [section: string, dir: string, table: string, key: (r: any) =>
 ];
 
 /** Single files: [section, path, sort columns]. */
-const SINGLE: [section: string, path: string, sort: string[]][] = [
+export const SINGLE: [section: string, path: string, sort: string[]][] = [
   ['group_roles', 'shared/group-roles.json', ['group_name', 'role']],
   ['text_messages', 'globalization/text-messages.json', ['name', 'language']],
   // (086) dynamic translations (meta.lang)
   ['dynamic_translations', 'globalization/dynamic-translations.json', ['language', 'source']],
 ];
 
-const ACTIONS_DIR = 'shared/automation-actions';
-const APP_COMPUTATIONS_DIR = 'shared/app-computations';
+export const ACTIONS_DIR = 'shared/automation-actions';
+export const APP_COMPUTATIONS_DIR = 'shared/app-computations';
 const STATIC_DIR = 'static';
 const STATIC_INDEX = `${STATIC_DIR}/files.json`;
 
@@ -430,10 +430,21 @@ function codeValue(buf: Buffer) {
   return s.endsWith('\n') ? s.slice(0, -1) : s;
 }
 
-function mergeCode(rec: { row: any; extra: [string, Buffer][] }) {
+function mergeCode(rec: { row: any; file: string; extra: [string, Buffer][] }) {
   for (const [column, buf] of rec.extra) rec.row[column] = codeValue(buf);
-  return rec.row;
+  return from(rec.row, rec.file);
 }
+
+// (sprint 242, MG-16) the file each row of filesToDoc's document came from, so an import can name it (the keys it
+// filled from column defaults, a required key that is missing). Not part of the document: it never travels.
+const SOURCES = new WeakMap<object, string>();
+/** The file (relative to the application directory) a row of filesToDoc's document was read from. */
+export const sourceOf = (row: unknown): string | undefined => (row && typeof row === 'object' ? SOURCES.get(row) : undefined);
+function from<T>(row: T, path: string | undefined): T {
+  if (row && typeof row === 'object' && path) SOURCES.set(row as object, path);
+  return row;
+}
+const fromAll = (rows: unknown, path: string | undefined) => (Array.isArray(rows) ? rows.map((r) => from(r, path)) : rows);
 
 const keyFromBase = (base: string) => base.slice(base.indexOf('-') + 1);
 
@@ -447,11 +458,12 @@ export function filesToDoc(files: FileMap): Doc {
     const f = pick(files, path);
     return f ? parseJson(f[0], f[1]) : dflt;
   };
+  const pathOf = (path: string) => pick(files, path)?.[0];
   const has = (path: string) => !!pick(files, path);
 
   const doc: Doc = { format: 'pgkiln/2' };
   if (!has('app.json')) throw new Error('app.json not found');
-  doc.app = read('app.json');
+  doc.app = from(read('app.json'), pathOf('app.json'));
   for (const [path, buf] of files)
     if (/^app\.pwa_icon\.[a-z0-9]+$/.test(path)) doc.app.pwa_icon = '\\x' + buf.toString('hex');
 
@@ -471,11 +483,11 @@ export function filesToDoc(files: FileMap): Doc {
   }
   doc.app_processes = readRecords(files, 'shared/app-processes').sort(SEQ_SORT).map(mergeCode);
   doc.app_computations = readRecords(files, APP_COMPUTATIONS_DIR).sort(SEQ_SORT).map(mergeCode);
-  for (const [section, path] of SINGLE) doc[section] = read(path);
+  for (const [section, path] of SINGLE) doc[section] = fromAll(read(path), pathOf(path));
   doc.translations = [...files.keys()]
     .filter((p) => /^globalization\/translations\/[^/]+\.(json|yaml)$/.test(p))
     .sort()
-    .flatMap((p) => parseJson(p, files.get(p)!));
+    .flatMap((p) => fromAll(parseJson(p, files.get(p)!), p));
 
   let navId = 0;
   const flat: any[] = [];
@@ -483,7 +495,7 @@ export function filesToDoc(files: FileMap): Doc {
     for (const e of entries) {
       const { children, ...row } = e;
       const id = ++navId;
-      flat.push({ ...row, id, parent_id: parent });
+      flat.push(from({ ...row, id, parent_id: parent }, pathOf('navigation.json')));
       walk(children ?? [], id);
     }
   };
@@ -497,7 +509,7 @@ export function filesToDoc(files: FileMap): Doc {
       for (const e of rows) {
         const { children, ...row } = e;
         const id = ++entryId;
-        entries.push({ ...row, id, parent_id: parent });
+        entries.push(from({ ...row, id, parent_id: parent }, pathOf('shared/list-entries.json')));
         walkList(children ?? [], id);
       }
     };
@@ -527,7 +539,7 @@ export function filesToDoc(files: FileMap): Doc {
     .map((d) => {
       const dir = `pages/${d}`;
       if (!has(`${dir}/page.json`)) throw new Error(`${dir}/page.json not found`);
-      const page = read(`${dir}/page.json`);
+      const page = from(read(`${dir}/page.json`), pathOf(`${dir}/page.json`));
       const regions = readRecords(files, `${dir}/regions`).sort(SEQ_SORT);
       const idOf = new Map<string, number>(regions.map((r) => [keyFromBase(r.base), ++regionId]));
       const deref = (path: string, key: unknown) => {
@@ -540,12 +552,12 @@ export function filesToDoc(files: FileMap): Doc {
         const { parent, ...row } = mergeCode(rec);
         if (row.config && typeof row.config.report === 'string')
           row.config = { ...row.config, report: deref(rec.file, row.config.report) };
-        return { id: idOf.get(keyFromBase(rec.base)), ...row, parent_id: deref(rec.file, parent) };
+        return from({ id: idOf.get(keyFromBase(rec.base)), ...row, parent_id: deref(rec.file, parent) }, rec.file);
       });
       for (const [section, sub] of PAGE_PARTS.slice(1))
         page[section] = readRecords(files, `${dir}/${sub}`)
           .sort(SEQ_SORT)
-          .map((rec) => fromRefs(mergeCode(rec), (key) => deref(rec.file, key)));
+          .map((rec) => from(fromRefs(mergeCode(rec), (key) => deref(rec.file, key)), rec.file));
       for (const [k, v] of Object.entries(page))
         if (Array.isArray(v) && !PAGE_PARTS.some(([section]) => section === k)) page[k] = v.map((row) => fromRefs(row, (key) => deref(pick(files, `${dir}/page.json`)![0], key)));
       return page;
