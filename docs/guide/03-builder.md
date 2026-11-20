@@ -1921,7 +1921,7 @@ pages, regions, buttons or items that use it (a disclosure of links into the Pag
 
 | Templates | Chosen by |
 |---|---|
-| Page: Standard, Left side column, Right side column, Minimal (no navigation) | the page's Template (Page → Appearance) |
+| Page: Standard, Left side column, Right side column, Minimal (no navigation), Standard without navigation | the page's Template (Page → Appearance) |
 | Region: Standard, Plain, Collapsible, Hero, Title bar, Buttons container, Inline dialog, Inline drawer, Wizard, Tabs container, Flex container | the region's Template |
 | Button: Text, Text primary (hot), Menu button | the button's *Primary (hot)* setting and its menu entries |
 | Label: Optional, Required, Hidden | the item's *Required* setting and the template option *Hide the label* |

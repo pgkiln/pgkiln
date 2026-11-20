@@ -111,6 +111,18 @@ template of the same name) shows the page without the header, the navigation men
 navigation bar: the title and the regions only, centred. The application's
 [login page](08-security.md#the-login-page) uses it and gets the sign-in page's backdrop.
 
+### Pages without navigation
+
+Page template **Standard without navigation** (`no_navigation` in the files; sprint 241) is the
+Standard page without its header, navigation menu and title bar, for a page that is a screen of its
+own: a kiosk, a form opened from a link in an e-mail, a page shown in another site's frame. Unlike
+*Minimal* (made for sign-in pages) it stays an application page: the progressive web app (manifest,
+service worker, offline queue), push notifications, live badges, the footer with the application's
+version and the developer toolbar all remain. The page's title is its `<h1>` for screen readers
+only; breadcrumb regions and regions in the banner position still show. On a modal page it changes
+nothing (a dialog has no header or menu), which the Advisor says. HR page 68 *Visitor sign-in* uses
+it (HR part 104).
+
 ### Side columns and display positions
 
 Like APEX's Universal Theme, a page has **display positions** and a region chooses one with its

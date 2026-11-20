@@ -435,9 +435,42 @@ stored and never logged. A check that returns `false` or `null`, or raises an er
 (<SQLSTATE>)` or `post-authentication failed (<SQLSTATE>)`, never the error message (it could repeat
 the password). With neither a function nor a body nobody can sign in.
 
-The session's user (`:APP_USER`) is the user name as typed; app roles come from **Access control**
-like for other users (an account of the same name, if there is one), or from the app's own tables
-in authorization schemes. The login page has the user name and password form only: *Keep me signed
+The session's user (`:APP_USER`) is the user name as typed, unless the post-authentication code
+names it (below); app roles come from **Access control** like for other users (an account of the
+same name, if there is one), or from the app's own tables in authorization schemes.
+
+#### Setting the user name
+
+A check that signs users in by e-mail address accepts `Jan@X.nl` and `jan@x.nl` alike, but without
+more they would be two users (their own saved reports, preferences, `created_by` values and
+`:APP_USER` comparisons). APEX's `apex_custom_auth.set_user` sets the canonical name; in pgkiln the
+post-authentication code calls **`meta.set_auth_user(name)`** (sprint 241, migration 197):
+
+```sql
+perform meta.set_auth_user(lower(p_username));
+-- or the account an e-mail address belongs to
+perform meta.set_auth_user((select username from app.users where email = lower(p_username)));
+```
+
+- The session is created for that name: roles from Access control, authorization schemes,
+  `:APP_USER`, *Keep me signed in*, the *after login* processes. The rest of the post-authentication
+  code already sees it (`meta.app_user()`, audit columns).
+- The activity log's `login` row has the new name, with `custom; signed in as typed: Jan@X.nl`.
+  Sign-in throttling counts the name as typed.
+- The name must be 1–100 characters without control, line-separator, zero-width or bidirectional
+  formatting characters (spaces around it are dropped), and not `nobody` (the user who isn't signed
+  in); `meta.auth_user_problem(name)` says why one isn't. Otherwise the sign-in is refused
+  (`post-authentication failed`).
+- It works **only there**: anywhere else (a page or application process, an Ajax callback, the
+  check function itself, the SQL Workshop, another application) it raises an error. The server
+  reads the name in one place, right after the post-authentication code of the application being
+  signed into, in the same transaction, and checks it again; a setting written some other way
+  (`set_config`) before or after that point is never read. The session is a new one (no session
+  fixation), as for every sign-in. The Advisor flags `meta.set_auth_user` in any other component.
+- The name is whatever your code says, so the code decides who the user is: name only the account
+  the checked credentials belong to.
+
+The App Gallery's *Sample Processes* signs `DEMO`, `Demo` and `demo` in as `demo` this way. The login page has the user name and password form only: *Keep me signed
 in*, LDAP, single sign-on and the password-change form are not used by these apps.
 
 ### Session timeout warning
