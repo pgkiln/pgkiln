@@ -367,6 +367,7 @@ export async function loadContext(
     rememberedUser: rememberedUsername(req, app),
     frameSrc: req.frameSrc,
     imgSrc: req.imgSrc,
+    wasmEval: req.wasmEval,
     locale,
   };
 }

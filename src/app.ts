@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie';
 import formbody from '@fastify/formbody';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import { zxingRoutes } from './zxing.ts';
 import Fastify from 'fastify';
 import { apiRoutes } from './builder/api.ts';
 import { globalizationRoutes } from './builder/globalization.ts';
@@ -218,6 +219,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
   });
   // Leaflet for map regions (BSD-2-Clause), served from the package itself
   await app.register(fastifyStatic, { root: join(root, 'node_modules', 'leaflet', 'dist'), prefix: '/static/vendor/leaflet/', decorateReply: false });
+  // (sprint 239) the barcode decoder (zxing-wasm) for scan buttons where the browser has no BarcodeDetector
+  zxingRoutes(app);
   // (0.31) Lucide icons (ISC), one per file, as a one-symbol sprite for <use href="…#i"> (src/icons.ts)
   app.get('/static/icon/:file', async (req, reply) => {
     const m = /^([a-z0-9-]{1,60})\.svg$/.exec((req.params as { file: string }).file);

@@ -93,6 +93,8 @@ declare module 'fastify' {
     frameSrc: Set<string> | null;
     /** (086) https origins of the page's display image items: added to the CSP's img-src */
     imgSrc: Set<string> | null;
+    /** (sprint 239) the page has a scan item: the CSP's script-src gets 'wasm-unsafe-eval' (the bundled barcode decoder) */
+    wasmEval: { on: boolean } | null;
   }
 }
 
@@ -104,10 +106,12 @@ export function securityHeaders(app: FastifyInstance) {
   app.decorateRequest('cspNonce', '');
   app.decorateRequest('frameSrc', null);
   app.decorateRequest('imgSrc', null);
+  app.decorateRequest('wasmEval', null);
   app.addHook('onRequest', async (req) => {
     req.cspNonce = randomBytes(18).toString('base64');
     req.frameSrc = new Set();
     req.imgSrc = new Set();
+    req.wasmEval = { on: false };
   });
   app.addHook('onSend', async (req, reply, payload) => {
     reply.header('X-Content-Type-Options', 'nosniff');
@@ -132,9 +136,11 @@ export function securityHeaders(app: FastifyInstance) {
       // No inline scripts and no inline styles: behaviour lives in /static/app.js,
       // styling in /static/app.css. The only <style> a page has (theme colours,
       // chart geometry) carries this response's nonce; style="" attributes are refused.
+      // (sprint 239) Only a page with a scan item may compile WebAssembly ('wasm-unsafe-eval', not 'unsafe-eval': no eval()
+      // or new Function): the barcode decoder bundled in /static/vendor/zxing/, for browsers without BarcodeDetector.
       reply.header(
         'Content-Security-Policy',
-        `default-src 'self'; script-src 'self'; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:${MAP_TILES ? ` ${MAP_TILES}` : ''}${req.imgSrc?.size ? ` ${[...req.imgSrc].join(' ')}` : ''}; ` +
+        `default-src 'self'; script-src 'self'${req.wasmEval?.on ? " 'wasm-unsafe-eval'" : ''}; style-src 'self' 'nonce-${req.cspNonce}'; img-src 'self' data:${MAP_TILES ? ` ${MAP_TILES}` : ''}${req.imgSrc?.size ? ` ${[...req.imgSrc].join(' ')}` : ''}; ` +
           // (078) a page with URL regions may frame exactly their origins (literal https origins, see url-region.ts)
           (req.frameSrc?.size ? `frame-src 'self' ${[...req.frameSrc].join(' ')}; ` : '') +
           `frame-ancestors ${frameAncestors}; form-action 'self'; base-uri 'none'; object-src 'none'`,

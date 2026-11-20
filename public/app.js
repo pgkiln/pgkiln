@@ -3229,8 +3229,52 @@ const liveBadges = (() => {
     list.querySelector('button').focus();
   });
 
-  // scan buttons: only where the browser reads barcodes (BarcodeDetector, e.g. Chrome on Android)
-  if ('BarcodeDetector' in window && navigator.mediaDevices) {
+  // scan buttons: read a barcode or QR code with the camera. The browser's BarcodeDetector where it has one (Chrome on
+  // Android); elsewhere (Safari on iOS, Firefox, desktop Chrome) the bundled zxing-wasm decoder (sprint 239), loaded
+  // the first time it is needed from the page's data-decoder URL (the page's CSP allows its WebAssembly).
+  let zxing = null;
+  function loadZxing(btn) {
+    zxing ??= new Promise((resolve, reject) => {
+      if (window.ZXingWASM) return resolve(window.ZXingWASM);
+      const s = document.createElement('script');
+      s.src = btn.dataset.decoder;
+      s.onload = () => (window.ZXingWASM ? resolve(window.ZXingWASM) : reject(new Error('no decoder')));
+      s.onerror = () => reject(new Error('no decoder'));
+      document.head.append(s);
+    }).then(async (Z) => {
+      const wasm = btn.dataset.decoderWasm;
+      await Z.prepareZXingModule({ overrides: { locateFile: (path, prefix) => (path.endsWith('.wasm') ? wasm : prefix + path) }, fireImmediately: true });
+      return Z;
+    });
+    zxing.catch(() => (zxing = null)); // a failed load can be tried again
+    return zxing;
+  }
+  /** A function that reads the codes in a video frame: the browser's detector, else zxing-wasm. */
+  async function barcodeReader(btn) {
+    if ('BarcodeDetector' in window) {
+      const formats = await window.BarcodeDetector.getSupportedFormats?.().catch(() => []);
+      if (!formats || formats.length) {
+        const detector = new window.BarcodeDetector();
+        return async (video) => (await detector.detect(video).catch(() => [])).map((c) => c.rawValue);
+      }
+    }
+    const Z = await loadZxing(btn);
+    const canvas = document.createElement('canvas');
+    const g = canvas.getContext('2d', { willReadFrequently: true });
+    return async (video) => {
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      if (!w || !h) return [];
+      // at most 1280 px across: enough for codes, quick enough on a phone
+      const scale = Math.min(1, 1280 / Math.max(w, h));
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      g.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const found = await Z.readBarcodes(g.getImageData(0, 0, canvas.width, canvas.height), { tryHarder: true, maxNumberOfSymbols: 1 }).catch(() => []);
+      return found.filter((c) => c.isValid && c.text).map((c) => c.text);
+    };
+  }
+  if (navigator.mediaDevices && ('BarcodeDetector' in window || typeof WebAssembly === 'object')) {
     for (const b of document.querySelectorAll('[data-scan]')) b.hidden = false;
     document.addEventListener('click', async (e) => {
       const btn = e.target.closest && e.target.closest('[data-scan]');
@@ -3238,6 +3282,7 @@ const liveBadges = (() => {
       const input = document.getElementById(btn.dataset.scan);
       const dlg = document.createElement('dialog');
       dlg.className = 'scan-dialog';
+      dlg.setAttribute('aria-label', btn.textContent.trim());
       const video = document.createElement('video');
       video.setAttribute('playsinline', '');
       video.muted = true;
@@ -3256,16 +3301,18 @@ const liveBadges = (() => {
         dlg.remove();
       };
       close.addEventListener('click', stop);
+      dlg.addEventListener('cancel', stop);
       dlg.showModal();
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        const [read, media] = await Promise.all([barcodeReader(btn), navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })]);
+        stream = media;
+        if (done) return stop();
         video.srcObject = stream;
         await video.play();
-        const detector = new window.BarcodeDetector();
         while (!done) {
-          const codes = await detector.detect(video).catch(() => []);
+          const codes = await read(video);
           if (codes.length) {
-            input.value = codes[0].rawValue;
+            input.value = codes[0];
             input.dispatchEvent(new Event('change', { bubbles: true }));
             stop();
             break;
@@ -3274,10 +3321,111 @@ const liveBadges = (() => {
         }
       } catch {
         stop();
-        note(t('item.locate_error'), 'error');
+        note(t('item.scan_error'), 'error');
       }
     });
   }
+
+  // (sprint 239, MG-12) signature items: a pad to draw on with a finger, a pen or the mouse (pointer events; touch-action
+  // none in app.css keeps the page from scrolling under the finger). After each stroke the drawing goes into the item's
+  // file input as signature.png (white background, dark ink), so the form posts it like a file item's upload; Clear empties
+  // both. The file input stays for those who can't draw (a PNG picture of a signature), its section closed.
+  function signaturePads(root) {
+    if (!window.DataTransfer) return;
+    for (const box of root.querySelectorAll('[data-signature]')) {
+      if (box.dataset.ready) continue;
+      const input = document.getElementById(box.dataset.signature);
+      const pad = box.querySelector('.signature-pad');
+      const canvas = box.querySelector('canvas');
+      const clear = box.querySelector('[data-signature-clear]');
+      if (!input || !pad || !canvas || !clear) continue;
+      box.dataset.ready = '1';
+      pad.hidden = false;
+      const upload = box.querySelector('.signature-upload');
+      if (upload) upload.open = false;
+      const g = canvas.getContext('2d');
+      let drawn = false;
+      let last = null;
+      const ratio = () => Math.min(window.devicePixelRatio || 1, 2);
+      const paper = () => {
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.fillStyle = '#fff';
+        g.fillRect(0, 0, canvas.width, canvas.height);
+        g.setTransform(ratio(), 0, 0, ratio(), 0, 0);
+        g.lineCap = 'round';
+        g.lineJoin = 'round';
+        g.lineWidth = 2.5;
+        g.strokeStyle = '#111';
+        g.fillStyle = '#111';
+      };
+      const fit = () => {
+        const w = Math.round(canvas.clientWidth * ratio());
+        const h = Math.round(canvas.clientHeight * ratio());
+        if (!w || !h || (w === canvas.width && h === canvas.height)) return;
+        // keep what was drawn (scaled) when the pad changes size (a phone turned)
+        const old = drawn ? Object.assign(document.createElement('canvas'), { width: canvas.width, height: canvas.height }) : null;
+        if (old) old.getContext('2d').drawImage(canvas, 0, 0);
+        canvas.width = w;
+        canvas.height = h;
+        paper();
+        if (old) {
+          g.setTransform(1, 0, 0, 1, 0, 0);
+          g.drawImage(old, 0, 0, w, h);
+          g.setTransform(ratio(), 0, 0, ratio(), 0, 0);
+        }
+      };
+      fit();
+      if (window.ResizeObserver) new ResizeObserver(fit).observe(canvas);
+      const at = (e) => {
+        const r = canvas.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+      };
+      const save = () =>
+        canvas.toBlob((blob) => {
+          if (!blob || !drawn) return;
+          const dt = new DataTransfer();
+          dt.items.add(new File([blob], 'signature.png', { type: 'image/png' }));
+          input.files = dt.files;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }, 'image/png');
+      canvas.addEventListener('pointerdown', (e) => {
+        if (e.button > 0) return;
+        e.preventDefault();
+        canvas.setPointerCapture?.(e.pointerId);
+        last = at(e);
+        g.beginPath();
+        g.arc(last.x, last.y, g.lineWidth / 2, 0, Math.PI * 2);
+        g.fill();
+        drawn = true;
+      });
+      canvas.addEventListener('pointermove', (e) => {
+        if (!last) return;
+        e.preventDefault();
+        const p = at(e);
+        g.beginPath();
+        g.moveTo(last.x, last.y);
+        g.lineTo(p.x, p.y);
+        g.stroke();
+        last = p;
+      });
+      const end = () => {
+        if (!last) return;
+        last = null;
+        save();
+      };
+      canvas.addEventListener('pointerup', end);
+      canvas.addEventListener('pointercancel', end);
+      clear.addEventListener('click', () => {
+        drawn = false;
+        paper();
+        input.value = '';
+        input.files = new DataTransfer().files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+  }
+  signaturePads(document);
+  document.addEventListener('pgkiln:replaced', (e) => e.detail && signaturePads(e.detail.parentElement || document));
 
   // file items with data-max-px: photos are made smaller (JPEG) before they are uploaded (every file of a multiple item)
   async function smaller(file, max) {

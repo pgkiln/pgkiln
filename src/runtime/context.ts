@@ -107,6 +107,8 @@ export interface PageContext {
   rememberedUser?: string;
   /** (086) the https origins of images the response shows (display image items; security.ts adds them to the CSP) */
   imgSrc?: Set<string> | null;
+  /** (sprint 239) set on by a scan item: the response's CSP allows WebAssembly (security.ts) */
+  wasmEval?: { on: boolean } | null;
   /** (076) per form region: the checksum of its row when it was fetched (lost update detection) */
   rowVersions?: Map<number, string>;
 }

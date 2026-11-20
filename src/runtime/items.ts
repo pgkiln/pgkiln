@@ -1,13 +1,14 @@
 import { tileAttribution, tileUrl } from '../maptiles.ts';
 import { applyBinds } from '../binds.ts';
 import { icon } from '../icons.ts';
+import { ZXING_SCRIPT, ZXING_WASM } from '../zxing.ts';
 import { pluginAttributes, pluginData, pluginOf } from './plugins.ts';
 import { templateClasses } from './template-options.ts';
 import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
-import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, maxFiles, removals } from './files.ts';
+import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, isSignature, maxFiles, removals } from './files.ts';
 import { restSql } from './rest-sources.ts';
 import { expandShortcuts } from './shortcuts.ts';
 import { componentSetting, type ComponentSettings } from './component-settings.ts';
@@ -517,8 +518,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         // {"reveal": true}: a button that shows the password while typing (app.js shows the button)
         if (item.type === 'password' && item.config?.reveal)
           control = html`<div class="input-with-button">${control}<button type="button" class="btn" data-reveal="${id}" aria-controls="${id}" aria-pressed="false" data-hide="${ctx.locale.t('item.password_hide')}" hidden>${ctx.locale.t('item.password_show')}</button></div>`;
-        if (item.config?.scan && type === 'text')
-          control = html`<div class="input-with-button">${control}<button type="button" class="btn" data-scan="${id}" hidden>${icon('scan')} ${ctx.locale.t('item.scan')}</button></div>`;
+        if (item.config?.scan && type === 'text') {
+          // (sprint 239) where the browser has no BarcodeDetector, app.js decodes with the bundled zxing-wasm: this page may compile it
+          if (ctx.wasmEval) ctx.wasmEval.on = true;
+          control = html`<div class="input-with-button">${control}<button type="button" class="btn" data-scan="${id}" data-decoder="${ZXING_SCRIPT}" data-decoder-wasm="${ZXING_WASM}" hidden>${icon('scan')} ${ctx.locale.t('item.scan')}</button></div>`;
+        }
       }
     }
   }
@@ -617,15 +621,36 @@ async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria
   } catch (e) {
     return html`<small class="error">${await publicError(ctx, e, `file of ${item.name}`)}</small>`;
   }
+  const signature = isSignature(item);
   const current = f
     ? html`<div class="file-current">
-        ${canPreview(f) ? html`<img class="file-preview" src="${fileUrl(ctx, item, f, true)}" alt="">` : ''}
+        ${canPreview(f) ? html`<img class="file-preview${signature ? ' signature-preview' : ''}" src="${fileUrl(ctx, item, f, true)}" alt="${signature ? item.label ?? '' : ''}">` : ''}
         <span><a href="${fileUrl(ctx, item, f)}" download>${f.filename}</a> <small class="help">${formatSize(f.size)}${f.pending ? ` · ${t('file.new')}` : ''}</small></span>
         ${editable && !f.pending ? html`<label class="check"><input type="checkbox" name="${id}__REMOVE" value="true"> ${t('file.remove')}</label>` : ''}
       </div>`
     : '';
   if (!editable) return html`<div class="display-value" id="${id}">${current || t('file.none')}</div>`;
+  if (signature) return html`${current}${signaturePad(ctx, item, aria)}`;
   return html`${current}${fileInput(ctx, item, aria)}`;
+}
+
+/**
+ * (sprint 239, MG-12) A signature item: a pad (a <canvas>) app.js shows and draws on with a finger, a pen or the
+ * mouse; each stroke puts the drawing into the file input as signature.png, so the form posts it as a file item's
+ * upload. Without JavaScript (or for someone who can't draw) the file input takes a PNG picture of a signature.
+ */
+function signaturePad(ctx: PageContext, item: Item, aria: Raw) {
+  const t = ctx.locale.t;
+  const id = item.name;
+  return html`<div class="signature" data-signature="${id}">
+    <div class="signature-pad" hidden>
+      <canvas class="signature-canvas" id="${id}_PAD" role="img" aria-label="${t('item.signature_pad', { label: item.label ?? id })}"></canvas>
+      <button type="button" class="btn btn-sm signature-clear" data-signature-clear="${id}" aria-controls="${id}_PAD">${icon('close')} ${t('item.signature_clear')}</button>
+    </div>
+    <details class="signature-upload" open><summary>${t('item.signature_upload')}</summary>
+      <input type="file" id="${id}" name="${id}" accept="image/png"${aria}>
+    </details>
+  </div>`;
 }
 
 export async function renderItems(ctx: PageContext, items: Item[], hidden: Set<string> = new Set()) {
