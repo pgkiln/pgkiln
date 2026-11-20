@@ -160,6 +160,12 @@ a page that doesn't say `requires_auth` needs a sign-in, one that doesn't say `p
 checksum protection, an application that doesn't say `access_control` admits only assigned users.
 With `import --replace`, a key you leave out is set to its default, not kept at the installed value.
 
+**A missing key never widens access.** A few columns default to the open value, so they are never filled: a file must
+give them, and when one is missing (or `null`) the import is refused with the file, the component and the key, and
+nothing changes. They are a REST module's `roles` (none: any token may call it) and `enabled`, a web credential's
+`valid_for` (none: sent to any URL), the application's `mfa`, `mfa_roles` and `local_login`, and an automation's
+`roles`. An export always has them.
+
 `import` lists what it filled, per file, so you can see it (an export has every key, so a normal
 import lists nothing):
 

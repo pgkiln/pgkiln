@@ -13,7 +13,7 @@ import { docToFiles, filesToDoc, stableJson, type FileMap } from '../src/appfile
 import { exportDoc, importDoc, withDb } from '../src/cli/apps.ts';
 import { compareFiles } from '../src/cli/diff.ts';
 import { writeDir } from '../src/cli/files.ts';
-import { fillDefaults, fillFiles, isConstantDefault, loadColumnDefaults, shapeOf, type ColumnDefaults } from '../src/import-defaults.ts';
+import { fillDefaults, fillFiles, isConstantDefault, loadColumnDefaults, MUST_GIVE, shapeOf, type ColumnDefaults } from '../src/import-defaults.ts';
 import { fromText, toText } from '../src/yamltext.ts';
 import { closePools, owner } from '../src/db.ts';
 import { buildApp } from '../src/app.ts';
@@ -59,7 +59,7 @@ before(async () => {
   });
 });
 after(async () => {
-  await withDb((db) => db.query('delete from meta.app where alias = any($1)', [[ALIAS, BUILDER_ALIAS]]));
+  await withDb((db) => db.query('delete from meta.app where alias = any($1)', [[ALIAS, BUILDER_ALIAS, `${BUILDER_ALIAS}_x`]]));
   rmSync(tmp, { recursive: true, force: true });
   await closePools();
 });
@@ -74,6 +74,8 @@ describe('sprint 242 MG-16: keys left out of the files take the column defaults'
     assert.equal(defaults.item.seq, 10);
     for (const t of Object.values(defaults)) assert.ok(!('id' in t) && !('app_id' in t) && !('created_at' in t));
     assert.ok(!('build_status' in defaults.app) && !('availability' in defaults.app));
+    // the open value for access is never a default to fill
+    for (const [t, cols] of Object.entries(MUST_GIVE)) for (const c of Object.keys(cols)) assert.ok(!(c in (defaults[t] ?? {})), `${t}.${c}`);
   });
 
   test('an export has every key: nothing is filled', () => {
@@ -164,6 +166,12 @@ describe('sprint 242 MG-16: keys left out of the files take the column defaults'
       const r = await owner.one<{ debug: boolean; n: number }>(
         `select a.debug, (select count(*)::int from meta.page p where p.app_id = a.id and p.protection is null) as n from meta.app a where a.alias = $1`, [BUILDER_ALIAS]);
       assert.deepEqual(r, { debug: false, n: 0 });
+      // (lead review) a key whose default would widen access is refused, not filled
+      const open = JSON.parse(stableJson(filesToDoc(exported)));
+      delete open.app.local_login;
+      await dev.get('/builder/import');
+      await dev.submit('/builder/import', { doc: JSON.stringify(open), alias: `${BUILDER_ALIAS}_x` });
+      assert.equal((await owner.query('select 1 from meta.app where alias = $1', [`${BUILDER_ALIAS}_x`])).rowCount, 0);
     } finally {
       await app.close();
     }

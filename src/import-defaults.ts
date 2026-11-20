@@ -16,6 +16,7 @@
 // diff_app shows no change for a key whose default equals the exported value.
 import { ACTIONS_DIR, APP_COMPUTATIONS_DIR, NAMED, PAGE_PARTS, SINGLE, sourceOf, stableJson, type Doc, type FileMap } from './appfiles.ts';
 import { fromText, toText } from './yamltext.ts';
+import { UsageError } from './cli/apps.ts';
 
 /** table → column → its default (as JSON), for the columns an import fills when a file leaves them out. */
 export type ColumnDefaults = Record<string, Record<string, unknown>>;
@@ -50,6 +51,24 @@ const TABLES = [...new Set(['app', 'page', ...SECTIONS.map(([, t]) => t), ...PAG
 
 /** Columns an import never fills: ids and references (the importer sets them), and what meta.export_app() leaves out. */
 const NEVER = new Set(['id', 'app_id', 'page_id', 'parent_id', 'region_id', 'affected_region_id']);
+/**
+ * Columns whose default is the open value for access: never filled. A file must give them (absent or null: the import
+ * is refused, naming the file, the component and the key), so a key that is left out never widens access.
+ */
+export const MUST_GIVE: Record<string, Record<string, string>> = {
+  rest_module: {
+    roles: 'its default, no roles, lets any token call the module',
+    enabled: 'its default serves the module\'s endpoints',
+  },
+  web_credential: { valid_for: 'its default, no URLs, sends the credential to any URL' },
+  app: {
+    mfa: 'its default, off, signs users in with a password only',
+    mfa_roles: 'its default, no roles, asks no role for a second factor',
+    local_login: 'its default allows signing in with a password of the application',
+  },
+  automation: { roles: 'it decides the roles the automation runs with' },
+};
+
 const NOT_EXPORTED: Record<string, string[]> = {
   app: ['created_at', 'updated_at', 'availability', 'availability_message', 'availability_users', 'build_status'],
   automation: ['next_run_at', 'last_run_at', 'last_status', 'code'],
@@ -76,7 +95,7 @@ export async function loadColumnDefaults(db: Q): Promise<ColumnDefaults> {
       order by 1, 2`,
     [TABLES],
   )).rows as { t: string; c: string; expr: string }[];
-  const use = cols.filter((r) => !NEVER.has(r.c) && !(NOT_EXPORTED[r.t] ?? []).includes(r.c) && isConstantDefault(r.expr));
+  const use = cols.filter((r) => !NEVER.has(r.c) && !(NOT_EXPORTED[r.t] ?? []).includes(r.c) && !MUST_GIVE[r.t]?.[r.c] && isConstantDefault(r.expr));
   const out: ColumnDefaults = {};
   if (!use.length) return out;
   // the expressions are the catalog's own (pgkiln's migrations), constants only: evaluated as they are
@@ -126,6 +145,19 @@ function* rowsOf(doc: Doc): Generator<{ table: string; row: any; label: string }
  * filled, per file (filesToDoc's documents) or component; nothing for an export, which has every key.
  */
 export function fillDefaults(doc: Doc, defaults: ColumnDefaults): FilledKeys[] {
+  // the keys a file must give (MUST_GIVE): absent or null refuses the import before anything is written
+  const refused: string[] = [];
+  for (const { table, row, label } of rowsOf(doc)) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) continue;
+    for (const [key, why] of Object.entries(MUST_GIVE[table] ?? {}))
+      if (!has(row, key) || row[key] === null) {
+        const file = sourceOf(row);
+        refused.push(`${file ? `${file} (${label})` : label}: "${key}" is ${has(row, key) ? 'null' : 'missing'} (meta.${table}.${key}: ${why})`);
+      }
+  }
+  if (refused.length)
+    throw new UsageError(`${refused.slice(0, 5).join('; ')}${refused.length > 5 ? ` (and ${refused.length - 5} more)` : ''}. ` +
+      'Give the key a value: a key whose default would widen access is never filled from the default.');
   const byWhere = new Map<string, FilledKeys>();
   for (const { table, row, label } of rowsOf(doc)) {
     const keys = fillRow(row, defaults[table]);

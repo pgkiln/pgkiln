@@ -64,7 +64,9 @@ src/
                            catalog (loadColumnDefaults; never ids, references or what export_app leaves out): fillDefaults on a
                            document (importDoc, adviseTarget; the filled keys per file), fillFiles on the files (diff, diff_app),
                            explainNotNull turns a NOT NULL violation of meta.import_app into one naming file, component and key;
-                           a key present with null is never filled
+                           a key present with null is never filled; MUST_GIVE: columns whose default is the open value for
+                           access (rest_module roles/enabled, web_credential valid_for, app mfa/mfa_roles/local_login,
+                           automation roles) are never filled, absent or null refuses the import naming file and key
   apexparse.ts             (sprint 182) an APEX SQL export read as text, never run: a tokenizer ('' and q'[…]' quotes, unistr,
                            comments, SQL*Plus lines) and every wwv_* call as an ApexCall with its named arguments evaluated
                            (wwv_flow_imp.id → ApexId with every digit, wwv_flow_string.join, ||, nvl); joinSplitExport (install.sql order)
@@ -1223,7 +1225,8 @@ browser enhancements at the end of `public/app.js` (the item must work without t
   change: unknown sections and columns travel along.
 - (sprint 242) A new column's constant default is what an import gives a hand-written file that leaves the key
   out (`src/import-defaults.ts` reads it from the catalog). A column the export leaves out on purpose (installation
-  state, a secret) must also be listed in `NOT_EXPORTED` there, or such a file would get its default.
+  state, a secret) must also be listed in `NOT_EXPORTED` there, or such a file would get its default. A new column whose default
+  is the open value for access (no roles, any URL, enabled, off for a second factor) goes in `MUST_GIVE`.
 - (sprint 201) Grant a new meta *table* to `pgkiln_runtime` (or nobody), never to `PUBLIC` or an application's role: a
   role with any right on a meta table is powerful (`meta.role_reaches_meta`), and the workspaces' developer logins
   read none. A new view for application code granted to `PUBLIC` must show only the rows of `meta.app_id()` (or the
