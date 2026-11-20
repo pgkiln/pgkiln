@@ -69,8 +69,8 @@ before(async () => {
   await owner.query(`insert into meta.authz_scheme (app_id, name, type, value, mfa_minutes) values ($1, $2, 'role', 'admin', 15)`, [appId, SCHEME]);
   await owner.query('delete from meta.mail_service where name = $1', [SERVICE]);
   const id = (await owner.one(`insert into meta.mail_service (name, provider, senders) values ($1, 'log', '{@example.com}') returning id`, [SERVICE])).id;
-  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')
-                     on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address`, [appId, id]);
+  await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)
+                     on conflict (app_id, service_id) do update set is_default = true, from_address = excluded.from_address`, [appId, id]);
 });
 
 beforeEach(async () => {

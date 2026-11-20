@@ -38,7 +38,7 @@ export async function loginSettingsFields(a: AppRow) {
   const left = pages.filter((p) => !usable(p) && String(p.page_no) !== String(a.login_page ?? '')).length;
   const mail = await owner.one<{ service: string | null; enabled: boolean | null; from_address: string | null }>(
     `select s.name as service, s.enabled, ams.from_address
-       from meta.app_mail_service ams join meta.mail_service s on s.id = ams.service_id where ams.app_id = $1`, [a.id],
+       from meta.app_mail_service ams join meta.mail_service s on s.id = ams.service_id where ams.app_id = $1 and ams.is_default`, [a.id],
   );
   const mailOk = !!(mail?.enabled && mail.from_address?.trim());
   const noMail = html`<strong>${tx('lgp.not_offered_yet')}</strong> the application needs an enabled mail service with a From address (Workspace utilities → Mail services).`;

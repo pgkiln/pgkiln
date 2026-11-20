@@ -2269,8 +2269,12 @@ SendGrid, Mailgun, or *log only*), then shows that provider's settings only; on 
 key: stored encrypted with `PGKILN_SECRET_KEY`, never shown again, never exported), the **allowed
 senders** (addresses, or `@domain`) and a default From address. On a service's page:
 
-- **Applications**: which applications send through it (one service per application), each with
-  its From address (one of the allowed senders) and an optional limit per day;
+- **Applications**: which applications send through it, each with its From address (one of the allowed
+  senders) and an optional limit per day for this service. An application may send through several
+  services (sprint 236): *also:* lists its others. **Default** makes this service the application's
+  default: the one for mail whose From address none of its other services may send as (the first service an
+  application gets is its default; unchecking moves the default to another of its services; an only service
+  stays the default). See [Several mail services](06-processing.md#several-mail-services);
 - **Check before saving** (at the end of the form, also while adding a service): *Test connection*
   checks the settings as filled in without sending anything (SMTP: connect, TLS and sign in;
   Microsoft 365: an Entra token; Amazon SES: the account, with its sending quota and whether it is
@@ -2279,8 +2283,8 @@ senders** (addresses, or `@domain`) and a default From address. On a service's p
   allowed sender. An empty secret field uses the stored secret; nothing is saved;
 - **Recent mail** of its applications.
 
-Applications → Activity → **Mail** (developers) shows an application's service, today's count
-against its limit and the mail of the last 30 days with its status and the provider's answer;
+Applications → Activity → **Mail** (developers) shows an application's default service, today's count
+against its limit, its other services with their allowed senders and the mail of the last 30 days with its status and the provider's answer;
 **Send again** queues a failed or cancelled mail again, **Cancel** stops a queued one.
 
 **Microsoft 365.** Register an application in Microsoft Entra with a client secret. For the Graph

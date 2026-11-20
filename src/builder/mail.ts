@@ -14,7 +14,8 @@ import { scopedTx as tx } from './i18n.ts';
 // this installation (SMTP with a password or OAuth2, Microsoft Graph, Amazon
 // SES, Resend, Postmark, SendGrid, Mailgun, or log only), the From addresses
 // each may send as, which applications send through it (with their From
-// address and a daily limit), a test, and the recent mail. Applications →
+// address and a daily limit; sprint 236: an application may have several, one
+// of them its default), a test, and the recent mail. Applications →
 // Activity → Mail (developers): the application's mail, with retry and
 // cancel. Secrets are encrypted (src/secrets.ts) and never sent back to the
 // browser.
@@ -235,10 +236,13 @@ export async function mailRoutes(app: FastifyInstance) {
   app.get(`${BASE}/mail`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s || !(await adminOnly(s, reply, tx('ml.mail_services')))) return;
+    // (sprint 236) an application with several services: "(default)" after the alias on its default's row
     const services = (await owner.query(`select s.id, s.name, s.description, s.provider, s.senders, s.enabled, s.secret_enc is not null as has_secret,
-        (select string_agg(a.alias, ', ' order by a.alias) from meta.app_mail_service x join meta.app a on a.id = x.app_id where x.service_id = s.id) as apps,
+        (select string_agg(a.alias || case when x.is_default and exists (select 1 from meta.app_mail_service y where y.app_id = x.app_id and y.service_id <> x.service_id)
+                                           then ' (' || $1 || ')' else '' end, ', ' order by a.alias)
+           from meta.app_mail_service x join meta.app a on a.id = x.app_id where x.service_id = s.id) as apps,
         (select w.name from meta.workspace w where w.id = s.workspace_id) as workspace
-      from meta.mail_service s order by s.workspace_id is not null, s.name`)).rows;
+      from meta.mail_service s order by s.workspace_id is not null, s.name`, [tx('ml.default_l')])).rows;
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id order by q.id desc limit 100`)).rows;
     const main = html`
       <div class="title-row"><h1>${tx('ml.mail_services')}</h1></div>
@@ -326,10 +330,13 @@ export async function mailRoutes(app: FastifyInstance) {
     if (!x) return reply.code(404).send('Not found');
     const provider = (PROVIDERS as readonly string[]).includes(String(req.query.provider)) ? (req.query.provider as Provider) : x.provider;
     // (sprint 118) a workspace's own service serves that workspace's applications only
-    const apps = (await owner.query(`select a.id, a.alias, a.name, x.service_id, x.from_address, x.max_per_day, o.name as other
-      from meta.app a left join meta.app_mail_service x on x.app_id = a.id left join meta.mail_service o on o.id = x.service_id and o.id <> $1
+    // (sprint 236) an application may send through several services: this one's link, and the others it has
+    const apps = (await owner.query(`select a.id, a.alias, a.name, x.service_id, x.from_address, x.max_per_day, x.is_default,
+        (select string_agg(o.name || case when y.is_default then ' (' || $3 || ')' else '' end, ', ' order by o.name)
+           from meta.app_mail_service y join meta.mail_service o on o.id = y.service_id where y.app_id = a.id and y.service_id <> $1) as other
+      from meta.app a left join meta.app_mail_service x on x.app_id = a.id and x.service_id = $1
       where $2::int is null or meta.app_workspace(a.id) = $2
-      order by a.alias`, [x.id, x.workspace_id ?? null])).rows;
+      order by a.alias`, [x.id, x.workspace_id ?? null, tx('ml.default_l')])).rows;
     const recent = (await owner.query(`select ${MAIL_COLUMNS}, a.alias as app from meta.mail_queue q left join meta.app a on a.id = q.app_id
        where q.service = $1 or q.app_id in (select app_id from meta.app_mail_service where service_id = $2) order by q.id desc limit 50`, [x.name, x.id])).rows;
     const main = html`
@@ -344,13 +351,14 @@ export async function mailRoutes(app: FastifyInstance) {
       </div>
       ${region(tx('ml.applications'), html`<p class="muted u-mt0">${tx('ml.the_applications_that_send_through')}</p>
         <form method="post" action="${BASE}/mail/${x.id}/apps">${csrf(s)}
-        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('ml.application')}</th><th>${tx('ml.sends_through_this_service')}</th><th>${tx('ml.from_address')}</th><th>${tx('ml.mails_per_day')}</th></tr></thead>
+        <div class="table-wrap"><table class="report report-reflow"><thead><tr><th>${tx('ml.application')}</th><th>${tx('ml.sends_through_this_service')}</th><th>${tx('ml.default_service')}</th><th>${tx('ml.from_address')}</th><th>${tx('ml.mails_per_day')}</th></tr></thead>
         <tbody>${apps.length ? apps.map((a) => html`<tr>
           <td data-label="${tx('ml.application')}">${a.name} <span class="muted">${a.alias}</span></td>
-          <td data-label="${tx('ml.sends_through_this_service')}"><label class="check"><input type="checkbox" name="allow" value="${a.id}"${a.service_id === x.id ? raw(' checked') : ''}> yes</label>${a.other ? html` <span class="muted">now: ${a.other}</span>` : ''}</td>
+          <td data-label="${tx('ml.sends_through_this_service')}"><label class="check"><input type="checkbox" name="allow" value="${a.id}"${a.service_id === x.id ? raw(' checked') : ''}> yes</label>${a.other ? html` <span class="muted u-break">${tx('ml.also_through', { services: a.other })}</span>` : ''}</td>
+          <td data-label="${tx('ml.default_service')}"><label class="check"><input type="checkbox" name="default" value="${a.id}"${a.service_id === x.id && a.is_default ? raw(' checked') : ''} aria-label="${tx('ml.aria_default', { app: a.alias })}"> ${tx('ml.default_l')}</label></td>
           <td data-label="${tx('ml.from_address')}"><input type="email" name="from_${a.id}" value="${a.service_id === x.id ? a.from_address ?? '' : ''}" aria-label="${tx('ml.aria_from', { app: a.alias })}"></td>
           <td data-label="${tx('ml.mails_per_day')}"><input type="number" min="0" name="max_${a.id}" value="${a.service_id === x.id ? a.max_per_day ?? '' : ''}" aria-label="${tx('ml.aria_max', { app: a.alias })}"></td></tr>`)
-          : html`<tr><td colspan="4" class="empty">${tx('ml.no_applications')}</td></tr>`}</tbody></table></div>
+          : html`<tr><td colspan="5" class="empty">${tx('ml.no_applications')}</td></tr>`}</tbody></table></div>
         <div class="buttons"><button class="btn btn-hot">${tx('ml.save')}</button></div></form>`)}
       ${region(tx('ml.recent_mail'), mailTable(recent, true))}`;
     return send(reply, s, shell(s, x.name, [[tx('ml.app_builder'), BASE], [tx('ml.workspace_utilities'), `${BASE}/utilities`], [tx('ml.mail_services'), `${BASE}/mail`], [x.name]], main));
@@ -382,6 +390,8 @@ export async function mailRoutes(app: FastifyInstance) {
     if (!s || !(await adminOnly(s, reply, tx('ml.mail_services')))) return;
     const b = req.body as Record<string, string | string[] | undefined>;
     const allow = new Set([b.allow ?? []].flat().map(Number).filter(Number.isInteger));
+    // (sprint 236) the applications whose default this service is (a linked application only)
+    const dflt = new Set([b.default ?? []].flat().map(Number).filter(Number.isInteger));
     try {
       const service = await owner.one<{ senders: string[]; workspace_id: number | null }>('select senders, workspace_id from meta.mail_service where id = $1', [req.params.id]);
       if (!service) throw new Error(tx('ml.not_found'));
@@ -394,10 +404,20 @@ export async function mailRoutes(app: FastifyInstance) {
           if (from && (!ADDRESS.test(from) || !senderAllowed(service.senders, from))) throw new Error(`${from} is not an address this service may send as.`);
           const max = String(b[`max_${id}`] ?? '').trim();
           if (max && !(Number.isInteger(Number(max)) && Number(max) >= 0)) throw new Error(tx('ml.mails_per_day_a_whole'));
+          // (sprint 236) one link per application and service; the first becomes the application's default (a trigger)
           await c.query(
             `insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day) values ($1, $2, $3, $4)
-             on conflict (app_id) do update set service_id = excluded.service_id, from_address = excluded.from_address, max_per_day = excluded.max_per_day`,
+             on conflict (app_id, service_id) do update set from_address = excluded.from_address, max_per_day = excluded.max_per_day`,
             [id, req.params.id, from, max ? Number(max) : null]);
+          if (dflt.has(id))
+            // the trigger takes the default from the application's other service
+            await c.query('update meta.app_mail_service set is_default = true where app_id = $1 and service_id = $2 and not is_default', [id, req.params.id]);
+          else
+            // no longer the default: another of the application's services is (an only service stays the default)
+            await c.query(
+              `update meta.app_mail_service set is_default = true
+                where app_id = $1 and service_id = (select min(service_id) from meta.app_mail_service where app_id = $1 and service_id <> $2)
+                  and exists (select 1 from meta.app_mail_service where app_id = $1 and service_id = $2 and is_default)`, [id, req.params.id]);
         }
       });
       flash(s, tx('ml.applications_saved'));
@@ -446,7 +466,12 @@ export async function mailRoutes(app: FastifyInstance) {
     // the application's service, else (sprint 118) its workspace's own
     const service = await owner.one(`select s.name, s.provider, s.enabled, x.from_address, x.max_per_day, s.settings->>'default_from' as default_from
       from meta.mail_service s left join meta.app_mail_service x on x.app_id = $1 and x.service_id = s.id where s.id = meta.mail_service_for_app($1)`, [a.id]);
-    const today = (await owner.one(`select count(*)::int as n from meta.mail_queue where app_id = $1 and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC' and status <> 'cancelled'`, [a.id])).n;
+    // (sprint 236) today's mail through that service (its limit is per service)
+    const today = (await owner.one(`select count(*)::int as n from meta.mail_queue where app_id = $1 and created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC' and status <> 'cancelled'
+      and service_id = meta.mail_service_for_app($1)`, [a.id])).n;
+    // (sprint 236) its other services: mail from an address only they may send as goes through them
+    const others = (await owner.one<{ names: string | null }>(`select string_agg(s.name || ' (' || array_to_string(s.senders, ', ') || ')', '; ' order by s.name) as names
+      from meta.app_mail_service x join meta.mail_service s on s.id = x.service_id where x.app_id = $1 and x.service_id is distinct from meta.mail_service_for_app($1)`, [a.id]))?.names;
     const status = String(req.query.status ?? '');
     const rows = (await owner.query(`select ${MAIL_COLUMNS} from meta.mail_queue q where q.app_id = $1 and ($2 = '' or q.status = $2) order by q.id desc limit 200`, [a.id, status])).rows;
     const admin = await isAdmin(s.username);
@@ -456,7 +481,7 @@ export async function mailRoutes(app: FastifyInstance) {
     const main = html`
       <div class="title-row"><h1 class="mail-name">Mail · ${a.name}</h1></div>
       <p class="muted u-mt0">${tx.code('ml.queue_intro')} ${service
-        ? tx.rich(service.max_per_day !== null ? 'ml.sends_through_max' : 'ml.sends_through', { service: html`<b>${service.name}</b>`, provider: `${PROVIDER_LABELS[service.provider as Provider]}${service.enabled ? '' : `, ${tx('ml.disabled_l')}`}`, from: service.from_address ?? service.default_from ?? html`<i>${tx('ml.no_from_address')}</i>`, today, max: service.max_per_day ?? '' })
+        ? html`${tx.rich(service.max_per_day !== null ? 'ml.sends_through_max' : 'ml.sends_through', { service: html`<b>${service.name}</b>`, provider: `${PROVIDER_LABELS[service.provider as Provider]}${service.enabled ? '' : `, ${tx('ml.disabled_l')}`}`, from: service.from_address ?? service.default_from ?? html`<i>${tx('ml.no_from_address')}</i>`, today, max: service.max_per_day ?? '' })}${others ? html` ${tx('ml.also_through_app', { services: others })}` : ''}`
         : admin ? tx.rich('ml.no_service_admin', { none: html`<b>${tx('ml.it_may_not_send_mail')}</b>`, link: html`<a href="${BASE}/mail">${tx('ml.mail_services')}</a>` }) : tx.rich('ml.no_service', { none: html`<b>${tx('ml.it_may_not_send_mail')}</b>` })}</p>
       <form method="get" class="u-mb1">${select('status', tx('ml.status'), status, [['', tx('ml.all')], ['queued', tx('ml.queued')], ['sending', tx('ml.sending')], ['sent', tx('ml.sent')], ['error', tx('ml.error')], ['cancelled', tx('ml.cancelled')]])}<button class="btn btn-sm">${tx('ml.show')}</button></form>
       ${region(tx('ml.mail'), mailTable(rows, false, action))}`;

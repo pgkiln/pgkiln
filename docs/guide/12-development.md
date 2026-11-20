@@ -283,7 +283,9 @@ src/
                            send, retry after 1/4/16/64 minutes, purge after 30 days; the NOTIFY pgkiln_mail listener);
                            (sprint 118) the service of meta.mail_service_for_app (the app's, else its workspace's own), each attempt's
                            provider and duration, serviceSettings()/verifyService(): a workspace service's checks (no base or token URL,
-                           its SMTP host through network-acl.ts mailHostAddress)
+                           its SMTP host through network-acl.ts mailHostAddress); (sprint 236, 191) meta.mail_service_for_mail: the
+                           service chosen when the mail was queued (mail_queue.service_id) while still the app's, else the one for its From
+                           address (meta.mail_service_for_app(app, from)), else the default
   ai/                      AI services (migration 060): types.ts (the provider interface, AiError kinds),
                            anthropic.ts (Claude through @anthropic-ai/sdk: streamed, effort, structured outputs via
                            output_config.format, refusal fallbacks, stop_reason checks, typed SDK errors), openai.ts (the openai
@@ -549,7 +551,8 @@ src/
                            (Workspace home). Every id from a request is looked up in the current workspace
     region-help.ts         the help of a region's settings per region type (Utilities → Show as JSON), with links to the guide
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
-                           applications with From and daily limit, test) and Applications → Activity → Mail (retry, cancel);
+                           applications with From and daily limit, test; sprint 236: several services per application, the
+                           Default column) and Applications → Activity → Mail (retry, cancel; the app's other services);
                            serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118)
     mail-queue.ts          (sprint 118, WS-9) Administration → Mail queue (/builder/mail-queue): queueScope (administrators: all or
                            ?ws=; workspace administrators: the current workspace), figures, per hour, per workspace / application,
@@ -894,6 +897,8 @@ test/
   mail-network.test.ts     (sprint 118) network access lists (page process refused and logged in debug, narrowing only, redirects,
                            the page), a workspace's mail service (sending, SMTP host on the list), the Mail queue (yesterday's
                            SMTP failure, Retry, Purge, counts, scope)
+  mail-services.test.ts    (sprint 236, 191) several mail services per application: one default (triggers, partial unique index),
+                           the service by From address when queuing and sending, the limit per service, the builder, HR part 99
   gallery.test.ts          the App Gallery: every starter and utility created from its review and every sample app installed, with all
                            their pages rendering; sample apps (admins), the search, a failing script leaves nothing
   gallery-samples.ts       the gallery's shipped apps for the tests: SAMPLES (schema and role of each script), BLUEPRINTS, drop/install

@@ -84,6 +84,7 @@ export async function verifyService(service: Pick<MailService, 'name' | 'provide
 interface Claimed {
   id: string;
   app_id: number;
+  service_id: number | null;
   from_address: string;
   reply_to: string | null;
   to_addresses: string[];
@@ -104,8 +105,10 @@ async function sendOne(m: Claimed) {
 }
 
 async function sendOneTraced(m: Claimed) {
-  // the application's service, else (sprint 118) its workspace's own
-  const service = await owner.one<MailService>(`select s.* from meta.mail_service s where s.id = meta.mail_service_for_app($1)`, [m.app_id]);
+  // the service chosen when it was queued, else (sprint 236) the application's service for its From address, else its
+  // default, else (sprint 118) its workspace's own
+  const service = await owner.one<MailService>(`select s.* from meta.mail_service s where s.id = meta.mail_service_for_mail($1, $2, $3)`,
+    [m.app_id, m.service_id, m.from_address]);
   const t0 = performance.now();
   // (sprint 118) when the last attempt ended, how long the provider took (Administration → Mail queue)
   const timing = () => [Math.round(performance.now() - t0), service?.provider ?? null] as const;
@@ -146,7 +149,7 @@ export async function mailTick(): Promise<string[]> {
       `update meta.mail_queue m set status = 'sending', attempts = attempts + 1, not_before = now()
         where m.id in (select id from meta.mail_queue where status = 'queued' and not_before <= now()
                         order by id for update skip locked limit ${PER_PASS})
-        returning m.id, m.app_id, m.from_address, m.reply_to, m.to_addresses, m.cc_addresses, m.bcc_addresses,
+        returning m.id, m.app_id, m.service_id, m.from_address, m.reply_to, m.to_addresses, m.cc_addresses, m.bcc_addresses,
                   m.subject, m.body_text, m.body_html, m.attempts`,
     )
   ).rows.sort((a, b) => Number(a.id) - Number(b.id));

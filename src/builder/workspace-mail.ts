@@ -40,7 +40,7 @@ export async function workspaceMailRoutes(app: FastifyInstance) {
     const wanted = String(req.query.provider ?? typed?.provider ?? '');
     const provider: Provider = (PROVIDERS as readonly string[]).includes(wanted) ? (wanted as Provider) : x?.provider ?? 'smtp';
     const users = (await owner.query<{ alias: string; own: string | null }>(
-      `select a.alias, (select s.name from meta.app_mail_service m join meta.mail_service s on s.id = m.service_id where m.app_id = a.id) as own
+      `select a.alias, (select string_agg(s.name, ', ' order by m.is_default desc, s.name) from meta.app_mail_service m join meta.mail_service s on s.id = m.service_id where m.app_id = a.id) as own
          from meta.app a where meta.app_workspace(a.id) = $1 order by a.alias`, [w.id])).rows;
     const shown = typed ? { ...x, description: typed.description, provider: typed.provider, settings: typed.settings, senders: typed.senders, enabled: typed.enabled } : x ?? {};
     const main = html`

@@ -114,7 +114,7 @@ export async function emailCodeTarget(a: { id: number; mfa_email?: boolean | nul
   const r = await owner.one<{ email: string | null; from_address: string | null; ok: boolean }>(
     `select ac.email, ams.from_address, coalesce(s.enabled and meta.mail_sender_allowed(s.senders, ams.from_address), false) as ok
        from meta.account ac
-       left join meta.app_mail_service ams on ams.app_id = $2
+       left join meta.app_mail_service ams on ams.app_id = $2 and ams.is_default
        left join meta.mail_service s on s.id = ams.service_id
       where ac.id = $1 and ac.active`, [accountIdValue, a.id]);
   const to = r?.email?.trim();
@@ -132,13 +132,15 @@ export async function queueEmailCode(a: { id: number }, username: string, target
       [username])).rows[0].n;
     if (recent >= EMAIL_CODES_PER_HOUR) return false;
     const over = (await c.query<{ over: boolean }>(
-      `select ams.max_per_day is not null and (select count(*) from meta.mail_queue q where q.app_id = $1
+      `select ams.max_per_day is not null and (select count(*) from meta.mail_queue q where q.app_id = $1 and q.service_id = ams.service_id
                  and q.created_at >= date_trunc('day', now() at time zone 'UTC') at time zone 'UTC' and q.status <> 'cancelled') >= ams.max_per_day as over
-         from meta.app_mail_service ams where ams.app_id = $1`, [a.id])).rows[0]?.over;
+         from meta.app_mail_service ams where ams.app_id = $1 and ams.is_default`, [a.id])).rows[0]?.over;
     if (over) return false;
+    // (sprint 236) through the application's default mail service
     const id = (await c.query<{ id: string }>(
-      `insert into meta.mail_queue (app_id, username, from_address, to_addresses, subject, body_text, template)
-       values ($1, $2, $3, array[$4], left($5, 998), $6, 'SIGNIN_CODE') returning id`,
+      `insert into meta.mail_queue (app_id, username, from_address, to_addresses, subject, body_text, template, service_id)
+       values ($1, $2, $3, array[$4], left($5, 998), $6, 'SIGNIN_CODE',
+               (select service_id from meta.app_mail_service where app_id = $1 and is_default)) returning id`,
       [a.id, username, target.from, target.to, subject.replace(/[\r\n]+/g, ' '), text])).rows[0].id;
     await c.query(`select pg_notify('pgkiln_mail', $1)`, [String(id)]);
     return true;

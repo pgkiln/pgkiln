@@ -22,7 +22,7 @@ insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day
 select a.id, s.id, 'hr@example.com', 500
   from meta.app a, meta.mail_service s
  where a.alias = 'hr' and s.name = 'DEVELOPMENT_LOG'
-on conflict (app_id) do nothing;
+on conflict do nothing;
 
 insert into meta.email_template (app_id, name, subject, html_body, text_body)
 select id, 'LEAVE_DECIDED', 'Your leave request was #STATUS#',

@@ -360,7 +360,12 @@ describe('mail queue and a workspace\'s own mail service', () => {
   test('an application an administrator gave a service keeps it; a service of another workspace is never used', async () => {
     const other = (await owner.one(`insert into meta.mail_service (name, provider, senders, workspace_id) values ('T_S118_OTHER', 'log', '{@example.com}', $1) returning id`, [otherWs])).id;
     try {
-      await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'app@example.com')`, [appId, other]);
+      // (sprint 236) such a link is refused now; one left from before (an application moved) is still never used
+      await assert.rejects(owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'app@example.com')`, [appId, other]), /another workspace/);
+      await owner.tx(async (c) => {
+        await c.query('set local session_replication_role = replica');
+        await c.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'app@example.com', true)`, [appId, other]);
+      });
       assert.equal((await owner.one('select meta.mail_service_for_app($1) as s', [appId])).s, null, 'another workspace\'s service: none');
       await assert.rejects(asApp((q) => q(`select meta.send_mail('king@example.com', 'T other', 'x')`)), /may not send e-mail/);
     } finally {
