@@ -15,9 +15,12 @@ import { compareFiles } from '../src/cli/diff.ts';
 import { writeDir } from '../src/cli/files.ts';
 import { fillDefaults, fillFiles, isConstantDefault, loadColumnDefaults, shapeOf, type ColumnDefaults } from '../src/import-defaults.ts';
 import { fromText, toText } from '../src/yamltext.ts';
-import { closePools } from '../src/db.ts';
+import { closePools, owner } from '../src/db.ts';
+import { buildApp } from '../src/app.ts';
+import { Browser } from './helpers.ts';
 
 const ALIAS = 'hr_mg16';
+const BUILDER_ALIAS = 'hr_mg16_builder';
 const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-mg16-'));
 let defaults: ColumnDefaults;
 let exported: FileMap;
@@ -56,7 +59,7 @@ before(async () => {
   });
 });
 after(async () => {
-  await withDb((db) => db.query('delete from meta.app where alias = $1', [ALIAS]));
+  await withDb((db) => db.query('delete from meta.app where alias = any($1)', [[ALIAS, BUILDER_ALIAS]]));
   rmSync(tmp, { recursive: true, force: true });
   await closePools();
 });
@@ -145,5 +148,24 @@ describe('sprint 242 MG-16: keys left out of the files take the column defaults'
     const filled = fillDefaults(doc, defaults);
     assert.equal(doc.pages[0].protection, 'checksum');
     assert.deepEqual(filled, [{ where: `page ${doc.pages[0].page_no}`, file: null, keys: ['protection'] }]);
+  });
+
+  test('the builder\'s Import (a JSON document) fills left-out keys too', async () => {
+    const app = await buildApp({ logger: false });
+    try {
+      const doc = JSON.parse(stableJson(filesToDoc(exported)));
+      delete doc.app.debug;
+      for (const p of doc.pages) delete p.protection;
+      const dev = new Browser(app);
+      await dev.get('/builder/login');
+      await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+      await dev.get('/builder/import');
+      await dev.submit('/builder/import', { doc: JSON.stringify(doc), alias: BUILDER_ALIAS });
+      const r = await owner.one<{ debug: boolean; n: number }>(
+        `select a.debug, (select count(*)::int from meta.page p where p.app_id = a.id and p.protection is null) as n from meta.app a where a.alias = $1`, [BUILDER_ALIAS]);
+      assert.deepEqual(r, { debug: false, n: 0 });
+    } finally {
+      await app.close();
+    }
   });
 });
