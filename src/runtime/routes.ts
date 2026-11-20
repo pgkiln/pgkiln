@@ -1366,7 +1366,9 @@ export async function runtimeRoutes(app: FastifyInstance) {
         return fail(locale.t('login.invalid'), 401);
       }
       keepName();
-      return completeLogin(req, reply, a, session, r.username, { next, method: 'custom', detail: 'custom' });
+      // (sprint 241, MG-15) post-authentication named the user (meta.set_auth_user): the activity log keeps what was typed
+      const detail = r.typed === undefined ? 'custom' : `custom; signed in as typed: ${r.typed.replace(/[\u0000-\u001f\u007f-\u009f]/g, '?').slice(0, 100)}`;
+      return completeLogin(req, reply, a, session, r.username, { next, method: 'custom', detail });
     }
     const r = await runtime.one<{ username: string | null }>('select meta.authenticate($1, $2, $3) as username', [a.id, username, password]);
     if (!r?.username) {

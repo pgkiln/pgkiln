@@ -266,6 +266,7 @@ export function translatePage(page: Page, tr: (s: string) => string) {
     i.lov = translateStaticLov(i.lov, tr);
     if (typeof i.config?.null_label === 'string') i.config.null_label = tr(i.config.null_label);
     if (typeof i.config?.placeholder === 'string') i.config.placeholder = tr(i.config.placeholder);
+    if (i.placeholder) i.placeholder = tr(i.placeholder);
   }
   for (const b of page.buttons) {
     b.label = tr(b.label);
@@ -313,6 +314,7 @@ export async function translatableTexts(appId: number, q: { query: (sql: string,
          union all select i.help, 'page ' || p.page_no || ' help ' || i.name from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1
          union all select i.config->>'null_label', 'page ' || p.page_no || ' item ' || i.name from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1
          union all select i.config->>'placeholder', 'page ' || p.page_no || ' item ' || i.name from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1
+         union all select i.placeholder, 'page ' || p.page_no || ' item ' || i.name from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1
          union all select left(pair, length(pair) - strpos(reverse(pair), ';')), 'page ' || p.page_no || ' list ' || i.name
              from meta.item i join meta.page p on p.id = i.page_id,
                   regexp_split_to_table(substr(i.lov, strpos(i.lov, ':') + 1), ',') pair

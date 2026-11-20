@@ -20,6 +20,7 @@ triggers, your own functions).
 | `meta.csv_field(value, separator default ',', is_text default true)` | text | One CSV field: quoted when needed, a formula neutralised |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
+| `meta.set_auth_user(name)`, `meta.auth_user_problem(name)` | void / text | (sprint 241) In a custom authentication scheme's post-authentication code only: the user name the session gets, e.g. `lower(p_username)` (APEX: `apex_custom_auth.set_user`); an error anywhere else. `auth_user_problem` says why a name can't be one (NULL: it can) ([chapter 8](08-security.md#setting-the-user-name)) |
 | `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |
 | `meta.tenant_id()` | text | The current session's tenant, or NULL (APEX: `sys_context('APEX$SESSION', 'APP_TENANT_ID')`); in a workflow step, the workflow's tenant |
 | `meta.v_boolean(name)` | boolean | An item's value as a boolean (APEX 26.1: BOOLEAN session state): `true`, `t`, `yes`, `y`, `1`, `on` → true; `false`, `f`, `no`, `n`, `0`, `off` → false; empty or anything else → NULL. Switches and checkboxes store `true` / `false`, so `:P3_ACTIVE::boolean` works in SQL too |
@@ -554,6 +555,7 @@ tells whether a component with that `build_option` value is part of the applicat
 | `mode` | `normal` / `modal` |
 | `protection` | `checksum` / `unrestricted` |
 | `authz` | Authorization scheme |
+| `page_template` | `standard`, `left_side_column`, `right_side_column`, `minimal` (a sign-in page) or (sprint 241) `no_navigation` ([chapter 4](04-pages-and-regions.md#pages-without-navigation)) |
 | `build_option` | `NAME` / `!NAME`: only while the [build option](06-processing.md#build-options) is included / excluded |
 
 Regions, items, buttons, dynamic actions, validations, processes, computations, branches,
@@ -576,7 +578,7 @@ navigation entries and application processes have the same `build_option` column
 | `template_options` | text[]: CSS classes from a fixed list ([template options](04-pages-and-regions.md#template-options)) |
 | `position` | `banner`, `breadcrumb`, `left`, `body` (or null), `right`, `footer` ([display positions](04-pages-and-regions.md#side-columns-and-display-positions)) |
 
-**`item`**: `page_id`, `region_id`, `seq`, `name`, `label`, `type`, `lov`, `source_column`,
+**`item`**: `page_id`, `region_id`, `seq`, `name`, `label` (`&ITEM.` substitutions), `placeholder` (sprint 241), `type`, `lov`, `source_column`,
 `default_value`, `required`, `help`, `readonly_condition`, `authz`, `config` ([chapter 5](05-items.md)).
 
 **`button`**: `page_id`, `region_id`, `seq`, `name`, `label`, `action` (`submit` / `redirect` / `da` /

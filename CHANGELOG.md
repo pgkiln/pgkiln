@@ -51,11 +51,25 @@ All notable changes to this project are documented here. The format follows
   [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) decoder, served by pgkiln (never a CDN) and loaded the first
   time it is pressed. Pages with a scan item add `'wasm-unsafe-eval'` to the Content-Security-Policy's `script-src`
   (WebAssembly only, not `eval()`); no other page gets it. New dependency: `zxing-wasm` (MIT; ZXing-C++, Apache-2.0; see `NOTICE`).
+- **Value placeholders** (sprint 241, MG-10, migration 197): items get a **Value placeholder**, a hint in empty text,
+  number, e-mail, date, textarea and similar fields, and the text of a select list's empty choice. It takes `&ITEM.`
+  substitutions and is translated; the APEX importer carries `p_placeholder` over.
+- **`&ITEM.` in item labels** (sprint 241, MG-11): labels take substitutions, escaped, on the page and in the messages
+  that name the item.
+- **Page template Standard without navigation** (sprint 241, MG-13): `no_navigation` has no header, menu or title bar,
+  but unlike Minimal keeps the PWA, push notifications, live badges and the footer.
+- **`meta.set_auth_user(name)`** (sprint 241, MG-15; APEX `apex_custom_auth.set_user`): a custom authentication
+  scheme's post-authentication code can name the session's user, so `Jan@X.nl` and `jan@x.nl` are one user. It works
+  only during sign-in: the server reads the name right after the post-authentication code, in the same transaction,
+  and checks it again (1–100 characters, no control or invisible characters, not `nobody`). The App Gallery's Sample
+  Processes uses it; HR part 104 (page 68, *Visitor sign-in*).
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the
   like survive, and `table`, `thead`, `tbody`, `tr`, `th` and `td` (no attributes, structure enforced) are kept by the
   allow-list on the server and in the editor.
+- A custom sign-in whose final user name is `nobody` is refused (sprint 241).
+- Item labels containing `&NAME.` are now substituted; names that aren't items or built-ins stay as typed (sprint 241).
 - A checkbox group's value in JavaScript (`$v`, client-side conditions) is now its ticked values joined with colons, as
   for multiselects and shuttles; a single checkbox still gives `true` / `false`.
 

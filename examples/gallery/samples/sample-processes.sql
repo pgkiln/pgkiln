@@ -19,7 +19,9 @@
 --   page 9  an editable grid whose Save runs Reset Pagination.
 -- Sign-in is custom authentication: a PL/pgSQL function checks the shop's
 -- own staff table (account demo / demo); any user it accepts may use the
--- application (access control "any user").
+-- application (access control "any user"). The post-authentication code
+-- names the session's user in lower case (meta.set_auth_user), so DEMO
+-- and demo are one user.
 --
 -- Installed by an administrator from the App Gallery, or with
 --   psql "$DATABASE_URL" -1 -f examples/gallery/samples/sample-processes.sql
@@ -128,11 +130,14 @@ grant execute on function sample_processes.check_login(text, text) to app_sample
 
 -- 3. The application ----------------------------------------------------------
 -- custom authentication with the staff table; any user it signs in may use the application;
+-- the post-authentication code names the session's user as the staff table does (meta.set_auth_user,
+-- sprint 241): DEMO, Demo and demo all sign in as demo;
 -- always in the primary language; push notifications on, so Send Push Notification can queue
 insert into meta.app (alias, name, home_page, authentication, custom_auth_function, custom_auth_post_code,
                       access_control, language, language_from, db_role, pwa, pwa_push, pwa_short_name)
 values ('sample-processes', 'Sample Processes', 1, 'custom', 'sample_processes.check_login',
-        'update sample_processes.staff set last_login_at = now() where username = lower(p_username);',
+        'update sample_processes.staff set last_login_at = now() where username = lower(p_username);
+perform meta.set_auth_user(lower(p_username));',
         'any_user', 'en', 'primary', 'app_sample_processes', true, true, 'Processes');
 
 insert into meta.page (app_id, page_no, name, title, parent_page, mode, protection)

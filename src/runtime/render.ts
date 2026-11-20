@@ -27,7 +27,7 @@ import { breadcrumbLinks, hasBreadcrumbRegion } from './page-regions.ts';
 import { devbarHtml } from './devbar.ts';
 import { feedbackNode } from './feedback.ts';
 import { sessionLimits } from '../session.ts';
-import { HEADER_POSITIONS } from '../page-positions.ts';
+import { HEADER_POSITIONS, pageHasPosition } from '../page-positions.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -271,6 +271,24 @@ export async function chrome(ctx: PageContext, main: Raw, title: string, slots: 
     );
   }
 
+  // (sprint 241, MG-13) No navigation: the Standard page without its header, navigation menu and title bar (renderPage),
+  // for a page that is a whole screen of its own (a kiosk, a form opened from a link). Unlike minimal it keeps the
+  // application's PWA and push notification attributes, live badges and the footer.
+  if (ctx.page.page_template === 'no_navigation')
+    return documentShell(
+      `${title} · ${ctx.app.name}`,
+      html`<main class="t-main t-nonav-main" id="main">${main}
+        ${ctx.app.version ? html`<footer class="t-footer"><span class="t-version">${ctx.locale.tr(ctx.app.version)}</span></footer>` : ''}</main>
+      ${devbarHtml(ctx)}`,
+      't-nonav',
+      {
+        'data-base': ctx.base, 'data-page': String(ctx.page.page_no), ...pwaBody(ctx.app, ctx.user), ...(await pushBody(ctx.app, ctx.session.username)),
+        ...(ctx.app.live_badges_s ? { 'data-live': String(ctx.app.live_badges_s) } : {}),
+      },
+      html`${pageStyle(ctx)}${pwaHead(ctx.app)}${mapHead(ctx)}${staticHead(ctx)}`,
+      root,
+    );
+
   const signedIn = ctx.user !== 'nobody';
   const topNav = ctx.app.theme?.nav === 'top';
   // (sprint 117, APEX 26.2) Pillar Light / Pillar Dark: classes on <body> from a fixed list (styles.ts)
@@ -403,7 +421,8 @@ export async function renderPage(ctx: PageContext) {
   // (099) regions by display position; the side column of a side-column page template, else its regions in the body
   const side = ctx.page.page_template === 'left_side_column' ? 'left' : ctx.page.page_template === 'right_side_column' ? 'right' : null;
   // (sprint 234, AX-12) the header's positions and the top navigation bar: only where the page has the header
-  const header = !ctx.dialog && ctx.page.page_template !== 'minimal';
+  // (sprint 241) Standard without navigation has no header either: as the designer and the Advisor (pageHasPosition)
+  const header = !ctx.dialog && pageHasPosition({ page_template: ctx.page.page_template }, 'after_logo');
   const placed: Record<string, [Region, Raw][]> = {
     banner: [], breadcrumb: [], full_width: [], side: [], body: [], footer: [], dialogs: [],
     ...(header ? Object.fromEntries(HEADER_POSITIONS.map((p) => [p, []])) : {}),
@@ -436,6 +455,9 @@ export async function renderPage(ctx: PageContext) {
   const main = html`
     ${ctx.dialog
       ? ''
+      : ctx.page.page_template === 'no_navigation'
+        ? // (sprint 241) no title bar: the page's heading for screen readers only
+          html`<h1 class="sr-only">${title}</h1>`
       : html`<div class="t-titlebar">
           ${crumbs.length ? html`<nav aria-label="Breadcrumb"><ol class="crumbs">${crumbs}</ol></nav>` : ''}
           <h1>${title}</h1>

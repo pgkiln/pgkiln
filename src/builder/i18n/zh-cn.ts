@@ -1730,7 +1730,7 @@ export const zhCN: BuilderMessages = {
   'st.custom_body': '或函数体',
   'st.custom_body_help': '使用 p_username 和 p_password 的 PL/pgSQL，登录有效时返回 true，例如 {example}',
   'st.custom_post': '验证后代码',
-  'st.custom_post_help': '可选的 PL/pgSQL，检查成功后运行，可使用 p_username（和 meta.app_user()），例如记录上次登录。引发异常将拒绝登录。“登录后”的应用程序进程随后照常运行。',
+  'st.custom_post_help': '可选的 PL/pgSQL，检查成功后运行，可使用 p_username（和 meta.app_user()），例如记录上次登录。引发异常将拒绝登录。“登录后”的应用程序进程随后照常运行。 perform meta.set_auth_user(lower(p_username)); 设定会话的用户名（Jan@X.nl 与 jan@x.nl 为同一用户）：其角色、授权方案和 APP_USER 都依此名。',
   'st.signin': '登录',
   'st.methods': '登录方式',
   'st.signin_page': '登录页',
@@ -8613,4 +8613,8 @@ export const zhCN: BuilderMessages = {
   'gp.on_every_page': '在每个页面上',
   'gp.designer_note': '页面 0 是全局页面：其组件是此应用程序所有其他页面的一部分，且从不单独打开。其锁定和注释属于应用程序。',
   'gp.run_title': '运行显示全局页面的主页（页面 {n}）',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': '标准（无导航）',
+  'uit.page.no_navigation': '标准（无导航）',
+  'uit.page.no_navigation.d': '没有页眉、导航菜单和标题栏的标准页面。与“最小”不同，它保留应用的安装和推送通知功能、实时徽章和页脚（从链接打开的表单、自助终端屏幕）。',
 };

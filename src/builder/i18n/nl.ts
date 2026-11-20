@@ -1730,7 +1730,7 @@ export const nl: BuilderMessages = {
   'st.custom_body': 'Of functiebody',
   'st.custom_body_help': 'PL/pgSQL met p_username en p_password dat true teruggeeft bij een geldige aanmelding, bijv. {example}',
   'st.custom_post': 'Code na authenticatie',
-  'st.custom_post_help': 'Optionele PL/pgSQL die draait na een geslaagde controle, met p_username (en meta.app_user()), bijv. om de laatste aanmelding vast te leggen. Een exception weigert de aanmelding. Applicatieprocessen “after login” draaien daarna zoals gewoonlijk.',
+  'st.custom_post_help': 'Optionele PL/pgSQL die draait na een geslaagde controle, met p_username (en meta.app_user()), bijv. om de laatste aanmelding vast te leggen. Een exception weigert de aanmelding. Applicatieprocessen “after login” draaien daarna zoals gewoonlijk. perform meta.set_auth_user(lower(p_username)); bepaalt de gebruikersnaam van de sessie (één gebruiker voor Jan@X.nl en jan@x.nl): diens rollen, autorisatieschema\'s en APP_USER.',
   'st.signin': 'Aanmelden',
   'st.methods': 'Aanmeldmethoden',
   'st.signin_page': 'Aanmeldpagina',
@@ -8613,4 +8613,8 @@ export const nl: BuilderMessages = {
   'gp.on_every_page': 'Op elke pagina',
   'gp.designer_note': 'Pagina 0 is de globale pagina: de componenten horen bij elke andere pagina van deze applicatie, en hij wordt nooit zelf geopend. Zijn vergrendeling en opmerkingen zijn die van de applicatie.',
   'gp.run_title': 'De startpagina (pagina {n}) uitvoeren, die de globale pagina toont',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Standaard zonder navigatie',
+  'uit.page.no_navigation': 'Standaard zonder navigatie',
+  'uit.page.no_navigation.d': 'De standaardpagina zonder kop, navigatiemenu en titelbalk. Anders dan Minimaal houdt ze de installatie- en pushmeldingsfuncties van de applicatie, live badges en de voettekst (een formulier geopend vanuit een link, een kioskscherm).',
 };

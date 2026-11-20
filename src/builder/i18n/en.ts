@@ -1734,7 +1734,7 @@ export const en = {
   'st.custom_body': 'Or function body',
   'st.custom_body_help': 'PL/pgSQL with p_username and p_password, returning true for a valid sign-in, e.g. {example}',
   'st.custom_post': 'Post-authentication code',
-  'st.custom_post_help': 'Optional PL/pgSQL run after a successful check, with p_username (and meta.app_user()), e.g. to record the last sign-in. Raising an exception refuses the sign-in. Application processes "after login" run afterwards as usual.',
+  'st.custom_post_help': 'Optional PL/pgSQL run after a successful check, with p_username (and meta.app_user()), e.g. to record the last sign-in. Raising an exception refuses the sign-in. Application processes "after login" run afterwards as usual. perform meta.set_auth_user(lower(p_username)); names the session\'s user (one user for Jan@X.nl and jan@x.nl): its roles, authorization schemes and APP_USER.',
   'st.signin': 'Sign-in',
   'st.methods': 'Sign-in methods',
   'st.signin_page': 'Sign-in page',
@@ -8618,4 +8618,8 @@ export const en = {
   'gp.on_every_page': 'On every page',
   'gp.designer_note': 'Page 0 is the Global Page: its components are part of every other page of this application, and it is never opened by itself. Its lock and comments are the application\'s.',
   'gp.run_title': 'Run the home page (page {n}), which shows the Global Page',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Standard without navigation',
+  'uit.page.no_navigation': 'Standard without navigation',
+  'uit.page.no_navigation.d': 'The Standard page without its header, navigation menu and title bar. Unlike Minimal it keeps the application\'s install and push notification features, live badges and footer (a form opened from a link, a kiosk screen).',
 } as const;

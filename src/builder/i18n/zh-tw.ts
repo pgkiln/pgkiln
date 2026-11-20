@@ -1730,7 +1730,7 @@ export const zhTW: BuilderMessages = {
   'st.custom_body': '或函數主體',
   'st.custom_body_help': '使用 p_username 與 p_password 的 PL/pgSQL，有效登入時傳回 true，例如 {example}',
   'st.custom_post': '認證後程式碼',
-  'st.custom_post_help': '檢查成功後執行的選擇性 PL/pgSQL，可使用 p_username（及 meta.app_user()），例如記錄上次登入時間。引發例外即拒絕登入。「登入後」的應用程式處理之後照常執行。',
+  'st.custom_post_help': '檢查成功後執行的選擇性 PL/pgSQL，可使用 p_username（及 meta.app_user()），例如記錄上次登入時間。引發例外即拒絕登入。「登入後」的應用程式處理之後照常執行。 perform meta.set_auth_user(lower(p_username)); 設定工作階段的使用者名稱（Jan@X.nl 與 jan@x.nl 為同一使用者）：其角色、授權方案和 APP_USER 皆依此名。',
   'st.signin': '登入',
   'st.methods': '登入方法',
   'st.signin_page': '登入頁面',
@@ -8613,4 +8613,8 @@ export const zhTW: BuilderMessages = {
   'gp.on_every_page': '在每個頁面上',
   'gp.designer_note': '頁面 0 是全域頁面：其元件是此應用程式所有其他頁面的一部分，且從不單獨開啟。其鎖定和註解屬於應用程式。',
   'gp.run_title': '執行顯示全域頁面的首頁（頁面 {n}）',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': '標準（無導覽）',
+  'uit.page.no_navigation': '標準（無導覽）',
+  'uit.page.no_navigation.d': '沒有頁首、導覽選單和標題列的標準頁面。與「最小」不同，它保留應用程式的安裝和推播通知功能、即時徽章和頁尾（從連結開啟的表單、資訊站畫面）。',
 };

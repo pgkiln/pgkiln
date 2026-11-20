@@ -1730,7 +1730,7 @@ export const es: BuilderMessages = {
   'st.custom_body': 'O cuerpo de la función',
   'st.custom_body_help': 'PL/pgSQL con p_username y p_password que devuelve true para un inicio de sesión válido, p. ej. {example}',
   'st.custom_post': 'Código posterior a la autenticación',
-  'st.custom_post_help': 'PL/pgSQL opcional que se ejecuta tras una comprobación correcta, con p_username (y meta.app_user()), p. ej. para registrar el último inicio de sesión. Lanzar una excepción rechaza el inicio de sesión. Los procesos de aplicación «after login» se ejecutan después como siempre.',
+  'st.custom_post_help': 'PL/pgSQL opcional que se ejecuta tras una comprobación correcta, con p_username (y meta.app_user()), p. ej. para registrar el último inicio de sesión. Lanzar una excepción rechaza el inicio de sesión. Los procesos de aplicación «after login» se ejecutan después como siempre. perform meta.set_auth_user(lower(p_username)); fija el usuario de la sesión (un solo usuario para Jan@X.nl y jan@x.nl): sus roles, esquemas de autorización y APP_USER.',
   'st.signin': 'Inicio de sesión',
   'st.methods': 'Métodos de inicio de sesión',
   'st.signin_page': 'Página de inicio de sesión',
@@ -8613,4 +8613,8 @@ export const es: BuilderMessages = {
   'gp.on_every_page': 'En cada página',
   'gp.designer_note': 'La página 0 es la página global: sus componentes forman parte de todas las demás páginas de esta aplicación, y nunca se abre sola. Su bloqueo y sus comentarios son los de la aplicación.',
   'gp.run_title': 'Ejecutar la página de inicio (página {n}), que muestra la página global',
+  // (sprint 241, MG-13) page template No navigation
+  'pdz.no_navigation': 'Estándar sin navegación',
+  'uit.page.no_navigation': 'Estándar sin navegación',
+  'uit.page.no_navigation.d': 'La página estándar sin encabezado, menú de navegación ni barra de título. A diferencia de Mínima, conserva la instalación y las notificaciones push de la aplicación, las insignias en vivo y el pie de página (un formulario abierto desde un enlace, una pantalla de quiosco).',
 };

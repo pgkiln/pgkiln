@@ -143,7 +143,10 @@ src/
                            administrators group), linkDeveloper, ssoRequired (a workspace's rule, break-glass), clearSsoOnly
   headerauth.ts            HTTP-header authentication: trusted proxies (PGKILN_AUTH_HEADER_PROXIES), header checks, accounts
   dbauth.ts                database-account authentication: role lists, a short connection as the role (DATABASE_URL target), membership/superuser checks
-  customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role
+  customauth.ts            custom authentication: the app's function or PL/pgSQL body (a pg_temp function) and post-authentication code, as the app's role;
+                           (sprint 241, MG-15, migration 197) meta.set_auth_user: the phase pgkiln.auth_phase is set around the post-authentication
+                           code only, pgkiln.auth_user cleared before and read right after it (same transaction), authUserProblem() checks the
+                           name again (= meta.auth_user_problem); "nobody" is never a session's user
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   remember-username.ts     (sprint 231, AX-13, migration 189) "Remember username": the cookie pgkiln_user_<app id> of the app's path
                            (the typed name only, HttpOnly, SameSite=Lax), rememberedUsername() fills the sign-in form,
@@ -360,11 +363,13 @@ src/
     static-files.ts        (068) static application files (/a/<alias>/static/<name>), the <script>/<link> tags of a page; (141) static
                            workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
                            #APP_FILES# / #WORKSPACE_FILES# are substituted in context.ts substitute and template-components.ts
-    render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
+    render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches);
                            (sprint 234, AX-12) renderPage places regions by display position: full_width after the breadcrumb bar,
                            dialogs after the footer (both in the page's form); the header's (HEADER_POSITIONS) go to chrome()'s
                            slots: .t-hpos after the logo, before the navigation bar, after the user menu, and .t-topnav under the
-                           header (outside the form); a minimal page or a dialog leaves them out (app.css: one line, no frame)
+                           header (outside the form); a minimal page or a dialog leaves them out (app.css: one line, no frame);
+                           (sprint 241, MG-13) page template no_navigation: chrome() without header and menu (PWA, push, live badges kept),
+                           renderPage without the title bar (an sr-only <h1>)
     page-regions.ts        (sprint 140) breadcrumb and help_text regions: breadcrumbLinks (also the title bar's trail, left out when the
                            page has a breadcrumb region), the page's help text (meta.page.help) as Markdown with escaped &ITEM. values
     styles.ts              base styles (BASE_STYLES: Iris, Lavender, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
@@ -375,6 +380,9 @@ src/
                            (sprint 195, migration 172) sub regions: childrenOf, renderChildren (tabs_container: tab links + panels that app.js
                            makes ARIA tabs; flex_container; a 12-column grid), after the region's own (cached) body; render.ts skips sub
                            regions at page level, authz.ts computeVisibility drops a sub region whose parent isn't shown
+    item-texts.ts          (sprint 241, MG-10/11) itemLabel (&ITEM. substitutions in labels, also in the messages engine.ts gives),
+                           itemPlaceholder (meta.item.placeholder, migration 197, or the older {"placeholder"} setting), PLACEHOLDER_TYPES,
+                           NULL_CHOICE_TYPES (a select list's empty choice); items.ts renderItem uses them
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
@@ -703,7 +711,10 @@ src/
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check; (sprint 229) globalPageFindings:
                            links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0;
-                           (sprint 234) positionFindings: a header position the page has not, items and submit buttons in one
+                           (sprint 234) positionFindings: a header position the page has not, items and submit buttons in a
+                           header region (outside the page's form)
+    advisor-items-pages.ts (sprint 241) itemPageFindings: a placeholder no type shows, meta.set_auth_user outside custom
+                           authentication's post-authentication code, No navigation on a modal page
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
                            application and page checksums; Change history (filters, diffHtml of a change); the icon browser
                            /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application);
@@ -905,6 +916,8 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  item-texts-auth-user.test.ts (sprint 241, MG-10/11/13/15) placeholders, &ITEM. in labels, page template no_navigation,
+                           meta.set_auth_user (HR page 68, part 104); e2e/visitor-kiosk.test.ts in a browser at 390 and 1280 px
   instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
   drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
   page-positions.test.ts   (sprint 234, AX-12) the new display positions: rendered in place (header, top bar, full width, dialogs),

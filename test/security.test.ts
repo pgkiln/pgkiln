@@ -20095,3 +20095,220 @@ describe('sprint 239 MG-12/MG-4', () => {
     assert.doesNotMatch(csp, /unsafe-eval/, 'HR has no scan item');
   });
 });
+
+describe('sprint 241 MG-10/11/13/15', () => {
+  // MG-15: a custom authentication scheme of its own; its check accepts dana's password for any case of her name
+  const alias = 'sec241-custom';
+  const ROLE = 'pgkiln_sec241';
+  const SCHEMA = 'sec241';
+  let cid = 0;
+  let other = 0;
+  const CHECK = `return lower(p_username) = 'dana' and p_password = 'Dana-pw-241!';`;
+  const inject = (b: Browser, url: string, form: Record<string, string>) =>
+    app.inject({ method: 'POST', url, payload: new URLSearchParams(form).toString(),
+      headers: { cookie: [...b.cookies].map(([k, v]) => `${k}=${v}`).join('; '), 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' } });
+  const signIn = async (user: string, password = 'Dana-pw-241!', to = alias) => {
+    // earlier refusals would throttle the next attempt: only the last one is kept (lastFailure reads it)
+    await owner.query(`delete from meta.activity_log where app_id = any($1) and event = 'login_failed' and id not in (select max(id) from meta.activity_log where app_id = any($1) and event = 'login_failed')`, [[cid, other]]);
+    const b = new Browser();
+    await b.get(`/a/${to}/login`);
+    const res = await b.post(`/a/${to}/login`, { __csrf: b.lastCsrf, username: user, password });
+    return { b, res };
+  };
+  const who = async (b: Browser, to = alias) => /\[user:([^\]]*)\]/.exec((await b.get(`/a/${to}/1`)).body)?.[1];
+  const setApp = (cols: Record<string, string | null>, id = cid) =>
+    owner.query(`update meta.app set ${Object.keys(cols).map((k, i) => `${k} = $${i + 2}`).join(', ')} where id = $1`, [id, ...Object.values(cols)]);
+  const lastFailure = async () => (await owner.one(`select detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id desc limit 1`, [cid]))?.detail ?? '';
+  const lit = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+  before(async () => {
+    await owner.query(`delete from meta.app where alias in ($1, $2)`, [alias, `${alias}-b`]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop role if exists ${ROLE}`);
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    await owner.query(`create schema ${SCHEMA}`);
+    await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
+    await owner.query(`create table ${SCHEMA}.note (who text, at timestamptz default now())`);
+    await owner.query(`grant select, insert on ${SCHEMA}.note to ${ROLE}`);
+    for (const a of [alias, `${alias}-b`]) {
+      const id = (await owner.one(`insert into meta.app (alias, name, authentication, db_role, custom_auth_code) values ($1, 'Sec 241', 'custom', $2, $3) returning id`, [a, ROLE, CHECK])).id;
+      const page = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home') returning id`, [id])).id;
+      await owner.query(`insert into meta.region (page_id, title, type, source) values ($1, 'Who', 'static', '<p>[user:&APP_USER.]</p>')`, [page]);
+      await owner.query(`insert into meta.item (page_id, seq, name, label, type) values ($1, 10, 'P1_X', 'X', 'text')`, [page]);
+      await owner.query(`insert into meta.button (page_id, seq, name, label, action) values ($1, 10, 'GO', 'Go', 'submit')`, [page]);
+      await owner.query(`insert into meta.process (page_id, seq, name, type, point, code, when_button) values
+        ($1, 10, 'Plain', 'sql', 'submit', 'select meta.set_auth_user(''admin'')', 'GO'),
+        ($1, 20, 'Forged', 'sql', 'submit', 'select set_config(''pgkiln.auth_phase'', ''post_authentication'', true), meta.set_auth_user(''admin''), set_config(''pgkiln.auth_user'', ''admin'', true)', 'FORGE'),
+        ($1, 30, 'AJAX_FORGE', 'sql', 'ajax', 'select set_config(''pgkiln.auth_phase'', ''post_authentication'', true) as a, set_config(''pgkiln.auth_user'', ''admin'', true) as b, set_config(''pgkiln.app_user'', ''admin'', true) as c', null)`, [page]);
+      if (a === alias) cid = id;
+      else other = id;
+    }
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = any($1)', [[cid, other]]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+
+  test('MG-15: meta.set_auth_user outside a sign-in raises: the SQL Workshop, the runtime role, the application\'s role', async () => {
+    await assert.rejects(owner.query(`select meta.set_auth_user('admin')`), /works only in the post-authentication code/);
+    await assert.rejects(runtime.query(`select meta.set_auth_user('admin')`), /works only in the post-authentication code/);
+    await assert.rejects(appTx({ appId: cid, alias, dbRole: ROLE, appUser: 'dana', sessionId: '' }, (c) => c.query(`select meta.set_auth_user('admin')`)), /works only/);
+    // not security definer, a fixed search path: it can do nothing the caller couldn't
+    const fn = await owner.one(`select prosecdef, proconfig from pg_proc where oid = 'meta.set_auth_user(text)'::regprocedure`);
+    assert.equal(fn.prosecdef, false);
+    assert.deepEqual(fn.proconfig, ['search_path=pg_catalog']);
+    // the SQL Workshop (an administrator's builder session) gets the same error
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get('/builder/sql');
+    const run = await dev.post('/builder/sql/worksheet', { __csrf: dev.lastCsrf, sql: `select meta.set_auth_user('admin')`, mode: 'statement' });
+    assert.match(run.body, /works only in the post-authentication code/);
+  });
+
+  test('MG-15: after sign-in a page process or an Ajax callback can\'t change the session\'s user, not even with forged settings', async () => {
+    await setApp({ custom_auth_post_code: 'perform meta.set_auth_user(lower(p_username));' });
+    try {
+      const { b, res } = await signIn('DANA');
+      assert.equal(res.statusCode, 303);
+      assert.equal(await who(b), 'dana');
+      // a plain call fails the process; a forged phase "works" inside that transaction only, and nothing reads it
+      await b.get(`/a/${alias}/1`);
+      const plain = await b.post(`/a/${alias}/1`, { __csrf: b.lastCsrf, __request: 'GO', P1_X: '' });
+      assert.match(plain.body, /works only in the post-authentication code|alert-error/);
+      assert.equal(await who(b), 'dana');
+      await b.get(`/a/${alias}/1`);
+      await b.post(`/a/${alias}/1`, { __csrf: b.lastCsrf, __request: 'FORGE', P1_X: '' });
+      assert.equal(await who(b), 'dana');
+      await b.get(`/a/${alias}/1`);
+      const ajax = await inject(b, `/a/${alias}/1/ajax/AJAX_FORGE`, { __csrf: b.lastCsrf });
+      assert.equal(ajax.statusCode, 200, ajax.body);
+      assert.equal(await who(b), 'dana');
+      // the session row still names dana
+      assert.deepEqual((await owner.query(`select distinct username from meta.session where app_id = $1 and username is not null`, [cid])).rows.map((r) => r.username), ['dana']);
+    } finally {
+      await setApp({ custom_auth_post_code: null });
+    }
+  });
+
+  test('MG-15: the check can\'t name the user: set_auth_user there fails the sign-in, a forged setting is cleared before post-authentication', async () => {
+    try {
+      await setApp({ custom_auth_code: `perform meta.set_auth_user('admin'); ${CHECK}` });
+      assert.equal((await signIn('dana')).res.statusCode, 401);
+      assert.match(await lastFailure(), /check failed/);
+      await setApp({ custom_auth_code: `perform set_config('pgkiln.auth_phase', 'post_authentication', true), set_config('pgkiln.auth_user', 'admin', true); ${CHECK}`,
+        custom_auth_post_code: `insert into ${SCHEMA}.note (who) values (meta.app_user());` });
+      const { b, res } = await signIn('Dana');
+      assert.equal(res.statusCode, 303);
+      assert.equal(await who(b), 'Dana', 'the typed name, not the forged one');
+      // without post-authentication code the setting is never read either
+      await setApp({ custom_auth_post_code: null });
+      const again = await signIn('Dana');
+      assert.equal(await who(again.b), 'Dana');
+    } finally {
+      await setApp({ custom_auth_code: CHECK, custom_auth_post_code: null });
+    }
+  });
+
+  test('MG-15: empty, long, control and formatting characters, and nobody are refused, by the function and by the server', async () => {
+    const bad = ['', '   ', 'x'.repeat(101), 'dana\nadmin', 'dana\radmin', 'dana\u0000', 'adm‮nid', 'ad​min', 'ad min', 'nobody', 'NoBody', ' nobody '];
+    try {
+      for (const name of bad) {
+        if (name.includes('\u0000')) continue; // PostgreSQL text never holds a NUL: the next loop sends it through set_config's check
+        await setApp({ custom_auth_post_code: `perform meta.set_auth_user(${lit(name)});` });
+        const { b, res } = await signIn('dana');
+        assert.equal(res.statusCode, 401, JSON.stringify(name));
+        assert.equal((await b.get(`/a/${alias}/1`)).statusCode, 302, 'no session');
+        assert.match(await lastFailure(), /post-authentication failed/);
+      }
+      await setApp({ custom_auth_post_code: `perform meta.set_auth_user(null);` });
+      assert.equal((await signIn('dana')).res.statusCode, 401);
+      // written with set_config directly (around the function's checks): the server checks the name again
+      for (const name of ['nobody', 'x'.repeat(101), 'dana\nadmin', 'adm‮nid']) {
+        await setApp({ custom_auth_post_code: `perform set_config('pgkiln.auth_user', ${lit(name)}, true);` });
+        const { res } = await signIn('dana');
+        assert.equal(res.statusCode, 401, JSON.stringify(name));
+        assert.match(await lastFailure(), /set no valid user name/);
+      }
+      // a check that accepts the name "nobody" as typed: nobody is never a session's user
+      await setApp({ custom_auth_code: 'return true;', custom_auth_post_code: null });
+      assert.equal((await signIn('nobody', 'x')).res.statusCode, 401);
+      assert.equal((await signIn('NOBODY', 'x')).res.statusCode, 401);
+    } finally {
+      await setApp({ custom_auth_code: CHECK, custom_auth_post_code: null });
+    }
+  });
+
+  test('MG-15: a refused post-authentication rolls everything back; the session is new (no fixation); another application is unaffected', async () => {
+    try {
+      await setApp({ custom_auth_post_code: `perform meta.set_auth_user('dana'); insert into ${SCHEMA}.note (who) values (meta.app_user()); raise exception 'no';` });
+      assert.equal((await signIn('dana')).res.statusCode, 401);
+      assert.equal((await owner.one(`select count(*)::int as n from ${SCHEMA}.note where who = 'dana'`)).n, 0, 'rolled back');
+      await setApp({ custom_auth_post_code: `perform meta.set_auth_user(lower(p_username)); insert into ${SCHEMA}.note (who) values (meta.app_user());` });
+      const b = new Browser();
+      await b.get(`/a/${alias}/login`);
+      const before = b.cookies.get(`pgkiln_app_${cid}`);
+      assert.ok(before, 'a session before signing in');
+      assert.equal((await b.post(`/a/${alias}/login`, { __csrf: b.lastCsrf, username: 'DaNa', password: 'Dana-pw-241!' })).statusCode, 303);
+      const afterIn = b.cookies.get(`pgkiln_app_${cid}`);
+      assert.ok(afterIn && afterIn !== before, 'a new session cookie');
+      // the old cookie is no session of dana's
+      const old = new Browser();
+      old.cookies.set(`pgkiln_app_${cid}`, before!);
+      assert.equal((await old.get(`/a/${alias}/1`)).statusCode, 302);
+      assert.equal(await who(b), 'dana');
+      // post-authentication's own statements already see the new name (audit columns, created_by)
+      assert.equal((await owner.one(`select who from ${SCHEMA}.note order by at desc limit 1`)).who, 'dana');
+      // the other application (same check, no post-authentication code) keeps the name as typed; its session isn't dana's in the first
+      const o = await signIn('DaNa', 'Dana-pw-241!', `${alias}-b`);
+      assert.equal(o.res.statusCode, 303);
+      assert.equal(await who(o.b, `${alias}-b`), 'DaNa');
+      assert.equal((await o.b.get(`/a/${alias}/1`)).statusCode, 302);
+      // the activity log keeps the typed name next to the canonical one, control characters masked
+      const log = await owner.one(`select username, detail from meta.activity_log where app_id = $1 and event = 'login' order by id desc limit 1`, [cid]);
+      assert.deepEqual(log, { username: 'dana', detail: 'custom; signed in as typed: DaNa' });
+    } finally {
+      await setApp({ custom_auth_post_code: null });
+    }
+  });
+
+  test('MG-10/MG-11: labels and placeholders escape substituted values (no attribute or tag breakout)', async () => {
+    const page = (await owner.one(`select p.id from meta.page p where p.app_id = $1 and p.page_no = 1`, [cid])).id;
+    await owner.query(`update meta.item set label = 'Hi &P1_X.', placeholder = 'e.g. &P1_X.' where page_id = $1 and name = 'P1_X'`, [page]);
+    await owner.query(`insert into meta.item (page_id, seq, name, label, type, required) values ($1, 20, 'P1_Y', 'Y of &P1_X.', 'text', true)`, [page]);
+    try {
+      const { b } = await signIn('dana');
+      await b.get(`/a/${alias}/1`);
+      const evil = `"><script>alert(1)</script><img src=x onerror=alert(1)>`;
+      const res = await b.post(`/a/${alias}/1`, { __csrf: b.lastCsrf, __request: 'GO', P1_X: evil, P1_Y: '' });
+      const body = res.statusCode === 303 ? (await b.get(`/a/${alias}/1`)).body : res.body;
+      assert.doesNotMatch(body, /<script>alert|<img src=x/);
+      assert.match(body, /placeholder="e\.g\. &quot;&gt;&lt;script&gt;/);
+      assert.match(body, /for="P1_X">Hi &quot;&gt;&lt;script&gt;/);
+      // a label is never a way to read another item's value the page doesn't show: it is the session's own state
+      assert.doesNotMatch(body, /Dana-pw-241!/);
+    } finally {
+      await owner.query(`delete from meta.item where page_id = $1 and name = 'P1_Y'`, [page]);
+      await owner.query(`update meta.item set label = 'X', placeholder = null where page_id = $1 and name = 'P1_X'`, [page]);
+    }
+  });
+
+  test('MG-13: a No navigation page still needs a sign-in and its authorization', async () => {
+    const p68 = await owner.one('select id, authz from meta.page where app_id = $1 and page_no = 68', [appId]);
+    assert.equal((await new Browser().get('/a/hr/68')).statusCode, 302);
+    await owner.query(`update meta.page set authz = 'MUST_NOT_BE_PUBLIC_USER' where id = $1`, [p68.id]);
+    try {
+      await owner.query(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'SEC241_NOBODY', 'role', 'no_such_role_241') on conflict do nothing`, [appId]);
+      await owner.query(`update meta.page set authz = 'SEC241_NOBODY' where id = $1`, [p68.id]);
+      const res = await (await as('king')).get('/a/hr/68');
+      assert.ok([403, 302].includes(res.statusCode), String(res.statusCode));
+      assert.doesNotMatch(res.body, /P68_NAME/);
+    } finally {
+      await owner.query(`update meta.page set authz = $2 where id = $1`, [p68.id, p68.authz]);
+      await owner.query(`delete from meta.authz_scheme where app_id = $1 and name = 'SEC241_NOBODY'`, [appId]);
+    }
+  });
+});

@@ -2496,3 +2496,7 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 .signature-upload summary { cursor: pointer; font-size: 0.9em; color: var(--muted); }
 .signature-upload input[type=file] { margin-top: 0.3rem; max-width: 100%; }
 .file-preview.signature-preview { object-fit: contain; background: #fff; max-width: min(100%, 320px); }
+
+/* (sprint 241, MG-13) page template No navigation: the Standard page without header, navigation menu and title bar */
+.t-nonav-main { width: 100%; max-width: 1500px; margin: 0 auto; }
+.t-nonav .t-footer { justify-content: flex-start; }

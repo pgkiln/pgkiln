@@ -75,7 +75,8 @@ browser's date and time field.
 
 | Property | Meaning |
 |---|---|
-| `label` | Field label (default: the name in title case) |
+| `label` | Field label (default: the name in title case); takes `&ITEM.` substitutions, see [labels and placeholders](#labels-and-placeholders) |
+| `placeholder` | (sprint 241) Value placeholder: a hint inside the empty field, or a select list's empty choice, see [labels and placeholders](#labels-and-placeholders) |
 | `region_id` | The region the item is shown in (empty = page level, above the regions) |
 | `seq` | Order within its region |
 | `source_column` | For **form** regions: the table column it maps to |
@@ -105,6 +106,28 @@ Attributes (`config`):
 | `show_value` | `qrcode`: `true` also prints the text under the code |
 | `reveal` | `password`: `true` adds a *Show*/*Hide* button (shown only when JavaScript runs) |
 | `format_mask` | `number`, `display`: a number format mask such as `999G999G990D00`; the value is shown in the language's notation and read back into a plain number on submit (see [number formats](14-globalization.md#number-formats)) |
+
+## Labels and placeholders
+
+(Sprint 241.) An item's **label** takes `&ITEM.` substitutions, like region texts and help: a form
+whose labels an administrator keeps in a table needs no static region per field. Give the label
+`&P5_PHONE_LABEL.` and fill `P5_PHONE_LABEL` (a hidden item) with a *before header* computation
+from that table. The value is escaped, so a label shows `<b>` as text. The messages that name the
+item ("Your name is required.") use the label as shown. A label is translated before its
+substitutions are made.
+
+The **Value placeholder** (`placeholder`, Page Designer → item → Appearance; APEX: *Value
+Placeholder*) is a hint shown inside the empty field: text, number, e-mail, telephone, URL,
+password, textarea, combobox, location and date items (a date item without one shows its date
+format, as before). For a select list, popup LOV and Select One it is the text of the empty choice;
+`{"null_label": "…"}` in the attributes still wins, and `{"null_label": false}` still leaves the
+empty choice out. It takes `&ITEM.` substitutions, is escaped, translated like a label, and at most
+500 characters. A read-only item shows none. It is not a label: screen readers may not read it, so
+an item keeps its label.
+
+The Advisor notes a placeholder on an item type that never shows one. HR page 68 *Visitor sign-in*
+(part 104) has both: labels from `hr.kiosk_label`, placeholders such as `name@example.com` and
+`- Choose your host -`.
 
 ## Rich text and Markdown
 

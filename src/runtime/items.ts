@@ -17,12 +17,12 @@ import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
 import { addressControl, imageControl } from './data-items.ts';
 import { applyMask, formatMaskError, monthNames, parseDateMask } from './format.ts';
+import { heading, itemLabel, itemPlaceholder, NULL_CHOICE_TYPES, PLACEHOLDER_TYPES } from './item-texts.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
 export const isTruthy = (v: string | null | undefined) => !!v && TRUTHY.has(v.toLowerCase());
 
-export const heading = (name: string) =>
-  name.replace(/_/g, ' ').replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+export { heading } from './item-texts.ts';
 
 export interface LovOption {
   display: string;
@@ -106,7 +106,7 @@ export async function searchLov(ctx: PageContext, item: Item, term: string, page
   if (Array.isArray(src)) {
     const hits = src.filter((o) => !q || o.display.toLowerCase().includes(q));
     return {
-      headings: [item.label ?? heading(item.name)],
+      headings: [itemLabel(ctx, item)],
       rows: hits.slice(offset, offset + size).map((o) => ({ ...o, columns: [o.display] })),
       more: hits.length > offset + size,
     };
@@ -124,7 +124,7 @@ export async function searchLov(ctx: PageContext, item: Item, term: string, page
     value: toState(r.length > 1 ? r[1] : r[0]) ?? '',
     columns: shown.map((i: number) => toState(r[i]) ?? ''),
   }));
-  return { headings: shown.map((i: number) => (i === 0 ? (item.label ?? heading(item.name)) : ctx.locale.tr(heading(names[i])))), rows, more: res.rows.length > size };
+  return { headings: shown.map((i: number) => (i === 0 ? itemLabel(ctx, item) : ctx.locale.tr(heading(names[i])))), rows, more: res.rows.length > size };
 }
 
 /** The LOV entry with this return value (a bind parameter), or null when the LOV doesn't return it. */
@@ -208,14 +208,14 @@ export function itemDateMask(ctx: PageContext, item: Item): string | null {
  * date picker (app.js). Without JavaScript the text is typed (in the mask, or as YYYY-MM-DD) and read back on
  * submit. `attrs`: extra attributes of the text field (name, form, min/max, aria).
  */
-export function dateField(ctx: PageContext, o: { id: string; iso: string; mask: string; attrs?: Raw | string; editable?: boolean; typed?: string }) {
+export function dateField(ctx: PageContext, o: { id: string; iso: string; mask: string; attrs?: Raw | string; editable?: boolean; typed?: string; placeholder?: string | null }) {
   const iso = /^\d{4}-\d{2}-\d{2}/.test(o.iso) ? o.iso.slice(0, 10) : '';
   const shown = iso ? applyMask(iso, o.mask, ctx.locale.lang) : (o.typed ?? o.iso);
   const editable = o.editable !== false;
   const t = ctx.locale.t;
   // a number pad on phones, unless the mask has month or day names
   const numeric = /MON|DAY|DY/i.test(o.mask.replace(/"[^"]*"/g, '')) ? '' : raw(' inputmode="numeric"');
-  return html`<span class="input-with-button date-field"><input type="text" id="${o.id}"${o.attrs ?? ''} value="${shown}" placeholder="${o.mask}" autocomplete="off"${numeric} data-date-mask="${o.mask}" data-months="${JSON.stringify(monthNames(ctx.locale.lang))}"${editable ? '' : raw(' readonly')}>${
+  return html`<span class="input-with-button date-field"><input type="text" id="${o.id}"${o.attrs ?? ''} value="${shown}" placeholder="${o.placeholder ?? o.mask}" autocomplete="off"${numeric} data-date-mask="${o.mask}" data-months="${JSON.stringify(monthNames(ctx.locale.lang))}"${editable ? '' : raw(' readonly')}>${
     editable ? html`<button type="button" class="btn" data-date-pick="${o.id}" aria-label="${t('item.choose_date')}" title="${t('item.choose_date')}" aria-haspopup="dialog">${icon('calendar')}</button>` : ''}</span>`;
 }
 
@@ -275,7 +275,11 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   const id = item.name;
   const error = ctx.errors.items[item.name];
   const editable = ctx.vis!.editable.has(item.name);
-  const label = item.label ?? ctx.locale.tr(heading(item.name));
+  // (sprint 241, MG-11) &ITEM. substitutions in the label; (MG-10) the placeholder, escaped by html``
+  const label = itemLabel(ctx, item);
+  const hint = itemPlaceholder(ctx, item);
+  const ph = hint !== null && PLACEHOLDER_TYPES.has(item.type) ? html` placeholder="${hint}"` : '';
+  const nullText = (t: string) => item.config?.null_label ?? (hint !== null && NULL_CHOICE_TYPES.has(item.type) ? hint : t);
   const described = [item.help ? `${id}_help` : '', error ? `${id}_error` : ''].filter(Boolean).join(' ') || null;
   const aria = raw(
     `${described ? ` aria-describedby="${described}"` : ''}${error ? ' aria-invalid="true"' : ''}${item.required && editable ? ' aria-required="true"' : ''}`,
@@ -341,7 +345,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   } else {
     switch (item.type) {
       case 'textarea':
-        control = html`<textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 4}"${aria}>${value}</textarea>`;
+        control = html`<textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 4}"${ph}${aria}>${value}</textarea>`;
         break;
       case 'checkbox':
       case 'switch':
@@ -390,7 +394,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         const t = ctx.locale.t;
         control = html`<div class="select-pick" data-select-pick="${many ? 'many' : 'one'}" data-search-label="${t('lov.search')}" data-none-label="${t('lov.no_rows')}" data-remove-label="${t('item.tag_remove')}">
           <select id="${id}" name="${id}"${many ? html` multiple size="${Math.min(Math.max(options.length, 3), 8)}"` : ''}${aria}>
-          ${many || item.config?.null_label === false ? '' : html`<option value="">${item.config?.null_label ?? t('lov.none')}</option>`}
+          ${many || item.config?.null_label === false ? '' : html`<option value="">${nullText(t('lov.none'))}</option>`}
           ${options.map((o) => html`<option value="${o.value}"${chosen.has(o.value) ? raw(' selected') : ''}>${o.display}</option>`)}
           </select></div>`;
         break;
@@ -400,7 +404,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         // turns it into a field with a button that searches the whole LOV on the server
         const t = ctx.locale.t;
         control = html`<select id="${id}" name="${id}" data-popup-lov="${ctx.base}/${ctx.page.page_no}/lov/${id}/search" data-search-label="${t('lov.search')}" data-choose-label="${t('lov.choose')}" data-close-label="${t('lov.close')}" data-more-label="${t('lov.more')}" data-loading-label="${t('lov.loading')}" data-none-label="${t('lov.no_rows')}"${aria}>
-          <option value="">${item.config?.null_label ?? t('lov.none')}</option>
+          <option value="">${nullText(t('lov.none'))}</option>
           ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;
         break;
@@ -410,7 +414,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         break;
       case 'select':
         control = html`<select id="${id}" name="${id}"${aria}>
-          ${item.config?.null_label === false ? '' : html`<option value="">${item.config?.null_label ?? ctx.locale.t('lov.none')}</option>`}
+          ${item.config?.null_label === false ? '' : html`<option value="">${nullText(ctx.locale.t('lov.none'))}</option>`}
           ${options.map((o) => html`<option value="${o.value}"${o.value === value ? raw(' selected') : ''}>${o.display}</option>`)}
         </select>`;
         break;
@@ -467,7 +471,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         // free text with suggestions (a datalist); app.js turns a multiple combobox into tags
         const multiple = comboMultiple(item);
         control = html`<div class="combobox"${multiple ? html` data-tags="${id}" data-remove-label="${ctx.locale.t('item.tag_remove')}"` : ''}>
-          <input type="text" id="${id}" name="${id}" value="${value}" list="${id}_list" autocomplete="off"${aria}>
+          <input type="text" id="${id}" name="${id}" value="${value}" list="${id}_list" autocomplete="off"${ph}${aria}>
           <datalist id="${id}_list">${options.map((o) => html`<option value="${o.value}">${o.display === o.value ? '' : o.display}</option>`)}</datalist>
           ${multiple ? html`<small class="help tags-hint">${ctx.locale.t('item.tags_hint')}</small>` : ''}
         </div>`;
@@ -491,12 +495,12 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         break;
       case 'location':
         // "lat,lng"; app.js fills it from the device (geolocation) with the button
-        control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="52.01160,4.35710"${aria}>
+        control = html`<div class="input-with-button"><input type="text" id="${id}" name="${id}" value="${value}" inputmode="decimal" placeholder="${hint ?? '52.01160,4.35710'}"${aria}>
           <button type="button" class="btn" data-locate="${id}">${icon('map')} ${ctx.locale.t('item.locate')}</button></div>`;
         break;
       case 'date':
         // (sprint 76, 84) in the date format: a text field and pgkiln's date picker (app.js), read back on submit
-        control = dateField(ctx, { id, iso: value, mask: itemDateMask(ctx, item)!, attrs: html` name="${id}"${aria}`, editable });
+        control = dateField(ctx, { id, iso: value, mask: itemDateMask(ctx, item)!, attrs: html` name="${id}"${aria}`, editable, placeholder: hint });
         break;
       default: {
         const typed: Record<string, string> = { number: 'number', date: 'date', password: 'password', email: 'email', tel: 'tel', url: 'url' };
@@ -513,7 +517,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
           : type === 'tel' ? ' autocomplete="tel" inputmode="tel"'
           : type === 'url' ? ' inputmode="url"'
           : '';
-        control = html`<input type="${type}" id="${id}" name="${id}" value="${shown}"${raw(extra)}${aria}>`;
+        control = html`<input type="${type}" id="${id}" name="${id}" value="${shown}"${raw(extra)}${ph}${aria}>`;
         // {"scan": true}: a button that reads a barcode or QR code with the camera (where the browser can: app.js)
         // {"reveal": true}: a button that shows the password while typing (app.js shows the button)
         if (item.type === 'password' && item.config?.reveal)
