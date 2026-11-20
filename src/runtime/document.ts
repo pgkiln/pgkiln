@@ -25,6 +25,8 @@ import { PAPER, printable, textOn, type PdfLayout } from './pdf.ts';
 // align, colspan, class="plain" for no lines), img src="logo" (the layout's
 // logo; width="40mm"), class="page-break" (on div or hr), align="right|center"
 // on blocks and cells, class="muted" (grey) and class="right" / "center".
+// (sprint 245) Inside a table cell or a paragraph: <br> breaks the line, an <img> (width in mm, % or px) is
+// drawn between the text around it, a heading is bold at its size.
 // Anything else is shown as its text.
 
 // ------------------------------------------------------------------ template
