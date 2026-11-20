@@ -347,6 +347,7 @@ src/
     engine.ts              form fetch, validations, processes (conditions, execution chains, queueing background chains; web requests queued by an sql process are made right after it; sprint 209: each load process in a savepoint), application processes
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
+                           (conditionHolds: the server-side condition types; sprint 235 item_contains / item_contains_any split a multi-value item on colons)
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     static-files.ts        (068) static application files (/a/<alias>/static/<name>), the <script>/<link> tags of a page; (141) static
                            workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
