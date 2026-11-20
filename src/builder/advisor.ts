@@ -494,6 +494,18 @@ async function referenceFindings(x: AppRows, ext: {
     if (kind === 'branch' && row.target_type === 'page' && row.target_page && !pageNos.has(Number(row.target_page))) missing(e, 'Page', `Page ${row.target_page} doesn't exist.`);
     if (kind === 'branch' && row.target_type === 'app' && ext.otherAppPage && !(await ext.otherAppPage(row.target_app, row.target_page)))
       missing(e, 'Application (app)', `Application ${row.target_app} has no page ${row.target_page}.`);
+    // (sprint 240, MG-7/MG-8) stay in the dialog only means something on a modal page; an Ajax callback runs SQL
+    if ((kind === 'button' || kind === 'branch') && row.stay_in_dialog && x.pages.find((p) => p.id === row.page_id)?.mode !== 'modal')
+      missing(e, 'Stay in the dialog', `Page ${row.page_no} is not a modal dialog page: Stay in the dialog changes nothing there.`, 'info');
+    if (kind === 'branch' && row.stay_in_dialog && row.target_type === 'app')
+      missing(e, 'Stay in the dialog', 'A branch to another application never stays in the dialog: the dialog closes.', 'warning');
+    if (kind === 'process' && row.point === 'ajax' && !row.parent_process) {
+      const steps = all.filter((y) => y.kind === 'process' && y.row.page_id === row.page_id && y.row.parent_process === row.name && y.row.id !== row.id);
+      if (row.type === 'chain' && row.config?.background) missing(e, 'Configuration', 'An Ajax callback can\'t be a background chain: calling it fails.');
+      else if (row.type === 'chain' && steps.some((y) => y.row.type !== 'sql'))
+        missing(e, 'Type', `A chain called as an Ajax callback runs SQL processes only: ${steps.filter((y) => y.row.type !== 'sql').map((y) => `"${y.row.name}" (${y.row.type})`).join(', ')} make${steps.filter((y) => y.row.type !== 'sql').length === 1 ? 's' : ''} it fail.`);
+      else if (row.type !== 'sql' && row.type !== 'chain') missing(e, 'Type', `An Ajax callback runs an SQL process or a chain of them: calling this ${row.type} process fails.`);
+    }
     if (kind === 'button' && row.action === 'document' && !documents.has(String(row.document ?? '').toUpperCase()))
       missing(e, 'Document template', row.document ? `Document template or report query ${row.document} doesn't exist.` : 'A document button needs a document template or a report query.');
     if (kind === 'rest_module') for (const problem of handlerProblems(row.handlers)) missing(e, 'Handlers (JSON)', problem);

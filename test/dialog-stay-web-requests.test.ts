@@ -251,3 +251,20 @@ describe('sprint 240 MG-8: web requests made right after Ajax callbacks and exec
     assert.equal(await status(id), 'ok');
   });
 });
+
+describe('sprint 240: the Advisor', () => {
+  test('flags a chain called as an Ajax callback with a non-SQL step, and stay_in_dialog where it changes nothing', async () => {
+    const { advise } = await import('../src/builder/advisor.ts');
+    const btn = (await owner.one(`insert into meta.button (page_id, seq, name, label, stay_in_dialog) values ($1, 9, 'NOWHERE', 'Nowhere', true) returning id`, [ids.p1])).id;
+    try {
+      const { findings } = await advise(appId);
+      const msgs = findings.map((f) => `${f.severity}: ${f.message}`);
+      assert.ok(msgs.some((m) => /^error: A chain called as an Ajax callback runs SQL processes only: "Bad step" \(close_dialog\)/.test(m)), msgs.join('\n'));
+      assert.ok(msgs.some((m) => /^info: Page 1 is not a modal dialog page/.test(m)));
+      assert.ok(!msgs.some((m) => /Page 2 is not a modal/.test(m)), 'page 2 is modal');
+      assert.ok(!msgs.some((m) => /"TWO"|calling this sql/.test(m)));
+    } finally {
+      await owner.query('delete from meta.button where id = $1', [btn]);
+    }
+  });
+});
