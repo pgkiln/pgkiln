@@ -42,6 +42,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `autocomplete` | (158; APEX: Text Field with autocomplete) a text field with suggestions from the list of values; any text may be typed (a one-value `combobox`) | text |
 | `percent_graph` | (158; APEX: Percent Graph) display only: a 0–100 value as a bar (a `<progress>` element, read out as the number); values above 100 show a full bar, other text nothing | whatever was set |
 | `display_map` | (158; APEX: Display Map) display only: a small map of `lat,lng` with a pin, from the [map regions' tile server](04-pages-and-regions.md) (`MAP_TILE_URL`), and a *Show map* link. The position is the value, or another item's: `{"coordinates_item": "P3_LOCATION", "zoom": 15}` | `lat,lng`, or nothing |
+| `signature` | (239) a pad to sign on with a finger, a pen or the mouse, a *Clear signature* button, and a PNG upload as the alternative ([Signature](#signature)) | as a `file` item: the id of a temporary file holding the PNG |
 | `plugin` | an [item plug-in](04-pages-and-regions.md#plug-ins-with-their-own-code): a text field its JavaScript enhances; `config`: `{"plugin": "char_counter", "attributes": {"MAX": "140"}}` | text |
 
 Use multi-value items in SQL with `string_to_array`:
@@ -155,6 +156,38 @@ the Markdown is shown as text, and the result passes through the same allow-list
   shows a message instead.
 
 The HR example's page 20 *Reviews* (`examples/hr/hr_20_items.sql`) uses all of them.
+
+## Signature
+
+**Signature** (`signature`) is a pad to sign on: a white drawing area as wide as the field (160 px high) that
+follows a finger, a pen or the mouse, and a **Clear signature** button. After each stroke the drawing goes into the
+item as a PNG picture (white background, dark ink, at the screen's resolution, at most twice the CSS size), so the
+page posts it as a [file upload item](16-files.md#file-upload-items) does: it becomes a **temporary file** of the
+session, and the item's value is that file's id.
+
+- **Storing it.** With a `bytea` `source_column` in a form region, saving the form writes the PNG into the column (a
+  `filename_column` and `mime_column` are optional: without them the file is `<item>.png`, `image/png`). Without a
+  form column, read it in a process from `meta.temp_files`, as for any file item:
+
+  ```sql
+  update sales.orders
+     set signature = (select content from meta.temp_files where id = :P3_SIGNATURE::uuid)
+   where id = :P3_ID::int
+  ```
+
+- **Showing it.** Read only (a read-only condition, or a display page), the item shows the stored signature as a
+  picture with a download link; editable, a stored signature is shown above the pad with *Remove file*.
+- **Limits.** One PNG of at most 1 MB (`{"max_mb": 0.5}` may lower it) and 4096 pixels each way. The server reads
+  the bytes: something else posted as `image/png` is refused (*This type of file is not allowed*), whatever the
+  browser called it. `crop`, `max_px`, `capture` and `multiple` don't apply.
+- **Phones and accessibility.** The pad takes the field's width (390 px phones included) and doesn't scroll the
+  page while you draw. The pad has the item's label as its accessible name; *Clear signature* is an ordinary
+  button. Someone who can't draw (or a browser without JavaScript) uses the file input under *Or upload a picture of
+  the signature (PNG)*, folded away while the pad works.
+- `required` works as for file items: the form needs a drawing (or a stored signature).
+
+HR example: a leave request (page 7) is signed when it is submitted; the process *Store the signature* writes the
+PNG into `hr.leave_request.signature`, and an existing request shows it (`examples/hr/hr_102_signature.sql`).
 
 ## Display image and geocoded address
 

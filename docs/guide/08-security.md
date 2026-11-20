@@ -983,6 +983,11 @@ Extra headers may not be one pgkiln sets for security or one the protocol needs 
 isn't offered as a referrer policy, since it would send the page's address, with its checksummed item values, to
 other sites.
 
+The policy's `script-src` is `'self'`. (sprint 239) A page that shows a text item with a *Scan* button adds
+`'wasm-unsafe-eval'`, so the bundled barcode decoder (WebAssembly, served by pgkiln) can run where the browser has no
+`BarcodeDetector` ([chapter 17](17-mobile.md#field-items)); it allows compiling WebAssembly, not `eval()`, and no
+other page gets it.
+
 The form refuses such values. A value that reaches the database another way (an import, a hand edit) is left out
 when the pages are sent, with the default in its place, and the **Advisor** warns about it. The **Settings →
 Security checklist** lists the headers the application's pages send.

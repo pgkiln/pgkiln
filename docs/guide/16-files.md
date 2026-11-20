@@ -56,6 +56,13 @@ cropped to a square (`hr_45`).
 {"accept": "image/*", "crop": "1:1", "max_px": 800}
 ```
 
+### Signatures
+
+(sprint 239) A **signature** item (`signature`, [chapter 5](05-items.md#signature)) is a file item whose file is drawn:
+a pad to sign on with a finger, a pen or the mouse, posted as a PNG (`<item>.png`, at most 1 MB and 4096 px each
+way, checked from the bytes). It is stored like any single file below: a `bytea` form column, or `meta.temp_files` in
+a process.
+
 ### In a table column (form regions)
 
 Give the item a `source_column` of type `bytea` in a [form region](04-pages-and-regions.md#form).
