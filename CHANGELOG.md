@@ -34,6 +34,13 @@ All notable changes to this project are documented here. The format follows
   dialog** ("Save and add another") and a branch's **Open inline dialog** (`open_region`) open an inline dialog or
   drawer region. A submit that fails from inside an inline dialog shows the page again with that dialog open and the
   error in it. The Advisor warns when no region of the page has that static ID.
+- **The Standard page template's other positions** (sprint 234, AX-12, migration 199; APEX: the page template's Slot
+  list): a region's Position can also be *After logo*, *Before navigation bar*, *After navigation bar* (in the header),
+  *Top navigation* (a bar under the header), *Full width content* (under the breadcrumb bar, over the content's whole
+  width) and *Dialogs, drawers and popups* (after the footer, for inline dialogs and drawers). The Page Designer draws
+  every position as a drop zone in APEX's order and lists the rendering tree the same way. A minimal or modal page
+  leaves the header positions out, and the Advisor warns about regions there and about items or submit buttons in the
+  header (outside the page's form). The APEX importer maps the named display points. HR page 70 shows them all.
 
 ### Changed
 - **Rich text keeps named character references and simple tables** (sprint 235, MG-5): `&ouml;`, `&rsquo;` and the

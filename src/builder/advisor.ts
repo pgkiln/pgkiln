@@ -17,6 +17,8 @@ import { processProblems } from '../runtime/processes.ts';
 import { urlConfigProblem, urlTarget } from '../runtime/url-region.ts';
 import { configColumns, searchConfigProblems, textSearchConfig, tsvectorSql } from '../runtime/search.ts';
 import { COMPONENTS } from './components.ts';
+import { POSITION_LABELS } from './arrange.ts';
+import { HEADER_POSITIONS, pageHasPosition } from '../page-positions.ts';
 import { arrayTriggerArg, CATALOG_TYPE, jsonSourceProblems, POSITION, ROW_KEY, viewTriggerArg, type JsonSource } from '../json-sources.ts';
 import { DISTANCES, PGVECTOR_MISSING, vectorColumnDims, vectorSchema, type Distance } from '../vector.ts';
 import { entriesOf, type Entry } from './search.ts';
@@ -302,8 +304,32 @@ function globalPageFindings(x: AppRows): Finding[] {
   return out;
 }
 
+/**
+ * (sprint 234, AX-12) Regions at a header position (After logo, Before / After navigation bar, Top navigation): on a
+ * page without the header (minimal template, modal page) they are not shown; anywhere, they are outside the page's
+ * form, so their items and submit buttons send nothing with the page.
+ */
+function positionFindings(x: AppRows): Finding[] {
+  const out: Finding[] = [];
+  const pages = new Map(x.pages.map((p) => [p.id, p]));
+  const live = (r: Row) => (r.row.build_option ?? '') !== 'COMMENTED_OUT';
+  for (const r of x.all) {
+    if (r.kind !== 'region' || r.row.parent_id != null || !live(r) || !HEADER_POSITIONS.includes(r.row.position)) continue;
+    const page = pages.get(r.row.page_id);
+    if (!page) continue;
+    const entry = x.byKey.get(`region-${r.row.id}`) ?? null;
+    const label = POSITION_LABELS[r.row.position] ?? r.row.position;
+    if (!pageHasPosition(page, r.row.position))
+      out.push({ severity: 'warning', entry, field: 'Position', message: `The region is in the ${label} position, which ${page.mode === 'modal' ? 'a modal page' : `the ${page.page_template} page template`} doesn't have: it isn't shown. Choose another position.` });
+    const inside = x.all.filter((c) => live(c) && c.row.region_id === r.row.id && (c.kind === 'item' || (c.kind === 'button' && (c.row.action ?? 'submit') === 'submit')));
+    if (inside.length)
+      out.push({ severity: 'warning', entry, field: 'Position', message: `The ${label} position is in the header, outside the page's form: ${inside.map((c) => c.row.name).join(', ')} ${inside.length === 1 ? 'sends' : 'send'} nothing when the page is submitted. Put items and submit buttons in a region of the body.` });
+  }
+  return out;
+}
+
 function structureFindings(x: AppRows): Finding[] {
-  const out: Finding[] = globalPageFindings(x);
+  const out: Finding[] = [...globalPageFindings(x), ...positionFindings(x)];
   const { app, pages, all } = x;
   if (app.login_page) {
     const page = pages.find((p) => Number(p.page_no) === Number(app.login_page));

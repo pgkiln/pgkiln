@@ -27,6 +27,7 @@ import { breadcrumbLinks, hasBreadcrumbRegion } from './page-regions.ts';
 import { devbarHtml } from './devbar.ts';
 import { feedbackNode } from './feedback.ts';
 import { sessionLimits } from '../session.ts';
+import { HEADER_POSITIONS } from '../page-positions.ts';
 
 // ---------------------------------------------------------------- dynamic actions
 
@@ -244,7 +245,7 @@ export function dialogShapes(ctx: Pick<PageContext, 'app'>): Record<string, [str
   return out;
 }
 
-export async function chrome(ctx: PageContext, main: Raw, title: string) {
+export async function chrome(ctx: PageContext, main: Raw, title: string, slots: Record<string, Raw[]> = {}) {
   await resolveConditionalStyle(ctx);
   const root = { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style };
   const t = ctx.locale.t;
@@ -284,6 +285,8 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
   const bell = await bellMarkup(ctx);
   // (sprint 72) the account's display name in the user menu
   const shown = signedIn ? ((await displayName(ctx.user)) ?? ctx.user) : ctx.user;
+  // (sprint 234, AX-12; APEX: After Logo, Before / After Navigation Bar) regions in the header, in a row of their own
+  const headerSlot = (pos: string) => (slots[pos]?.length ? html`<div class="t-hpos t-pos-${pos}">${slots[pos]}</div>` : '');
   // (sprint 88, GEN-4; APEX: the page footer) under the content: the application's version and "Back to top" (to the header, #top)
   return documentShell(
     `${title} · ${ctx.app.name}`,
@@ -291,7 +294,9 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
     <header class="t-header" id="top">
       <a href="#t-nav" class="t-nav-toggle icon-button" role="button" aria-label="${t('common.toggle_nav')}" aria-controls="t-nav">${icon('menu')}</a>
       <a class="t-logo" href="${ctx.base}/${ctx.app.home_page}">${ctx.app.name}</a>
+      ${headerSlot('after_logo')}
       <span class="t-spacer"></span>
+      ${headerSlot('before_navigation_bar')}
       ${ctx.app.pwa ? html`<button type="button" class="icon-button t-install" data-pwa-install hidden title="${t('pwa.install')}" aria-label="${t('pwa.install')}">${icon('download')}</button>` : ''}
       ${navbar}
       ${bell}
@@ -320,7 +325,9 @@ export async function chrome(ctx: PageContext, main: Raw, title: string) {
           ? html`<details class="menu t-user"><summary title="${t('theme.label')}">${icon('settings')}<span class="sr-only">${t('theme.label')}</span></summary>
               <div class="menu-panel align-right">${themeSwitch(ctx, here(ctx))}${styleSwitch(ctx, here(ctx))}</div></details>`
           : ''}
+      ${headerSlot('after_navigation_bar')}
     </header>
+    ${slots.top_navigation?.length ? html`<div class="t-topnav"><div class="t-regions t-pos-top_navigation">${slots.top_navigation}</div></div>` : ''}
     <div class="t-body">
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
       <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
@@ -395,11 +402,18 @@ export async function renderPage(ctx: PageContext) {
   const pageItems = await renderItems(ctx, ctx.page.items.filter((i) => i.region_id === null), hidden);
   // (099) regions by display position; the side column of a side-column page template, else its regions in the body
   const side = ctx.page.page_template === 'left_side_column' ? 'left' : ctx.page.page_template === 'right_side_column' ? 'right' : null;
-  const placed: Record<string, [Region, Raw][]> = { banner: [], breadcrumb: [], side: [], body: [], footer: [] };
+  // (sprint 234, AX-12) the header's positions and the top navigation bar: only where the page has the header
+  const header = !ctx.dialog && ctx.page.page_template !== 'minimal';
+  const placed: Record<string, [Region, Raw][]> = {
+    banner: [], breadcrumb: [], full_width: [], side: [], body: [], footer: [], dialogs: [],
+    ...(header ? Object.fromEntries(HEADER_POSITIONS.map((p) => [p, []])) : {}),
+  };
   for (const r of ctx.page.regions) {
     // (172) a sub region is rendered inside its parent (regions.ts renderChildren)
     if (r.parent_id != null) continue;
     const pos = r.position ?? 'body';
+    // (sprint 234) a header position on a page without the header: left out (as APEX does; the Advisor warns)
+    if (HEADER_POSITIONS.includes(pos) && !header) continue;
     const into = pos === 'left' || pos === 'right' ? (pos === side ? 'side' : 'body') : pos in placed ? pos : 'body';
     // a region its condition or authorization leaves out ('') leaves no empty position behind
     const out = await renderRegion(ctx, r, hidden);
@@ -442,9 +456,9 @@ export async function renderPage(ctx: PageContext) {
         ${formKeys(ctx)}
         ${ctx.dialog ? html`<input type="hidden" name="__dialog" value="1">` : ''}
         ${defaultButton ? html`<button type="submit" name="__request" value="${defaultButton.name}" class="default-submit" tabindex="-1" aria-hidden="true"></button>` : ''}
-        ${area('t-pos-banner', at.banner)}${area('t-pos-breadcrumb', at.breadcrumb)}
+        ${area('t-pos-banner', at.banner)}${area('t-pos-breadcrumb', at.breadcrumb)}${area('t-pos-full_width', at.full_width)}
         ${pageItems.length ? html`<div class="page-items form-grid">${pageItems}</div>` : ''}
-        ${regions}${area('t-pos-footer', at.footer)}
+        ${regions}${area('t-pos-footer', at.footer)}${area('t-pos-dialogs', at.dialogs)}
         ${await buttonsFor(ctx, null)}
       </form>
       ${ctx.detached}${customizePanel(ctx)}
@@ -452,7 +466,9 @@ export async function renderPage(ctx: PageContext) {
     <script type="application/json" id="pgkiln-meta">${raw(
       JSON.stringify({ csrf: ctx.session.csrf_token, das, ...(ctx.savedGrids?.length ? { savedGrids: ctx.savedGrids } : {}), texts: clientTexts(ctx), dialogs: dialogShapes(ctx), ...(ctx.imgSrc?.size ? { img: [...ctx.imgSrc] } : {}), ...timeZoneMeta(ctx), session: sessionMeta(ctx) }).replace(/</g, '\\u003c'),
     )}</script>`;
-  return chrome(ctx, main, title);
+  // (sprint 234, AX-12) the regions of the header's positions, outside the page's form
+  const slots = header ? Object.fromEntries(HEADER_POSITIONS.map((p) => [p, at[p]])) : undefined;
+  return chrome(ctx, main, title, slots);
 }
 
 /** Response to a successful submit inside a dialog: tells the opener to close it. */

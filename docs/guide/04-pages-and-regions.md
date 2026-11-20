@@ -119,10 +119,32 @@ Like APEX's Universal Theme, a page has **display positions** and a region choos
 | `position` | Where the region shows |
 |---|---|
 | `banner` | At the top of the page content, above everything else |
+| `after_logo` | In the header, right after the application's name (APEX: After Logo) |
+| `before_navigation_bar` | In the header, before the navigation bar list, the bell and the user menu (APEX: Before Navigation Bar) |
+| `after_navigation_bar` | In the header, at its end, after the user menu (APEX: After Navigation Bar) |
+| `top_navigation` | A bar under the header, over the whole width of the window (APEX: Top Navigation) |
 | `breadcrumb` | In the bar under the title (the place of APEX's Breadcrumb Bar) |
+| `full_width` | Under the breadcrumb bar, over the whole width of the content, with no side column beside it (APEX: Full Width Content) |
 | `left`, `right` | In the side column of a page with page template *Left side column* or *Right side column* |
 | `body` (or empty) | The page body, on the 12-column grid (the default) |
 | `footer` | After the body |
+| `dialogs` | After the footer: the place for [inline dialogs and drawers](#layout), which open over the page (APEX: Dialogs, Drawers and Popups) |
+
+(sprint 234, AX-12) The positions are listed in the order of APEX's Slot list, which is also the order of the Page
+Designer's layout and rendering tree. **The header's positions** (`after_logo`, `before_navigation_bar`,
+`after_navigation_bar`) and **`top_navigation`** belong to the page templates with the application's header —
+Standard and the side-column templates. A *Minimal* page and a page opened as a modal dialog have no header: a
+region placed there is left out (as in APEX), the Page Designer draws such a position only while it holds regions
+(marked *not in this page template: not shown*), and the [Advisor](03-builder.md#advisor) warns about it. A region on
+the [Global Page](#the-global-page) in a header position shows in the header of every page that has one.
+
+In the header a region is one line high and flat: its title and frame are left out (give it the `plain` template),
+paragraphs and lists show on one line, and what doesn't fit is cut off rather than widening the bar. On a phone
+(under 640px) the header keeps only *After logo*; *Before* and *After navigation bar* are hidden there. A list in a
+`top_navigation` region shows as a row of links. The header and the top navigation bar are **outside the page's
+form**: use them for static content, links and lists; items and submit buttons there send nothing when the page is
+submitted (the Advisor warns), so keep those in the body. `full_width` and `dialogs` regions are inside the form like
+the body's. The HR example's page 70 *Page positions* (`examples/hr/hr_106_page_positions.sql`) has a region in each.
 
 The page templates **Left side column** and **Right side column** (Page Designer → Page → Appearance;
 `page_template` `left_side_column` / `right_side_column`) put the regions of that position in a column

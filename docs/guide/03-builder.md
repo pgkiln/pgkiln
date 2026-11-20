@@ -1410,8 +1410,10 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
 - **Left: the component tree**, with four tabs:
   - **Rendering**: the page, *Pre-Rendering* (branches, computations and processes that run
     before the page is shown), the regions by
-    [display position](04-pages-and-regions.md#side-columns-and-display-positions) (Banner, Breadcrumb bar,
-    Left column, Body, Right column, Footer: the page template's positions and any other that has regions)
+    [display position](04-pages-and-regions.md#side-columns-and-display-positions) in APEX's order (Banner, After
+    logo, Before navigation bar, After navigation bar, Top navigation, Breadcrumb bar, Full width content, Left
+    column, Body, Right column, Footer, Dialogs, drawers and popups: the positions that have regions, the Body and the
+    page template's side column)
     with their items and buttons, and page-level items and buttons. (sprint 207, AX-4; APEX: the Region Buttons
     node) A region's buttons are one **Buttons** node with a folder per
     [button position](04-pages-and-regions.md#button-positions) in the layout's order (*Create*, …, *Region buttons*,
@@ -1484,8 +1486,13 @@ confirm. Its regions, items, buttons, dynamic actions and processes go with it, 
   (sprint 195) A region at page level also has **Create sub region** (APEX's *Create Sub Region*), and *Create region
   below* on a [sub region](04-pages-and-regions.md#sub-regions) creates one in the same container. A region's sub
   regions are a **Sub regions** branch under it in the tree.
-- **Middle: the Layout**: the page template's display positions as labelled zones (Banner, Breadcrumb bar,
-  the side column of a side-column template beside the Body, Footer), each with its regions on the 12-column
+- **Middle: the Layout**: the page template's display positions as labelled zones, in the order of APEX's Slot list
+  (sprint 234, AX-12): Banner; the header's *After logo*, *Before navigation bar* and *After navigation bar* side by
+  side in one dashed band (as they sit in the header's row); *Top navigation*; Breadcrumb bar; *Full width content*;
+  the side column of a side-column template beside the Body; Footer; *Dialogs, drawers and popups*. Each zone is a drop
+  target: drag a region into it (or a new one from the gallery), or use its *+ Region* link, to put the region in
+  that position. A Minimal or modal page has no header: its header zones are drawn only while they hold regions,
+  dimmed and marked *not in this page template: not shown*. Each zone has its regions on the 12-column
   grid, each region with its items and its buttons in their button positions, as they will be placed on the page; under it a **gallery** of region types, item types
   and button actions. (sprint 195) A region with sub regions, or with the template `tabs_container`, `flex_container`
   or `collapsible`, has a **Sub regions** slot in the layout: a grid of its own where its
@@ -2158,6 +2165,10 @@ Database code (views, functions, RLS policies) isn't part of the application, so
 - **The Global Page** (sprint 229): a link, redirect button, menu entry or home page that goes to page 0 (never
   opened by itself) is an error; a branch on page 0 (it never runs) is a warning; an item on page 0 not named
   `P0_…` is a note. See [The Global Page](04-pages-and-regions.md#the-global-page).
+- **Display positions** (sprint 234, AX-12): a region in a header position (*After logo*, *Before* / *After navigation
+  bar*, *Top navigation*) on a page without the header (the Minimal page template, a modal page) isn't shown — a
+  warning; so is an item or submit button in a region there, which is outside the page's form and sends nothing on
+  submit. See [display positions](04-pages-and-regions.md#side-columns-and-display-positions).
 - **Security** (sprint 144; APEX 26.2: CodeScan's checks): a page that needs no sign-in with a process that writes
   data (a form or grid save, or SQL with INSERT, UPDATE, DELETE, MERGE or TRUNCATE) is a warning; a signed-in page
   that writes data with no authorization scheme on the page or the process, in an application that has schemes, is a

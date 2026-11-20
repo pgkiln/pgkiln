@@ -223,6 +223,8 @@ src/
   richtext.ts              rich text and Markdown items: allow-list HTML sanitiser (named references, simple tables), Markdown renderer
   qrcode.ts                QR code encoder (byte mode, versions 1–40) and SVG output for the qrcode item
   css.ts                   PageCss: data-dependent styles as classes in the page's nonce'd <style> (CSP)
+  page-positions.ts        (sprint 234, AX-12) PAGE_POSITIONS (APEX's Slot order), HEADER_POSITIONS, pageHasPosition() (which page
+                           template has which; page 0 all), positionDropped(): shared by render.ts, designer.ts and the Advisor
   metadata.ts              types + loaders for apps and pages (components of excluded build options are left out here);
                            (sprint 229, AX-8) loadPage reads the Global Page (page 0) with the page and mergeGlobalPage adds
                            its regions, items, buttons, dynamic actions, computations, validations and processes (marked
@@ -355,6 +357,10 @@ src/
                            workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
                            #APP_FILES# / #WORKSPACE_FILES# are substituted in context.ts substitute and template-components.ts
     render.ts              page chrome (nav, breadcrumb), dynamic action JSON, theme (the page's nonce'd <style>, light/dark and style switches)
+                           (sprint 234, AX-12) renderPage places regions by display position: full_width after the breadcrumb bar,
+                           dialogs after the footer (both in the page's form); the header's (HEADER_POSITIONS) go to chrome()'s
+                           slots: .t-hpos after the logo, before the navigation bar, after the user menu, and .t-topnav under the
+                           header (outside the form); a minimal page or a dialog leaves them out (app.css: one line, no frame)
     page-regions.ts        (sprint 140) breadcrumb and help_text regions: breadcrumbLinks (also the title bar's trail, left out when the
                            page has a breadcrumb region), the page's help text (meta.page.help) as Markdown with escaped &ITEM. values
     styles.ts              base styles (BASE_STYLES: Iris, Lavender, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
@@ -595,6 +601,9 @@ src/
                            places by position); builder.js / builder.css show the spares while dragging (pd-dragging-region,
                            -button, -holder) and on body.pd-max; the tree's Buttons node has a folder per position (li[data-slot]);
                            the layout bar's ? ([data-show-tab]) opens the Help tab, which holds the keyboard hint (#pd-kbd)
+                           (sprint 234, AX-12) POSITION_LABELS of the new positions; designer.ts draws a zone per position in
+                           PAGE_POSITIONS order (the header's three in .pd-header-zones; a header zone on a minimal or modal page
+                           only while it holds regions, .is-off), the tree's folders in the same order
     sql.ts                 SQL Workshop: the home and the session's schema
     sql-tour.ts            (sprint 179) GET /builder/sql/tour: the guided tour of the SQL Workshop's tools (a step per tool, no script)
     launchpad.ts           (sprint 96) the SQL Workshop home's Launchpad (pins in meta.builder_pin, 109; tool groups), POST /builder/pins,
@@ -687,7 +696,8 @@ src/
     region-settings.ts     page designer: settings forms for grid, chart (gauge, drill-down), cards, calendar (views, create, drag and drop), facets, smart filters, display selector, list
     search.ts              app search, "where used" (appEntries, search, whereUsed, usedInPanel)
     advisor.ts             Advisor: EXPLAIN every SQL fragment, reference checks, plpgsql_check; (sprint 229) globalPageFindings:
-                           links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0
+                           links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0;
+                           (sprint 234) positionFindings: a header position the page has not, items and submit buttons in one
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
                            application and page checksums; Change history (filters, diffHtml of a change); the icon browser
                            /builder/icons; historyHooks() (preHandler: ensureSnapshot before a builder POST of an application);
@@ -890,6 +900,9 @@ test/
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
   instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
   drawers.test.ts          drawers and dialog sizes (065): Page Designer, what pages tell the browser, export/import
+  page-positions.test.ts   (sprint 234, AX-12) the new display positions: rendered in place (header, top bar, full width, dialogs),
+                           left out on a minimal page and in a dialog; the Page Designer's zones and tree in APEX's order, moves;
+                           the Advisor's findings (also on an export)
   designer-slots.test.ts   (sprint 207, AX-4) the layout's slots per region template, the spare Sub regions slot, data-holds, the
                            tree's Buttons node by position, the keyboard hint in the Help tab
   debug.test.ts            debug messages: levels, meta.debug, timings, password values, rollbacks, retention, the viewer, the install log
@@ -961,6 +974,8 @@ test/
   e2e/designer-columns.test.ts (sprint 205, AX-1) HR page 2's Columns node: click sal, Save, reload at 360 and 1366 px; Ctrl+click,
                            the keyboard, the Attributes tab's shortcut, without JavaScript (Select several columns)
   e2e/designer.test.ts     page designer: panes per width, drag and drop, keyboard, Arrange buttons, builder theme
+  e2e/page-positions.test.ts (sprint 234, AX-12) HR page 70 at 390 and 1440 px (the header's regions, the top navigation bar,
+                           full width content, the inline dialog), the layout's zones in order and a drag onto After logo
   e2e/region-slots.test.ts (sprint 207, AX-4) a region's slots: a gallery report onto a Tabs Container's Sub regions slot, a region
                            onto another's spare slot (shown while dragging, not its own, none for a holder), CREATE to Next on a
                            maximized layout, the bar's ? and the Help tab at 390 and 1366 px, without JavaScript

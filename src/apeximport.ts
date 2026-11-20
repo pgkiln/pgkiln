@@ -1013,7 +1013,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       ...apexRegionProps(a, span && span >= 1 && span <= 12 ? span : 12, (m) => e.note(m)),
     };
     const point = (str(a, 'p_plug_display_point') ?? 'BODY').toUpperCase();
-    if (point === 'REGION_POSITION_01') row.position = 'breadcrumb';
+    // (sprint 234, AX-12) the Universal Theme's named positions
+    const APEX_POINTS: Record<string, string> = {
+      REGION_POSITION_01: 'breadcrumb', AFTER_LOGO: 'after_logo', BEFORE_NAVIGATION_BAR: 'before_navigation_bar',
+      AFTER_NAVIGATION_BAR: 'after_navigation_bar', REGION_POSITION_04: 'dialogs', REGION_POSITION_05: 'footer',
+    };
+    if (APEX_POINTS[point]) row.position = APEX_POINTS[point];
     else if (point !== 'BODY' && point !== 'AFTER_HEADER') e.note(`display position ${point} became the body`);
     const queryType = (str(a, 'p_query_type') ?? '').toUpperCase();
     const tableSource = () => {
