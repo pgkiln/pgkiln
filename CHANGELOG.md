@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-11-20
+
 ### Added
 - **Conditions on one value of a multi-value item** (sprint 235, MG-9, migration 193): dynamic actions get the
   client-side conditions `contains`, `not_contains` and `contains_any`, and every component gets the server-side
