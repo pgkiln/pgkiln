@@ -43,9 +43,9 @@ export const GRAPH_SIMPLE_MAX = 4 * 1024 * 1024;
 /** Ranges of an upload session: a multiple of 320 KiB, as Graph requires. */
 export const GRAPH_CHUNK = 10 * 327_680;
 
-const DRIVE = /^[A-Za-z0-9!_.-]{1,200}$/;
-const SITE = /^[A-Za-z0-9.,_-]{1,300}$/;
-const ITEM = /^[A-Za-z0-9!_.-]{1,200}$/;
+const DRIVE = /^(?!\.+$)[A-Za-z0-9!_.-]{1,200}$/;
+const SITE = /^(?!\.+$)[A-Za-z0-9.,_-]{1,300}$/;
+const ITEM = /^(?!\.+$)[A-Za-z0-9!_.-]{1,200}$/;
 const SEGMENT = /^[\p{L}\p{N} _.()&'+,!#$%@=~-]{1,120}$/u;
 
 /** The folder's segments ("/HR/Documents/" → ["HR", "Documents"]). */

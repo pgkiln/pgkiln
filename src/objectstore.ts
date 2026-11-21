@@ -12,8 +12,13 @@ import { decryptSecret } from './secrets.ts';
 import { WebError, webRequest } from './webclient.ts';
 import { scopeForApp } from './network-acl.ts';
 import { credentialValidFor, loadCredential } from './websources.ts';
+import { deleteGraph, getGraph, graphProblem, putGraph, type GraphStoreConfig } from './objectstore-graph.ts';
 
-export interface ObjectStoreConfig {
+/** (sprint 244) A store: an S3-compatible bucket (provider "s3", the default) or a OneDrive / SharePoint folder ("graph"). */
+export type ObjectStoreConfig = S3StoreConfig | GraphStoreConfig;
+
+export interface S3StoreConfig {
+  provider?: 's3';
   /** the bucket's URL: https://s3.eu-west-1.amazonaws.com/my-bucket, https://my-bucket.s3.amazonaws.com, http://minio:9000/my-bucket */
   url: string;
   /** a web credential of type aws_sigv4 */
@@ -25,7 +30,9 @@ export interface ObjectStoreConfig {
 /** The item's object store, or null when it stores files in the database. */
 export function objectStoreOf(config: Record<string, any> | null | undefined): ObjectStoreConfig | null {
   const o = config?.object_store;
-  return o && typeof o === 'object' && typeof o.url === 'string' && typeof o.credential === 'string' ? (o as ObjectStoreConfig) : null;
+  if (!o || typeof o !== 'object' || typeof o.credential !== 'string') return null;
+  if (o.provider === 'graph') return o as GraphStoreConfig;
+  return (o.provider === undefined || o.provider === 's3') && typeof o.url === 'string' ? (o as S3StoreConfig) : null;
 }
 
 /** What's wrong with an object_store configuration, or null. */
@@ -33,6 +40,9 @@ export function objectStoreProblem(o: unknown): string | null {
   if (o === undefined || o === null) return null;
   if (typeof o !== 'object') return 'object_store: {"url": "https://…/bucket", "credential": "NAME", "prefix": "folder/"}.';
   const c = o as Record<string, unknown>;
+  // (sprint 244) OneDrive / SharePoint through Microsoft Graph
+  if (c.provider === 'graph') return graphProblem(c);
+  if (c.provider !== undefined && c.provider !== 's3') return 'object_store.provider: "s3" (an S3-compatible bucket, the default) or "graph" (OneDrive / SharePoint).';
   try {
     const u = new URL(String(c.url));
     if (!/^https?:$/.test(u.protocol) || u.username || u.password || u.search || u.hash) throw new Error();
@@ -46,7 +56,7 @@ export function objectStoreProblem(o: unknown): string | null {
 }
 
 /** A new key for a file: prefix, a random id, the file's name. */
-export function newObjectKey(o: ObjectStoreConfig, filename: string) {
+export function newObjectKey(o: S3StoreConfig, filename: string) {
   const safe = filename.normalize('NFKD').replace(/[^\w.-]+/g, '_').replace(/^\.+/, '').slice(-100) || 'file';
   return `${o.prefix ?? ''}${randomUUID()}/${safe}`;
 }
@@ -98,9 +108,9 @@ async function credentialFor(appId: number, name: string) {
 }
 
 /** The object's URL: the bucket URL and the key, each segment encoded. */
-export const objectUrl = (o: ObjectStoreConfig, key: string) => `${o.url.replace(/\/+$/, '')}/${key.split('/').map(rfc3986).join('/')}`;
+export const objectUrl = (o: S3StoreConfig, key: string) => `${o.url.replace(/\/+$/, '')}/${key.split('/').map(rfc3986).join('/')}`;
 
-async function send(appId: number, o: ObjectStoreConfig, method: 'PUT' | 'GET' | 'DELETE', key: string, body?: Buffer, contentType?: string) {
+async function send(appId: number, o: S3StoreConfig, method: 'PUT' | 'GET' | 'DELETE', key: string, body?: Buffer, contentType?: string) {
   const cred = await credentialFor(appId, o.credential);
   const url = new URL(objectUrl(o, key));
   if (!credentialValidFor(cred, url.toString())) throw new WebError(`Web credential ${cred.name} is not valid for ${url.origin}.`);
@@ -129,6 +139,7 @@ async function send(appId: number, o: ObjectStoreConfig, method: 'PUT' | 'GET' |
 
 /** Store a file; returns its key. */
 export async function putObject(appId: number, o: ObjectStoreConfig, filename: string, content: Buffer, mime: string) {
+  if (o.provider === 'graph') return putGraph(appId, o, filename, content, mime);
   const key = newObjectKey(o, filename);
   const res = await send(appId, o, 'PUT', key, content, mime);
   if (res.status < 200 || res.status >= 300) throw new WebError(`The object store refused the file (HTTP ${res.status}).`, res.status);
@@ -137,6 +148,7 @@ export async function putObject(appId: number, o: ObjectStoreConfig, filename: s
 
 /** A stored file's content, or null when it is not there. */
 export async function getObject(appId: number, o: ObjectStoreConfig, key: string) {
+  if (o.provider === 'graph') return getGraph(appId, o, key);
   const res = await send(appId, o, 'GET', key);
   if (res.status === 404) return null;
   if (res.status < 200 || res.status >= 300) throw new WebError(`The object store did not return the file (HTTP ${res.status}).`, res.status);
@@ -145,6 +157,7 @@ export async function getObject(appId: number, o: ObjectStoreConfig, key: string
 
 /** Remove a stored file (a missing one is fine). */
 export async function deleteObject(appId: number, o: ObjectStoreConfig, key: string) {
+  if (o.provider === 'graph') return deleteGraph(appId, o, key);
   const res = await send(appId, o, 'DELETE', key);
   if (res.status !== 404 && (res.status < 200 || res.status >= 300)) throw new WebError(`The object store did not remove the file (HTTP ${res.status}).`, res.status);
 }
