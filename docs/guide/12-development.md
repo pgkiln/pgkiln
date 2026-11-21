@@ -19,6 +19,7 @@ scripts/oracle-e2e.sh      (sprint 192) Oracle Free + ora2pg (Docker) → Postgr
                            scripts/apex-e2e-pages.ts opens every page as a user (.github/workflows/oracle-e2e.yml: manual, weekly;
                            sprint 209: first run green). Locally: ORA_CONTAINER, ORA_PORT and ALIAS keep parallel runs apart, --keep
                            leaves the Oracle container, the schema and the application
+scripts/import-schema.ts   (sprint 251) writes src/import-schema.json from the catalog (after a migration that changes a check)
 scripts/check-sample.ts    (sprint 166) one App Gallery sample: install, sign in as demo, render every page, report errors (--keep)
 scripts/docker-start.ts    container entry point: checks secrets, migrates (locked), sets role and admin passwords, starts the server
                            (sprint 232) with SUPERUSER_DATABASE_URL: makes the owner without SUPERUSER first (src/owner-role.ts),
@@ -69,6 +70,16 @@ src/
                            not filled: absent or null refuses the import naming file and key, unless the component has none
                            of the rule's `since` keys (added with or after the column: an older pgkiln's export), which
                            gets the default as before
+  import-errors.ts         (sprint 251, MG-28) import errors that name the file, component and key: loadImportSchema (the
+                           catalog: cast-able column types, allowed-value checks, meta.condition_ok checks and its types,
+                           unique keys), checkImportDoc (every problem of a document: types via castProblem, allowed values
+                           with hints, conditionProblem = meta.condition_ok in JS, unique keys given twice per page/app),
+                           explainImportError (22P02/22003/23505/23514 and explainNotNull's 23502 → the problems; a check
+                           without values is evaluated on the document's rows; never err.detail), normalizeConditionKeys
+                           (condition ↔ condition_expr, CONDITION_KEY; called by fillDefaults and fillFiles);
+                           bundledImportSchema = import-schema.json, the snapshot `advise --offline` uses
+  import-schema.json       (sprint 251) written by scripts/import-schema.ts; test/import-errors.test.ts fails when it differs
+                           from the catalog
   apexparse.ts             (sprint 182) an APEX SQL export read as text, never run: a tokenizer ('' and q'[…]' quotes, unistr,
                            comments, SQL*Plus lines) and every wwv_* call as an ApexCall with its named arguments evaluated
                            (wwv_flow_imp.id → ApexId with every digit, wwv_flow_string.join, ||, nvl); joinSplitExport (install.sql order)
@@ -974,6 +985,8 @@ test/
                            files, Deutsch on the sign-in page, the status bar menu, the choice per developer, English fallback
   builder-home.test.ts     App Builder home: search, sort, views, Recent, Create/Import pages, dashboard, utilities
   app-list.test.ts         (116) the App Builder list's Updated by, working copies and lock; what counts as a change
+  import-errors.test.ts    (sprint 251) import errors naming file and key: casts and conditions mirror PostgreSQL, unique keys,
+                           allowed values, condition/condition_expr, advise --offline, import-schema.json = the catalog
   import-only.test.ts      (116) pgkiln import --replace --only: a page or component file, refusals
   charts.test.ts           chart markup per kind (geometry as classes), gauges, Gantt time axis and dependencies, pyramid, polar, range, box plot, stock, drill-down links
   calendar.test.ts         calendar views, create links, moving events (pure and over HTTP)
@@ -1294,6 +1307,11 @@ browser enhancements at the end of `public/app.js` (the item must work without t
   is the open value for access (no roles, any URL, enabled, off for a second factor) goes in `MUST_GIVE`, with `since`: the
   keys added in the same migration (older exports lack them and keep importing). Add a new application column to the
   `since` list of `mfa` / `mfa_roles` too.
+- (sprint 251) A migration that changes an allowed-value check (`col = ANY (ARRAY[…])`), a unique key or
+  `meta.condition_ok` of an exported table, or the type of a column to/from a number or boolean, makes
+  `test/import-errors.test.ts` fail until `npx tsx scripts/import-schema.ts` rewrites `src/import-schema.json` (what
+  `pgkiln advise --offline` checks files against). Online imports read the catalog itself. A new table with a SQL
+  condition goes in `CONDITION_KEY` (`src/import-errors.ts`).
 - (sprint 201) Grant a new meta *table* to `pgkiln_runtime` (or nobody), never to `PUBLIC` or an application's role: a
   role with any right on a meta table is powerful (`meta.role_reaches_meta`), and the workspaces' developer logins
   read none. A new view for application code granted to `PUBLIC` must show only the rows of `meta.app_id()` (or the

@@ -21449,3 +21449,34 @@ describe('sprint 250 MG-24/MG-25', () => {
     assert.match(page, /Every mail of this application goes only to tester-250@example\.com/);
   });
 });
+
+describe('sprint 251 MG-28', () => {
+  // import errors name the file, the component and the key (src/import-errors.ts): built from the document and meta's
+  // catalog, never from the error's DETAIL (another application's row) and never running SQL a document names
+  test('an import under an alias another application has: no DETAIL, no other row', async () => {
+    const dev = new FileBrowser(app);
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    const doc = (await owner.one(`select meta.export_app('hr') as doc`)).doc;
+    await dev.get('/builder/import');
+    await dev.submit('/builder/import', { doc: JSON.stringify(doc), alias: 'hr' });
+    const html = (await dev.get('/builder/import')).body;
+    assert.match(html, /Import failed/);
+    assert.match(html, /an application has the same alias as one that is already in the database \(unique key app_alias_key\)/);
+    assert.doesNotMatch(html, /Key \(|already exists\.|DETAIL/);
+    assert.equal(Number((await owner.one(`select count(*) as n from meta.app where alias = 'hr'`)).n), 1);
+  });
+
+  test('a constraint or table name in an error is looked up, never run', async () => {
+    const { explainImportError } = await import('../src/import-errors.ts');
+    const doc = (await owner.one(`select meta.export_app('hr') as doc`)).doc;
+    for (const [table, constraint] of [['region', `x') or (select pg_sleep(5)) is null --`], ['region; drop table meta.app', 'region_columns_check']]) {
+      const err = Object.assign(new Error('violates check constraint'), { code: '23514', schema: 'meta', table, constraint });
+      const t0 = Date.now();
+      const msg = await explainImportError(err, doc, { db: owner });
+      assert.ok(Date.now() - t0 < 4000);
+      assert.match(msg ?? '', /refused by the check constraint/);
+    }
+    assert.equal(Number((await owner.one(`select count(*) as n from meta.app where alias = 'hr'`)).n), 1);
+  });
+});

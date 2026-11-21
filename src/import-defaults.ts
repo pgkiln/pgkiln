@@ -17,6 +17,7 @@
 import { ACTIONS_DIR, APP_COMPUTATIONS_DIR, NAMED, PAGE_PARTS, SINGLE, sourceOf, stableJson, type Doc, type FileMap } from './appfiles.ts';
 import { fromText, toText } from './yamltext.ts';
 import { UsageError } from './cli/apps.ts';
+import { formatProblems, normalizeConditionKeys, normalizeConditionRow } from './import-errors.ts';
 
 /** table → column → its default (as JSON), for the columns an import fills when a file leaves them out. */
 export type ColumnDefaults = Record<string, Record<string, unknown>>;
@@ -47,7 +48,7 @@ const SECTIONS: [section: string, table: string][] = [
 ];
 
 /** Every table an export writes rows of. */
-const TABLES = [...new Set(['app', 'page', ...SECTIONS.map(([, t]) => t), ...PAGE_PARTS.map(([, , t]) => t)])];
+export const TABLES = [...new Set(['app', 'page', ...SECTIONS.map(([, t]) => t), ...PAGE_PARTS.map(([, , t]) => t)])];
 
 /** Columns an import never fills: ids and references (the importer sets them), and what meta.export_app() leaves out. */
 const NEVER = new Set(['id', 'app_id', 'page_id', 'parent_id', 'region_id', 'affected_region_id']);
@@ -139,19 +140,22 @@ function fillRow(row: unknown, defaults: Record<string, unknown> | undefined, sk
 const nameOf = (row: any) => String(row?.name ?? row?.static_id ?? row?.label ?? row?.title ?? row?.item_name ?? row?.source ?? '').slice(0, 80);
 const kindOf = (table: string) => table.replace(/_/g, ' ');
 
-/** Every component row of a document, with its table and a readable label. */
-function* rowsOf(doc: Doc): Generator<{ table: string; row: any; label: string }> {
-  if (doc?.app && typeof doc.app === 'object') yield { table: 'app', row: doc.app, label: 'application' };
+/**
+ * Every component row of a document, with its table and a readable label. (sprint 251) scope: what holds the row (its
+ * page, or the application), for the unique keys checked in src/import-errors.ts.
+ */
+export function* rowsOf(doc: Doc): Generator<{ table: string; row: any; label: string; scope: object | null }> {
+  if (doc?.app && typeof doc.app === 'object') yield { table: 'app', row: doc.app, label: 'application', scope: null };
   for (const [section, table] of SECTIONS)
-    if (Array.isArray(doc?.[section])) for (const row of doc[section]) yield { table, row, label: `${kindOf(table)} ${nameOf(row)}`.trim() };
+    if (Array.isArray(doc?.[section])) for (const row of doc[section]) yield { table, row, label: `${kindOf(table)} ${nameOf(row)}`.trim(), scope: null };
   if (Array.isArray(doc?.pages))
     for (const page of doc.pages) {
       if (!page || typeof page !== 'object') continue;
       const p = `page ${page.page_no ?? '?'}`;
-      yield { table: 'page', row: page, label: p };
+      yield { table: 'page', row: page, label: p, scope: null };
       for (const [section, , table] of PAGE_PARTS)
         if (Array.isArray(page[section]))
-          for (const row of page[section]) yield { table, row, label: `${p}, ${kindOf(table)} ${table === 'region' ? String(row?.title ?? row?.static_id ?? '') : nameOf(row)}`.trim() };
+          for (const row of page[section]) yield { table, row, label: `${p}, ${kindOf(table)} ${table === 'region' ? String(row?.title ?? row?.static_id ?? '') : nameOf(row)}`.trim(), scope: page };
     }
 }
 
@@ -160,6 +164,9 @@ function* rowsOf(doc: Doc): Generator<{ table: string; row: any; label: string }
  * filled, per file (filesToDoc's documents) or component; nothing for an export, which has every key.
  */
 export function fillDefaults(doc: Doc, defaults: ColumnDefaults): FilledKeys[] {
+  // (sprint 251, MG-28) `condition_expr` on a region or button, `condition` elsewhere: the table's own key
+  const both = normalizeConditionKeys(doc);
+  if (both.length) throw new UsageError(formatProblems(both));
   // the keys a file must give (MUST_GIVE): absent or null refuses the import before anything is written
   const refused: string[] = [];
   for (const { table, row, label } of rowsOf(doc)) {
@@ -260,6 +267,8 @@ export function fillFiles(files: FileMap, defaults: ColumnDefaults): FileMap {
     const d = defaults[shape.table];
     let changed = false;
     const fill = (row: unknown, skip?: (k: string) => boolean) => {
+      // (sprint 251) the other condition key compares as the table's own (a conflict is left for the import to refuse)
+      if (normalizeConditionRow(shape.table, row) === 'changed') changed = true;
       if (row && typeof row === 'object' && fillRow(row, d, (k) => !!skip?.(k) || mustGive(shape.table, row, k)).length) changed = true;
     };
     const tree = (rows: unknown) => {

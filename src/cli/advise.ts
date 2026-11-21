@@ -81,10 +81,18 @@ export async function adviseOffline(target: string): Promise<AdviseResult> {
   const { adviseDoc } = await import('../builder/advisor.ts');
   const source = await readSource(target);
   const files = source.files ?? docToFiles(source.doc);
+  // (sprint 251, MG-28) what the import would refuse (types, allowed values, conditions, unique keys), from this
+  // pgkiln's schema (src/import-schema.json), each at its file
+  const { bundledImportSchema, checkImportDoc, normalizeConditionKeys } = await import('../import-errors.ts');
+  const refused = [...normalizeConditionKeys(source.doc), ...checkImportDoc(source.doc, bundledImportSchema())].map((p): AdviseFinding => ({
+    severity: 'error', where: p.label, field: p.key, message: `${p.message} (the import refuses this)`,
+    kind: p.table === 'page' ? 'page' : p.table, label: p.label, pageNo: p.pageNo, file: p.file,
+  }));
   const r = await adviseDoc(source.doc);
   const findings = r.findings.map(toAdvise);
   const paths = [...files.keys()];
   for (const f of findings) f.file = fileOf(paths, f);
+  findings.unshift(...refused);
   return { alias: String(source.doc?.app?.alias ?? 'app'), dir: source.files ? target : null, checked: 0, findings, offline: true };
 }
 
@@ -116,28 +124,32 @@ export async function adviseTarget(db: Db, target: string, o: { source?: { doc: 
     alias = String(source.doc?.app?.alias ?? 'app');
     // a free alias for the check: the export's own may be taken by the application it came from
     const temp = `advise-${process.pid}-${Date.now().toString(36)}`.slice(0, 40);
+    let failed: { e: unknown } | null = null;
     await db.query('begin');
     try {
       // (sprint 186) a file without a role checks as app_<alias> (made in this transaction, which is rolled back)
       const { importRole } = await import('../app-role.ts');
       await importRole(db, source.doc, { alias: temp });
       // (sprint 242, MG-16) keys the files leave out take the column defaults, as on import; each file is noted
-      const { explainNotNull, fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
+      const { fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
       for (const f of fillDefaults(source.doc, await loadColumnDefaults(db)))
         notes.add({
           severity: 'info', where: f.where, field: f.keys.join(', '), kind: null, label: '', pageNo: null, file: f.file,
           message: `not in the file: the import gives ${f.keys.length === 1 ? 'it' : 'them'} the column default${f.keys.length === 1 ? '' : 's'}`,
         });
       findings.push(...notes);
-      try {
-        id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(source.doc), temp])).rows[0].id;
-      } catch (e) {
-        const why = explainNotNull(e, source.doc);
-        throw why ? new UsageError(why) : e;
-      }
+      id = (await db.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(source.doc), temp])).rows[0].id;
       await collect(id);
+    } catch (e) {
+      failed = { e };
     } finally {
       await db.query('rollback');
+    }
+    if (failed) {
+      // (sprint 242, 251) an import that fails names the file, the component and the key (after the rollback)
+      const { explainImportError } = await import('../import-errors.ts');
+      const why = await explainImportError(failed.e, source.doc, { db }).catch(() => null);
+      throw why ? new UsageError(why) : failed.e;
     }
   } else {
     if (!o.alias && /[/\\]|\.(json|zip)$/i.test(target)) throw new UsageError(`${target} not found`);

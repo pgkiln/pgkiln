@@ -1,0 +1,1479 @@
+{
+ "types": {
+  "app": {
+   "api_self_tokens": "boolean",
+   "backups_keep": "integer",
+   "debug": "boolean",
+   "debug_level": "smallint",
+   "debug_retention_days": "integer",
+   "deep_linking": "boolean",
+   "feedback": "boolean",
+   "header_auto_create": "boolean",
+   "home_page": "integer",
+   "id": "integer",
+   "live_badges_s": "integer",
+   "local_login": "boolean",
+   "login_page": "integer",
+   "mfa_email": "boolean",
+   "notifications": "boolean",
+   "passkey_signin": "boolean",
+   "password_reset": "boolean",
+   "pwa": "boolean",
+   "pwa_offline_pages": "boolean",
+   "pwa_offline_submit": "boolean",
+   "pwa_prefetch_hours": "integer",
+   "pwa_push": "boolean",
+   "remember_me_days": "integer",
+   "remember_username": "boolean",
+   "session_idle_minutes": "integer",
+   "session_max_hours": "integer",
+   "session_timeout_page": "integer",
+   "session_warning_seconds": "integer",
+   "time_zone_auto": "boolean",
+   "url_epoch": "integer"
+  },
+  "app_computation": {
+   "app_id": "integer",
+   "id": "integer",
+   "seq": "integer"
+  },
+  "app_group_role": {
+   "app_id": "integer"
+  },
+  "app_item": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "app_process": {
+   "app_id": "integer",
+   "id": "integer",
+   "seq": "integer"
+  },
+  "app_setting": {
+   "app_id": "integer",
+   "id": "integer",
+   "keep_on_upgrade": "boolean",
+   "required": "boolean"
+  },
+  "authz_scheme": {
+   "app_id": "integer",
+   "id": "integer",
+   "mfa_minutes": "integer"
+  },
+  "automation": {
+   "app_id": "integer",
+   "enabled": "boolean",
+   "id": "integer",
+   "timeout_s": "integer"
+  },
+  "automation_action": {
+   "app_id": "integer",
+   "id": "integer",
+   "seq": "integer"
+  },
+  "branch": {
+   "id": "integer",
+   "in_page_below": "boolean",
+   "page_id": "integer",
+   "seq": "integer",
+   "stay_in_dialog": "boolean",
+   "target_page": "integer"
+  },
+  "build_option": {
+   "app_id": "integer",
+   "configurable": "boolean",
+   "id": "integer"
+  },
+  "button": {
+   "hot": "boolean",
+   "id": "integer",
+   "page_id": "integer",
+   "region_id": "integer",
+   "seq": "integer",
+   "stay_in_dialog": "boolean",
+   "target_page": "integer"
+  },
+  "component_group": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "computation": {
+   "id": "integer",
+   "page_id": "integer",
+   "seq": "integer"
+  },
+  "data_load_def": {
+   "app_id": "integer",
+   "headers": "boolean",
+   "id": "integer",
+   "skip_errors": "boolean"
+  },
+  "document_template": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "dynamic_action": {
+   "affected_region_id": "integer",
+   "id": "integer",
+   "page_id": "integer",
+   "seq": "integer"
+  },
+  "dynamic_translation": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "email_template": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "item": {
+   "id": "integer",
+   "page_id": "integer",
+   "region_id": "integer",
+   "required": "boolean",
+   "seq": "integer"
+  },
+  "list": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "list_entry": {
+   "app_id": "integer",
+   "id": "integer",
+   "parent_id": "integer",
+   "seq": "integer",
+   "target_page": "integer"
+  },
+  "lov": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "nav_entry": {
+   "app_id": "integer",
+   "id": "integer",
+   "parent_id": "integer",
+   "seq": "integer",
+   "target_page": "integer"
+  },
+  "page": {
+   "app_id": "integer",
+   "id": "integer",
+   "page_no": "integer",
+   "parent_page": "integer",
+   "requires_auth": "boolean",
+   "warn_unsaved": "boolean"
+  },
+  "page_group": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "plugin": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "process": {
+   "id": "integer",
+   "page_id": "integer",
+   "region_id": "integer",
+   "seq": "integer"
+  },
+  "region": {
+   "columns": "integer",
+   "grid_column": "integer",
+   "id": "integer",
+   "new_row": "boolean",
+   "page_id": "integer",
+   "parent_id": "integer",
+   "seq": "integer",
+   "title_no_translate": "boolean",
+   "use_landmark": "boolean"
+  },
+  "report_layout": {
+   "app_id": "integer",
+   "font_size": "numeric",
+   "full_width": "boolean",
+   "id": "integer",
+   "is_default": "boolean",
+   "logo_width_mm": "integer",
+   "margin_mm": "integer",
+   "show_filters": "boolean"
+  },
+  "report_query": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "rest_module": {
+   "app_id": "integer",
+   "enabled": "boolean",
+   "id": "integer"
+  },
+  "rest_source": {
+   "app_id": "integer",
+   "cache_seconds": "integer",
+   "id": "integer",
+   "max_rows": "integer",
+   "sync_delete": "boolean",
+   "sync_enabled": "boolean",
+   "timeout_s": "integer"
+  },
+  "search_config": {
+   "app_id": "integer",
+   "did_you_mean": "boolean",
+   "id": "integer",
+   "max_results": "integer",
+   "min_similarity": "real",
+   "seq": "integer"
+  },
+  "shortcut": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "static_file": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "supporting_script": {
+   "app_id": "integer",
+   "id": "integer",
+   "seq": "integer"
+  },
+  "task_definition": {
+   "app_id": "integer",
+   "details_page": "integer",
+   "id": "integer",
+   "initiator_can_complete": "boolean",
+   "max_renewals": "integer",
+   "priority": "integer"
+  },
+  "template_component": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "text_message": {
+   "app_id": "integer"
+  },
+  "translation": {
+   "app_id": "integer"
+  },
+  "validation": {
+   "always_execute": "boolean",
+   "id": "integer",
+   "page_id": "integer",
+   "seq": "integer"
+  },
+  "web_credential": {
+   "app_id": "integer",
+   "id": "integer"
+  },
+  "workflow_definition": {
+   "app_id": "integer",
+   "id": "integer"
+  }
+ },
+ "enums": [
+  {
+   "name": "app_access_control_check",
+   "table": "app",
+   "column": "access_control",
+   "values": [
+    "assigned",
+    "any_user"
+   ]
+  },
+  {
+   "name": "app_app_type_check",
+   "table": "app",
+   "column": "app_type",
+   "values": [
+    "standard",
+    "theme",
+    "library",
+    "boilerplate",
+    "reporting"
+   ]
+  },
+  {
+   "name": "app_authentication_check",
+   "table": "app",
+   "column": "authentication",
+   "values": [
+    "none",
+    "app_users",
+    "header",
+    "database",
+    "custom"
+   ]
+  },
+  {
+   "name": "app_availability_check",
+   "table": "app",
+   "column": "availability",
+   "values": [
+    "available",
+    "developers",
+    "restricted",
+    "unavailable"
+   ]
+  },
+  {
+   "name": "app_build_status_check",
+   "table": "app",
+   "column": "build_status",
+   "values": [
+    "run_and_build",
+    "run_only"
+   ]
+  },
+  {
+   "name": "app_debug_level_check",
+   "table": "app",
+   "column": "debug_level",
+   "values": [
+    "0",
+    "1",
+    "2",
+    "4",
+    "6",
+    "9"
+   ]
+  },
+  {
+   "name": "app_language_from_check",
+   "table": "app",
+   "column": "language_from",
+   "values": [
+    "primary",
+    "browser",
+    "user"
+   ]
+  },
+  {
+   "name": "app_mfa_check",
+   "table": "app",
+   "column": "mfa",
+   "values": [
+    "off",
+    "optional",
+    "required",
+    "roles"
+   ]
+  },
+  {
+   "name": "app_computation_point_check",
+   "table": "app_computation",
+   "column": "point",
+   "values": [
+    "after_authentication",
+    "before_header",
+    "after_submit"
+   ]
+  },
+  {
+   "name": "app_computation_type_check",
+   "table": "app_computation",
+   "column": "type",
+   "values": [
+    "static",
+    "item",
+    "sql_query",
+    "sql_expression",
+    "function_body"
+   ]
+  },
+  {
+   "name": "app_process_point_check",
+   "table": "app_process",
+   "column": "point",
+   "values": [
+    "after_login",
+    "before_page",
+    "ajax"
+   ]
+  },
+  {
+   "name": "authz_scheme_type_check",
+   "table": "authz_scheme",
+   "column": "type",
+   "values": [
+    "role",
+    "sql"
+   ]
+  },
+  {
+   "name": "automation_error_handling_check",
+   "table": "automation",
+   "column": "error_handling",
+   "values": [
+    "stop",
+    "skip",
+    "disable"
+   ]
+  },
+  {
+   "name": "automation_last_status_check",
+   "table": "automation",
+   "column": "last_status",
+   "values": [
+    "ok",
+    "warning",
+    "error"
+   ]
+  },
+  {
+   "name": "branch_point_check",
+   "table": "branch",
+   "column": "point",
+   "values": [
+    "before_header",
+    "after_processing"
+   ]
+  },
+  {
+   "name": "branch_target_type_check",
+   "table": "branch",
+   "column": "target_type",
+   "values": [
+    "page",
+    "url",
+    "function",
+    "app",
+    "item"
+   ]
+  },
+  {
+   "name": "build_option_status_check",
+   "table": "build_option",
+   "column": "status",
+   "values": [
+    "include",
+    "exclude"
+   ]
+  },
+  {
+   "name": "button_action_check",
+   "table": "button",
+   "column": "action",
+   "values": [
+    "submit",
+    "redirect",
+    "da",
+    "document",
+    "menu"
+   ]
+  },
+  {
+   "name": "button_slot_check",
+   "table": "button",
+   "column": "slot",
+   "values": [
+    "create",
+    "edit",
+    "change",
+    "copy",
+    "help",
+    "up",
+    "previous",
+    "close",
+    "delete",
+    "next",
+    "region"
+   ]
+  },
+  {
+   "name": "computation_point_check",
+   "table": "computation",
+   "column": "point",
+   "values": [
+    "before_header",
+    "after_submit"
+   ]
+  },
+  {
+   "name": "computation_type_check",
+   "table": "computation",
+   "column": "type",
+   "values": [
+    "static",
+    "item",
+    "sql_query",
+    "sql_expression",
+    "function_body"
+   ]
+  },
+  {
+   "name": "data_load_def_format_check",
+   "table": "data_load_def",
+   "column": "format",
+   "values": [
+    "auto",
+    "csv",
+    "xlsx",
+    "json",
+    "xml"
+   ]
+  },
+  {
+   "name": "data_load_def_mode_check",
+   "table": "data_load_def",
+   "column": "mode",
+   "values": [
+    "append",
+    "merge",
+    "replace"
+   ]
+  },
+  {
+   "name": "dynamic_action_action_check",
+   "table": "dynamic_action",
+   "column": "action",
+   "values": [
+    "show",
+    "hide",
+    "enable",
+    "disable",
+    "set_value",
+    "execute_sql",
+    "refresh_region",
+    "refresh_item",
+    "alert",
+    "submit",
+    "set_focus",
+    "add_class",
+    "remove_class",
+    "show_success",
+    "show_error",
+    "clear_errors",
+    "ai_generate",
+    "execute_javascript",
+    "plugin",
+    "push_subscribe",
+    "confirm",
+    "close_dialog",
+    "cancel_dialog",
+    "clear",
+    "open_region",
+    "close_region",
+    "download",
+    "print",
+    "current_position",
+    "share",
+    "wait_popup",
+    "remove_wait_popup",
+    "cancel_event",
+    "set_style",
+    "collapse_tree",
+    "expand_tree",
+    "show_ai_assistant",
+    "trigger_geocoding",
+    "open_report_dialog"
+   ]
+  },
+  {
+   "name": "dynamic_action_condition_type_check",
+   "table": "dynamic_action",
+   "column": "condition_type",
+   "values": [
+    "equals",
+    "not_equals",
+    "in_list",
+    "is_null",
+    "is_not_null",
+    "greater",
+    "greater_equal",
+    "less",
+    "less_equal",
+    "not_in_list",
+    "contains",
+    "not_contains",
+    "contains_any"
+   ]
+  },
+  {
+   "name": "dynamic_action_event_check",
+   "table": "dynamic_action",
+   "column": "event",
+   "values": [
+    "change",
+    "click",
+    "load",
+    "dialog_closed",
+    "after_refresh",
+    "selection_change",
+    "focus",
+    "blur",
+    "key_release",
+    "before_submit",
+    "custom",
+    "menu_entry",
+    "double_click",
+    "key_down",
+    "key_press",
+    "mouse_enter",
+    "mouse_leave",
+    "select",
+    "resize",
+    "scroll",
+    "page_unload",
+    "before_refresh",
+    "facets_change",
+    "grid_row_init",
+    "grid_save",
+    "calendar_date_select",
+    "calendar_view_change",
+    "map_object_click",
+    "map_change",
+    "tree_selection_change",
+    "timer"
+   ]
+  },
+  {
+   "name": "item_type_check",
+   "table": "item",
+   "column": "type",
+   "values": [
+    "text",
+    "textarea",
+    "number",
+    "date",
+    "datetime",
+    "select",
+    "radio",
+    "checkbox",
+    "switch",
+    "hidden",
+    "display",
+    "password",
+    "checkbox_group",
+    "multiselect",
+    "popup_lov",
+    "email",
+    "tel",
+    "url",
+    "color",
+    "file",
+    "location",
+    "richtext",
+    "markdown",
+    "rating",
+    "combobox",
+    "daterange",
+    "qrcode",
+    "plugin",
+    "image",
+    "address",
+    "shuttle",
+    "select_one",
+    "select_many",
+    "image_upload",
+    "percent_graph",
+    "display_map",
+    "autocomplete",
+    "signature"
+   ]
+  },
+  {
+   "name": "list_type_check",
+   "table": "list",
+   "column": "type",
+   "values": [
+    "static",
+    "sql"
+   ]
+  },
+  {
+   "name": "page_dialog_position_check",
+   "table": "page",
+   "column": "dialog_position",
+   "values": [
+    "center",
+    "left",
+    "right",
+    "top",
+    "bottom"
+   ]
+  },
+  {
+   "name": "page_dialog_size_check",
+   "table": "page",
+   "column": "dialog_size",
+   "values": [
+    "small",
+    "medium",
+    "large"
+   ]
+  },
+  {
+   "name": "page_mode_check",
+   "table": "page",
+   "column": "mode",
+   "values": [
+    "normal",
+    "modal"
+   ]
+  },
+  {
+   "name": "page_page_template_check",
+   "table": "page",
+   "column": "page_template",
+   "values": [
+    "standard",
+    "minimal",
+    "left_side_column",
+    "right_side_column",
+    "no_navigation"
+   ]
+  },
+  {
+   "name": "page_protection_check",
+   "table": "page",
+   "column": "protection",
+   "values": [
+    "unrestricted",
+    "checksum"
+   ]
+  },
+  {
+   "name": "plugin_type_check",
+   "table": "plugin",
+   "column": "type",
+   "values": [
+    "region",
+    "item",
+    "dynamic_action",
+    "process"
+   ]
+  },
+  {
+   "name": "process_point_check",
+   "table": "process",
+   "column": "point",
+   "values": [
+    "submit",
+    "load",
+    "ajax"
+   ]
+  },
+  {
+   "name": "process_type_check",
+   "table": "process",
+   "column": "type",
+   "values": [
+    "ai_generate",
+    "chain",
+    "data_load",
+    "download",
+    "form_dml",
+    "grid_dml",
+    "invoke_api",
+    "sql",
+    "workflow",
+    "plugin",
+    "send_push",
+    "send_email",
+    "close_dialog",
+    "clear_session_state",
+    "reset_pagination",
+    "user_preferences",
+    "server_geocoding",
+    "print_report",
+    "human_task_create",
+    "human_task_manage",
+    "form_init",
+    "send_notification"
+   ]
+  },
+  {
+   "name": "region_customization_check",
+   "table": "region",
+   "column": "customization",
+   "values": [
+    "shown",
+    "hidden"
+   ]
+  },
+  {
+   "name": "region_landmark_type_check",
+   "table": "region",
+   "column": "landmark_type",
+   "values": [
+    "region",
+    "banner",
+    "complementary",
+    "contentinfo",
+    "main",
+    "navigation",
+    "search"
+   ]
+  },
+  {
+   "name": "region_position_check",
+   "table": "region",
+   "column": "position",
+   "values": [
+    "banner",
+    "after_logo",
+    "before_navigation_bar",
+    "after_navigation_bar",
+    "top_navigation",
+    "breadcrumb",
+    "full_width",
+    "left",
+    "body",
+    "right",
+    "footer",
+    "dialogs"
+   ]
+  },
+  {
+   "name": "region_render_components_check",
+   "table": "region",
+   "column": "render_components",
+   "values": [
+    "above",
+    "below"
+   ]
+  },
+  {
+   "name": "region_template_check",
+   "table": "region",
+   "column": "template",
+   "values": [
+    "standard",
+    "plain",
+    "collapsible",
+    "hero",
+    "title_bar",
+    "buttons_container",
+    "inline_dialog",
+    "inline_drawer",
+    "wizard",
+    "tabs_container",
+    "flex_container"
+   ]
+  },
+  {
+   "name": "region_type_check",
+   "table": "region",
+   "column": "type",
+   "values": [
+    "report",
+    "form",
+    "chart",
+    "cards",
+    "static",
+    "grid",
+    "calendar",
+    "dynamic",
+    "facets",
+    "tasks",
+    "workflows",
+    "map",
+    "tree",
+    "template_component",
+    "smart_filters",
+    "display_selector",
+    "list",
+    "data_reporter",
+    "ai_assistant",
+    "plugin",
+    "url",
+    "search",
+    "login",
+    "form_designer",
+    "classic_report",
+    "breadcrumb",
+    "help_text",
+    "workflow_diagram",
+    "json_form"
+   ]
+  },
+  {
+   "name": "report_layout_logo_mime_check",
+   "table": "report_layout",
+   "column": "logo_mime",
+   "values": [
+    "image/png",
+    "image/jpeg"
+   ]
+  },
+  {
+   "name": "report_layout_orientation_check",
+   "table": "report_layout",
+   "column": "orientation",
+   "values": [
+    "auto",
+    "portrait",
+    "landscape"
+   ]
+  },
+  {
+   "name": "report_layout_paper_check",
+   "table": "report_layout",
+   "column": "paper",
+   "values": [
+    "A3",
+    "A4",
+    "A5",
+    "LETTER",
+    "LEGAL"
+   ]
+  },
+  {
+   "name": "report_query_format_check",
+   "table": "report_query",
+   "column": "format",
+   "values": [
+    "pdf",
+    "xlsx",
+    "csv",
+    "json",
+    "xml",
+    "html"
+   ]
+  },
+  {
+   "name": "rest_source_method_check",
+   "table": "rest_source",
+   "column": "method",
+   "values": [
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE"
+   ]
+  },
+  {
+   "name": "rest_source_sync_last_status_check",
+   "table": "rest_source",
+   "column": "sync_last_status",
+   "values": [
+    "ok",
+    "error"
+   ]
+  },
+  {
+   "name": "rest_source_sync_mode_check",
+   "table": "rest_source",
+   "column": "sync_mode",
+   "values": [
+    "merge",
+    "replace",
+    "append"
+   ]
+  },
+  {
+   "name": "search_config_distance_check",
+   "table": "search_config",
+   "column": "distance",
+   "values": [
+    "cosine",
+    "l2",
+    "inner_product"
+   ]
+  },
+  {
+   "name": "search_config_search_type_check",
+   "table": "search_config",
+   "column": "search_type",
+   "values": [
+    "standard",
+    "fulltext",
+    "vector",
+    "hybrid"
+   ]
+  },
+  {
+   "name": "search_config_source_type_check",
+   "table": "search_config",
+   "column": "source_type",
+   "values": [
+    "table",
+    "sql",
+    "list"
+   ]
+  },
+  {
+   "name": "shortcut_type_check",
+   "table": "shortcut",
+   "column": "type",
+   "values": [
+    "text",
+    "html",
+    "function_body"
+   ]
+  },
+  {
+   "name": "supporting_script_kind_check",
+   "table": "supporting_script",
+   "column": "kind",
+   "values": [
+    "install",
+    "upgrade",
+    "deinstall"
+   ]
+  },
+  {
+   "name": "task_definition_expiration_check",
+   "table": "task_definition",
+   "column": "expiration",
+   "values": [
+    "expire",
+    "renew",
+    "escalate"
+   ]
+  },
+  {
+   "name": "task_definition_fail_recovery_check",
+   "table": "task_definition",
+   "column": "fail_recovery",
+   "values": [
+    "reopen",
+    "complete"
+   ]
+  },
+  {
+   "name": "task_definition_type_check",
+   "table": "task_definition",
+   "column": "type",
+   "values": [
+    "approval",
+    "action"
+   ]
+  },
+  {
+   "name": "validation_display_location_check",
+   "table": "validation",
+   "column": "display_location",
+   "values": [
+    "inline_and_notification",
+    "inline",
+    "notification"
+   ]
+  },
+  {
+   "name": "validation_type_check",
+   "table": "validation",
+   "column": "type",
+   "values": [
+    "sql",
+    "exists",
+    "not_exists",
+    "function_body",
+    "function_error",
+    "not_null",
+    "not_null_or_zero",
+    "not_zero",
+    "no_spaces",
+    "alphanumeric",
+    "numeric",
+    "valid_date",
+    "valid_timestamp",
+    "equals",
+    "not_equals",
+    "in_list",
+    "not_in_list",
+    "chars_only",
+    "chars_any",
+    "chars_none",
+    "regex"
+   ]
+  },
+  {
+   "name": "web_credential_grant_type_check",
+   "table": "web_credential",
+   "column": "grant_type",
+   "values": [
+    "client_credentials",
+    "password",
+    "refresh_token",
+    "authorization_code"
+   ]
+  },
+  {
+   "name": "web_credential_type_check",
+   "table": "web_credential",
+   "column": "type",
+   "values": [
+    "basic",
+    "header",
+    "bearer",
+    "oauth2",
+    "aws_sigv4"
+   ]
+  }
+ ],
+ "conditions": [
+  {
+   "name": "app_computation_check2",
+   "table": "app_computation",
+   "type": "condition_type",
+   "expr": "condition_expr",
+   "value": "condition_value",
+   "implicitSql": false
+  },
+  {
+   "name": "branch_check1",
+   "table": "branch",
+   "type": "condition_type",
+   "expr": "condition_expr",
+   "value": "condition_value",
+   "implicitSql": false
+  },
+  {
+   "name": "button_condition_ok",
+   "table": "button",
+   "type": "condition_type",
+   "expr": "condition",
+   "value": "condition_value",
+   "implicitSql": true
+  },
+  {
+   "name": "computation_check2",
+   "table": "computation",
+   "type": "condition_type",
+   "expr": "condition_expr",
+   "value": "condition_value",
+   "implicitSql": false
+  },
+  {
+   "name": "dynamic_action_server_condition_ok",
+   "table": "dynamic_action",
+   "type": "server_condition_type",
+   "expr": "server_condition_expr",
+   "value": "server_condition_value",
+   "implicitSql": false
+  },
+  {
+   "name": "item_condition_ok",
+   "table": "item",
+   "type": "condition_type",
+   "expr": "condition_expr",
+   "value": "condition_value",
+   "implicitSql": false
+  },
+  {
+   "name": "process_condition_check",
+   "table": "process",
+   "type": "condition_type",
+   "expr": "condition_expr",
+   "value": "condition_value",
+   "implicitSql": false
+  },
+  {
+   "name": "region_condition_ok",
+   "table": "region",
+   "type": "condition_type",
+   "expr": "condition",
+   "value": "condition_value",
+   "implicitSql": true
+  },
+  {
+   "name": "region_readonly_ok",
+   "table": "region",
+   "type": "readonly_type",
+   "expr": "readonly_expr",
+   "value": "readonly_value",
+   "implicitSql": false
+  },
+  {
+   "name": "validation_condition_ok",
+   "table": "validation",
+   "type": "condition_type",
+   "expr": "condition_expr",
+   "value": "condition_value",
+   "implicitSql": false
+  }
+ ],
+ "conditionTypes": [
+  "sql",
+  "exists",
+  "not_exists",
+  "function_body",
+  "item_null",
+  "item_not_null",
+  "item_zero",
+  "item_not_zero",
+  "item_null_or_zero",
+  "item_not_null_or_zero",
+  "item_equals",
+  "item_not_equals",
+  "item_equals_item",
+  "item_not_equals_item",
+  "item_in_list",
+  "item_not_in_list",
+  "item_contains",
+  "item_contains_any",
+  "request_in",
+  "request_not_in",
+  "page_in",
+  "page_not_in",
+  "language_in",
+  "language_not_in",
+  "page_is_dialog",
+  "page_is_not_dialog",
+  "user_signed_in",
+  "user_public",
+  "always",
+  "never"
+ ],
+ "uniques": [
+  {
+   "name": "app_alias_key",
+   "table": "app",
+   "columns": [
+    "alias"
+   ]
+  },
+  {
+   "name": "app_item_app_id_name_key",
+   "table": "app_item",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "app_setting_app_id_name_key",
+   "table": "app_setting",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "authz_scheme_app_id_name_key",
+   "table": "authz_scheme",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "automation_app_id_name_key",
+   "table": "automation",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "automation_action_app_id_automation_name_name_key",
+   "table": "automation_action",
+   "columns": [
+    "app_id",
+    "automation_name",
+    "name"
+   ]
+  },
+  {
+   "name": "build_option_app_id_name_key",
+   "table": "build_option",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "component_group_app_id_name_key",
+   "table": "component_group",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "data_load_def_app_id_name_key",
+   "table": "data_load_def",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "document_template_app_id_name_key",
+   "table": "document_template",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "dynamic_translation_app_id_language_source_key",
+   "table": "dynamic_translation",
+   "columns": [
+    "app_id",
+    "language",
+    "source"
+   ]
+  },
+  {
+   "name": "email_template_app_id_name_key",
+   "table": "email_template",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "item_page_id_name_key",
+   "table": "item",
+   "columns": [
+    "page_id",
+    "name"
+   ]
+  },
+  {
+   "name": "list_app_id_name_key",
+   "table": "list",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "lov_app_id_name_key",
+   "table": "lov",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "page_app_alias_key",
+   "table": "page",
+   "columns": [
+    "app_id",
+    "alias"
+   ]
+  },
+  {
+   "name": "page_app_id_page_no_key",
+   "table": "page",
+   "columns": [
+    "app_id",
+    "page_no"
+   ]
+  },
+  {
+   "name": "page_group_app_id_name_key",
+   "table": "page_group",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "plugin_app_id_name_key",
+   "table": "plugin",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "region_static_id_unique",
+   "table": "region",
+   "columns": [
+    "page_id",
+    "static_id"
+   ]
+  },
+  {
+   "name": "report_layout_app_id_name_key",
+   "table": "report_layout",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "report_query_app_id_name_key",
+   "table": "report_query",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "rest_module_app_id_name_key",
+   "table": "rest_module",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "rest_source_app_id_name_key",
+   "table": "rest_source",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "search_config_app_id_name_key",
+   "table": "search_config",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "shortcut_app_id_name_key",
+   "table": "shortcut",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "static_file_app_id_name_key",
+   "table": "static_file",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "supporting_script_app_id_name_key",
+   "table": "supporting_script",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "task_definition_app_id_name_key",
+   "table": "task_definition",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "template_component_app_id_static_id_key",
+   "table": "template_component",
+   "columns": [
+    "app_id",
+    "static_id"
+   ]
+  },
+  {
+   "name": "web_credential_app_id_name_key",
+   "table": "web_credential",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  },
+  {
+   "name": "workflow_definition_app_id_name_key",
+   "table": "workflow_definition",
+   "columns": [
+    "app_id",
+    "name"
+   ]
+  }
+ ]
+}

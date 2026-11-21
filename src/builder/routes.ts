@@ -623,11 +623,11 @@ export async function builderRoutes(app: FastifyInstance) {
         // (sprint 186, NX-S2) a file without a database role gets app_<alias>, never the owner's or the runtime's
         roleNote = await importRole(c, doc, { alias: req.body?.alias?.trim() || String(doc?.app?.alias ?? ''), ws });
         // (sprint 242, MG-16) keys the document leaves out take the column defaults; a missing required key is named
-        const { explainNotNull, fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
+        const { fillDefaults, loadColumnDefaults } = await import('../import-defaults.ts');
         fillDefaults(doc, await loadColumnDefaults(c));
+        // (sprint 251, MG-28) an error of meta.import_app is explained after the transaction (below)
         const made = (await c.query('select meta.import_app($1::jsonb, $2) as id', [JSON.stringify(doc), req.body?.alias?.trim() || null]).catch((e) => {
-          const why = explainNotNull(e, doc);
-          throw why ? new Error(why) : e;
+          throw Object.assign(new Error((e as Error).message), { importError: e, doc });
         })).rows[0];
         await placeApp(c, made.id, ws);
         // (sprint 51) the Advisor on the imported application, before the commit: errors refuse it
@@ -648,7 +648,13 @@ export async function builderRoutes(app: FastifyInstance) {
       flash(s, `Application imported. ${roleNote ? `${roleNote} ` : ''}Check its database role and users under Settings / Shared Components.${scripts ? ` It has ${scripts} supporting object script(s): they were not run.` : ''}${servers.length ? ` Its REST data sources use remote server${servers.length > 1 ? 's' : ''} ${servers.join(', ')}, which this workspace doesn't have: add ${servers.length > 1 ? 'them' : 'it'} under Workspace utilities → Remote servers.` : ''}`);
       return back(reply, s, scripts ? `${BASE}/apps/${r.id}/supporting-objects?imported=1` : `${BASE}/apps/${r.id}`);
     } catch (e) {
-      flash(s, `Import failed: ${(e as Error).message}`, 'error');
+      // (sprint 242, 251) a missing key, a value of the wrong type, a unique key given twice, a value a check refuses:
+      // the component and the key (src/import-errors.ts), read after the rollback
+      const failed = e as { importError?: unknown; doc?: unknown };
+      const why = failed.importError
+        ? await (await import('../import-errors.ts')).explainImportError(failed.importError, failed.doc as object, { db: owner }).catch(() => null)
+        : null;
+      flash(s, `Import failed: ${why ?? (e as Error).message}`, 'error');
       return back(reply, s, `${BASE}/import`);
     }
   });
