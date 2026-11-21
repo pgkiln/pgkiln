@@ -26,8 +26,8 @@
      "description": "What runs when a page is shown and submitted: every process type, page and application computations, branches, application processes and Ajax callbacks, report queries in six formats and shortcuts, each page saying how it is made. Demo account demo / demo."},
     {"key": "sample-data-loading", "title": "Sample Data Loading", "version": "1.0", "alias": "sample-data-loading", "icon": "file-up", "file": "samples/sample-data-loading.sql",
      "description": "Loading CSV, Excel and JSON files into a table from a page: merged by the key, through a data load definition that maps other headings and a date format, and skipping rows with errors. Example files to download included. Demo account demo / demo."},
-    {"key": "sample-files", "title": "Sample Files", "version": "1.0", "alias": "sample-files", "icon": "files", "file": "samples/sample-files.sql",
-     "description": "File upload and download: a file in the record's own column with its name, type, size and date, several files per record in a child table, and a photo cropped square before upload. Demo account demo / demo."},
+    {"key": "sample-files", "title": "Sample Files", "version": "1.1", "alias": "sample-files", "icon": "files", "file": "samples/sample-files.sql",
+     "description": "File upload and download: a file in the record's own column with its name, type, size and date, several files per record in a child table, a picture gallery on a table shared by folders and people, and a photo cropped square before upload. Demo account demo / demo."},
     {"key": "ux-patterns", "title": "UX Pattern Catalog", "version": "1.1", "alias": "ux-patterns", "icon": "palette", "file": "samples/ux-patterns.sql",
      "description": "The theme's building blocks to copy from: region templates and template options, button styles, item types and form layouts, alerts, badges, colour classes, lists, media lists, timelines, comments, avatars, metric cards, empty states, dialogs, drawers and side columns, icons with their modifiers, and the colours and variables of the theme (pgkiln's theme reference). Demo account demo / demo."}
   ],
