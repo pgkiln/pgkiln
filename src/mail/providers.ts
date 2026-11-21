@@ -49,6 +49,16 @@ export interface OutgoingMail {
   text: string | null;
   html: string | null;
   attachments: Attachment[];
+  /** (sprint 250) extra X- headers (the redirect's X-Original-To/-Cc/-Bcc; src/mail/redirect.ts) */
+  headers?: Record<string, string>;
+}
+
+/** (sprint 250) Only X- headers, one line each: they can't add a recipient or another header. */
+export function xHeaders(m: Pick<OutgoingMail, 'headers'>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(m.headers ?? {}))
+    if (/^X-[A-Za-z0-9-]{1,60}$/.test(k)) out[k] = String(v).replace(/[\r\n\0]+/g, ' ').slice(0, 900);
+  return out;
 }
 
 export interface ServiceSettings {
@@ -221,7 +231,7 @@ async function smtp(m: OutgoingMail, s: ServiceSettings, secret: string | null) 
   try {
     const info = await transport.sendMail({
       from: m.from, to: m.to, cc: m.cc, bcc: m.bcc, replyTo: m.replyTo ?? undefined, subject: m.subject,
-      text: m.text ?? undefined, html: m.html ?? undefined,
+      text: m.text ?? undefined, html: m.html ?? undefined, headers: xHeaders(m),
       attachments: m.attachments.map((a) => ({ filename: a.filename, content: a.content, contentType: a.mime })),
       disableFileAccess: true, disableUrlAccess: true,
     });
@@ -246,6 +256,7 @@ async function graph(m: OutgoingMail, s: ServiceSettings, secret: string | null)
     ccRecipients: who(m.cc),
     bccRecipients: who(m.bcc),
     ...(m.replyTo ? { replyTo: who([m.replyTo]) } : {}),
+    ...(Object.keys(xHeaders(m)).length ? { internetMessageHeaders: Object.entries(xHeaders(m)).map(([name, value]) => ({ name, value })) } : {}),
     attachments: m.attachments.map((a) => ({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.filename, contentType: a.mime, contentBytes: b64(a.content) })),
   };
   await http(`${base(s, 'https://graph.microsoft.com')}/v1.0/users/${encodeURIComponent(m.from)}/sendMail`, {
@@ -260,7 +271,7 @@ async function graph(m: OutgoingMail, s: ServiceSettings, secret: string | null)
 export async function mime(m: OutgoingMail): Promise<Buffer> {
   const composer = new MailComposer({
     from: m.from, to: m.to, cc: m.cc, replyTo: m.replyTo ?? undefined, subject: m.subject,
-    text: m.text ?? undefined, html: m.html ?? undefined,
+    text: m.text ?? undefined, html: m.html ?? undefined, headers: xHeaders(m),
     attachments: m.attachments.map((a) => ({ filename: a.filename, content: a.content, contentType: a.mime })),
     disableFileAccess: true, disableUrlAccess: true,
   } as never);
@@ -293,6 +304,7 @@ async function resend(m: OutgoingMail, s: ServiceSettings, secret: string | null
     body: JSON.stringify({
       from: m.from, to: m.to, cc: m.cc.length ? m.cc : undefined, bcc: m.bcc.length ? m.bcc : undefined,
       reply_to: m.replyTo ?? undefined, subject: m.subject, html: m.html ?? undefined, text: m.text ?? undefined,
+      headers: Object.keys(xHeaders(m)).length ? xHeaders(m) : undefined,
       attachments: m.attachments.length ? m.attachments.map((a) => ({ filename: a.filename, content: b64(a.content), content_type: a.mime })) : undefined,
     }),
   });
@@ -305,6 +317,7 @@ async function postmark(m: OutgoingMail, s: ServiceSettings, secret: string | nu
     body: JSON.stringify({
       From: m.from, To: m.to.join(','), Cc: m.cc.join(',') || undefined, Bcc: m.bcc.join(',') || undefined, ReplyTo: m.replyTo ?? undefined,
       Subject: m.subject, HtmlBody: m.html ?? undefined, TextBody: m.text ?? undefined, MessageStream: s.message_stream || 'outbound',
+      Headers: Object.entries(xHeaders(m)).map(([Name, Value]) => ({ Name, Value })),
       Attachments: m.attachments.map((a) => ({ Name: a.filename, Content: b64(a.content), ContentType: a.mime })),
     }),
   });
@@ -322,6 +335,7 @@ async function sendgrid(m: OutgoingMail, s: ServiceSettings, secret: string | nu
     body: JSON.stringify({
       personalizations: [{ to: who(m.to), cc: who(m.cc), bcc: who(m.bcc) }],
       from: { email: m.from }, reply_to: m.replyTo ? { email: m.replyTo } : undefined, subject: m.subject, content,
+      headers: Object.keys(xHeaders(m)).length ? xHeaders(m) : undefined,
       attachments: m.attachments.length ? m.attachments.map((a) => ({ content: b64(a.content), filename: a.filename, type: a.mime, disposition: 'attachment' })) : undefined,
     }),
   });
@@ -338,6 +352,7 @@ async function mailgun(m: OutgoingMail, s: ServiceSettings, secret: string | nul
   if (m.text !== null) form.append('text', m.text);
   if (m.html !== null) form.append('html', m.html);
   if (m.replyTo) form.append('h:Reply-To', m.replyTo);
+  for (const [k, v] of Object.entries(xHeaders(m))) form.append(`h:${k}`, v);
   for (const a of m.attachments) form.append('attachment', new Blob([new Uint8Array(a.content)], { type: a.mime }), a.filename);
   const own = s.mailgun_region === 'eu' ? 'https://api.eu.mailgun.net' : 'https://api.mailgun.net';
   const r = await http(`${base(s, own)}/v3/${encodeURIComponent(s.domain ?? '')}/messages`, {
@@ -358,7 +373,7 @@ export async function deliver(provider: Provider, settings: ServiceSettings, sec
     case 'sendgrid': return sendgrid(m, settings, secret);
     case 'mailgun': return mailgun(m, settings, secret);
     case 'log':
-      console.log(`mail (log only): from ${m.from} to ${[...m.to, ...m.cc, ...m.bcc].join(', ')}: ${m.subject} (${m.attachments.length} attachment(s))`);
+      console.log(`mail (log only): from ${m.from} to ${[...m.to, ...m.cc, ...m.bcc].join(', ')}: ${m.subject} (${m.attachments.length} attachment(s))${m.headers?.['X-Original-To'] ? `, redirected (originally to ${m.headers['X-Original-To']})` : ''}`);
       return null;
   }
 }

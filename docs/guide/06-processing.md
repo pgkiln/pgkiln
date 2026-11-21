@@ -1115,6 +1115,62 @@ administrators; others get an error. **Create page → Feature → E-mail report
 `EMAIL_REPORT_TO` and an automation `EMAIL_REPORTING` that sends it every Monday at 07:00 UTC; without addresses
 nothing is sent.
 
+### Redirect all mail (test and acceptance systems)
+
+(sprint 250, MG-24; APEX has no such switch: a test instance needs its own SMTP trap) A copy of an application on a
+test or acceptance system must not mail real customers. Two settings send **every mail** only to one address:
+
+- the application's **Redirect all mail to** (Applications → Activity → **Mail**, the form *Redirect all mail*;
+  `meta.app.mail_redirect_to`): one address for that application's mail. It is exported and imported with the
+  application;
+- the environment variable **`MAIL_REDIRECT_TO`** on the server ([chapter 1](01-installation.md#configuration-reference)): one
+  address for every mail of the installation, which **wins** over the applications' setting. Set it on every test
+  server: an import of the production application (without a redirect) can't switch it off.
+
+The redirect applies when the server **sends**, whatever put the mail in the queue (`meta.send_mail`,
+`meta.send_mail_template`, the *Send e-mail* process, workflows' `send_mail` steps, task events, automations and
+scheduled reports, sign-in codes by mail) and whichever of the application's [services](#several-mail-services) it goes
+through. The mail then goes
+
+- **to** the redirect address only: Cc and Bcc are dropped (Reply-To and the From address stay as they are);
+- with **`[TEST]`** before the subject;
+- with the original recipients in the headers **`X-Original-To`**, **`X-Original-Cc`** and **`X-Original-Bcc`** (and
+  `X-Pgkiln-Redirected`: which setting did it) and in a line at the top of the body (plain text and HTML), e.g.
+  `[TEST] Redirected to test-inbox@example.com (MAIL_REDIRECT_TO). Originally To: jane@example.com; Bcc: hr@example.com.`
+
+The queue keeps the original recipients; **Activity → Mail** shows *redirected to …* next to each mail that went to the
+redirect address, and a notice above the list while a redirect is on. Because it is decided when the mail is sent, mail
+queued before a redirect was set goes to the redirect address too (and mail still queued when it is emptied goes to its
+recipients). A `MAIL_REDIRECT_TO` that is not one plain address stops all mail (each fails with that message) rather
+than letting it out. Builder mail (Find my workspace, two-factor notices) and the *Send test mail* of a mail service
+follow `MAIL_REDIRECT_TO` as well.
+
+**Example** (App Gallery → *Sample Processes*): its customers are made up, so the sample sets *Redirect all mail to*
+`shop-test@example.com`; shipping an order mails the customer, which arrives at `shop-test@example.com` as
+`[TEST] Your order 7 is on its way`.
+
+### Links in mail: absolute URLs
+
+(sprint 250, MG-25; APEX: `apex_page.get_url(p_absolute_url => true)`) A link in a mail needs the server's address:
+`meta.page_url(page, items, clear, p_absolute => true)` puts it in front, and `meta.app_url()` is the application's
+address (its home page):
+
+```sql
+select meta.send_mail(o.email, 'Your order ' || o.id || ' is on its way',
+         'Follow it: ' || meta.page_url(8, jsonb_build_object('P8_ID', o.id), p_absolute => true))
+  from sales.orders o where o.id = :P4_ORDER::int;
+-- https://apps.example.com/a/shop/8?clear=1&P8_ID=7&cs=…
+```
+
+The address is the server's **`PUBLIC_URL`**, which the server records in the database when it starts (so automations,
+workflows and pg_cron jobs have it too); never the request's `Host` header, and not something application code can
+change. Without `PUBLIC_URL` it is the server's own fallback, `http://127.0.0.1:<PORT>`: set `PUBLIC_URL` before
+mailing links. Where no pgkiln server has started yet, `p_absolute => true` and `meta.app_url()` raise *The public
+address of pgkiln is not known here: set PUBLIC_URL …*. The checksum is the relative link's: bound to the page, the
+items and the user who builds the link (`meta.app_user()`, in an automation its user), so a link with items mailed to
+someone else works on a page whose items are not protected (session state protection *Unrestricted*, like the sample's
+tracking page 8), or without items.
+
 ### E-mail templates
 
 Shared Components → **E-mail templates** (APEX: Email Templates): a name, a subject, an HTML body

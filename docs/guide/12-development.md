@@ -147,6 +147,9 @@ src/
   reply-guard.ts           (sprint 200) an async handler that sent its reply and returns nothing waits for it (`return reply`),
                            instead of Fastify sending it again, empty, while an async onSend hook still runs
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
+  public-url.ts            (sprint 250, MG-25, migration 206) recordPublicUrl(): server.ts records PUBLIC_URL (else
+                           http://127.0.0.1:<PORT>) in meta.instance_setting 'public_url' at start-up; meta.public_url() reads it for
+                           meta.page_url(…, p_absolute => true) and meta.app_url() (never a request's Host header)
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   devsso.ts                (sprint 129) developers through identity providers and directories: resolveDeveloper (subject, link, create,
@@ -326,6 +329,10 @@ src/
                            its SMTP host through network-acl.ts mailHostAddress); (sprint 236, 191) meta.mail_service_for_mail: the
                            service chosen when the mail was queued (mail_queue.service_id) while still the app's, else the one for its From
                            address (meta.mail_service_for_app(app, from)), else the default
+                           redirect.ts (sprint 250, MG-24, migration 206): redirectFor(app) = MAIL_REDIRECT_TO (envRedirect, wins)
+                           else meta.app.mail_redirect_to; redirectMail(): only to that address, [TEST] subject, X-Original-To/-Cc/-Bcc
+                           (providers.ts xHeaders: X- headers only, one line) and a note at the top of the body; applied in sendWith()
+                           (the worker records mail_queue.redirected_to) and the builder's test mail (builder/mail.ts runCheck)
   ai/                      AI services (migration 060): types.ts (the provider interface, AiError kinds),
                            anthropic.ts (Claude through @anthropic-ai/sdk: streamed, effort, structured outputs via
                            output_config.format, refusal fallbacks, stop_reason checks, typed SDK errors), openai.ts (the openai
@@ -638,7 +645,8 @@ src/
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test; sprint 236: several services per application, the
                            Default column) and Applications → Activity → Mail (retry, cancel; the app's other services);
-                           serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118)
+                           serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118); (sprint 250) redirectRegion
+                           and POST /apps/:id/mail/redirect: the app's Redirect all mail to, the MAIL_REDIRECT_TO notice
     mail-queue.ts          (sprint 118, WS-9) Administration → Mail queue (/builder/mail-queue): queueScope (administrators: all or
                            ?ws=; workspace administrators: the current workspace), figures, per hour, per workspace / application,
                            slowest provider calls, failures; Retry / Purge one or all failed, scope checked again per mail

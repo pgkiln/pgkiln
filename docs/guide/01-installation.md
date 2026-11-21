@@ -211,7 +211,8 @@ which is read at startup; real environment variables take precedence.
 | `RUNTIME_DATABASE_URL` | *(falls back to `DATABASE_URL`)* | Least-privilege connection that runs applications |
 | `PORT` | `3100` | HTTP port |
 | `HOST` | `127.0.0.1` | Interface to listen on; use `0.0.0.0` in a container |
-| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgkiln at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it, and developers' passkeys belong to its host name |
+| `PUBLIC_URL` | `http://127.0.0.1:<PORT>` | The address users reach pgkiln at (e.g. `https://apps.example.com`). Single sign-on redirect URIs are built from it, and developers' passkeys belong to its host name. (sprint 250) The server records it at start-up for absolute links built in SQL (`meta.page_url(…, p_absolute => true)`, `meta.app_url()`: [links in mail](06-processing.md#links-in-mail-absolute-urls)) |
+| `MAIL_REDIRECT_TO` | *(none)* | (sprint 250) One e-mail address: **every** mail of the installation goes only there, with `[TEST]` before the subject and the original recipients in `X-Original-To/-Cc/-Bcc` and at the top of the body. Wins over an application's *Redirect all mail to*; for test and acceptance servers ([redirect all mail](06-processing.md#redirect-all-mail-test-and-acceptance-systems)). A value that is not one address stops all mail |
 | `PGKILN_RP_ID` | the host of `PUBLIC_URL` | (0.61) A parent domain for developers' passkeys (`example.com` when the builder is at `builder.example.com`), so one passkey works on its sub-domains. Ignored unless it is the host or a parent of it |
 | `API_URL` | `http://127.0.0.1:3000` | Where PostgREST serves the REST API ([chapter 13](13-rest-api.md)) |
 | `API_JWT_SECRET` | *(none)* | Signs REST API tokens; at least 32 characters, the same as PostgREST's `jwt-secret`. Without it, tokens can't be issued |
