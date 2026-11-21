@@ -385,7 +385,14 @@ src/
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
                            (conditionHolds: the server-side condition types; sprint 235 item_contains / item_contains_any split a multi-value item on colons);
-                           (sprint 240, MG-7) branchTaken (the branch and its href), staysInDialog, inDialog (dialog=1 on a URL)
+                           (sprint 240, MG-7) branchTaken (the branch and its href), staysInDialog, inDialog (dialog=1 on a URL);
+                           (sprint 249) target type item (navigation.ts itemTarget), inPageBelow (MG-23: branch in_page_below,
+                           migration 205: routes.ts hands the target to render.ts dialogClosePage data-dialog-goto, app.js
+                           sends the page below there)
+    navigation.ts          (sprint 249, MG-22) notePageView (routes.ts show page: the session's __LAST_PAGE/__LAST_URL and
+                           __PREV_PAGE/__PREV_URL; context.ts previousPage → the built-ins APP_PREVIOUS_PAGE / APP_PREVIOUS_URL
+                           in bindValues, reserved in binds.ts), itemTarget (an item branch's page, checked with pageAllowed,
+                           else this page; the previous page's URL when the branch sets no items)
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     static-files.ts        (068) static application files (/a/<alias>/static/<name>), the <script>/<link> tags of a page; (141) static
                            workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
@@ -409,7 +416,8 @@ src/
                            regions at page level, authz.ts computeVisibility drops a sub region whose parent isn't shown
     item-texts.ts          (sprint 241, MG-10/11) itemLabel (&ITEM. substitutions in labels, also in the messages engine.ts gives),
                            itemPlaceholder (meta.item.placeholder, migration 197, or the older {"placeholder"} setting), PLACEHOLDER_TYPES,
-                           NULL_CHOICE_TYPES (a select list's empty choice); items.ts renderItem uses them
+                           NULL_CHOICE_TYPES (a select list's empty choice); items.ts renderItem uses them; (sprint 249, MG-27)
+                           buttonLabel (&ITEM. in button and menu entry labels: regions.ts renderButton, renderMenu)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm; sprint 240: the region's items in its toolbar, Save stays in a dialog), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
@@ -754,7 +762,9 @@ src/
                            (sprint 234) positionFindings: a header position the page has not, items and submit buttons in a
                            header region (outside the page's form); (sprint 240) stay_in_dialog off a modal page or on a branch
                            to another app, Ajax callbacks that aren't SQL or a chain of SQL processes; (sprint 245) queryColumns
-                           (a SELECT's columns through a temporary view, rolled back): a document template's column named like a built-in
+                           (a SELECT's columns through a temporary view, rolled back): a document template's column named like a built-in;
+                           (sprint 249) in_page_below off a modal page, an item branch's target_item that
+                           isn't an item, app item or APP_PREVIOUS_PAGE
     advisor-items-pages.ts (sprint 241) itemPageFindings: a placeholder no type shows, meta.set_auth_user outside custom
                            authentication's post-authentication code, No navigation on a modal page
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,

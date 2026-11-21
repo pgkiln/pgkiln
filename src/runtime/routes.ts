@@ -27,7 +27,8 @@ import { applyJsonForms } from './json-form.ts';
 import { assignable, clearPageItems, fetchForms, makeWebRequests, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { INTERACTIVE_BUDGET_MS } from '../webrequests.ts';
 import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
-import { branchTaken, ComputationFailed, inDialog, runComputations, staysInDialog } from './logic.ts';
+import { branchTaken, ComputationFailed, inDialog, inPageBelow, runComputations, staysInDialog } from './logic.ts';
+import { notePageView } from './navigation.ts';
 import { openAfterError, openByStaticId } from './open-region.ts';
 import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
 import { parseNumber } from '../numformat.ts';
@@ -521,7 +522,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
     if (prefetch && (docName || downloadKey)) return reply.code(409).header('cache-control', 'no-store').send('Not kept for offline use.');
 
-    let result: { html?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string; download?: Download };
+    let result: { html?: string; below?: string; streamed?: boolean; file?: Buffer; type?: string; name?: string; redirect?: string; download?: Download };
     try {
       result = await appTx(txContext(ctx), async (c) => {
         ctx.client = c;
@@ -535,6 +536,12 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (!docName && !downloadKey) {
           const taken = await branchTaken(ctx, 'before_header');
           if (taken) {
+            // (sprint 249, MG-23) a dialog page's branch "in the page below": the dialog closes, the page below goes there
+            if (ctx.dialog && inPageBelow(taken.branch)) {
+              dbg(ctx, 4, 'branch', `before header: the page below goes to ${taken.href.split('?')[0]}`);
+              if (ctx.openRegion) ctx.session.state.__OPEN_REGION = ctx.openRegion;
+              return { below: taken.href };
+            }
             const to = ctx.dialog && staysInDialog(taken.branch) ? inDialog(taken.href) : taken.href;
             dbg(ctx, 4, 'branch', `before header: redirect to ${to.split('?')[0]}`);
             if (ctx.openRegion) ctx.session.state.__OPEN_REGION = ctx.openRegion;
@@ -589,8 +596,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
       if (result.html === undefined) return reply.code(409).header('cache-control', 'no-store').send('Not kept for offline use.');
       return reply.type('text/html').header('cache-control', 'private, no-store').send(result.html);
     }
+    // (sprint 249, MG-22) the page shown is the user's last page (APP_PREVIOUS_PAGE on the next one)
+    if (result.html !== undefined) notePageView(ctx);
     await saveState(ctx.session);
     if (result.redirect) return reply.redirect(result.redirect, 303);
+    if (result.below) return reply.type('text/html').send(dialogClosePage(ctx, undefined, result.below));
     logActivity({ appId: ctx.app.id, pageNo: ctx.page.page_no, username: ctx.user, event: 'page_view', ip: ctx.ip, elapsedMs: Math.round(performance.now() - started) });
     if (result.streamed) return reply;
     if (result.download) return reply.headers(downloadHeaders(result.download)).send(result.download.content);
@@ -645,6 +655,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
     let branchTo: string | null = null;
     // (sprint 240, MG-7) the branch taken stays in the dialog (stay_in_dialog)
     let branchStays = false;
+    // (sprint 249, MG-23) the branch taken sends the page below the dialog to its target (in_page_below)
+    let branchBelow = false;
     let snapshot: Session['state'] = {};
     try {
       button = await appTx(txContext(ctx), async (c) => {
@@ -682,6 +694,7 @@ export async function runtimeRoutes(app: FastifyInstance) {
         const taken = await branchTaken(ctx, 'after_processing');
         branchTo = taken?.href ?? null;
         branchStays = !!taken && staysInDialog(taken.branch);
+        branchBelow = !!taken && inPageBelow(taken.branch);
         if (branchTo) dbg(ctx, 4, 'branch', `after processing: ${branchTo.split('?')[0]}`);
         // (086) items kept per user: saved with the page's changes
         await savePreferences(ctx);
@@ -723,18 +736,21 @@ export async function runtimeRoutes(app: FastifyInstance) {
     // (sprint 240, MG-7) a submit in a modal page closes it, unless the button or the branch taken stays in it (a
     // close_dialog process still closes it): the dialog page comes back (or the branch's target, in the dialog)
     const stay = ctx.dialog && !ctx.closeDialog && (branchTo ? branchStays : !!button.stay_in_dialog);
+    // (sprint 249, MG-23) or it closes and the page below goes to the branch's target
+    const below = ctx.dialog && !stay && branchBelow ? branchTo : null;
     // (161) the page that comes back runs the saved grids' grid_save dynamic actions
     if (ctx.savedGrids?.length && (!ctx.dialog || stay)) ctx.session.state.__GRID_SAVED = ctx.savedGrids.join(',');
     // (sprint 238, MG-14) a process's or branch's open_region: the page that comes back opens that inline dialog
     // (not after a submit that closes a modal page: the page below may not reload; sprint 240: unless it stays open)
-    if (ctx.openRegion && (!ctx.dialog || stay)) ctx.session.state.__OPEN_REGION = ctx.openRegion;
+    if (ctx.openRegion && (!ctx.dialog || stay || below)) ctx.session.state.__OPEN_REGION = ctx.openRegion;
     await saveState(ctx.session);
     if (stay) {
       dbg(ctx, 4, 'branch', 'stays in the dialog');
       const back = branchTo ? '' : gridReturn(ctx, button.name);
       return reply.redirect(branchTo ? inDialog(branchTo) : back ? `${self}&${back}` : self, 303);
     }
-    if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx, ctx.closeDialog));
+    if (below) dbg(ctx, 4, 'branch', 'the dialog closes, the page below goes to the target');
+    if (ctx.dialog) return reply.type('text/html').send(dialogClosePage(ctx, ctx.closeDialog, below));
     // (sprint 54) a grid's Save comes back to the grid's search, page, sort and view
     const back = branchTo || button.target_page || ctx.resetPagination ? '' : gridReturn(ctx, button.name);
     return reply.redirect(branchTo ?? (button.target_page ? `${ctx.base}/${button.target_page}` : back ? `${self}${self.includes('?') ? '&' : '?'}${back}` : self), 303);

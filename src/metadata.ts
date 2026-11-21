@@ -359,7 +359,7 @@ export interface Branch extends Condition {
   name: string;
   point: 'before_header' | 'after_processing';
   when_button: string | null;
-  target_type: 'page' | 'url' | 'function' | 'app';
+  target_type: 'page' | 'url' | 'function' | 'app' | 'item';
   target_page: number | null;
   target_items: Record<string, string> | null;
   target_url: string | null;
@@ -372,6 +372,10 @@ export interface Branch extends Condition {
   open_region?: string | null;
   /** (sprint 240, MG-7) in a modal dialog page: go to the target inside the dialog instead of closing it */
   stay_in_dialog?: boolean | null;
+  /** (sprint 249, MG-22, migration 205) item: the item holding the target page (number or alias; APP_PREVIOUS_PAGE too) */
+  target_item?: string | null;
+  /** (sprint 249, MG-23) in a modal dialog page: the dialog closes and the page below goes to the target */
+  in_page_below?: boolean | null;
 }
 
 export interface DynamicAction extends FromGlobal {

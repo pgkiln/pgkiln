@@ -20538,6 +20538,84 @@ describe('sprint 240 MG-7/MG-8', () => {
   });
 });
 
+describe('sprint 249 MG-22/MG-23/MG-27', () => {
+  const pageId = async (no: number) => (await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no])).id;
+  /** Signed in, on page 2 then page 51 (so page 51 has a previous page and shows BACK). */
+  const onProfile = async (user: string) => {
+    const b = await as(user);
+    await b.get('/a/hr/2');
+    const res = await b.get(link(user, 51, { P51_EMPNO: '7499' }));
+    assert.equal(res.statusCode, 200);
+    return b;
+  };
+
+  test("MG-22: an item-driven branch can't leave the application or reach a page the user may not open", async () => {
+    const p51 = await pageId(51);
+    await owner.query(`update meta.branch set target_item = 'P51_TITLE' where page_id = $1 and name = 'Back to the calling page'`, [p51]);
+    try {
+      for (const v of ['https://evil.example', '//evil.example', '/\\evil.example', 'javascript:alert(1)', '/a/other/1', '2?x=//evil', '2#x', '13', '0']) {
+        const allen = await onProfile('allen');
+        const res = await allen.post('/a/hr/51', { __csrf: allen.lastCsrf, __request: 'BACK', P51_TITLE: v });
+        assert.equal(res.statusCode, 303, v);
+        assert.equal(res.headers.location, '/a/hr/51', `${v}: the page itself`);
+      }
+      // page 13 is for ADMIN: king may go there, allen (above) may not
+      const king = await onProfile('king');
+      assert.equal((await king.post('/a/hr/51', { __csrf: king.lastCsrf, __request: 'BACK', P51_TITLE: '13' })).headers.location, '/a/hr/13');
+    } finally {
+      await owner.query(`update meta.branch set target_item = 'APP_PREVIOUS_PAGE' where page_id = $1 and name = 'Back to the calling page'`, [p51]);
+    }
+  });
+
+  test("MG-22: APP_PREVIOUS_PAGE and its URL can't be set by a request", async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/2?APP_PREVIOUS_PAGE=13&__LAST_URL=//evil.example&__PREV_URL=//evil.example');
+    await allen.get('/a/hr/51?APP_PREVIOUS_URL=//evil.example');
+    const res = await allen.post('/a/hr/51', { __csrf: allen.lastCsrf, __request: 'BACK', APP_PREVIOUS_PAGE: '13', __LAST_PAGE: '13', __LAST_URL: '//evil.example', __PREV_URL: '//evil.example' });
+    assert.equal(res.statusCode, 303);
+    const loc = String(res.headers.location);
+    // back to page 2 as allen opened it (its own query string, not a value of the request)
+    const u = new URL(loc, 'http://pgkiln.test');
+    assert.equal(u.origin, 'http://pgkiln.test');
+    assert.equal(u.pathname, '/a/hr/2');
+  });
+
+  test('MG-23: a branch in the page below keeps the checksum; the target refuses changed values', async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/2');
+    await allen.get('/a/hr/76?dialog=1');
+    const res = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '7499' });
+    assert.equal(res.statusCode, 200, res.body);
+    const goto = (/data-dialog-goto="([^"]+)"/.exec(res.body)?.[1] ?? '').replace(/&amp;/g, '&');
+    assert.match(goto, /^\/a\/hr\/51\?P51_EMPNO=7499&cs=[0-9a-f]+$/);
+    assert.equal((await allen.get(goto)).statusCode, 200);
+    assert.equal((await allen.get(goto.replace('7499', '7369'))).statusCode, 403);
+    // another user's signed link isn't valid for this one
+    const king = await as('king');
+    assert.equal((await king.get(goto)).statusCode, 403);
+    // a value that isn't one of the list's: refused before any branch (no target handed over)
+    await allen.get('/a/hr/76?dialog=1');
+    const bad = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '7499&P51_X=1' });
+    assert.doesNotMatch(bad.body, /data-dialog-goto/);
+  });
+
+  test('MG-27: item values in a button label are escaped', async () => {
+    const p76 = await pageId(76);
+    await owner.query(`update meta.button set label = 'Open &P76_EMPNO.' where page_id = $1 and name = 'OPEN'`, [p76]);
+    try {
+      const allen = await as('allen');
+      await allen.get('/a/hr/76?dialog=1');
+      // not a value of the list: the page comes back with the error, and the label shows the value posted
+      const page = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '<img src=x onerror=alert(1)>' });
+      assert.equal(page.statusCode, 422);
+      assert.ok(page.body.includes('Open &lt;img src=x onerror=alert(1)&gt;'), page.body.match(/Open [^<]*/)?.[0] ?? 'no label');
+      assert.doesNotMatch(page.body, /<img src=x/);
+    } finally {
+      await owner.query(`update meta.button set label = 'Open the profile' where page_id = $1 and name = 'OPEN'`, [p76]);
+    }
+  });
+});
+
 describe('sprint 243 MG-17', () => {
   const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   const restore = (saved: Record<string, string | undefined>) => {
