@@ -20837,3 +20837,194 @@ describe('sprint 245 MG-18', () => {
     }
   });
 });
+
+describe('sprint 250 MG-24/MG-25', () => {
+  const TESTER = 'tester-250@example.com';
+  const A = 'T250_SEC_A';
+  const B = 'T250_SEC_B';
+  let mock: InstanceType<typeof import('./mail-mock.ts').MailMock>;
+  let role: string;
+  let links: { service_id: number; from_address: string | null; max_per_day: number | null; is_default: boolean }[] = [];
+  let savedPublicUrl: string | null = null;
+
+  /** SQL as HR's role and user (committed, so the worker sees the mail) */
+  async function asHr<T>(fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>) {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true)`, [String(appId)]);
+      await c.query(`set local role ${role}`);
+      const r = await fn(async (sql, params) => (await c.query(sql, params)).rows);
+      await c.query('commit');
+      return r;
+    } catch (e) {
+      await c.query('rollback');
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  const tick = async () => (await import('../src/mail/mail.ts')).mailTick();
+  /** every address the SMTP server was asked to deliver to since the last reset */
+  const envelope = () => [...new Set(mock.smtpHits.flatMap((h) => h.to))];
+
+  before(async () => {
+    const { MailMock } = await import('./mail-mock.ts');
+    mock = new MailMock();
+    await mock.start();
+    role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    links = (await owner.query('select service_id, from_address, max_per_day, is_default from meta.app_mail_service where app_id = $1', [appId])).rows;
+    savedPublicUrl = (await owner.one(`select value from meta.instance_setting where name = 'public_url'`))?.value ?? null;
+    await owner.query('delete from meta.mail_service where name = any($1)', [[A, B]]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    const settings = JSON.stringify({ host: '127.0.0.1', port: mock.smtpPort, security: 'none', auth: 'none' });
+    const a = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ($1, 'smtp', '{@example.com}', $2) returning id`, [A, settings])).id;
+    const b = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ($1, 'smtp', '{@safety.example}', $2) returning id`, [B, settings])).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')`, [appId, a]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'alerts@safety.example')`, [appId, b]);
+    await owner.query('update meta.app set mail_redirect_to = $2 where id = $1', [appId, TESTER]);
+    await owner.query(`update meta.mail_queue set status = 'cancelled' where app_id = $1 and status = 'queued'`, [appId]);
+  });
+
+  beforeEach(() => {
+    mock.reset();
+    delete process.env.MAIL_REDIRECT_TO;
+  });
+
+  after(async () => {
+    delete process.env.MAIL_REDIRECT_TO;
+    await owner.query('update meta.app set mail_redirect_to = null where id = $1', [appId]);
+    await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like '%S250%'`, [appId]);
+    await owner.query('delete from meta.mail_service where name = any($1)', [[A, B]]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    for (const r of links)
+      await owner.query('insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day, is_default) values ($1, $2, $3, $4, $5)',
+        [appId, r.service_id, r.from_address, r.max_per_day, r.is_default]);
+    if (savedPublicUrl === null) await owner.query(`delete from meta.instance_setting where name = 'public_url'`);
+    else await owner.query(`update meta.instance_setting set value = $1 where name = 'public_url'`, [savedPublicUrl]);
+    await mock.stop();
+  });
+
+  test('p_to, p_cc, p_bcc, a template, another service and a sign-in code all reach only the redirect address', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => `u${i}@victim.example`).join(', ');
+    await asHr(async (q) => {
+      await q(`select meta.send_mail(p_to => $1, p_subject => 'S250 many', p_body => 'x', p_cc => 'cc@victim.example', p_bcc => 'bcc1@victim.example; bcc2@victim.example')`, [many]);
+      await q(`select meta.send_mail(p_to => 'x@victim.example', p_subject => 'S250 other service', p_body => 'x', p_from => 'alerts@safety.example', p_bcc => 'b@victim.example')`);
+      await q(`select meta.send_mail(p_to => 'y@victim.example', p_subject => 'S250 reply', p_body => 'x', p_reply_to => 'reply@victim.example')`);
+    });
+    const tpl = await owner.one(`insert into meta.email_template (app_id, name, subject, text_body) values ($1, 'S250_TPL', 'S250 template #N#', 'Hi #N#') returning id`, [appId]);
+    try {
+      await asHr((q) => q(`select meta.send_mail_template('S250_TPL', '{"N": "z"}', 'z@victim.example', 'zc@victim.example', 'zb@victim.example')`));
+    } finally {
+      await owner.query('delete from meta.email_template where id = $1', [tpl.id]);
+    }
+    const { queueEmailCode } = await import('../src/account-mfa.ts');
+    assert.equal(await queueEmailCode({ id: appId }, 'king', { to: 'king@victim.example', from: 'hr@example.com' }, 'S250 your code', 'Code: 123456'), true);
+    await tick();
+    const rows = (await owner.query(`select subject, status, message, service, redirected_to from meta.mail_queue where app_id = $1 and subject like 'S250%' and status <> 'cancelled' order by id`, [appId])).rows;
+    assert.equal(rows.length, 5);
+    for (const r of rows) {
+      assert.equal(r.status, 'sent', `${r.subject}: ${r.message}`);
+      assert.equal(r.redirected_to, TESTER, r.subject);
+    }
+    assert.ok(rows.some((r) => r.service === B), 'the From address chose the other service, redirected all the same');
+    assert.deepEqual(envelope(), [TESTER], 'the SMTP server was asked for the redirect address only');
+    for (const h of mock.smtpHits) {
+      const head = h.data.split('\r\n\r\n')[0];
+      assert.doesNotMatch(head, /^(To|Cc|Bcc):.*victim\.example/im, 'no recipient header names an original address');
+      assert.match(head, /^Subject: \[TEST\] S250/m);
+    }
+  });
+
+  test('an attachment that names recipients, or a file name with a line break, adds none', async () => {
+    await asHr(async (q) => {
+      const [{ id }] = await q(`select meta.send_mail('a@victim.example', 'S250 attachment', 'x') as id`);
+      await q(`select meta.add_mail_attachment($1, convert_to(E'To: evil@victim.example\\r\\nBcc: evil2@victim.example\\r\\nSubject: hi\\r\\n\\r\\nbody', 'UTF8'), 'forward.eml', 'message/rfc822')`, [id]);
+      try {
+        await q(`select meta.add_mail_attachment($1, convert_to('x', 'UTF8'), E'x.txt\\r\\nBcc: evil3@victim.example', 'text/plain')`, [id]);
+      } catch {
+        // refused is fine too
+      }
+    }).catch(async () => {
+      // a refused file name rolls the mail back: queue it again without that file
+      await asHr(async (q) => {
+        const [{ id }] = await q(`select meta.send_mail('a@victim.example', 'S250 attachment', 'x') as id`);
+        await q(`select meta.add_mail_attachment($1, convert_to(E'To: evil@victim.example\\r\\nBcc: evil2@victim.example\\r\\n\\r\\nbody', 'UTF8'), 'forward.eml', 'message/rfc822')`, [id]);
+      });
+    });
+    await tick();
+    assert.deepEqual(envelope(), [TESTER]);
+    const head = mock.smtpHits[0].data.split('\r\n\r\n')[0];
+    assert.doesNotMatch(head, /^Bcc:/im);
+    assert.doesNotMatch(head, /^(To|Cc):.*victim\.example/im);
+  });
+
+  test('MAIL_REDIRECT_TO wins over the application, and over an application without the setting', async () => {
+    process.env.MAIL_REDIRECT_TO = 'ops-250@example.com';
+    await asHr((q) => q(`select meta.send_mail('a@victim.example', 'S250 env', 'x', p_bcc => 'b@victim.example')`));
+    await owner.query('update meta.app set mail_redirect_to = null where id = $1', [appId]);
+    try {
+      await asHr((q) => q(`select meta.send_mail('a@victim.example', 'S250 env only', 'x')`));
+      await tick();
+    } finally {
+      await owner.query('update meta.app set mail_redirect_to = $2 where id = $1', [appId, TESTER]);
+    }
+    assert.deepEqual(envelope(), ['ops-250@example.com']);
+    // a value that is not one address lets nothing out (and is not split into several)
+    process.env.MAIL_REDIRECT_TO = 'ops-250@example.com, a@victim.example';
+    mock.reset();
+    await asHr((q) => q(`select meta.send_mail('a@victim.example', 'S250 env bad', 'x')`));
+    await tick();
+    assert.equal(mock.smtpHits.length, 0);
+    assert.equal((await owner.one(`select status from meta.mail_queue where app_id = $1 and subject = 'S250 env bad'`, [appId])).status, 'error');
+  });
+
+  test('application code can\'t change or read the redirect, the public address or the queue', async () => {
+    await assert.rejects(asHr((q) => q('update meta.app set mail_redirect_to = null')), /permission denied/);
+    await assert.rejects(asHr((q) => q(`update meta.instance_setting set value = 'https://evil.example' where name = 'public_url'`)), /permission denied/);
+    await assert.rejects(asHr((q) => q(`insert into meta.instance_setting (name, value) values ('public_url', 'https://evil.example')`)), /permission denied|row-level security/);
+    await assert.rejects(asHr((q) => q('select redirected_to from meta.mail_queue')), /permission denied/);
+    await assert.rejects(asHr((q) => q(`update meta.mail_queue set redirected_to = null, to_addresses = '{x@victim.example}'`)), /permission denied/);
+    // the setting the runtime sets per request is not what absolute URLs use
+    await owner.query(`insert into meta.instance_setting (name, value) values ('public_url', 'https://apps.example.com')
+                       on conflict (name) do update set value = excluded.value`);
+    const [r] = await asHr((q) => q(`select set_config('pgkiln.public_url', 'https://evil.example', true), meta.app_url() as home, meta.page_url(1, p_absolute => true) as link`));
+    assert.equal(r.home, 'https://apps.example.com/a/hr');
+    assert.match(r.link, /^https:\/\/apps\.example\.com\/a\/hr\/1\?/);
+  });
+
+  test('an absolute URL is never steered by the request\'s Host or X-Forwarded-Host header', async () => {
+    await owner.query(`insert into meta.instance_setting (name, value) values ('public_url', 'https://apps.example.com')
+                       on conflict (name) do update set value = excluded.value`);
+    const pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 8', [appId])).id;
+    const reg = await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 99, 'Links 250', 'report',
+      $$select meta.page_url(3, jsonb_build_object('P3_EMPNO', 7839), p_absolute => true) as link, meta.app_url() as home$$) returning id`, [pageId]);
+    try {
+      const b = await as('king');
+      b.headers = { host: 'evil.example', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http', forwarded: 'host=evil.example' };
+      const body = (await b.get('/a/hr/8')).body;
+      assert.match(body, /https:\/\/apps\.example\.com\/a\/hr\/3\?clear=1&amp;P3_EMPNO=7839&amp;cs=[0-9a-f]{32}/);
+      assert.match(body, /https:\/\/apps\.example\.com\/a\/hr</);
+      assert.doesNotMatch(body, /evil\.example\/a\/hr/);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [reg.id]);
+    }
+  });
+
+  test('the builder\'s form: CSRF, sign-in and one address', async () => {
+    const anon = await app.inject({ method: 'POST', url: `/builder/apps/${appId}/mail/redirect`, payload: 'mail_redirect_to=', headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    assert.notEqual(anon.statusCode, 200);
+    assert.equal((await owner.one('select mail_redirect_to from meta.app where id = $1', [appId])).mail_redirect_to, TESTER, 'not signed in: unchanged');
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/apps/${appId}/mail`);
+    assert.equal((await dev.post(`/builder/apps/${appId}/mail/redirect`, { __csrf: 'forged', mail_redirect_to: '' })).statusCode, 403);
+    for (const bad of ['a@example.com,b@victim.example', 'a@example.com\r\nBcc: b@victim.example', 'a@example.com b@victim.example'])
+      await dev.post(`/builder/apps/${appId}/mail/redirect`, { __csrf: dev.lastCsrf, mail_redirect_to: bad });
+    assert.equal((await owner.one('select mail_redirect_to from meta.app where id = $1', [appId])).mail_redirect_to, TESTER, 'refused, unchanged');
+    // the page escapes what it shows
+    const page = (await dev.get(`/builder/apps/${appId}/mail`)).body;
+    assert.match(page, /Every mail of this application goes only to tester-250@example\.com/);
+  });
+});
