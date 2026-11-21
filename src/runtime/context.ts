@@ -47,6 +47,8 @@ export interface PageContext {
   savedGrids?: number[];
   /** (sprint 174, CD-1) a failed grid save: the message of each cell that is not valid, by its posted field name (g<region>_<row>_c<column>) */
   gridErrors?: Record<string, string>;
+  /** (sprint 246, MG-19) a submit's JSON form check (json-form.ts applyJsonForms): errors by posted field name, shown by validate() */
+  jsonFormErrors?: Errors;
   /** rendered inside a modal dialog (iframe) */
   dialog: boolean;
   client?: Client;

@@ -20803,6 +20803,64 @@ describe('sprint 248 MG-21', () => {
   });
 });
 
+describe('sprint 247 MG-20', () => {
+  // A multiple file item's "filter" (constant columns of a child table shared by several record types) comes from the
+  // item's attributes only: a request can't change, widen or drop it, so one record type's form never removes, serves
+  // or adds another record type's files, even with the same related_id and a valid download checksum.
+  let g: typeof import('./gallery-samples.ts');
+  let sfApp: number;
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const sample = () => g.SAMPLES.find((x) => x.key === 'sample-files')!;
+  const openFolder = async () => {
+    const b = new FileBrowser(app);
+    await b.login('demo', 'demo', 'sample-files');
+    const items = { P5_ID: '1' };
+    assert.equal((await b.get(`/a/sample-files/5?${new URLSearchParams({ ...items, cs: urlChecksum(sfApp, 5, 'demo', items) })}`)).statusCode, 200);
+    return b;
+  };
+  const personPicture = async () => (await owner.one(`select id from sample_files.picture where related_type = 'person' and related_id = '1'`)).id as number;
+  before(async () => {
+    g = await import('./gallery-samples.ts');
+    await g.dropSample(sample());
+    await g.installSample(sample());
+    sfApp = (await owner.one(`select id from meta.app where alias = 'sample-files'`)).id;
+  });
+  after(async () => {
+    await g.dropSample(sample());
+  });
+
+  test("a forged remove box with another record type's file id removes nothing of it", async () => {
+    const pid = await personPicture();
+    const b = await openFolder();
+    const res = await b.upload('/a/sample-files/5', { __request: 'SAVE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: 'x', P5_PICTURES__REMOVE: [String(pid), `${pid} or true`] }, {});
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    assert.equal((await owner.one('select count(*)::int as n from sample_files.picture where id = $1', [pid])).n, 1);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 1);
+  });
+
+  test('posted fields named like the filter column or the item attributes do not change what is written', async () => {
+    const b = await openFolder();
+    const res = await b.upload('/a/sample-files/5', { __request: 'SAVE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: 'x', related_type: 'person', P5_PICTURES__FILTER: '{}', filter: 'person' },
+      { P5_PICTURES: { name: 'forged.png', type: 'image/png', data: PNG } });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    assert.deepEqual((await owner.one(`select related_type, related_id from sample_files.picture where filename = 'forged.png'`)), { related_type: 'folder', related_id: '1' });
+  });
+
+  test("a download with a valid checksum for another record type's file is not found through this item", async () => {
+    const pid = String(await personPicture());
+    const b = await openFolder();
+    const url = (item: string, page: number) => `/a/sample-files/${page}/file/${item}?${new URLSearchParams({ k: pid, cs: urlChecksum(sfApp, page, 'demo', { __FILE: item, __KEY: pid }) })}`;
+    assert.equal((await b.get(url('P5_PICTURES', 5))).statusCode, 404, 'the folder item: filtered');
+    assert.equal((await b.get(url('P7_PICTURES', 7))).statusCode, 200, "the person item: its own file");
+  });
+
+  test('deleting a record deletes only its own record type\'s files', async () => {
+    const b = await openFolder();
+    assert.equal((await b.upload('/a/sample-files/5', { __request: 'DELETE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: '' }, {})).statusCode, 303);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 0);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);  });
+});
+
 describe('sprint 245 MG-18', () => {
   // meta.document_temp_file: the file belongs to the session that asked for it; only the server fills it, only an undrawn
   // file of the current session registered in the current transaction; an ordinary upload is never overwritten
@@ -20912,6 +20970,119 @@ describe('sprint 245 MG-18', () => {
     } finally {
       await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
       await owner.query('delete from meta.authz_scheme where id = $1', [scheme]);
+    }
+  });
+});
+
+describe('sprint 246 MG-19', () => {
+  const ids = async () => {
+    const r = await owner.one(`select r.id, r.source, p.id as page_id from meta.region r join meta.page p on p.id = r.page_id
+                                where p.app_id = $1 and p.page_no = 74 and r.static_id = 'jf-form'`, [appId]);
+    const tpl = (await owner.one(`select id from hr.form_template where name = 'Workplace inspection'`)).id;
+    return { rid: r.id as number, source: r.source as string, page: r.page_id as number, tpl: String(tpl) };
+  };
+  const stored = async () => (await owner.query(`select answers from hr.form_answer where upper(username) = 'BLAKE'`)).rows;
+  const clean = () => owner.query(`delete from hr.form_answer where upper(username) = 'BLAKE'`);
+
+  test('values outside an enum and values of the wrong type are refused; nothing is stored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const f = (k: string) => `jf${rid}:${k}`;
+    const base = { __request: 'SAVE', P74_TEMPLATE: tpl, [f('location')]: 'A1', [f('inspected_on')]: '2026-01-02', [f('overall')]: 'good' };
+    const cases: Record<string, string | string[]>[] = [
+      { [f('overall')]: 'excellent' },            // not in the radio group's enum
+      { [f('department')]: '50' },                // not in oneOf
+      { [f('department')]: '10.0x' },             // not a number at all
+      { [f('hazards')]: ['trip', 'sabotage'] },   // a checkbox value the schema doesn't have
+      { [f('score')]: '3.5' },                    // an integer field
+      { [f('score')]: 'NaN' },
+      { [f('temperature')]: 'Infinity' },
+      { [f('inspected_on')]: '2026-02-30' },
+      { [f('manual_url')]: 'javascript:alert(1)' },
+      { [f('inspector_email')]: '<a@b.c>' },
+      { [f('location')]: 'x'.repeat(101) },        // maxLength
+    ];
+    const blake = await as('blake');
+    for (const c of cases) {
+      await blake.get('/a/hr/74');
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, ...base, ...c });
+      assert.equal(res.statusCode, 422, JSON.stringify(c));
+      assert.match(res.body, /has-error/, JSON.stringify(c));
+    }
+    assert.deepEqual(await stored(), []);
+  });
+
+  test('the answers come from the schema\'s fields only: a posted item value, unknown fields and the read-only region are ignored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const blake = await as('blake');
+    await blake.get('/a/hr/74');
+    const saved = (await owner.one(`select id from meta.region where page_id = (select page_id from meta.region where id = $1) and static_id = 'jf-saved'`, [rid])).id;
+    const res = await blake.post('/a/hr/74', {
+      __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl,
+      P74_ANSWERS: '{"location": "forged", "admin": true}',
+      [`jf${rid}:location`]: 'A1', [`jf${rid}:inspected_on`]: '2026-01-02', [`jf${rid}:overall`]: 'good',
+      [`jf${rid}:admin`]: 'true', [`jf${rid}:contact/role`]: 'boss', [`jf${saved}:location`]: 'other region',
+    });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    const [row] = await stored();
+    assert.equal(row.answers.location, 'A1');
+    assert.equal('admin' in row.answers, false);
+    assert.deepEqual(row.answers.contact, {});
+    await clean();
+  });
+
+  test('nothing from the schema is rendered unescaped: titles, descriptions, placeholders, enum labels, values and keys', async () => {
+    const x = '<img src=x onerror=alert(1)>';
+    const schema = {
+      type: 'object', title: x, description: x,
+      properties: {
+        [`k${x}`]: { type: 'string', title: x, description: x, 'x-placeholder': x, default: x },
+        pick: { type: 'string', enum: [x, 'b'], 'x-enum-labels': [x, x] },
+        radio: { type: 'string', oneOf: [{ const: x, title: x }], 'x-widget': 'radio' },
+        boxes: { type: 'array', items: { enum: [x] } },
+        rows: { type: 'array', title: x, items: { type: 'object', properties: { [x]: { type: 'string', title: x } } } },
+        group: { type: 'object', title: x, properties: { inner: { type: 'boolean', title: x } } },
+      },
+    };
+    const id = (await owner.one(`insert into hr.form_template (name, schema) values ('JF XSS', $1) returning id`, [JSON.stringify(schema)])).id;
+    try {
+      const blake = await as('blake');
+      const body = (await blake.get(link('blake', 74, { P74_TEMPLATE: String(id) }))).body;
+      const page = (await blake.get('/a/hr/74')).body;
+      for (const b of [body, page]) assert.doesNotMatch(b, /<img src=x/);
+      assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      // a failed submit shows the posted text escaped too
+      const { rid } = await ids();
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: String(id), [`jf${rid}:pick`]: `${x}!`, [`jf${rid}:k${encodeURIComponent(x)}`]: x });
+      assert.equal(res.statusCode, 422);
+      assert.doesNotMatch(res.body, /<img src=x/);
+    } finally {
+      await owner.query(`delete from hr.form_answer where template_id = $1`, [id]);
+      await owner.query(`delete from hr.form_template where id = $1`, [id]);
+    }
+  });
+
+  test("the schema's SQL runs as the application's role, on render and on submit", async () => {
+    const { rid, source, tpl } = await ids();
+    await clean();
+    await owner.query(`update meta.region set source = $2 where id = $1`, [rid,
+      `select jsonb_build_object('type', 'object', 'properties', jsonb_build_object('who', jsonb_build_object('type', 'string', 'enum', jsonb_build_array(current_user::text)))) as schema`]);
+    try {
+      const role = (await owner.one(`select db_role from meta.app where id = $1`, [appId])).db_role;
+      const blake = await as('blake');
+      const page = (await blake.get('/a/hr/74')).body;
+      assert.match(page, new RegExp(`<option value="${role}"`));
+      // pgkiln's own tables are out of its reach
+      await owner.query(`update meta.region set source = 'select to_jsonb(a) as schema from meta.app a' where id = $1`, [rid]);
+      const denied = (await blake.get('/a/hr/74')).body;
+      assert.match(denied, /alert-error/);
+      assert.doesNotMatch(denied, /name="jf\d+:alias"/);
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl, [`jf${rid}:alias`]: 'x' });
+      assert.equal(res.statusCode, 422, 'a schema that can\'t be read refuses the submit');
+      assert.deepEqual(await stored(), []);
+    } finally {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [rid, source]);
     }
   });
 });

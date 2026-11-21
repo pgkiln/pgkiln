@@ -25,6 +25,7 @@ import { masterItemOf, mastersOf } from './master-detail.ts';
 import { renderTasks } from './tasks.ts';
 import { renderDataReporter } from './data-reporter.ts';
 import { renderFormDesigner } from './form-designer.ts';
+import { renderJsonForm } from './json-form.ts';
 import { renderAssistant } from './assistant.ts';
 import { renderAiFilter } from './ai-filter.ts';
 import { renderWorkflows } from './workflows.ts';
@@ -462,6 +463,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'form_designer':
       body = await renderFormDesigner(ctx, r);
+      break;
+    case 'json_form':
+      body = await renderJsonForm(ctx, r);
       break;
     case 'ai_assistant':
       body = await renderAssistant(ctx, r);
