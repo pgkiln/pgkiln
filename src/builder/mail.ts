@@ -9,6 +9,7 @@ import { clientIp, logActivity, type Session } from '../session.ts';
 import { isAdmin } from './locks.ts';
 import { back, BASE, csrf, developer, flash, input, region, select, send, shell, type Req } from './ui.ts';
 import { scopedTx as tx } from './i18n.ts';
+import { envRedirect, redirectMail, REDIRECT_ADDRESS } from '../mail/redirect.ts';
 
 // Workspace utilities → Mail services (administrators): the mail services of
 // this installation (SMTP with a password or OAuth2, Microsoft Graph, Amazon
@@ -180,7 +181,7 @@ const mailTable = (rows: any[], withApp: boolean, actions?: (m: any) => unknown)
   <thead><tr><th>${tx('ml.queued_utc')}</th>${withApp ? html`<th>${tx('ml.application')}</th>` : ''}<th>${tx('ml.to')}</th><th>${tx('ml.subject')}</th><th>${tx('ml.from')}</th><th class="num">${tx('ml.attempts')}</th><th>${tx('ml.status')}</th>${actions ? html`<th>${tx('ml.actions')}</th>` : ''}</tr></thead>
   <tbody>${rows.length ? rows.map((m) => html`<tr>
     <td data-label="${tx('ml.queued')}">${when(m.created_at)}</td>${withApp ? html`<td data-label="${tx('ml.application')}">${m.app ?? ''}</td>` : ''}
-    <td data-label="${tx('ml.to')}" class="u-break">${[...m.to_addresses, ...m.cc_addresses].join(', ')}${m.bcc_addresses.length ? html` <span class="muted">+${m.bcc_addresses.length} bcc</span>` : ''}</td>
+    <td data-label="${tx('ml.to')}" class="u-break">${[...m.to_addresses, ...m.cc_addresses].join(', ')}${m.bcc_addresses.length ? html` <span class="muted">+${m.bcc_addresses.length} bcc</span>` : ''}${m.redirected_to ? html`<br><span class="tag">${tx('ml.redirected_to', { to: m.redirected_to })}</span>` : ''}</td>
     <td data-label="${tx('ml.subject')}" class="u-break">${m.subject}${m.template ? html` <span class="muted">(${m.template})</span>` : ''}</td>
     <td data-label="${tx('ml.from')}" class="u-break">${m.from_address ?? ''}</td>
     <td class="num" data-label="${tx('ml.attempts')}">${m.attempts}</td>
@@ -195,7 +196,7 @@ async function adminOnly(s: Session, reply: any, title: string) {
   return false;
 }
 
-const MAIL_COLUMNS = 'q.id, q.app_id, q.to_addresses, q.cc_addresses, q.bcc_addresses, q.subject, q.template, q.from_address, q.attempts, q.status, q.message, q.created_at, q.sent_at';
+const MAIL_COLUMNS = 'q.id, q.app_id, q.to_addresses, q.cc_addresses, q.bcc_addresses, q.subject, q.template, q.from_address, q.attempts, q.status, q.message, q.created_at, q.sent_at, q.redirected_to';
 
 /**
  * Test connection / Send test mail with the settings as filled in (the stored secret when none is typed).
@@ -220,11 +221,15 @@ export async function runCheck(b: Record<string, string | undefined>, stored: Ma
     if (b.check === 'send') {
       if (!ADDRESS.test(to)) throw new MailError(tx('ml.test_to_missing'), false);
       if (!ADDRESS.test(from) || !senderAllowed(v.senders, from)) throw new MailError(tx('ml.from_not_allowed'), false);
-      const pid = await deliver(v.provider, await serviceSettings(svc), secret, {
+      const test = {
         from, to: [to], cc: [], bcc: [], replyTo: null, subject: `pgkiln: test of a mail service (${PROVIDER_LABELS[v.provider]})`,
         text: `This is a test of a pgkiln mail service${stored ? ` (${stored.name})` : ''}, sent from the App Builder by ${username}.`, html: null, attachments: [],
-      });
-      return { ok: true, text: pid ? tx('ml.test_handed_id', { provider: PROVIDER_LABELS[v.provider], id: pid, to }) : tx('ml.test_handed', { provider: PROVIDER_LABELS[v.provider], to }) };
+      };
+      // (sprint 250, MG-24) MAIL_REDIRECT_TO holds for the test mail too
+      const redirect = envRedirect();
+      const pid = await deliver(v.provider, await serviceSettings(svc), secret, redirect ? redirectMail(test, redirect) : test);
+      const handed = pid ? tx('ml.test_handed_id', { provider: PROVIDER_LABELS[v.provider], id: pid, to }) : tx('ml.test_handed', { provider: PROVIDER_LABELS[v.provider], to });
+      return { ok: true, text: redirect ? `${handed} ${tx('ml.test_redirected', { to: redirect.to })}` : handed };
     }
     return { ok: true, text: await verifyService(svc, secret) };
   } catch (e) {
@@ -461,7 +466,7 @@ export async function mailRoutes(app: FastifyInstance) {
   app.get(`${BASE}/apps/:id(^\\d+$)/mail`, async (req: Req, reply) => {
     const s = await developer(req, reply);
     if (!s) return;
-    const a = await owner.one<{ id: number; alias: string; name: string }>('select id, alias, name from meta.app where id = $1', [req.params.id]);
+    const a = await owner.one<{ id: number; alias: string; name: string; mail_redirect_to: string | null }>('select id, alias, name, mail_redirect_to from meta.app where id = $1', [req.params.id]);
     if (!a) return reply.code(404).send('Not found');
     // the application's service, else (sprint 118) its workspace's own
     const service = await owner.one(`select s.name, s.provider, s.enabled, x.from_address, x.max_per_day, s.settings->>'default_from' as default_from
@@ -483,9 +488,24 @@ export async function mailRoutes(app: FastifyInstance) {
       <p class="muted u-mt0">${tx.code('ml.queue_intro')} ${service
         ? html`${tx.rich(service.max_per_day !== null ? 'ml.sends_through_max' : 'ml.sends_through', { service: html`<b>${service.name}</b>`, provider: `${PROVIDER_LABELS[service.provider as Provider]}${service.enabled ? '' : `, ${tx('ml.disabled_l')}`}`, from: service.from_address ?? service.default_from ?? html`<i>${tx('ml.no_from_address')}</i>`, today, max: service.max_per_day ?? '' })}${others ? html` ${tx('ml.also_through_app', { services: others })}` : ''}`
         : admin ? tx.rich('ml.no_service_admin', { none: html`<b>${tx('ml.it_may_not_send_mail')}</b>`, link: html`<a href="${BASE}/mail">${tx('ml.mail_services')}</a>` }) : tx.rich('ml.no_service', { none: html`<b>${tx('ml.it_may_not_send_mail')}</b>` })}</p>
+      ${redirectRegion(s, a)}
       <form method="get" class="u-mb1">${select('status', tx('ml.status'), status, [['', tx('ml.all')], ['queued', tx('ml.queued')], ['sending', tx('ml.sending')], ['sent', tx('ml.sent')], ['error', tx('ml.error')], ['cancelled', tx('ml.cancelled')]])}<button class="btn btn-sm">${tx('ml.show')}</button></form>
       ${region(tx('ml.mail'), mailTable(rows, false, action))}`;
     return send(reply, s, shell(s, tx('ml.mail_of', { app: a.name }), [[tx('ml.app_builder'), BASE], [a.name, `${BASE}/apps/${a.id}`], [tx('ml.activity'), `${BASE}/apps/${a.id}/activity`], [tx('ml.mail')]], main));
+  });
+
+  // (sprint 250, MG-24) Redirect all mail to: the application's setting (MAIL_REDIRECT_TO wins over it)
+  app.post(`${BASE}/apps/:id(^\\d+$)/mail/redirect`, async (req: Req, reply) => {
+    const s = await developer(req, reply);
+    if (!s) return;
+    const to = String(req.body?.mail_redirect_to ?? '').trim();
+    if (to && (to.length > 254 || !REDIRECT_ADDRESS.test(to))) flash(s, tx('ml.redirect_bad'), 'error');
+    else {
+      const r = await owner.query(`update meta.app set mail_redirect_to = $2, updated_at = now() where id = $1 and mail_redirect_to is distinct from $2`, [req.params.id, to || null]);
+      if (r.rowCount) await logActivity({ appId: Number(req.params.id), username: s.username, event: 'mail_redirect', ip: clientIp(req), detail: to ? `redirect all mail to ${to}` : 'redirect off' });
+      flash(s, tx('ml.redirect_saved'));
+    }
+    return back(reply, s, `${BASE}/apps/${req.params.id}/mail`);
   });
 
   const change = (to: 'queued' | 'cancelled', from: string[]) => async (req: Req, reply: any) => {
@@ -502,6 +522,21 @@ export async function mailRoutes(app: FastifyInstance) {
   };
   app.post(`${BASE}/apps/:id(^\\d+$)/mail/:mid(^\\d+$)/retry`, change('queued', ['error', 'cancelled']));
   app.post(`${BASE}/apps/:id(^\\d+$)/mail/:mid(^\\d+$)/cancel`, change('cancelled', ['queued']));
+}
+
+/** (sprint 250, MG-24) The application's "Redirect all mail to", and MAIL_REDIRECT_TO when the installation has it. */
+function redirectRegion(s: Session, a: { id: number; mail_redirect_to: string | null }) {
+  let env: string | null = null;
+  try {
+    env = envRedirect()?.to ?? null;
+  } catch (e) {
+    env = (e as Error).message;
+  }
+  return html`${env ? html`<div class="alert alert-warning" role="status">${tx('ml.redirect_env', { to: env })}</div>`
+      : a.mail_redirect_to ? html`<div class="alert alert-warning" role="status">${tx('ml.redirect_app', { to: a.mail_redirect_to })}</div>` : ''}
+    ${region(tx('ml.redirect_title'), html`<form method="post" action="${BASE}/apps/${a.id}/mail/redirect">${csrf(s)}
+      <div class="form-grid">${input('mail_redirect_to', tx('ml.redirect_label'), a.mail_redirect_to ?? '', { type: 'email', placeholder: 'test-inbox@example.com', help: tx('ml.redirect_help') })}</div>
+      <div class="buttons"><button class="btn">${tx('ml.save')}</button></div></form>`, '', 'mail-redirect')}`;
 }
 
 /** (096) Mail services → Builder mail: the service and From address of the builder's own mail. */

@@ -24,6 +24,10 @@ import { startWebhookRunner } from './webhooks.ts';
 
 const app = await buildApp();
 await app.listen({ port: Number(process.env.PORT ?? 3100), host: process.env.HOST ?? '127.0.0.1' });
+// (sprint 250, MG-25) the public address for absolute URLs built in SQL (meta.page_url(…, p_absolute => true))
+await import('./public-url.ts').then((m) => m.recordPublicUrl()).catch((e) => console.warn('pgkiln: PUBLIC_URL not recorded:', (e as Error).message));
+// (sprint 250, MG-24) every mail of the installation goes to one address
+if (process.env.MAIL_REDIRECT_TO?.trim()) console.warn(`pgkiln: MAIL_REDIRECT_TO is set: every mail goes only to ${process.env.MAIL_REDIRECT_TO.trim()}.`);
 // automations, workflows and background processes (AUTOMATIONS=off / WORKFLOWS=off / BACKGROUND_PROCESSES=off on servers that should not run them)
 startScheduler();
 await startWorkflowRunner();
