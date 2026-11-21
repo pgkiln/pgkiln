@@ -20803,6 +20803,177 @@ describe('sprint 248 MG-21', () => {
   });
 });
 
+describe('sprint 244 MG-29', () => {
+  // OneDrive / SharePoint as object storage (provider "graph"), against the local Graph stub
+  const ALIAS = 's244-graph';
+  const DRIVE = 'b!sec244';
+  const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const restore = (saved: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  };
+  let stub: import('./graph-stub.ts').GraphStub;
+  let gApp: number;
+  let saved: Record<string, string | undefined>;
+  const store = () => ({ provider: 'graph' as const, url: stub.url, drive: DRIVE, folder: 'HR/Contracts', credential: 'S244_GRAPH' });
+
+  before(async () => {
+    saved = envOf(['PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS', 'PGKILN_SECRET_KEY']);
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_SECRET_KEY ??= 'security-test-secret-key-0123456789abcdef';
+    const { startGraphStub, STUB_CLIENT_ID, STUB_CLIENT_SECRET } = await import('./graph-stub.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    stub = await startGraphStub();
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`drop schema if exists s244 cascade`);
+    await owner.query(`create schema s244;
+      create table s244.doc (id serial primary key, title text not null, file_key text, file_name text);
+      alter table s244.doc enable row level security;
+      create policy visible on s244.doc using (title <> 'hidden');
+      grant usage on schema s244 to pgkiln_runtime, hr_app;
+      grant all on all tables in schema s244 to pgkiln_runtime, hr_app;
+      grant all on all sequences in schema s244 to pgkiln_runtime, hr_app;`);
+    gApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'S244', 'none', 'hr_app') returning id`, [ALIAS])).id;
+    await owner.query(`insert into meta.web_credential (app_id, name, type, username, secret_enc, token_url, grant_type, valid_for) values ($1, 'S244_GRAPH', 'oauth2', $2, $3, $4, 'client_credentials', $5)`,
+      [gApp, STUB_CLIENT_ID, encryptSecret(STUB_CLIENT_SECRET), stub.tokenUrl, [stub.url + '/']]);
+    const pid = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth, protection) values ($1, 1, 'Doc', false, 'unrestricted') returning id`, [gApp])).id;
+    const rid = (await owner.one(`insert into meta.region (page_id, seq, title, type, table_name, pk_column, pk_item) values ($1, 10, 'Doc', 'form', 's244.doc', 'id', 'P1_ID') returning id`, [pid])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, type, source_column, config) values
+        ($1, $2, 10, 'P1_ID', 'hidden', 'id', '{}'), ($1, $2, 20, 'P1_TITLE', 'text', 'title', '{}'), ($1, $2, 30, 'P1_FILE', 'file', 'file_key', $3)`,
+      [pid, rid, JSON.stringify({ object_store: store(), filename_column: 'file_name' })]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label) values ($1, $2, 10, 'CREATE', 'Create'), ($1, $2, 20, 'SAVE', 'Save'), ($1, $2, 30, 'DELETE', 'Delete')`, [pid, rid]);
+    await owner.query(`insert into meta.process (page_id, seq, name, type, region_id) values ($1, 10, 'Save', 'form_dml', $2)`, [pid, rid]);
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`drop schema if exists s244 cascade`);
+    await stub?.close();
+    restore(saved);
+  });
+
+  const upload = async (b: FileBrowser, title: string, name: string, text: string) => {
+    await b.get(`/a/${ALIAS}/1`);
+    return b.upload(`/a/${ALIAS}/1`, { __request: 'CREATE', P1_TITLE: title }, { P1_FILE: { name, type: 'text/plain', data: Buffer.from(text) } });
+  };
+
+  test('the folder and the item id can\'t be steered: not by the file name, a posted value, or a key written into the table', async () => {
+    const { getObject, deleteObject, objectStoreProblem } = await import('../src/objectstore.ts');
+    const { stubItem } = await import('./graph-stub.ts');
+    const b = new FileBrowser(app);
+    // a file name with a path stays one name in the configured folder
+    let res = await upload(b, 'Traversal', '../../Finance/payroll.txt', 'x');
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    const mine = [...stub.items.values()].filter((i) => i.drive === DRIVE);
+    assert.deepEqual(mine.map((i) => [i.folder, i.name.includes('/')]), [['HR/Contracts', false]]);
+    // a posted text value never sets the key
+    const row = await owner.one(`select id, file_key from s244.doc where title = 'Traversal'`);
+    await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`);
+    res = await b.submit(`/a/${ALIAS}/1`, { __request: 'SAVE', P1_ID: String(row.id), P1_TITLE: 'Traversal', P1_FILE: '01OTHERITEM' });
+    assert.equal((await owner.one(`select file_key from s244.doc where id = $1`, [row.id])).file_key, row.file_key);
+    // a key that points elsewhere in the drive (written by SQL) is neither downloaded nor deleted
+    const payroll = stubItem(stub, DRIVE, 'Finance', 'payroll.xlsx', 'salaries');
+    const lookalike = stubItem(stub, DRIVE, 'HR/Contracts-old', 'x.txt', 'old');
+    await assert.rejects(getObject(gApp, store(), payroll), /not in the folder/);
+    await assert.rejects(getObject(gApp, store(), lookalike), /not in the folder/);
+    await assert.rejects(deleteObject(gApp, store(), payroll), /not removed/);
+    assert.ok(stub.items.has(payroll));
+    await owner.query(`update s244.doc set file_key = $2 where id = $1`, [row.id, payroll]);
+    const page = (await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`)).body;
+    const link = /href="(\/a\/s244-graph\/1\/file\/P1_FILE\?[^"]+)"/.exec(page)![1].replace(/&amp;/g, '&');
+    const dl = await b.get(link);
+    assert.notEqual(dl.statusCode, 200);
+    assert.doesNotMatch(dl.body, /salaries/);
+    await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`);
+    await b.submit(`/a/${ALIAS}/1`, { __request: 'DELETE', P1_ID: String(row.id), P1_TITLE: 'Traversal' });
+    assert.ok(stub.items.has(payroll), 'deleting the record does not delete a file outside the folder');
+    // ids that would move the URL ("..", a path) are refused before any request
+    stub.log.length = 0;
+    for (const id of ['..', '.', 'a/../../root', 'x?y', 'x#y', '%2e%2e']) {
+      const e = await getObject(gApp, store(), id).then((v) => v, (x: Error) => x);
+      assert.ok(e === null || e instanceof Error, id);
+      if (e instanceof Error) assert.doesNotMatch(e.message, /salaries/);
+    }
+    assert.equal(stub.log.filter((l) => l.path.startsWith('/v1.0/')).length, 0);
+    // the configuration can't name a folder outside, or a drive / site with a path
+    for (const bad of [{ folder: '../Finance' }, { folder: 'HR/./x' }, { folder: 'HR\\..\\x' }, { drive: '../sites/x' }, { drive: '..' }, { site: 'a/b' }, { url: 'file:///etc' }])
+      assert.ok(objectStoreProblem({ ...store(), ...bad }), JSON.stringify(bad));
+    stub.items.delete(payroll);
+    stub.items.delete(lookalike);
+  });
+
+  test('downloads keep the checksum and the row\'s authorization (RLS); the credential and Graph\'s URLs are never shown', async () => {
+    const { STUB_TOKEN, STUB_CLIENT_SECRET } = await import('./graph-stub.ts');
+    const b = new FileBrowser(app);
+    assert.equal((await upload(b, 'Visible', 'v.txt', 'visible content')).statusCode, 303);
+    const row = await owner.one(`select id from s244.doc where title = 'Visible'`);
+    const page = (await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`)).body;
+    for (const s of [STUB_TOKEN, STUB_CLIENT_SECRET, stub.url, stub.filesOrigin, 'tempauth', DRIVE]) assert.ok(!page.includes(s), s);
+    const link = /href="(\/a\/s244-graph\/1\/file\/P1_FILE\?[^"]+)"/.exec(page)![1].replace(/&amp;/g, '&');
+    const dl = await b.get(link);
+    assert.equal(dl.statusCode, 200);
+    assert.equal(dl.body, 'visible content');
+    for (const s of [STUB_TOKEN, stub.filesOrigin, 'tempauth']) assert.ok(!JSON.stringify(dl.headers).includes(s), s);
+    // another key with this checksum, a forged checksum: refused before Graph is asked (the checksum is bound to the
+    // user; this application has no sign-in, so every visitor is the same nobody)
+    stub.log.length = 0;
+    const u = new URL(link, 'http://x');
+    u.searchParams.set('k', String(row.id + 1));
+    assert.equal((await b.get(u.pathname + u.search)).statusCode, 403);
+    assert.equal((await b.get(link.replace(/cs=[^&]+/, 'cs=forged'))).statusCode, 403);
+    assert.equal(stub.log.length, 0);
+    // a row the application's role may not see (RLS): not found, and Graph is not asked
+    await owner.query(`update s244.doc set title = 'hidden' where id = $1`, [row.id]);
+    const hidden = await b.get(link);
+    assert.equal(hidden.statusCode, 404);
+    assert.equal(stub.log.length, 0);
+    // the session's own upload links and the pre-authenticated hops never carry the token
+    await owner.query(`update s244.doc set title = 'Visible' where id = $1`, [row.id]);
+    await b.get(link);
+    assert.ok(stub.log.filter((l) => !l.path.startsWith('/v1.0/') && l.path !== '/oauth/token').every((l) => !l.auth));
+    // the item's configuration holds only the credential's name; the runtime role can't read its secrets
+    const conf = await owner.one(`select config from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and i.name = 'P1_FILE'`, [gApp]);
+    assert.doesNotMatch(JSON.stringify(conf), /secret|token/i);
+    await assert.rejects(runtime.query(`select secret_enc from meta.web_credential where app_id = $1`, [gApp]), /permission denied/);
+  });
+
+  test('Graph, the token endpoint and the upload URL Graph answers with all pass the allow-list and private-address checks', async () => {
+    const { putObject } = await import('../src/objectstore.ts');
+    const { STUB_CLIENT_SECRET, STUB_TOKEN } = await import('./graph-stub.ts');
+    const s = envOf(['PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS']);
+    const put = (o = store(), body = Buffer.from('x')) => putObject(gApp, o, 'a.txt', body, 'text/plain').then(() => null, (x: Error) => x);
+    try {
+      // a Graph URL on a host not on the allow-list: refused before a token is asked for
+      const tokens = stub.tokensIssued;
+      process.env.PGKILN_REST_ALLOWED_HOSTS = 'graph.microsoft.com';
+      delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      let e = await put({ ...store(), url: 'https://graph.evil.example/v1.0' });
+      assert.match(e!.message, /allow-list/);
+      // a private address, even with every public host allowed
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      for (const url of ['http://169.254.169.254/v1.0', 'http://10.0.0.1/v1.0', stub.url]) {
+        e = await put({ ...store(), url });
+        assert.ok(e, url);
+        assert.match(e!.message, /private, loopback or link-local|allow-list|not valid for this URL/, url);
+      }
+      assert.equal(stub.tokensIssued, tokens);
+      // the upload session's URL comes from Graph's answer: it is checked like any other
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      for (const override of ['http://10.9.8.7/upload/1', 'http://169.254.169.254/latest/meta-data', 'https://elsewhere.example.org/upload', 'file:///etc/passwd']) {
+        stub.uploadUrlOverride = override;
+        e = await put(store(), Buffer.alloc(4 * 1024 * 1024 + 1));
+        assert.ok(e, override);
+        for (const secret of [STUB_TOKEN, STUB_CLIENT_SECRET]) assert.doesNotMatch(e!.message, new RegExp(secret));
+      }
+    } finally {
+      stub.uploadUrlOverride = null;
+      restore(s);
+    }
+  });
+});
+
 describe('sprint 247 MG-20', () => {
   // A multiple file item's "filter" (constant columns of a child table shared by several record types) comes from the
   // item's attributes only: a request can't change, widen or drop it, so one record type's form never removes, serves
@@ -20858,7 +21029,8 @@ describe('sprint 247 MG-20', () => {
     const b = await openFolder();
     assert.equal((await b.upload('/a/sample-files/5', { __request: 'DELETE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: '' }, {})).statusCode, 303);
     assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 0);
-    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);  });
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);
+  });
 });
 
 describe('sprint 245 MG-18', () => {
