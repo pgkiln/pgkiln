@@ -128,9 +128,10 @@ export async function importDoc(db: Db, doc: Doc, { alias, replace, check = 'off
     return { id, replaced: !!exists, scripts, findings, committed: true, roleNote, filled };
   } catch (e) {
     await db.query('rollback').catch(() => {});
-    // (sprint 242) a required key that a file leaves out: name the file, the component and the key
-    const { explainNotNull } = await import('../import-defaults.ts');
-    const why = explainNotNull(e, doc);
+    // (sprint 242) a required key that a file leaves out, (sprint 251, MG-28) a value of the wrong type, a unique key
+    // given twice, a value a check refuses: name the file, the component and the key (src/import-errors.ts)
+    const { explainImportError } = await import('../import-errors.ts');
+    const why = await explainImportError(e, doc, { db }).catch(() => null);
     if (why) throw new UsageError(why);
     throw e;
   }
