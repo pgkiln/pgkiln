@@ -1723,7 +1723,7 @@ export const pt: BuilderMessages = {
   'st.db_member_ph': 'por exemplo app_users_group',
   'st.db_member_help': 'Todos os membros deste papel também podem entrar.',
   'st.custom_title': 'Autenticação personalizada',
-  'st.custom_intro': 'Usado somente quando a autenticação é “Personalizada”. Seu próprio PL/pgSQL verifica o nome de usuário e a senha do formulário, com o papel de banco de dados da aplicação; a senha é passada como parâmetro e nunca registrada. Tentativas falhas são limitadas como os outros logins. Sem nenhum dos dois campos ninguém pode entrar.',
+  'st.custom_intro': 'Usado somente quando a autenticação é “Personalizada”. Seu próprio PL/pgSQL verifica o nome de usuário e a senha do formulário, com o papel de banco de dados da aplicação; a senha é passada como parâmetro e nunca registrada. Tentativas falhas são limitadas como os outros logins. Sem nenhum destes campos ninguém pode entrar.',
   'st.custom_fn': 'Nome da função',
   'st.custom_fn_ph': 'por exemplo app.check_login',
   'st.custom_fn_help': 'Uma função (p_username text, p_password text) returns boolean, em minúsculas, opcionalmente com o esquema. O papel da aplicação precisa de EXECUTE nela. Tem prioridade sobre o corpo abaixo.',

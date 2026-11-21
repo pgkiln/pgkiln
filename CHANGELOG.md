@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Password hashes of other systems** (sprint 248, MG-21, migration 204): custom authentication takes a *password hash query* that returns the stored hash for `p_username`, and the server checks the password in constant time: Django `pbkdf2_sha256$` / `pbkdf2_sha1$` (in Node, ~0.15 s for 1,000,000 rounds instead of ~1.5 s in PL/pgSQL), bcrypt `$2a$` / `$2b$` / `$2y$` (PHP `password_hash`) and Django's bcrypt hashers. Unknown users, unreadable hashes and query errors get the same answer, take as long and count for sign-in throttling. Argon2 hashes are refused (not supported yet).
+- **`meta.make_password_hash(password, format, cost)`** (sprint 248, MG-21) writes bcrypt or Django PBKDF2 hashes, e.g. on a password-change page. App Gallery sample *Sample Sign-in* signs in against a Django-style user table with Django and PHP hashes.
+
 ## [0.113.0] - 2026-11-20
 
 ### Added

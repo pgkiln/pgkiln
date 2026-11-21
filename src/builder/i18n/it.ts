@@ -1723,7 +1723,7 @@ export const it: BuilderMessages = {
   'st.db_member_ph': 'ad es. app_users_group',
   'st.db_member_help': 'Anche ogni membro di questo ruolo può accedere.',
   'st.custom_title': 'Autenticazione personalizzata',
-  'st.custom_intro': 'Usata solo quando Autenticazione è "Personalizzata". Il proprio codice PL/pgSQL verifica nome utente e password del form di accesso, con il ruolo del database dell’applicazione; la password viene passata come parametro e mai registrata. I tentativi non riusciti vengono limitati come gli altri accessi. Se nessuno dei due campi è impostato, nessuno può accedere.',
+  'st.custom_intro': 'Usata solo quando Autenticazione è "Personalizzata". Il proprio codice PL/pgSQL verifica nome utente e password del form di accesso, con il ruolo del database dell’applicazione; la password viene passata come parametro e mai registrata. I tentativi non riusciti vengono limitati come gli altri accessi. Se nessuno di questi campi è impostato, nessuno può accedere.',
   'st.custom_fn': 'Nome della funzione',
   'st.custom_fn_ph': 'ad es. app.check_login',
   'st.custom_fn_help': 'Una funzione (p_username text, p_password text) returns boolean, in minuscolo, facoltativamente con lo schema. Il ruolo dell’applicazione necessita di EXECUTE su di essa. Ha la precedenza sul corpo sottostante.',

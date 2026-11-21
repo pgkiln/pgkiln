@@ -1723,7 +1723,7 @@ export const nl: BuilderMessages = {
   'st.db_member_ph': 'bijv. app_users_group',
   'st.db_member_help': 'Elk lid van deze rol mag ook aanmelden.',
   'st.custom_title': 'Eigen authenticatie',
-  'st.custom_intro': 'Alleen gebruikt als de authenticatie “Eigen” is. Uw eigen PL/pgSQL controleert de gebruikersnaam en het wachtwoord van het aanmeldformulier, als databaserol van de applicatie; het wachtwoord gaat mee als parameter en wordt nooit gelogd. Mislukte pogingen worden afgeremd zoals andere aanmeldingen. Zonder een van beide velden kan niemand aanmelden.',
+  'st.custom_intro': 'Alleen gebruikt als de authenticatie “Eigen” is. Uw eigen PL/pgSQL controleert de gebruikersnaam en het wachtwoord van het aanmeldformulier, als databaserol van de applicatie; het wachtwoord gaat mee als parameter en wordt nooit gelogd. Mislukte pogingen worden afgeremd zoals andere aanmeldingen. Zonder een van deze velden kan niemand aanmelden.',
   'st.custom_fn': 'Functienaam',
   'st.custom_fn_ph': 'bijv. app.check_login',
   'st.custom_fn_help': 'Een functie (p_username text, p_password text) returns boolean, in kleine letters, eventueel met schema. De rol van de applicatie heeft EXECUTE erop nodig. Gaat voor de body hieronder.',

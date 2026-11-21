@@ -1727,7 +1727,7 @@ export const en = {
   'st.db_member_ph': 'e.g. app_users_group',
   'st.db_member_help': 'Every member of this role may sign in too.',
   'st.custom_title': 'Custom authentication',
-  'st.custom_intro': "Only used when Authentication is \"Custom\". Your own PL/pgSQL checks the user name and password on the sign-in form, as the application's database role; the password is passed as a parameter and never logged. Failed attempts are throttled like other sign-ins. With neither field set nobody can sign in.",
+  'st.custom_intro': "Only used when Authentication is \"Custom\". Your own PL/pgSQL checks the user name and password on the sign-in form, as the application's database role; the password is passed as a parameter and never logged. Failed attempts are throttled like other sign-ins. With none of these fields set nobody can sign in.",
   'st.custom_fn': 'Function name',
   'st.custom_fn_ph': 'e.g. app.check_login',
   'st.custom_fn_help': "A function (p_username text, p_password text) returns boolean, in lower case, optionally with its schema. The app's role needs EXECUTE on it. Takes precedence over the body below.",

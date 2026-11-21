@@ -1723,7 +1723,7 @@ export const de: BuilderMessages = {
   'st.db_member_ph': 'z. B. app_users_group',
   'st.db_member_help': 'Jedes Mitglied dieser Rolle darf sich ebenfalls anmelden.',
   'st.custom_title': 'Eigene Authentifizierung',
-  'st.custom_intro': 'Nur verwendet, wenn die Authentifizierung „Eigene“ ist. Ihr eigenes PL/pgSQL prüft Benutzername und Passwort des Anmeldeformulars, als Datenbankrolle der Anwendung; das Passwort wird als Parameter übergeben und nie protokolliert. Fehlversuche werden wie andere Anmeldungen gebremst. Ohne eines der beiden Felder kann sich niemand anmelden.',
+  'st.custom_intro': 'Nur verwendet, wenn die Authentifizierung „Eigene“ ist. Ihr eigenes PL/pgSQL prüft Benutzername und Passwort des Anmeldeformulars, als Datenbankrolle der Anwendung; das Passwort wird als Parameter übergeben und nie protokolliert. Fehlversuche werden wie andere Anmeldungen gebremst. Ohne eines dieser Felder kann sich niemand anmelden.',
   'st.custom_fn': 'Funktionsname',
   'st.custom_fn_ph': 'z. B. app.check_login',
   'st.custom_fn_help': 'Eine Funktion (p_username text, p_password text) returns boolean, in Kleinbuchstaben, optional mit Schema. Die Rolle der Anwendung braucht EXECUTE darauf. Hat Vorrang vor dem Funktionsrumpf unten.',

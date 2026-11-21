@@ -1723,7 +1723,7 @@ export const es: BuilderMessages = {
   'st.db_member_ph': 'p. ej. app_users_group',
   'st.db_member_help': 'Todos los miembros de este rol también pueden iniciar sesión.',
   'st.custom_title': 'Autenticación personalizada',
-  'st.custom_intro': 'Solo se usa cuando la autenticación es «Personalizada». Su propio PL/pgSQL comprueba el nombre de usuario y la contraseña del formulario, con el rol de base de datos de la aplicación; la contraseña se pasa como parámetro y nunca se registra. Los intentos fallidos se limitan como otros inicios de sesión. Sin ninguno de los dos campos nadie puede iniciar sesión.',
+  'st.custom_intro': 'Solo se usa cuando la autenticación es «Personalizada». Su propio PL/pgSQL comprueba el nombre de usuario y la contraseña del formulario, con el rol de base de datos de la aplicación; la contraseña se pasa como parámetro y nunca se registra. Los intentos fallidos se limitan como otros inicios de sesión. Sin ninguno de estos campos nadie puede iniciar sesión.',
   'st.custom_fn': 'Nombre de la función',
   'st.custom_fn_ph': 'p. ej. app.check_login',
   'st.custom_fn_help': 'Una función (p_username text, p_password text) returns boolean, en minúsculas, opcionalmente con su esquema. El rol de la aplicación necesita EXECUTE sobre ella. Tiene prioridad sobre el cuerpo de abajo.',
