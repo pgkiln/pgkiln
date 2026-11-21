@@ -1001,7 +1001,7 @@ describe('sprint 23: code editor', () => {
       assert.ok(names.includes('hr.<img src=x onerror=alert(1)>'), 'odd names are data');
       assert.ok(!names.includes('hr.sec23_closed'), 'no ungranted tables');
       assert.ok(!names.some((n: string) => /^meta\.(developer|account|session|instance_setting|app)$/.test(n)), 'no closed metadata');
-      assert.ok(!JSON.stringify(data).includes('password_hash'));
+      assert.doesNotMatch(JSON.stringify(data), /(^|[^a-z_])password_hash/, 'no password hash column (meta.make_password_hash is a public function)');
       // the editor never parses suggestions or code as HTML
       const js = (await app.inject({ method: 'GET', url: '/static/code-editor.js' })).body;
       assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|setAttribute\('style'/);
@@ -1075,7 +1075,7 @@ describe('sprint 23: code editor', () => {
       // only the columns granted to that role (never the password hash)
       const account = n.relations.find((r: any) => r.schema === 'meta' && r.name === 'account');
       assert.ok(!account || !account.columns.some((c: any) => c.name === 'password_hash'));
-      assert.ok(!JSON.stringify(n).includes('password_hash'));
+      assert.doesNotMatch(JSON.stringify(n), /(^|[^a-z_])password_hash/);
       assert.deepEqual(n.items, []);
       // the cache is per app: asking for one app never answers for another
       assert.notDeepEqual((await get(other)).relations, (await get(appId)).relations);
