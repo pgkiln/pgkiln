@@ -1001,7 +1001,7 @@ describe('sprint 23: code editor', () => {
       assert.ok(names.includes('hr.<img src=x onerror=alert(1)>'), 'odd names are data');
       assert.ok(!names.includes('hr.sec23_closed'), 'no ungranted tables');
       assert.ok(!names.some((n: string) => /^meta\.(developer|account|session|instance_setting|app)$/.test(n)), 'no closed metadata');
-      assert.ok(!JSON.stringify(data).includes('password_hash'));
+      assert.doesNotMatch(JSON.stringify(data), /(^|[^a-z_])password_hash/, 'no password hash column (meta.make_password_hash is a public function)');
       // the editor never parses suggestions or code as HTML
       const js = (await app.inject({ method: 'GET', url: '/static/code-editor.js' })).body;
       assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|setAttribute\('style'/);
@@ -1075,7 +1075,7 @@ describe('sprint 23: code editor', () => {
       // only the columns granted to that role (never the password hash)
       const account = n.relations.find((r: any) => r.schema === 'meta' && r.name === 'account');
       assert.ok(!account || !account.columns.some((c: any) => c.name === 'password_hash'));
-      assert.ok(!JSON.stringify(n).includes('password_hash'));
+      assert.doesNotMatch(JSON.stringify(n), /(^|[^a-z_])password_hash/);
       assert.deepEqual(n.items, []);
       // the cache is per app: asking for one app never answers for another
       assert.notDeepEqual((await get(other)).relations, (await get(appId)).relations);
@@ -20626,5 +20626,101 @@ describe('sprint 243 MG-17', () => {
     } finally {
       await owner.query(`delete from hr.crm_file where name like 's243-sec%'`);
     }
+  });
+});
+
+describe('sprint 248 MG-21', () => {
+  // Custom authentication's hash query (src/customauth.ts, src/password-hashes.ts): the app's SQL returns the stored
+  // hash, the server checks the password. A wrong password, an unknown user and a hash that can't be read give the
+  // same answer and count for throttling; errors of the query don't reach the page; the query can't write and never
+  // sees the password; the password is in no log.
+  const alias = 'sec248-hash';
+  const ROLE = 'pgkiln_sec248';
+  const SCHEMA = 'sec248';
+  const PW = 'Sec248-right-pw!';
+  let sApp: number;
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    if ((await owner.query('select 1 from pg_roles where rolname = $1', [ROLE])).rowCount) {
+      await owner.query(`drop owned by ${ROLE}`);
+      await owner.query(`drop role ${ROLE}`);
+    }
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    await owner.query(`create schema ${SCHEMA}`);
+    await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
+    await owner.query(`create table ${SCHEMA}.users (name text primary key, hash text)`);
+    await owner.query(`insert into ${SCHEMA}.users values ('erin', meta.make_password_hash($1, 'bcrypt', 4)), ('frank', 'pbkdf2_sha256$1000$salt$!!!'), ('gina', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA'), ('hank', null)`, [PW]);
+    await owner.query(`grant select, update on ${SCHEMA}.users to ${ROLE}`);
+    sApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role, custom_auth_hash_query) values ($1, 'Sec 248', 'custom', $2, $3) returning id`,
+      [alias, ROLE, `select hash from ${SCHEMA}.users where name = p_username`])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [sApp]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [sApp]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+  const attempt = async (username: string, password: string) => {
+    const b = new Browser();
+    await b.get(`/a/${alias}/login`);
+    const res = await b.post(`/a/${alias}/login`, { __csrf: b.lastCsrf, username, password });
+    return { res, body: res.body.replace(/value="[^"]*"/g, '') };
+  };
+  const clearLog = () => owner.query('delete from meta.activity_log where app_id = $1', [sApp]);
+
+  test('a wrong password, an unknown user, no hash, a malformed and an unsupported hash: one answer, each counted for throttling', async () => {
+    await clearLog();
+    const limit = (await import('../src/security.ts')).loginMaxFailuresPerUser();
+    const bodies = new Set<string>();
+    for (const user of ['erin', 'nobody-248', 'hank', 'frank', 'gina']) {
+      for (let i = 0; i < limit; i++) {
+        const { res, body } = await attempt(user, user === 'erin' ? `wrong-${i}` : PW);
+        assert.equal(res.statusCode, 401, `${user} ${i}`);
+        bodies.add(body);
+      }
+      assert.equal(Number((await owner.one(`select count(*) as n from meta.activity_log where app_id = $1 and username = $2 and event = 'login_failed'`, [sApp, user])).n), limit, `${user}: counted`);
+      // throttled now, even with the right password
+      assert.equal((await attempt(user, PW)).res.statusCode, 429, `${user}: throttled`);
+    }
+    assert.equal(bodies.size, 1, 'the same page for every refusal');
+    // the password is in no log line
+    assert.equal((await owner.one(`select count(*) as n from meta.activity_log where app_id = $1 and detail like '%' || $2 || '%'`, [sApp, PW])).n, '0');
+    await clearLog();
+    assert.equal((await attempt('erin', PW)).res.statusCode, 303, 'the right password, once not throttled');
+    await clearLog();
+  });
+
+  test("the query's errors stay in the activity log as a SQLSTATE; the query can't write and never sees the password", async () => {
+    const setQuery = (q: string) => owner.query('update meta.app set custom_auth_hash_query = $2 where id = $1', [sApp, q]);
+    try {
+      for (const q of [`select hash from ${SCHEMA}.secret_table_248 where name = p_username`, `select hash from ${SCHEMA}.users where name = p_username::int::text`,
+                       `update ${SCHEMA}.users set hash = 'x' where name = p_username returning hash`, `select current_setting('pgkiln.password', true)`]) {
+        await setQuery(q);
+        const { res } = await attempt("erin' or '1'='1", PW);
+        assert.equal(res.statusCode, 401, q);
+        assert.doesNotMatch(res.body, /secret_table_248|invalid input|does not exist|erin' or|42P01|22P02/, q);
+        const log = await owner.one(`select detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id desc limit 1`, [sApp]);
+        assert.doesNotMatch(log.detail, /secret_table_248|erin'|Sec248/, 'only a SQLSTATE');
+      }
+      assert.equal((await owner.one(`select count(*) as n from ${SCHEMA}.users where hash = 'x'`)).n, '0', 'nothing written');
+      // the dollar-quote tag can't be closed from the query
+      await setQuery(`select 1::text $pgkiln_0$ ; drop table ${SCHEMA}.users; --`);
+      assert.equal((await attempt('erin', PW)).res.statusCode, 401);
+      assert.ok(await owner.one(`select 1 as ok from ${SCHEMA}.users limit 1`), 'the table is still there');
+    } finally {
+      await setQuery(`select hash from ${SCHEMA}.users where name = p_username`);
+      await clearLog();
+    }
+  });
+
+  test('meta.make_password_hash: any role may hash; limits on cost and format', async () => {
+    const h = await appTx({ appId: sApp, alias, dbRole: ROLE, appUser: 'nobody', sessionId: '' }, async (c) => (await c.query(`select meta.make_password_hash('x', 'bcrypt', 4) as h`)).rows[0].h);
+    assert.match(h, /^\$2a\$04\$/);
+    await assert.rejects(owner.query(`select meta.make_password_hash('x', 'bcrypt', 31)`), /cost/);
+    await assert.rejects(owner.query(`select meta.make_password_hash('x', 'pbkdf2_sha256', 100000000)`), /iterations/);
+    await assert.rejects(owner.query(`select meta.make_password_hash('x', 'md5')`), /unknown format/);
   });
 });

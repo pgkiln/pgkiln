@@ -157,6 +157,12 @@ src/
                            (sprint 241, MG-15, migration 197) meta.set_auth_user: the phase pgkiln.auth_phase is set around the post-authentication
                            code only, pgkiln.auth_user cleared before and read right after it (same transaction), authUserProblem() checks the
                            name again (= meta.auth_user_problem); "nobody" is never a session's user
+                           (sprint 248, MG-21, migration 204) the hash query (custom_auth_hash_query): a pg_temp SQL function
+                           (p_username) returns setof text, stable, in its own transaction; checked outside it by password-hashes.ts;
+                           an unknown user or bad hash gets dummyCheck() with the app's last real hash shape (lastShape)
+  password-hashes.ts       (sprint 248, MG-21) other systems' password hashes: parseHash (Django pbkdf2_sha256$/pbkdf2_sha1$, bcrypt
+                           $2a$/$2b$/$2y$ normalised to $2a$, Django bcrypt$/bcrypt_sha256$; argon2 and $2x$ unsupported), verifyPasswordHash
+                           (crypto.pbkdf2, bcrypt via a BcryptFn = pgcrypto crypt(), timingSafeEqual), dummyCheck; meta.make_password_hash in 204
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   remember-username.ts     (sprint 231, AX-13, migration 189) "Remember username": the cookie pgkiln_user_<app id> of the app's path
                            (the typed name only, HttpOnly, SameSite=Lax), rememberedUsername() fills the sign-in form,

@@ -20,6 +20,7 @@ triggers, your own functions).
 | `meta.csv_field(value, separator default ',', is_text default true)` | text | One CSV field: quoted when needed, a formula neutralised |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
+| `meta.make_password_hash(password, format, cost)` | text | (sprint 248) A password hash custom authentication's hash query checks: `'bcrypt'` (default, cost 4–16, default 12) or Django's `'pbkdf2_sha256'` / `'pbkdf2_sha1'` (iterations 1,000–10,000,000, default 1,000,000) ([chapter 8](08-security.md#password-hashes-of-another-system)) |
 | `meta.set_auth_user(name)`, `meta.auth_user_problem(name)` | void / text | (sprint 241) In a custom authentication scheme's post-authentication code only: the user name the session gets, e.g. `lower(p_username)` (APEX: `apex_custom_auth.set_user`); an error anywhere else. `auth_user_problem` says why a name can't be one (NULL: it can) ([chapter 8](08-security.md#setting-the-user-name)) |
 | `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |
 | `meta.tenant_id()` | text | The current session's tenant, or NULL (APEX: `sys_context('APEX$SESSION', 'APP_TENANT_ID')`); in a workflow step, the workflow's tenant |
@@ -513,6 +514,7 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `home_page` | int | Page opened by `/a/<alias>` |
 | `authentication` | text | `app_users`, `header`, `database`, `custom` or `none` |
 | `custom_auth_function`, `custom_auth_code`, `custom_auth_post_code` | text | Custom authentication: a function `(p_username text, p_password text) returns boolean`, or a PL/pgSQL body, and post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) |
+| `custom_auth_hash_query` | text | (204) Custom authentication: or a query with `p_username` returning the stored password hash (Django `pbkdf2_sha256$`/`pbkdf2_sha1$`, bcrypt), checked by the server ([chapter 8](08-security.md#password-hashes-of-another-system)) |
 | `nav_list`, `navbar_list` | text | A list shown as the navigation menu (instead of `nav_entry`) and as the navigation bar |
 | `access_control` | text | `assigned` (only accounts with access) or `any_user` |
 | `local_login` | boolean | Offer username and password sign-in |
