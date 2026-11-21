@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A document's PDF as a file** (sprint 245, MG-18, migration 202): `meta.document_temp_file(template, items, filename)` returns the id of a temporary file that the server draws as the document template's PDF when the process ends; the next process of the same submit reads it from `meta.temp_files`, to store it in a table, attach it or send it with `meta.web_request(..., p_body_blob)`. A transaction never commits an undrawn one. HR part 109 (page 3, *Keep a copy*) stores an employee record PDF.
+- **Images inside document table cells and paragraphs** (sprint 245, MG-26): width in mm, % or px, side by side while they fit (a logo beside the title, two signatures next to each other); headings in cells are drawn at their size. The Advisor warns when a document template's query has a column named like a built-in (`rows`, `APP_USER`, `APP_NAME`, `TODAY`, `NOW`).
+
+### Fixed
+- `<br>` in a document template's paragraph or table cell starts a new line (the lines ran together) (sprint 245, MG-26). Application files write a report layout's logo in 76-character base64 lines, as `export_app` does.
+
 ## [0.113.0] - 2026-11-20
 
 ### Added
