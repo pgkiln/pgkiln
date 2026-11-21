@@ -20537,3 +20537,62 @@ describe('sprint 240 MG-7/MG-8', () => {
     }
   });
 });
+
+describe('sprint 247 MG-20', () => {
+  // A multiple file item's "filter" (constant columns of a child table shared by several record types) comes from the
+  // item's attributes only: a request can't change, widen or drop it, so one record type's form never removes, serves
+  // or adds another record type's files, even with the same related_id and a valid download checksum.
+  let g: typeof import('./gallery-samples.ts');
+  let sfApp: number;
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const sample = () => g.SAMPLES.find((x) => x.key === 'sample-files')!;
+  const openFolder = async () => {
+    const b = new FileBrowser(app);
+    await b.login('demo', 'demo', 'sample-files');
+    const items = { P5_ID: '1' };
+    assert.equal((await b.get(`/a/sample-files/5?${new URLSearchParams({ ...items, cs: urlChecksum(sfApp, 5, 'demo', items) })}`)).statusCode, 200);
+    return b;
+  };
+  const personPicture = async () => (await owner.one(`select id from sample_files.picture where related_type = 'person' and related_id = '1'`)).id as number;
+  before(async () => {
+    g = await import('./gallery-samples.ts');
+    await g.dropSample(sample());
+    await g.installSample(sample());
+    sfApp = (await owner.one(`select id from meta.app where alias = 'sample-files'`)).id;
+  });
+  after(async () => {
+    await g.dropSample(sample());
+  });
+
+  test("a forged remove box with another record type's file id removes nothing of it", async () => {
+    const pid = await personPicture();
+    const b = await openFolder();
+    const res = await b.upload('/a/sample-files/5', { __request: 'SAVE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: 'x', P5_PICTURES__REMOVE: [String(pid), `${pid} or true`] }, {});
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    assert.equal((await owner.one('select count(*)::int as n from sample_files.picture where id = $1', [pid])).n, 1);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 1);
+  });
+
+  test('posted fields named like the filter column or the item attributes do not change what is written', async () => {
+    const b = await openFolder();
+    const res = await b.upload('/a/sample-files/5', { __request: 'SAVE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: 'x', related_type: 'person', P5_PICTURES__FILTER: '{}', filter: 'person' },
+      { P5_PICTURES: { name: 'forged.png', type: 'image/png', data: PNG } });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    assert.deepEqual((await owner.one(`select related_type, related_id from sample_files.picture where filename = 'forged.png'`)), { related_type: 'folder', related_id: '1' });
+  });
+
+  test("a download with a valid checksum for another record type's file is not found through this item", async () => {
+    const pid = String(await personPicture());
+    const b = await openFolder();
+    const url = (item: string, page: number) => `/a/sample-files/${page}/file/${item}?${new URLSearchParams({ k: pid, cs: urlChecksum(sfApp, page, 'demo', { __FILE: item, __KEY: pid }) })}`;
+    assert.equal((await b.get(url('P5_PICTURES', 5))).statusCode, 404, 'the folder item: filtered');
+    assert.equal((await b.get(url('P7_PICTURES', 7))).statusCode, 200, "the person item: its own file");
+  });
+
+  test('deleting a record deletes only its own record type\'s files', async () => {
+    const b = await openFolder();
+    assert.equal((await b.upload('/a/sample-files/5', { __request: 'DELETE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: '' }, {})).statusCode, 303);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 0);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);
+  });
+});
