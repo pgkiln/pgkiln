@@ -7,6 +7,7 @@
 const GUIDE = 'https://pgkiln.vargar.eu/docs';
 
 export const REGION_CONFIG_HELP: [string[], string][] = [
+  [['json_form'], '{"item":"P3_ANSWERS" (the hidden item the answers post into, as JSON; without it the form is read-only),"read_only":true,"empty_rows":2 (empty rows of a repeating field without JavaScript)}; Source: a SELECT returning the JSON schema (column schema) and the current answers (column value); sprint 246'],
   [['workflow_diagram'], '{"instance_item": "P9_WORKFLOW_ID"}: the item holding the workflow instance to draw (only instances the user started or administers; sprint 160)'],
   [['report'], '{"page_size":15,"pagination":"range" (rows X–Y without a total),"keyset":["id"] (with range: Next/Previous seek on these unique columns),"max_rows":10000,"searchable":true,"sortable":true,"interactive":true,"mobile":"reflow"|"scroll","hidden":["col"],"headings":{"col":"Label"},"link":{"column":"id","page":3,"items":{"P3_ID":"#id#"}},"empty":"No rows","pdf":{"layout":"NAME","columns":["col"],"widths":{"col":40},"align":{"col":"right"}}} (pdf widths in mm; layouts under Shared Components → Report layouts)'],
   [['report', 'classic_report', 'grid', 'cards'], '{"formats":{"sal":"FML999G990D00","hiredate":"DD-MON-YYYY"}} (number or date format masks per column)'],
@@ -62,6 +63,7 @@ const ANCHORS: Record<string, string> = {
   tasks: 'approvals-and-the-task-list',
   workflows: 'workflows',
   workflow_diagram: 'workflow-diagram-region',
+  json_form: 'json_form-json-form',
   login: 'the-login-page',
   classic_report: 'classic_report-classic-report',
   breadcrumb: 'breadcrumb-and-help_text',

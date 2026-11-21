@@ -684,6 +684,7 @@ export const nl: BuilderMessages = {
   'gallery.region.list': 'Lijst',
   'gallery.region.data_reporter': 'Data Reporter',
   'gallery.region.form_designer': 'Formulierontwerper',
+  'gallery.region.json_form': 'JSON-formulier',
   'gallery.region.ai_assistant': 'AI-assistent',
   'gallery.region.url': 'URL',
   'gallery.region.search': 'Zoeken',

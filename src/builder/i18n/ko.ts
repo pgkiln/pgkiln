@@ -684,6 +684,7 @@ export const ko: BuilderMessages = {
   'gallery.region.list': '목록',
   'gallery.region.data_reporter': '데이터 리포터',
   'gallery.region.form_designer': '폼 디자이너',
+  'gallery.region.json_form': 'JSON 폼',
   'gallery.region.ai_assistant': 'AI 어시스턴트',
   'gallery.region.url': 'URL',
   'gallery.region.search': '검색',

@@ -5624,3 +5624,45 @@ document.addEventListener('change', (e) => {
   window.addEventListener('pagehide', send);
 })();
 
+
+// ------------------------------------------------------------ JSON form regions (json-form.ts, sprint 246)
+// Repeated rows: Add a row copies the row <template> (a new index for its field names), Remove takes a row away at
+// once. Without JavaScript the page has a few empty rows and a Remove box per row instead (the server reads both).
+(() => {
+  const enhance = (root) => {
+    root.querySelectorAll('[data-json-form]').forEach((form) => {
+      form.classList.add('jf-js');
+      form.querySelectorAll('[data-jf-add], [data-jf-remove]').forEach((b) => (b.hidden = false));
+    });
+  };
+  enhance(document);
+  document.addEventListener('pgkiln:replaced', (e) => e.detail && enhance(e.detail.parentElement || document));
+  const renumber = (box) => {
+    const pattern = box.dataset.jfRowLabel || '{n}';
+    box.querySelectorAll(':scope > [data-jf-list] > [data-jf-row] > .jf-row-title').forEach((l, i) => (l.textContent = pattern.replace('{n}', String(i + 1))));
+  };
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest && e.target.closest('[data-jf-add]');
+    const remove = !add && e.target.closest && e.target.closest('[data-jf-remove]');
+    const box = (add || remove) && (add || remove).closest('[data-jf-rows]');
+    if (!box) return;
+    const list = box.querySelector(':scope > [data-jf-list]');
+    if (add) {
+      const tpl = box.querySelector(':scope > template[data-jf-template]');
+      const next = Number(box.dataset.jfNext) || 0;
+      box.dataset.jfNext = String(next + 1);
+      list.insertAdjacentHTML('beforeend', tpl.innerHTML.replaceAll('__i__', String(next)).replaceAll('__n__', '0'));
+      const row = list.lastElementChild;
+      row.querySelectorAll('[data-jf-remove]').forEach((b) => (b.hidden = false));
+      renumber(box);
+      const first = row.querySelector('input:not([type=hidden]), select, textarea');
+      if (first) first.focus();
+    } else {
+      const row = remove.closest('[data-jf-row]');
+      if (row) row.remove();
+      renumber(box);
+      box.querySelector(':scope > [data-jf-add]')?.focus();
+    }
+    box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+})();

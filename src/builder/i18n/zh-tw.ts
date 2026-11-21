@@ -684,6 +684,7 @@ export const zhTW: BuilderMessages = {
   'gallery.region.list': '清單',
   'gallery.region.data_reporter': 'Data Reporter',
   'gallery.region.form_designer': '表單設計器',
+  'gallery.region.json_form': 'JSON 表單',
   'gallery.region.ai_assistant': 'AI 助理',
   'gallery.region.url': 'URL',
   'gallery.region.search': '搜尋',

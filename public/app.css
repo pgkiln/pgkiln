@@ -2500,3 +2500,14 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 /* (sprint 241, MG-13) page template No navigation: the Standard page without header, navigation menu and title bar */
 .t-nonav-main { width: 100%; max-width: 1500px; margin: 0 auto; }
 .t-nonav .t-footer { justify-content: flex-start; }
+
+/* (sprint 246, MG-19) JSON form regions (json-form.ts): groups and repeated rows as fieldsets that wrap on phones */
+.json-form .jf-intro { margin: 0 0 1rem; }
+.jf-field > .jf-legend { margin-bottom: 0.4rem; }
+.jf-rows { display: grid; gap: 0.75rem; }
+.jf-row { min-width: 0; margin: 0; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.jf-row-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 0.3rem; }
+.jf-row-actions { display: flex; justify-content: flex-end; margin-top: 0.6rem; }
+.jf-js .jf-remove { display: none; }
+.jf-add { justify-self: start; margin-top: 0.6rem; }
+.json-form .display-value { overflow-wrap: anywhere; }
