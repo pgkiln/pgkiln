@@ -65,7 +65,8 @@ export async function sendBinary(o: BinaryOptions): Promise<WebResponse> {
   for (const [k, v] of Object.entries(o.headers ?? {})) if (!/^content-(length|range)$/i.test(k)) headers[k.toLowerCase()] = v;
   headers['content-type'] = o.contentType || headers['content-type'] || 'application/octet-stream';
   const send = (body: Buffer, extra: Record<string, string> = {}) =>
-    call({ ...o, method, body, headers: { ...headers, 'content-length': String(body.length), ...extra } });
+    // (o.maxBytes limits the body, not the answer)
+    call({ ...o, maxBytes: undefined, method, body, headers: { ...headers, 'content-length': String(body.length), ...extra } });
   if (!o.chunkBytes || o.body.length <= o.chunkBytes) return send(o.body);
   if (!Number.isInteger(o.chunkBytes) || o.chunkBytes < MIN_CHUNK || o.chunkBytes > MAX_CHUNK)
     throw new WebError(`The range size is ${MIN_CHUNK} to ${MAX_CHUNK} bytes.`);
