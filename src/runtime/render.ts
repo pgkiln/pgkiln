@@ -495,12 +495,13 @@ export async function renderPage(ctx: PageContext) {
 
 /** Response to a successful submit inside a dialog: tells the opener to close it. */
 /** (157) `items`: the values a close_dialog process hands to the page below (items of the same name there are set). */
-export function dialogClosePage(ctx: PageContext, items?: Record<string, string>) {
+/** (sprint 249, MG-23) `goto`: the page below goes to this URL (a branch in_page_below) instead of refreshing. */
+export function dialogClosePage(ctx: PageContext, items?: Record<string, string>, goto?: string | null) {
   return documentShell(
     ctx.app.name,
-    html`<main class="t-dialog-main"><p>${ctx.locale.t('dialog.done')} <a href="${ctx.base}/${ctx.app.home_page}">${ctx.locale.t('dialog.continue')}</a></p></main>`,
+    html`<main class="t-dialog-main"><p>${ctx.locale.t('dialog.done')} <a href="${goto || `${ctx.base}/${ctx.app.home_page}`}">${ctx.locale.t('dialog.continue')}</a></p></main>`,
     't-dialog-page',
-    { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no), ...(items && Object.keys(items).length ? { 'data-dialog-items': JSON.stringify(items) } : {}) },
+    { 'data-dialog-close': '1', 'data-dialog-page': String(ctx.page.page_no), ...(items && Object.keys(items).length ? { 'data-dialog-items': JSON.stringify(items) } : {}), ...(goto ? { 'data-dialog-goto': goto } : {}) },
     '',
     { lang: ctx.locale.lang, dir: ctx.locale.dir, theme: ctx.locale.theme, style: ctx.locale.style },
   );

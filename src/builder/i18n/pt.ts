@@ -684,6 +684,7 @@ export const pt: BuilderMessages = {
   'gallery.region.list': 'Lista',
   'gallery.region.data_reporter': 'Data Reporter',
   'gallery.region.form_designer': 'Designer de Formulários',
+  'gallery.region.json_form': 'Formulário JSON',
   'gallery.region.ai_assistant': 'Assistente de IA',
   'gallery.region.url': 'URL',
   'gallery.region.search': 'Pesquisa',

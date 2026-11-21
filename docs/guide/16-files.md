@@ -139,6 +139,8 @@ create table hr.emp_document (
 | `parent_column` | Its column that holds the form record's primary key |
 | `key_column` | Its primary key (default `id`) |
 | `filename_column`, `mime_column`, `accept`, `max_mb` | As for a single file |
+| `filter` | Constant columns of a child table shared by several record types, `{"related_type": "folder"}`: [below](#a-child-table-shared-by-several-record-types) |
+| `display` | `"gallery"`: the files as a [picture gallery](#picture-gallery) instead of a list |
 
 The form lists the record's files with download links (and a small preview for images), followed
 by the files that will be added on save. Every file has a **Remove file** box. Saving the form
@@ -150,6 +152,62 @@ this way (`examples/hr/hr_16_documents.sql`), with row level security on `hr.emp
 ```json
 {"multiple": true, "max_files": 5, "max_mb": 5, "table": "hr.emp_document", "parent_column": "empno",
  "key_column": "id", "filename_column": "filename", "mime_column": "mime_type", "accept": ".pdf,.docx,image/*"}
+```
+
+#### A child table shared by several record types
+
+Some schemas keep the files of several kinds of record in one table, with a column naming the kind
+and one holding the record's id, and no foreign key:
+
+```sql
+create table sample_files.picture (
+  id           int generated always as identity primary key,
+  related_type text not null check (related_type in ('folder', 'person')),
+  related_id   text not null,
+  filename     text not null,
+  mime_type    text not null,
+  content      bytea not null
+);
+create index on sample_files.picture (related_type, related_id);
+```
+
+`filter` names the columns that pick out this item's rows, with their values. They are **written on
+insert** and **added to every read, delete and download** of the item, next to `parent_column`, so
+the folder form only lists, removes and serves folder pictures, even when a person has the same id;
+deleting a folder deletes its own pictures and leaves the people's alone:
+
+```json
+{"multiple": true, "table": "sample_files.picture", "parent_column": "related_id", "key_column": "id",
+ "filename_column": "filename", "mime_column": "mime_type", "filter": {"related_type": "folder"}}
+```
+
+- Values are texts, numbers or booleans; `null` (or an empty text) means *is null*. Each value is
+  passed as a quoted literal, so PostgreSQL reads it as the column's type.
+- A value may contain `&NAME.` substitutions of `APP_USER`, `APP_ID`, `APP_ALIAS`, `APP_PAGE_ID`,
+  `APP_LANGUAGE` or a **protected hidden item** of the page (`{"related_type": "&P5_KIND."}`), values a
+  request can't set. Any other item is refused with an error: a field the user can post would let a
+  forged request widen the filter to other rows.
+- The filter comes from the item's attributes only: nothing posted changes it.
+- `parent_column` may have another type than the record's key: a `text` `related_id` holds an
+  integer `id` (the key is passed as an untyped literal and read as the column's type).
+- A shared table has no foreign key to cascade deletes or check ids: the item deletes the record's
+  rows itself when the form deletes the record. Rows that other code writes keep their own values.
+  Give the table row level security as for any child table.
+
+#### Picture gallery
+
+With `"display": "gallery"` the item shows its files as a grid of square **thumbnails** (two per
+row on a phone, more on wider screens). A picture (PNG, JPEG, GIF or WebP) links to the **full-size
+picture**, opened in a new tab; any other file shows a file icon. Each tile has the file name as a
+download link, its size and the **Remove file** box; new files are marked *new* until the form is
+saved. Read-only, the gallery has no boxes. Everything else (limits, saving, removal) works as for a
+list. Sample Files (App Gallery) shows a gallery on its folder and person forms, both on
+`sample_files.picture`:
+
+```json
+{"multiple": true, "display": "gallery", "max_files": 6, "max_mb": 2, "accept": "image/png,image/jpeg,image/webp",
+ "table": "sample_files.picture", "parent_column": "related_id", "key_column": "id",
+ "filename_column": "filename", "mime_column": "mime_type", "filter": {"related_type": "person"}}
 ```
 
 **Without a child table** the files stay temporary, as with a single file. Read them in a process:
@@ -168,7 +226,8 @@ it at 10) and save the files before users upload many more.
 
 APEX 26.1 stores File Browse items in object storage as well. In pgkiln a single or multiple file
 item keeps its files in an **S3-compatible bucket** (Amazon S3, MinIO, Cloudflare R2, Wasabi,
-Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attributes:
+Backblaze B2, OCI's S3 compatibility API, …), or in [OneDrive or SharePoint](#onedrive-and-sharepoint), with
+`object_store` in its attributes:
 
 ```json
 {"object_store": {"url": "https://s3.eu-west-1.amazonaws.com/hr-files", "credential": "S3_HR", "prefix": "photos/"},
@@ -195,6 +254,61 @@ deleted again, so the bucket follows the table. Downloads go through pgkiln as b
 read as the application's role (RLS applies), the link carries the user's checksum, and the
 content is fetched from the bucket and sent with the same headers. Users never see the bucket's
 address or the credential. Downloads are limited to `MAX_UPLOAD_MB`.
+
+#### OneDrive and SharePoint
+
+Since sprint 244 a file item can keep its files in **OneDrive or a SharePoint document library** instead, through
+Microsoft Graph, so they stay where the office opens and edits them. Set `"provider": "graph"` in `object_store`:
+
+```json
+{"object_store": {"provider": "graph", "drive": "b!3x…Qz", "folder": "HR/Policies", "credential": "MS_GRAPH"},
+ "filename_column": "file_name", "mime_column": "file_mime", "size_column": "file_size"}
+```
+
+| Key | Means |
+|---|---|
+| `drive` | The drive id: a user's OneDrive or a document library (`/drives/{drive}`) |
+| `site` | Instead of `drive`: a SharePoint site id (`contoso.sharepoint.com,<site guid>,<web guid>`); its default document library (`/sites/{site}/drive`) |
+| `folder` | The folder in the drive, e.g. `HR/Policies` (default: the drive's root). Graph creates it on the first upload |
+| `credential` | A [web credential](19-rest-data-sources.md#web-credentials) of type OAuth2 (or bearer token) |
+| `url` | The Graph base URL; default `https://graph.microsoft.com/v1.0` (a national cloud: `https://graph.microsoft.us/v1.0`, …) |
+
+- **The credential.** App-only: an OAuth2 credential with grant *client credentials*, token URL
+  `https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token`, scope `https://graph.microsoft.com/.default`, the
+  client id and secret of an Entra ID application with the *application* permission `Files.ReadWrite.All`, or
+  `Sites.Selected` granted to just the one site (the narrower choice). Delegated: grant *authorization code*, scope
+  `Files.ReadWrite.All offline_access`, authorized once by a developer in the builder; the files are then written
+  as that user. Its *Valid for* URLs should be `https://graph.microsoft.com/`.
+- **The allow-list.** Graph, the token endpoint, and the hosts Graph hands out for upload sessions and downloads:
+  `PGKILN_REST_ALLOWED_HOSTS=graph.microsoft.com,login.microsoftonline.com,*.sharepoint.com` (add
+  `*.files.1drv.com` and `*.sharepoint-df.com` if a tenant uses them).
+- **Uploads.** A file of at most 4 MB is PUT in one request to `…/root:/<folder>/<name>:/content`; a larger one goes
+  through an **upload session** (`createUploadSession`, then ranges of 3.2 MB PUT to the session's URL, which is
+  pre-authenticated: the credential is not sent there). The name is made safe (letters, digits, `_ . -`; never a
+  path); a name in use gets a number (`contract 1.pdf`). A file is at most `MAX_UPLOAD_MB` and
+  `PGKILN_REST_MAX_UPLOAD_BYTES` (default 25 MB).
+- **The source column holds the drive item's id**, so a file the office renames, or moves to a subfolder, is still
+  found. Before a download or a delete pgkiln checks that the item lies in the configured folder (or below it): an id
+  written into the table some other way can't reach the rest of the drive.
+- **Downloads go through pgkiln**, with the same checks as S3: page access, the row read as the application's
+  role (RLS), the link's checksum. Graph answers with a redirect to a short-lived download URL; the server follows
+  it (without the credential) and sends the file. Users never get a Graph or SharePoint link, a sharing link is
+  never made, and the token never leaves the server.
+- **Replace, remove, delete** work as for S3: the old file is deleted from the library after the save committed;
+  when the save fails, the file just uploaded is deleted again.
+
+HR example (part 108, page 77 *Policy documents*): policy documents in the SharePoint folder `HR/Policies` with the
+credential `MS_GRAPH`; the part's header lists the set-up steps. Until the credential has a secret, an upload is
+refused and nothing is saved.
+
+**Recipe: try it without Microsoft 365.** The tests run against a small Graph stub (`test/graph-stub.ts`: a token
+endpoint, simple uploads, upload sessions, item metadata, downloads by redirect, deletes). To try a page by hand,
+start it from a small script
+(`const stub = await startGraphStub(); console.log(stub.url, stub.tokenUrl)`, run with `npx tsx`), set the item's
+`"url"` to `stub.url`, give the OAuth2 credential the token URL `stub.tokenUrl`, client id `stub-client-id` and
+secret `stub-client-secret-do-not-leak`, and allow `127.0.0.1` in `PGKILN_REST_PRIVATE_HOSTS`. Against the real
+Graph, Graph Explorer finds a library's drive id: `GET /sites/{host}:/sites/{name}` gives the site id,
+`GET /sites/{site id}/drives` its libraries.
 
 ### Downloads and security
 

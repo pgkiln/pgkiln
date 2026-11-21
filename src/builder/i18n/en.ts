@@ -687,6 +687,7 @@ export const en = {
   'gallery.region.list': 'List',
   'gallery.region.data_reporter': 'Data Reporter',
   'gallery.region.form_designer': 'Form Designer',
+  'gallery.region.json_form': 'JSON Form',
   'gallery.region.ai_assistant': 'AI Assistant',
   'gallery.region.url': 'URL',
   'gallery.region.search': 'Search',

@@ -7,7 +7,7 @@ A page has a number (unique in the app; 0 is the [Global Page](#the-global-page)
 
 | Property | Values | Effect |
 |---|---|---|
-| `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message), unless the button or branch [stays in the dialog](06-processing.md#staying-in-the-dialog) (sprint 240). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
+| `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message), unless the button or branch [stays in the dialog](06-processing.md#staying-in-the-dialog) (sprint 240), or a branch sends the page below [to its target](06-processing.md#a-dialog-that-sends-the-page-below-elsewhere) (sprint 249). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
 | `dialog_position` | `center`, `left`, `right`, `top`, `bottom` | Modal pages: a centred dialog (the default) or a **drawer** that slides in from that edge (APEX: the Drawer page template; 26.1: top and bottom drawers). See [Dialogs and drawers](#dialogs-and-drawers) |
 | `dialog_size` | `small`, `medium`, `large` | Modal pages: the dialog's or side drawer's width, the height of a top or bottom drawer |
 | `parent_page` | page number | Breadcrumb trail, and which menu entry is highlighted |
@@ -196,6 +196,10 @@ On phones centred dialogs and side drawers fill the screen; top and bottom drawe
 prefer reduced motion get no slide-in animation. Everything else (closing after a submit, the *Dialog Closed* dynamic
 action, opening the page directly as a normal page) works the same for every position. In the HR example,
 *Leave request* (page 7) is a drawer from the right.
+
+(sprint 249) A branch of the dialog page with *In the page below* closes the dialog and sends the page below to
+another page with items (*Find an employee*, HR page 76, opens the profile it found): see
+[A dialog that sends the page below elsewhere](06-processing.md#a-dialog-that-sends-the-page-below-elsewhere).
 
 ### Layout
 
@@ -436,6 +440,7 @@ on an interval, use a dynamic action with the [`timer`](07-dynamic-actions.md) e
 | [`tree`](#tree) | Rows with a parent as an expandable tree |
 | [`list`](#list-lists) | A list (Shared Components → Lists) as nested links, a badge list, cards or tabs |
 | [`data_reporter`](#data_reporter-data-reporter) | Business users build, save and share their own reports from tables and views the developer offers |
+| [`json_form`](#json_form-json-form) | (sprint 246) A form drawn from a JSON schema a SELECT returns: its answers post as one JSON value into an item, checked against the schema on the server |
 | [`ai_assistant`](#ai_assistant-ai-assistant) | A chat with an AI service (Claude, OpenAI, Gemini or an OpenAI-compatible service), with context from queries and tools the model may call (an AI agent) |
 | [`template_component`](#template-components) | Each row (or all rows) of a SELECT through a template component: badges, contact cards, timelines, your own |
 | [`tasks`](06-processing.md#approvals-and-the-task-list) | Task list: approvals and actions for the signed-in user |
@@ -1784,6 +1789,77 @@ data of the installation, like Data Reporter reports: not exported, and they sta
 region when an application is replaced. The HR example's page 45 (*Forms*, under Administration)
 offers departments, meetings and employees (changing only) to administrators, with the published
 forms *Departments* and *Book a meeting*.
+
+### `json_form` (JSON form)
+
+A **JSON form** region (sprint 246; APEX has no counterpart, Appsmith calls it JSON Form) draws a form from a
+[JSON schema](https://json-schema.org/) instead of from table columns. Use it when the questions are data: inspection
+checklists, intake forms or surveys an administrator keeps in a table, one schema per row, whose answers are stored
+together as one `jsonb` value. A new form is then a new row, not a new page.
+
+The region's **Source** is a SELECT that returns one row, run as the application's database role (grants and row
+level security apply): the schema (a column named `schema`, else the first) and the current answers (a column named
+`value`, else the second; `null` or no column for a new form). `jsonb`, `json` and text holding JSON are all read.
+
+```sql
+select t.schema, a.answers as value
+  from sales.form_template t
+  left join sales.form_answer a on a.template_id = t.id and a.order_id = :P3_ID
+ where t.id = :P3_TEMPLATE
+```
+
+The schema is an object with `properties`; each property becomes a field:
+
+| Property | Field |
+|---|---|
+| `"type": "string"` | text field; `"x-widget": "textarea"` a text area; `"format"`: `date`, `time`, `date-time`, `email` or `uri` the browser's date, time, date and time, e-mail or URL field |
+| `"type": "number"` / `"integer"` | number field (an integer field takes whole numbers only) |
+| `"type": "boolean"` | checkbox (always `true` or `false` in the answers) |
+| `"enum": [...]` (with `"x-enum-labels"` or `"enumNames"`), or `"oneOf": [{"const": …, "title": …}]` | select list; `"x-widget": "radio"` a radio group. The answer is the value itself (a number stays a number) |
+| `"type": "array"` with `"items": {"enum": [...]}` (or `oneOf`) | checkbox group; the answer is a list of the chosen values |
+| `"type": "array"` with `"items": {"type": "object", "properties": …}` | repeating rows: each row a group of its fields, with *Add a row* and *Remove* |
+| `"type": "object"` with `properties` | a group of fields (a fieldset), its answers an object |
+| anything else (a list of plain strings, a nested repeat) | not shown; its stored answer is kept as it is |
+
+Per property: `title` (the label; else the key), `description` (help text under the field), `x-placeholder`,
+`readOnly: true` (shown, never changed by the form: the stored answer is kept), `default` (a new form's value). The
+fields follow the object's `x-order` (a list of keys; per property also a number `"x-order": 3`), then the order of
+the schema; keep an `x-order`, because `jsonb` sorts keys by length. The root's `description` is shown above the
+fields.
+
+**Answers.** The region's attribute `item` names a page item, normally a hidden one, in the region: on submit the
+answers become one JSON value in that item (`'{"location": "B2.14", "score": 7, …}'`), and a process stores it, e.g.
+`update sales.form_answer set answers = :P3_ANSWERS::jsonb where …`. Before any computation, validation or process
+runs, the server reads the schema again and checks the answers against it; an answer that fails is refused and shown
+at its field, with the other fields as they were typed, like an [item validation](06-processing.md#validations):
+
+- `required` (a list of keys per object): the field must be filled in (a checkbox group or repeating rows: at least
+  one);
+- `enum` / `oneOf`: only the listed values; the property's `type`: a number, a whole number, a boolean, text;
+- `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`; `minLength`, `maxLength` (text has at most 20,000
+  characters without one); `minItems`, `maxItems` (checkbox groups and rows); valid dates, times, e-mail addresses and
+  `http(s)` URLs for the formats.
+
+Only the schema's fields are read from the request: other posted names, and a value posted for the item itself, are
+ignored; a property the form can't show keeps the stored answer. Everything the schema says (titles, descriptions,
+labels, placeholders, keys) is shown as text, never as HTML.
+
+**Read-only.** `{"read_only": true}`, the region's Read Only condition, or no `item` (or one the user can't change)
+shows the answers as text, repeating rows as a list of groups; a submit leaves the item alone.
+
+**Without JavaScript** the form works as it is: repeating rows show a few empty rows under the others (`empty_rows`,
+2) and a *Remove row* box per row; an empty row is left out of the answers. With JavaScript *Add a row* adds one and
+*Remove row* takes one away at once.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `item` | | The page item the answers post into, as JSON text (a hidden item: only the server writes it). Without it the form is read-only |
+| `read_only` | `false` | Show the answers only |
+| `empty_rows` | `2` | Empty rows of a repeating field without JavaScript (0 to 10) |
+
+The HR example's page 74 (*Inspections*, under Administration) keeps two forms in `hr.form_template` and the answers
+per user in `hr.form_answer`, with a second, read-only JSON form region for the saved answers. The APEX importer has no
+APEX region to map to it.
 
 ### `ai_assistant` (AI assistant)
 

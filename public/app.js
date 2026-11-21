@@ -1220,6 +1220,12 @@ const pgkilnUnsaved = (() => {
     const dlg = document.getElementById('t-dialog');
     if (dlg) dlg.close();
     if (!e.data.reload) return;
+    // (sprint 249, MG-23) the dialog's branch sends this page to its target (a URL of this site only)
+    if (typeof e.data.go === 'string') {
+      let to = null;
+      try { to = new URL(e.data.go, location.href); } catch { to = null; }
+      if (to && to.origin === location.origin) return location.assign(to.href);
+    }
     // (157) items a close_dialog process returned: items of the same name on this page take their values
     if (e.data.items && typeof e.data.items === 'object')
       for (const [name, value] of Object.entries(e.data.items))
@@ -1484,13 +1490,21 @@ const pgkilnUnsaved = (() => {
     // (157) a close_dialog process's items go along to the page below
     let items = null;
     try { items = body.dataset.dialogItems ? JSON.parse(body.dataset.dialogItems) : null; } catch { items = null; }
-    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '', items }, location.origin);
+    // (sprint 249, MG-23) a branch "in the page below": the page below goes to this URL
+    const go = body.dataset.dialogGoto || undefined;
+    const tell = (reload) => window.parent.postMessage({ type: 'pgkiln:close', reload, page: body.dataset.dialogPage || '', items, ...(reload && go ? { go } : {}) }, location.origin);
     if (body.dataset.dialogClose) tell(true);
     document.addEventListener('click', (e) => {
       if (!e.target.closest('[data-dialog-cancel]')) return;
       e.preventDefault();
       if (pgkilnUnsaved.mayLeave()) tell(false);
     });
+  } else if (body.dataset.dialogClose && body.dataset.dialogGoto) {
+    // (sprint 249) the dialog page opened in a tab of its own: that tab goes to the target
+    try {
+      const to = new URL(body.dataset.dialogGoto, location.href);
+      if (to.origin === location.origin) location.replace(to.href);
+    } catch {}
   }
 })();
 
@@ -5624,3 +5638,45 @@ document.addEventListener('change', (e) => {
   window.addEventListener('pagehide', send);
 })();
 
+
+// ------------------------------------------------------------ JSON form regions (json-form.ts, sprint 246)
+// Repeated rows: Add a row copies the row <template> (a new index for its field names), Remove takes a row away at
+// once. Without JavaScript the page has a few empty rows and a Remove box per row instead (the server reads both).
+(() => {
+  const enhance = (root) => {
+    root.querySelectorAll('[data-json-form]').forEach((form) => {
+      form.classList.add('jf-js');
+      form.querySelectorAll('[data-jf-add], [data-jf-remove]').forEach((b) => (b.hidden = false));
+    });
+  };
+  enhance(document);
+  document.addEventListener('pgkiln:replaced', (e) => e.detail && enhance(e.detail.parentElement || document));
+  const renumber = (box) => {
+    const pattern = box.dataset.jfRowLabel || '{n}';
+    box.querySelectorAll(':scope > [data-jf-list] > [data-jf-row] > .jf-row-title').forEach((l, i) => (l.textContent = pattern.replace('{n}', String(i + 1))));
+  };
+  document.addEventListener('click', (e) => {
+    const add = e.target.closest && e.target.closest('[data-jf-add]');
+    const remove = !add && e.target.closest && e.target.closest('[data-jf-remove]');
+    const box = (add || remove) && (add || remove).closest('[data-jf-rows]');
+    if (!box) return;
+    const list = box.querySelector(':scope > [data-jf-list]');
+    if (add) {
+      const tpl = box.querySelector(':scope > template[data-jf-template]');
+      const next = Number(box.dataset.jfNext) || 0;
+      box.dataset.jfNext = String(next + 1);
+      list.insertAdjacentHTML('beforeend', tpl.innerHTML.replaceAll('__i__', String(next)).replaceAll('__n__', '0'));
+      const row = list.lastElementChild;
+      row.querySelectorAll('[data-jf-remove]').forEach((b) => (b.hidden = false));
+      renumber(box);
+      const first = row.querySelector('input:not([type=hidden]), select, textarea');
+      if (first) first.focus();
+    } else {
+      const row = remove.closest('[data-jf-row]');
+      if (row) row.remove();
+      renumber(box);
+      box.querySelector(':scope > [data-jf-add]')?.focus();
+    }
+    box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+})();
