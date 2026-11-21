@@ -137,7 +137,28 @@ export function bindValues(ctx: PageContext): BindValues {
     APP_SESSION: ctx.session.id,
     REQUEST: ctx.request,
     APP_LANGUAGE: ctx.locale.lang,
+    // (sprint 249, MG-22) the page the user came from (navigation.ts)
+    ...previousBinds(ctx),
   };
+}
+
+// (sprint 249, MG-22) the pages the user viewed last (navigation.ts notePageView): session state keys
+export const LAST_PAGE = '__LAST_PAGE';
+export const LAST_URL = '__LAST_URL';
+export const PREV_PAGE = '__PREV_PAGE';
+export const PREV_URL = '__PREV_URL';
+
+/** The page before page `pageNo` (its number as text) and the URL it was opened with, or nulls; in a dialog, the page below. */
+export function previousPage(state: Record<string, string | null>, pageNo: number): { page: string | null; url: string | null } {
+  const last = state[LAST_PAGE];
+  if (last && last !== String(pageNo)) return { page: last, url: state[LAST_URL] ?? null };
+  return { page: state[PREV_PAGE] ?? null, url: state[PREV_URL] ?? null };
+}
+
+/** Built-in values APP_PREVIOUS_PAGE and APP_PREVIOUS_URL (null when there is none). */
+function previousBinds(ctx: Pick<PageContext, 'session' | 'page' | 'base'>) {
+  const prev = previousPage(ctx.session.state, ctx.page.page_no);
+  return { APP_PREVIOUS_PAGE: prev.page, APP_PREVIOUS_URL: prev.page ? (prev.url ?? `${ctx.base}/${prev.page}`) : null };
 }
 
 /** Replace &NAME. substitution strings (APEX syntax); `encode` escapes each value. */

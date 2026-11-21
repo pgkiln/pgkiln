@@ -497,6 +497,14 @@ async function referenceFindings(x: AppRows, ext: {
     // (sprint 240, MG-7/MG-8) stay in the dialog only means something on a modal page; an Ajax callback runs SQL
     if ((kind === 'button' || kind === 'branch') && row.stay_in_dialog && x.pages.find((p) => p.id === row.page_id)?.mode !== 'modal')
       missing(e, 'Stay in the dialog', `Page ${row.page_no} is not a modal dialog page: Stay in the dialog changes nothing there.`, 'info');
+    // (sprint 249, MG-22/MG-23)
+    if (kind === 'branch' && row.in_page_below && x.pages.find((p) => p.id === row.page_id)?.mode !== 'modal')
+      missing(e, 'In the page below', `Page ${row.page_no} is not a modal dialog page: In the page below changes nothing there.`, 'info');
+    if (kind === 'branch' && row.target_type === 'item' && row.target_item) {
+      const name = String(row.target_item).toUpperCase();
+      const known = name === 'APP_PREVIOUS_PAGE' || all.some((y) => (y.kind === 'item' && y.row.page_id === row.page_id && y.row.name === name) || (y.kind === 'app_item' && y.row.name === name));
+      if (!known) missing(e, 'Item holding the page (item)', `${name} is not an item of this page, an application item or APP_PREVIOUS_PAGE: the branch goes to this page.`, 'warning');
+    }
     if (kind === 'branch' && row.stay_in_dialog && row.target_type === 'app')
       missing(e, 'Stay in the dialog', 'A branch to another application never stays in the dialog: the dialog closes.', 'warning');
     if (kind === 'process' && row.point === 'ajax' && !row.parent_process) {

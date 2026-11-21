@@ -5,6 +5,7 @@ import type { AppComputation, Branch, Computation, Condition } from '../metadata
 import { isAuthorized, sqlTrue } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, toState, type PageContext } from './context.ts';
 import { pageHref } from './links.ts';
+import { itemTarget } from './navigation.ts';
 import { urlChecksum } from '../security.ts';
 import { logActivity } from '../session.ts';
 
@@ -236,6 +237,9 @@ export async function branchTarget(ctx: PageContext, point: Branch['point']): Pr
   return (await branchTaken(ctx, point))?.href ?? null;
 }
 
+/** (sprint 249, MG-23) A branch that closes a modal page's dialog and sends the page below to its target. */
+export const inPageBelow = (b: Branch) => !!b.in_page_below && !b.stay_in_dialog;
+
 /** (sprint 240, MG-7) A branch that keeps a modal page's dialog open: to a target of this application. */
 export const staysInDialog = (b: Branch) => !!b.stay_in_dialog && b.target_type !== 'app';
 
@@ -272,6 +276,12 @@ async function branchHref(ctx: PageContext, b: Branch, point: Branch['point']): 
     const href = await otherApp(ctx, b);
     if (href === null) return null;
     return href;
+  }
+  // (sprint 249, MG-22) the page an item names (checked; else this page), or the previous page as it was opened
+  if (b.target_type === 'item') {
+    const t = await itemTarget(ctx, b, bindValues(ctx));
+    if (point === 'before_header' && t.page === ctx.page.page_no) return null;
+    return t.url ?? pageHref(ctx, t.page, b.target_items ?? {});
   }
   if (b.target_type === 'url') {
     const path = substitute(b.target_url ?? '', ctx, encodeURIComponent);
