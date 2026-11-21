@@ -27,16 +27,6 @@ the rows' notes, so they can be picked up without reading every row. Each links 
 | APEX import | **APEXlang** files; plug-in validations; legacy form processes, web service references, User Preferences, Print Report, geocoding, workflow and human task processes and plug-ins are reported, not mapped | [App Builder](#app-builder-and-development), [Logic and processing](#logic-and-processing) |
 | APEX dictionary views | The other ~200 APEX views (14 are in schema `apex`) | [App Builder](#app-builder-and-development) |
 
-**Open: found migrating a second Appsmith app (MG-17 … MG-29, planned as sprints 243–251)**
-
-(2026-11-21) The Appsmith app *Hewa-Techniek* (46 pages, ~450 queries, a Django REST API and Microsoft Graph) was
-rebuilt in pgkiln 0.113.0 as app `hewa`. It works, but these gaps needed a workaround in the app's own SQL or
-JavaScript, or changed how it behaves. Most go beyond what APEX offers; they are listed here because a team migrating
-from another low-code tool will hit them.
-
-| Card | Area | What's missing | Sprint |
-|---|---|---|---|
-
 **Not planned: a deliberate choice**
 
 | What | Instead |
