@@ -20724,3 +20724,116 @@ describe('sprint 248 MG-21', () => {
     await assert.rejects(owner.query(`select meta.make_password_hash('x', 'md5')`), /unknown format/);
   });
 });
+
+describe('sprint 245 MG-18', () => {
+  // meta.document_temp_file: the file belongs to the session that asked for it; only the server fills it, only an undrawn
+  // file of the current session registered in the current transaction; an ordinary upload is never overwritten
+  const sessions245: string[] = [];
+  const session245 = async (user: string) => {
+    const id = (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values ('sec245-' || gen_random_uuid(), $1, $2, '{}') returning id`, [appId, user])).id as string;
+    sessions245.push(id);
+    return id;
+  };
+  /** A transaction as HR's role in session `sid`; rolled back unless `commit`. */
+  const inSession = async <T>(sid: string | null, fn: (c: import('pg').PoolClient) => Promise<T>, commit = false) => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true), set_config('pgkiln.session_id', $2, true)`, [String(appId), sid ?? '']);
+      await c.query('set local role hr_app');
+      const out = await fn(c);
+      await c.query(commit ? 'commit' : 'rollback');
+      return out;
+    } catch (e) {
+      await c.query('rollback').catch(() => {});
+      throw e;
+    } finally {
+      c.release();
+    }
+  };
+  /** An error expected inside the transaction: in a savepoint, so the transaction goes on. */
+  const refused = async (c: import('pg').PoolClient, sql: string, params: unknown[], error: RegExp) => {
+    await c.query('savepoint refused_245');
+    await assert.rejects(c.query(sql, params), error);
+    await c.query('rollback to savepoint refused_245');
+  };
+  after(async () => {
+    for (const id of sessions245) await owner.query('delete from meta.session where id = $1', [id]);
+  });
+
+  test('a drawn document is a temporary file of its own session only', async () => {
+    const a = await session245('king');
+    const b = await session245('allen');
+    // session a: an id, and (as the server does after the process) the PDF in it
+    const id = await inSession(a, async (c) => {
+      const v = (await c.query(`select meta.document_temp_file('EMPLOYEE_RECORD', '{"P3_EMPNO": 7788}', 'mine') as id`)).rows[0].id as string;
+      await c.query(`select meta.document_temp_file_fill($1, convert_to('%PDF-1.4 a', 'UTF8'), 'mine.pdf')`, [v]);
+      return v;
+    }, true);
+    assert.equal((await owner.one('select session_id, size from meta.temp_file where id = $1', [id])).session_id, a);
+    await inSession(b, async (c) => {
+      assert.equal((await c.query('select 1 from meta.temp_files where id = $1', [id])).rowCount, 0, 'not visible in another session');
+      await refused(c, 'select * from meta.temp_file where id = $1', [id], /permission denied/);
+      // forged registration in b's transaction: still a's file, and already drawn
+      await c.query(`select set_config('pgkiln.document_pdf', $1, true)`, [JSON.stringify({ [id]: { app: appId, template: 'EMPLOYEE_RECORD', items: {}, temp_file: true } })]);
+      await refused(c, `select meta.document_temp_file_fill($1, 'x'::bytea, 'evil.pdf')`, [id], /no document of this transaction/);
+      assert.equal((await c.query('select count(*)::int as n from meta.document_pending($1)', [appId])).rows[0].n, 0, 'nothing of a\'s to draw');
+    });
+    await inSession(a, async (c) => {
+      // a's own drawn file can't be filled again in a later transaction either
+      await refused(c, `select meta.document_temp_file_fill($1, 'x'::bytea, 'again.pdf')`, [id], /no document of this transaction/);
+    });
+    const t = await owner.one('select content, filename from meta.temp_file where id = $1', [id]);
+    assert.equal(t.filename, 'mine.pdf');
+    assert.equal(t.content.toString(), '%PDF-1.4 a');
+  });
+
+  test('an upload is never overwritten, even with a forged registration', async () => {
+    const a = await session245('king');
+    await inSession(a, async (c) => {
+      const up = (await c.query(`select meta.save_temp_file('P3_X', 'up.png', 'image/png', 'upload'::bytea) as id`)).rows[0].id as string;
+      await c.query(`select set_config('pgkiln.document_pdf', $1, true)`, [JSON.stringify({ [up]: { app: appId, template: 'EMPLOYEE_RECORD', items: {}, temp_file: true } })]);
+      assert.equal((await c.query('select count(*)::int as n from meta.document_pending($1)', [appId])).rows[0].n, 0, 'the server draws nothing into it');
+      await refused(c, `select meta.document_temp_file_fill($1, 'pdf'::bytea, 'x.pdf')`, [up], /no document of this transaction/);
+      // a forged key that is no uuid doesn't break the server's query
+      await c.query(`select set_config('pgkiln.document_pdf', '{"not-a-uuid": {"app": 1, "temp_file": true}}', true)`);
+      assert.equal((await c.query('select count(*)::int as n from meta.document_pending($1)', [appId])).rows[0].n, 0);
+    });
+  });
+
+  test('only as the application\'s role, in a session, with its own templates and checked items', async () => {
+    const a = await session245('king');
+    await assert.rejects(inSession(null, (c) => c.query(`select meta.document_temp_file('EMPLOYEE_RECORD')`)), /no session/);
+    await assert.rejects(inSession(a, (c) => c.query(`select meta.document_temp_file('NO_SUCH')`)), /has no document template NO_SUCH/);
+    await assert.rejects(inSession(a, (c) => c.query(`select meta.document_temp_file('EMPLOYEE_RECORD', '{"x; drop": 1}')`)), /is not an item name/);
+    await assert.rejects(inSession(a, (c) => c.query(`select meta.document_temp_file('EMPLOYEE_RECORD', '{}', repeat('x', 300))`)), /longer than 255/);
+    // outside the application's role (here: the owner, without SET ROLE)
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.session_id', $2, true)`, [String(appId), a]);
+      await assert.rejects(c.query(`select meta.document_temp_file('EMPLOYEE_RECORD')`), /outside the application's own database role/);
+    } finally {
+      await c.query('rollback');
+      c.release();
+    }
+  });
+
+  test('the template\'s authorization scheme applies when the server draws it', async () => {
+    const scheme = (await owner.one(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'NOBODY_245', 'sql', 'false') returning id`, [appId])).id;
+    await owner.query(`update meta.document_template set authz = 'NOBODY_245' where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
+    try {
+      const king = await as('king');
+      const list = (await king.get('/a/hr/2')).body;
+      const href = /href="(\/a\/hr\/3\?[^"]*P3_EMPNO=7788[^"]*)"/.exec(list)![1].replace(/&amp;/g, '&');
+      await king.get(href);
+      const before = Number((await owner.one(`select count(*) as n from hr.emp_document where filename like 'record-7788%'`)).n);
+      const res = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'KEEP_RECORD', P3_ENAME: 'SCOTT', P3_JOB: 'ANALYST', P3_DEPTNO: '20', P3_MGR: '7566', P3_HIREDATE: '1987-04-19', P3_SAL: '3000.00', P3_ACTIVE: 'true', P3_USERNAME: 'scott' });
+      assert.equal(res.statusCode, 422);
+      assert.equal(Number((await owner.one(`select count(*) as n from hr.emp_document where filename like 'record-7788%'`)).n), before, 'nothing kept');
+    } finally {
+      await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
+      await owner.query('delete from meta.authz_scheme where id = $1', [scheme]);
+    }
+  });
+});
