@@ -2509,5 +2509,5 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 .jf-row-title { font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 0 0.3rem; }
 .jf-row-actions { display: flex; justify-content: flex-end; margin-top: 0.6rem; }
 .jf-js .jf-remove { display: none; }
-.jf-add { justify-self: start; margin-top: 0.6rem; }
+.jf-add { align-self: flex-start; margin-top: 0.6rem; }
 .json-form .display-value { overflow-wrap: anywhere; }
