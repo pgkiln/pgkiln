@@ -8,7 +8,7 @@ import { savepoint } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import type { Item } from '../metadata.ts';
 import { bindValues, publicError, stripSemicolon, toState, type PageContext } from './context.ts';
-import { canPreview, fileInfo, fileList, fileUrl, formatSize, isMultiple, isSignature, maxFiles, removals } from './files.ts';
+import { canPreview, fileInfo, fileList, fileUrl, formatSize, isGallery, isMultiple, isSignature, maxFiles, removals } from './files.ts';
 import { restSql } from './rest-sources.ts';
 import { expandShortcuts } from './shortcuts.ts';
 import { componentSetting, type ComponentSettings } from './component-settings.ts';
@@ -602,12 +602,25 @@ async function fileListControl(ctx: PageContext, item: Item, editable: boolean, 
     return html`<small class="error">${await publicError(ctx, e, `files of ${item.name}`)}</small>`;
   }
   const ticked = new Set(removals(ctx, item));
-  const list = files.length
+  const removeBox = (f: (typeof files)[number]) =>
+    editable ? html`<label class="check"><input type="checkbox" name="${item.name}__REMOVE" value="${f.key}"${ticked.has(f.key) ? raw(' checked') : ''}> ${t('file.remove')}</label>` : '';
+  // (sprint 247, MG-20) display "gallery": pictures as thumbnails that link to the full-size picture, other files as links
+  const list = files.length && isGallery(item)
+    ? html`<ul class="file-gallery">${files.map(
+        (f) => html`<li class="file-gallery-item">
+          ${canPreview(f)
+            ? html`<a class="file-gallery-link" href="${fileUrl(ctx, item, f, true)}" target="_blank" rel="noopener"><img class="file-gallery-thumb" src="${fileUrl(ctx, item, f, true)}" alt="${f.filename}" loading="lazy"></a>`
+            : html`<span class="file-gallery-link file-gallery-other">${icon('file')}</span>`}
+          <span class="file-gallery-name"><a href="${fileUrl(ctx, item, f)}" download>${f.filename}</a> <small class="help">${formatSize(f.size)}${f.pending ? ` · ${t('file.new')}` : ''}</small></span>
+          ${removeBox(f)}
+        </li>`,
+      )}</ul>`
+    : files.length
     ? html`<ul class="file-list">${files.map(
         (f) => html`<li>
           ${canPreview(f) ? html`<img class="file-thumb" src="${fileUrl(ctx, item, f, true)}" alt="">` : ''}
           <span><a href="${fileUrl(ctx, item, f)}" download>${f.filename}</a> <small class="help">${formatSize(f.size)}${f.pending ? ` · ${t('file.new')}` : ''}</small></span>
-          ${editable ? html`<label class="check"><input type="checkbox" name="${item.name}__REMOVE" value="${f.key}"${ticked.has(f.key) ? raw(' checked') : ''}> ${t('file.remove')}</label>` : ''}
+          ${removeBox(f)}
         </li>`,
       )}</ul>`
     : '';

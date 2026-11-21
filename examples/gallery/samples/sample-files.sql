@@ -4,6 +4,8 @@
 -- File upload and download: a file per record in the table's own columns
 -- (name, type, size and date kept beside it), several files per record in a
 -- child table, and a picture cropped in the browser before it is uploaded.
+-- Folders and people share one picture table (related_type + related_id),
+-- shown as a gallery of thumbnails.
 -- Every download link is bound to the user and the record; files are read
 -- as the application's role and sent as attachments.
 --
@@ -70,6 +72,22 @@ create table sample_files.person (
 );
 insert into sample_files.person (name) values ('Ada'), ('Grace'), ('Linus');
 
+-- pictures of folders and people in one shared table: related_type says which kind of record, related_id (text) its id;
+-- there is no foreign key, so each file item names its kind with "filter" (written on insert, applied on read and delete)
+create table sample_files.picture (
+  id           int generated always as identity primary key,
+  related_type text not null check (related_type in ('folder', 'person')),
+  related_id   text not null,
+  filename     text not null,
+  mime_type    text not null,
+  content      bytea not null check (octet_length(content) <= 2 * 1024 * 1024)
+);
+create index on sample_files.picture (related_type, related_id);
+-- a 1x1 picture for folder 1 and one for person 1: the same related_id, each shown only on its own form
+insert into sample_files.picture (related_type, related_id, filename, mime_type, content)
+select t, '1', f, 'image/png', decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
+  from (values ('folder', 'alpha-site.png'), ('person', 'ada-desk.png')) as p (t, f);
+
 -- 2. The application's database role ----------------------------------------
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'app_sample_files') then create role app_sample_files nologin; end if;
@@ -120,6 +138,17 @@ select r.page_id, r.id, 100, 'P5_FILES', 'Files', 'file', 'content', 'Up to five
          "key_column": "id", "filename_column": "filename", "mime_column": "mime_type", "wide": true}'
   from meta.region r where r.page_id = pg_temp.page_id('sample-files', 5) and r.type = 'form';
 
+-- (MG-20) pages 5 and 7: pictures in the shared table sample_files.picture, shown as a gallery
+insert into meta.item (page_id, region_id, seq, name, label, type, source_column, help, config)
+select r.page_id, r.id, x.seq, x.name, 'Pictures', 'file', 'content', 'Up to six pictures of at most 2 MB each.',
+       jsonb_build_object('multiple', true, 'display', 'gallery', 'max_files', 6, 'max_mb', 2, 'accept', 'image/png,image/jpeg,image/webp',
+         'table', 'sample_files.picture', 'parent_column', 'related_id', 'key_column', 'id', 'filename_column', 'filename',
+         'mime_column', 'mime_type', 'filter', jsonb_build_object('related_type', x.kind), 'wide', true)
+  from meta.region r
+  join (values (5, 110, 'P5_PICTURES', 'folder'), (7, 110, 'P7_PICTURES', 'person')) as x (page, seq, name, kind)
+    on r.page_id = pg_temp.page_id('sample-files', x.page)
+ where r.type = 'form';
+
 -- page 7: a picture, cropped square in the browser before it is uploaded
 delete from meta.item where page_id = pg_temp.page_id('sample-files', 7) and name in ('P7_PHOTO_NAME', 'P7_PHOTO_MIME');
 update meta.item set type = 'file', label = 'Photo', help = 'A picture: choose the square part to keep.',
@@ -154,7 +183,7 @@ select pg_temp.page_id('sample-files', r.page), r.seq, r.title, r.type, 12, r.te
   (2, 5, 'About this page', 'static', 'plain',
    '<p class="lead">Open a document: the form shows its file with a download link (pictures with a preview) and a <strong>Remove file</strong> box. The file item''s <code>filename_column</code>, <code>mime_column</code>, <code>size_column</code> and <code>updated_column</code> fill those columns on upload; <code>accept</code> and <code>max_mb</code> limit what may be uploaded.</p>', '{}'),
   (4, 5, 'About this page', 'static', 'plain',
-   '<p class="lead">Open a folder: <code>"multiple": true</code> with <code>table</code> and <code>parent_column</code> keeps a row per file in <code>sample_files.attachment</code>. The form lists the folder''s files with download links; tick <strong>Remove file</strong> to delete one on save, or add up to five at once.</p>', '{}'),
+   '<p class="lead">Open a folder: <code>"multiple": true</code> with <code>table</code> and <code>parent_column</code> keeps a row per file in <code>sample_files.attachment</code>. The form lists the folder''s files with download links; tick <strong>Remove file</strong> to delete one on save, or add up to five at once. <strong>Pictures</strong> keeps its files in <code>sample_files.picture</code>, a table folders and people share: <code>"filter": {"related_type": "folder"}</code> writes that column on insert and limits what the item reads and deletes, and <code>"display": "gallery"</code> shows them as thumbnails that open the full-size picture.</p>', '{}'),
   (6, 5, 'About this page', 'static', 'plain',
-   '<p class="lead">Open a person and choose a photo: with <code>"crop": "1:1"</code> the browser asks which square part to keep, and <code>max_px</code> makes it smaller before the upload. On a phone, <code>capture</code> offers the camera.</p>', '{}')
+   '<p class="lead">Open a person and choose a photo: with <code>"crop": "1:1"</code> the browser asks which square part to keep, and <code>max_px</code> makes it smaller before the upload. On a phone, <code>capture</code> offers the camera. Its <strong>Pictures</strong> gallery shares <code>sample_files.picture</code> with the folders (<code>"filter": {"related_type": "person"}</code>).</p>', '{}')
   ) as r (page, seq, title, type, template, source, config);
