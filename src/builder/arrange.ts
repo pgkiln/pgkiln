@@ -51,6 +51,7 @@ export const REGION_LABELS: Record<string, [string, string]> = {
   template_component: ['Template Component', 'layers'], list: ['List', 'list'], data_reporter: ['Data Reporter', 'table'], form_designer: ['Form Designer', 'file'],
   ai_assistant: ['AI Assistant', 'bolt'], url: ['URL', 'link'], search: ['Search', 'search'], login: ['Login', 'lock'], plugin: ['Plug-in', 'layers'],
   classic_report: ['Classic Report', 'table'], breadcrumb: ['Breadcrumb', 'chevron'], help_text: ['Help Text', 'help'],
+  json_form: ['JSON Form', 'file'],
 };
 export const ITEM_LABELS: Record<string, [string, string]> = {
   text: ['Text Field', 'item'], textarea: ['Text Area', 'item'], number: ['Number Field', 'item'], date: ['Date Picker', 'calendar'],

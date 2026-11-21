@@ -5,7 +5,7 @@
 | Property | Meaning |
 |---|---|
 | `name` | The **request** (`SAVE`, `CREATE`, `APPROVE`, …); uppercase. Processes and validations can run "when button pressed" |
-| `label` | Button text |
+| `label` | Button text, translated like other texts; (sprint 249) `&ITEM.` substitutions are replaced, HTML-escaped, as in item labels: `Save &P3_ENAME.`, `Back to page &APP_PREVIOUS_PAGE.` (menu entries' labels too) |
 | `action` | `submit`: submit the page with this request. `redirect`: go to `target_page` without submitting. `da`: do nothing except trigger [dynamic actions](07-dynamic-actions.md). `document`: download a document template. `menu`: a [menu](#menu-buttons-and-badges) of links and submit requests |
 | `target_page` | For `redirect`: where to go. For `submit`: where to go **after** success when no [branch](#branches) applies; empty = stay on the page |
 | `target_items` | For `redirect`: items to set on the target page, e.g. `{"P3_ID": "&P2_ID."}` |
@@ -654,14 +654,16 @@ After a successful submit pgkiln redirects (POST-redirect-GET). **Branches** dec
 first branch, in sequence, whose button, authorization and condition match is taken; when none
 applies, the pressed button's `target_page`, or back to the same page. In a modal dialog, the
 dialog closes instead, and the calling page reloads, unless the button or the branch taken
-[stays in the dialog](#staying-in-the-dialog) (sprint 240).
+[stays in the dialog](#staying-in-the-dialog) (sprint 240) or the branch goes
+[in the page below](#a-dialog-that-sends-the-page-below-elsewhere) (sprint 249).
 
 | Property | Meaning |
 |---|---|
 | `name` | A description, shown in the page designer |
 | `point` | `after_processing` (after a submit's processes) or `before_header` (before the page is shown: a redirect instead of the page, e.g. "nothing to do here, go to the list") |
 | `when_button` | `after_processing` only: the request (button) it is for; empty = any |
-| `target_type` | `page`, `url`, `function` or `app` |
+| `target_type` | `page`, `url`, `function`, `app` or (sprint 249) `item` |
+| `target_item` | `item`: the item holding the target page, a page number or [page alias](04-pages-and-regions.md) of this application: a page item, an application item or the built-in `APP_PREVIOUS_PAGE` ([Back to the calling page](#back-to-the-calling-page)). `target_items` are signed for that page |
 | `target_page`, `target_items` | A page of the application (empty = this page) and the items to set there, e.g. `{"P7_EMPNO": "&P22_EMPNO."}`; the link is signed with a checksum. For `app`: the page and items in the other application |
 | `target_url` | A path inside the application (after `/a/<alias>/`), e.g. `12?view=month` or `account`; `&ITEM.` values are URL-encoded. Other sites are refused (no scheme, `//`, `\` or `..`) |
 | `target_function` | `function`: a PL/pgSQL function body that returns such a path (APEX: *Function returning a URL*), run as the application's role with binds; checked like `target_url` (`meta.branch_path_ok`). An empty result: the branch doesn't apply; a refused one shows a message and is logged |
@@ -669,9 +671,50 @@ dialog closes instead, and the calling page reloads, unless the button or the br
 | `target_app` | `app`: the alias of another application of this installation (APEX: *Branch to page in another application*). It must exist with that page (else the branch doesn't apply and a message is shown); the items are signed for that application, page and user. That application's own sign-in and authorization apply when the browser gets there |
 | `condition_type`, `condition_expr`, `condition_value` | Only when the [condition](#server-side-conditions) holds |
 | `stay_in_dialog` | (sprint 240) In a modal dialog page: open the target inside the dialog instead of closing it ([Staying in the dialog](#staying-in-the-dialog)) |
+| `in_page_below` | (sprint 249) In a modal dialog page: the dialog closes and the page below goes to the target ([A dialog that sends the page below elsewhere](#a-dialog-that-sends-the-page-below-elsewhere)). Not with `stay_in_dialog` |
 | `authz`, `seq`, `build_option` | As for other components |
 
 A `before_header` branch to the page itself is skipped (it would loop).
+
+### Back to the calling page
+
+(sprint 249, MG-22) A page opened from several lists needs no branch per list:
+
+- **`&APP_PREVIOUS_PAGE.`** (`:APP_PREVIOUS_PAGE` in SQL) is the page the user came from: pgkiln notes each
+  page the user views (not a modal dialog, a download or an offline prefetch) in the session. A page viewed
+  again (a submit that comes back with an error, another report page) keeps the page it came from; in a modal
+  dialog it is the page below. **`&APP_PREVIOUS_URL.`** is that page's URL as the user opened it, with its
+  search, report page and signed items (one-shot parameters such as `clear` left out), for a link:
+  `<a href="&APP_PREVIOUS_URL.">Back</a>`. Both are null before the user has viewed another page, and a request
+  can't set them. They follow the session, not the browser tab: two tabs share them.
+- A branch with target type **`item`** reads its page from an item: `target_item` = `P11_BACK` (an item the
+  calling link sets, e.g. `{"P11_ID": "#ID#", "P11_BACK": "5"}`), an application item, or `APP_PREVIOUS_PAGE`.
+  The value must be a page number or alias of this application that the user may open (its authorization and
+  sign-in); anything else (another site, a path, a page that doesn't exist or isn't allowed, the global page)
+  sends the user to the page itself, so an item value can't make an open redirect. `target_items` are signed for
+  the target page with a checksum, as for a page branch.
+- When the page is the previous page and the branch sets no items, the browser goes back to
+  `APP_PREVIOUS_URL`: the list keeps its search, report page and selection.
+
+The Advisor warns about a `target_item` that is not an item of the page, an application item or
+`APP_PREVIOUS_PAGE`. APEX has no such built-in (there, a hidden item and a branch per caller).
+
+**HR example, page 51** (*Employee profiles*): the button *Back to page &APP_PREVIOUS_PAGE.* (the label names
+the page) and its one branch (`target_type` `item`, `target_item` `APP_PREVIOUS_PAGE`) go back to Employees or
+Departments, whichever the profile was opened from (`examples/hr/hr_113_navigation.sql`).
+
+### A dialog that sends the page below elsewhere
+
+(sprint 249, MG-23) A branch of a modal dialog page with **In the page below** (`in_page_below`) closes the
+dialog and sends the page below to the branch's target, with its items and checksum, instead of refreshing it:
+a *Find* dialog that opens the record it found, a *New* dialog that continues on the record's page. The success
+message shows on the target page, and `open_region` works there too. It also works for a `before_header` branch
+of a dialog page. Without JavaScript, or with the dialog page opened in a tab of its own, the *Continue* link
+(and, with JavaScript, the tab itself) goes to the target. The Advisor notes the option on a page that isn't a
+modal page; the database refuses it together with *Stay in the dialog*.
+
+**HR example, page 76** (*Find an employee*, opened from Employees and from Departments): *Open the profile*
+closes the dialog and shows that employee's profile (page 51) in the page below.
 
 ```sql
 -- function returning a URL (HR page 28, "Open")

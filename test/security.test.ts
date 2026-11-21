@@ -20538,6 +20538,84 @@ describe('sprint 240 MG-7/MG-8', () => {
   });
 });
 
+describe('sprint 249 MG-22/MG-23/MG-27', () => {
+  const pageId = async (no: number) => (await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no])).id;
+  /** Signed in, on page 2 then page 51 (so page 51 has a previous page and shows BACK). */
+  const onProfile = async (user: string) => {
+    const b = await as(user);
+    await b.get('/a/hr/2');
+    const res = await b.get(link(user, 51, { P51_EMPNO: '7499' }));
+    assert.equal(res.statusCode, 200);
+    return b;
+  };
+
+  test("MG-22: an item-driven branch can't leave the application or reach a page the user may not open", async () => {
+    const p51 = await pageId(51);
+    await owner.query(`update meta.branch set target_item = 'P51_TITLE' where page_id = $1 and name = 'Back to the calling page'`, [p51]);
+    try {
+      for (const v of ['https://evil.example', '//evil.example', '/\\evil.example', 'javascript:alert(1)', '/a/other/1', '2?x=//evil', '2#x', '13', '0']) {
+        const allen = await onProfile('allen');
+        const res = await allen.post('/a/hr/51', { __csrf: allen.lastCsrf, __request: 'BACK', P51_TITLE: v });
+        assert.equal(res.statusCode, 303, v);
+        assert.equal(res.headers.location, '/a/hr/51', `${v}: the page itself`);
+      }
+      // page 13 is for ADMIN: king may go there, allen (above) may not
+      const king = await onProfile('king');
+      assert.equal((await king.post('/a/hr/51', { __csrf: king.lastCsrf, __request: 'BACK', P51_TITLE: '13' })).headers.location, '/a/hr/13');
+    } finally {
+      await owner.query(`update meta.branch set target_item = 'APP_PREVIOUS_PAGE' where page_id = $1 and name = 'Back to the calling page'`, [p51]);
+    }
+  });
+
+  test("MG-22: APP_PREVIOUS_PAGE and its URL can't be set by a request", async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/2?APP_PREVIOUS_PAGE=13&__LAST_URL=//evil.example&__PREV_URL=//evil.example');
+    await allen.get('/a/hr/51?APP_PREVIOUS_URL=//evil.example');
+    const res = await allen.post('/a/hr/51', { __csrf: allen.lastCsrf, __request: 'BACK', APP_PREVIOUS_PAGE: '13', __LAST_PAGE: '13', __LAST_URL: '//evil.example', __PREV_URL: '//evil.example' });
+    assert.equal(res.statusCode, 303);
+    const loc = String(res.headers.location);
+    // back to page 2 as allen opened it (its own query string, not a value of the request)
+    const u = new URL(loc, 'http://pgkiln.test');
+    assert.equal(u.origin, 'http://pgkiln.test');
+    assert.equal(u.pathname, '/a/hr/2');
+  });
+
+  test('MG-23: a branch in the page below keeps the checksum; the target refuses changed values', async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/2');
+    await allen.get('/a/hr/76?dialog=1');
+    const res = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '7499' });
+    assert.equal(res.statusCode, 200, res.body);
+    const goto = (/data-dialog-goto="([^"]+)"/.exec(res.body)?.[1] ?? '').replace(/&amp;/g, '&');
+    assert.match(goto, /^\/a\/hr\/51\?P51_EMPNO=7499&cs=[0-9a-f]+$/);
+    assert.equal((await allen.get(goto)).statusCode, 200);
+    assert.equal((await allen.get(goto.replace('7499', '7369'))).statusCode, 403);
+    // another user's signed link isn't valid for this one
+    const king = await as('king');
+    assert.equal((await king.get(goto)).statusCode, 403);
+    // a value that isn't one of the list's: refused before any branch (no target handed over)
+    await allen.get('/a/hr/76?dialog=1');
+    const bad = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '7499&P51_X=1' });
+    assert.doesNotMatch(bad.body, /data-dialog-goto/);
+  });
+
+  test('MG-27: item values in a button label are escaped', async () => {
+    const p76 = await pageId(76);
+    await owner.query(`update meta.button set label = 'Open &P76_EMPNO.' where page_id = $1 and name = 'OPEN'`, [p76]);
+    try {
+      const allen = await as('allen');
+      await allen.get('/a/hr/76?dialog=1');
+      // not a value of the list: the page comes back with the error, and the label shows the value posted
+      const page = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '<img src=x onerror=alert(1)>' });
+      assert.equal(page.statusCode, 422);
+      assert.ok(page.body.includes('Open &lt;img src=x onerror=alert(1)&gt;'), page.body.match(/Open [^<]*/)?.[0] ?? 'no label');
+      assert.doesNotMatch(page.body, /<img src=x/);
+    } finally {
+      await owner.query(`update meta.button set label = 'Open the profile' where page_id = $1 and name = 'OPEN'`, [p76]);
+    }
+  });
+});
+
 describe('sprint 243 MG-17', () => {
   const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   const restore = (saved: Record<string, string | undefined>) => {
@@ -21064,6 +21142,119 @@ describe('sprint 245 MG-18', () => {
     } finally {
       await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
       await owner.query('delete from meta.authz_scheme where id = $1', [scheme]);
+    }
+  });
+});
+
+describe('sprint 246 MG-19', () => {
+  const ids = async () => {
+    const r = await owner.one(`select r.id, r.source, p.id as page_id from meta.region r join meta.page p on p.id = r.page_id
+                                where p.app_id = $1 and p.page_no = 74 and r.static_id = 'jf-form'`, [appId]);
+    const tpl = (await owner.one(`select id from hr.form_template where name = 'Workplace inspection'`)).id;
+    return { rid: r.id as number, source: r.source as string, page: r.page_id as number, tpl: String(tpl) };
+  };
+  const stored = async () => (await owner.query(`select answers from hr.form_answer where upper(username) = 'BLAKE'`)).rows;
+  const clean = () => owner.query(`delete from hr.form_answer where upper(username) = 'BLAKE'`);
+
+  test('values outside an enum and values of the wrong type are refused; nothing is stored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const f = (k: string) => `jf${rid}:${k}`;
+    const base = { __request: 'SAVE', P74_TEMPLATE: tpl, [f('location')]: 'A1', [f('inspected_on')]: '2026-01-02', [f('overall')]: 'good' };
+    const cases: Record<string, string | string[]>[] = [
+      { [f('overall')]: 'excellent' },            // not in the radio group's enum
+      { [f('department')]: '50' },                // not in oneOf
+      { [f('department')]: '10.0x' },             // not a number at all
+      { [f('hazards')]: ['trip', 'sabotage'] },   // a checkbox value the schema doesn't have
+      { [f('score')]: '3.5' },                    // an integer field
+      { [f('score')]: 'NaN' },
+      { [f('temperature')]: 'Infinity' },
+      { [f('inspected_on')]: '2026-02-30' },
+      { [f('manual_url')]: 'javascript:alert(1)' },
+      { [f('inspector_email')]: '<a@b.c>' },
+      { [f('location')]: 'x'.repeat(101) },        // maxLength
+    ];
+    const blake = await as('blake');
+    for (const c of cases) {
+      await blake.get('/a/hr/74');
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, ...base, ...c });
+      assert.equal(res.statusCode, 422, JSON.stringify(c));
+      assert.match(res.body, /has-error/, JSON.stringify(c));
+    }
+    assert.deepEqual(await stored(), []);
+  });
+
+  test('the answers come from the schema\'s fields only: a posted item value, unknown fields and the read-only region are ignored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const blake = await as('blake');
+    await blake.get('/a/hr/74');
+    const saved = (await owner.one(`select id from meta.region where page_id = (select page_id from meta.region where id = $1) and static_id = 'jf-saved'`, [rid])).id;
+    const res = await blake.post('/a/hr/74', {
+      __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl,
+      P74_ANSWERS: '{"location": "forged", "admin": true}',
+      [`jf${rid}:location`]: 'A1', [`jf${rid}:inspected_on`]: '2026-01-02', [`jf${rid}:overall`]: 'good',
+      [`jf${rid}:admin`]: 'true', [`jf${rid}:contact/role`]: 'boss', [`jf${saved}:location`]: 'other region',
+    });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    const [row] = await stored();
+    assert.equal(row.answers.location, 'A1');
+    assert.equal('admin' in row.answers, false);
+    assert.deepEqual(row.answers.contact, {});
+    await clean();
+  });
+
+  test('nothing from the schema is rendered unescaped: titles, descriptions, placeholders, enum labels, values and keys', async () => {
+    const x = '<img src=x onerror=alert(1)>';
+    const schema = {
+      type: 'object', title: x, description: x,
+      properties: {
+        [`k${x}`]: { type: 'string', title: x, description: x, 'x-placeholder': x, default: x },
+        pick: { type: 'string', enum: [x, 'b'], 'x-enum-labels': [x, x] },
+        radio: { type: 'string', oneOf: [{ const: x, title: x }], 'x-widget': 'radio' },
+        boxes: { type: 'array', items: { enum: [x] } },
+        rows: { type: 'array', title: x, items: { type: 'object', properties: { [x]: { type: 'string', title: x } } } },
+        group: { type: 'object', title: x, properties: { inner: { type: 'boolean', title: x } } },
+      },
+    };
+    const id = (await owner.one(`insert into hr.form_template (name, schema) values ('JF XSS', $1) returning id`, [JSON.stringify(schema)])).id;
+    try {
+      const blake = await as('blake');
+      const body = (await blake.get(link('blake', 74, { P74_TEMPLATE: String(id) }))).body;
+      const page = (await blake.get('/a/hr/74')).body;
+      for (const b of [body, page]) assert.doesNotMatch(b, /<img src=x/);
+      assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      // a failed submit shows the posted text escaped too
+      const { rid } = await ids();
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: String(id), [`jf${rid}:pick`]: `${x}!`, [`jf${rid}:k${encodeURIComponent(x)}`]: x });
+      assert.equal(res.statusCode, 422);
+      assert.doesNotMatch(res.body, /<img src=x/);
+    } finally {
+      await owner.query(`delete from hr.form_answer where template_id = $1`, [id]);
+      await owner.query(`delete from hr.form_template where id = $1`, [id]);
+    }
+  });
+
+  test("the schema's SQL runs as the application's role, on render and on submit", async () => {
+    const { rid, source, tpl } = await ids();
+    await clean();
+    await owner.query(`update meta.region set source = $2 where id = $1`, [rid,
+      `select jsonb_build_object('type', 'object', 'properties', jsonb_build_object('who', jsonb_build_object('type', 'string', 'enum', jsonb_build_array(current_user::text)))) as schema`]);
+    try {
+      const role = (await owner.one(`select db_role from meta.app where id = $1`, [appId])).db_role;
+      const blake = await as('blake');
+      const page = (await blake.get('/a/hr/74')).body;
+      assert.match(page, new RegExp(`<option value="${role}"`));
+      // pgkiln's own tables are out of its reach
+      await owner.query(`update meta.region set source = 'select to_jsonb(a) as schema from meta.app a' where id = $1`, [rid]);
+      const denied = (await blake.get('/a/hr/74')).body;
+      assert.match(denied, /alert-error/);
+      assert.doesNotMatch(denied, /name="jf\d+:alias"/);
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl, [`jf${rid}:alias`]: 'x' });
+      assert.equal(res.statusCode, 422, 'a schema that can\'t be read refuses the submit');
+      assert.deepEqual(await stored(), []);
+    } finally {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [rid, source]);
     }
   });
 });

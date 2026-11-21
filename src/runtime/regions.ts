@@ -9,6 +9,7 @@ import type { Button, Region } from '../metadata.ts';
 import { isAuthorized, pageAllowed } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, substitute, timed, type PageContext } from './context.ts';
 import { renderItems } from './items.ts';
+import { buttonLabel } from './item-texts.ts';
 import { expandShortcuts } from './shortcuts.ts';
 import { fillItems, linkAttrs, linkColumns, pageHref } from './links.ts';
 import { isInlineOverlay, overlayHash, STATIC_ID } from './open-region.ts';
@@ -24,6 +25,7 @@ import { masterItemOf, mastersOf } from './master-detail.ts';
 import { renderTasks } from './tasks.ts';
 import { renderDataReporter } from './data-reporter.ts';
 import { renderFormDesigner } from './form-designer.ts';
+import { renderJsonForm } from './json-form.ts';
 import { renderAssistant } from './assistant.ts';
 import { renderAiFilter } from './ai-filter.ts';
 import { renderWorkflows } from './workflows.ts';
@@ -65,6 +67,7 @@ export const buttonBadgeKey = (b: { id: number }) => `btn:${b.id}`;
  * dynamic actions of event menu_entry.
  */
 async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw | '') {
+  const label = buttonLabel(ctx, b.label);
   const entries = [];
   for (const e of b.menu ?? []) {
     if (!(await isAuthorized(ctx, e.authz))) continue;
@@ -72,16 +75,16 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
     const confirm = e.confirm ? raw(` data-confirm="${esc(await expandShortcuts(ctx, e.confirm, 'text'))}"`) : '';
     if (e.page) {
       if (!(await pageAllowed(ctx, e.page))) continue;
-      entries.push(html`<a ${linkAttrs(ctx, e.page, e.items ?? {})}${confirm}>${ic}${e.label}</a>`);
+      entries.push(html`<a ${linkAttrs(ctx, e.page, e.items ?? {})}${confirm}>${ic}${buttonLabel(ctx, e.label)}</a>`);
     } else if (e.request && ctx.vis!.buttons.get(e.request)?.action === 'submit')
-      entries.push(html`<button type="submit" name="__request" value="${e.request}" data-button="${e.request}"${confirm}>${ic}${e.label}</button>`);
+      entries.push(html`<button type="submit" name="__request" value="${e.request}" data-button="${e.request}"${confirm}>${ic}${buttonLabel(ctx, e.label)}</button>`);
     // (124) runs the dynamic actions of event menu_entry (app.js); nothing without JavaScript, like a "da" button
     else if (e.action && /^[A-Z][A-Z0-9_]{0,59}$/.test(e.action))
-      entries.push(html`<button type="button" data-menu-entry="${e.action}"${confirm}>${ic}${e.label}</button>`);
+      entries.push(html`<button type="button" data-menu-entry="${e.action}"${confirm}>${ic}${buttonLabel(ctx, e.label)}</button>`);
   }
   if (!entries.length) return '';
   return html`<details class="menu btn-menu" data-button="${b.name}">
-    <summary class="${cls}">${b.label}${badge}${icon('chevron', 'icon btn-caret')}</summary>
+    <summary class="${cls}">${label}${badge}${icon('chevron', 'icon btn-caret')}</summary>
     <div class="menu-panel"><div class="menu-section menu-links">${entries}</div></div>
   </details>`;
 }
@@ -90,25 +93,27 @@ export async function renderButton(ctx: PageContext, b: Button) {
   const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}${templateClasses('button', b.template_options)}`;
   const confirm = b.confirm ? raw(` data-confirm="${esc(await expandShortcuts(ctx, b.confirm, 'text'))}"`) : '';
   const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
+  // (sprint 249, MG-27) &ITEM. substitutions, escaped by html``
+  const label = buttonLabel(ctx, b.label);
   if (b.action === 'menu') return renderMenu(ctx, b, cls, badge);
   if (b.action === 'redirect') {
     // (sprint 238, MG-14) opens an inline dialog region: on this page, or on the target page after the link
     if (b.target_region && (b.target_page == null || b.target_page === ctx.page.page_no))
-      return html`<a class="${cls}" href="${overlayHash(ctx, b.target_region)}"${confirm}>${b.label}${badge}</a>`;
+      return html`<a class="${cls}" href="${overlayHash(ctx, b.target_region)}"${confirm}>${label}${badge}</a>`;
     const target = b.target_page ?? ctx.page.page_no;
     // Cancel/close in a dialog returning to the page that opened it just closes the dialog.
     if (!(await pageAllowed(ctx, target))) return '';
     if (ctx.dialog && !(ctx.app.pages.find((p) => p.page_no === target)?.mode === 'modal'))
-      return html`<a class="${cls}" href="${ctx.base}/${target}" data-dialog-cancel>${b.label}${badge}</a>`;
+      return html`<a class="${cls}" href="${ctx.base}/${target}" data-dialog-cancel>${label}${badge}</a>`;
     if (b.target_region && STATIC_ID.test(b.target_region))
-      return html`<a class="${cls}" href="${pageHref(ctx, target, b.target_items ?? {}, true)}#${b.target_region}"${confirm}>${b.label}${badge}</a>`;
-    return html`<a class="${cls}" ${linkAttrs(ctx, target, b.target_items ?? {}, true)}${confirm}>${b.label}${badge}</a>`;
+      return html`<a class="${cls}" href="${pageHref(ctx, target, b.target_items ?? {}, true)}#${b.target_region}"${confirm}>${label}${badge}</a>`;
+    return html`<a class="${cls}" ${linkAttrs(ctx, target, b.target_items ?? {}, true)}${confirm}>${label}${badge}</a>`;
   }
-  if (b.action === 'da') return html`<button type="button" class="${cls}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
+  if (b.action === 'da') return html`<button type="button" class="${cls}" data-button="${b.name}"${confirm}>${label}${badge}</button>`;
   // a document template filled with this page's session state (documents.ts)
   if (b.action === 'document' && b.document)
-    return html`<a class="${cls}" href="${ctx.base}/${ctx.page.page_no}?${new URLSearchParams({ doc: b.document })}${ctx.dialog ? '&dialog=1' : ''}" download${confirm}>${b.label}${badge}</a>`;
-  return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${b.label}${badge}</button>`;
+    return html`<a class="${cls}" href="${ctx.base}/${ctx.page.page_no}?${new URLSearchParams({ doc: b.document })}${ctx.dialog ? '&dialog=1' : ''}" download${confirm}>${label}${badge}</a>`;
+  return html`<button type="submit" class="${cls}" name="__request" value="${b.name}" data-button="${b.name}"${confirm}>${label}${badge}</button>`;
 }
 
 export async function buttonsFor(ctx: PageContext, regionId: number | null, only: (b: Button) => boolean = () => true, rank: (b: Button) => number = () => 0) {
@@ -458,6 +463,9 @@ async function renderBody(ctx: PageContext, r: Region, hidden: Set<string>): Pro
       break;
     case 'form_designer':
       body = await renderFormDesigner(ctx, r);
+      break;
+    case 'json_form':
+      body = await renderJsonForm(ctx, r);
       break;
     case 'ai_assistant':
       body = await renderAssistant(ctx, r);

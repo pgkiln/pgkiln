@@ -684,6 +684,7 @@ export const es: BuilderMessages = {
   'gallery.region.list': 'Lista',
   'gallery.region.data_reporter': 'Data Reporter',
   'gallery.region.form_designer': 'Diseñador de formularios',
+  'gallery.region.json_form': 'Formulario JSON',
   'gallery.region.ai_assistant': 'Asistente de IA',
   'gallery.region.url': 'URL',
   'gallery.region.search': 'Buscar',

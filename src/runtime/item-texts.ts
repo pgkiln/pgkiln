@@ -20,6 +20,9 @@ const subst = (ctx: PageContext, text: string) => (text.includes('&') || text.in
 export const itemLabel = (ctx: PageContext, item: Pick<Item, 'label' | 'name'>) =>
   item.label != null ? subst(ctx, item.label) : ctx.locale.tr(heading(item.name));
 
+/** (sprint 249, MG-27) A button's or menu entry's label as shown (not escaped): translated already, with &ITEM. substitutions. */
+export const buttonLabel = (ctx: PageContext, label: string) => subst(ctx, label);
+
 /** The field types that show a placeholder in an empty field. */
 export const PLACEHOLDER_TYPES = new Set(['text', 'number', 'email', 'tel', 'url', 'password', 'textarea', 'date', 'combobox', 'autocomplete', 'location', 'plugin']);
 /** The list types whose empty choice reads the placeholder. */
