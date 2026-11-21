@@ -467,6 +467,12 @@ src/
                            publish / pin routes, the stable URL GET /a/:alias/reports/:id
     form-designer.ts       Form Designer region (migration 106): sources from the region's config, checkFormDef (offered columns, displays,
                            actions), forms as cards, a form's rows, a row's form (lost update hash), the designer; row/design/delete routes
+    json-form.ts           (sprint 246, MG-19, migration 203) json_form region: parseSchema (a JSON schema's properties as fields:
+                           kinds, x-order, enum/oneOf choices, limits), loadJsonForm (schema and answers: one row of the Source as the
+                           app role), answersFromBody (only the schema's fields, jf<region>:<key>/<row>/<key>; empty and removed rows
+                           dropped, readOnly kept), checkJsonForm (required, enum, types, ranges, lengths, formats, counts), applyJsonForms
+                           (routes.ts submit: the answers as JSON into the region's item, errors in ctx.jsonFormErrors for validate()),
+                           renderJsonForm (rows: <noscript> empty rows, a <template> app.js copies for Add a row)
     workflows.ts           workflow console region and its actions
     ai.ts                  Generate text with AI: the ai_generate process (config checks, &ITEM. as delimited escaped data,
                            schemas from items, answers into items), aiInputs/aiOutputs for its dynamic action (route in routes.ts)
