@@ -309,6 +309,13 @@ src/
                            call(): allow-list, SSRF checks, credential URL prefix; maxUploadBytes() = PGKILN_REST_MAX_UPLOAD_BYTES;
                            chunkBytes: PUT in Content-Range ranges, 202 + nextExpectedRanges followed, as Graph upload sessions);
                            reuse it for any file sent to a web service
+  objectstore.ts           object storage for file items (config.object_store): S3-compatible buckets signed with signV4 (a web
+                           credential of type aws_sigv4); objectStoreOf/objectStoreProblem; putObject/getObject/deleteObject dispatch
+                           on "provider" (s3, the default, or graph); used by runtime/files.ts (storeTempFile, dropObjects, downloads)
+  objectstore-graph.ts     (sprint 244, MG-29) provider "graph": OneDrive / SharePoint through Microsoft Graph (drive or site +
+                           folder, an oauth2 or bearer web credential); putGraph (simple PUT up to 4 MiB, else createUploadSession +
+                           webupload.ts ranges without the credential), getGraph/deleteGraph (the item must lie in the folder:
+                           inFolder), graphProblem, graphFileName; every request through websources.ts call()
   mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
                            or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
                            Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),

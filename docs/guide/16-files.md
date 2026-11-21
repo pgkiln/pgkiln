@@ -168,7 +168,8 @@ it at 10) and save the files before users upload many more.
 
 APEX 26.1 stores File Browse items in object storage as well. In pgkiln a single or multiple file
 item keeps its files in an **S3-compatible bucket** (Amazon S3, MinIO, Cloudflare R2, Wasabi,
-Backblaze B2, OCI's S3 compatibility API, …) with `object_store` in its attributes:
+Backblaze B2, OCI's S3 compatibility API, …), or in [OneDrive or SharePoint](#onedrive-and-sharepoint), with
+`object_store` in its attributes:
 
 ```json
 {"object_store": {"url": "https://s3.eu-west-1.amazonaws.com/hr-files", "credential": "S3_HR", "prefix": "photos/"},
@@ -195,6 +196,61 @@ deleted again, so the bucket follows the table. Downloads go through pgkiln as b
 read as the application's role (RLS applies), the link carries the user's checksum, and the
 content is fetched from the bucket and sent with the same headers. Users never see the bucket's
 address or the credential. Downloads are limited to `MAX_UPLOAD_MB`.
+
+#### OneDrive and SharePoint
+
+Since sprint 244 a file item can keep its files in **OneDrive or a SharePoint document library** instead, through
+Microsoft Graph, so they stay where the office opens and edits them. Set `"provider": "graph"` in `object_store`:
+
+```json
+{"object_store": {"provider": "graph", "drive": "b!3x…Qz", "folder": "HR/Policies", "credential": "MS_GRAPH"},
+ "filename_column": "file_name", "mime_column": "file_mime", "size_column": "file_size"}
+```
+
+| Key | Means |
+|---|---|
+| `drive` | The drive id: a user's OneDrive or a document library (`/drives/{drive}`) |
+| `site` | Instead of `drive`: a SharePoint site id (`contoso.sharepoint.com,<site guid>,<web guid>`); its default document library (`/sites/{site}/drive`) |
+| `folder` | The folder in the drive, e.g. `HR/Policies` (default: the drive's root). Graph creates it on the first upload |
+| `credential` | A [web credential](19-rest-data-sources.md#web-credentials) of type OAuth2 (or bearer token) |
+| `url` | The Graph base URL; default `https://graph.microsoft.com/v1.0` (a national cloud: `https://graph.microsoft.us/v1.0`, …) |
+
+- **The credential.** App-only: an OAuth2 credential with grant *client credentials*, token URL
+  `https://login.microsoftonline.com/<tenant>/oauth2/v2.0/token`, scope `https://graph.microsoft.com/.default`, the
+  client id and secret of an Entra ID application with the *application* permission `Files.ReadWrite.All`, or
+  `Sites.Selected` granted to just the one site (the narrower choice). Delegated: grant *authorization code*, scope
+  `Files.ReadWrite.All offline_access`, authorized once by a developer in the builder; the files are then written
+  as that user. Its *Valid for* URLs should be `https://graph.microsoft.com/`.
+- **The allow-list.** Graph, the token endpoint, and the hosts Graph hands out for upload sessions and downloads:
+  `PGKILN_REST_ALLOWED_HOSTS=graph.microsoft.com,login.microsoftonline.com,*.sharepoint.com` (add
+  `*.files.1drv.com` and `*.sharepoint-df.com` if a tenant uses them).
+- **Uploads.** A file of at most 4 MB is PUT in one request to `…/root:/<folder>/<name>:/content`; a larger one goes
+  through an **upload session** (`createUploadSession`, then ranges of 3.2 MB PUT to the session's URL, which is
+  pre-authenticated: the credential is not sent there). The name is made safe (letters, digits, `_ . -`; never a
+  path); a name in use gets a number (`contract 1.pdf`). A file is at most `MAX_UPLOAD_MB` and
+  `PGKILN_REST_MAX_UPLOAD_BYTES` (default 25 MB).
+- **The source column holds the drive item's id**, so a file the office renames, or moves to a subfolder, is still
+  found. Before a download or a delete pgkiln checks that the item lies in the configured folder (or below it): an id
+  written into the table some other way can't reach the rest of the drive.
+- **Downloads go through pgkiln**, with the same checks as S3: page access, the row read as the application's
+  role (RLS), the link's checksum. Graph answers with a redirect to a short-lived download URL; the server follows
+  it (without the credential) and sends the file. Users never get a Graph or SharePoint link, a sharing link is
+  never made, and the token never leaves the server.
+- **Replace, remove, delete** work as for S3: the old file is deleted from the library after the save committed;
+  when the save fails, the file just uploaded is deleted again.
+
+HR example (part 108, page 77 *Policy documents*): policy documents in the SharePoint folder `HR/Policies` with the
+credential `MS_GRAPH`; the part's header lists the set-up steps. Until the credential has a secret, an upload is
+refused and nothing is saved.
+
+**Recipe: try it without Microsoft 365.** The tests run against a small Graph stub (`test/graph-stub.ts`: a token
+endpoint, simple uploads, upload sessions, item metadata, downloads by redirect, deletes). To try a page by hand,
+start it from a small script
+(`const stub = await startGraphStub(); console.log(stub.url, stub.tokenUrl)`, run with `npx tsx`), set the item's
+`"url"` to `stub.url`, give the OAuth2 credential the token URL `stub.tokenUrl`, client id `stub-client-id` and
+secret `stub-client-secret-do-not-leak`, and allow `127.0.0.1` in `PGKILN_REST_PRIVATE_HOSTS`. Against the real
+Graph, Graph Explorer finds a library's drive id: `GET /sites/{host}:/sites/{name}` gives the site id,
+`GET /sites/{site id}/drives` its libraries.
 
 ### Downloads and security
 

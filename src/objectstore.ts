@@ -7,6 +7,7 @@
 // secret access key as the secret, the region in "scope"), and go through
 // the server's web client, so the host allow-list and the private-address
 // checks apply (src/webclient.ts).
+// (sprint 244, MG-29) "provider": "graph" stores them in OneDrive / SharePoint instead: src/objectstore-graph.ts.
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 import { decryptSecret } from './secrets.ts';
 import { WebError, webRequest } from './webclient.ts';
