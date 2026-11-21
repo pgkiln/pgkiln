@@ -160,16 +160,16 @@ function asJson(v: unknown): unknown {
 }
 
 /** The schema and the current answers: one row of the region's SELECT, as the application's role (the page's transaction). */
-export async function loadJsonForm(ctx: PageContext, r: Region): Promise<{ schema: unknown; value: unknown }> {
+export async function loadJsonForm(ctx: PageContext, r: Region): Promise<{ schema: unknown; value: unknown; hasValue: boolean }> {
   const c = ctx.client!;
   const sql = `select * from (\n${stripSemicolon(applyBinds(r.source ?? '', bindValues(ctx)))}\n) "__r" limit 1`;
   const res = await savepoint(c, () => c.query(sql));
   const row = res.rows[0] as Record<string, unknown> | undefined;
-  if (!row) return { schema: undefined, value: undefined };
+  if (!row) return { schema: undefined, value: undefined, hasValue: false };
   const names = res.fields.map((f) => f.name);
   const schemaCol = names.includes('schema') ? 'schema' : names[0];
   const valueCol = names.includes('value') ? 'value' : names.find((n) => n !== schemaCol);
-  return { schema: asJson(row[schemaCol]), value: valueCol ? asJson(row[valueCol]) : undefined };
+  return { schema: asJson(row[schemaCol]), value: valueCol ? asJson(row[valueCol]) : undefined, hasValue: !!valueCol };
 }
 
 /**
@@ -393,7 +393,7 @@ export async function applyJsonForms(ctx: PageContext, body: Body) {
       continue;
     }
     const fields = parseSchema(loaded.schema);
-    const current = loaded.value !== undefined ? loaded.value : asJson(ctx.session.state[item]);
+    const current = loaded.hasValue ? loaded.value : asJson(ctx.session.state[item]);
     const answers = answersFromBody(fields, body, rootPrefix(r), current);
     ctx.session.state[item] = JSON.stringify(answers);
     const errors = checkJsonForm(fields, answers, rootPrefix(r), ctx.locale.t);
@@ -546,9 +546,9 @@ export async function renderJsonForm(ctx: PageContext, r: Region): Promise<Raw> 
   if (!fields.length) return html`<p class="empty">${ctx.locale.t('jsonform.no_schema')}</p>`;
   const target = jsonFormTarget(ctx, r);
   const name = typeof r.config?.item === 'string' ? r.config.item : null;
-  // after a failed submit (or one without a button) the answers just posted, else the SELECT's value, else the item's
+  // after a failed submit the answers just posted; else the SELECT's value (a SELECT without one: the item's)
   const fromState = name ? asJson(ctx.session.state[name]) : undefined;
-  let value = ctx.body && target && fromState !== undefined ? fromState : loaded.value !== undefined && loaded.value !== null ? loaded.value : fromState;
+  let value = (ctx.body && target && fromState !== undefined) || !loaded.hasValue ? fromState : loaded.value;
   // a new form (no answers yet) starts with the schema's defaults
   if ((value === undefined || value === null) && target) value = defaults(fields);
   const emptyRows = Number.isInteger(r.config?.empty_rows) ? Math.max(0, Math.min(10, r.config.empty_rows)) : EMPTY_ROWS;
