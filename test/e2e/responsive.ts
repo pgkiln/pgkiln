@@ -1344,6 +1344,18 @@ export function viewportTests(vp: keyof typeof VIEWPORTS) {
       await check(page, 'app-67-import-dialog', vp);
       await page.context().close();
     });
+
+    test('sprint 249: the Find an employee dialog (page 76) and the profile\'s Back button fit', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/76?dialog=1`);
+      await page.locator('#P76_EMPNO').waitFor({ state: 'attached' });
+      await check(page, 'app-76-find-dialog', vp);
+      await page.goto(`${base}/a/hr/51`);
+      await page.locator('button:has-text("Back to page")').waitFor({ state: 'attached' });
+      await check(page, 'app-51-back-button', vp);
+      await page.context().close();
+    });
   });
 }
 
