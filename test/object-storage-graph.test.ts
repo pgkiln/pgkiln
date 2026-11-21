@@ -207,3 +207,22 @@ describe('object storage in OneDrive / SharePoint (Microsoft Graph)', () => {
     stub.items.delete(id);
   });
 });
+
+describe('HR example, page 77 (part 108)', () => {
+  test('the policy documents page renders; until MS_GRAPH is set up an upload is refused and nothing is saved', async () => {
+    const b = new Browser(app);
+    await b.login('king');
+    const page = await b.get('/a/hr/77');
+    assert.equal(page.statusCode, 200);
+    assert.match(page.body, /Policies in SharePoint/);
+    assert.match(page.body, /type="file"[^>]*name="P77_FILE"|name="P77_FILE"[^>]*type="file"/);
+    const before = (await owner.one(`select count(*)::int as n from hr.policy_document`)).n;
+    const res = await b.upload('/a/hr/77', { __request: 'CREATE', P77_TITLE: 'Travel policy' }, { P77_FILE: file('travel.pdf', '%PDF-1.4', 'application/pdf') });
+    assert.notEqual(res.statusCode, 303);
+    assert.equal((await owner.one(`select count(*)::int as n from hr.policy_document`)).n, before);
+    // an employee who is not an administrator does not get the page
+    const e = new Browser(app);
+    await e.login('smith');
+    assert.notEqual((await e.get('/a/hr/77')).statusCode, 200);
+  });
+});
