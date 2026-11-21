@@ -25,6 +25,8 @@ import { PAPER, printable, textOn, type PdfLayout } from './pdf.ts';
 // align, colspan, class="plain" for no lines), img src="logo" (the layout's
 // logo; width="40mm"), class="page-break" (on div or hr), align="right|center"
 // on blocks and cells, class="muted" (grey) and class="right" / "center".
+// (sprint 245) Inside a table cell or a paragraph: <br> breaks the line, an <img> (width in mm, % or px) is
+// drawn between the text around it, a heading is bold at its size.
 // Anything else is shown as its text.
 
 // ------------------------------------------------------------------ template
@@ -244,6 +246,8 @@ interface Run {
   muted: boolean;
   scale: number;
   link?: string;
+  /** (sprint 245, MG-26) an image in the text (a table cell, a paragraph): drawn between the lines around it */
+  img?: El;
 }
 
 const classes = (el: El) => new Set((el.attrs.class ?? '').split(/\s+/).filter(Boolean));
@@ -265,6 +269,10 @@ function runsOf(nodes: (El | string)[], style: Omit<Run, 'text'>, out: Run[] = [
       out.push({ ...style, text: '\n' });
       continue;
     }
+    if (n.tag === 'img') {
+      out.push({ ...style, text: '', img: n });
+      continue;
+    }
     const c = classes(n);
     const s = { ...style };
     if (n.tag === 'b' || n.tag === 'strong' || n.tag === 'th') s.bold = true;
@@ -273,9 +281,19 @@ function runsOf(nodes: (El | string)[], style: Omit<Run, 'text'>, out: Run[] = [
     if (n.tag === 'small') s.scale *= 0.85;
     if (c.has('muted')) s.muted = true;
     if (n.tag === 'a' && /^(https?:|mailto:)/i.test(n.attrs.href ?? '')) s.link = n.attrs.href;
-    // a block inside inline content (e.g. a <p> in a table cell) starts a new line
-    if (BLOCK.has(n.tag) && out.length && !out[out.length - 1].text.endsWith('\n')) out.push({ ...style, text: '\n' });
+    // (sprint 245) a heading inside inline content (a table cell): bold and at its size
+    if (HEADING[n.tag]) {
+      s.bold = true;
+      s.scale *= HEADING[n.tag];
+    }
+    // a block inside inline content (e.g. a <p> in a table cell) starts a new line, and (sprint 245) what follows it too
+    const isBlock = BLOCK.has(n.tag);
+    const newline = () => {
+      if (out.length && !out[out.length - 1].text.endsWith('\n')) out.push({ ...style, text: '\n' });
+    };
+    if (isBlock) newline();
     runsOf(n.children, s, out);
+    if (isBlock) newline();
   }
   return out;
 }
@@ -337,21 +355,41 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
     }
   };
 
-  /** Write runs as one paragraph at x with width; continued text keeps the styles inline. */
+  /**
+   * Write runs as one paragraph at x with width; continued text keeps the styles inline. (sprint 245, MG-26)
+   * pdfkit drops a line break inside continued text, so each line of a <br> is written as its own line.
+   */
   const writeRuns = (runs: Run[], x: number, width: number, size: number, align: 'left' | 'center' | 'right', color = layout.text_color, y?: number) => {
     const list = tidy(runs);
     if (!list.length) return;
-    list.forEach((r, i) => {
-      font(r.bold, r.italic).fontSize(size * r.scale).fillColor(r.muted ? '#666666' : r.link ? '#0b57d0' : color);
-      const opts = { continued: i < list.length - 1, underline: r.underline || !!r.link, align, width, link: r.link ?? null, lineGap: size * 0.15 };
-      const text = printable(r.text);
-      if (i === 0) doc.text(text, x, y ?? doc.y, opts);
-      else doc.text(text, opts);
-    });
+    const lines: Run[][] = [[]];
+    for (const r of list)
+      r.text.split('\n').forEach((t, i) => {
+        if (i) lines.push([]);
+        if (t) lines[lines.length - 1].push({ ...r, text: t });
+      });
+    let at = y;
+    for (const line of lines) {
+      const top = at ?? doc.y;
+      at = undefined;
+      if (!line.length) {
+        // an empty line (<br><br>)
+        font(false, false).fontSize(size).text(' ', x, top, { width, lineGap: size * 0.15 });
+        continue;
+      }
+      line.forEach((r, i) => {
+        font(r.bold, r.italic).fontSize(size * r.scale).fillColor(r.muted ? '#666666' : r.link ? '#0b57d0' : color);
+        const opts = { continued: i < line.length - 1, underline: r.underline || !!r.link, align, width, link: r.link ?? null, lineGap: size * 0.15 };
+        const text = printable(r.text);
+        if (i === 0) doc.text(text, x, top, opts);
+        else doc.text(text, opts);
+      });
+    }
   };
   const plain = (runs: Run[]) => tidy(runs).map((r) => r.text).join('');
 
-  const image = (el: El, x: number, width: number, align: 'left' | 'center' | 'right') => {
+  /** An image of the template (src="logo" or a PNG/JPEG data: URI) at its width (mm, % of `width`, px) within `width`. */
+  const picture = (el: El, width: number) => {
     let data: Buffer | null = null;
     const src = el.attrs.src ?? '';
     if (src === 'logo') data = layout.logo;
@@ -359,19 +397,77 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
       const m = /^data:image\/(png|jpe?g);base64,([a-z0-9+/=\s]+)$/i.exec(src);
       if (m) data = Buffer.from(m[2].replace(/\s+/g, ''), 'base64');
     }
-    if (!data || data.length > MAX_IMAGE) return;
+    if (!data || data.length > MAX_IMAGE) return null;
     const wAttr = /^(\d+(?:\.\d+)?)(mm|%)?$/.exec(el.attrs.width ?? '');
-    const w = Math.min(wAttr ? (wAttr[2] === '%' ? (Number(wAttr[1]) / 100) * width : wAttr[2] === 'mm' ? Number(wAttr[1]) * MM : Number(wAttr[1]) * 0.75) : layout.logo_width_mm * MM, width);
+    const w = Math.max(1, Math.min(wAttr ? (wAttr[2] === '%' ? (Number(wAttr[1]) / 100) * width : wAttr[2] === 'mm' ? Number(wAttr[1]) * MM : Number(wAttr[1]) * 0.75) : layout.logo_width_mm * MM, width));
     try {
       const img = (doc as unknown as { openImage(src: Buffer): { width: number; height: number } }).openImage(data);
-      const h = (img.height / img.width) * w;
-      ensure(h);
-      const ix = align === 'right' ? x + width - w : align === 'center' ? x + (width - w) / 2 : x;
-      doc.image(img as unknown as Buffer, ix, doc.y, { width: w });
-      doc.y += h + base * 0.4;
+      return { img, w, h: (img.height / img.width) * w };
     } catch {
       // not a PNG/JPEG: left out
+      return null;
     }
+  };
+
+  const image = (el: El, x: number, width: number, align: 'left' | 'center' | 'right') => {
+    const p = picture(el, width);
+    if (!p) return;
+    ensure(p.h);
+    const ix = align === 'right' ? x + width - p.w : align === 'center' ? x + (width - p.w) / 2 : x;
+    doc.image(p.img as unknown as Buffer, ix, doc.y, { width: p.w });
+    doc.y += p.h + base * 0.4;
+  };
+
+  // (sprint 245, MG-26) text with images in it (a table cell, a paragraph): lines of text and rows of images,
+  // one under the other; images next to each other share a row while they fit the width
+  type Picture = NonNullable<ReturnType<typeof picture>>;
+  type Part = { runs: Run[]; h: number } | { pics: Picture[]; h: number };
+  const GAP = 3;
+  const partsOf = (runs: Run[], width: number, size: number): Part[] => {
+    const parts: Part[] = [];
+    let text: Run[] = [];
+    const flushText = () => {
+      if (tidy(text).length) {
+        const bold = text.some((r) => r.bold);
+        // (measured at the largest size of the text: a heading in a cell)
+        font(bold, false).fontSize(size * Math.max(1, ...text.map((r) => r.scale)));
+        parts.push({ runs: text, h: doc.heightOfString(printable(plain(text)) || ' ', { width, lineGap: size * 0.15 }) });
+      }
+      text = [];
+    };
+    for (const r of runs) {
+      if (!r.img) {
+        text.push(r);
+        continue;
+      }
+      flushText();
+      const p = picture(r.img, width);
+      if (!p) continue;
+      const last = parts[parts.length - 1];
+      if (last && 'pics' in last && last.pics.reduce((a, q) => a + q.w + GAP, 0) + p.w <= width) {
+        last.pics.push(p);
+        last.h = Math.max(last.h, p.h);
+      } else parts.push({ pics: [p], h: p.h });
+    }
+    flushText();
+    return parts;
+  };
+  const partsHeight = (parts: Part[]) => parts.reduce((a, p, i) => a + p.h + (i ? GAP : 0), 0);
+  const drawParts = (parts: Part[], x: number, y: number, width: number, size: number, align: 'left' | 'center' | 'right', color: string) => {
+    for (const p of parts) {
+      if ('runs' in p) writeRuns(p.runs, x, width, size, align, color, y);
+      else {
+        const total = p.pics.reduce((a, q) => a + q.w, 0) + GAP * (p.pics.length - 1);
+        let ix = align === 'right' ? x + width - total : align === 'center' ? x + (width - total) / 2 : x;
+        for (const q of p.pics) {
+          doc.image(q.img as unknown as Buffer, ix, y, { width: q.w });
+          ix += q.w + GAP;
+        }
+      }
+      y += p.h + GAP;
+    }
+    doc.x = x;
+    doc.y = y - (parts.length ? GAP : 0);
   };
 
   const table = (el: El, x: number, width: number) => {
@@ -413,9 +509,11 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
         col += span;
         const runs = runsOf(c.children, { bold: c.tag === 'th' || r.head, italic: false, underline: false, muted: false, scale: 1 });
         const align = alignOf(c, c.tag === 'th' && !r.head ? 'left' : 'left');
+        // (sprint 245, MG-26) the cell's text and images
+        const parts = partsOf(runs, w - 2 * PAD, base);
         font(c.tag === 'th' || r.head, false).fontSize(base);
-        const h = doc.heightOfString(printable(plain(runs)) || ' ', { width: w - 2 * PAD, lineGap: base * 0.15 }) + 2 * PAD;
-        return { runs, cx, w, align, h };
+        const h = (parts.length ? partsHeight(parts) : doc.heightOfString(' ', { width: w - 2 * PAD, lineGap: base * 0.15 })) + 2 * PAD;
+        return { parts, cx, w, align, h };
       });
     };
     const drawRow = (r: { cells: El[]; head: boolean }) => {
@@ -425,7 +523,7 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
         h,
         draw: (y: number) => {
           if (r.head && lines) doc.rect(x, y, widths.reduce((a, b) => a + b, 0), h).fill(layout.heading_color);
-          for (const c of cells) writeRuns(c.runs, c.cx + PAD, c.w - 2 * PAD, base, c.align, r.head && lines ? textOn(layout.heading_color, layout.text_color) : layout.text_color, y + PAD);
+          for (const c of cells) drawParts(c.parts, c.cx + PAD, y + PAD, c.w - 2 * PAD, base, c.align, r.head && lines ? textOn(layout.heading_color, layout.text_color) : layout.text_color);
           if (lines) doc.moveTo(x, y + h).lineTo(x + widths.reduce((a, b) => a + b, 0), y + h).lineWidth(0.4).strokeColor('#c9ced6').stroke();
         },
       };
@@ -452,6 +550,14 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
   };
 
   const block = (nodes: (El | string)[], x: number, width: number, align: 'left' | 'center' | 'right') => {
+    /** (sprint 245) a paragraph with images in it: part by part, each on a new page when it doesn't fit */
+    const para = (runs: Run[], a: 'left' | 'center' | 'right') => {
+      for (const p of partsOf(runs, width, base)) {
+        ensure(p.h);
+        drawParts([p], x, doc.y, width, base, a, layout.text_color);
+        doc.y += GAP;
+      }
+    };
     let pending: (El | string)[] = [];
     const flush = () => {
       const runs = runsOf(pending, { bold: false, italic: false, underline: false, muted: false, scale: 1 });
@@ -486,11 +592,16 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
           doc.y += size * 0.35;
           break;
         }
-        case 'p':
-          ensure(base * 1.4);
-          writeRuns(runsOf(n.children, { bold: false, italic: false, underline: false, muted: c.has('muted'), scale: 1 }), x, width, base, a);
+        case 'p': {
+          const runs = runsOf(n.children, { bold: false, italic: false, underline: false, muted: c.has('muted'), scale: 1 });
+          if (runs.some((r) => r.img)) para(runs, a);
+          else {
+            ensure(base * 1.4);
+            writeRuns(runs, x, width, base, a);
+          }
           doc.y += base * 0.6;
           break;
+        }
         case 'ul':
         case 'ol': {
           let i = 0;
@@ -566,6 +677,21 @@ export interface DocumentTemplate {
 }
 
 const MAX_ROWS = Number(process.env.DOCUMENT_MAX_ROWS ?? 10_000);
+
+/** (sprint 245, MG-26) the names the data of every template has besides its query's columns */
+export const DOCUMENT_BUILT_INS = ['rows', 'APP_USER', 'APP_NAME', 'TODAY', 'NOW'] as const;
+
+/**
+ * (sprint 245, MG-26) The query columns that take the place of a built-in name (exactly that name: tags are
+ * case-sensitive), each with what the template then gets: a column wins over APP_USER, APP_NAME, TODAY and NOW;
+ * "rows" stays the list of all rows, so a column of that name is never seen.
+ */
+export function shadowedBuiltIns(columns: string[]): string[] {
+  return DOCUMENT_BUILT_INS.filter((b) => columns.includes(b)).map((b) =>
+    b === 'rows'
+      ? 'The query has a column "rows": {{rows}} is the list of all rows, so the column is never seen. Rename it (e.g. "rows_" or "row_count").'
+      : `The query has a column "${b}": {{${b}}} is that column, not the built-in ${b}. Rename the column, or leave it out to use the built-in.`);
+}
 
 /** The data of a template: its query's first row at the top level, all rows as "rows", plus built-ins. */
 export async function documentData(c: { query: (q: { text: string }) => Promise<{ rows: Record<string, unknown>[] }> }, sql: string, builtIns: Record<string, string>) {

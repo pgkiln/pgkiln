@@ -422,6 +422,9 @@ return exists (select 1 from app.users
                   and pw_hash = crypt(p_password, pw_hash));
 ```
 
+- **Or password hash query**: SQL with `p_username` returning the user's stored password hash, for
+  users whose passwords another system hashed (below).
+
 Optionally, **Post-authentication code** runs after a successful check with `p_username` (and
 `meta.app_user()` set to it), e.g. to record the last sign-in; raising an exception refuses the
 sign-in. *After login* application processes run afterwards as usual.
@@ -433,7 +436,8 @@ stored and never logged. A check that returns `false` or `null`, or raises an er
 "invalid" answer as a wrong password and counts towards the sign-in throttling; the activity log has
 `login` (detail `custom`) and `login_failed` with `custom: check returned false`, `check failed
 (<SQLSTATE>)` or `post-authentication failed (<SQLSTATE>)`, never the error message (it could repeat
-the password). With neither a function nor a body nobody can sign in.
+the password). With no function, body or hash query nobody can sign in; with more than one, the
+function wins, then the body.
 
 The session's user (`:APP_USER`) is the user name as typed, unless the post-authentication code
 names it (below); app roles come from **Access control** like for other users (an account of the
@@ -472,6 +476,60 @@ perform meta.set_auth_user((select username from app.users where email = lower(p
 
 The App Gallery's *Sample Processes* signs `DEMO`, `Demo` and `demo` in as `demo` this way. The login page has the user name and password form only: *Keep me signed
 in*, LDAP, single sign-on and the password-change form are not used by these apps.
+
+#### Password hashes of another system
+
+(sprint 248, migration 204) When the users come from another system (a Django or PHP application, a
+database you migrate from), their passwords are hashes that system wrote. Checking them in PL/pgSQL
+is slow: Django's default of 1,000,000 PBKDF2 iterations takes over a second per sign-in there. Fill
+in **Or password hash query** instead: SQL with `p_username` that returns the stored hash (one row,
+one text column; no row or `null` for an unknown user):
+
+```sql
+select password from app.auth_user where username = lower(p_username) and is_active
+```
+
+The query runs as the application's database role, read-only (in a temporary `stable` SQL
+function), and never sees the password. pgkiln then checks the password against the hash in the
+server and compares in constant time:
+
+| Format | Written by | Checked with |
+|---|---|---|
+| `pbkdf2_sha256$<iterations>$<salt>$<base64>` | Django (the default hasher) | Node's `crypto.pbkdf2`, about 0.15 s for 1,000,000 iterations |
+| `pbkdf2_sha1$…` | Django (`PBKDF2SHA1PasswordHasher`) | the same |
+| `$2a$`, `$2b$`, `$2y$` | bcrypt: PHP's `password_hash`, Node, Python, Ruby | pgcrypto's `crypt()` in the database (`$2b$` and `$2y$` are the same algorithm as `$2a$`) |
+| `bcrypt$$2b$…`, `bcrypt_sha256$$2b$…` | Django's bcrypt hashers | the same (`bcrypt_sha256` hashes the password with SHA-256 first, as Django does) |
+
+**Argon2** (`$argon2id$…`, Django's `argon2$…`) is not supported, nor bcrypt's old `$2x$`: such a user
+can't sign in, and the activity log says why. Store those users' hashes again with
+`meta.make_password_hash`, e.g. when they reset their password. PBKDF2 hashes with more than 10,000,000
+iterations and bcrypt costs over 16 are refused as unreadable.
+
+Every refusal looks the same: a wrong password, an unknown or inactive user (no row), a hash that
+can't be read, an unsupported format and a query that fails or returns more than one row all get the
+same "invalid" answer, count towards the sign-in throttling, and take about as long: an unknown user
+gets a dummy check of the same kind and cost as the application's last real one. The activity log has
+the reason: `custom: hash query: wrong password`, `unknown user (no hash)`, `hash query failed
+(<SQLSTATE>)`, `the hash query returned more than one row`, or what is wrong with the hash. The
+post-authentication code runs after a successful check as with the other kinds.
+
+**`meta.make_password_hash(p_password, p_format, p_cost)`** writes a hash the check (and the other
+system) reads, e.g. on a password-change page or for a new user:
+
+- `'bcrypt'` (the default): pgcrypto's bcrypt, `$2a$`, cost `p_cost` 4–16 (default 12); PHP's
+  `password_verify` accepts it.
+- `'pbkdf2_sha256'` or `'pbkdf2_sha1'`: Django's format with a random 22-character salt and
+  `p_cost` iterations (1,000–10,000,000, default 1,000,000). It is computed in PL/pgSQL, about 1.2 s for
+  1,000,000 iterations: fine when a password changes, too slow to check every sign-in with.
+
+```sql
+update app.auth_user set password = meta.make_password_hash(:P3_PASSWORD, 'pbkdf2_sha256')
+ where username = :APP_USER
+```
+
+The App Gallery's **Sample Sign-in** signs in against a Django-style `auth_user` table this way:
+`demo` / `demo` has a Django hash, `php` / `php` one PHP wrote, and *Change my password* stores a new
+one in either format.
 
 ### Session timeout warning
 
