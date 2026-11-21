@@ -7,7 +7,7 @@ import { appTx, savepoint } from '../db.ts';
 import type { Item, Region } from '../metadata.ts';
 import { checksumValid, urlChecksum } from '../security.ts';
 import { checkPageAccess, Forbidden } from './authz.ts';
-import type { PageContext } from './context.ts';
+import { bindValues, type PageContext } from './context.ts';
 import { resolveTable } from './engine.ts';
 import { deleteObject, getObject, objectStoreOf, putObject, type ObjectStoreConfig } from '../objectstore.ts';
 
@@ -24,6 +24,13 @@ import { deleteObject, getObject, objectStoreOf, putObject, type ObjectStoreConf
 // form region saves them as rows of a child table (config.table, with
 // config.parent_column referring to the form's record, config.key_column its
 // primary key and the item's source column the content), one row per file.
+// (sprint 247, MG-20) config.filter {"column": value} makes the child table
+// shareable by several record types (related_type + related_id): the values
+// are written on insert and added to every read and delete, so an item only
+// ever sees, removes or serves its own rows. The parent column may be of
+// another type than the record's key (text related_id, integer id): the key is
+// an untyped literal, which PostgreSQL reads as the column's type.
+// config.display "gallery" shows the files as thumbnails (src/runtime/items.ts).
 //
 // Downloads go through the application's database role, so row level
 // security applies, and their URLs carry a checksum bound to the user.
@@ -74,6 +81,10 @@ interface FileConfig {
   size_column?: string;
   /** (151, 239) set by presetItem: image_upload, signature */
   preset?: string;
+  /** (247) constant columns of a shared child table: written on insert, applied on read and delete */
+  filter?: Record<string, unknown>;
+  /** (247) "gallery": pictures as thumbnails */
+  display?: string;
 }
 const cfg = (item: Item) => (item.config ?? {}) as FileConfig;
 export const maxMb = (item: Item) => Math.min(Number(cfg(item).max_mb) || MAX_UPLOAD_MB, MAX_UPLOAD_MB);
@@ -224,12 +235,46 @@ export function formRegion(ctx: PageContext, item: Item): Region | undefined {
 
 export const isTempId = (v: string | null | undefined): v is string => !!v && UUID.test(v);
 
+/** (247) A multiple file item shown as a picture gallery. */
+export const isGallery = (item: Item) => isMultiple(item) && cfg(item).display === 'gallery';
+
+/** (247) What a filter value may name: built-ins nobody can post. */
+const FILTER_BUILTINS = new Set(['APP_USER', 'APP_ID', 'APP_ALIAS', 'APP_PAGE_ID', 'APP_LANGUAGE']);
+
+/**
+ * (247) The constant columns of a shared child table, as [column, value] (null: "is null"). A value is a constant, or
+ * holds &NAME. substitutions of a built-in (APP_USER, …) or a protected hidden item of the page: values the request
+ * can't set, so the filter can't be widened or switched to another record type's rows by a forged post.
+ */
+export function childFilter(ctx: PageContext, item: Item): [string, string | null][] {
+  const f = cfg(item).filter;
+  if (f === undefined || f === null) return [];
+  if (typeof f !== 'object' || Array.isArray(f)) throw new Error(`${item.name}: "filter" must be an object of column names and values`);
+  const values = bindValues(ctx);
+  return Object.entries(f).map(([col, v]): [string, string | null] => {
+    if (!col.trim()) throw new Error(`${item.name}: a "filter" column name is empty`);
+    if (v === null) return [col, null];
+    if (typeof v === 'object') throw new Error(`${item.name}: the "filter" value of ${col} must be a text, a number or a boolean`);
+    const s = String(v).replace(/&([A-Za-z][A-Za-z0-9_]*)\./g, (_, name: string) => {
+      const upper = name.toUpperCase();
+      const protectedItem = ctx.page.items.some((i) => i.name === upper && i.type === 'hidden' && i.config?.value_protected !== false);
+      if (!FILTER_BUILTINS.has(upper) && !protectedItem)
+        throw new Error(`${item.name}: the "filter" may only substitute a protected hidden item of the page or APP_USER, APP_ID, APP_ALIAS, APP_PAGE_ID, APP_LANGUAGE (not &${name}.)`);
+      return values[upper] ?? '';
+    });
+    return [col, s === '' ? null : s];
+  });
+}
+
 /** Where a multiple file item stores its files: a child table of its form's record. */
 export function childTable(ctx: PageContext, item: Item) {
   const c = cfg(item);
   const region = isMultiple(item) && c.table && c.parent_column ? formRegion(ctx, item) : undefined;
-  return region ? { region, table: c.table!, parent: c.parent_column!, key: c.key_column || 'id' } : undefined;
+  return region ? { region, table: c.table!, parent: c.parent_column!, key: c.key_column || 'id', filter: childFilter(ctx, item) } : undefined;
 }
+
+/** (247) The filter's conditions ("" without one, else " and ..."). */
+const filterSql = (filter: [string, string | null][]) => filter.map(([col, v]) => ` and ${ident(col)} ${v === null ? 'is null' : `= ${literal(v)}`}`).join('');
 
 /** The files a multiple file item has stored for the form's current record. */
 export async function storedFiles(ctx: PageContext, item: Item): Promise<FileInfo[]> {
@@ -239,7 +284,7 @@ export async function storedFiles(ctx: PageContext, item: Item): Promise<FileInf
   const c = ctx.client!;
   const res = await savepoint(c, async () =>
     c.query({
-      text: `select ${ident(child.key)}::text, ${fileColumns(item, 'size')} from ${await resolveTable(c, child.table)} where ${ident(child.parent)} = ${literal(pk)} order by ${ident(child.key)}`,
+      text: `select ${ident(child.key)}::text, ${fileColumns(item, 'size')} from ${await resolveTable(c, child.table)} where ${ident(child.parent)} = ${literal(pk)}${filterSql(child.filter)} order by ${ident(child.key)}`,
       rowMode: 'array',
     }),
   );
@@ -270,7 +315,8 @@ export async function saveFileLists(ctx: PageContext, region: Region, op: 'inser
     const child = childTable(ctx, item);
     if (!child || child.region.id !== region.id || pk === null || pk === undefined) continue;
     const table = await resolveTable(c, child.table);
-    const parent = `${ident(child.parent)} = ${literal(pk)}`;
+    // (247) the filter's constant columns: only this item's rows of a shared table
+    const parent = `${ident(child.parent)} = ${literal(pk)}${filterSql(child.filter)}`;
     const store = storeOf(item);
     // object storage: the keys of the rows a delete removes, for removing their objects after the commit
     const objectKeys = async (where: string, values: unknown[] = []) =>
@@ -295,7 +341,7 @@ export async function saveFileLists(ctx: PageContext, region: Region, op: 'inser
       // each file into the bucket, its key (and name, type, size) into a row
       for (const id of ids) {
         const f = await storeTempFile(ctx, store, id);
-        const cols: [string, unknown][] = [[child.parent, pk], [item.source_column!, f.key],
+        const cols: [string, unknown][] = [[child.parent, pk], ...child.filter, [item.source_column!, f.key],
           ...(conf.filename_column ? [[conf.filename_column, f.filename] as [string, unknown]] : []),
           ...(conf.mime_column ? [[conf.mime_column, f.mime] as [string, unknown]] : []),
           ...(conf.size_column ? [[conf.size_column, f.size] as [string, unknown]] : [])];
@@ -305,8 +351,8 @@ export async function saveFileLists(ctx: PageContext, region: Region, op: 'inser
       ctx.session.state[item.name] = null;
       continue;
     }
-    const cols = [ident(child.parent), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
-    const vals = [literal(pk), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
+    const cols = [ident(child.parent), ...child.filter.map(([col]) => ident(col)), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
+    const vals = [literal(pk), ...child.filter.map(([, v]) => literal(v)), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
     await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at, array_position($1::uuid[], id)`, [ids]);
     for (const id of ids) await c.query('select meta.delete_temp_file($1)', [id]);
     ctx.session.state[item.name] = null;
@@ -420,7 +466,7 @@ export function fileRoutes(app: FastifyInstance, loadContext: Loader, txContext:
           const child = childTable(ctx, item);
           if (child) {
             const r = await c.query({
-              text: `select ${fileColumns(item, 'content')} from ${await resolveTable(c, child.table)} where ${ident(child.key)}::text = $1`,
+              text: `select ${fileColumns(item, 'content')} from ${await resolveTable(c, child.table)} where ${ident(child.key)}::text = $1${filterSql(child.filter)}`,
               values: [key],
               rowMode: 'array',
             });

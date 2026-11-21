@@ -445,7 +445,10 @@ src/
     format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
     files.ts               file items: multipart parsing, temporary files, signed downloads; (sprint 239) signature items (the
                            signature preset of a file item, metadata.ts presetItem; migration 195): pngSize, a real PNG of at most
-                           1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads)
+                           1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads);
+                           (sprint 247, MG-20) childFilter: a multiple item's "filter" (constant columns of a shared child table,
+                           written on insert and added to every read, delete and download; &NAME. only of built-ins and protected
+                           hidden items), isGallery ("display": "gallery", rendered by items.ts fileListControl)
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit); (sprint 245) images and <br> inside
                            table cells and paragraphs (partsOf/drawParts), shadowedBuiltIns (query columns named like a built-in)
     documents.ts           ?doc=NAME: a template filled with the page's values
@@ -895,6 +898,8 @@ test/
   numformat.test.ts        number format masks: every element, rounding, parsing, separators
   globalization.test.ts    masks on HR page 29, time zones, the de/fr/es texts
   files.test.ts            file items: storage, limits, downloads, temporary files
+  file-gallery-247.test.ts (sprint 247, MG-20) multiple file items on a shared child table (filter, text parent column) and the
+                           gallery, on Sample Files' folders and people
   signature-scan-239.test.ts (sprint 239) signature items (preset, pad, temporary file, HR page 7) and the zxing files and CSP
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   item-region-types.test.ts (sprint 140) shuttle, select one/many, classic report, breadcrumb and help text: gallery, runtime, export, Advisor, HR page 50
@@ -1021,6 +1026,8 @@ test/
   e2e/settings-layout.test.ts (sprint 198, NX-U3) Settings' right rail: Sign-in in two screens and the checklist in view at
                            1456 × 836, real anchors (also without JavaScript), one column below 1280 px, 360/1366 px, axe
   e2e/builder-i18n.test.ts (sprint 121) Deutsch on the sign-in page, the status bar's language menu, German screens at 390 px, CSP
+  e2e/file-gallery-247.test.ts (sprint 247, MG-20) Sample Files' picture gallery at 390 and 1440 px: square thumbnails, axe,
+                           the full-size picture, removing a file on save
   e2e/gallery.test.ts      (sprint 120) the gallery's sample apps: every page at 4 widths, CSP, axe; dynamic actions; the four tabs at 390 px
   e2e/admin-mail-network.test.ts (sprint 118) Mail queue, Network access and a workspace's mail service at 390 px without JavaScript
   e2e/pillar.test.ts       (sprint 117) Pillar appearances: axe in light and dark, subtle colours, current vs parent entry, Arabic RTL, 390 px, preview
