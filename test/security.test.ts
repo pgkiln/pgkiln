@@ -20780,7 +20780,9 @@ describe('sprint 247 MG-20', () => {
     const b = await openFolder();
     assert.equal((await b.upload('/a/sample-files/5', { __request: 'DELETE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: '' }, {})).statusCode, 303);
     assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 0);
-    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);  });
+});
+
 describe('sprint 245 MG-18', () => {
   // meta.document_temp_file: the file belongs to the session that asked for it; only the server fills it, only an undrawn
   // file of the current session registered in the current transaction; an ordinary upload is never overwritten
