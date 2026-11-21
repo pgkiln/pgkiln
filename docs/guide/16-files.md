@@ -139,6 +139,8 @@ create table hr.emp_document (
 | `parent_column` | Its column that holds the form record's primary key |
 | `key_column` | Its primary key (default `id`) |
 | `filename_column`, `mime_column`, `accept`, `max_mb` | As for a single file |
+| `filter` | Constant columns of a child table shared by several record types, `{"related_type": "folder"}`: [below](#a-child-table-shared-by-several-record-types) |
+| `display` | `"gallery"`: the files as a [picture gallery](#picture-gallery) instead of a list |
 
 The form lists the record's files with download links (and a small preview for images), followed
 by the files that will be added on save. Every file has a **Remove file** box. Saving the form
@@ -150,6 +152,62 @@ this way (`examples/hr/hr_16_documents.sql`), with row level security on `hr.emp
 ```json
 {"multiple": true, "max_files": 5, "max_mb": 5, "table": "hr.emp_document", "parent_column": "empno",
  "key_column": "id", "filename_column": "filename", "mime_column": "mime_type", "accept": ".pdf,.docx,image/*"}
+```
+
+#### A child table shared by several record types
+
+Some schemas keep the files of several kinds of record in one table, with a column naming the kind
+and one holding the record's id, and no foreign key:
+
+```sql
+create table sample_files.picture (
+  id           int generated always as identity primary key,
+  related_type text not null check (related_type in ('folder', 'person')),
+  related_id   text not null,
+  filename     text not null,
+  mime_type    text not null,
+  content      bytea not null
+);
+create index on sample_files.picture (related_type, related_id);
+```
+
+`filter` names the columns that pick out this item's rows, with their values. They are **written on
+insert** and **added to every read, delete and download** of the item, next to `parent_column`, so
+the folder form only lists, removes and serves folder pictures, even when a person has the same id;
+deleting a folder deletes its own pictures and leaves the people's alone:
+
+```json
+{"multiple": true, "table": "sample_files.picture", "parent_column": "related_id", "key_column": "id",
+ "filename_column": "filename", "mime_column": "mime_type", "filter": {"related_type": "folder"}}
+```
+
+- Values are texts, numbers or booleans; `null` (or an empty text) means *is null*. Each value is
+  passed as a quoted literal, so PostgreSQL reads it as the column's type.
+- A value may contain `&NAME.` substitutions of `APP_USER`, `APP_ID`, `APP_ALIAS`, `APP_PAGE_ID`,
+  `APP_LANGUAGE` or a **protected hidden item** of the page (`{"related_type": "&P5_KIND."}`), values a
+  request can't set. Any other item is refused with an error: a field the user can post would let a
+  forged request widen the filter to other rows.
+- The filter comes from the item's attributes only: nothing posted changes it.
+- `parent_column` may have another type than the record's key: a `text` `related_id` holds an
+  integer `id` (the key is passed as an untyped literal and read as the column's type).
+- A shared table has no foreign key to cascade deletes or check ids: the item deletes the record's
+  rows itself when the form deletes the record. Rows that other code writes keep their own values.
+  Give the table row level security as for any child table.
+
+#### Picture gallery
+
+With `"display": "gallery"` the item shows its files as a grid of square **thumbnails** (two per
+row on a phone, more on wider screens). A picture (PNG, JPEG, GIF or WebP) links to the **full-size
+picture**, opened in a new tab; any other file shows a file icon. Each tile has the file name as a
+download link, its size and the **Remove file** box; new files are marked *new* until the form is
+saved. Read-only, the gallery has no boxes. Everything else (limits, saving, removal) works as for a
+list. Sample Files (App Gallery) shows a gallery on its folder and person forms, both on
+`sample_files.picture`:
+
+```json
+{"multiple": true, "display": "gallery", "max_files": 6, "max_mb": 2, "accept": "image/png,image/jpeg,image/webp",
+ "table": "sample_files.picture", "parent_column": "related_id", "key_column": "id",
+ "filename_column": "filename", "mime_column": "mime_type", "filter": {"related_type": "person"}}
 ```
 
 **Without a child table** the files stay temporary, as with a single file. Read them in a process:

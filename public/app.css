@@ -2500,3 +2500,13 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 /* (sprint 241, MG-13) page template No navigation: the Standard page without header, navigation menu and title bar */
 .t-nonav-main { width: 100%; max-width: 1500px; margin: 0 auto; }
 .t-nonav .t-footer { justify-content: flex-start; }
+
+/* (sprint 247, MG-20) a multiple file item with display "gallery": thumbnails linking to the full-size picture */
+.file-gallery { list-style: none; margin: 0 0 0.5rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.6rem; }
+.file-gallery-item { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; padding: 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.file-gallery-link { display: flex; align-items: center; justify-content: center; aspect-ratio: 1; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.file-gallery-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.file-gallery-other .icon { width: 2.5rem; height: 2.5rem; color: var(--muted); }
+.file-gallery-name { min-width: 0; font-size: 0.85rem; }
+.file-gallery-name a { word-break: break-all; }
+.display-value .file-gallery { margin: 0; }
