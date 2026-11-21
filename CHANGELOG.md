@@ -5,6 +5,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Files in web requests** (sprint 243, MG-17, migration 200): `meta.web_request(..., p_body_blob => ...)` sends a file (bytea) with POST, PUT or PATCH, with its Content-Type from `p_headers`. It has its own size limit `PGKILN_REST_MAX_UPLOAD_BYTES` (default 25 MB) and the same allow-list, address and web credential checks as a text body; retries send the same bytes. `p_chunk_bytes` PUTs the file in ranges, for upload sessions of Microsoft Graph (OneDrive, SharePoint). `meta.web_request_source(..., p_body_blob, p_content_type)` sends a file to a REST data source's URL with its credential.
+- **Files into REST modules** (sprint 243, MG-17): a handler with `"body": "blob"` receives the request body as `:BODY_BLOB` and `:CONTENT_TYPE` (at most `MAX_UPLOAD_MB`). HR part 107 (page 71, *Send a file*) sends a file item's upload to the sample CRM module, whole and in ranges.
+
 ## [0.113.0] - 2026-11-20
 
 ### Added
