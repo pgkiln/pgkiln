@@ -684,6 +684,7 @@ export const zhCN: BuilderMessages = {
   'gallery.region.list': '列表',
   'gallery.region.data_reporter': '数据报告器',
   'gallery.region.form_designer': '表单设计器',
+  'gallery.region.json_form': 'JSON 表单',
   'gallery.region.ai_assistant': 'AI 助手',
   'gallery.region.url': 'URL',
   'gallery.region.search': '搜索',

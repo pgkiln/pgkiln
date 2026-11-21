@@ -288,6 +288,12 @@ export async function validate(ctx: PageContext) {
     if (!m || Math.abs(Number(m[1])) > 90 || Math.abs(Number(m[2])) > 180) fail(i.name, ctx.locale.t('error.location', { label: errLabel(i) }));
   }
 
+  // (sprint 246, MG-19) the JSON forms' answers checked against their schemas (json-form.ts applyJsonForms)
+  if (!deleting && ctx.jsonFormErrors) {
+    errors.page.push(...ctx.jsonFormErrors.page);
+    for (const [k, m] of Object.entries(ctx.jsonFormErrors.items)) errors.items[k] ??= m;
+  }
+
   for (const v of ctx.page.validations) {
     // (148) Always execute: also for a DELETE request
     if (v.when_button ? v.when_button !== ctx.request : deleting && !v.always_execute) continue;

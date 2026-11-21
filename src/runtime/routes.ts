@@ -23,6 +23,7 @@ import { sessionLimits, clientIp, createSession, destroySession, getSession, log
 import { checkPageAccess, dropGlobal, computeVisibility, Forbidden, isAuthorized, StepUp } from './authz.ts';
 import { bindValues, dbg, publicError, stripSemicolon, timed, toState, writeOut, type PageContext } from './context.ts';
 import { startDebug } from '../debug.ts';
+import { applyJsonForms } from './json-form.ts';
 import { assignable, clearPageItems, fetchForms, makeWebRequests, processConditionHolds, ProcessFailed, runAppProcesses, runProcesses, runSql, validate, ValidationFailed } from './engine.ts';
 import { INTERACTIVE_BUDGET_MS } from '../webrequests.ts';
 import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
@@ -658,6 +659,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         if (requested && pressed?.action !== 'submit') throw new Forbidden(ctx.locale.t('error.action_unavailable'));
         dbg(ctx, 4, 'submit', requested ? `button ${requested}` : 'submit without a button');
         applyPostedItems(ctx, body);
+        // (sprint 246, MG-19) each JSON form's answers into its item, checked against its schema (shown by validate())
+        await applyJsonForms(ctx, body);
         await applyUploads(ctx, files, body, txContext);
         if (Object.keys(ctx.errors.items).length) throw new ValidationFailed(ctx.errors);
         if (!pressed) {

@@ -20895,3 +20895,116 @@ describe('sprint 245 MG-18', () => {
     }
   });
 });
+
+describe('sprint 246 MG-19', () => {
+  const ids = async () => {
+    const r = await owner.one(`select r.id, r.source, p.id as page_id from meta.region r join meta.page p on p.id = r.page_id
+                                where p.app_id = $1 and p.page_no = 74 and r.static_id = 'jf-form'`, [appId]);
+    const tpl = (await owner.one(`select id from hr.form_template where name = 'Workplace inspection'`)).id;
+    return { rid: r.id as number, source: r.source as string, page: r.page_id as number, tpl: String(tpl) };
+  };
+  const stored = async () => (await owner.query(`select answers from hr.form_answer where upper(username) = 'BLAKE'`)).rows;
+  const clean = () => owner.query(`delete from hr.form_answer where upper(username) = 'BLAKE'`);
+
+  test('values outside an enum and values of the wrong type are refused; nothing is stored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const f = (k: string) => `jf${rid}:${k}`;
+    const base = { __request: 'SAVE', P74_TEMPLATE: tpl, [f('location')]: 'A1', [f('inspected_on')]: '2026-01-02', [f('overall')]: 'good' };
+    const cases: Record<string, string | string[]>[] = [
+      { [f('overall')]: 'excellent' },            // not in the radio group's enum
+      { [f('department')]: '50' },                // not in oneOf
+      { [f('department')]: '10.0x' },             // not a number at all
+      { [f('hazards')]: ['trip', 'sabotage'] },   // a checkbox value the schema doesn't have
+      { [f('score')]: '3.5' },                    // an integer field
+      { [f('score')]: 'NaN' },
+      { [f('temperature')]: 'Infinity' },
+      { [f('inspected_on')]: '2026-02-30' },
+      { [f('manual_url')]: 'javascript:alert(1)' },
+      { [f('inspector_email')]: '<a@b.c>' },
+      { [f('location')]: 'x'.repeat(101) },        // maxLength
+    ];
+    const blake = await as('blake');
+    for (const c of cases) {
+      await blake.get('/a/hr/74');
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, ...base, ...c });
+      assert.equal(res.statusCode, 422, JSON.stringify(c));
+      assert.match(res.body, /has-error/, JSON.stringify(c));
+    }
+    assert.deepEqual(await stored(), []);
+  });
+
+  test('the answers come from the schema\'s fields only: a posted item value, unknown fields and the read-only region are ignored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const blake = await as('blake');
+    await blake.get('/a/hr/74');
+    const saved = (await owner.one(`select id from meta.region where page_id = (select page_id from meta.region where id = $1) and static_id = 'jf-saved'`, [rid])).id;
+    const res = await blake.post('/a/hr/74', {
+      __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl,
+      P74_ANSWERS: '{"location": "forged", "admin": true}',
+      [`jf${rid}:location`]: 'A1', [`jf${rid}:inspected_on`]: '2026-01-02', [`jf${rid}:overall`]: 'good',
+      [`jf${rid}:admin`]: 'true', [`jf${rid}:contact/role`]: 'boss', [`jf${saved}:location`]: 'other region',
+    });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    const [row] = await stored();
+    assert.equal(row.answers.location, 'A1');
+    assert.equal('admin' in row.answers, false);
+    assert.deepEqual(row.answers.contact, {});
+    await clean();
+  });
+
+  test('nothing from the schema is rendered unescaped: titles, descriptions, placeholders, enum labels, values and keys', async () => {
+    const x = '<img src=x onerror=alert(1)>';
+    const schema = {
+      type: 'object', title: x, description: x,
+      properties: {
+        [`k${x}`]: { type: 'string', title: x, description: x, 'x-placeholder': x, default: x },
+        pick: { type: 'string', enum: [x, 'b'], 'x-enum-labels': [x, x] },
+        radio: { type: 'string', oneOf: [{ const: x, title: x }], 'x-widget': 'radio' },
+        boxes: { type: 'array', items: { enum: [x] } },
+        rows: { type: 'array', title: x, items: { type: 'object', properties: { [x]: { type: 'string', title: x } } } },
+        group: { type: 'object', title: x, properties: { inner: { type: 'boolean', title: x } } },
+      },
+    };
+    const id = (await owner.one(`insert into hr.form_template (name, schema) values ('JF XSS', $1) returning id`, [JSON.stringify(schema)])).id;
+    try {
+      const blake = await as('blake');
+      const body = (await blake.get(link('blake', 74, { P74_TEMPLATE: String(id) }))).body;
+      const page = (await blake.get('/a/hr/74')).body;
+      for (const b of [body, page]) assert.doesNotMatch(b, /<img src=x/);
+      assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      // a failed submit shows the posted text escaped too
+      const { rid } = await ids();
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: String(id), [`jf${rid}:pick`]: `${x}!`, [`jf${rid}:k${encodeURIComponent(x)}`]: x });
+      assert.equal(res.statusCode, 422);
+      assert.doesNotMatch(res.body, /<img src=x/);
+    } finally {
+      await owner.query(`delete from hr.form_answer where template_id = $1`, [id]);
+      await owner.query(`delete from hr.form_template where id = $1`, [id]);
+    }
+  });
+
+  test("the schema's SQL runs as the application's role, on render and on submit", async () => {
+    const { rid, source, tpl } = await ids();
+    await clean();
+    await owner.query(`update meta.region set source = $2 where id = $1`, [rid,
+      `select jsonb_build_object('type', 'object', 'properties', jsonb_build_object('who', jsonb_build_object('type', 'string', 'enum', jsonb_build_array(current_user::text)))) as schema`]);
+    try {
+      const role = (await owner.one(`select db_role from meta.app where id = $1`, [appId])).db_role;
+      const blake = await as('blake');
+      const page = (await blake.get('/a/hr/74')).body;
+      assert.match(page, new RegExp(`<option value="${role}"`));
+      // pgkiln's own tables are out of its reach
+      await owner.query(`update meta.region set source = 'select to_jsonb(a) as schema from meta.app a' where id = $1`, [rid]);
+      const denied = (await blake.get('/a/hr/74')).body;
+      assert.match(denied, /alert-error/);
+      assert.doesNotMatch(denied, /name="jf\d+:alias"/);
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl, [`jf${rid}:alias`]: 'x' });
+      assert.equal(res.statusCode, 422, 'a schema that can\'t be read refuses the submit');
+      assert.deepEqual(await stored(), []);
+    } finally {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [rid, source]);
+    }
+  });
+});

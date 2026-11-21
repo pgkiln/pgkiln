@@ -684,6 +684,7 @@ export const ja: BuilderMessages = {
   'gallery.region.list': 'リスト',
   'gallery.region.data_reporter': 'データ・レポーター',
   'gallery.region.form_designer': 'フォーム・デザイナ',
+  'gallery.region.json_form': 'JSONフォーム',
   'gallery.region.ai_assistant': 'AI アシスタント',
   'gallery.region.url': 'URL',
   'gallery.region.search': '検索',
