@@ -17,7 +17,9 @@ import {
   loadImportSchema, normalizeConditionKeys, parseConditionCheck, parseEnumCheck, type ImportSchema,
 } from '../src/import-errors.ts';
 import { fromText, toText } from '../src/yamltext.ts';
-import { closePools } from '../src/db.ts';
+import { closePools, owner } from '../src/db.ts';
+import { buildApp } from '../src/app.ts';
+import { Browser } from './helpers.ts';
 
 const ALIAS = 'hr_mg28';
 const tmp = mkdtempSync(join(tmpdir(), 'pgkiln-mg28-'));
@@ -110,8 +112,11 @@ describe('the checks mirror PostgreSQL', () => {
       2, 1, 0, '', ' ', 'NaN', '-Infinity', '.5', '1.', '+7', '99999999999', '2147483647', '-2147483648', '2147483648', [1], { a: 1 }, null];
     const wrong: string[] = [];
     await withDb(async (db) => {
+      // 0x1F and 1_000 are integers from PostgreSQL 16 on: the mirror takes them (never a false alarm before 16)
+      const old = Number((await db.query('show server_version_num')).rows[0].server_version_num) < 160000;
       for (const type of ['integer', 'smallint', 'bigint', 'numeric', 'double precision', 'boolean'])
         for (const v of values) {
+          if (old && (v === '0x1F' || v === '1_000')) continue;
           const pg = await db.query(`select v from jsonb_to_record($1::jsonb) as x(v ${type})`, [JSON.stringify({ v })])
             .then(() => null, (e: any) => (e.code === '22003' ? 'range' : 'syntax'));
           // a range error of a float is PostgreSQL's (out of range), the mirror calls it fine: never a false alarm
@@ -200,6 +205,29 @@ describe('an import that fails names the file and the key', () => {
     const plain = JSON.parse(JSON.stringify(doc)) as Doc;
     const msg = await withDb((db) => importDoc(db, plain, { alias: `${ALIAS}_new`, replace: false }).then(() => '', (e) => (e as Error).message));
     assert.match(msg, /^The import was refused, nothing changed:\n {2}- page 2, button [^:]+: "seq" is "ten"/);
+  });
+});
+
+describe('the builder\'s Import', () => {
+  test('a JSON document whose process has a computation\'s point: the flash names the component and the allowed points', async () => {
+    const app = await buildApp({ logger: false });
+    try {
+      const doc = JSON.parse(JSON.stringify(filesToDoc(exported)));
+      const page = doc.pages.find((p: any) => p.page_no === 3);
+      page.processes[0].point = 'before_header';
+      const dev = new Browser(app);
+      await dev.get('/builder/login');
+      await dev.submit('/builder/login', { username: 'admin', password: 'admin' });
+      await dev.get('/builder/import');
+      await dev.submit('/builder/import', { doc: JSON.stringify(doc), alias: `${ALIAS}_new` });
+      assert.equal((await owner.query('select 1 from meta.app where alias = $1', [`${ALIAS}_new`])).rowCount, 0);
+      const html = (await dev.get('/builder/import')).body;
+      assert.match(html, /Import failed: The import was refused, nothing changed:/);
+      assert.match(html, /page 3, process [^:]+: &quot;point&quot; is &quot;before_header&quot;; meta\.process\.point allows submit, load, ajax/);
+      assert.doesNotMatch(html, /violates check constraint/);
+    } finally {
+      await app.close();
+    }
   });
 });
 
