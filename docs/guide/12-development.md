@@ -453,9 +453,11 @@ src/
     files.ts               file items: multipart parsing, temporary files, signed downloads; (sprint 239) signature items (the
                            signature preset of a file item, metadata.ts presetItem; migration 195): pngSize, a real PNG of at most
                            1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads)
-    document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
+    document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit); (sprint 245) images and <br> inside
+                           table cells and paragraphs (partsOf/drawParts), shadowedBuiltIns (query columns named like a built-in)
     documents.ts           ?doc=NAME: a template filled with the page's values
-    document-pdf.ts        meta.document_pdf references drawn after each process into mail attachments; send_email document attachments (sprint 237)
+    document-pdf.ts        meta.document_pdf references drawn after each process into mail attachments; send_email document attachments (sprint 237);
+                           meta.document_temp_file's temporary files drawn the same way (meta.document_pending, migration 202; sprint 245)
     maps.ts                map region (data for Leaflet: layers with a query each, markers, clusters or heat, PostGIS geometry as GeoJSON, report filter by area or distance; list fallback, head assets)
     spatial.ts             spatial filtering on the server: map area and distance parsing, PostGIS detection and SQL (ST_Intersects, ST_DWithin), lat/lng fallback (bounding box, haversine)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
@@ -749,7 +751,8 @@ src/
                            links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0;
                            (sprint 234) positionFindings: a header position the page has not, items and submit buttons in a
                            header region (outside the page's form); (sprint 240) stay_in_dialog off a modal page or on a branch
-                           to another app, Ajax callbacks that aren't SQL or a chain of SQL processes
+                           to another app, Ajax callbacks that aren't SQL or a chain of SQL processes; (sprint 245) queryColumns
+                           (a SELECT's columns through a temporary view, rolled back): a document template's column named like a built-in
     advisor-items-pages.ts (sprint 241) itemPageFindings: a placeholder no type shows, meta.set_auth_user outside custom
                            authentication's post-authentication code, No navigation on a modal page
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
@@ -953,6 +956,8 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  document-temp-file.test.ts (sprint 245, MG-18/26) meta.document_temp_file (HR part 109: Keep a copy), images and <br> in
+                           cells and paragraphs (positions read from the PDF), the Advisor's built-in column warning
   item-texts-auth-user.test.ts (sprint 241, MG-10/11/13/15) placeholders, &ITEM. in labels, page template no_navigation,
                            meta.set_auth_user (HR page 68, part 104); e2e/visitor-kiosk.test.ts in a browser at 390 and 1280 px
   instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets
