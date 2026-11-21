@@ -117,7 +117,7 @@ without it answers `403` until you make a new one ([chapter 3](03-builder.md#bui
 | `advise_app` | (0.77) the Advisor on an application or an export (imported and rolled back): SQL planned as the application's role, references, security checks, each finding with its file; `offline: true` with a `path` checks the files without the database (0.79) | no |
 | `working_copy` | (0.77) `list`, `create`, `compare`, `merge`, `refresh` or `delete` working copies; conflicts need `prefer` (copy or main) or `take` (component ids); a merge is refused while another developer has a lock on it | the database |
 | `lock_app` | (0.77) locks an application or a page (`unlock: true` removes it; another developer's lock only with `force: true`, logged) | the database |
-| `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place; (sprint 242) a key a file leaves out takes the column default, listed per file. It checks the application first (the Advisor, in the import's transaction): errors refuse the import and are listed; `force: true` imports anyway, `dry_run: true` only checks | the database |
+| `import_app` | imports a directory, zip or JSON file; `replace: true` updates the application in place; (sprint 242) a key a file leaves out takes the column default, listed per file; (sprint 251) a refused import names the file, the component, the key and the allowed values. It checks the application first (the Advisor, in the import's transaction): errors refuse the import and are listed; `force: true` imports anyway, `dry_run: true` only checks | the database |
 
 The files are the [directory format](18-cli.md#the-directory-format) of the command line, in the
 [text style](18-cli.md#text-files-apexlang): one YAML file per component, with SQL, PL/pgSQL and
@@ -145,6 +145,13 @@ is in the file.
 3. `diff_app`, so you (and it) see exactly what will change.
 4. `import_app` with `replace: true`. When it names errors (a missing column, a typo in SQL), the agent fixes
    the files and imports again; nothing was changed. Open the page in the browser to check.
+
+(sprint 251) **A refused import says where.** A value of the wrong type (`target_page: "&P11_BACK."`), two items of one
+name on a page, a value a check doesn't allow (a process with a computation's point `before_header`) or a condition its
+type can't use comes back as the file, the component, the key, its value and the allowed values, every problem at
+once ([when an import is refused](18-cli.md#when-an-import-is-refused)); `advise_app` with `offline: true` finds the
+same without a database. A region's or button's SQL condition is `condition`, the other components' `condition_expr`:
+the import takes either key on any of them.
 
 Tables, views and functions are ordinary PostgreSQL objects: an agent changes them in your
 migration scripts, not in the application files (`run_query` can't change them anyway).

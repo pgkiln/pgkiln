@@ -189,6 +189,39 @@ component and the key:
 shared/lovs/jobs.yaml (lov jobs): "query" is missing: meta.lov.query may not be null. Give the key a value (…)
 ```
 
+### When an import is refused
+
+(sprint 251) An import reads every component into its table, and PostgreSQL refuses a value that isn't of the
+column's type, two components with one unique key, or a value a check constraint doesn't allow. The import (`pgkiln
+import`, the MCP tool `import_app`, the builder's Import, `pgkiln advise`) then names the file, the component, the key
+and its value instead of PostgreSQL's own message, lists every such problem of the files at once, and changes nothing:
+
+```
+The import was refused, nothing changed:
+  - pages/0002-employees/buttons/0010-create.yaml (page 2, button CREATE): "target_page" is "&P11_BACK.": meta.button.target_page takes a whole number. A substitution (&ITEM.) or bind variable (:ITEM) is not evaluated in this property: give the value itself.
+  - 2 items have the name "P3_ENAME" on page 3: pages/0003-employees-form/items/0020-p3_ename.yaml (page 3, item P3_ENAME) and pages/0003-employees-form/items/0021-p3_ename.yaml (page 3, item P3_ENAME); the unique key item_page_id_name_key allows one. Rename or remove one of them.
+  - pages/0003-employees-form/processes/0015-start-onboarding.yaml (page 3, process Start onboarding): "point" is "before_header"; meta.process.point allows submit, load, ajax. "before_header" is the point of app computations, branches and computations, not of a process. A process that runs when the page is shown has point "load".
+```
+
+- **Types**: a whole number, a number or `true`/`false` where the column wants one (PostgreSQL's own rules: `" 12 "`
+  and `"yes"` are fine, `"3.5"` for a whole number is not).
+- **Allowed values**: the key's allowed values, a *did you mean* for a value in the wrong case, and for a value
+  another kind of component has (a computation's `before_header` on a process) which kind that is and what to use.
+- **Conditions**: what the condition type needs (the SQL, the item's name, the value) or the list of condition types.
+- **Unique keys**: both files of two components with one key (two items of one name on a page, two regions of one
+  static id, two pages of one number). A conflict with a row that is already in the database says so, without
+  showing that row: the messages are made from your files and from pgkiln's own catalog (column types, constraint
+  names and their allowed values), never from another application's or workspace's data.
+- Any other check: the component, the check's definition and the values of its keys.
+
+A JSON document (the builder's Import, the builder API) has no files: the message names the component (`page 2,
+button CREATE`).
+
+**`condition` or `condition_expr`.** A region's and a button's SQL condition is the key `condition`; every other
+component's (items, processes, validations, computations, branches) is `condition_expr`. An import takes either key on
+any of them and gives the column the one its table has; `diff` compares them the same way, and an export keeps writing
+the table's own key. A component that gives both with different values is refused, naming the file.
+
 ### Text files (APEXlang)
 
 APEX 26.1 writes applications in APEXlang, a human-readable text format. `pgkiln export hr
@@ -374,7 +407,9 @@ jobs:
 need no database: references between components (pages, items, lists of values, authorization schemes, build options,
 report layouts, regions, workflow definitions and steps, processes in chains), the login page and page groups, the
 pages' security defaults (writing without sign-in or a scheme, unrestricted protection), process settings and JSON
-source profiles. It never connects (`DATABASE_URL` may be unset), so it fits a quick step before the full check, or a
+source profiles, and (sprint 251) what an import would [refuse](#when-an-import-is-refused): values of the wrong type,
+values a check doesn't allow, conditions and unique keys given twice, each an error at its file (*the import refuses
+this*), checked against the schema of the pgkiln that runs it. It never connects (`DATABASE_URL` may be unset), so it fits a quick step before the full check, or a
 repository without a database in CI:
 
 ```yaml
