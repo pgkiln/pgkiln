@@ -225,7 +225,9 @@ export function castProblem(type: string, v: unknown): 'syntax' | 'range' | null
     const n = BigInt(t.replace(/^[+-]/, ''));
     return n > RANGE[type] + (neg ? 1n : 0n) ? 'range' : null;
   }
-  return NUM.test(s) || SPECIAL.test(s) ? null : 'syntax';
+  // numeric takes 0x1F and 1_000 (PostgreSQL 16+); a float takes 0x1F (strtod) but no underscores
+  if ((type === 'real' || type === 'double precision') && s.includes('_')) return 'syntax';
+  return INT.test(s) || NUM.test(s) || SPECIAL.test(s) ? null : 'syntax';
 }
 
 // ------------------------------------------------------------------ checking a document
@@ -386,7 +388,7 @@ export async function explainImportError(e: unknown, doc: Doc, o: { schema?: Imp
     relevant = all.filter((p) => p.rule === err.constraint);
     if (!relevant.length && err.code === '23514' && err.table && err.constraint && o.db) relevant = await failingRows(o.db, doc, err.table, err.constraint);
     if (!relevant.length) {
-      const what = err.table ? `a ${kind(err.table)}` : 'a component';
+      const what = err.table ? `${/^[aeiou]/.test(err.table) ? 'an' : 'a'} ${kind(err.table)}` : 'a component';
       const lead = err.code === '23505'
         ? `${what} has the same ${uniqueColumns(schema, err.constraint)} as one that is already in the database (unique key ${err.constraint}); ` +
           'none of the files has it twice. Give it another value'
