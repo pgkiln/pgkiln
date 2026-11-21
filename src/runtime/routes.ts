@@ -34,7 +34,7 @@ import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, rend
 import { parseNumber } from '../numformat.ts';
 import { parseDateMask } from './format.ts';
 import { cleanRichText } from '../richtext.ts';
-import { applyUploads, fileRoutes, readMultipart, type Upload } from './files.ts';
+import { applyUploads, fileRoutes, readMultipart, saveParentItemFiles, type Upload } from './files.ts';
 import { renderRegion } from './regions.ts';
 import { downloadHeaders, type Download } from './processes.ts';
 import { moveGanttTask } from './gantt-move.ts';
@@ -690,6 +690,8 @@ export async function runtimeRoutes(app: FastifyInstance) {
         // (a DELETE runs only the validations made for it: see validate())
         await timed(ctx, 4, 'page', 'validations', () => validate(ctx));
         messages = await timed(ctx, 4, 'page', 'processes (submit)', () => runProcesses(ctx, 'submit'));
+        // (252) multiple file items with a "parent_item": their files, once the processes have saved the record
+        await saveParentItemFiles(ctx);
         // after processing: the first branch that applies; else the button's target page
         const taken = await branchTaken(ctx, 'after_processing');
         branchTo = taken?.href ?? null;

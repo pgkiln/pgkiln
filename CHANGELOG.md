@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Multiple file items outside a form region** (sprint 252): `"parent_item": "P8_ID"` names the protected hidden
+  item holding the record's key, for a page that saves with its own processes (a static region, fields in `jsonb`).
+  The item lists, removes and serves that record's files and saves new ones after the submit processes, so a process
+  that inserts the record gets the files with it; with `filter` and `"display": "gallery"` as in a form. A request
+  can't set the item, so a forged post never reaches another record's files. App Gallery *Sample Files* page 8
+  (*Site visits*).
+
 ## [0.114.0] - 2026-11-21
 
 ### Added
