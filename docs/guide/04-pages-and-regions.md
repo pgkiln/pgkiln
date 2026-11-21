@@ -7,7 +7,7 @@ A page has a number (unique in the app; 0 is the [Global Page](#the-global-page)
 
 | Property | Values | Effect |
 |---|---|---|
-| `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message), unless the button or branch [stays in the dialog](06-processing.md#staying-in-the-dialog) (sprint 240). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
+| `mode` | `normal`, `modal` | Modal pages open in a dialog over the page that linked to them. After a successful submit the dialog closes and the page below reloads (showing the success message), unless the button or branch [stays in the dialog](06-processing.md#staying-in-the-dialog) (sprint 240), or a branch sends the page below [to its target](06-processing.md#a-dialog-that-sends-the-page-below-elsewhere) (sprint 249). On phones the dialog is full screen. Opened directly, a modal page works as a normal page |
 | `dialog_position` | `center`, `left`, `right`, `top`, `bottom` | Modal pages: a centred dialog (the default) or a **drawer** that slides in from that edge (APEX: the Drawer page template; 26.1: top and bottom drawers). See [Dialogs and drawers](#dialogs-and-drawers) |
 | `dialog_size` | `small`, `medium`, `large` | Modal pages: the dialog's or side drawer's width, the height of a top or bottom drawer |
 | `parent_page` | page number | Breadcrumb trail, and which menu entry is highlighted |
@@ -196,6 +196,10 @@ On phones centred dialogs and side drawers fill the screen; top and bottom drawe
 prefer reduced motion get no slide-in animation. Everything else (closing after a submit, the *Dialog Closed* dynamic
 action, opening the page directly as a normal page) works the same for every position. In the HR example,
 *Leave request* (page 7) is a drawer from the right.
+
+(sprint 249) A branch of the dialog page with *In the page below* closes the dialog and sends the page below to
+another page with items (*Find an employee*, HR page 76, opens the profile it found): see
+[A dialog that sends the page below elsewhere](06-processing.md#a-dialog-that-sends-the-page-below-elsewhere).
 
 ### Layout
 

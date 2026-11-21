@@ -11,6 +11,7 @@ import '../src/env.ts';
 const { buildApp } = await import('../src/app.ts');
 const { closePools, owner } = await import('../src/db.ts');
 const { previousPage } = await import('../src/runtime/context.ts');
+const { advise } = await import('../src/builder/advisor.ts');
 const { Browser } = await import('./helpers.ts');
 
 let app: FastifyInstance;
@@ -208,5 +209,21 @@ describe('sprint 249 MG-27: item values in button labels', () => {
     const page = await b.get(`${base}/3`);
     assert.match(page.body, />Stay as &lt;b&gt;Bob&lt;\/b&gt; &amp; &quot;co&quot;</);
     assert.doesNotMatch(page.body, /<b>Bob<\/b>/);
+  });
+});
+
+describe('sprint 249: the Advisor', () => {
+  test('an unknown item to branch to, and In the page below on a page that is not a dialog', async () => {
+    await owner.query(`insert into meta.branch (page_id, seq, name, point, target_type, target_item, in_page_below) values ($1, 9, 'Odd', 'after_processing', 'item', 'P3_NOPE', true)`, [pages[3]]);
+    try {
+      const { findings } = await advise(appId);
+      const msgs = findings.map((f) => `${f.field}: ${f.message}`);
+      assert.ok(msgs.some((m) => /^Item holding the page \(item\): P3_NOPE is not an item/.test(m)), msgs.join('\n'));
+      assert.ok(msgs.some((m) => /^In the page below: Page 3 is not a modal dialog page/.test(m)), msgs.join('\n'));
+      // the built-in and the page's own items are fine
+      assert.ok(!msgs.some((m) => /APP_PREVIOUS_PAGE is not|P3_BACK is not/.test(m)), msgs.join('\n'));
+    } finally {
+      await owner.query(`delete from meta.branch where page_id = $1 and name = 'Odd'`, [pages[3]]);
+    }
   });
 });
