@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.113.0 (November 2026): gaps found migrating an Appsmith application — several mail services per application, document templates as mail attachments (`meta.document_pdf`), report link columns and row actions, inline dialogs opened by static ID, a signature item and a bundled barcode decoder for iOS, value placeholders and `&ITEM.` in labels, the Standard without navigation page template, `meta.set_auth_user`, staying in a dialog, web requests after Ajax callbacks, `contains` conditions, keys left out of application files take column defaults; and the Standard page template's other positions in the Page Designer (AX-12).
+- **Current release:** 0.114.0 (November 2026): gaps found migrating a second Appsmith application — binary request bodies for `meta.web_request` and files into REST handlers, OneDrive / SharePoint storage for file items, document PDFs as temporary files with images in table cells, a JSON form region, multiple file items on a shared child table with a picture gallery, sign-in against other systems' password hashes, branches to an item's page and back to the calling page, dialog branches in the page below, `&ITEM.` in button labels, a mail redirect for test systems, absolute links in SQL, and import errors that name the file and key.
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
@@ -37,7 +37,7 @@ Partial features first, then the missing ones, roughly in this order:
      tokens for the command line and MCP; then the builder UX findings NX-U1, NX-U3 … NX-U6.
    - More real APEX exports to test the importer against (each one so far showed gaps the samples didn't).
 
-7. **A second Appsmith migration (November 2026, planned):** the Hewa-Techniek app (46 pages, a Django REST API and
+7. ~~**A second Appsmith migration (November 2026):**~~ done in 0.114.0: the Hewa-Techniek app (46 pages, a Django REST API and
    Microsoft Graph) rebuilt in 0.113.0 found thirteen more gaps, MG-17 … MG-29 in the
    [parity list](docs/apex-feature-parity.md#still-open). Planned in this order:
    - **243** binary request bodies for `meta.web_request` (MG-17);
