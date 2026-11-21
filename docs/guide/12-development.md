@@ -297,6 +297,12 @@ src/
                            with no time left becomes 'retry' for after the commit, DEFERRED_MESSAGE)
                            (sprint 177, migration 160) the outbox: outcome() (retry, gave_up), leases, ordering keys, the
                            idempotency header, callbackTick() (schema.function(id) as the app role), startWebRequestRunner()
+                           (sprint 243, migration 200) binary bodies: body_blob / chunk_bytes sent with webupload.ts sendBinary();
+                           a claimed request carries only body_blob_bytes, the bytes are read after the size check (blobOf)
+  webupload.ts             (sprint 243, MG-17) binary request bodies: sendBinary() (POST/PUT/PATCH a Buffer through websources.ts
+                           call(): allow-list, SSRF checks, credential URL prefix; maxUploadBytes() = PGKILN_REST_MAX_UPLOAD_BYTES;
+                           chunkBytes: PUT in Content-Range ranges, 202 + nextExpectedRanges followed, as Graph upload sessions);
+                           reuse it for any file sent to a web service
   mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
                            or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
                            Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),
@@ -444,6 +450,7 @@ src/
                            check, execution (collections stream from a cursor), OpenAPI (templates, documented parameters, roles)
                            (sprint 175) etagOf() / noneMatch(): an ETag on a GET's answer, 304 for If-None-Match (after the handler ran)
                            (sprint 175) header parameters: headerName(), bound from the request header only, credential headers refused
+                           (sprint 243) "body": "blob": BLOB_TYPE parser (MAX_UPLOAD_MB), :BODY_BLOB (bytea text) and :CONTENT_TYPE
     rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
                            handlers (content type and file name cleaned, sandboxed response)
                            (sprint 176, migration 159) replyHeaders(): the response headers meta.rest_header set, checked again
