@@ -651,7 +651,9 @@ select o.id, o.ordered_on, c.name as customer, o.total,
  where o.id = :P5_ORDER_ID::int
 ```
 
-Built in: `APP_USER`, `APP_NAME`, `TODAY` and `NOW`.
+Built in: `APP_USER`, `APP_NAME`, `TODAY` and `NOW`. A query column of exactly one of these names
+takes its place, and a column named `rows` is never seen (`{{rows}}` stays the list of all rows): the
+Advisor warns about both (sprint 245). Tags are case-sensitive, so a column `today` is no `TODAY`.
 
 **Tags.** Every value is HTML-escaped; there is no way to output data as markup.
 
@@ -671,6 +673,25 @@ PDF), `ul`/`ol`/`li`, `hr`, tables (`thead`, `tbody`, `tfoot`, `tr`, `th`, `td`;
 don't), `class="page-break"` on a `div` or `hr`, `align="right"`/`"center"` (or `class="right"`) and
 `class="muted"`. A table's header rows repeat on every page it runs over; rows are never split.
 `<p>&nbsp;</p>` is an empty line. Other tags show their text.
+
+(sprint 245) **Inside a table cell or a paragraph:** `<br>` starts a new line (`<br><br>` leaves an
+empty one); an `<img>` is drawn between the text around it, at its `width` in `mm`, in `%` of the cell
+(or paragraph) or in pixels, never wider than the cell, and images that fit next to each other share a
+line; the row grows to the tallest cell. A heading in a cell is bold at its size. So a logo goes
+beside the title, and two signatures side by side:
+
+```html
+<table class="plain">
+  <tr><td width="36mm"><img src="logo" width="32mm"></td>
+      <td><h2>Work order {{id}}</h2>{{customer}}<br><span class="muted">{{address}}</span></td></tr>
+</table>
+<table class="plain">
+  <tr><td>Customer<br><img src="data:image/png;base64,{{customer_signature}}" width="50mm"></td>
+      <td>Engineer<br><img src="data:image/png;base64,{{engineer_signature}}" width="50mm"></td></tr>
+</table>
+```
+
+(`encode(signature, 'base64') as customer_signature` in the query: a signature item's PNG.)
 
 ```html
 <img src="logo" align="right" width="30mm">
@@ -695,6 +716,29 @@ get the documents that page offers with a visible document button. The HR sample
 `meta.add_mail_attachment(id, meta.document_pdf('EMPLOYEE_SHEET', jsonb_build_object('P3_EMPNO', 7839)), …)`:
 drawn on the server as for a download ([Sending e-mail](06-processing.md#a-document-as-attachment)).
 The HR sample's *Mail sheet* button does the latter.
+
+**As a file to keep.** (sprint 245) `meta.document_temp_file(template, items, filename)` returns the id
+(a `uuid`) of a [temporary file](#in-a-process-temporary-files) of the session that the server draws
+as the template's PDF when the process that called it ends: in the same transaction, as the
+application's role, with the data as the process left it, the session state and `items` (item name →
+value) over it. From the **next** process of the same submit (or Ajax callback, dynamic action) on it
+is a PDF like an uploaded file, so a signed form can be stored, attached or sent by a web request:
+
+```sql
+-- process 1 (a column named like the item sets it)
+select meta.document_temp_file('WORK_ORDER', jsonb_build_object('P3_ID', :P3_ID),
+                               'work-order-' || :P3_ID) as p3_pdf;
+-- process 2
+insert into sales.order_document (order_id, filename, mime_type, content)
+select :P3_ID::int, filename, mime_type, content from meta.temp_files where id = :P3_PDF::uuid;
+```
+
+`filename` gets `.pdf` (without one: the template's file name). Within the calling process the file
+is not drawn yet (its `size` is -1); a transaction never commits an undrawn one, so calling it outside
+a page (a job, psql) fails with a clear message. The template's authorization scheme applies; at most
+50 documents (with `meta.document_pdf`'s) per transaction. The HR sample's *Keep a copy* button on
+the employee form stores the `EMPLOYEE_RECORD` template (a logo beside the title) among the
+employee's documents (`examples/hr/hr_109_document_temp_file.sql`).
 
 In the builder, **Preview PDF** under the template fills it with item values you type
 (`P3_EMPNO=7839`), as the application's role, in a transaction that is rolled back. The template's

@@ -474,7 +474,8 @@ export function filesToDoc(files: FileMap): Doc {
         if (table === 'report_layout') {
           const logo = rec.extra.find(([c]) => c === 'logo');
           if (logo) {
-            rec.row.logo = logo[1].toString('base64');
+            // (sprint 245) as PostgreSQL's encode(…, 'base64') writes it in export_app: lines of 76 characters
+            rec.row.logo = logo[1].toString('base64').replace(/.{76}(?=.)/g, '$&\n');
             rec.extra = rec.extra.filter(([c]) => c !== 'logo');
           }
         }
