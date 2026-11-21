@@ -3,7 +3,7 @@
 -- the page below elsewhere, item values in button labels (sprint 249,
 -- MG-22, MG-23, MG-27; migration 205; docs/guide/06-processing.md
 -- "Branches", 04-pages-and-regions.md "Modal dialog pages",
--- 05-regions-and-items.md "Buttons").
+-- 06-processing.md "Buttons" (label)).
 --
 -- Employees (page 2) and Departments (page 4) get a button "Find an
 -- employee" that opens page 76, a modal dialog with a select list.
