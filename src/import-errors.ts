@@ -232,7 +232,7 @@ export function castProblem(type: string, v: unknown): 'syntax' | 'range' | null
 
 // ------------------------------------------------------------------ checking a document
 
-const kind = (table: string) => table.replace(/_/g, ' ');
+const kind = (table: string) => (table === 'app' ? 'application' : table.replace(/_/g, ' '));
 const plural = (k: string) => (/(ch|sh|s|x)$/.test(k) ? `${k}es` : `${k}s`);
 const show = (v: unknown) => (typeof v === 'string' ? JSON.stringify(v.length > 80 ? `${v.slice(0, 80)}…` : v) : JSON.stringify(v));
 const pageNoOf = (scope: object | null, table: string, row: any) => {
@@ -388,10 +388,10 @@ export async function explainImportError(e: unknown, doc: Doc, o: { schema?: Imp
     relevant = all.filter((p) => p.rule === err.constraint);
     if (!relevant.length && err.code === '23514' && err.table && err.constraint && o.db) relevant = await failingRows(o.db, doc, err.table, err.constraint);
     if (!relevant.length) {
-      const what = err.table ? `${/^[aeiou]/.test(err.table) ? 'an' : 'a'} ${kind(err.table)}` : 'a component';
+      const what = err.table ? `${/^[aeiou]/.test(kind(err.table)) ? 'an' : 'a'} ${kind(err.table)}` : 'a component';
       const lead = err.code === '23505'
         ? `${what} has the same ${uniqueColumns(schema, err.constraint)} as one that is already in the database (unique key ${err.constraint}); ` +
-          'none of the files has it twice. Give it another value'
+          'the import itself does not have it twice. Give it another value'
         : `${what} is refused by the check constraint ${err.constraint}${err.table ? ` of meta.${err.table}` : ''}`;
       return all.length ? formatProblems(all, lead) : `${lead}.`;
     }

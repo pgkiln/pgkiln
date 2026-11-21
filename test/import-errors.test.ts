@@ -290,7 +290,7 @@ describe('messages never show another row', () => {
     const msg = await explainImportError(err, doc, { schema: live });
     assert.ok(msg);
     assert.doesNotMatch(msg!, /other-workspace-secret|Key \(/);
-    assert.match(msg!, /an app has the same alias as one that is already in the database \(unique key app_alias_key\)/);
+    assert.match(msg!, /an application has the same alias as one that is already in the database \(unique key app_alias_key\)/);
   });
 
   test('errors of other schemas or kinds are left alone', async () => {
