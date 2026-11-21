@@ -15,6 +15,7 @@ import { decryptSecret } from '../secrets.ts';
 import { mailHostAddress, scopeForWorkspace } from '../network-acl.ts';
 import { deliver, MailError, verifyConnection, type OutgoingMail, type Provider, type ServiceSettings } from './providers.ts';
 import { count, markError, rootSpan, setAttrs, traceApp } from '../telemetry/trace.ts';
+import { redirectFor, redirectMail, type Redirect } from './redirect.ts';
 
 export interface MailService {
   id: number;
@@ -40,8 +41,15 @@ export function senderAllowed(senders: string[], from: string) {
   return senders.some((s) => s.toLowerCase() === f || (s.startsWith('@') && f.endsWith(s.toLowerCase())));
 }
 
-/** Send one message through a service now (the worker, and the builder's test). Returns the provider's id. */
-export async function sendWith(service: MailService, m: OutgoingMail, appId: number | null = null) {
+/**
+ * Send one message through a service now (the worker, sign-in codes, the builder's own mail). Returns the provider's id.
+ * (sprint 250, MG-24) Under MAIL_REDIRECT_TO, or the application's "Redirect all mail to" (appId), it goes only to
+ * that address (src/mail/redirect.ts); `redirected` hears where.
+ */
+export async function sendWith(service: MailService, m: OutgoingMail, appId: number | null = null, redirected?: (r: Redirect | null) => void) {
+  const redirect = await redirectFor(appId);
+  redirected?.(redirect);
+  if (redirect) m = redirectMail(m, redirect);
   if (!service.enabled) throw new MailError(`Mail service ${service.name} is disabled.`, false);
   if (!senderAllowed(service.senders, m.from)) throw new MailError(`Mail service ${service.name} may not send as ${m.from}.`, false);
   let secret: string | null = null;
@@ -112,6 +120,8 @@ async function sendOneTraced(m: Claimed) {
   const t0 = performance.now();
   // (sprint 118) when the last attempt ended, how long the provider took (Administration → Mail queue)
   const timing = () => [Math.round(performance.now() - t0), service?.provider ?? null] as const;
+  // (sprint 250) where the attempt went under a redirect (null: to its own recipients)
+  let redirectedTo: string | null = null;
   try {
     if (!service) throw new MailError('The application has no mail service any more.', false);
     const attachments = (await owner.query<{ filename: string; mime: string; content: Buffer }>(
@@ -123,11 +133,11 @@ async function sendOneTraced(m: Claimed) {
     const id = await sendWith(service, {
       from: m.from_address, to: m.to_addresses, cc: m.cc_addresses, bcc: m.bcc_addresses, replyTo: m.reply_to,
       subject: m.subject, text: m.body_text, html: m.body_html, attachments,
-    }, m.app_id);
+    }, m.app_id, (r) => (redirectedTo = r?.to ?? null));
     const [ms, provider] = timing();
     await owner.query(`update meta.mail_queue set status = 'sent', sent_at = now(), provider_id = $2, service = $3, message = null,
-                              last_attempt_at = now(), duration_ms = $4, provider = $5 where id = $1`,
-      [m.id, id ? String(id).slice(0, 500) : null, service.name, ms, provider]);
+                              last_attempt_at = now(), duration_ms = $4, provider = $5, redirected_to = $6 where id = $1`,
+      [m.id, id ? String(id).slice(0, 500) : null, service.name, ms, provider, redirectedTo]);
     setAttrs({ 'pgkiln.mail.provider': provider, 'pgkiln.mail.service': service.name });
     count('pgkiln.mail.sent', { status: 'sent' });
   } catch (e) {
@@ -139,10 +149,11 @@ async function sendOneTraced(m: Claimed) {
     count('pgkiln.mail.sent', { status: retry && m.attempts < ATTEMPTS ? 'retry' : 'error' });
     if (retry && m.attempts < ATTEMPTS)
       await owner.query(`update meta.mail_queue set status = 'queued', not_before = now() + make_interval(mins => $2), message = $3, service = $4,
-                                last_attempt_at = now(), duration_ms = $5, provider = $6 where id = $1`,
-        [m.id, 4 ** (m.attempts - 1), message, service?.name ?? null, ms, provider]);
-    else await owner.query(`update meta.mail_queue set status = 'error', message = $2, service = $3, last_attempt_at = now(), duration_ms = $4, provider = $5 where id = $1`,
-      [m.id, message, service?.name ?? null, ms, provider]);
+                                last_attempt_at = now(), duration_ms = $5, provider = $6, redirected_to = $7 where id = $1`,
+        [m.id, 4 ** (m.attempts - 1), message, service?.name ?? null, ms, provider, redirectedTo]);
+    else await owner.query(`update meta.mail_queue set status = 'error', message = $2, service = $3, last_attempt_at = now(), duration_ms = $4, provider = $5,
+                                   redirected_to = $6 where id = $1`,
+      [m.id, message, service?.name ?? null, ms, provider, redirectedTo]);
   }
 }
 

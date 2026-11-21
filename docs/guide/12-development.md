@@ -158,6 +158,9 @@ src/
   reply-guard.ts           (sprint 200) an async handler that sent its reply and returns nothing waits for it (`return reply`),
                            instead of Fastify sending it again, empty, while an async onSend hook still runs
   sso.ts                   OpenID Connect: discovery, sign-in flow, ID token checks, account linking
+  public-url.ts            (sprint 250, MG-25, migration 206) recordPublicUrl(): server.ts records PUBLIC_URL (else
+                           http://127.0.0.1:<PORT>) in meta.instance_setting 'public_url' at start-up; meta.public_url() reads it for
+                           meta.page_url(…, p_absolute => true) and meta.app_url() (never a request's Host header)
   saml.ts                  SAML 2.0 sign-in (node-saml): AuthnRequest, response checks, SP metadata
   ldap.ts                  LDAP directories: search + bind, groups, account linking (ldapts)
   devsso.ts                (sprint 129) developers through identity providers and directories: resolveDeveloper (subject, link, create,
@@ -320,6 +323,13 @@ src/
                            call(): allow-list, SSRF checks, credential URL prefix; maxUploadBytes() = PGKILN_REST_MAX_UPLOAD_BYTES;
                            chunkBytes: PUT in Content-Range ranges, 202 + nextExpectedRanges followed, as Graph upload sessions);
                            reuse it for any file sent to a web service
+  objectstore.ts           object storage for file items (config.object_store): S3-compatible buckets signed with signV4 (a web
+                           credential of type aws_sigv4); objectStoreOf/objectStoreProblem; putObject/getObject/deleteObject dispatch
+                           on "provider" (s3, the default, or graph); used by runtime/files.ts (storeTempFile, dropObjects, downloads)
+  objectstore-graph.ts     (sprint 244, MG-29) provider "graph": OneDrive / SharePoint through Microsoft Graph (drive or site +
+                           folder, an oauth2 or bearer web credential); putGraph (simple PUT up to 4 MiB, else createUploadSession +
+                           webupload.ts ranges without the credential), getGraph/deleteGraph (the item must lie in the folder:
+                           inFolder), graphProblem, graphFileName; every request through websources.ts call()
   mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
                            or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
                            Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),
@@ -330,6 +340,10 @@ src/
                            its SMTP host through network-acl.ts mailHostAddress); (sprint 236, 191) meta.mail_service_for_mail: the
                            service chosen when the mail was queued (mail_queue.service_id) while still the app's, else the one for its From
                            address (meta.mail_service_for_app(app, from)), else the default
+                           redirect.ts (sprint 250, MG-24, migration 206): redirectFor(app) = MAIL_REDIRECT_TO (envRedirect, wins)
+                           else meta.app.mail_redirect_to; redirectMail(): only to that address, [TEST] subject, X-Original-To/-Cc/-Bcc
+                           (providers.ts xHeaders: X- headers only, one line) and a note at the top of the body; applied in sendWith()
+                           (the worker records mail_queue.redirected_to) and the builder's test mail (builder/mail.ts runCheck)
   ai/                      AI services (migration 060): types.ts (the provider interface, AiError kinds),
                            anthropic.ts (Claude through @anthropic-ai/sdk: streamed, effort, structured outputs via
                            output_config.format, refusal fallbacks, stop_reason checks, typed SDK errors), openai.ts (the openai
@@ -396,7 +410,14 @@ src/
     processes.ts           download (file or zip from a query, safe headers), workflow processes, configuration checks of chains
     logic.ts               computations (the page's and (102) the application's), branches (page, URL, function returning a URL, another application) and their conditions
                            (conditionHolds: the server-side condition types; sprint 235 item_contains / item_contains_any split a multi-value item on colons);
-                           (sprint 240, MG-7) branchTaken (the branch and its href), staysInDialog, inDialog (dialog=1 on a URL)
+                           (sprint 240, MG-7) branchTaken (the branch and its href), staysInDialog, inDialog (dialog=1 on a URL);
+                           (sprint 249) target type item (navigation.ts itemTarget), inPageBelow (MG-23: branch in_page_below,
+                           migration 205: routes.ts hands the target to render.ts dialogClosePage data-dialog-goto, app.js
+                           sends the page below there)
+    navigation.ts          (sprint 249, MG-22) notePageView (routes.ts show page: the session's __LAST_PAGE/__LAST_URL and
+                           __PREV_PAGE/__PREV_URL; context.ts previousPage → the built-ins APP_PREVIOUS_PAGE / APP_PREVIOUS_URL
+                           in bindValues, reserved in binds.ts), itemTarget (an item branch's page, checked with pageAllowed,
+                           else this page; the previous page's URL when the branch sets no items)
     shortcuts.ts           (103) "NAME" shortcuts in static content, help texts and confirm messages
     static-files.ts        (068) static application files (/a/<alias>/static/<name>), the <script>/<link> tags of a page; (141) static
                            workspace files (/a/<alias>/workspace-files/<name>, the application's own workspace's only, owner pool);
@@ -420,7 +441,8 @@ src/
                            regions at page level, authz.ts computeVisibility drops a sub region whose parent isn't shown
     item-texts.ts          (sprint 241, MG-10/11) itemLabel (&ITEM. substitutions in labels, also in the messages engine.ts gives),
                            itemPlaceholder (meta.item.placeholder, migration 197, or the older {"placeholder"} setting), PLACEHOLDER_TYPES,
-                           NULL_CHOICE_TYPES (a select list's empty choice); items.ts renderItem uses them
+                           NULL_CHOICE_TYPES (a select list's empty choice); items.ts renderItem uses them; (sprint 249, MG-27)
+                           buttonLabel (&ITEM. in button and menu entry labels: regions.ts renderButton, renderMenu)
     report.ts, report-views.ts (group by, pivot, chart), compute.ts (computed column expressions), grid.ts (aggregates, row actions, Actions menu, single row view, layoutFromForm; sprint 240: the region's items in its toolbar, Save stays in a dialog), grid-layout.ts (column layouts: clean, arrange, per user), master-detail.ts (signed master row selection, details), facets.ts (facetChart: a facet's counts as a chart, sprint 65), items.ts
                            (report.ts: paging with row ranges and max_rows, keyset paging (keysetPlan, seekCondition, signed r<id>_k), pagerNav, streamed CSV/Excel downloads with a cursor;
                            (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
@@ -456,7 +478,10 @@ src/
     format.ts              date masks; maskedFormatter() applies a column's or item's number or date mask
     files.ts               file items: multipart parsing, temporary files, signed downloads; (sprint 239) signature items (the
                            signature preset of a file item, metadata.ts presetItem; migration 195): pngSize, a real PNG of at most
-                           1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads)
+                           1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads);
+                           (sprint 247, MG-20) childFilter: a multiple item's "filter" (constant columns of a shared child table,
+                           written on insert and added to every read, delete and download; &NAME. only of built-ins and protected
+                           hidden items), isGallery ("display": "gallery", rendered by items.ts fileListControl)
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit); (sprint 245) images and <br> inside
                            table cells and paragraphs (partsOf/drawParts), shadowedBuiltIns (query columns named like a built-in)
     documents.ts           ?doc=NAME: a template filled with the page's values
@@ -493,6 +518,12 @@ src/
                            publish / pin routes, the stable URL GET /a/:alias/reports/:id
     form-designer.ts       Form Designer region (migration 106): sources from the region's config, checkFormDef (offered columns, displays,
                            actions), forms as cards, a form's rows, a row's form (lost update hash), the designer; row/design/delete routes
+    json-form.ts           (sprint 246, MG-19, migration 203) json_form region: parseSchema (a JSON schema's properties as fields:
+                           kinds, x-order, enum/oneOf choices, limits), loadJsonForm (schema and answers: one row of the Source as the
+                           app role), answersFromBody (only the schema's fields, jf<region>:<key>/<row>/<key>; empty and removed rows
+                           dropped, readOnly kept), checkJsonForm (required, enum, types, ranges, lengths, formats, counts), applyJsonForms
+                           (routes.ts submit: the answers as JSON into the region's item, errors in ctx.jsonFormErrors for validate()),
+                           renderJsonForm (rows: <noscript> empty rows, a <template> app.js copies for Add a row)
     workflows.ts           workflow console region and its actions
     ai.ts                  Generate text with AI: the ai_generate process (config checks, &ITEM. as delimited escaped data,
                            schemas from items, answers into items), aiInputs/aiOutputs for its dynamic action (route in routes.ts)
@@ -625,7 +656,8 @@ src/
     mail.ts                Workspace utilities → Mail services (administrators: providers, write-only secret, allowed senders,
                            applications with From and daily limit, test; sprint 236: several services per application, the
                            Default column) and Applications → Activity → Mail (retry, cancel; the app's other services);
-                           serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118)
+                           serviceForm/formValues/runCheck shared with workspace-mail.ts (sprint 118); (sprint 250) redirectRegion
+                           and POST /apps/:id/mail/redirect: the app's Redirect all mail to, the MAIL_REDIRECT_TO notice
     mail-queue.ts          (sprint 118, WS-9) Administration → Mail queue (/builder/mail-queue): queueScope (administrators: all or
                            ?ws=; workspace administrators: the current workspace), figures, per hour, per workspace / application,
                            slowest provider calls, failures; Retry / Purge one or all failed, scope checked again per mail
@@ -756,7 +788,9 @@ src/
                            (sprint 234) positionFindings: a header position the page has not, items and submit buttons in a
                            header region (outside the page's form); (sprint 240) stay_in_dialog off a modal page or on a branch
                            to another app, Ajax callbacks that aren't SQL or a chain of SQL processes; (sprint 245) queryColumns
-                           (a SELECT's columns through a temporary view, rolled back): a document template's column named like a built-in
+                           (a SELECT's columns through a temporary view, rolled back): a document template's column named like a built-in;
+                           (sprint 249) in_page_below off a modal page, an item branch's target_item that
+                           isn't an item, app item or APP_PREVIOUS_PAGE
     advisor-items-pages.ts (sprint 241) itemPageFindings: a placeholder no type shows, meta.set_auth_user outside custom
                            authentication's post-authentication code, No navigation on a modal page
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
@@ -900,6 +934,8 @@ test/
   numformat.test.ts        number format masks: every element, rounding, parsing, separators
   globalization.test.ts    masks on HR page 29, time zones, the de/fr/es texts
   files.test.ts            file items: storage, limits, downloads, temporary files
+  file-gallery-247.test.ts (sprint 247, MG-20) multiple file items on a shared child table (filter, text parent column) and the
+                           gallery, on Sample Files' folders and people
   signature-scan-239.test.ts (sprint 239) signature items (preset, pad, temporary file, HR page 7) and the zxing files and CSP
   items.test.ts            rich text, Markdown, rating, combobox, date range, password reveal and QR code items
   item-region-types.test.ts (sprint 140) shuttle, select one/many, classic report, breadcrumb and help text: gallery, runtime, export, Advisor, HR page 50
@@ -1028,6 +1064,8 @@ test/
   e2e/settings-layout.test.ts (sprint 198, NX-U3) Settings' right rail: Sign-in in two screens and the checklist in view at
                            1456 × 836, real anchors (also without JavaScript), one column below 1280 px, 360/1366 px, axe
   e2e/builder-i18n.test.ts (sprint 121) Deutsch on the sign-in page, the status bar's language menu, German screens at 390 px, CSP
+  e2e/file-gallery-247.test.ts (sprint 247, MG-20) Sample Files' picture gallery at 390 and 1440 px: square thumbnails, axe,
+                           the full-size picture, removing a file on save
   e2e/gallery.test.ts      (sprint 120) the gallery's sample apps: every page at 4 widths, CSP, axe; dynamic actions; the four tabs at 390 px
   e2e/admin-mail-network.test.ts (sprint 118) Mail queue, Network access and a workspace's mail service at 390 px without JavaScript
   e2e/pillar.test.ts       (sprint 117) Pillar appearances: axe in light and dark, subtle colours, current vs parent entry, Arabic RTL, 390 px, preview

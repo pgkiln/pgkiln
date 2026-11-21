@@ -10,7 +10,9 @@
 --           the row process and Close Dialog handing values back;
 --   page 4  shipping: Server Side Geocoding, Send E-Mail and Send Push
 --           Notification, Print Report, branches to a URL and to a page
---           of an application;
+--           of an application; the mail links to the order's tracking
+--           page with an absolute URL (meta.page_url(…, p_absolute =>
+--           true): the installation's PUBLIC_URL);
 --   page 5  the outbox: what shipping queued;
 --   page 6  report queries in six formats;
 --   page 7  Ajax callbacks: a page process and an application process;
@@ -22,6 +24,11 @@
 -- application (access control "any user"). The post-authentication code
 -- names the session's user in lower case (meta.set_auth_user), so DEMO
 -- and demo are one user.
+-- (sprint 250, MG-24) The application's "Redirect all mail to" is
+-- shop-test@example.com: its customers are made up, so every mail it sends
+-- goes only to that address, with [TEST] before the subject and the
+-- customer in X-Original-To and at the top of the body (Activity → Mail;
+-- empty it there for real mail).
 --
 -- Installed by an administrator from the App Gallery, or with
 --   psql "$DATABASE_URL" -1 -f examples/gallery/samples/sample-processes.sql
@@ -134,11 +141,11 @@ grant execute on function sample_processes.check_login(text, text) to app_sample
 -- sprint 241): DEMO, Demo and demo all sign in as demo;
 -- always in the primary language; push notifications on, so Send Push Notification can queue
 insert into meta.app (alias, name, home_page, authentication, custom_auth_function, custom_auth_post_code,
-                      access_control, language, language_from, db_role, pwa, pwa_push, pwa_short_name)
+                      access_control, language, language_from, db_role, pwa, pwa_push, pwa_short_name, mail_redirect_to)
 values ('sample-processes', 'Sample Processes', 1, 'custom', 'sample_processes.check_login',
         'update sample_processes.staff set last_login_at = now() where username = lower(p_username);
 perform meta.set_auth_user(lower(p_username));',
-        'any_user', 'en', 'primary', 'app_sample_processes', true, true, 'Processes');
+        'any_user', 'en', 'primary', 'app_sample_processes', true, true, 'Processes', 'shop-test@example.com');
 
 insert into meta.page (app_id, page_no, name, title, parent_page, mode, protection)
 select a.id, p.no, p.name, p.name, p.parent, p.mode, p.protection
@@ -363,6 +370,7 @@ select pg_temp.page_id('sample-processes', i.page), pg_temp.region_id('sample-pr
   (4, 'ship', 40, 'P4_LOCATION', 'Coordinates', 'text', null, null, 'Filled in by Locate (lat,lng).', '{}'),
   (4, 'ship', 50, 'P4_SHIPPED_BY', 'Shipped by', 'text', null, null, null, '{}'),
   (4, 'ship', 60, 'P4_NOTE', 'Note for the customer', 'textarea', null, null, 'Empty: a computation after the submit fills in a standard note.', '{"rows": 2}'),
+  (4, 'ship', 70, 'P4_TRACK_URL', 'Tracking link', 'hidden', null, null, 'The absolute link in the mail (a process on Ship).', '{}'),
   (7, 'stock', 10, 'P7_PRODUCT', 'Product', 'select', 'select name, id from sample_processes.product order by name', null, null, '{"warn_unsaved": false}'),
   (7, 'stock', 20, 'P7_STOCK', 'In stock', 'text', null, null, 'Set by the Ajax callback.', '{"warn_unsaved": false}'),
   (8, 'which', 10, 'P8_ID', 'Order number', 'text', null, null, null, '{}')
@@ -423,8 +431,11 @@ select pg_temp.page_id('sample-processes', p.page), p.seq, p.name, p.type, p.poi
   (4, 30, 'Ship the order', 'sql', 'submit', 'SHIP',
    E'update sample_processes.orders set status = ''SHIPPED'', shipped_at = now(), shipped_by = :P4_SHIPPED_BY\n where id = :P4_ORDER::int and status = ''NEW''',
    '{}', 'The order is shipped.', null, null),
+  -- (sprint 250, MG-25) a link the customer opens from the mail: absolute, from the installation's PUBLIC_URL
+  (4, 35, 'Make the tracking link', 'sql', 'submit', 'SHIP',
+   'select meta.page_url(8, jsonb_build_object(''P8_ID'', :P4_ORDER), p_absolute => true) as p4_track_url', '{}', null, null, null),
   (4, 40, 'Mail the customer', 'send_email', 'submit', 'SHIP', null,
-   '{"to": "&P4_EMAIL.", "subject": "Your order &P4_ORDER. is on its way", "body": "&P4_NOTE.\n\nYour order &P4_ORDER. left our workshop today.\n\n&P4_SHIPPED_BY., Kiln & Clay Supplies", "body_html": "<p>&P4_NOTE.</p><p>Your order <b>&P4_ORDER.</b> left our workshop today.</p><p>&P4_SHIPPED_BY., Kiln &amp; Clay Supplies</p>"}',
+   '{"to": "&P4_EMAIL.", "subject": "Your order &P4_ORDER. is on its way", "body": "&P4_NOTE.\n\nYour order &P4_ORDER. left our workshop today. Follow it: &P4_TRACK_URL.\n\n&P4_SHIPPED_BY., Kiln & Clay Supplies", "body_html": "<p>&P4_NOTE.</p><p>Your order <b>&P4_ORDER.</b> left our workshop today. <a href=\"&P4_TRACK_URL.\">Follow it</a>.</p><p>&P4_SHIPPED_BY., Kiln &amp; Clay Supplies</p>"}',
    null, 'sql', 'meta.mail_available()'),
   (4, 50, 'Note the mail', 'sql', 'submit', 'SHIP',
    E'insert into sample_processes.outbox (order_id, channel, recipient, outcome)\nvalues (:P4_ORDER::int, ''e-mail'', :P4_EMAIL, case when meta.mail_available() then ''queued'' else ''not sent: the application has no mail service'' end)',

@@ -2296,7 +2296,11 @@ senders** (addresses, or `@domain`) and a default From address. On a service's p
 
 Applications → Activity → **Mail** (developers) shows an application's default service, today's count
 against its limit, its other services with their allowed senders and the mail of the last 30 days with its status and the provider's answer;
-**Send again** queues a failed or cancelled mail again, **Cancel** stops a queued one.
+**Send again** queues a failed or cancelled mail again, **Cancel** stops a queued one. (sprint 250) The form **Redirect all
+mail** sets the application's *Redirect all mail to* (one address: all its mail goes there, `[TEST]` before the subject;
+[redirect all mail](06-processing.md#redirect-all-mail-test-and-acceptance-systems)); a notice shows when it, or the
+server's `MAIL_REDIRECT_TO`, is on, and each redirected mail shows *redirected to …*. With `MAIL_REDIRECT_TO` set,
+*Send test mail* goes to that address too.
 
 **Microsoft 365.** Register an application in Microsoft Entra with a client secret. For the Graph
 provider grant it the application permission *Mail.Send*; for SMTP with OAuth2 the permission

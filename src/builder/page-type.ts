@@ -19,7 +19,7 @@ const DASHBOARD_PARTS = new Set(['chart', 'cards', 'dynamic', 'template_componen
 /** The page types the rule gives, in the order of the report's Type filter. */
 export const PAGE_TYPES = [
   'report', 'classic_report', 'grid', 'form', 'facets', 'smart_filters', 'dashboard', 'chart', 'cards', 'calendar', 'map',
-  'tree', 'tasks', 'workflows', 'workflow_diagram', 'template_component', 'list', 'search', 'data_reporter', 'form_designer',
+  'tree', 'tasks', 'workflows', 'workflow_diagram', 'template_component', 'list', 'search', 'data_reporter', 'form_designer', 'json_form',
   'ai_assistant', 'plugin', 'url', 'dynamic', 'login', 'static', 'blank',
   // (sprint 229, AX-8) page 0: the Global Page, whatever its regions are
   'global',

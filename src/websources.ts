@@ -673,6 +673,9 @@ export interface CallOptions {
   timeoutMs?: number;
   /** more header names (lower case) that carry secrets: dropped on a cross-origin redirect */
   secretHeaders?: string[];
+  /** (sprint 244) the response's size limit, and whether it may exceed PGKILN_REST_MAX_BYTES (object storage downloads) */
+  maxBytes?: number;
+  allowLarge?: boolean;
 }
 
 /** One request, signed with the credential; an OAuth2 token refused with 401 is renewed once. */
@@ -691,6 +694,8 @@ export async function call(o: CallOptions): Promise<WebResponse> {
       secretHeaders: [...Object.keys(auth), ...(o.secretHeaders ?? [])],
       body: o.body,
       timeoutMs,
+      maxBytes: o.maxBytes,
+      allowLarge: o.allowLarge,
     });
   };
   const res = await send(false);

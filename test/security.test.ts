@@ -20538,6 +20538,84 @@ describe('sprint 240 MG-7/MG-8', () => {
   });
 });
 
+describe('sprint 249 MG-22/MG-23/MG-27', () => {
+  const pageId = async (no: number) => (await owner.one('select id from meta.page where app_id = $1 and page_no = $2', [appId, no])).id;
+  /** Signed in, on page 2 then page 51 (so page 51 has a previous page and shows BACK). */
+  const onProfile = async (user: string) => {
+    const b = await as(user);
+    await b.get('/a/hr/2');
+    const res = await b.get(link(user, 51, { P51_EMPNO: '7499' }));
+    assert.equal(res.statusCode, 200);
+    return b;
+  };
+
+  test("MG-22: an item-driven branch can't leave the application or reach a page the user may not open", async () => {
+    const p51 = await pageId(51);
+    await owner.query(`update meta.branch set target_item = 'P51_TITLE' where page_id = $1 and name = 'Back to the calling page'`, [p51]);
+    try {
+      for (const v of ['https://evil.example', '//evil.example', '/\\evil.example', 'javascript:alert(1)', '/a/other/1', '2?x=//evil', '2#x', '13', '0']) {
+        const allen = await onProfile('allen');
+        const res = await allen.post('/a/hr/51', { __csrf: allen.lastCsrf, __request: 'BACK', P51_TITLE: v });
+        assert.equal(res.statusCode, 303, v);
+        assert.equal(res.headers.location, '/a/hr/51', `${v}: the page itself`);
+      }
+      // page 13 is for ADMIN: king may go there, allen (above) may not
+      const king = await onProfile('king');
+      assert.equal((await king.post('/a/hr/51', { __csrf: king.lastCsrf, __request: 'BACK', P51_TITLE: '13' })).headers.location, '/a/hr/13');
+    } finally {
+      await owner.query(`update meta.branch set target_item = 'APP_PREVIOUS_PAGE' where page_id = $1 and name = 'Back to the calling page'`, [p51]);
+    }
+  });
+
+  test("MG-22: APP_PREVIOUS_PAGE and its URL can't be set by a request", async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/2?APP_PREVIOUS_PAGE=13&__LAST_URL=//evil.example&__PREV_URL=//evil.example');
+    await allen.get('/a/hr/51?APP_PREVIOUS_URL=//evil.example');
+    const res = await allen.post('/a/hr/51', { __csrf: allen.lastCsrf, __request: 'BACK', APP_PREVIOUS_PAGE: '13', __LAST_PAGE: '13', __LAST_URL: '//evil.example', __PREV_URL: '//evil.example' });
+    assert.equal(res.statusCode, 303);
+    const loc = String(res.headers.location);
+    // back to page 2 as allen opened it (its own query string, not a value of the request)
+    const u = new URL(loc, 'http://pgkiln.test');
+    assert.equal(u.origin, 'http://pgkiln.test');
+    assert.equal(u.pathname, '/a/hr/2');
+  });
+
+  test('MG-23: a branch in the page below keeps the checksum; the target refuses changed values', async () => {
+    const allen = await as('allen');
+    await allen.get('/a/hr/2');
+    await allen.get('/a/hr/76?dialog=1');
+    const res = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '7499' });
+    assert.equal(res.statusCode, 200, res.body);
+    const goto = (/data-dialog-goto="([^"]+)"/.exec(res.body)?.[1] ?? '').replace(/&amp;/g, '&');
+    assert.match(goto, /^\/a\/hr\/51\?P51_EMPNO=7499&cs=[0-9a-f]+$/);
+    assert.equal((await allen.get(goto)).statusCode, 200);
+    assert.equal((await allen.get(goto.replace('7499', '7369'))).statusCode, 403);
+    // another user's signed link isn't valid for this one
+    const king = await as('king');
+    assert.equal((await king.get(goto)).statusCode, 403);
+    // a value that isn't one of the list's: refused before any branch (no target handed over)
+    await allen.get('/a/hr/76?dialog=1');
+    const bad = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '7499&P51_X=1' });
+    assert.doesNotMatch(bad.body, /data-dialog-goto/);
+  });
+
+  test('MG-27: item values in a button label are escaped', async () => {
+    const p76 = await pageId(76);
+    await owner.query(`update meta.button set label = 'Open &P76_EMPNO.' where page_id = $1 and name = 'OPEN'`, [p76]);
+    try {
+      const allen = await as('allen');
+      await allen.get('/a/hr/76?dialog=1');
+      // not a value of the list: the page comes back with the error, and the label shows the value posted
+      const page = await allen.post('/a/hr/76', { __csrf: allen.lastCsrf, __request: 'OPEN', __dialog: '1', P76_EMPNO: '<img src=x onerror=alert(1)>' });
+      assert.equal(page.statusCode, 422);
+      assert.ok(page.body.includes('Open &lt;img src=x onerror=alert(1)&gt;'), page.body.match(/Open [^<]*/)?.[0] ?? 'no label');
+      assert.doesNotMatch(page.body, /<img src=x/);
+    } finally {
+      await owner.query(`update meta.button set label = 'Open the profile' where page_id = $1 and name = 'OPEN'`, [p76]);
+    }
+  });
+});
+
 describe('sprint 243 MG-17', () => {
   const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   const restore = (saved: Record<string, string | undefined>) => {
@@ -20725,6 +20803,236 @@ describe('sprint 248 MG-21', () => {
   });
 });
 
+describe('sprint 244 MG-29', () => {
+  // OneDrive / SharePoint as object storage (provider "graph"), against the local Graph stub
+  const ALIAS = 's244-graph';
+  const DRIVE = 'b!sec244';
+  const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const restore = (saved: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  };
+  let stub: import('./graph-stub.ts').GraphStub;
+  let gApp: number;
+  let saved: Record<string, string | undefined>;
+  const store = () => ({ provider: 'graph' as const, url: stub.url, drive: DRIVE, folder: 'HR/Contracts', credential: 'S244_GRAPH' });
+
+  before(async () => {
+    saved = envOf(['PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS', 'PGKILN_SECRET_KEY']);
+    process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+    process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+    process.env.PGKILN_SECRET_KEY ??= 'security-test-secret-key-0123456789abcdef';
+    const { startGraphStub, STUB_CLIENT_ID, STUB_CLIENT_SECRET } = await import('./graph-stub.ts');
+    const { encryptSecret } = await import('../src/secrets.ts');
+    stub = await startGraphStub();
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`drop schema if exists s244 cascade`);
+    await owner.query(`create schema s244;
+      create table s244.doc (id serial primary key, title text not null, file_key text, file_name text);
+      alter table s244.doc enable row level security;
+      create policy visible on s244.doc using (title <> 'hidden');
+      grant usage on schema s244 to pgkiln_runtime, hr_app;
+      grant all on all tables in schema s244 to pgkiln_runtime, hr_app;
+      grant all on all sequences in schema s244 to pgkiln_runtime, hr_app;`);
+    gApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'S244', 'none', 'hr_app') returning id`, [ALIAS])).id;
+    await owner.query(`insert into meta.web_credential (app_id, name, type, username, secret_enc, token_url, grant_type, valid_for) values ($1, 'S244_GRAPH', 'oauth2', $2, $3, $4, 'client_credentials', $5)`,
+      [gApp, STUB_CLIENT_ID, encryptSecret(STUB_CLIENT_SECRET), stub.tokenUrl, [stub.url + '/']]);
+    const pid = (await owner.one(`insert into meta.page (app_id, page_no, name, requires_auth, protection) values ($1, 1, 'Doc', false, 'unrestricted') returning id`, [gApp])).id;
+    const rid = (await owner.one(`insert into meta.region (page_id, seq, title, type, table_name, pk_column, pk_item) values ($1, 10, 'Doc', 'form', 's244.doc', 'id', 'P1_ID') returning id`, [pid])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, type, source_column, config) values
+        ($1, $2, 10, 'P1_ID', 'hidden', 'id', '{}'), ($1, $2, 20, 'P1_TITLE', 'text', 'title', '{}'), ($1, $2, 30, 'P1_FILE', 'file', 'file_key', $3)`,
+      [pid, rid, JSON.stringify({ object_store: store(), filename_column: 'file_name' })]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label) values ($1, $2, 10, 'CREATE', 'Create'), ($1, $2, 20, 'SAVE', 'Save'), ($1, $2, 30, 'DELETE', 'Delete')`, [pid, rid]);
+    await owner.query(`insert into meta.process (page_id, seq, name, type, region_id) values ($1, 10, 'Save', 'form_dml', $2)`, [pid, rid]);
+  });
+
+  after(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [ALIAS]);
+    await owner.query(`drop schema if exists s244 cascade`);
+    await stub?.close();
+    restore(saved);
+  });
+
+  const upload = async (b: FileBrowser, title: string, name: string, text: string) => {
+    await b.get(`/a/${ALIAS}/1`);
+    return b.upload(`/a/${ALIAS}/1`, { __request: 'CREATE', P1_TITLE: title }, { P1_FILE: { name, type: 'text/plain', data: Buffer.from(text) } });
+  };
+
+  test('the folder and the item id can\'t be steered: not by the file name, a posted value, or a key written into the table', async () => {
+    const { getObject, deleteObject, objectStoreProblem } = await import('../src/objectstore.ts');
+    const { stubItem } = await import('./graph-stub.ts');
+    const b = new FileBrowser(app);
+    // a file name with a path stays one name in the configured folder
+    let res = await upload(b, 'Traversal', '../../Finance/payroll.txt', 'x');
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    const mine = [...stub.items.values()].filter((i) => i.drive === DRIVE);
+    assert.deepEqual(mine.map((i) => [i.folder, i.name.includes('/')]), [['HR/Contracts', false]]);
+    // a posted text value never sets the key
+    const row = await owner.one(`select id, file_key from s244.doc where title = 'Traversal'`);
+    await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`);
+    res = await b.submit(`/a/${ALIAS}/1`, { __request: 'SAVE', P1_ID: String(row.id), P1_TITLE: 'Traversal', P1_FILE: '01OTHERITEM' });
+    assert.equal((await owner.one(`select file_key from s244.doc where id = $1`, [row.id])).file_key, row.file_key);
+    // a key that points elsewhere in the drive (written by SQL) is neither downloaded nor deleted
+    const payroll = stubItem(stub, DRIVE, 'Finance', 'payroll.xlsx', 'salaries');
+    const lookalike = stubItem(stub, DRIVE, 'HR/Contracts-old', 'x.txt', 'old');
+    await assert.rejects(getObject(gApp, store(), payroll), /not in the folder/);
+    await assert.rejects(getObject(gApp, store(), lookalike), /not in the folder/);
+    await assert.rejects(deleteObject(gApp, store(), payroll), /not removed/);
+    assert.ok(stub.items.has(payroll));
+    await owner.query(`update s244.doc set file_key = $2 where id = $1`, [row.id, payroll]);
+    const page = (await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`)).body;
+    const link = /href="(\/a\/s244-graph\/1\/file\/P1_FILE\?[^"]+)"/.exec(page)![1].replace(/&amp;/g, '&');
+    const dl = await b.get(link);
+    assert.notEqual(dl.statusCode, 200);
+    assert.doesNotMatch(dl.body, /salaries/);
+    await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`);
+    await b.submit(`/a/${ALIAS}/1`, { __request: 'DELETE', P1_ID: String(row.id), P1_TITLE: 'Traversal' });
+    assert.ok(stub.items.has(payroll), 'deleting the record does not delete a file outside the folder');
+    // ids that would move the URL ("..", a path) are refused before any request
+    stub.log.length = 0;
+    for (const id of ['..', '.', 'a/../../root', 'x?y', 'x#y', '%2e%2e']) {
+      const e = await getObject(gApp, store(), id).then((v) => v, (x: Error) => x);
+      assert.ok(e === null || e instanceof Error, id);
+      if (e instanceof Error) assert.doesNotMatch(e.message, /salaries/);
+    }
+    assert.equal(stub.log.filter((l) => l.path.startsWith('/v1.0/')).length, 0);
+    // the configuration can't name a folder outside, or a drive / site with a path
+    for (const bad of [{ folder: '../Finance' }, { folder: 'HR/./x' }, { folder: 'HR\\..\\x' }, { drive: '../sites/x' }, { drive: '..' }, { site: 'a/b' }, { url: 'file:///etc' }])
+      assert.ok(objectStoreProblem({ ...store(), ...bad }), JSON.stringify(bad));
+    stub.items.delete(payroll);
+    stub.items.delete(lookalike);
+  });
+
+  test('downloads keep the checksum and the row\'s authorization (RLS); the credential and Graph\'s URLs are never shown', async () => {
+    const { STUB_TOKEN, STUB_CLIENT_SECRET } = await import('./graph-stub.ts');
+    const b = new FileBrowser(app);
+    assert.equal((await upload(b, 'Visible', 'v.txt', 'visible content')).statusCode, 303);
+    const row = await owner.one(`select id from s244.doc where title = 'Visible'`);
+    const page = (await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`)).body;
+    for (const s of [STUB_TOKEN, STUB_CLIENT_SECRET, stub.url, stub.filesOrigin, 'tempauth', DRIVE]) assert.ok(!page.includes(s), s);
+    const link = /href="(\/a\/s244-graph\/1\/file\/P1_FILE\?[^"]+)"/.exec(page)![1].replace(/&amp;/g, '&');
+    const dl = await b.get(link);
+    assert.equal(dl.statusCode, 200);
+    assert.equal(dl.body, 'visible content');
+    for (const s of [STUB_TOKEN, stub.filesOrigin, 'tempauth']) assert.ok(!JSON.stringify(dl.headers).includes(s), s);
+    // another key with this checksum, a forged checksum: refused before Graph is asked (the checksum is bound to the
+    // user; this application has no sign-in, so every visitor is the same nobody)
+    stub.log.length = 0;
+    const u = new URL(link, 'http://x');
+    u.searchParams.set('k', String(row.id + 1));
+    assert.equal((await b.get(u.pathname + u.search)).statusCode, 403);
+    assert.equal((await b.get(link.replace(/cs=[^&]+/, 'cs=forged'))).statusCode, 403);
+    assert.equal(stub.log.length, 0);
+    // a row the application's role may not see (RLS): not found, and Graph is not asked
+    await owner.query(`update s244.doc set title = 'hidden' where id = $1`, [row.id]);
+    const hidden = await b.get(link);
+    assert.equal(hidden.statusCode, 404);
+    assert.equal(stub.log.length, 0);
+    // the session's own upload links and the pre-authenticated hops never carry the token
+    await owner.query(`update s244.doc set title = 'Visible' where id = $1`, [row.id]);
+    await b.get(link);
+    assert.ok(stub.log.filter((l) => !l.path.startsWith('/v1.0/') && l.path !== '/oauth/token').every((l) => !l.auth));
+    // the item's configuration holds only the credential's name; the runtime role can't read its secrets
+    const conf = await owner.one(`select config from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and i.name = 'P1_FILE'`, [gApp]);
+    assert.doesNotMatch(JSON.stringify(conf), /secret|token/i);
+    await assert.rejects(runtime.query(`select secret_enc from meta.web_credential where app_id = $1`, [gApp]), /permission denied/);
+  });
+
+  test('Graph, the token endpoint and the upload URL Graph answers with all pass the allow-list and private-address checks', async () => {
+    const { putObject } = await import('../src/objectstore.ts');
+    const { STUB_CLIENT_SECRET, STUB_TOKEN } = await import('./graph-stub.ts');
+    const s = envOf(['PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS']);
+    const put = (o = store(), body = Buffer.from('x')) => putObject(gApp, o, 'a.txt', body, 'text/plain').then(() => null, (x: Error) => x);
+    try {
+      // a Graph URL on a host not on the allow-list: refused before a token is asked for
+      const tokens = stub.tokensIssued;
+      process.env.PGKILN_REST_ALLOWED_HOSTS = 'graph.microsoft.com';
+      delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      let e = await put({ ...store(), url: 'https://graph.evil.example/v1.0' });
+      assert.match(e!.message, /allow-list/);
+      // a private address, even with every public host allowed
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      for (const url of ['http://169.254.169.254/v1.0', 'http://10.0.0.1/v1.0', stub.url]) {
+        e = await put({ ...store(), url });
+        assert.ok(e, url);
+        assert.match(e!.message, /private, loopback or link-local|allow-list|not valid for this URL/, url);
+      }
+      assert.equal(stub.tokensIssued, tokens);
+      // the upload session's URL comes from Graph's answer: it is checked like any other
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '127.0.0.1';
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      for (const override of ['http://10.9.8.7/upload/1', 'http://169.254.169.254/latest/meta-data', 'https://elsewhere.example.org/upload', 'file:///etc/passwd']) {
+        stub.uploadUrlOverride = override;
+        e = await put(store(), Buffer.alloc(4 * 1024 * 1024 + 1));
+        assert.ok(e, override);
+        for (const secret of [STUB_TOKEN, STUB_CLIENT_SECRET]) assert.doesNotMatch(e!.message, new RegExp(secret));
+      }
+    } finally {
+      stub.uploadUrlOverride = null;
+      restore(s);
+    }
+  });
+});
+
+describe('sprint 247 MG-20', () => {
+  // A multiple file item's "filter" (constant columns of a child table shared by several record types) comes from the
+  // item's attributes only: a request can't change, widen or drop it, so one record type's form never removes, serves
+  // or adds another record type's files, even with the same related_id and a valid download checksum.
+  let g: typeof import('./gallery-samples.ts');
+  let sfApp: number;
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const sample = () => g.SAMPLES.find((x) => x.key === 'sample-files')!;
+  const openFolder = async () => {
+    const b = new FileBrowser(app);
+    await b.login('demo', 'demo', 'sample-files');
+    const items = { P5_ID: '1' };
+    assert.equal((await b.get(`/a/sample-files/5?${new URLSearchParams({ ...items, cs: urlChecksum(sfApp, 5, 'demo', items) })}`)).statusCode, 200);
+    return b;
+  };
+  const personPicture = async () => (await owner.one(`select id from sample_files.picture where related_type = 'person' and related_id = '1'`)).id as number;
+  before(async () => {
+    g = await import('./gallery-samples.ts');
+    await g.dropSample(sample());
+    await g.installSample(sample());
+    sfApp = (await owner.one(`select id from meta.app where alias = 'sample-files'`)).id;
+  });
+  after(async () => {
+    await g.dropSample(sample());
+  });
+
+  test("a forged remove box with another record type's file id removes nothing of it", async () => {
+    const pid = await personPicture();
+    const b = await openFolder();
+    const res = await b.upload('/a/sample-files/5', { __request: 'SAVE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: 'x', P5_PICTURES__REMOVE: [String(pid), `${pid} or true`] }, {});
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    assert.equal((await owner.one('select count(*)::int as n from sample_files.picture where id = $1', [pid])).n, 1);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 1);
+  });
+
+  test('posted fields named like the filter column or the item attributes do not change what is written', async () => {
+    const b = await openFolder();
+    const res = await b.upload('/a/sample-files/5', { __request: 'SAVE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: 'x', related_type: 'person', P5_PICTURES__FILTER: '{}', filter: 'person' },
+      { P5_PICTURES: { name: 'forged.png', type: 'image/png', data: PNG } });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+    assert.deepEqual((await owner.one(`select related_type, related_id from sample_files.picture where filename = 'forged.png'`)), { related_type: 'folder', related_id: '1' });
+  });
+
+  test("a download with a valid checksum for another record type's file is not found through this item", async () => {
+    const pid = String(await personPicture());
+    const b = await openFolder();
+    const url = (item: string, page: number) => `/a/sample-files/${page}/file/${item}?${new URLSearchParams({ k: pid, cs: urlChecksum(sfApp, page, 'demo', { __FILE: item, __KEY: pid }) })}`;
+    assert.equal((await b.get(url('P5_PICTURES', 5))).statusCode, 404, 'the folder item: filtered');
+    assert.equal((await b.get(url('P7_PICTURES', 7))).statusCode, 200, "the person item: its own file");
+  });
+
+  test('deleting a record deletes only its own record type\'s files', async () => {
+    const b = await openFolder();
+    assert.equal((await b.upload('/a/sample-files/5', { __request: 'DELETE', P5_NAME: 'Project Alpha', P5_DESCRIPTION: '' }, {})).statusCode, 303);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'folder' and related_id = '1'`)).n, 0);
+    assert.equal((await owner.one(`select count(*)::int as n from sample_files.picture where related_type = 'person' and related_id = '1'`)).n, 1);
+  });
+});
+
 describe('sprint 245 MG-18', () => {
   // meta.document_temp_file: the file belongs to the session that asked for it; only the server fills it, only an undrawn
   // file of the current session registered in the current transaction; an ordinary upload is never overwritten
@@ -20835,6 +21143,310 @@ describe('sprint 245 MG-18', () => {
       await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
       await owner.query('delete from meta.authz_scheme where id = $1', [scheme]);
     }
+  });
+});
+
+describe('sprint 246 MG-19', () => {
+  const ids = async () => {
+    const r = await owner.one(`select r.id, r.source, p.id as page_id from meta.region r join meta.page p on p.id = r.page_id
+                                where p.app_id = $1 and p.page_no = 74 and r.static_id = 'jf-form'`, [appId]);
+    const tpl = (await owner.one(`select id from hr.form_template where name = 'Workplace inspection'`)).id;
+    return { rid: r.id as number, source: r.source as string, page: r.page_id as number, tpl: String(tpl) };
+  };
+  const stored = async () => (await owner.query(`select answers from hr.form_answer where upper(username) = 'BLAKE'`)).rows;
+  const clean = () => owner.query(`delete from hr.form_answer where upper(username) = 'BLAKE'`);
+
+  test('values outside an enum and values of the wrong type are refused; nothing is stored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const f = (k: string) => `jf${rid}:${k}`;
+    const base = { __request: 'SAVE', P74_TEMPLATE: tpl, [f('location')]: 'A1', [f('inspected_on')]: '2026-01-02', [f('overall')]: 'good' };
+    const cases: Record<string, string | string[]>[] = [
+      { [f('overall')]: 'excellent' },            // not in the radio group's enum
+      { [f('department')]: '50' },                // not in oneOf
+      { [f('department')]: '10.0x' },             // not a number at all
+      { [f('hazards')]: ['trip', 'sabotage'] },   // a checkbox value the schema doesn't have
+      { [f('score')]: '3.5' },                    // an integer field
+      { [f('score')]: 'NaN' },
+      { [f('temperature')]: 'Infinity' },
+      { [f('inspected_on')]: '2026-02-30' },
+      { [f('manual_url')]: 'javascript:alert(1)' },
+      { [f('inspector_email')]: '<a@b.c>' },
+      { [f('location')]: 'x'.repeat(101) },        // maxLength
+    ];
+    const blake = await as('blake');
+    for (const c of cases) {
+      await blake.get('/a/hr/74');
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, ...base, ...c });
+      assert.equal(res.statusCode, 422, JSON.stringify(c));
+      assert.match(res.body, /has-error/, JSON.stringify(c));
+    }
+    assert.deepEqual(await stored(), []);
+  });
+
+  test('the answers come from the schema\'s fields only: a posted item value, unknown fields and the read-only region are ignored', async () => {
+    const { rid, tpl } = await ids();
+    await clean();
+    const blake = await as('blake');
+    await blake.get('/a/hr/74');
+    const saved = (await owner.one(`select id from meta.region where page_id = (select page_id from meta.region where id = $1) and static_id = 'jf-saved'`, [rid])).id;
+    const res = await blake.post('/a/hr/74', {
+      __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl,
+      P74_ANSWERS: '{"location": "forged", "admin": true}',
+      [`jf${rid}:location`]: 'A1', [`jf${rid}:inspected_on`]: '2026-01-02', [`jf${rid}:overall`]: 'good',
+      [`jf${rid}:admin`]: 'true', [`jf${rid}:contact/role`]: 'boss', [`jf${saved}:location`]: 'other region',
+    });
+    assert.equal(res.statusCode, 303, res.body.slice(0, 500));
+    const [row] = await stored();
+    assert.equal(row.answers.location, 'A1');
+    assert.equal('admin' in row.answers, false);
+    assert.deepEqual(row.answers.contact, {});
+    await clean();
+  });
+
+  test('nothing from the schema is rendered unescaped: titles, descriptions, placeholders, enum labels, values and keys', async () => {
+    const x = '<img src=x onerror=alert(1)>';
+    const schema = {
+      type: 'object', title: x, description: x,
+      properties: {
+        [`k${x}`]: { type: 'string', title: x, description: x, 'x-placeholder': x, default: x },
+        pick: { type: 'string', enum: [x, 'b'], 'x-enum-labels': [x, x] },
+        radio: { type: 'string', oneOf: [{ const: x, title: x }], 'x-widget': 'radio' },
+        boxes: { type: 'array', items: { enum: [x] } },
+        rows: { type: 'array', title: x, items: { type: 'object', properties: { [x]: { type: 'string', title: x } } } },
+        group: { type: 'object', title: x, properties: { inner: { type: 'boolean', title: x } } },
+      },
+    };
+    const id = (await owner.one(`insert into hr.form_template (name, schema) values ('JF XSS', $1) returning id`, [JSON.stringify(schema)])).id;
+    try {
+      const blake = await as('blake');
+      const body = (await blake.get(link('blake', 74, { P74_TEMPLATE: String(id) }))).body;
+      const page = (await blake.get('/a/hr/74')).body;
+      for (const b of [body, page]) assert.doesNotMatch(b, /<img src=x/);
+      assert.match(page, /&lt;img src=x onerror=alert\(1\)&gt;/);
+      // a failed submit shows the posted text escaped too
+      const { rid } = await ids();
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: String(id), [`jf${rid}:pick`]: `${x}!`, [`jf${rid}:k${encodeURIComponent(x)}`]: x });
+      assert.equal(res.statusCode, 422);
+      assert.doesNotMatch(res.body, /<img src=x/);
+    } finally {
+      await owner.query(`delete from hr.form_answer where template_id = $1`, [id]);
+      await owner.query(`delete from hr.form_template where id = $1`, [id]);
+    }
+  });
+
+  test("the schema's SQL runs as the application's role, on render and on submit", async () => {
+    const { rid, source, tpl } = await ids();
+    await clean();
+    await owner.query(`update meta.region set source = $2 where id = $1`, [rid,
+      `select jsonb_build_object('type', 'object', 'properties', jsonb_build_object('who', jsonb_build_object('type', 'string', 'enum', jsonb_build_array(current_user::text)))) as schema`]);
+    try {
+      const role = (await owner.one(`select db_role from meta.app where id = $1`, [appId])).db_role;
+      const blake = await as('blake');
+      const page = (await blake.get('/a/hr/74')).body;
+      assert.match(page, new RegExp(`<option value="${role}"`));
+      // pgkiln's own tables are out of its reach
+      await owner.query(`update meta.region set source = 'select to_jsonb(a) as schema from meta.app a' where id = $1`, [rid]);
+      const denied = (await blake.get('/a/hr/74')).body;
+      assert.match(denied, /alert-error/);
+      assert.doesNotMatch(denied, /name="jf\d+:alias"/);
+      const res = await blake.post('/a/hr/74', { __csrf: blake.lastCsrf, __request: 'SAVE', P74_TEMPLATE: tpl, [`jf${rid}:alias`]: 'x' });
+      assert.equal(res.statusCode, 422, 'a schema that can\'t be read refuses the submit');
+      assert.deepEqual(await stored(), []);
+    } finally {
+      await owner.query(`update meta.region set source = $2 where id = $1`, [rid, source]);
+    }
+  });
+});
+
+describe('sprint 250 MG-24/MG-25', () => {
+  const TESTER = 'tester-250@example.com';
+  const A = 'T250_SEC_A';
+  const B = 'T250_SEC_B';
+  let mock: InstanceType<typeof import('./mail-mock.ts').MailMock>;
+  let role: string;
+  let links: { service_id: number; from_address: string | null; max_per_day: number | null; is_default: boolean }[] = [];
+  let savedPublicUrl: string | null = null;
+
+  /** SQL as HR's role and user (committed, so the worker sees the mail) */
+  async function asHr<T>(fn: (q: (sql: string, params?: unknown[]) => Promise<any[]>) => Promise<T>) {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true)`, [String(appId)]);
+      await c.query(`set local role ${role}`);
+      const r = await fn(async (sql, params) => (await c.query(sql, params)).rows);
+      await c.query('commit');
+      return r;
+    } catch (e) {
+      await c.query('rollback');
+      throw e;
+    } finally {
+      c.release();
+    }
+  }
+  const tick = async () => (await import('../src/mail/mail.ts')).mailTick();
+  /** every address the SMTP server was asked to deliver to since the last reset */
+  const envelope = () => [...new Set(mock.smtpHits.flatMap((h) => h.to))];
+
+  before(async () => {
+    const { MailMock } = await import('./mail-mock.ts');
+    mock = new MailMock();
+    await mock.start();
+    role = (await owner.one('select db_role from meta.app where id = $1', [appId])).db_role;
+    links = (await owner.query('select service_id, from_address, max_per_day, is_default from meta.app_mail_service where app_id = $1', [appId])).rows;
+    savedPublicUrl = (await owner.one(`select value from meta.instance_setting where name = 'public_url'`))?.value ?? null;
+    await owner.query('delete from meta.mail_service where name = any($1)', [[A, B]]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    const settings = JSON.stringify({ host: '127.0.0.1', port: mock.smtpPort, security: 'none', auth: 'none' });
+    const a = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ($1, 'smtp', '{@example.com}', $2) returning id`, [A, settings])).id;
+    const b = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ($1, 'smtp', '{@safety.example}', $2) returning id`, [B, settings])).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'hr@example.com')`, [appId, a]);
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address) values ($1, $2, 'alerts@safety.example')`, [appId, b]);
+    await owner.query('update meta.app set mail_redirect_to = $2 where id = $1', [appId, TESTER]);
+    await owner.query(`update meta.mail_queue set status = 'cancelled' where app_id = $1 and status = 'queued'`, [appId]);
+  });
+
+  beforeEach(() => {
+    mock.reset();
+    delete process.env.MAIL_REDIRECT_TO;
+  });
+
+  after(async () => {
+    delete process.env.MAIL_REDIRECT_TO;
+    await owner.query('update meta.app set mail_redirect_to = null where id = $1', [appId]);
+    await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like '%S250%'`, [appId]);
+    await owner.query('delete from meta.mail_service where name = any($1)', [[A, B]]);
+    await owner.query('delete from meta.app_mail_service where app_id = $1', [appId]);
+    for (const r of links)
+      await owner.query('insert into meta.app_mail_service (app_id, service_id, from_address, max_per_day, is_default) values ($1, $2, $3, $4, $5)',
+        [appId, r.service_id, r.from_address, r.max_per_day, r.is_default]);
+    if (savedPublicUrl === null) await owner.query(`delete from meta.instance_setting where name = 'public_url'`);
+    else await owner.query(`update meta.instance_setting set value = $1 where name = 'public_url'`, [savedPublicUrl]);
+    await mock.stop();
+  });
+
+  test('p_to, p_cc, p_bcc, a template, another service and a sign-in code all reach only the redirect address', async () => {
+    const many = Array.from({ length: 30 }, (_, i) => `u${i}@victim.example`).join(', ');
+    await asHr(async (q) => {
+      await q(`select meta.send_mail(p_to => $1, p_subject => 'S250 many', p_body => 'x', p_cc => 'cc@victim.example', p_bcc => 'bcc1@victim.example; bcc2@victim.example')`, [many]);
+      await q(`select meta.send_mail(p_to => 'x@victim.example', p_subject => 'S250 other service', p_body => 'x', p_from => 'alerts@safety.example', p_bcc => 'b@victim.example')`);
+      await q(`select meta.send_mail(p_to => 'y@victim.example', p_subject => 'S250 reply', p_body => 'x', p_reply_to => 'reply@victim.example')`);
+    });
+    const tpl = await owner.one(`insert into meta.email_template (app_id, name, subject, text_body) values ($1, 'S250_TPL', 'S250 template #N#', 'Hi #N#') returning id`, [appId]);
+    try {
+      await asHr((q) => q(`select meta.send_mail_template('S250_TPL', '{"N": "z"}', 'z@victim.example', 'zc@victim.example', 'zb@victim.example')`));
+    } finally {
+      await owner.query('delete from meta.email_template where id = $1', [tpl.id]);
+    }
+    const { queueEmailCode } = await import('../src/account-mfa.ts');
+    assert.equal(await queueEmailCode({ id: appId }, 'king', { to: 'king@victim.example', from: 'hr@example.com' }, 'S250 your code', 'Code: 123456'), true);
+    await tick();
+    const rows = (await owner.query(`select subject, status, message, service, redirected_to from meta.mail_queue where app_id = $1 and subject like 'S250%' and status <> 'cancelled' order by id`, [appId])).rows;
+    assert.equal(rows.length, 5);
+    for (const r of rows) {
+      assert.equal(r.status, 'sent', `${r.subject}: ${r.message}`);
+      assert.equal(r.redirected_to, TESTER, r.subject);
+    }
+    assert.ok(rows.some((r) => r.service === B), 'the From address chose the other service, redirected all the same');
+    assert.deepEqual(envelope(), [TESTER], 'the SMTP server was asked for the redirect address only');
+    for (const h of mock.smtpHits) {
+      const head = h.data.split('\r\n\r\n')[0];
+      assert.doesNotMatch(head, /^(To|Cc|Bcc):.*victim\.example/im, 'no recipient header names an original address');
+      assert.match(head, /^Subject: \[TEST\] S250/m);
+    }
+  });
+
+  test('an attachment that names recipients, or a file name with a line break, adds none', async () => {
+    await asHr(async (q) => {
+      const [{ id }] = await q(`select meta.send_mail('a@victim.example', 'S250 attachment', 'x') as id`);
+      await q(`select meta.add_mail_attachment($1, convert_to(E'To: evil@victim.example\\r\\nBcc: evil2@victim.example\\r\\nSubject: hi\\r\\n\\r\\nbody', 'UTF8'), 'forward.eml', 'message/rfc822')`, [id]);
+      try {
+        await q(`select meta.add_mail_attachment($1, convert_to('x', 'UTF8'), E'x.txt\\r\\nBcc: evil3@victim.example', 'text/plain')`, [id]);
+      } catch {
+        // refused is fine too
+      }
+    }).catch(async () => {
+      // a refused file name rolls the mail back: queue it again without that file
+      await asHr(async (q) => {
+        const [{ id }] = await q(`select meta.send_mail('a@victim.example', 'S250 attachment', 'x') as id`);
+        await q(`select meta.add_mail_attachment($1, convert_to(E'To: evil@victim.example\\r\\nBcc: evil2@victim.example\\r\\n\\r\\nbody', 'UTF8'), 'forward.eml', 'message/rfc822')`, [id]);
+      });
+    });
+    await tick();
+    assert.deepEqual(envelope(), [TESTER]);
+    const head = mock.smtpHits[0].data.split('\r\n\r\n')[0];
+    assert.doesNotMatch(head, /^Bcc:/im);
+    assert.doesNotMatch(head, /^(To|Cc):.*victim\.example/im);
+  });
+
+  test('MAIL_REDIRECT_TO wins over the application, and over an application without the setting', async () => {
+    process.env.MAIL_REDIRECT_TO = 'ops-250@example.com';
+    await asHr((q) => q(`select meta.send_mail('a@victim.example', 'S250 env', 'x', p_bcc => 'b@victim.example')`));
+    await owner.query('update meta.app set mail_redirect_to = null where id = $1', [appId]);
+    try {
+      await asHr((q) => q(`select meta.send_mail('a@victim.example', 'S250 env only', 'x')`));
+      await tick();
+    } finally {
+      await owner.query('update meta.app set mail_redirect_to = $2 where id = $1', [appId, TESTER]);
+    }
+    assert.deepEqual(envelope(), ['ops-250@example.com']);
+    // a value that is not one address lets nothing out (and is not split into several)
+    process.env.MAIL_REDIRECT_TO = 'ops-250@example.com, a@victim.example';
+    mock.reset();
+    await asHr((q) => q(`select meta.send_mail('a@victim.example', 'S250 env bad', 'x')`));
+    await tick();
+    assert.equal(mock.smtpHits.length, 0);
+    assert.equal((await owner.one(`select status from meta.mail_queue where app_id = $1 and subject = 'S250 env bad'`, [appId])).status, 'error');
+  });
+
+  test('application code can\'t change or read the redirect, the public address or the queue', async () => {
+    await assert.rejects(asHr((q) => q('update meta.app set mail_redirect_to = null')), /permission denied/);
+    await assert.rejects(asHr((q) => q(`update meta.instance_setting set value = 'https://evil.example' where name = 'public_url'`)), /permission denied/);
+    await assert.rejects(asHr((q) => q(`insert into meta.instance_setting (name, value) values ('public_url', 'https://evil.example')`)), /permission denied|row-level security/);
+    await assert.rejects(asHr((q) => q('select redirected_to from meta.mail_queue')), /permission denied/);
+    await assert.rejects(asHr((q) => q(`update meta.mail_queue set redirected_to = null, to_addresses = '{x@victim.example}'`)), /permission denied/);
+    // the setting the runtime sets per request is not what absolute URLs use
+    await owner.query(`insert into meta.instance_setting (name, value) values ('public_url', 'https://apps.example.com')
+                       on conflict (name) do update set value = excluded.value`);
+    const [r] = await asHr((q) => q(`select set_config('pgkiln.public_url', 'https://evil.example', true), meta.app_url() as home, meta.page_url(1, p_absolute => true) as link`));
+    assert.equal(r.home, 'https://apps.example.com/a/hr');
+    assert.match(r.link, /^https:\/\/apps\.example\.com\/a\/hr\/1\?/);
+  });
+
+  test('an absolute URL is never steered by the request\'s Host or X-Forwarded-Host header', async () => {
+    await owner.query(`insert into meta.instance_setting (name, value) values ('public_url', 'https://apps.example.com')
+                       on conflict (name) do update set value = excluded.value`);
+    const pageId = (await owner.one('select id from meta.page where app_id = $1 and page_no = 8', [appId])).id;
+    const reg = await owner.one(`insert into meta.region (page_id, seq, title, type, source) values ($1, 99, 'Links 250', 'report',
+      $$select meta.page_url(3, jsonb_build_object('P3_EMPNO', 7839), p_absolute => true) as link, meta.app_url() as home$$) returning id`, [pageId]);
+    try {
+      const b = await as('king');
+      b.headers = { host: 'evil.example', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'http', forwarded: 'host=evil.example' };
+      const body = (await b.get('/a/hr/8')).body;
+      assert.match(body, /https:\/\/apps\.example\.com\/a\/hr\/3\?clear=1&amp;P3_EMPNO=7839&amp;cs=[0-9a-f]{32}/);
+      assert.match(body, /https:\/\/apps\.example\.com\/a\/hr</);
+      assert.doesNotMatch(body, /evil\.example\/a\/hr/);
+    } finally {
+      await owner.query('delete from meta.region where id = $1', [reg.id]);
+    }
+  });
+
+  test('the builder\'s form: CSRF, sign-in and one address', async () => {
+    const anon = await app.inject({ method: 'POST', url: `/builder/apps/${appId}/mail/redirect`, payload: 'mail_redirect_to=', headers: { 'content-type': 'application/x-www-form-urlencoded' } });
+    assert.notEqual(anon.statusCode, 200);
+    assert.equal((await owner.one('select mail_redirect_to from meta.app where id = $1', [appId])).mail_redirect_to, TESTER, 'not signed in: unchanged');
+    const dev = new Browser();
+    await dev.get('/builder/login');
+    await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+    await dev.get(`/builder/apps/${appId}/mail`);
+    assert.equal((await dev.post(`/builder/apps/${appId}/mail/redirect`, { __csrf: 'forged', mail_redirect_to: '' })).statusCode, 403);
+    for (const bad of ['a@example.com,b@victim.example', 'a@example.com\r\nBcc: b@victim.example', 'a@example.com b@victim.example'])
+      await dev.post(`/builder/apps/${appId}/mail/redirect`, { __csrf: dev.lastCsrf, mail_redirect_to: bad });
+    assert.equal((await owner.one('select mail_redirect_to from meta.app where id = $1', [appId])).mail_redirect_to, TESTER, 'refused, unchanged');
+    // the page escapes what it shows
+    const page = (await dev.get(`/builder/apps/${appId}/mail`)).body;
+    assert.match(page, /Every mail of this application goes only to tester-250@example\.com/);
   });
 });
 

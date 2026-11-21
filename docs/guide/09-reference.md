@@ -25,7 +25,9 @@ triggers, your own functions).
 | `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |
 | `meta.tenant_id()` | text | The current session's tenant, or NULL (APEX: `sys_context('APEX$SESSION', 'APP_TENANT_ID')`); in a workflow step, the workflow's tenant |
 | `meta.v_boolean(name)` | boolean | An item's value as a boolean (APEX 26.1: BOOLEAN session state): `true`, `t`, `yes`, `y`, `1`, `on` → true; `false`, `f`, `no`, `n`, `0`, `off` → false; empty or anything else → NULL. Switches and checkboxes store `true` / `false`, so `:P3_ACTIVE::boolean` works in SQL too |
-| `meta.page_url(page, items jsonb default '{}', clear boolean default true)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))` |
+| `meta.page_url(page, items jsonb default '{}', clear boolean default true, p_absolute boolean default false)` | text | A URL to a page of the current app, with a valid checksum for the items: `meta.page_url(3, jsonb_build_object('P3_EMPNO', empno))`. (sprint 250) `p_absolute => true`: with the installation's public address in front (`PUBLIC_URL`), for links in mail ([absolute URLs](06-processing.md#links-in-mail-absolute-urls)) |
+| `meta.app_url(p_absolute boolean default true)` | text | (sprint 250) The current application's address, `https://apps.example.com/a/hr` (`false`: `/a/hr`) |
+| `meta.public_url()` | text | (sprint 250) The installation's public address the server recorded at start-up from `PUBLIC_URL` (fallback `http://127.0.0.1:<PORT>`); an error where no server has recorded it. Never the request's `Host` header |
 | `meta.html_escape(text)` | text | Escapes `& < > " '` for HTML (use it in dynamic content regions) |
 | `meta.url_encode(text)` | text | Percent-encodes a URL component |
 | `meta.temp_files` (view) | rows | The current session's uploaded files: `id`, `item_name`, `filename`, `mime_type`, `size`, `content`, `created_at` (like `APEX_APPLICATION_TEMP_FILES`; [chapter 16](16-files.md)) |
@@ -47,7 +49,7 @@ triggers, your own functions).
 
 The runtime sets these settings in each request's transaction (don't set them yourself):
 `pgkiln.app_user`, `pgkiln.app_id`, `pgkiln.session_id`, `pgkiln.tenant_id`, `pgkiln.debug_level`, `pgkiln.public_url`
-(the server's `PUBLIC_URL`), `pgkiln.web_pending` (set by `meta.web_request`).
+(the server's `PUBLIC_URL`; absolute URLs use `meta.public_url()` instead, which application code can't change), `pgkiln.web_pending` (set by `meta.web_request`).
 
 ### Web requests from SQL
 
@@ -226,8 +228,11 @@ the From address chooses the service, else the application's default.
 | `meta.mail_available()` | (155) Whether the application may send e-mail now: it has an enabled mail service with a From address. Without one, `meta.send_mail` and a Send E-Mail process raise an error (rolling back the submit), so use it as their condition when mail is optional |
 
 The mail is sent by the server **after the transaction commits**. Over the application's limit per
-day `meta.send_mail` raises an error. Application roles can't read the queue; the owner can:
-`select id, app_id, to_addresses, subject, status, attempts, message from meta.mail_queue order by id desc`.
+day `meta.send_mail` raises an error. (sprint 250) With the application's *Redirect all mail to* or the server's
+`MAIL_REDIRECT_TO`, every mail goes only to that address, `[TEST]` before the subject and the original recipients in
+`X-Original-To/-Cc/-Bcc` ([redirect all mail](06-processing.md#redirect-all-mail-test-and-acceptance-systems));
+`meta.mail_queue.redirected_to` records it. Application roles can't read the queue; the owner can:
+`select id, app_id, to_addresses, redirected_to, subject, status, attempts, message from meta.mail_queue order by id desc`.
 
 ### Push notifications from SQL
 
@@ -616,7 +621,7 @@ navigation entries and application processes have the same `build_option` column
 | Column | Description |
 |---|---|
 | `page_id`, `seq`, `title` | |
-| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `data_reporter`, `form_designer`, `ai_assistant`, `tasks`, `workflows`, `static`, `dynamic` |
+| `type` | `report`, `grid`, `form`, `chart`, `cards`, `calendar`, `facets`, `smart_filters`, `display_selector`, `map`, `tree`, `template_component`, `list`, `data_reporter`, `form_designer`, `json_form`, `ai_assistant`, `tasks`, `workflows`, `static`, `dynamic` |
 | `source` | SELECT (or HTML for `static`) |
 | `table_name`, `pk_column` | For `form` and `grid` |
 | `pk_item` | For `form`: the item holding the key |

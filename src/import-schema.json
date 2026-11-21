@@ -73,6 +73,7 @@
   },
   "branch": {
    "id": "integer",
+   "in_page_below": "boolean",
    "page_id": "integer",
    "seq": "integer",
    "stay_in_dialog": "boolean",
@@ -435,7 +436,8 @@
     "page",
     "url",
     "function",
-    "app"
+    "app",
+    "item"
    ]
   },
   {
@@ -881,7 +883,8 @@
     "classic_report",
     "breadcrumb",
     "help_text",
-    "workflow_diagram"
+    "workflow_diagram",
+    "json_form"
    ]
   },
   {

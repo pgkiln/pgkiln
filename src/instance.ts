@@ -136,6 +136,7 @@ export const CONFIGURATION: readonly { env: string; secret?: boolean; default: s
   { env: 'MAP_TILE_URL', default: 'OpenStreetMap', help: 'Tile server of map regions' },
   { env: 'LOG_LEVEL', default: 'info', help: 'Server log level' },
   { env: 'PGKILN_RELEASE_CHECK', default: 'off', help: 'Ask GitHub once a day for a newer pgkiln release (the Workspace home; administrators can also turn it on there)' },
+  { env: 'MAIL_REDIRECT_TO', default: '(none)', help: 'Every mail of the installation goes only to this address, with [TEST] before the subject (test and acceptance copies; wins over an application\'s Redirect all mail to)' },
 ];
 
 /** A configuration value as the page shows it: secrets never, only whether they are set. */

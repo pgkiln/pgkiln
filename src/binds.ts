@@ -13,7 +13,7 @@ import pg from 'pg';
 export type BindValues = Record<string, string | null | undefined>;
 
 /** Bind names the server sets (see bindValues in runtime/context.ts); input from outside never sets them. */
-export const RESERVED_BINDS = new Set(['APP_USER', 'APP_ID', 'APP_ALIAS', 'APP_SESSION', 'APP_PAGE_ID', 'REQUEST', 'APP_LANGUAGE']);
+export const RESERVED_BINDS = new Set(['APP_USER', 'APP_ID', 'APP_ALIAS', 'APP_SESSION', 'APP_PAGE_ID', 'REQUEST', 'APP_LANGUAGE', 'APP_PREVIOUS_PAGE', 'APP_PREVIOUS_URL']);
 
 const IDENT_START = /[A-Za-z_]/;
 const IDENT_CHAR = /[A-Za-z0-9_]/;
