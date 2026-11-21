@@ -4,8 +4,9 @@
 -- File upload and download: a file per record in the table's own columns
 -- (name, type, size and date kept beside it), several files per record in a
 -- child table, and a picture cropped in the browser before it is uploaded.
--- Folders and people share one picture table (related_type + related_id),
--- shown as a gallery of thumbnails.
+-- Folders, people and site visits share one picture table (related_type +
+-- related_id), shown as a gallery of thumbnails; the site visit page saves
+-- with its own processes, its gallery names the key item (parent_item).
 -- Every download link is bound to the user and the record; files are read
 -- as the application's role and sent as attachments.
 --
@@ -76,7 +77,7 @@ insert into sample_files.person (name) values ('Ada'), ('Grace'), ('Linus');
 -- there is no foreign key, so each file item names its kind with "filter" (written on insert, applied on read and delete)
 create table sample_files.picture (
   id           int generated always as identity primary key,
-  related_type text not null check (related_type in ('folder', 'person')),
+  related_type text not null check (related_type in ('folder', 'person', 'visit')),
   related_id   text not null,
   filename     text not null,
   mime_type    text not null,
@@ -87,6 +88,14 @@ create index on sample_files.picture (related_type, related_id);
 insert into sample_files.picture (related_type, related_id, filename, mime_type, content)
 select t, '1', f, 'image/png', decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64')
   from (values ('folder', 'alpha-site.png'), ('person', 'ada-desk.png')) as p (t, f);
+
+-- (252) site visits: a page that saves with its own processes, not a form region
+create table sample_files.visit (
+  id         int generated always as identity primary key,
+  visited_on date not null default current_date,
+  note       text not null
+);
+insert into sample_files.visit (visited_on, note) values (date '2026-11-02', 'Roof inspection, north side');
 
 -- 2. The application's database role ----------------------------------------
 do $$ begin
@@ -149,6 +158,44 @@ select r.page_id, r.id, x.seq, x.name, 'Pictures', 'file', 'content', 'Up to six
     on r.page_id = pg_temp.page_id('sample-files', x.page)
  where r.type = 'form';
 
+-- (252) page 8: site visits, saved by the page's own processes (no form region); the pictures' record key is the
+-- protected hidden item P8_ID ("parent_item"), which the Save process fills for a new visit before the files are saved
+insert into meta.page (app_id, page_no, name, title, parent_page)
+select id, 8, 'Site visits', 'Site visits', 1 from meta.app where alias = 'sample-files';
+insert into meta.region (page_id, seq, title, type, columns, template, source, config)
+select pg_temp.page_id('sample-files', 8), r.seq, r.title, r.type, 12, r.template, r.source, r.config::jsonb
+  from (values
+  (5, 'About this page', 'static', 'plain',
+   '<p class="lead">This page saves a visit with its own processes instead of a form region. Its <strong>Pictures</strong> name the item that holds the visit''s key, <code>"parent_item": "P8_ID"</code>, a protected hidden item: the gallery lists, removes and serves the pictures of that visit, and saves new ones after the processes, so a new visit''s pictures go in with it.</p>', '{}'),
+  (10, 'Visit', 'static', 'standard', null, '{}'),
+  (20, 'Visits', 'report', 'standard', 'select id, visited_on, note from sample_files.visit order by visited_on desc, id desc',
+   '{"headings": {"visited_on": "Date", "note": "Note"}, "hidden": ["id"], "link": {"column": "note", "page": 8, "items": {"P8_ID": "#id#"}}}')
+  ) as r (seq, title, type, template, source, config);
+insert into meta.item (page_id, region_id, seq, name, label, type, source_column, help, config)
+select r.page_id, r.id, i.seq, i.name, i.label, i.type, i.src, i.help, i.config::jsonb
+  from meta.region r, (values
+  (10, 'P8_ID', null, 'hidden', null, null, '{}'),
+  (20, 'P8_VISITED_ON', 'Date', 'date', null, null, '{}'),
+  (30, 'P8_NOTE', 'Note', 'textarea', null, null, '{}'),
+  (40, 'P8_PICTURES', 'Pictures', 'file', 'content', 'Up to four pictures of at most 2 MB each.',
+   '{"multiple": true, "display": "gallery", "max_files": 4, "max_mb": 2, "accept": "image/png,image/jpeg,image/webp",
+     "table": "sample_files.picture", "parent_column": "related_id", "parent_item": "P8_ID", "key_column": "id",
+     "filename_column": "filename", "mime_column": "mime_type", "filter": {"related_type": "visit"}, "wide": true}')
+  ) as i (seq, name, label, type, src, help, config)
+ where r.page_id = pg_temp.page_id('sample-files', 8) and r.title = 'Visit';
+update meta.item set required = true where page_id = pg_temp.page_id('sample-files', 8) and name = 'P8_NOTE';
+insert into meta.button (page_id, region_id, seq, name, label, hot)
+select r.page_id, r.id, b.seq, b.name, b.label, b.hot
+  from meta.region r, (values (10, 'SAVE', 'Save', true), (20, 'NEW', 'New visit', false)) as b (seq, name, label, hot)
+ where r.page_id = pg_temp.page_id('sample-files', 8) and r.title = 'Visit';
+insert into meta.process (page_id, seq, name, type, point, code, when_button)
+select pg_temp.page_id('sample-files', 8), p.seq, p.name, 'sql', p.point, p.code, p.button
+  from (values
+  (10, 'Fetch the visit', 'load', 'select visited_on as p8_visited_on, note as p8_note from sample_files.visit where id = nullif(:P8_ID, '''')::int', null),
+  (20, 'Save the visit', 'submit', E'update sample_files.visit set visited_on = coalesce(nullif(:P8_VISITED_ON, '''')::date, visited_on), note = :P8_NOTE\n where id = nullif(:P8_ID, '''')::int;\nwith ins as (\n  insert into sample_files.visit (visited_on, note)\n  select coalesce(nullif(:P8_VISITED_ON, '''')::date, current_date), :P8_NOTE where nullif(:P8_ID, '''') is null\n  returning id)\nselect coalesce((select id from ins)::text, nullif(:P8_ID, '''')) as p8_id', 'SAVE'),
+  (30, 'Clear for a new visit', 'submit', 'select null as p8_id, null as p8_visited_on, null as p8_note', 'NEW')
+  ) as p (seq, name, point, code, button);
+
 -- page 7: a picture, cropped square in the browser before it is uploaded
 delete from meta.item where page_id = pg_temp.page_id('sample-files', 7) and name in ('P7_PHOTO_NAME', 'P7_PHOTO_MIME');
 update meta.item set type = 'file', label = 'Photo', help = 'A picture: choose the square part to keep.',
@@ -169,7 +216,8 @@ select a.id, 'FILE_TOPICS', e.seq, e.label, e.icon, e.page, e.description
   from meta.app a, (values
   (10, 'Documents', 'file', 2, 'A file in the record''s own bytea column, with its name, type, size and date beside it.'),
   (20, 'Folders', 'folder', 4, 'Several files per record in a child table: add some, remove some, all saved with the record.'),
-  (30, 'People', 'users', 6, 'A photo cropped square in the browser and made smaller before it is uploaded.')
+  (30, 'People', 'users', 6, 'A photo cropped square in the browser and made smaller before it is uploaded.'),
+  (40, 'Site visits', 'camera', 8, 'A page that saves with its own processes: its pictures name the item holding the record''s key.')
   ) as e (seq, label, icon, page, description)
  where a.alias = 'sample-files';
 

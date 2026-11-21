@@ -85,6 +85,8 @@ interface FileConfig {
   filter?: Record<string, unknown>;
   /** (247) "gallery": pictures as thumbnails */
   display?: string;
+  /** (252) outside a form region: the protected hidden item holding the record's key */
+  parent_item?: unknown;
 }
 const cfg = (item: Item) => (item.config ?? {}) as FileConfig;
 export const maxMb = (item: Item) => Math.min(Number(cfg(item).max_mb) || MAX_UPLOAD_MB, MAX_UPLOAD_MB);
@@ -266,11 +268,32 @@ export function childFilter(ctx: PageContext, item: Item): [string, string | nul
   });
 }
 
-/** Where a multiple file item stores its files: a child table of its form's record. */
+/**
+ * (252) The item holding the record's key for a multiple file item outside a form region: "parent_item" names a
+ * protected hidden item of the page, a value a request can't set, so a forged post can't list, remove or add another
+ * record's files. Any other item is refused with an error, as for the filter.
+ */
+export function parentItem(ctx: PageContext, item: Item): string | undefined {
+  const name = cfg(item).parent_item;
+  if (name === undefined || name === null || name === '') return undefined;
+  if (typeof name !== 'string') throw new Error(`${item.name}: "parent_item" must be an item name`);
+  const upper = name.toUpperCase();
+  const p = ctx.page.items.find((i) => i.name === upper);
+  if (!p || p.type !== 'hidden' || p.config?.value_protected === false)
+    throw new Error(`${item.name}: "parent_item" must be a protected hidden item of the page (not ${name})`);
+  return upper;
+}
+
+/**
+ * Where a multiple file item stores its files: a child table of its form's record, or (252) of the record whose key
+ * is in its "parent_item" when the item isn't in a form region (a page that saves with its own processes).
+ */
 export function childTable(ctx: PageContext, item: Item) {
   const c = cfg(item);
-  const region = isMultiple(item) && c.table && c.parent_column ? formRegion(ctx, item) : undefined;
-  return region ? { region, table: c.table!, parent: c.parent_column!, key: c.key_column || 'id', filter: childFilter(ctx, item) } : undefined;
+  if (!isMultiple(item) || !c.table || !c.parent_column || !item.source_column) return undefined;
+  const region = formRegion(ctx, item);
+  const pkItem = region ? region.pk_item! : parentItem(ctx, item);
+  return pkItem ? { region, pkItem, table: c.table, parent: c.parent_column, key: c.key_column || 'id', filter: childFilter(ctx, item) } : undefined;
 }
 
 /** (247) The filter's conditions ("" without one, else " and ..."). */
@@ -279,7 +302,7 @@ const filterSql = (filter: [string, string | null][]) => filter.map(([col, v]) =
 /** The files a multiple file item has stored for the form's current record. */
 export async function storedFiles(ctx: PageContext, item: Item): Promise<FileInfo[]> {
   const child = childTable(ctx, item);
-  const pk = child ? ctx.session.state[child.region.pk_item!] : null;
+  const pk = child ? ctx.session.state[child.pkItem] : null;
   if (!child || pk === null || pk === undefined) return [];
   const c = ctx.client!;
   const res = await savepoint(c, async () =>
@@ -309,54 +332,70 @@ export async function fileList(ctx: PageContext, item: Item): Promise<FileInfo[]
  * record are deleted. On delete, all the record's files are deleted.
  */
 export async function saveFileLists(ctx: PageContext, region: Region, op: 'insert' | 'update' | 'delete') {
-  const c = ctx.client!;
-  const pk = ctx.session.state[region.pk_item!];
   for (const item of ctx.page.items) {
     const child = childTable(ctx, item);
-    if (!child || child.region.id !== region.id || pk === null || pk === undefined) continue;
-    const table = await resolveTable(c, child.table);
-    // (247) the filter's constant columns: only this item's rows of a shared table
-    const parent = `${ident(child.parent)} = ${literal(pk)}${filterSql(child.filter)}`;
-    const store = storeOf(item);
-    // object storage: the keys of the rows a delete removes, for removing their objects after the commit
-    const objectKeys = async (where: string, values: unknown[] = []) =>
-      store ? (await c.query({ text: `select ${ident(item.source_column!)}::text from ${table} where ${where}`, values, rowMode: 'array' })).rows.map((r) => r[0]) : [];
-    if (op === 'delete') {
-      const gone = await objectKeys(parent);
-      await c.query(`delete from ${table} where ${parent}`);
-      if (store) dropObjects(ctx, store, gone);
-      continue;
-    }
-    if (!ctx.vis!.editable.has(item.name)) continue;
-    const keys = removals(ctx, item).filter((k) => !k.startsWith('temp:'));
-    if (keys.length) {
-      const gone = await objectKeys(`${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
-      await c.query(`delete from ${table} where ${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
-      if (store) dropObjects(ctx, store, gone);
-    }
-    const ids = tempIds(ctx.session.state[item.name]);
-    if (!ids.length) continue;
-    const conf = cfg(item);
-    if (store) {
-      // each file into the bucket, its key (and name, type, size) into a row
-      for (const id of ids) {
-        const f = await storeTempFile(ctx, store, id);
-        const cols: [string, unknown][] = [[child.parent, pk], ...child.filter, [item.source_column!, f.key],
-          ...(conf.filename_column ? [[conf.filename_column, f.filename] as [string, unknown]] : []),
-          ...(conf.mime_column ? [[conf.mime_column, f.mime] as [string, unknown]] : []),
-          ...(conf.size_column ? [[conf.size_column, f.size] as [string, unknown]] : [])];
-        await c.query(`insert into ${table} (${cols.map(([k]) => ident(k)).join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, cols.map(([, v]) => v));
-        await c.query('select meta.delete_temp_file($1)', [id]);
-      }
-      ctx.session.state[item.name] = null;
-      continue;
-    }
-    const cols = [ident(child.parent), ...child.filter.map(([col]) => ident(col)), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
-    const vals = [literal(pk), ...child.filter.map(([, v]) => literal(v)), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
-    await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at, array_position($1::uuid[], id)`, [ids]);
-    for (const id of ids) await c.query('select meta.delete_temp_file($1)', [id]);
-    ctx.session.state[item.name] = null;
+    if (child?.region?.id === region.id) await saveFiles(ctx, item, child, op);
   }
+}
+
+/**
+ * (252) Save the multiple file items that name a "parent_item" (not in a form region), after the page's submit
+ * processes: a process may have just inserted the record and set its key. Without a key the new files stay pending.
+ * Deleting the record is the application's own work (its process deletes the rows, or a foreign key cascades).
+ */
+export async function saveParentItemFiles(ctx: PageContext) {
+  for (const item of ctx.page.items) {
+    const child = childTable(ctx, item);
+    if (child && !child.region) await saveFiles(ctx, item, child, 'update');
+  }
+}
+
+async function saveFiles(ctx: PageContext, item: Item, child: NonNullable<ReturnType<typeof childTable>>, op: 'insert' | 'update' | 'delete') {
+  const c = ctx.client!;
+  const pk = ctx.session.state[child.pkItem];
+  if (pk === null || pk === undefined || pk === '') return;
+  const table = await resolveTable(c, child.table);
+  // (247) the filter's constant columns: only this item's rows of a shared table
+  const parent = `${ident(child.parent)} = ${literal(pk)}${filterSql(child.filter)}`;
+  const store = storeOf(item);
+  // object storage: the keys of the rows a delete removes, for removing their objects after the commit
+  const objectKeys = async (where: string, values: unknown[] = []) =>
+    store ? (await c.query({ text: `select ${ident(item.source_column!)}::text from ${table} where ${where}`, values, rowMode: 'array' })).rows.map((r) => r[0]) : [];
+  if (op === 'delete') {
+    const gone = await objectKeys(parent);
+    await c.query(`delete from ${table} where ${parent}`);
+    if (store) dropObjects(ctx, store, gone);
+    return;
+  }
+  if (!ctx.vis!.editable.has(item.name)) return;
+  const keys = removals(ctx, item).filter((k) => !k.startsWith('temp:'));
+  if (keys.length) {
+    const gone = await objectKeys(`${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
+    await c.query(`delete from ${table} where ${parent} and ${ident(child.key)}::text = any($1::text[])`, [keys]);
+    if (store) dropObjects(ctx, store, gone);
+  }
+  const ids = tempIds(ctx.session.state[item.name]);
+  if (!ids.length) return;
+  const conf = cfg(item);
+  if (store) {
+    // each file into the bucket, its key (and name, type, size) into a row
+    for (const id of ids) {
+      const f = await storeTempFile(ctx, store, id);
+      const cols: [string, unknown][] = [[child.parent, pk], ...child.filter, [item.source_column!, f.key],
+        ...(conf.filename_column ? [[conf.filename_column, f.filename] as [string, unknown]] : []),
+        ...(conf.mime_column ? [[conf.mime_column, f.mime] as [string, unknown]] : []),
+        ...(conf.size_column ? [[conf.size_column, f.size] as [string, unknown]] : [])];
+      await c.query(`insert into ${table} (${cols.map(([k]) => ident(k)).join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, cols.map(([, v]) => v));
+      await c.query('select meta.delete_temp_file($1)', [id]);
+    }
+    ctx.session.state[item.name] = null;
+    return;
+  }
+  const cols = [ident(child.parent), ...child.filter.map(([col]) => ident(col)), ident(item.source_column!), ...(conf.filename_column ? [ident(conf.filename_column)] : []), ...(conf.mime_column ? [ident(conf.mime_column)] : [])];
+  const vals = [literal(pk), ...child.filter.map(([, v]) => literal(v)), 'content', ...(conf.filename_column ? ['filename'] : []), ...(conf.mime_column ? ['mime_type'] : [])];
+  await c.query(`insert into ${table} (${cols.join(', ')}) select ${vals.join(', ')} from meta.temp_files where id = any($1::uuid[]) order by created_at, array_position($1::uuid[], id)`, [ids]);
+  for (const id of ids) await c.query('select meta.delete_temp_file($1)', [id]);
+  ctx.session.state[item.name] = null;
 }
 
 async function tempInfo(ctx: PageContext, id: string): Promise<FileInfo | null> {

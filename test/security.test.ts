@@ -21480,3 +21480,61 @@ describe('sprint 251 MG-28', () => {
     assert.equal(Number((await owner.one(`select count(*) as n from meta.app where alias = 'hr'`)).n), 1);
   });
 });
+
+describe('sprint 252 parent_item', () => {
+  // A multiple file item outside a form region takes the record's key from its "parent_item", a protected hidden
+  // item: a forged post can't point it at another record, so it never lists, removes or adds another visit's
+  // pictures; its filter still keeps other record types' files out of its downloads.
+  let g: typeof import('./gallery-samples.ts');
+  let sfApp: number;
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const sample = () => g.SAMPLES.find((x) => x.key === 'sample-files')!;
+  const visitPictures = async (id: string) => (await owner.query(`select id from sample_files.picture where related_type = 'visit' and related_id = $1`, [id])).rows.map((r) => String(r.id));
+  const openVisit = async (id: string) => {
+    const b = new FileBrowser(app);
+    await b.login('demo', 'demo', 'sample-files');
+    const items = { P8_ID: id };
+    assert.equal((await b.get(`/a/sample-files/8?${new URLSearchParams({ ...items, cs: urlChecksum(sfApp, 8, 'demo', items) })}`)).statusCode, 200);
+    return b;
+  };
+  let other: string;
+  before(async () => {
+    g = await import('./gallery-samples.ts');
+    await g.dropSample(sample());
+    await g.installSample(sample());
+    sfApp = (await owner.one(`select id from meta.app where alias = 'sample-files'`)).id;
+    // visit 1 (installed) and another visit with a picture of its own
+    other = String((await owner.one(`insert into sample_files.visit (note) values ('Other visit') returning id`)).id);
+    await owner.query(`insert into sample_files.picture (related_type, related_id, filename, mime_type, content) values ('visit', $1, 'other.png', 'image/png', $2)`, [other, PNG]);
+  });
+  after(async () => {
+    await g.dropSample(sample());
+  });
+
+  test("a posted P8_ID can't move the item to another visit: no removal, no upload there", async () => {
+    const before = await visitPictures(other);
+    const b = await openVisit('1');
+    const res = await b.upload('/a/sample-files/8', { __request: 'SAVE', P8_ID: other, P8_NOTE: 'Roof inspection, north side', P8_PICTURES__REMOVE: before }, {
+      P8_PICTURES: [{ name: 'forged.png', type: 'image/png', data: PNG }],
+    });
+    assert.ok([200, 303, 403].includes(res.statusCode), String(res.statusCode));
+    assert.deepEqual(await visitPictures(other), before, "the other visit's pictures are untouched");
+    assert.equal(Number((await owner.one(`select count(*) as n from sample_files.picture where related_type = 'visit' and filename = 'forged.png' and related_id = $1`, [other])).n), 0);
+  });
+
+  test("the item's download serves no folder or person picture, even with a valid checksum", async () => {
+    const b = await openVisit('1');
+    for (const kind of ['folder', 'person']) {
+      const k = String((await owner.one(`select id from sample_files.picture where related_type = $1 limit 1`, [kind])).id);
+      const cs = urlChecksum(sfApp, 8, 'demo', { __FILE: 'P8_PICTURES', __KEY: k });
+      assert.equal((await b.get(`/a/sample-files/8/file/P8_PICTURES?k=${k}&cs=${cs}`)).statusCode, 404, kind);
+    }
+  });
+
+  test('a parent_item that a request could set is refused', async () => {
+    const { parentItem } = await import('../src/runtime/files.ts');
+    const files = { name: 'P8_PICTURES', type: 'file', config: { multiple: true, parent_item: 'P8_NOTE' } } as never;
+    const ctx = { page: { items: [{ name: 'P8_NOTE', type: 'textarea', config: {} }, files] } } as never;
+    assert.throws(() => parentItem(ctx, files), /protected hidden item/);
+  });
+});

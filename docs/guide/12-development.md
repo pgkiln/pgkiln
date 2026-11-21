@@ -481,7 +481,9 @@ src/
                            1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads);
                            (sprint 247, MG-20) childFilter: a multiple item's "filter" (constant columns of a shared child table,
                            written on insert and added to every read, delete and download; &NAME. only of built-ins and protected
-                           hidden items), isGallery ("display": "gallery", rendered by items.ts fileListControl)
+                           hidden items), isGallery ("display": "gallery", rendered by items.ts fileListControl); (sprint 252) parentItem: outside a
+                           form region, "parent_item" (a protected hidden item) holds the record's key; saveParentItemFiles
+                           runs after the submit processes (routes.ts)
     document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit); (sprint 245) images and <br> inside
                            table cells and paragraphs (partsOf/drawParts), shadowedBuiltIns (query columns named like a built-in)
     documents.ts           ?doc=NAME: a template filled with the page's values

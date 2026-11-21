@@ -141,6 +141,7 @@ create table hr.emp_document (
 | `filename_column`, `mime_column`, `accept`, `max_mb` | As for a single file |
 | `filter` | Constant columns of a child table shared by several record types, `{"related_type": "folder"}`: [below](#a-child-table-shared-by-several-record-types) |
 | `display` | `"gallery"`: the files as a [picture gallery](#picture-gallery) instead of a list |
+| `parent_item` | Outside a form region: the protected hidden item holding the record's key, [below](#outside-a-form-region-parent-item) |
 
 The form lists the record's files with download links (and a small preview for images), followed
 by the files that will be added on save. Every file has a **Remove file** box. Saving the form
@@ -193,6 +194,30 @@ deleting a folder deletes its own pictures and leaves the people's alone:
 - A shared table has no foreign key to cascade deletes or check ids: the item deletes the record's
   rows itself when the form deletes the record. Rows that other code writes keep their own values.
   Give the table row level security as for any child table.
+
+#### Outside a form region: `parent_item`
+
+(sprint 252) A page that saves its record with its own processes (a static region, SQL that inserts or
+updates, fields kept in a `jsonb` column) has no form region for the item to follow. Name the item
+that holds the record's key instead, with `parent_item`:
+
+```json
+{"multiple": true, "display": "gallery", "table": "sample_files.picture", "parent_column": "related_id",
+ "parent_item": "P8_ID", "key_column": "id", "filename_column": "filename", "mime_column": "mime_type",
+ "filter": {"related_type": "visit"}}
+```
+
+- The item lists, removes and serves the files of the record whose key is in `P8_ID`, as in a form.
+- It saves new files and removes ticked ones **after the page's submit processes**, in the same
+  transaction, so a process that inserts a new record and returns its key (`select id as p8_id`)
+  gets the files with it. Without a key the new files stay pending.
+- `parent_item` must be a **protected hidden item** of the page, a value a request can't set: a forged
+  post can't point the item at another record. Any other item is refused with an error.
+- The item has a source column (`content` above), as in a form region.
+- Deleting the record is the page's own work: its process deletes the rows (or a foreign key cascades).
+
+Sample Files (App Gallery) page 8, *Site visits*, saves with its own processes and keeps its pictures
+in the shared `sample_files.picture`.
 
 #### Picture gallery
 
