@@ -56,7 +56,7 @@ select p.id, (select r.id from meta.region r where r.page_id = p.id and r.title 
 
 -- (MG-22, MG-27) back to the page the user came from; the label names it
 insert into meta.button (page_id, region_id, seq, name, label, action, condition)
-select p.id, (select r.id from meta.region r where r.page_id = p.id and r.title = 'Profile'), 90, 'BACK', 'Back to page &APP_PREVIOUS_PAGE.', 'submit',
+select p.id, (select r.id from meta.region r where r.page_id = p.id and r.title = 'Employees'), 90, 'BACK', 'Back to page &APP_PREVIOUS_PAGE.', 'submit',
        ':APP_PREVIOUS_PAGE is not null'
   from meta.page p join meta.app a on a.id = p.app_id
  where a.alias = 'hr' and p.page_no = 51;
