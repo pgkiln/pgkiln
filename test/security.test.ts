@@ -20538,6 +20538,97 @@ describe('sprint 240 MG-7/MG-8', () => {
   });
 });
 
+describe('sprint 243 MG-17', () => {
+  const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const restore = (saved: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  };
+  const blobRequest = (url: string, extra: Record<string, unknown> = {}) => ({
+    id: '0', source: null, params: null, url, method: 'PUT', headers: {}, body: null, credential: null, timeout_s: 2,
+    body_blob: Buffer.from('file bytes'), body_blob_bytes: 10, chunk_bytes: null, ...extra,
+  });
+
+  test('a binary body goes through the allow-list, the private-address check and the credential URL prefix like a text one', async () => {
+    const wr = await import('../src/webrequests.ts');
+    const saved = envOf(['PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS']);
+    try {
+      process.env.PGKILN_REST_ALLOWED_HOSTS = 'api.example.com';
+      delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      let r = await wr.execute(appId, blobRequest('https://files.example.org/upload'));
+      assert.equal(r.status, 'error');
+      assert.match(r.message!, /not on the server's allow-list/);
+      // in ranges: every range is checked the same way
+      r = await wr.execute(appId, blobRequest('https://files.example.org/session', { body_blob: Buffer.alloc(200_000), body_blob_bytes: 200_000, chunk_bytes: 65536 }));
+      assert.match(r.message!, /not on the server's allow-list/);
+      // any public host allowed, private addresses still refused (a literal address, and a name that resolves to one)
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      r = await wr.execute(appId, blobRequest('http://10.1.2.3/upload'));
+      assert.equal(r.status, 'error');
+      assert.match(r.message!, /private, loopback or link-local/);
+      r = await wr.execute(appId, blobRequest('http://localhost:1/upload'));
+      assert.equal(r.status, 'error');
+      assert.match(r.message!, /private, loopback or link-local/);
+      // a credential only for the URLs it is valid for
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      const cred = 'S243_UPLOAD';
+      await owner.query(`delete from meta.web_credential where app_id = $1 and name = $2`, [appId, cred]);
+      const { encryptSecret } = await import('../src/secrets.ts');
+      await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, $2, 'bearer', $3, '{http://127.0.0.1:1/files/}')`,
+        [appId, cred, encryptSecret('s243-secret')]);
+      try {
+        r = await wr.execute(appId, blobRequest('http://127.0.0.1:1/other/x', { credential: cred }));
+        assert.equal(r.status, 'error');
+        assert.match(r.message!, /not valid for this URL/);
+        assert.doesNotMatch(JSON.stringify(r), /s243-secret/);
+      } finally {
+        await owner.query(`delete from meta.web_credential where app_id = $1 and name = $2`, [appId, cred]);
+      }
+    } finally {
+      restore(saved);
+    }
+  });
+
+  test('the size limit PGKILN_REST_MAX_UPLOAD_BYTES is enforced before anything is loaded or sent; SQL refuses the wrong methods', async () => {
+    const wr = await import('../src/webrequests.ts');
+    const { sendBinary } = await import('../src/webupload.ts');
+    const saved = envOf(['PGKILN_REST_MAX_UPLOAD_BYTES', 'PGKILN_REST_ALLOWED_HOSTS']);
+    try {
+      process.env.PGKILN_REST_MAX_UPLOAD_BYTES = '9';
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      // a claimed request carries only the size: refused without reading the bytes
+      const r = await wr.execute(appId, blobRequest('https://files.example.org/upload', { body_blob: null, body_blob_bytes: 10 }));
+      assert.equal(r.status, 'error');
+      assert.equal(r.transient, false);
+      assert.match(r.message!, /larger than 9 bytes/);
+      await assert.rejects(sendBinary({ appId, url: 'https://files.example.org/upload', body: Buffer.alloc(10) }), /larger than 9 bytes/);
+      await assert.rejects(sendBinary({ appId, url: 'https://files.example.org/upload', method: 'GET', body: Buffer.alloc(1) }), /POST, PUT or PATCH/);
+    } finally {
+      restore(saved);
+    }
+    await assert.rejects(appTx({ appId, alias: 'hr', dbRole: 'hr_app', appUser: 'king', sessionId: '00000000-0000-0000-0000-000000000000' }, (c) => c.query(`select meta.web_request('https://files.example.org/x', 'DELETE', p_body_blob => '\\x00'::bytea)`)), /POST, PUT or PATCH/);
+  });
+
+  test('a REST handler with "body": "blob": :BODY_BLOB and :CONTENT_TYPE are the request\'s, never a query parameter\'s; the size is limited', async () => {
+    await owner.query(`delete from hr.crm_file where name like 's243-sec%'`);
+    try {
+      const res = await app.inject({
+        method: 'PUT', url: `/a/hr/rest/crm/files/s243-sec.txt?body_blob=${encodeURIComponent('\\x41')}&content_type=text%2Fevil`,
+        headers: { 'content-type': 'text/plain' }, payload: 'real bytes',
+      });
+      assert.equal(res.statusCode, 201, res.body);
+      const row = await owner.one(`select convert_from(content, 'UTF8') as content, content_type from hr.crm_file where name = 's243-sec.txt'`);
+      assert.deepEqual(row, { content: 'real bytes', content_type: 'text/plain' });
+      const { MAX_UPLOAD_MB } = await import('../src/runtime/files.ts');
+      const big = await app.inject({ method: 'PUT', url: '/a/hr/rest/crm/files/s243-sec-big.bin', headers: { 'content-type': 'application/octet-stream' }, payload: Buffer.alloc(MAX_UPLOAD_MB * 1024 * 1024 + 1) });
+      assert.equal(big.statusCode, 413);
+      assert.equal((await owner.one(`select count(*)::int as n from hr.crm_file where name = 's243-sec-big.bin'`)).n, 0);
+    } finally {
+      await owner.query(`delete from hr.crm_file where name like 's243-sec%'`);
+    }
+  });
+});
+
 describe('sprint 248 MG-21', () => {
   // Custom authentication's hash query (src/customauth.ts, src/password-hashes.ts): the app's SQL returns the stored
   // hash, the server checks the password. A wrong password, an unknown user and a hash that can't be read give the
