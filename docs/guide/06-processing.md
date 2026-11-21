@@ -1062,7 +1062,9 @@ submit back. The same happens after an application process, an Ajax callback and
 SQL. The function names only the current application's templates and works only as the application's
 role.
 
-Use the value as a mail attachment only: stored anywhere else it stays the reference. The server
+Use the value as a mail attachment only: stored anywhere else it stays the reference (to keep the PDF
+in a table, use (sprint 245) [`meta.document_temp_file`](16-files.md#document-templates), a temporary
+file the server draws the same way and the next process reads). The server
 draws references in the processes it runs; SQL that runs elsewhere (an automation, a workflow
 activity, pg_cron, the SQL Workshop) can queue the mail, but the server sends no mail with an undrawn
 reference: it marks it *error* ("was not drawn"). A send_email process can attach a template without

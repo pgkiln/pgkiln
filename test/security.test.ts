@@ -1001,7 +1001,7 @@ describe('sprint 23: code editor', () => {
       assert.ok(names.includes('hr.<img src=x onerror=alert(1)>'), 'odd names are data');
       assert.ok(!names.includes('hr.sec23_closed'), 'no ungranted tables');
       assert.ok(!names.some((n: string) => /^meta\.(developer|account|session|instance_setting|app)$/.test(n)), 'no closed metadata');
-      assert.ok(!JSON.stringify(data).includes('password_hash'));
+      assert.doesNotMatch(JSON.stringify(data), /(^|[^a-z_])password_hash/, 'no password hash column (meta.make_password_hash is a public function)');
       // the editor never parses suggestions or code as HTML
       const js = (await app.inject({ method: 'GET', url: '/static/code-editor.js' })).body;
       assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function|setAttribute\('style'/);
@@ -1075,7 +1075,7 @@ describe('sprint 23: code editor', () => {
       // only the columns granted to that role (never the password hash)
       const account = n.relations.find((r: any) => r.schema === 'meta' && r.name === 'account');
       assert.ok(!account || !account.columns.some((c: any) => c.name === 'password_hash'));
-      assert.ok(!JSON.stringify(n).includes('password_hash'));
+      assert.doesNotMatch(JSON.stringify(n), /(^|[^a-z_])password_hash/);
       assert.deepEqual(n.items, []);
       // the cache is per app: asking for one app never answers for another
       assert.notDeepEqual((await get(other)).relations, (await get(appId)).relations);
@@ -20612,6 +20612,306 @@ describe('sprint 249 MG-22/MG-23/MG-27', () => {
       assert.doesNotMatch(page.body, /<img src=x/);
     } finally {
       await owner.query(`update meta.button set label = 'Open the profile' where page_id = $1 and name = 'OPEN'`, [p76]);
+    }
+  });
+});
+
+describe('sprint 243 MG-17', () => {
+  const envOf = (keys: string[]) => Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+  const restore = (saved: Record<string, string | undefined>) => {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  };
+  const blobRequest = (url: string, extra: Record<string, unknown> = {}) => ({
+    id: '0', source: null, params: null, url, method: 'PUT', headers: {}, body: null, credential: null, timeout_s: 2,
+    body_blob: Buffer.from('file bytes'), body_blob_bytes: 10, chunk_bytes: null, ...extra,
+  });
+
+  test('a binary body goes through the allow-list, the private-address check and the credential URL prefix like a text one', async () => {
+    const wr = await import('../src/webrequests.ts');
+    const saved = envOf(['PGKILN_REST_ALLOWED_HOSTS', 'PGKILN_REST_PRIVATE_HOSTS']);
+    try {
+      process.env.PGKILN_REST_ALLOWED_HOSTS = 'api.example.com';
+      delete process.env.PGKILN_REST_PRIVATE_HOSTS;
+      let r = await wr.execute(appId, blobRequest('https://files.example.org/upload'));
+      assert.equal(r.status, 'error');
+      assert.match(r.message!, /not on the server's allow-list/);
+      // in ranges: every range is checked the same way
+      r = await wr.execute(appId, blobRequest('https://files.example.org/session', { body_blob: Buffer.alloc(200_000), body_blob_bytes: 200_000, chunk_bytes: 65536 }));
+      assert.match(r.message!, /not on the server's allow-list/);
+      // any public host allowed, private addresses still refused (a literal address, and a name that resolves to one)
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      r = await wr.execute(appId, blobRequest('http://10.1.2.3/upload'));
+      assert.equal(r.status, 'error');
+      assert.match(r.message!, /private, loopback or link-local/);
+      r = await wr.execute(appId, blobRequest('http://localhost:1/upload'));
+      assert.equal(r.status, 'error');
+      assert.match(r.message!, /private, loopback or link-local/);
+      // a credential only for the URLs it is valid for
+      process.env.PGKILN_REST_PRIVATE_HOSTS = '127.0.0.1';
+      const cred = 'S243_UPLOAD';
+      await owner.query(`delete from meta.web_credential where app_id = $1 and name = $2`, [appId, cred]);
+      const { encryptSecret } = await import('../src/secrets.ts');
+      await owner.query(`insert into meta.web_credential (app_id, name, type, secret_enc, valid_for) values ($1, $2, 'bearer', $3, '{http://127.0.0.1:1/files/}')`,
+        [appId, cred, encryptSecret('s243-secret')]);
+      try {
+        r = await wr.execute(appId, blobRequest('http://127.0.0.1:1/other/x', { credential: cred }));
+        assert.equal(r.status, 'error');
+        assert.match(r.message!, /not valid for this URL/);
+        assert.doesNotMatch(JSON.stringify(r), /s243-secret/);
+      } finally {
+        await owner.query(`delete from meta.web_credential where app_id = $1 and name = $2`, [appId, cred]);
+      }
+    } finally {
+      restore(saved);
+    }
+  });
+
+  test('the size limit PGKILN_REST_MAX_UPLOAD_BYTES is enforced before anything is loaded or sent; SQL refuses the wrong methods', async () => {
+    const wr = await import('../src/webrequests.ts');
+    const { sendBinary } = await import('../src/webupload.ts');
+    const saved = envOf(['PGKILN_REST_MAX_UPLOAD_BYTES', 'PGKILN_REST_ALLOWED_HOSTS']);
+    try {
+      process.env.PGKILN_REST_MAX_UPLOAD_BYTES = '9';
+      process.env.PGKILN_REST_ALLOWED_HOSTS = '*';
+      // a claimed request carries only the size: refused without reading the bytes
+      const r = await wr.execute(appId, blobRequest('https://files.example.org/upload', { body_blob: null, body_blob_bytes: 10 }));
+      assert.equal(r.status, 'error');
+      assert.equal(r.transient, false);
+      assert.match(r.message!, /larger than 9 bytes/);
+      await assert.rejects(sendBinary({ appId, url: 'https://files.example.org/upload', body: Buffer.alloc(10) }), /larger than 9 bytes/);
+      await assert.rejects(sendBinary({ appId, url: 'https://files.example.org/upload', method: 'GET', body: Buffer.alloc(1) }), /POST, PUT or PATCH/);
+    } finally {
+      restore(saved);
+    }
+    await assert.rejects(appTx({ appId, alias: 'hr', dbRole: 'hr_app', appUser: 'king', sessionId: '00000000-0000-0000-0000-000000000000' }, (c) => c.query(`select meta.web_request('https://files.example.org/x', 'DELETE', p_body_blob => '\\x00'::bytea)`)), /POST, PUT or PATCH/);
+  });
+
+  test('a REST handler with "body": "blob": :BODY_BLOB and :CONTENT_TYPE are the request\'s, never a query parameter\'s; the size is limited', async () => {
+    await owner.query(`delete from hr.crm_file where name like 's243-sec%'`);
+    try {
+      const res = await app.inject({
+        method: 'PUT', url: `/a/hr/rest/crm/files/s243-sec.txt?body_blob=${encodeURIComponent('\\x41')}&content_type=text%2Fevil`,
+        headers: { 'content-type': 'text/plain' }, payload: 'real bytes',
+      });
+      assert.equal(res.statusCode, 201, res.body);
+      const row = await owner.one(`select convert_from(content, 'UTF8') as content, content_type from hr.crm_file where name = 's243-sec.txt'`);
+      assert.deepEqual(row, { content: 'real bytes', content_type: 'text/plain' });
+      const { MAX_UPLOAD_MB } = await import('../src/runtime/files.ts');
+      const big = await app.inject({ method: 'PUT', url: '/a/hr/rest/crm/files/s243-sec-big.bin', headers: { 'content-type': 'application/octet-stream' }, payload: Buffer.alloc(MAX_UPLOAD_MB * 1024 * 1024 + 1) });
+      assert.equal(big.statusCode, 413);
+      assert.equal((await owner.one(`select count(*)::int as n from hr.crm_file where name = 's243-sec-big.bin'`)).n, 0);
+    } finally {
+      await owner.query(`delete from hr.crm_file where name like 's243-sec%'`);
+    }
+  });
+});
+
+describe('sprint 248 MG-21', () => {
+  // Custom authentication's hash query (src/customauth.ts, src/password-hashes.ts): the app's SQL returns the stored
+  // hash, the server checks the password. A wrong password, an unknown user and a hash that can't be read give the
+  // same answer and count for throttling; errors of the query don't reach the page; the query can't write and never
+  // sees the password; the password is in no log.
+  const alias = 'sec248-hash';
+  const ROLE = 'pgkiln_sec248';
+  const SCHEMA = 'sec248';
+  const PW = 'Sec248-right-pw!';
+  let sApp: number;
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    if ((await owner.query('select 1 from pg_roles where rolname = $1', [ROLE])).rowCount) {
+      await owner.query(`drop owned by ${ROLE}`);
+      await owner.query(`drop role ${ROLE}`);
+    }
+    await owner.query(`create role ${ROLE} nologin`);
+    await owner.query(`grant ${ROLE} to pgkiln_runtime`);
+    await owner.query(`create schema ${SCHEMA}`);
+    await owner.query(`grant usage on schema ${SCHEMA} to ${ROLE}`);
+    await owner.query(`create table ${SCHEMA}.users (name text primary key, hash text)`);
+    await owner.query(`insert into ${SCHEMA}.users values ('erin', meta.make_password_hash($1, 'bcrypt', 4)), ('frank', 'pbkdf2_sha256$1000$salt$!!!'), ('gina', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA$aGFzaA'), ('hank', null)`, [PW]);
+    await owner.query(`grant select, update on ${SCHEMA}.users to ${ROLE}`);
+    sApp = (await owner.one(`insert into meta.app (alias, name, authentication, db_role, custom_auth_hash_query) values ($1, 'Sec 248', 'custom', $2, $3) returning id`,
+      [alias, ROLE, `select hash from ${SCHEMA}.users where name = p_username`])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'Home')`, [sApp]);
+  });
+  after(async () => {
+    await owner.query('delete from meta.app where id = $1', [sApp]);
+    await owner.query(`drop schema if exists ${SCHEMA} cascade`);
+    await owner.query(`drop owned by ${ROLE}`);
+    await owner.query(`drop role if exists ${ROLE}`);
+  });
+  const attempt = async (username: string, password: string) => {
+    const b = new Browser();
+    await b.get(`/a/${alias}/login`);
+    const res = await b.post(`/a/${alias}/login`, { __csrf: b.lastCsrf, username, password });
+    return { res, body: res.body.replace(/value="[^"]*"/g, '') };
+  };
+  const clearLog = () => owner.query('delete from meta.activity_log where app_id = $1', [sApp]);
+
+  test('a wrong password, an unknown user, no hash, a malformed and an unsupported hash: one answer, each counted for throttling', async () => {
+    await clearLog();
+    const limit = (await import('../src/security.ts')).loginMaxFailuresPerUser();
+    const bodies = new Set<string>();
+    for (const user of ['erin', 'nobody-248', 'hank', 'frank', 'gina']) {
+      for (let i = 0; i < limit; i++) {
+        const { res, body } = await attempt(user, user === 'erin' ? `wrong-${i}` : PW);
+        assert.equal(res.statusCode, 401, `${user} ${i}`);
+        bodies.add(body);
+      }
+      assert.equal(Number((await owner.one(`select count(*) as n from meta.activity_log where app_id = $1 and username = $2 and event = 'login_failed'`, [sApp, user])).n), limit, `${user}: counted`);
+      // throttled now, even with the right password
+      assert.equal((await attempt(user, PW)).res.statusCode, 429, `${user}: throttled`);
+    }
+    assert.equal(bodies.size, 1, 'the same page for every refusal');
+    // the password is in no log line
+    assert.equal((await owner.one(`select count(*) as n from meta.activity_log where app_id = $1 and detail like '%' || $2 || '%'`, [sApp, PW])).n, '0');
+    await clearLog();
+    assert.equal((await attempt('erin', PW)).res.statusCode, 303, 'the right password, once not throttled');
+    await clearLog();
+  });
+
+  test("the query's errors stay in the activity log as a SQLSTATE; the query can't write and never sees the password", async () => {
+    const setQuery = (q: string) => owner.query('update meta.app set custom_auth_hash_query = $2 where id = $1', [sApp, q]);
+    try {
+      for (const q of [`select hash from ${SCHEMA}.secret_table_248 where name = p_username`, `select hash from ${SCHEMA}.users where name = p_username::int::text`,
+                       `update ${SCHEMA}.users set hash = 'x' where name = p_username returning hash`, `select current_setting('pgkiln.password', true)`]) {
+        await setQuery(q);
+        const { res } = await attempt("erin' or '1'='1", PW);
+        assert.equal(res.statusCode, 401, q);
+        assert.doesNotMatch(res.body, /secret_table_248|invalid input|does not exist|erin' or|42P01|22P02/, q);
+        const log = await owner.one(`select detail from meta.activity_log where app_id = $1 and event = 'login_failed' order by id desc limit 1`, [sApp]);
+        assert.doesNotMatch(log.detail, /secret_table_248|erin'|Sec248/, 'only a SQLSTATE');
+      }
+      assert.equal((await owner.one(`select count(*) as n from ${SCHEMA}.users where hash = 'x'`)).n, '0', 'nothing written');
+      // the dollar-quote tag can't be closed from the query
+      await setQuery(`select 1::text $pgkiln_0$ ; drop table ${SCHEMA}.users; --`);
+      assert.equal((await attempt('erin', PW)).res.statusCode, 401);
+      assert.ok(await owner.one(`select 1 as ok from ${SCHEMA}.users limit 1`), 'the table is still there');
+    } finally {
+      await setQuery(`select hash from ${SCHEMA}.users where name = p_username`);
+      await clearLog();
+    }
+  });
+
+  test('meta.make_password_hash: any role may hash; limits on cost and format', async () => {
+    const h = await appTx({ appId: sApp, alias, dbRole: ROLE, appUser: 'nobody', sessionId: '' }, async (c) => (await c.query(`select meta.make_password_hash('x', 'bcrypt', 4) as h`)).rows[0].h);
+    assert.match(h, /^\$2a\$04\$/);
+    await assert.rejects(owner.query(`select meta.make_password_hash('x', 'bcrypt', 31)`), /cost/);
+    await assert.rejects(owner.query(`select meta.make_password_hash('x', 'pbkdf2_sha256', 100000000)`), /iterations/);
+    await assert.rejects(owner.query(`select meta.make_password_hash('x', 'md5')`), /unknown format/);
+  });
+});
+
+describe('sprint 245 MG-18', () => {
+  // meta.document_temp_file: the file belongs to the session that asked for it; only the server fills it, only an undrawn
+  // file of the current session registered in the current transaction; an ordinary upload is never overwritten
+  const sessions245: string[] = [];
+  const session245 = async (user: string) => {
+    const id = (await owner.one(`insert into meta.session (token_hash, app_id, username, roles) values ('sec245-' || gen_random_uuid(), $1, $2, '{}') returning id`, [appId, user])).id as string;
+    sessions245.push(id);
+    return id;
+  };
+  /** A transaction as HR's role in session `sid`; rolled back unless `commit`. */
+  const inSession = async <T>(sid: string | null, fn: (c: import('pg').PoolClient) => Promise<T>, commit = false) => {
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true), set_config('pgkiln.session_id', $2, true)`, [String(appId), sid ?? '']);
+      await c.query('set local role hr_app');
+      const out = await fn(c);
+      await c.query(commit ? 'commit' : 'rollback');
+      return out;
+    } catch (e) {
+      await c.query('rollback').catch(() => {});
+      throw e;
+    } finally {
+      c.release();
+    }
+  };
+  /** An error expected inside the transaction: in a savepoint, so the transaction goes on. */
+  const refused = async (c: import('pg').PoolClient, sql: string, params: unknown[], error: RegExp) => {
+    await c.query('savepoint refused_245');
+    await assert.rejects(c.query(sql, params), error);
+    await c.query('rollback to savepoint refused_245');
+  };
+  after(async () => {
+    for (const id of sessions245) await owner.query('delete from meta.session where id = $1', [id]);
+  });
+
+  test('a drawn document is a temporary file of its own session only', async () => {
+    const a = await session245('king');
+    const b = await session245('allen');
+    // session a: an id, and (as the server does after the process) the PDF in it
+    const id = await inSession(a, async (c) => {
+      const v = (await c.query(`select meta.document_temp_file('EMPLOYEE_RECORD', '{"P3_EMPNO": 7788}', 'mine') as id`)).rows[0].id as string;
+      await c.query(`select meta.document_temp_file_fill($1, convert_to('%PDF-1.4 a', 'UTF8'), 'mine.pdf')`, [v]);
+      return v;
+    }, true);
+    assert.equal((await owner.one('select session_id, size from meta.temp_file where id = $1', [id])).session_id, a);
+    await inSession(b, async (c) => {
+      assert.equal((await c.query('select 1 from meta.temp_files where id = $1', [id])).rowCount, 0, 'not visible in another session');
+      await refused(c, 'select * from meta.temp_file where id = $1', [id], /permission denied/);
+      // forged registration in b's transaction: still a's file, and already drawn
+      await c.query(`select set_config('pgkiln.document_pdf', $1, true)`, [JSON.stringify({ [id]: { app: appId, template: 'EMPLOYEE_RECORD', items: {}, temp_file: true } })]);
+      await refused(c, `select meta.document_temp_file_fill($1, 'x'::bytea, 'evil.pdf')`, [id], /no document of this transaction/);
+      assert.equal((await c.query('select count(*)::int as n from meta.document_pending($1)', [appId])).rows[0].n, 0, 'nothing of a\'s to draw');
+    });
+    await inSession(a, async (c) => {
+      // a's own drawn file can't be filled again in a later transaction either
+      await refused(c, `select meta.document_temp_file_fill($1, 'x'::bytea, 'again.pdf')`, [id], /no document of this transaction/);
+    });
+    const t = await owner.one('select content, filename from meta.temp_file where id = $1', [id]);
+    assert.equal(t.filename, 'mine.pdf');
+    assert.equal(t.content.toString(), '%PDF-1.4 a');
+  });
+
+  test('an upload is never overwritten, even with a forged registration', async () => {
+    const a = await session245('king');
+    await inSession(a, async (c) => {
+      const up = (await c.query(`select meta.save_temp_file('P3_X', 'up.png', 'image/png', 'upload'::bytea) as id`)).rows[0].id as string;
+      await c.query(`select set_config('pgkiln.document_pdf', $1, true)`, [JSON.stringify({ [up]: { app: appId, template: 'EMPLOYEE_RECORD', items: {}, temp_file: true } })]);
+      assert.equal((await c.query('select count(*)::int as n from meta.document_pending($1)', [appId])).rows[0].n, 0, 'the server draws nothing into it');
+      await refused(c, `select meta.document_temp_file_fill($1, 'pdf'::bytea, 'x.pdf')`, [up], /no document of this transaction/);
+      // a forged key that is no uuid doesn't break the server's query
+      await c.query(`select set_config('pgkiln.document_pdf', '{"not-a-uuid": {"app": 1, "temp_file": true}}', true)`);
+      assert.equal((await c.query('select count(*)::int as n from meta.document_pending($1)', [appId])).rows[0].n, 0);
+    });
+  });
+
+  test('only as the application\'s role, in a session, with its own templates and checked items', async () => {
+    const a = await session245('king');
+    await assert.rejects(inSession(null, (c) => c.query(`select meta.document_temp_file('EMPLOYEE_RECORD')`)), /no session/);
+    await assert.rejects(inSession(a, (c) => c.query(`select meta.document_temp_file('NO_SUCH')`)), /has no document template NO_SUCH/);
+    await assert.rejects(inSession(a, (c) => c.query(`select meta.document_temp_file('EMPLOYEE_RECORD', '{"x; drop": 1}')`)), /is not an item name/);
+    await assert.rejects(inSession(a, (c) => c.query(`select meta.document_temp_file('EMPLOYEE_RECORD', '{}', repeat('x', 300))`)), /longer than 255/);
+    // outside the application's role (here: the owner, without SET ROLE)
+    const c = await owner.pool.connect();
+    try {
+      await c.query('begin');
+      await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.session_id', $2, true)`, [String(appId), a]);
+      await assert.rejects(c.query(`select meta.document_temp_file('EMPLOYEE_RECORD')`), /outside the application's own database role/);
+    } finally {
+      await c.query('rollback');
+      c.release();
+    }
+  });
+
+  test('the template\'s authorization scheme applies when the server draws it', async () => {
+    const scheme = (await owner.one(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'NOBODY_245', 'sql', 'false') returning id`, [appId])).id;
+    await owner.query(`update meta.document_template set authz = 'NOBODY_245' where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
+    try {
+      const king = await as('king');
+      const list = (await king.get('/a/hr/2')).body;
+      const href = /href="(\/a\/hr\/3\?[^"]*P3_EMPNO=7788[^"]*)"/.exec(list)![1].replace(/&amp;/g, '&');
+      await king.get(href);
+      const before = Number((await owner.one(`select count(*) as n from hr.emp_document where filename like 'record-7788%'`)).n);
+      const res = await king.post('/a/hr/3', { __csrf: king.lastCsrf, __request: 'KEEP_RECORD', P3_ENAME: 'SCOTT', P3_JOB: 'ANALYST', P3_DEPTNO: '20', P3_MGR: '7566', P3_HIREDATE: '1987-04-19', P3_SAL: '3000.00', P3_ACTIVE: 'true', P3_USERNAME: 'scott' });
+      assert.equal(res.statusCode, 422);
+      assert.equal(Number((await owner.one(`select count(*) as n from hr.emp_document where filename like 'record-7788%'`)).n), before, 'nothing kept');
+    } finally {
+      await owner.query(`update meta.document_template set authz = null where app_id = $1 and name = 'EMPLOYEE_RECORD'`, [appId]);
+      await owner.query('delete from meta.authz_scheme where id = $1', [scheme]);
     }
   });
 });

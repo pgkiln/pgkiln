@@ -157,6 +157,12 @@ src/
                            (sprint 241, MG-15, migration 197) meta.set_auth_user: the phase pgkiln.auth_phase is set around the post-authentication
                            code only, pgkiln.auth_user cleared before and read right after it (same transaction), authUserProblem() checks the
                            name again (= meta.auth_user_problem); "nobody" is never a session's user
+                           (sprint 248, MG-21, migration 204) the hash query (custom_auth_hash_query): a pg_temp SQL function
+                           (p_username) returns setof text, stable, in its own transaction; checked outside it by password-hashes.ts;
+                           an unknown user or bad hash gets dummyCheck() with the app's last real hash shape (lastShape)
+  password-hashes.ts       (sprint 248, MG-21) other systems' password hashes: parseHash (Django pbkdf2_sha256$/pbkdf2_sha1$, bcrypt
+                           $2a$/$2b$/$2y$ normalised to $2a$, Django bcrypt$/bcrypt_sha256$; argon2 and $2x$ unsupported), verifyPasswordHash
+                           (crypto.pbkdf2, bcrypt via a BcryptFn = pgcrypto crypt(), timingSafeEqual), dummyCheck; meta.make_password_hash in 204
   remember.ts              "Keep me signed in": rotating persistent sign-in tokens
   remember-username.ts     (sprint 231, AX-13, migration 189) "Remember username": the cookie pgkiln_user_<app id> of the app's path
                            (the typed name only, HttpOnly, SameSite=Lax), rememberedUsername() fills the sign-in form,
@@ -297,6 +303,12 @@ src/
                            with no time left becomes 'retry' for after the commit, DEFERRED_MESSAGE)
                            (sprint 177, migration 160) the outbox: outcome() (retry, gave_up), leases, ordering keys, the
                            idempotency header, callbackTick() (schema.function(id) as the app role), startWebRequestRunner()
+                           (sprint 243, migration 200) binary bodies: body_blob / chunk_bytes sent with webupload.ts sendBinary();
+                           a claimed request carries only body_blob_bytes, the bytes are read after the size check (blobOf)
+  webupload.ts             (sprint 243, MG-17) binary request bodies: sendBinary() (POST/PUT/PATCH a Buffer through websources.ts
+                           call(): allow-list, SSRF checks, credential URL prefix; maxUploadBytes() = PGKILN_REST_MAX_UPLOAD_BYTES;
+                           chunkBytes: PUT in Content-Range ranges, 202 + nextExpectedRanges followed, as Graph upload sessions);
+                           reuse it for any file sent to a web service
   mail/                    e-mail (migration 081): providers.ts (one deliver() per provider: SMTP through nodemailer with a password
                            or XOAUTH2, Microsoft Graph sendMail, Amazon SES v2 raw MIME with signV4, Resend, Postmark, SendGrid,
                            Mailgun, log; MailError says whether a retry may help; client-credentials token cache; settingsProblems),
@@ -442,9 +454,11 @@ src/
     files.ts               file items: multipart parsing, temporary files, signed downloads; (sprint 239) signature items (the
                            signature preset of a file item, metadata.ts presetItem; migration 195): pngSize, a real PNG of at most
                            1 MB and 4096 px, stored as <item>.png; items.ts signaturePad renders the pad (app.js signaturePads)
-    document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit)
+    document.ts            document templates: tag language, HTML subset, PDF layout (pdfkit); (sprint 245) images and <br> inside
+                           table cells and paragraphs (partsOf/drawParts), shadowedBuiltIns (query columns named like a built-in)
     documents.ts           ?doc=NAME: a template filled with the page's values
-    document-pdf.ts        meta.document_pdf references drawn after each process into mail attachments; send_email document attachments (sprint 237)
+    document-pdf.ts        meta.document_pdf references drawn after each process into mail attachments; send_email document attachments (sprint 237);
+                           meta.document_temp_file's temporary files drawn the same way (meta.document_pending, migration 202; sprint 245)
     maps.ts                map region (data for Leaflet: layers with a query each, markers, clusters or heat, PostGIS geometry as GeoJSON, report filter by area or distance; list fallback, head assets)
     spatial.ts             spatial filtering on the server: map area and distance parsing, PostGIS detection and SQL (ST_Intersects, ST_DWithin), lat/lng fallback (bounding box, haversine)
     pwa.ts                 Progressive Web App: manifest, service worker route, icons (PNG encoder), offline page
@@ -452,6 +466,7 @@ src/
                            check, execution (collections stream from a cursor), OpenAPI (templates, documented parameters, roles)
                            (sprint 175) etagOf() / noneMatch(): an ETag on a GET's answer, 304 for If-None-Match (after the handler ran)
                            (sprint 175) header parameters: headerName(), bound from the request header only, credential headers refused
+                           (sprint 243) "body": "blob": BLOB_TYPE parser (MAX_UPLOAD_MB), :BODY_BLOB (bytea text) and :CONTENT_TYPE
     rest-handlers.ts       (sprint 104, migration 117) PL/pgSQL handlers (binds as settings, DO block, meta.rest_reply) and media
                            handlers (content type and file name cleaned, sandboxed response)
                            (sprint 176, migration 159) replyHeaders(): the response headers meta.rest_header set, checked again
@@ -737,8 +752,10 @@ src/
                            links, buttons, menu entries and the home page to page 0, branches and items without P0_ on page 0;
                            (sprint 234) positionFindings: a header position the page has not, items and submit buttons in a
                            header region (outside the page's form); (sprint 240) stay_in_dialog off a modal page or on a branch
-                           to another app, Ajax callbacks that aren't SQL or a chain of SQL processes; (sprint 249) in_page_below
-                           off a modal page, an item branch's target_item that isn't an item, app item or APP_PREVIOUS_PAGE
+                           to another app, Ajax callbacks that aren't SQL or a chain of SQL processes; (sprint 245) queryColumns
+                           (a SELECT's columns through a temporary view, rolled back): a document template's column named like a built-in;
+                           (sprint 249) in_page_below off a modal page, an item branch's target_item that
+                           isn't an item, app item or APP_PREVIOUS_PAGE
     advisor-items-pages.ts (sprint 241) itemPageFindings: a placeholder no type shows, meta.set_auth_user outside custom
                            authentication's post-authentication code, No navigation on a modal page
     utilities.ts           (sprint 138, AP-5) an application's Utilities tab: tiles, dashboard figures, recently updated pages,
@@ -942,6 +959,8 @@ test/
   large-tables.test.ts     row ranges, max_rows, row limits, lazy regions, region caching, streamed downloads (HR page 25)
   grid.test.ts             interactive grid: aggregates, layouts per user, saved grid reports, master-detail, row actions (HR page 27)
   custom-auth.test.ts      custom authentication: function body, named function, post-authentication code, builder settings
+  document-temp-file.test.ts (sprint 245, MG-18/26) meta.document_temp_file (HR part 109: Keep a copy), images and <br> in
+                           cells and paragraphs (positions read from the PDF), the Advisor's built-in column warning
   item-texts-auth-user.test.ts (sprint 241, MG-10/11/13/15) placeholders, &ITEM. in labels, page template no_navigation,
                            meta.set_auth_user (HR page 68, part 104); e2e/visitor-kiosk.test.ts in a browser at 390 and 1280 px
   instance.test.ts         instance settings: precedence, the administrators' page, throttling, no secrets

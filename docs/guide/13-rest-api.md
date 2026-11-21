@@ -36,6 +36,7 @@ answer 404.
 | `roles` | The caller needs one of these roles (as `meta.has_role()` sees them) |
 | `auth` | `token` (default) or `public` (no token; the SQL runs with `meta.app_user()` = `nobody`) |
 | `description` | For the OpenAPI description |
+| `body` | (sprint 243) `"blob"`: an `sql` or `plpgsql` handler of `POST`, `PUT` or `PATCH` reads the body as bytes, whatever its content type ([below](#binary-request-bodies)) |
 | `params` | (sprint 104) Documented parameters: `[{"name": "start_date", "in": "body", "type": "string", "required": true, "description": "…"}]` (`in`: `query`, `body` or, since sprint 175, `header`; types `string`, `integer`, `number`, `boolean`). They go into the OpenAPI document; a required one that is missing or empty answers 400 |
 
 **Calling them.** Send `Authorization: Bearer <token>` with a token from **App → REST API**: a token
@@ -152,6 +153,24 @@ curl -X POST http://127.0.0.1:3100/a/hr/rest/hr/leave -H "Authorization: Bearer 
 
 Handlers never run as a superuser, a role that bypasses row level security or pgkiln's owner: such a request
 answers 403 (set `RUNTIME_DATABASE_URL` and give the application its own database role).
+
+### Binary request bodies
+
+(sprint 243) A handler with `"body": "blob"` (types `sql` and `plpgsql`, methods `POST`, `PUT`, `PATCH`) receives a
+file: the body is read as bytes whatever its `Content-Type`, at most `MAX_UPLOAD_MB` (default 10 MB; larger answers
+413). The binds `:BODY_BLOB` (the bytes as `bytea` text: write `:BODY_BLOB::bytea`) and `:CONTENT_TYPE` (the sender's
+`Content-Type`) are set by the server: a query parameter of that name never replaces them. A `Content-Range` header
+is read as a [header parameter](#modules-templates-and-handlers-in-the-sql-workshop) (`content_range`), so a
+handler can take a file in ranges and answer `202` until the last one.
+
+```json
+{"method": "PUT", "path": "files/:name", "type": "sql", "body": "blob", "roles": ["clerk"],
+ "source": "insert into docs.file (name, content_type, content) values (:NAME, :CONTENT_TYPE, :BODY_BLOB::bytea) returning name, octet_length(content) as size"}
+```
+
+The HR example's module `crm` has `PUT files/:name` (`examples/hr/hr_107_send_file.sql`, PL/pgSQL, whole files and
+ranges); page 71 sends a file item's upload to it with
+[`meta.web_request(..., p_body_blob)`](09-reference.md#binary-request-bodies-files).
 
 ## Webhooks
 

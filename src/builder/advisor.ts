@@ -9,7 +9,7 @@ import { check } from '../browser-security.ts';
 import { settingFrom } from '../instance.ts';
 import { html, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
-import { templateProblem } from '../runtime/document.ts';
+import { shadowedBuiltIns, templateProblem } from '../runtime/document.ts';
 import { invokeStepReferences, isQuery, outcomeMap, stepProblems, stepWarnings } from '../workflow.ts';
 import { handlerProblems } from '../runtime/rest.ts';
 import { plpgsqlBlock } from '../runtime/rest-handlers.ts';
@@ -173,6 +173,23 @@ export async function checkSql(c: pg.PoolClient, sql: string, shape: SqlShape): 
     if (err) return { severity: 'error', message: err };
   }
   return unchecked.length ? { severity: 'info', message: `Not checked (only SELECT, INSERT, UPDATE, DELETE, MERGE and DO can be checked without running them): ${unchecked.join(', ')}` } : null;
+}
+
+/**
+ * (sprint 245) The column names of a SELECT, without running it: a temporary view in a savepoint that is rolled
+ * back. Empty when it can't be made (no TEMP privilege, …).
+ */
+export async function queryColumns(c: pg.PoolClient, sql: string): Promise<string[]> {
+  const plain = applyBinds(sql.trim().replace(/;+\s*$/, ''), {});
+  await c.query('savepoint advisor_columns');
+  try {
+    await c.query(`create temporary view pgkiln_advisor_columns as select * from (\n${plain}\n) "__d"`);
+    return (await c.query(`select attname from pg_attribute where attrelid = 'pg_temp.pgkiln_advisor_columns'::regclass and attnum > 0 and not attisdropped order by attnum`)).rows.map((r) => r.attname);
+  } catch {
+    return [];
+  } finally {
+    await c.query('rollback to savepoint advisor_columns');
+  }
 }
 
 /** process types that write data (sprint 144: the security checks below; a sql process when its code has DML) */
@@ -632,6 +649,9 @@ export async function advise(appId: number, tx?: pg.ClientBase, opts: { db?: Db 
         const entry = byKey.get(`${kind}-${row.id}`) ?? null;
         const label = COMPONENTS[kind].fields.find((x) => x.name === f.name)?.label ?? f.name;
         if (problem) findings.push({ ...problem, entry, field: label });
+        // (sprint 245, MG-26) a document template's query column named like a built-in (rows, APP_USER, …)
+        else if (kind === 'document_template')
+          for (const message of shadowedBuiltIns(await queryColumns(c, sql))) findings.push({ severity: 'warning', entry, field: label, message });
       }
     }
     // a map region's further layers (config.layers[].source)

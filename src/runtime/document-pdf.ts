@@ -1,7 +1,7 @@
 import { runtime } from '../db.ts';
 import { isAuthorized } from './authz.ts';
 import { dbg, type PageContext } from './context.ts';
-import type { DocumentTemplate } from './document.ts';
+import { documentFilename, type DocumentTemplate } from './document.ts';
 import { templatePdf } from './documents.ts';
 
 // (sprint 237, MG-3) PDF bytes of a document template for mail, without the browser.
@@ -10,7 +10,9 @@ import { templatePdf } from './documents.ts';
 // (migration 192). Right after the process that called it, renderPendingDocuments draws each reference that
 // became a mail attachment and puts the PDF in its place, in the same transaction (as the app's role, with the
 // data as the process left it) before anything commits. A send_email process's {"document": …} attachments are
-// drawn here directly (documentAttachment).
+// drawn here directly (documentAttachment). (sprint 245, MG-18) meta.document_temp_file(template, items, filename)
+// gives the id of a temporary file of the session (migration 202) that is drawn here the same way, so the next
+// process reads the PDF from meta.temp_files.
 
 /** Item values over the session state: binds of the template's query and its file name (built-ins still win). */
 function withItems(ctx: PageContext, items: Record<string, string | null>): PageContext {
@@ -32,18 +34,24 @@ export async function documentAttachment(ctx: PageContext, name: string, items: 
 }
 
 /**
- * The references of meta.document_pdf that became attachments of mails this transaction queued: drawn
- * now and put in their place. Called after each process (and Ajax callback, dynamic action SQL,
- * application process); cheap when there are none (one query).
+ * The references of meta.document_pdf that became attachments of mails this transaction queued, and (sprint 245,
+ * MG-18) the temporary files of meta.document_temp_file of this session: drawn now and put in their place. Called
+ * after each process (and Ajax callback, dynamic action SQL, application process); cheap when there are none (one query).
  */
 export async function renderPendingDocuments(ctx: PageContext) {
   const c = ctx.client!;
-  const pending = (await c.query<{ attachment_id: string; template: string; items: Record<string, string | null> }>(
-    'select attachment_id::text, template, items from meta.document_pdf_pending($1)', [ctx.app.id])).rows;
+  const pending = (await c.query<{ kind: 'mail' | 'temp_file'; ref: string; template: string; items: Record<string, string | null>; filename: string | null }>(
+    'select kind, ref, template, items, filename from meta.document_pending($1)', [ctx.app.id])).rows;
   for (const p of pending) {
     const doc = await documentAttachment(ctx, p.template, p.items ?? {});
-    await c.query('select meta.document_pdf_fill($1, $2)', [p.attachment_id, doc.file]);
-    dbg(ctx, 6, 'process', () => `document ${p.template} drawn for mail attachment ${p.attachment_id} (${doc.file.length} bytes)`);
+    if (p.kind === 'mail') {
+      await c.query('select meta.document_pdf_fill($1, $2)', [p.ref, doc.file]);
+      dbg(ctx, 6, 'process', () => `document ${p.template} drawn for mail attachment ${p.ref} (${doc.file.length} bytes)`);
+    } else {
+      const name = p.filename ? documentFilename(p.filename) : doc.name;
+      await c.query('select meta.document_temp_file_fill($1, $2, $3)', [p.ref, doc.file, name]);
+      dbg(ctx, 6, 'process', () => `document ${p.template} drawn into temporary file ${p.ref} (${name}, ${doc.file.length} bytes)`);
+    }
   }
   return pending.length;
 }

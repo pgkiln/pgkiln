@@ -1356,6 +1356,15 @@ export function viewportTests(vp: keyof typeof VIEWPORTS) {
       await check(page, 'app-51-back-button', vp);
       await page.context().close();
     });
+
+    test('sprint 243: Send a file (page 71) fits', async () => {
+      const page = await (await newContext({ viewport: size })).newPage();
+      await login(page, '/a/hr/login', 'king', 'king');
+      await page.goto(`${base}/a/hr/71`);
+      await page.locator('#P71_FILE').waitFor({ state: 'attached' });
+      await check(page, 'app-71-send-file', vp);
+      await page.context().close();
+    });
   });
 }
 
