@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.114.0 (November 2026): gaps found migrating a second Appsmith application — binary request bodies for `meta.web_request` and files into REST handlers, OneDrive / SharePoint storage for file items, document PDFs as temporary files with images in table cells, a JSON form region, multiple file items on a shared child table with a picture gallery, sign-in against other systems' password hashes, branches to an item's page and back to the calling page, dialog branches in the page below, `&ITEM.` in button labels, a mail redirect for test systems, absolute links in SQL, and import errors that name the file and key.
+- **Current release:** 0.115.0 (November 2026): multiple file items outside a form region (`parent_item`), for pages that save with their own processes. 0.114.0 before it: gaps found migrating a second Appsmith application (MG-17 … MG-29).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 

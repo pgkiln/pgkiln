@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.115.0] - 2026-11-21
+
 ### Added
 - **Multiple file items outside a form region** (sprint 252): `"parent_item": "P8_ID"` names the protected hidden
   item holding the record's key, for a page that saves with its own processes (a static region, fields in `jsonb`).
