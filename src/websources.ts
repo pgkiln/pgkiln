@@ -667,7 +667,8 @@ export interface CallOptions {
   url: string;
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  /** (sprint 243) a Buffer: a binary body (src/webupload.ts sendBinary checks its size) */
+  body?: string | Buffer;
   credential?: WebCredential | null;
   timeoutMs?: number;
   /** more header names (lower case) that carry secrets: dropped on a cross-origin redirect */

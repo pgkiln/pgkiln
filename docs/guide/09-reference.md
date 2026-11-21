@@ -20,6 +20,7 @@ triggers, your own functions).
 | `meta.csv_field(value, separator default ',', is_text default true)` | text | One CSV field: quoted when needed, a formula neutralised |
 | `meta.password_days_left(username)` | int | Days until the password expires (0: must change now, NULL: never) |
 | `meta.v(name)` | text | The session-state value of an item (use it inside functions and `DO` blocks) |
+| `meta.make_password_hash(password, format, cost)` | text | (sprint 248) A password hash custom authentication's hash query checks: `'bcrypt'` (default, cost 4–16, default 12) or Django's `'pbkdf2_sha256'` / `'pbkdf2_sha1'` (iterations 1,000–10,000,000, default 1,000,000) ([chapter 8](08-security.md#password-hashes-of-another-system)) |
 | `meta.set_auth_user(name)`, `meta.auth_user_problem(name)` | void / text | (sprint 241) In a custom authentication scheme's post-authentication code only: the user name the session gets, e.g. `lower(p_username)` (APEX: `apex_custom_auth.set_user`); an error anywhere else. `auth_user_problem` says why a name can't be one (NULL: it can) ([chapter 8](08-security.md#setting-the-user-name)) |
 | `meta.set_tenant(tenant)` | void | Sets (or with NULL or `''` clears) the current session's tenant (APEX: `apex_session.set_tenant_id`): at once and for the session's next requests. Workflows and tasks then carry it and show only to that tenant ([chapter 6](06-processing.md#tenants)) |
 | `meta.tenant_id()` | text | The current session's tenant, or NULL (APEX: `sys_context('APEX$SESSION', 'APP_TENANT_ID')`); in a workflow step, the workflow's tenant |
@@ -95,7 +96,7 @@ select meta.web_request_source('EXCHANGE', '{"currency": "EUR"}');
 - `status` is `ok` when an answer came back, **whatever its status code** (check `status_code`,
   like `apex_web_service.g_status_code`); `error` means no answer (`message` says why: the host is
   not allowed, a time-out, the size limit, the credential).
-- Limits per call: URL ≤ 4000 characters, body ≤ 1 MB (text), ≤ 30 headers (no `Host`,
+- Limits per call: URL ≤ 4000 characters, body ≤ 1 MB (text; a file goes in `p_body_blob`, [below](#binary-request-bodies-files)), ≤ 30 headers (no `Host`,
   `Content-Length`, `Connection` and the like, no line breaks), methods `GET`, `HEAD`, `POST`, `PUT`,
   `PATCH`, `DELETE`; at most 100 requests of an application waiting at a time.
 - Requests and responses are kept **24 hours** (at most 500 finished ones per application; a request that
@@ -161,6 +162,52 @@ grant execute on function sales.order_sent(bigint) to sales_app;
   therefore *at least once*: that is what the idempotency key is for.
 - `meta.web_request_cancel(id)` cancels a waiting request. The HR example's page 35 has *Fetch in the
   background* (`examples/hr/hr_86_web_request_outbox.sql`).
+
+#### Binary request bodies (files)
+
+(sprint 243, migration 200) `p_body_blob` sends a `bytea` as the body, for a file API: OneDrive or SharePoint
+through Microsoft Graph, an object store with a bearer token, a scanner or signing service. It is sent with
+`POST`, `PUT` or `PATCH` instead of `p_body` (not both); its `Content-Type` is the one in `p_headers`
+(default `application/octet-stream`).
+
+```sql
+-- a file item's upload, sent to a file API (the server makes it right after this process)
+select meta.web_request('https://graph.microsoft.com/v1.0/me/drive/root:/Werkbonnen/' || meta.url_encode(f.filename) || ':/content',
+                        'PUT',
+                        p_body_blob  => f.content,
+                        p_headers    => jsonb_build_object('Content-Type', f.mime_type),
+                        p_credential => 'GRAPH',
+                        p_timeout_s  => 60) as p5_request
+  from meta.temp_files f where f.id = :P5_FILE::uuid;
+
+-- a large file: PUT in ranges to an upload session's URL (from createUploadSession; no credential, the URL is the key)
+select meta.web_request(:P5_UPLOAD_URL, 'PUT', p_body_blob => :P5_CONTENT::bytea,
+                        p_chunk_bytes => 3276800);   -- 10 × 320 KiB per request
+
+-- a REST data source's URL, method (POST, PUT or PATCH), headers and credential with a binary body
+select meta.web_request_source('DRIVE_UPLOAD', '{"name": "scan.pdf"}', p_body_blob => v_pdf, p_content_type => 'application/pdf');
+```
+
+- **The same checks as a text body**: the allow-list, the address checks when the connection is made, the
+  workspace's network access list, redirects, and the credential's *Valid for* URLs. A `307`/`308` redirect
+  sends the body again to the new URL (through the same checks); a `303` turns the request into a `GET`.
+- **Size.** At most `PGKILN_REST_MAX_UPLOAD_BYTES` (default **25 MB**), separate from the 1 MB of a text body
+  and from the response limit `PGKILN_REST_MAX_BYTES`. The server checks it when it makes the request: a larger
+  body ends in `error` (the message names the variable) and is never retried. SQL refuses more than 256 MB at once.
+- **Retries** (`p_max_attempts`, the outbox) send the same bytes, with the same idempotency key. The blob stays
+  in `meta.web_request_log` until the request succeeded (`ok`): a request that gave up keeps it, so it can be
+  queued again. `meta.web_response(id)` has `body_blob_bytes`, the size sent.
+- **In ranges** (`p_chunk_bytes`, 64 KiB to 60 MiB, `PUT` only): the blob goes in consecutive requests with
+  `Content-Range: bytes first-last/total`, as a resumable upload URL expects (Microsoft Graph upload sessions
+  for files over 4 MB: ranges a multiple of 320 KiB). An answer `202` before the last range continues with the
+  next one; when it names `nextExpectedRanges` (Graph does), the next range starts there. Any other answer
+  ends the upload and is the request's answer: a `200`/`201` (the service has the whole file), or an error
+  status (retried as usual for 5xx and 429; the upload then starts again from the first byte). Each range has
+  the whole time limit (`p_timeout_s`).
+- The time limit is still at most 60 seconds per request: for a large file on a slow line, send it in ranges.
+- HR example page 71 *Send a file* (`examples/hr/hr_107_send_file.sql`) sends a file item's upload to the
+  sample CRM's REST module, whole and in ranges; the receiving handler reads it with
+  [`"body": "blob"`](13-rest-api.md#binary-request-bodies).
 
 ### E-mail from SQL
 
@@ -467,6 +514,7 @@ All in schema `meta`. `id` columns are generated; `seq` orders siblings (default
 | `home_page` | int | Page opened by `/a/<alias>` |
 | `authentication` | text | `app_users`, `header`, `database`, `custom` or `none` |
 | `custom_auth_function`, `custom_auth_code`, `custom_auth_post_code` | text | Custom authentication: a function `(p_username text, p_password text) returns boolean`, or a PL/pgSQL body, and post-authentication code ([chapter 8](08-security.md#custom-authentication-a-plpgsql-function)) |
+| `custom_auth_hash_query` | text | (204) Custom authentication: or a query with `p_username` returning the stored password hash (Django `pbkdf2_sha256$`/`pbkdf2_sha1$`, bcrypt), checked by the server ([chapter 8](08-security.md#password-hashes-of-another-system)) |
 | `nav_list`, `navbar_list` | text | A list shown as the navigation menu (instead of `nav_entry`) and as the navigation bar |
 | `access_control` | text | `assigned` (only accounts with access) or `any_user` |
 | `local_login` | boolean | Offer username and password sign-in |

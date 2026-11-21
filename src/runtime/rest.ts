@@ -16,6 +16,7 @@ import { logActivity } from '../session.ts';
 import { MAX_BODY, receive, webhookProblems, WebhookRefused, type WebhookConfig } from '../webhooks.ts';
 import { setAppRole, AppRoleRefused } from '../app-role.ts';
 import { debugNotices, startDebug } from '../debug.ts';
+import { MAX_UPLOAD_MB } from './files.ts';
 
 // REST modules (APEX: RESTful Services): handlers defined in the builder (Shared Components, or (sprint 104)
 // SQL Workshop › RESTful Services › Modules as templates and handlers; plpgsql and media types: rest-handlers.ts),
@@ -52,6 +53,11 @@ export interface Handler {
   status?: number;
   /** (117) documented parameters: in the OpenAPI document and the Try it form; a required one missing is a 400 */
   params?: HandlerParam[];
+  /**
+   * (sprint 243) "blob": an sql or plpgsql handler of POST, PUT or PATCH reads the body as bytes, whatever its content
+   * type (at most MAX_UPLOAD_MB): :BODY_BLOB (bytea text, use :BODY_BLOB::bytea) and :CONTENT_TYPE
+   */
+  body?: 'blob';
 }
 
 export interface HandlerParam {
@@ -99,6 +105,8 @@ export function handlerProblems(handlers: unknown): string[] {
     // (sprint 177) a webhook handler: its signature is its authentication
     if (h.type === 'webhook') for (const p of webhookProblems(h)) problems.push(`${at}: ${p}`);
     else if (h.webhook !== undefined) problems.push(`${at}: "webhook" belongs to a handler of type webhook.`);
+    if (h.body !== undefined && (h.body !== 'blob' || (h.type !== 'sql' && h.type !== 'plpgsql') || !['POST', 'PUT', 'PATCH'].includes(h.method)))
+      problems.push(`${at}: "body": "blob" belongs to an sql or plpgsql handler of POST, PUT or PATCH.`);
     if (h.type === 'webhook' && (h.roles?.length || h.params?.length)) problems.push(`${at}: a webhook handler has no roles or parameters (the sender is known by its signature).`);
     if (h.params !== undefined) {
       if (!Array.isArray(h.params)) problems.push(`${at}: "params" is a list of {"name", "in": "query", "body" or "header", "type", "required"}.`);
@@ -256,6 +264,8 @@ interface Matched {
 const matched = new WeakMap<FastifyRequest, Matched>();
 /** (sprint 177) The content type a webhook request is read as: its raw bytes, whatever the sender calls them. */
 const WEBHOOK_TYPE = 'application/x-pgkiln-webhook';
+/** (sprint 243) the body of a handler with "body": "blob", read as bytes whatever its sender's content type */
+const BLOB_TYPE = 'application/x-pgkiln-blob';
 
 async function match(req: FastifyRequest): Promise<Matched> {
   const { alias, module: name } = req.params as { alias: string; module: string };
@@ -349,6 +359,11 @@ async function handle(req: FastifyRequest, reply: FastifyReply) {
     // the built-in names are the server's, never the caller's (?app_user=… must not set :APP_USER)
     for (const k of Object.keys(binds)) if (RESERVED_BINDS.has(k)) delete binds[k];
     Object.assign(binds, { APP_USER: who.user, APP_ID: String(a.id), APP_ALIAS: a.alias, APP_SESSION: null, APP_PAGE_ID: null, REQUEST: null });
+    // (sprint 243) a binary body: the server's values, never a query parameter's
+    if (h.body === 'blob') {
+      binds.BODY_BLOB = Buffer.isBuffer(body) && body.length ? `\\x${body.toString('hex')}` : null;
+      binds.CONTENT_TYPE = contentType ?? null;
+    }
     if (debug) debug.username = who.user;
     const result = await runtime.tx(async (c) => {
       await c.query(
@@ -519,6 +534,7 @@ export async function restRoutes(app: FastifyInstance) {
   // read, and a webhook request is read as WEBHOOK_TYPE (a buffer of at most MAX_BODY bytes), whatever content
   // type its sender names. Other handlers' requests are parsed as before.
   app.addContentTypeParser(WEBHOOK_TYPE, { parseAs: 'buffer', bodyLimit: MAX_BODY }, (_req, body, done) => done(null, body));
+  app.addContentTypeParser(BLOB_TYPE, { parseAs: 'buffer', bodyLimit: MAX_UPLOAD_MB * 1024 * 1024 }, (_req, body, done) => done(null, body));
   app.route({
     method: METHODS as never,
     url: '/a/:alias/rest/:module/*',
@@ -528,6 +544,9 @@ export async function restRoutes(app: FastifyInstance) {
       if (found.m && found.m !== 'method' && found.m.handler.type === 'webhook') {
         found.contentType = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : undefined;
         req.headers['content-type'] = WEBHOOK_TYPE;
+      } else if (found.m && found.m !== 'method' && found.m.handler.body === 'blob') {
+        found.contentType = typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : undefined;
+        req.headers['content-type'] = BLOB_TYPE;
       }
     },
     handler: handle,

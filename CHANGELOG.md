@@ -5,6 +5,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Files in web requests** (sprint 243, MG-17, migration 200): `meta.web_request(..., p_body_blob => ...)` sends a file (bytea) with POST, PUT or PATCH, with its Content-Type from `p_headers`. It has its own size limit `PGKILN_REST_MAX_UPLOAD_BYTES` (default 25 MB) and the same allow-list, address and web credential checks as a text body; retries send the same bytes. `p_chunk_bytes` PUTs the file in ranges, for upload sessions of Microsoft Graph (OneDrive, SharePoint). `meta.web_request_source(..., p_body_blob, p_content_type)` sends a file to a REST data source's URL with its credential.
+- **Files into REST modules** (sprint 243, MG-17): a handler with `"body": "blob"` receives the request body as `:BODY_BLOB` and `:CONTENT_TYPE` (at most `MAX_UPLOAD_MB`). HR part 107 (page 71, *Send a file*) sends a file item's upload to the sample CRM module, whole and in ranges.
+- **Password hashes of other systems** (sprint 248, MG-21, migration 204): custom authentication takes a *password hash query* that returns the stored hash for `p_username`, and the server checks the password in constant time: Django `pbkdf2_sha256$` / `pbkdf2_sha1$` (in Node, ~0.15 s for 1,000,000 rounds instead of ~1.5 s in PL/pgSQL), bcrypt `$2a$` / `$2b$` / `$2y$` (PHP `password_hash`) and Django's bcrypt hashers. Unknown users, unreadable hashes and query errors get the same answer, take as long and count for sign-in throttling. Argon2 hashes are refused (not supported yet).
+- **`meta.make_password_hash(password, format, cost)`** (sprint 248, MG-21) writes bcrypt or Django PBKDF2 hashes, e.g. on a password-change page. App Gallery sample *Sample Sign-in* signs in against a Django-style user table with Django and PHP hashes.
+- **Multiple file items on a shared child table** (sprint 247, MG-20): the attribute `"filter": {"related_type": "Workorder"}` writes those columns on insert and limits what the item lists, counts, removes, deletes with the record and downloads. A value may name `&APP_USER.` (and the other built-ins) or a protected hidden item, never anything a request can set. The parent column may be text for an integer key.
+- **Picture gallery** (sprint 247, MG-20): `"display": "gallery"` shows a multiple file item's pictures as square thumbnails that open the full-size picture, each with its Remove box, and other files as links. App Gallery *Sample Files* 1.1 shows both on its folder and person forms.
+
 ## [0.113.0] - 2026-11-20
 
 ### Added
