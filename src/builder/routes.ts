@@ -861,6 +861,9 @@ export async function builderRoutes(app: FastifyInstance) {
             <div class="field" data-wide><label class="label" for="f_custom_auth_code">${tx('st.custom_body')}</label>
               <textarea id="f_custom_auth_code" name="custom_auth_code" class="code" rows="6" spellcheck="false" data-code="plpgsql">${a.custom_auth_code ?? ''}</textarea>
               <small class="help">${tx.rich('st.custom_body_help', { example: html`<code>return exists (select 1 from app.users where name = p_username and pw_hash = crypt(p_password, pw_hash));</code>` })}</small></div>
+            <div class="field" data-wide><label class="label" for="f_custom_auth_hash_query">${tx('st.custom_hash')}</label>
+              <textarea id="f_custom_auth_hash_query" name="custom_auth_hash_query" class="code" rows="3" spellcheck="false" data-code="sql">${a.custom_auth_hash_query ?? ''}</textarea>
+              <small class="help">${tx.rich('st.custom_hash_help', { example: html`<code>select password from app.auth_user where username = p_username</code>` })}</small></div>
             <div class="field" data-wide><label class="label" for="f_custom_auth_post_code">${tx('st.custom_post')}</label>
               <textarea id="f_custom_auth_post_code" name="custom_auth_post_code" class="code" rows="4" spellcheck="false" data-code="plpgsql">${a.custom_auth_post_code ?? ''}</textarea>
               <small class="help">${tx('st.custom_post_help')}</small></div>
@@ -969,7 +972,7 @@ export async function builderRoutes(app: FastifyInstance) {
           <li>${a.authentication !== 'none' ? '✓' : '•'} ${a.authentication !== 'none' ? tx('st.ck.signin') : tx('st.ck.public')}</li>
           ${a.authentication === 'header' ? html`<li>${headerProxiesConfigured() ? '✓' : '✗'} Sign-in: HTTP header <code>${a.header_name || DEFAULT_HEADER}</code> ${headerProxiesConfigured() ? 'from the proxies in PGKILN_AUTH_HEADER_PROXIES' : html`<b>${tx('rte.refused_pgkiln_auth_header_proxies')}</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}${a.header_auto_create ? ', new accounts created automatically' : ''}</li>` : ''}
           ${a.authentication === 'database' ? html`<li>${a.db_auth_roles?.length || a.db_auth_member_of ? '✓' : '✗'} Sign-in: database accounts (${[a.db_auth_roles?.length ? `roles ${a.db_auth_roles.join(', ')}` : '', a.db_auth_member_of ? `members of ${a.db_auth_member_of}` : ''].filter(Boolean).join('; ') || html`<b>${tx('rte.no_roles_allowed')}</b>`})</li>` : ''}
-          ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : html`<b>${tx('rte.no_check_configured_nobody_can')}</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
+          ${a.authentication === 'custom' ? html`<li>${a.custom_auth_function || a.custom_auth_code || a.custom_auth_hash_query ? '✓' : '✗'} Sign-in: custom ${a.custom_auth_function ? html`function <code>${a.custom_auth_function}</code>` : a.custom_auth_code ? 'function body' : a.custom_auth_hash_query ? 'password hash query' : html`<b>${tx('rte.no_check_configured_nobody_can')}</b>`}${a.custom_auth_post_code ? ', with post-authentication code' : ''}</li>` : ''}
           ${a.authentication === 'app_users' ? html`<li>Sign-in: ${[a.local_login ? 'password' : '', ...a.ldap_directories.map((d: string) => `LDAP ${d}`), ...a.sso_providers].filter(Boolean).join(', ') || html`<b>${tx('rte.no_method_enabled')}</b>`}; access: ${a.access_control === 'any_user' ? 'any active account' : 'listed accounts only'}</li>` : ''}
           <li>${a.debug ? `✗ ${tx('st.ck.debug_on')}` : `✓ ${tx('st.ck.debug_off')}`}</li>
           <li>${a.debug_level ? `✗ ${tx('st.ck.msgs_on', { level: a.debug_level })}` : `✓ ${tx('st.ck.msgs_off')}`}</li>
@@ -1034,7 +1037,7 @@ export async function builderRoutes(app: FastifyInstance) {
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
                 custom_auth_function = $23, custom_auth_code = $24, custom_auth_post_code = $25, nav_list = $26, navbar_list = $27,
-                app_type = $28, session_group = $29, version = $30, updated_at = now() where id = $1`,
+                app_type = $28, session_group = $29, version = $30, custom_auth_hash_query = $31, updated_at = now() where id = $1`,
         [req.params.id, b.name?.trim(), b.alias?.trim().toLowerCase(), Number(b.home_page) || 1, b.authentication, b.db_role?.trim() || null, b.debug === 'true',
          JSON.stringify({
            base: baseStyleOf({ base: b.base }) === 'standard' ? undefined : baseStyleOf({ base: b.base }),
@@ -1068,7 +1071,8 @@ export async function builderRoutes(app: FastifyInstance) {
          b.navbar_list?.trim().toUpperCase() || null,
          (APP_TYPES as readonly string[]).includes(b.app_type ?? '') ? b.app_type : 'standard',
          /^[a-z][a-z0-9_]{0,29}$/.test(b.session_group?.trim().toLowerCase() ?? '') ? b.session_group!.trim().toLowerCase() : null,
-         (b.version ?? '').trim().slice(0, 40) || null],
+         (b.version ?? '').trim().slice(0, 40) || null,
+         b.custom_auth_hash_query?.trim() || null],
       );
       await saveTimeZoneSettings(req.params.id, b);
       await saveNotificationSettings(req.params.id, b, tr(s));

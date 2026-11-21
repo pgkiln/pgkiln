@@ -27,7 +27,9 @@ restart the server.
 From application SQL, `meta.web_request()` and `meta.web_request_source()` queue a request that
 the server makes (APEX_WEB_SERVICE; [chapter 9](09-reference.md#web-requests-from-sql)), with retries,
 a callback and ordered delivery when you ask for them (the
-[outbox](09-reference.md#the-outbox-retries-callbacks-ordering), sprint 177). The other direction, another
+[outbox](09-reference.md#the-outbox-retries-callbacks-ordering), sprint 177), and with a file as the body
+([binary request bodies](09-reference.md#binary-request-bodies-files), sprint 243: also to a source's URL and
+credential with `meta.web_request_source(..., p_body_blob)`). The other direction, another
 system calling you, is a [webhook handler](13-rest-api.md#webhooks) of a REST module; its signing secret is a
 web credential.
 
@@ -39,6 +41,7 @@ web credential.
 | `PGKILN_REST_PRIVATE_HOSTS` | *(none)* | Hosts that may resolve to private, loopback or link-local addresses (e.g. a service in your own network, or `127.0.0.1`); listing a host here also allows it |
 | `PGKILN_SECRET_KEY` | *(none)* | Encrypts the secrets of web credentials (AES-256-GCM); at least 32 characters, e.g. `openssl rand -base64 32`. Without it, secrets can't be saved or used |
 | `PGKILN_REST_MAX_BYTES` | `5000000` | Largest response pgkiln reads (also after decompression) |
+| `PGKILN_REST_MAX_UPLOAD_BYTES` | `26214400` (25 MB) | (sprint 243) Largest binary body pgkiln sends: `meta.web_request(..., p_body_blob)` and `meta.web_request_source(..., p_body_blob)` ([chapter 9](09-reference.md#binary-request-bodies-files)) |
 
 The checks on every outgoing request (`src/webclient.ts`), against server-side request forgery:
 
@@ -556,7 +559,8 @@ views are not: they belong to your schema's migration scripts, like the table.
 - A synchronisation writes as the application's role: grant it only the table it fills.
   `meta.request_rest_sync()` works only for the current application's sources.
 - [`meta.web_request()`](09-reference.md#web-requests-from-sql) (requests from application SQL)
-  goes through the same allow-list, address checks, size limit and credential URL limits; it names
+  goes through the same allow-list, address checks, size limit and credential URL limits (a binary body too,
+  with its own limit `PGKILN_REST_MAX_UPLOAD_BYTES`); it names
   a credential of the current application and never sees its secret. Requests and responses are
   stored for 24 hours, readable through `meta.web_response()` by the application's code only.
 - Treat responses as untrusted data: they are escaped like any other value in reports, cards and

@@ -2,7 +2,8 @@ import { hostname } from 'node:os';
 import pg from 'pg';
 import { owner, runtime, type Client } from './db.ts';
 import { purgeUnpacked, unpackForSql } from './unpack.ts';
-import { call, invoke, loadCredential } from './websources.ts';
+import { buildRequest, call, invoke, loadCredential, loadSource, sourceParamValues } from './websources.ts';
+import { maxUploadBytes, sendBinary } from './webupload.ts';
 import { WebError, type WebResponse } from './webclient.ts';
 import { purgeRefusals } from './network-acl.ts';
 import { backoffS, retryBaseS, retryCapS, startQueueRunner, type QueueRunner } from './queue-runner.ts';
@@ -53,6 +54,12 @@ import { setAppRole } from './app-role.ts';
 //   request itself is never sent again.
 // - NOTIFY pgkiln_web_request wakes startWebRequestRunner(); the scheduler
 //   pass remains as the fallback.
+//
+// (sprint 243, migration 200) A binary body (body_blob, p_body_blob) is sent
+// with src/webupload.ts sendBinary(): its own size limit
+// (PGKILN_REST_MAX_UPLOAD_BYTES), optionally in ranges (chunk_bytes), the same
+// checks through call(). The blob stays in the row for retries and re-queueing
+// until the request is 'ok'.
 
 export interface PendingRequest {
   id: string;
@@ -71,6 +78,12 @@ export interface PendingRequest {
   max_attempts?: number | null;
   idempotency_key?: string | null;
   idempotency_header?: string | null;
+  /** (200) a binary body: given by web_request_take, loaded by execute() for a claimed request */
+  body_blob?: Buffer | null;
+  /** (200) its size (bigint, as text); kept when the blob was cleared */
+  body_blob_bytes?: string | number | null;
+  /** (200) PUT it in ranges of this many bytes */
+  chunk_bytes?: number | null;
 }
 
 export interface RequestResult {
@@ -111,7 +124,19 @@ function headerObject(h: WebResponse['headers']): Record<string, string> {
 export async function execute(appId: number, r: PendingRequest): Promise<RequestResult> {
   try {
     let res: WebResponse;
-    if (r.source) {
+    const blob = await blobOf(r);
+    if (r.source && blob) {
+      // (200) a REST data source's URL, method, headers and credential with a binary body
+      const source = await loadSource(appId, r.source);
+      const req = buildRequest(source, sourceParamValues(source, r.params ?? {}, () => undefined));
+      const own = Object.entries(source.headers ?? {}).find(([k]) => k.toLowerCase() === 'content-type')?.[1];
+      const { 'content-type': _json, ...headers } = req.headers;
+      res = await sendBinary({
+        appId, what: `meta.web_request_source(${r.source})`, url: req.url, method: req.method, headers, body: blob,
+        contentType: r.headers?.['content-type'] ?? (own === undefined ? undefined : String(own)),
+        credential: source.credential ? await loadCredential(appId, source.credential) : null, timeoutMs: r.timeout_s * 1000,
+      });
+    } else if (r.source) {
       // the source's URL, method, headers and credential; parameter values as given (no substitutions)
       res = (await invoke(appId, { source: r.source, params: r.params ?? {} }, () => undefined, `meta.web_request_source(${r.source})`, r.timeout_s)).res;
     } else {
@@ -126,7 +151,20 @@ export async function execute(appId: number, r: PendingRequest): Promise<Request
       const idem = r.idempotency_header?.toLowerCase();
       if (idem && r.idempotency_key && HEADER_NAME.test(idem) && !/[\r\n\0]/.test(r.idempotency_key) && !(idem in headers)) headers[idem] = r.idempotency_key;
       const credential = r.credential ? await loadCredential(appId, r.credential) : null;
-      res = await call({
+      // (200) a binary body: its size limit, ranges, Content-Type from the headers; the same checks through call()
+      if (blob) res = await sendBinary({
+        appId,
+        what: 'meta.web_request',
+        url: r.url,
+        method: r.method,
+        headers: { accept: '*/*', ...headers },
+        body: blob,
+        chunkBytes: r.chunk_bytes ?? null,
+        credential,
+        timeoutMs: r.timeout_s * 1000,
+        secretHeaders: Object.keys(headers).filter((k) => SECRETISH.test(k)),
+      });
+      else res = await call({
         appId,
         what: 'meta.web_request',
         url: r.url,
@@ -144,6 +182,19 @@ export async function execute(appId: number, r: PendingRequest): Promise<Request
     const message = e instanceof Error ? e.message : String(e);
     return { status: 'error', statusCode: (e as WebError).status ?? null, url: null, headers: null, body: null, message: message.slice(0, 2000), transient: (e as WebError).transient === true };
   }
+}
+
+/**
+ * (200) The binary body of a request, or null when it has none. A claimed request carries only its size: the bytes
+ * are read here, after the size limit was checked (so a body over PGKILN_REST_MAX_UPLOAD_BYTES is never loaded).
+ */
+async function blobOf(r: PendingRequest): Promise<Buffer | null> {
+  if (r.body_blob_bytes === null || r.body_blob_bytes === undefined) return r.body_blob ?? null;
+  const size = Number(r.body_blob_bytes);
+  if (size > maxUploadBytes()) throw new WebError(`The binary body is larger than ${maxUploadBytes()} bytes (PGKILN_REST_MAX_UPLOAD_BYTES).`);
+  const blob = r.body_blob ?? (await owner.one<{ body_blob: Buffer | null }>('select body_blob from meta.web_request_log where id = $1', [r.id]))?.body_blob ?? null;
+  if (!blob) throw new WebError('The binary body is no longer there: it is let go once the request succeeded.');
+  return blob;
 }
 
 /** The seconds a Retry-After header asks for (a number of seconds or an HTTP date), or null. */
@@ -221,7 +272,8 @@ async function finish(r: Claimed, res: RequestResult) {
     `update meta.web_request_log set status = $2, finished_at = case when $2 = 'retry' then null else now() end,
             next_attempt_at = case when $2 = 'retry' then now() + make_interval(secs => $8::int) end, lease_until = null,
             status_code = $3, response_url = $4, response_headers = $5::jsonb, response_body = $6, message = $7,
-            callback_state = case when $2 <> 'retry' and callback is not null then 'pending' end
+            callback_state = case when $2 <> 'retry' and callback is not null then 'pending' end,
+            body_blob = case when $2 = 'ok' then null else body_blob end
       where id = $1 and status = 'running' and worker = $9 and attempts = $10`,
     [r.id, o.status, res.statusCode, res.url, res.headers ? JSON.stringify(res.headers) : null, res.body, describe(res, o)?.slice(0, 2000) ?? null,
      o.status === 'retry' ? o.nextS : 0, WORKER, r.attempts],
@@ -294,7 +346,7 @@ async function claim(): Promise<Claimed[]> {
                     where e.app_id = q.app_id and e.ordering_key = q.ordering_key and e.id < q.id and e.status in ('queued', 'running', 'retry')))
            order by q.id for update skip locked limit ${PER_PASS})
         returning l.id::text, l.app_id, l.source, l.params, l.url, l.method, l.headers, l.body, l.credential, l.timeout_s,
-                  l.attempts, l.max_attempts, l.idempotency_key, l.idempotency_header`,
+                  l.attempts, l.max_attempts, l.idempotency_key, l.idempotency_header, l.body_blob_bytes, l.chunk_bytes`,
       [WORKER],
     )
   ).rows.sort((a, b) => Number(a.id) - Number(b.id));
