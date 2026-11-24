@@ -20,7 +20,8 @@ export interface SmtpHit {
   data: string;
 }
 
-export const TOKEN = 'mock-access-token';
+// as long as a real Entra token with roles (over 2 KB): the answer must not be cut before it is parsed
+export const TOKEN = `mock-access-token-${'x'.repeat(2400)}`;
 
 export class MailMock {
   http!: Server;
