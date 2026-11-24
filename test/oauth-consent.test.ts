@@ -90,6 +90,14 @@ const builder = async () => {
   assert.equal((await b.submit('/builder/login', { username: 'admin', password: 'admin' })).statusCode, 303);
   return b;
 };
+/** Authorize's answer: a page that moves on to the service's authorization URL (a 303 would be dropped by form-action 'self'). */
+async function started(r: Promise<{ statusCode: number; body: string; headers: Record<string, unknown> }> | { statusCode: number; body: string; headers: Record<string, unknown> }) {
+  const res = await r;
+  assert.equal(res.statusCode, 200);
+  const m = /<meta http-equiv="refresh" content="0;url=([^"]+)">/.exec(res.body);
+  assert.ok(m, 'a refresh to the service');
+  return m![1].replace(/&amp;/g, '&');
+}
 /** The service's side of consent: it reads the authorization request and makes a code for it. */
 function consent(location: string) {
   const u = new URL(location);
@@ -153,8 +161,7 @@ describe('Authorize in the builder', () => {
     assert.match(shown, /Not authorized/);
     assert.ok(shown.includes(consentRedirectUri()), 'the redirect URI to register');
     const start = await b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {});
-    assert.equal(start.statusCode, 303);
-    const c = consent(start.headers.location as string);
+    const c = consent(await started(start));
     assert.equal(c.url.origin + c.url.pathname, `${mockBase}/authorize`);
     assert.equal(c.url.searchParams.get('audience'), 'api');
     assert.equal(c.url.searchParams.get('client_id'), 'client-222');
@@ -197,7 +204,7 @@ describe('Authorize in the builder', () => {
     const b = await builder();
     await owner.query('update meta.web_credential set refresh_token_enc = null, token_refreshed_at = null where id = $1', [cid]);
     await b.get(page());
-    const c = consent((await b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {})).headers.location as string);
+    const c = consent(await started(b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {})));
     // another developer's session can't finish it
     const other = await builder();
     assert.match(await callback(other, `code=${c.code}&state=${c.state}`), /not valid any more/);
@@ -213,13 +220,13 @@ describe('Authorize in the builder', () => {
     await owner.query('update meta.web_credential set refresh_token_enc = $2 where id = $1', [cid, encryptSecret('old-refresh')]);
     await b.get(page());
     sendRefresh = false;
-    let c = consent((await b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {})).headers.location as string);
+    let c = consent(await started(b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {})));
     await b.get(`/builder/oauth/callback?code=${c.code}&state=${c.state}`);
     assert.match(await flashOf(b, page()), /sent no refresh token: it works until \d{4}-\d\d-\d\d \d\d:\d\d UTC/);
     assert.equal((await owner.one('select refresh_token_enc from meta.web_credential where id = $1', [cid])).refresh_token_enc, null, 'the earlier one is gone');
     sendRefresh = true;
     failToken = true;
-    c = consent((await b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {})).headers.location as string);
+    c = consent(await started(b.submit(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, {})));
     await b.get(`/builder/oauth/callback?code=${c.code}&state=${c.state}`);
     const msg = await flashOf(b, page());
     failToken = false;
@@ -246,7 +253,7 @@ describe('a workspace credential', () => {
     const form = (await b.get(`/builder/workspace-credentials?edit=${id}`)).body;
     assert.match(form, /name="authorize_url"/);
     assert.match(form, /Not authorized/);
-    const c = consent((await b.submit(`/builder/workspace-credentials/${id}/authorize`, {})).headers.location as string);
+    const c = consent(await started(b.submit(`/builder/workspace-credentials/${id}/authorize`, {})));
     tokenAuth = [];
     const back = await b.get(`/builder/oauth/callback?code=${c.code}&state=${c.state}`);
     assert.equal(back.headers.location, `/builder/workspace-credentials?edit=${id}#credential-form`);

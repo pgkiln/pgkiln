@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Authorize** on a web credential (authorization code grant) did nothing in Chrome: the builder's CSP
+  (`form-action 'self'`) also applies to a form's redirects, so the 303 to the service was dropped. Authorize now
+  answers with a page of its own that moves on to the service.
+
 ## [0.115.0] - 2026-11-21
 
 ### Added
