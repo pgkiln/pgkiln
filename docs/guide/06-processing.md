@@ -1038,6 +1038,10 @@ select meta.add_mail_attachment(m.id, i.pdf, 'invoice-42.pdf', 'application/pdf'
   from m, sales.invoice i where i.id = 42;
 ```
 
+(sprint 253) A file a file item keeps in [object storage](16-files.md#object-storage) (S3, OneDrive, SharePoint)
+is attached by reference: `meta.add_mail_attachment_stored(mail, 'P3_PHOTO', key, filename, mime)`. The sender
+fetches it from that item's store when it sends the mail ([details](16-files.md#stored-files-in-documents-and-mails)).
+
 ### A document as attachment
 
 (sprint 237) `meta.document_pdf(template, items)` (APEX: `APEX_PRINT.GENERATE_DOCUMENT`) gives the PDF of

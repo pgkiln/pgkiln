@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Stored files in PDFs and mails** (sprint 253, MG-30): a file that a file item keeps in object storage (S3,
+  OneDrive, SharePoint) can go into a document template as `<img src="stored:ITEM:key">` (fetched by the server while
+  drawing; PNG/JPEG up to `MAX_UPLOAD_MB`; a missing or refused file is left out and logged) and into a mail with
+  `meta.add_mail_attachment_stored(mail, item, key, filename, mime)` (migration 207: the attachment keeps the item and
+  key, the mail sender fetches the file when it sends, failed fetches are retried). Only a file item of the same
+  application with an object store; the key must lie in its store, as for a download.
+- **A folder per record** (sprint 253, MG-31): `object_store.folder` (OneDrive / SharePoint) and `prefix` (S3) take
+  `&ITEM.` substitutions from the session state at upload time (`Sales/Orders/&P3_ORDER_NO./Photos`). Each value is
+  one safe path segment; downloads, deletes and stored files are accepted anywhere below the static part.
+  `"drive": "me"` addresses a delegated credential's own OneDrive.
+- HR example part 114: page 77 stores each policy in a folder of its own, prints it (`POLICY_SHEET`) and mails it.
+
+### Changed
+- An S3 object store refuses a key outside its prefix, or with a `.` / `..` segment, for every download and delete
+  (before, only the item's own uploads were below the prefix; a key written into the table some other way was
+  fetched as it was).
+
 ### Fixed
 
 - **Authorize** on a web credential (authorization code grant) did nothing in Chrome: the builder's CSP

@@ -16,6 +16,8 @@ import { mailHostAddress, scopeForWorkspace } from '../network-acl.ts';
 import { deliver, MailError, verifyConnection, type OutgoingMail, type Provider, type ServiceSettings } from './providers.ts';
 import { count, markError, rootSpan, setAttrs, traceApp } from '../telemetry/trace.ts';
 import { redirectFor, redirectMail, type Redirect } from './redirect.ts';
+import { storedObject } from '../objectstore.ts';
+import { WebError } from '../webclient.ts';
 
 export interface MailService {
   id: number;
@@ -124,15 +126,27 @@ async function sendOneTraced(m: Claimed) {
   let redirectedTo: string | null = null;
   try {
     if (!service) throw new MailError('The application has no mail service any more.', false);
-    const attachments = (await owner.query<{ filename: string; mime: string; content: Buffer }>(
-      'select filename, mime, content from meta.mail_attachment where mail_id = $1 order by id', [m.id])).rows;
+    const attachments = (await owner.query<{ filename: string; mime: string; content: Buffer | null; stored_item: string | null; stored_key: string | null }>(
+      'select filename, mime, content, stored_item, stored_key from meta.mail_attachment where mail_id = $1 order by id', [m.id])).rows;
+    // (sprint 253, MG-30) attachments by reference (meta.add_mail_attachment_stored): fetched from the file item's
+    // object store now; a failing fetch is retried with the mail, a missing or refused file fails it
+    for (const a of attachments) {
+      if (a.content || !a.stored_item) continue;
+      const data = await storedObject(m.app_id, a.stored_item, a.stored_key!).catch((e) => {
+        throw e instanceof WebError && e.status === undefined && !e.transient ? new MailError(`Attachment ${a.filename}: ${e.message}`, false) : e;
+      });
+      if (!data) throw new MailError(`Attachment ${a.filename}: the file ${a.stored_key} is not in the object store of ${a.stored_item}.`, false);
+      if (data.length > 10 * 1024 * 1024) throw new MailError(`Attachment ${a.filename}: larger than 10 MB.`, false);
+      a.content = data;
+    }
+    if (attachments.reduce((n, a) => n + a.content!.length, 0) > 20 * 1024 * 1024) throw new MailError('meta.add_mail_attachment: at most 20 attachments and 20 MB per mail', false);
     // (sprint 237) a reference of meta.document_pdf that no process of the server drew (SQL outside a page's
     // processes: an automation, pg_cron, the SQL Workshop) is never sent as it is
-    if (attachments.some((a) => a.content.length < 100 && a.content.subarray(0, 20).toString('latin1') === 'pgkiln:document_pdf:'))
+    if (attachments.some((a) => a.content!.length < 100 && a.content!.subarray(0, 20).toString('latin1') === 'pgkiln:document_pdf:'))
       throw new MailError('A document attachment (meta.document_pdf) was not drawn: call meta.document_pdf in a process, Ajax callback or dynamic action of a page, where the server draws the PDF when the process ends.', false);
     const id = await sendWith(service, {
       from: m.from_address, to: m.to_addresses, cc: m.cc_addresses, bcc: m.bcc_addresses, replyTo: m.reply_to,
-      subject: m.subject, text: m.body_text, html: m.body_html, attachments,
+      subject: m.subject, text: m.body_text, html: m.body_html, attachments: attachments as { filename: string; mime: string; content: Buffer }[],
     }, m.app_id, (r) => (redirectedTo = r?.to ?? null));
     const [ms, provider] = timing();
     await owner.query(`update meta.mail_queue set status = 'sent', sent_at = now(), provider_id = $2, service = $3, message = null,
