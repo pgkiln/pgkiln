@@ -21538,3 +21538,98 @@ describe('sprint 252 parent_item', () => {
     assert.throws(() => parentItem(ctx, files), /protected hidden item/);
   });
 });
+
+describe('sprint 253 MG-30/MG-31', () => {
+  // Stored files in PDFs and mails (src/objectstore.ts storedObject, migration 207): only a file item of the same
+  // application that has an object store; an S3 key stays below the store's prefix (its static part); a folder /
+  // prefix substitution can't leave its segment.
+  const A = 'ts-sec253';
+  let hr: number;
+  let other: number;
+  const S3 = { url: 'http://127.0.0.1:9/bucket', credential: 'S3', prefix: 'orders/&P3_ID./' };
+  before(async () => {
+    hr = (await owner.one(`select id from meta.app where alias = 'hr'`)).id;
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+    other = (await owner.one(`insert into meta.app (alias, name, db_role) values ($1, 'Sec 253', 'hr_app') returning id`, [A])).id;
+    const pid = (await owner.one(`insert into meta.page (app_id, page_no, name) values ($1, 1, 'P') returning id`, [other])).id;
+    await owner.query(`insert into meta.item (page_id, seq, name, type, source_column, config) values
+      ($1, 10, 'P1_STORED', 'file', 'k', $2), ($1, 20, 'P1_BYTEA', 'file', 'b', '{}')`, [pid, JSON.stringify({ object_store: S3 })]);
+  });
+  after(async () => {
+    await owner.query(`delete from meta.mail_queue where app_id = $1 and subject like 'S253 %'`, [hr]);
+    await owner.query(`delete from meta.app where alias = $1`, [A]);
+  });
+
+  test('storedObject: another application\'s item, an item without an object store, an S3 key outside the prefix', async () => {
+    const { getObject, storedObject } = await import('../src/objectstore.ts');
+    await assert.rejects(storedObject(hr, 'P1_STORED', 'orders/1/a.png'), /not a file item with an object store/);
+    await assert.rejects(storedObject(other, 'P1_BYTEA', 'orders/1/a.png'), /not a file item with an object store/);
+    await assert.rejects(storedObject(other, 'P1_NOPE', 'x'), /not a file item with an object store/);
+    for (const key of ['secret/a.png', '../a.png', 'orders/../secret/a.png', 'orders/1/../../x', 'orders/./x'])
+      await assert.rejects(storedObject(other, 'p1_stored', key), /not below the prefix/, key);
+    // the same check for every S3 request (downloads, deletes): no dot segment, even without a prefix
+    await assert.rejects(getObject(other, { url: S3.url, credential: 'S3' }, 'a/../../other-bucket/x'), /not below the prefix/);
+  });
+
+  test('meta.add_mail_attachment_stored: only a file item of the calling application with an object store', async () => {
+    const asApp = async (appIdOf: number, fn: (q: (sql: string, p?: unknown[]) => Promise<any[]>) => Promise<unknown>) => {
+      const c = await owner.pool.connect();
+      try {
+        await c.query('begin');
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true)`, [String(appIdOf)]);
+        await c.query('set local role hr_app');
+        return await fn(async (sql, p) => (await c.query(sql, p)).rows);
+      } finally {
+        await c.query('rollback');
+        c.release();
+      }
+    };
+    // HR sends through a "log only" service when it has none (another test may have removed HR's)
+    let sid: number | null = null;
+    if (!(await owner.query(`select 1 from meta.app_mail_service where app_id = $1 and is_default`, [hr])).rowCount) {
+      await owner.query(`delete from meta.mail_service where name = 'S253_LOG'`);
+      sid = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ('S253_LOG', 'log', '{@example.com}', '{"default_from": "hr@example.com"}') returning id`)).id;
+      await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'hr@example.com', true)`, [hr, sid]);
+    }
+    try {
+      for (const [item, why] of [['P1_STORED', /not a file item with an object store/], ['P77_TITLE', /not a file item/], ['P1_FILE', /not a file item/]] as const)
+        await assert.rejects(asApp(hr, async (q) => {
+          const [{ id }] = await q(`select meta.send_mail('king@example.com', 'S253 x', 'x') as id`);
+          await q(`select meta.add_mail_attachment_stored($1, $2, 'k', 'f.txt')`, [id, item]);
+        }), why, item);
+      // HR's own stored item works
+      await asApp(hr, async (q) => {
+        const [{ id }] = await q(`select meta.send_mail('king@example.com', 'S253 ok', 'x') as id`);
+        await q(`select meta.add_mail_attachment_stored($1, 'p77_file', 'k', 'a/b.txt')`, [id]);
+        await q('reset role');
+        assert.deepEqual(await q(`select filename, stored_item, content from meta.mail_attachment where mail_id = $1`, [id]), [{ filename: 'a_b.txt', stored_item: 'P77_FILE', content: null }]);
+        // the row is content or a reference, never both
+        await assert.rejects(q(`update meta.mail_attachment set content = '\\x00' where mail_id = $1`, [id]), /mail_attachment_content_or_stored/);
+      });
+      // a mail of another transaction, an empty key
+      await assert.rejects(asApp(hr, (q) => q(`select meta.add_mail_attachment_stored(1, 'P77_FILE', 'k', 'f')`)), /was not queued in this transaction/);
+      await assert.rejects(asApp(hr, async (q) => {
+        const [{ id }] = await q(`select meta.send_mail('king@example.com', 'S253 x', 'x') as id`);
+        await q(`select meta.add_mail_attachment_stored($1, 'P77_FILE', '', 'f')`, [id]);
+      }), /no key/);
+    } finally {
+      if (sid) {
+        await owner.query('delete from meta.app_mail_service where service_id = $1', [sid]);
+        await owner.query('delete from meta.mail_service where id = $1', [sid]);
+      }
+    }
+  });
+
+  test('a substituted value is one safe segment', async () => {
+    const { resolveStore, objectStoreProblem } = await import('../src/objectstore.ts');
+    for (const v of ['../../x', '/abs', 'a\\b', 'a\nb', '..', '.', ' ', ''] as const) {
+      const r = resolveStore(S3, () => v) as typeof S3;
+      assert.match(r.prefix, /^orders\/[^/]+\/$/, v);
+      assert.ok(!r.prefix.includes('..'), v);
+      assert.equal(objectStoreProblem(r), null, v);
+      const g = resolveStore({ provider: 'graph', credential: 'G', drive: 'me', folder: 'Base/&X./In' }, () => v) as { folder: string };
+      assert.match(g.folder, /^Base\/[^/\\]+\/In$/, v);
+      assert.equal(objectStoreProblem(g), null, v);
+    }
+  });
+});

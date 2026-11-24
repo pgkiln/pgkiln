@@ -22,6 +22,7 @@
 import { WebError, type WebResponse } from './webclient.ts';
 import { call, loadCredential, type WebCredential } from './websources.ts';
 import { sendBinary } from './webupload.ts';
+import { staticPart, SUBST } from './objectstore.ts';
 
 export interface GraphStoreConfig {
   provider: 'graph';
@@ -68,7 +69,8 @@ export function graphProblem(c: Record<string, unknown>): string | null {
   if (c.site !== undefined && (typeof c.site !== 'string' || !SITE.test(c.site))) return 'object_store.site: a site id, e.g. contoso.sharepoint.com,<site guid>,<web guid>.';
   if (c.folder !== undefined) {
     if (typeof c.folder !== 'string' || c.folder.length > 400) return 'object_store.folder: a folder path, e.g. "HR/Documents".';
-    for (const s of segments(c.folder))
+    // (sprint 253, MG-31) &ITEM. substitutions are checked as a plain segment
+    for (const s of segments(c.folder.replace(SUBST, 'x')))
       if (!SEGMENT.test(s) || /^\.+$/.test(s) || s !== s.trim() || s.endsWith('.'))
         return `object_store.folder: "${s}" is not a folder name (no .., no " * : < > ? \\ |, no leading or trailing spaces or dots).`;
   }
@@ -85,7 +87,9 @@ export function graphFileName(filename: string) {
 
 const base = (o: GraphStoreConfig) => (o.url ?? GRAPH_URL).replace(/\/+$/, '');
 /** The drive's URL: /drives/{drive} or /sites/{site}/drive. */
-export const driveUrl = (o: GraphStoreConfig) => (o.drive ? `${base(o)}/drives/${o.drive}` : `${base(o)}/sites/${o.site}/drive`);
+export const driveUrl = (o: GraphStoreConfig) =>
+  // (sprint 253) "drive": "me": the signed-in user's OneDrive (a delegated credential)
+  o.drive === 'me' ? `${base(o)}/me/drive` : o.drive ? `${base(o)}/drives/${o.drive}` : `${base(o)}/sites/${o.site}/drive`;
 /** The URL of a path below the folder: …/root:/HR/Documents/a.pdf: (each segment encoded). */
 export const pathUrl = (o: GraphStoreConfig, name: string) => `${driveUrl(o)}/root:/${[...segments(o.folder), name].map(encodeURIComponent).join('/')}:`;
 
@@ -170,7 +174,8 @@ async function inFolder(appId: number, o: GraphStoreConfig, cred: WebCredential,
   } catch {
     return false;
   }
-  const want = segments(o.folder).join('/').toLowerCase();
+  // (sprint 253, MG-31) a folder with &ITEM. substitutions: anywhere below its static part (any record's subfolder)
+  const want = segments(staticPart(o.folder)).join('/').toLowerCase();
   const have = segments(parent);
   if (have.some((s) => s === '..' || s === '.')) return false;
   const p = have.join('/').toLowerCase();

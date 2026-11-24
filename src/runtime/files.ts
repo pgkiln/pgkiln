@@ -9,7 +9,7 @@ import { checksumValid, urlChecksum } from '../security.ts';
 import { checkPageAccess, Forbidden } from './authz.ts';
 import { bindValues, type PageContext } from './context.ts';
 import { resolveTable } from './engine.ts';
-import { deleteObject, getObject, objectStoreOf, putObject, type ObjectStoreConfig } from '../objectstore.ts';
+import { deleteObject, getObject, objectStoreOf, putObject, resolveStore, type ObjectStoreConfig } from '../objectstore.ts';
 
 // File upload items (APEX "File Browse").
 //
@@ -411,7 +411,10 @@ export const storeOf = (item: Item) => (item.type === 'file' ? objectStoreOf(ite
  * Put one of the session's temporary files into the item's object store
  * (removed again if the transaction rolls back). Returns what the row stores.
  */
-export async function storeTempFile(ctx: PageContext, store: ObjectStoreConfig, id: string) {
+export async function storeTempFile(ctx: PageContext, template: ObjectStoreConfig, id: string) {
+  // (sprint 253, MG-31) a folder / prefix per record: its &ITEM. substitutions from the session state
+  const values = bindValues(ctx);
+  const store = resolveStore(template, (name) => values[name]);
   const r = await ctx.client!.query<{ content: Buffer; filename: string; mime_type: string; size: number }>('select content, filename, mime_type, size from meta.temp_files where id = $1', [id]);
   const f = r.rows[0];
   if (!f) throw new Error(ctx.locale.t('file.none'));

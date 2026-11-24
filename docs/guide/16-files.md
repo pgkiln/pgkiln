@@ -267,7 +267,9 @@ Backblaze B2, OCI's S3 compatibility API, …), or in [OneDrive or SharePoint](#
 - `credential`: a [web credential](19-rest-data-sources.md#web-credentials) of type `aws_sigv4`
   (access key id, secret access key, region); requests are signed with AWS Signature Version 4.
   Its *Valid for* URLs should name the bucket.
-- `prefix`: keys start with it; each file gets `<prefix><random id>/<file name>`.
+- `prefix`: keys start with it; each file gets `<prefix><random id>/<file name>`. It may hold `&ITEM.` substitutions: a
+  [folder per record](#a-folder-per-record). A key outside the prefix (or with a `.` or `..` segment) is refused
+  for every download and delete, so a key written into the table some other way can't reach the rest of the bucket.
 - The item's **source column holds the object's key** (a `text` column) instead of the bytes;
   `size_column` (optional) the size, which the form shows. Name and type columns work as before.
   For a multiple item the child table's rows hold the keys.
@@ -292,9 +294,9 @@ Microsoft Graph, so they stay where the office opens and edits them. Set `"provi
 
 | Key | Means |
 |---|---|
-| `drive` | The drive id: a user's OneDrive or a document library (`/drives/{drive}`) |
+| `drive` | The drive id: a user's OneDrive or a document library (`/drives/{drive}`); (sprint 253) `"me"`: the OneDrive of the user a delegated credential belongs to (`/me/drive`) |
 | `site` | Instead of `drive`: a SharePoint site id (`contoso.sharepoint.com,<site guid>,<web guid>`); its default document library (`/sites/{site}/drive`) |
-| `folder` | The folder in the drive, e.g. `HR/Policies` (default: the drive's root). Graph creates it on the first upload |
+| `folder` | The folder in the drive, e.g. `HR/Policies` (default: the drive's root). Graph creates it on the first upload. (sprint 253) May hold `&ITEM.` substitutions: a [folder per record](#a-folder-per-record) |
 | `credential` | A [web credential](19-rest-data-sources.md#web-credentials) of type OAuth2 (or bearer token) |
 | `url` | The Graph base URL; default `https://graph.microsoft.com/v1.0` (a national cloud: `https://graph.microsoft.us/v1.0`, …) |
 
@@ -325,6 +327,62 @@ Microsoft Graph, so they stay where the office opens and edits them. Set `"provi
 HR example (part 108, page 77 *Policy documents*): policy documents in the SharePoint folder `HR/Policies` with the
 credential `MS_GRAPH`; the part's header lists the set-up steps. Until the credential has a secret, an upload is
 refused and nothing is saved.
+
+#### A folder per record
+
+(sprint 253) `folder` (OneDrive / SharePoint) and `prefix` (S3) may hold `&ITEM.` substitutions, filled in from the
+session state **at upload time**, so each record's files get a folder of their own:
+
+```json
+{"object_store": {"provider": "graph", "drive": "b!3x…Qz", "folder": "Sales/Orders/&P3_ORDER_NO./Photos", "credential": "MS_GRAPH"}}
+{"object_store": {"url": "https://s3.eu-west-1.amazonaws.com/sales", "credential": "S3_SALES", "prefix": "orders/&P3_ORDER_NO./"}}
+```
+
+- Each value becomes (part of) **one path segment**: `/`, `\`, control characters, characters the store does not
+  take and runs of dots become `_`; an empty (or unknown) value becomes `_`. A value can never add a level or climb
+  out of the folder.
+- Downloads, deletes and [stored files in documents and mails](#stored-files-in-documents-and-mails) accept a file
+  anywhere **below the static part**: the folder up to the last `/` before the first substitution (`Sales/Orders/`
+  above). A file of any record's subfolder is reachable, nothing outside the base.
+- Use an item that has its value when the form is saved: on a new record the key item (`P3_ID`) is usually still
+  empty, because the database assigns it during the insert; a number the user enters, or one a computation sets
+  before the save, works. The folder is fixed when the file is uploaded: a later change of the value doesn't move it.
+
+HR example (part 114): page 77's files go to `HR/Policies/&P77_TITLE.`.
+
+#### Stored files in documents and mails
+
+(sprint 253) A file kept in object storage has no bytes in the database, so SQL can't hand it to a PDF or a mail
+the way it hands over a `bytea`. Two references let the server fetch it instead:
+
+- **In a [document template](#document-templates):** `<img src="stored:ITEM:key">`. `ITEM` is a file item of the
+  same application with `object_store`; `key` the value its source column holds (an S3 key, a drive item id),
+  usually a column of the template's query: `<img src="stored:P3_PHOTO:{{photo_key}}" width="60mm">`. The server
+  fetches the file while it draws the PDF. PNG and JPEG only, at most `MAX_UPLOAD_MB`, the same `width` rules as a
+  `data:` image. A file that is missing, not a PNG/JPEG, outside the store or refused is **left out** (and logged
+  on the server): the rest of the PDF is still drawn.
+- **In a mail:** `meta.add_mail_attachment_stored(p_mail, p_item, p_key, p_filename, p_mime)` adds an attachment by
+  reference to a mail queued in the same transaction ([chapter 6](06-processing.md#sending-e-mail)). The mail sender
+  fetches the file when it sends the mail; a fetch that fails (Graph or the bucket not reachable) is retried like
+  any failed attempt, a file that is not there fails the mail. The limits of `meta.add_mail_attachment` apply (20
+  attachments, 10 MB each, 20 MB per mail).
+
+```sql
+-- a process of the order page: mail the order's photos
+select meta.add_mail_attachment_stored(m.id, 'P3_PHOTO', p.photo_key, p.photo_name, p.photo_mime)
+  from (select meta.send_mail(:P3_EMAIL, 'Your order', 'The photos are attached.') as id) m,
+       sales.order_photo p
+ where p.order_id = :P3_ID::int
+```
+
+**Security.** The item must be a file item of the application that runs the SQL, with an object store (an item of
+another application, or one that keeps its files in the database, is refused); the key must lie in that store,
+as for a download: below the S3 prefix's static part, or in the OneDrive / SharePoint folder (its static part) or
+below it. *Which* keys a user reaches is up to the template's query and the process's SQL, which run as the
+application's role: row level security on the table that holds the keys decides.
+
+HR example (part 114): page 77 has *Print* (the template `POLICY_SHEET` shows the file when it is a picture) and
+*Mail to me* (the file attached by reference).
 
 **Recipe: try it without Microsoft 365.** The tests run against a small Graph stub (`test/graph-stub.ts`: a token
 endpoint, simple uploads, upload sessions, item metadata, downloads by redirect, deletes). To try a page by hand,
@@ -750,8 +808,9 @@ Advisor warns about both (sprint 245). Tags are case-sensitive, so a column `tod
 **HTML.** `h1`–`h4`, `p`, `div`, `br`, `b`/`strong`, `i`/`em`, `u`, `small`, `a href` (a link in the
 PDF), `ul`/`ol`/`li`, `hr`, tables (`thead`, `tbody`, `tfoot`, `tr`, `th`, `td`; `width="30%"` or
 `"40mm"` on the first row, `align`, `colspan`, `class="plain"` for a table without lines),
-`<img src="logo" width="30mm">` (the layout's logo; `data:` PNG/JPEG images work too, remote images
-don't), `class="page-break"` on a `div` or `hr`, `align="right"`/`"center"` (or `class="right"`) and
+`<img src="logo" width="30mm">` (the layout's logo; `data:` PNG/JPEG images work too, and (sprint 253)
+`src="stored:ITEM:key"`, a file in a file item's [object store](#stored-files-in-documents-and-mails); remote
+images don't), `class="page-break"` on a `div` or `hr`, `align="right"`/`"center"` (or `class="right"`) and
 `class="muted"`. A table's header rows repeat on every page it runs over; rows are never split.
 `<p>&nbsp;</p>` is an empty line. Other tags show their text.
 
