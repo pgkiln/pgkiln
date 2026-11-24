@@ -18602,17 +18602,22 @@ describe('sprint 222 the OAuth2 authorization code flow of web credentials', () 
     assert.equal(await pending(), 0);
   });
 
+  /** Authorize answers with a page that moves on to the service (a 303 would be dropped by form-action 'self'). */
+  const target = (r: { statusCode: number; body: string }) => {
+    assert.equal(r.statusCode, 200);
+    return /<meta http-equiv="refresh" content="0;url=([^"]+)">/.exec(r.body)![1].replace(/&amp;/g, '&');
+  };
   test('the redirect goes only to the stored http(s) authorization URL; state and verifier are random, hashed, builder only', async () => {
     const a = await signIn('admin');
     await a.get(`/builder/apps/${appId}/shared?c=web_credential-${cid}`);
     const r = await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf, authorize_url: 'https://evil.example.com/' });
-    const u = new URL(r.headers.location as string);
+    const u = new URL(target(r));
     assert.equal(u.origin, 'https://login.example.com');
     const state = u.searchParams.get('state')!;
     assert.ok(state.length >= 40);
     const row = await owner.one('select state_hash, code_verifier from meta.web_credential_pending order by created_at desc limit 1');
     assert.notEqual(row.state_hash, state);
-    assert.ok(row.code_verifier.length >= 60 && !(r.headers.location as string).includes(row.code_verifier));
+    assert.ok(row.code_verifier.length >= 60 && !r.body.includes(row.code_verifier));
     await assert.rejects(owner.query(`update meta.web_credential set authorize_url = 'javascript:alert(1)' where id = $1`, [cid]), /check constraint/);
     // nobody but the builder reads it
     await assert.rejects(runtime.query('select * from meta.web_credential_pending'), /permission denied/);
@@ -18623,13 +18628,13 @@ describe('sprint 222 the OAuth2 authorization code flow of web credentials', () 
   test('the service\'s error is a code, never its markup; an expired state is refused', async () => {
     const a = await signIn('admin');
     await a.get(`/builder/apps/${appId}/shared?c=web_credential-${cid}`);
-    const state = new URL((await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf })).headers.location as string).searchParams.get('state')!;
+    const state = new URL(target(await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf }))).searchParams.get('state')!;
     const r = await a.get(`/builder/oauth/callback?state=${state}&error=${encodeURIComponent('<img src=x onerror=alert(222)>')}`);
     const page = (await a.get(r.headers.location as string)).body;
     assert.doesNotMatch(page, /<img src=x|alert\(222\)/);
     assert.match(page, /\(error\)/);
     // ten minutes old: refused
-    const s2 = new URL((await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf })).headers.location as string).searchParams.get('state')!;
+    const s2 = new URL(target(await a.post(`/builder/apps/${appId}/web-credentials/${cid}/authorize`, { __csrf: a.lastCsrf }))).searchParams.get('state')!;
     await owner.query(`update meta.web_credential_pending set created_at = now() - interval '11 minutes'`);
     const late = await a.get(`/builder/oauth/callback?state=${s2}&code=c`);
     assert.match((await a.get(late.headers.location as string)).body, /not valid any more/);
