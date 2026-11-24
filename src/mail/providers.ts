@@ -149,7 +149,8 @@ async function http(url: string, init: { method?: string; headers: Record<string
   } catch (e) {
     throw new MailError(`The mail service did not answer (${(e as Error).name === 'TimeoutError' ? 'timed out' : (e as Error).message}).`, true);
   }
-  const text = (await res.text().catch(() => '')).slice(0, 2000);
+  // the whole answer (an Entra token with roles is over 2 KB); only an error's detail is shortened
+  const text = (await res.text().catch(() => '')).slice(0, 1_000_000);
   if (!res.ok) {
     let detail = text;
     try {

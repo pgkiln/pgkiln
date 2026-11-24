@@ -56,7 +56,9 @@ export async function startConsent(req: Req, reply: FastifyReply, s: Session, c:
     return back(reply, s, home);
   }
   await logActivity({ appId: where.appId, username: s.username, event: 'web_credential_consent', ip: clientIp(req), detail: `web credential ${c.name}: authorization started` });
-  return reply.redirect(url, 303);
+  // Not a redirect: the builder's CSP (form-action 'self') also covers a form's redirects, so the browser would drop
+  // a 303 to the service. A page of our own that moves on by itself starts a new navigation, which form-action allows.
+  return reply.type('text/html; charset=utf-8').send(String(html`<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=${url}"><title>${new URL(url).host}</title></head><body><p><a href="${url}">${new URL(url).host}</a></p></body></html>`));
 }
 
 /** The Authorize panel of a credential with the authorization code grant: its state, the redirect URI to register, the button. */

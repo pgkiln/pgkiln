@@ -23,6 +23,14 @@ All notable changes to this project are documented here. The format follows
   (before, only the item's own uploads were below the prefix; a key written into the table some other way was
   fetched as it was).
 
+### Fixed
+
+- **Authorize** on a web credential (authorization code grant) did nothing in Chrome: the builder's CSP
+  (`form-action 'self'`) also applies to a form's redirects, so the 303 to the service was dropped. Authorize now
+  answers with a page of its own that moves on to the service.
+- A **Microsoft 365 (Graph)** or SMTP OAuth2 mail service failed with "No access token" once the Entra application
+  had the Mail.Send role: the token endpoint's answer was cut at 2,000 characters before it was read.
+
 ## [0.115.0] - 2026-11-21
 
 ### Added
