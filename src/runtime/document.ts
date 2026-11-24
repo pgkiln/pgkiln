@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import { existsSync } from 'node:fs';
 import { DATE_OID, type Formatter } from './format.ts';
 import { PAPER, printable, textOn, type PdfLayout } from './pdf.ts';
+import { storedObject } from '../objectstore.ts';
 
 // Document templates (APEX: Document Generator): letters, invoices,
 // certificates, employee sheets. A template is a small subset of HTML with
@@ -27,6 +28,8 @@ import { PAPER, printable, textOn, type PdfLayout } from './pdf.ts';
 // on blocks and cells, class="muted" (grey) and class="right" / "center".
 // (sprint 245) Inside a table cell or a paragraph: <br> breaks the line, an <img> (width in mm, % or px) is
 // drawn between the text around it, a heading is bold at its size.
+// (sprint 253, MG-30) img src="stored:ITEM:key": the file `key` in the object store of the application's file item
+// ITEM (OneDrive / SharePoint, S3), fetched by the server while drawing; a missing or failing one is left out (logged).
 // Anything else is shown as its text.
 
 // ------------------------------------------------------------------ template
@@ -320,11 +323,37 @@ export interface DocumentInput {
   /** footer text and page label */
   footer: string;
   pageLabel: (page: number, pages: number) => string;
+  /** (sprint 253) the application: <img src="stored:ITEM:key"> fetches from its file items' object stores */
+  appId?: number;
+}
+
+/** (sprint 253, MG-30) <img src="stored:ITEM:key">. */
+const STORED = /^stored:([A-Za-z][A-Za-z0-9_]*):(.+)$/s;
+
+/** The images of the tree that are stored files, fetched (null: missing, refused or failed; logged). */
+async function storedImages(appId: number | undefined, root: El) {
+  const out = new Map<string, Buffer | null>();
+  const walk = async (el: El) => {
+    const m = el.tag === 'img' ? STORED.exec(el.attrs.src ?? '') : null;
+    if (m && !out.has(el.attrs.src)) {
+      out.set(el.attrs.src, null);
+      if (appId)
+        out.set(el.attrs.src, await storedObject(appId, m[1], m[2]).catch((e) => {
+          console.warn(`pgkiln: document image ${el.attrs.src.slice(0, 200)} left out: ${(e as Error).message}`);
+          return null;
+        }));
+    }
+    for (const c of el.children) if (typeof c !== 'string') await walk(c);
+  };
+  await walk(root);
+  return out;
 }
 
 /** Draw the filled template as a PDF. */
 export async function documentPdf(input: DocumentInput): Promise<Buffer> {
   const { layout } = input;
+  const tree = parseHtml(input.html);
+  const stored = await storedImages(input.appId, tree);
   const margin = layout.margin_mm * MM;
   const base = Math.max(layout.font_size, 5) * 1.15; // documents read at a slightly larger size than tables
   const [pw, ph] = PAPER[layout.paper] ?? PAPER.A4;
@@ -393,11 +422,13 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
     let data: Buffer | null = null;
     const src = el.attrs.src ?? '';
     if (src === 'logo') data = layout.logo;
+    // (sprint 253) a stored file: up to the upload size (a phone's photo), not the 2 MB of a data: URI
+    else if (STORED.test(src)) data = stored.get(src) ?? null;
     else {
       const m = /^data:image\/(png|jpe?g);base64,([a-z0-9+/=\s]+)$/i.exec(src);
       if (m) data = Buffer.from(m[2].replace(/\s+/g, ''), 'base64');
     }
-    if (!data || data.length > MAX_IMAGE) return null;
+    if (!data || (data.length > MAX_IMAGE && !STORED.test(src))) return null;
     const wAttr = /^(\d+(?:\.\d+)?)(mm|%)?$/.exec(el.attrs.width ?? '');
     const w = Math.max(1, Math.min(wAttr ? (wAttr[2] === '%' ? (Number(wAttr[1]) / 100) * width : wAttr[2] === 'mm' ? Number(wAttr[1]) * MM : Number(wAttr[1]) * 0.75) : layout.logo_width_mm * MM, width));
     try {
@@ -643,7 +674,7 @@ export async function documentPdf(input: DocumentInput): Promise<Buffer> {
   };
 
   doc.y = margin;
-  block(parseHtml(input.html).children, margin, usable, 'left');
+  block(tree.children, margin, usable, 'left');
 
   // the footer on every page: the layout's footer text and "page n of m"
   const range = doc.bufferedPageRange();

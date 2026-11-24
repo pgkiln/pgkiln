@@ -14,6 +14,32 @@ import { WebError, webRequest } from './webclient.ts';
 import { scopeForApp } from './network-acl.ts';
 import { credentialValidFor, loadCredential } from './websources.ts';
 import { deleteGraph, getGraph, graphProblem, putGraph, type GraphStoreConfig } from './objectstore-graph.ts';
+import { owner } from './db.ts';
+
+/** (sprint 253, MG-31) An &ITEM. substitution in object_store.folder / prefix. */
+export const SUBST = /&([A-Za-z][A-Za-z0-9_]*)\./g;
+
+/** (sprint 253) The part of a folder / prefix before its first substitution, up to its last "/": every record's subfolder lies below it. */
+export function staticPart(path: string | undefined) {
+  const s = path ?? '';
+  const at = s.search(SUBST);
+  return at < 0 ? s : s.slice(0, s.lastIndexOf('/', at) + 1);
+}
+
+/**
+ * (sprint 253, MG-31) The store with the &ITEM. substitutions of its folder (graph) or prefix (S3) replaced by
+ * `value(name)` (session state at upload time). Each value becomes (part of) one path segment: characters the
+ * store does not take, "/", "\\", control characters and runs of dots become "_"; an empty value becomes "_".
+ */
+export function resolveStore(o: ObjectStoreConfig, value: (name: string) => string | null | undefined): ObjectStoreConfig {
+  const graph = o.provider === 'graph';
+  const path = graph ? o.folder : o.prefix;
+  if (!path || !path.match(SUBST)) return o;
+  const bad = graph ? /[^\p{L}\p{N} _.()&'+,!#$%@=~-]/gu : /[^A-Za-z0-9!_.*'()-]/g;
+  const resolved = path.replace(SUBST, (_, name: string) =>
+    String(value(name.toUpperCase()) ?? '').trim().replace(bad, '_').replace(/\.{2,}/g, '_').replace(/\.$/, '_').slice(0, 100) || '_');
+  return graph ? { ...o, folder: resolved } : { ...o, prefix: resolved };
+}
 
 /** (sprint 244) A store: an S3-compatible bucket (provider "s3", the default) or a OneDrive / SharePoint folder ("graph"). */
 export type ObjectStoreConfig = S3StoreConfig | GraphStoreConfig;
@@ -51,8 +77,10 @@ export function objectStoreProblem(o: unknown): string | null {
     return 'object_store.url: the bucket\'s http(s) URL, without user, query or fragment.';
   }
   if (typeof c.credential !== 'string' || !/^[A-Z][A-Z0-9_]{0,59}$/i.test(c.credential)) return 'object_store.credential: the name of a web credential of type aws_sigv4.';
-  if (c.prefix !== undefined && (typeof c.prefix !== 'string' || !/^[A-Za-z0-9!_.*'()/-]{0,200}$/.test(c.prefix) || c.prefix.includes('..') || c.prefix.startsWith('/')))
-    return 'object_store.prefix: letters, digits and / _ . - ! * \' ( ), e.g. "photos/".';
+  // (sprint 253) &ITEM. substitutions are checked as a plain segment
+  const prefix = typeof c.prefix === 'string' ? c.prefix.replace(SUBST, 'x') : c.prefix;
+  if (prefix !== undefined && (typeof prefix !== 'string' || !/^[A-Za-z0-9!_.*'()/-]{0,200}$/.test(prefix) || prefix.includes('..') || prefix.startsWith('/')))
+    return 'object_store.prefix: letters, digits and / _ . - ! * \' ( ) and &ITEM. substitutions, e.g. "photos/" or "orders/&P3_ID./".';
   return null;
 }
 
@@ -112,6 +140,10 @@ async function credentialFor(appId: number, name: string) {
 export const objectUrl = (o: S3StoreConfig, key: string) => `${o.url.replace(/\/+$/, '')}/${key.split('/').map(rfc3986).join('/')}`;
 
 async function send(appId: number, o: S3StoreConfig, method: 'PUT' | 'GET' | 'DELETE', key: string, body?: Buffer, contentType?: string) {
+  // (sprint 253) a key (from the application's table or SQL) stays below the store's prefix (its static part):
+  // no other prefix, no dot segment (the URL would resolve it out of the bucket)
+  if (!key.startsWith(staticPart(o.prefix)) || key.split('/').some((s) => s === '.' || s === '..'))
+    throw new WebError(`The key ${key.slice(0, 200)} is not below the prefix of the object store.`);
   const cred = await credentialFor(appId, o.credential);
   const url = new URL(objectUrl(o, key));
   if (!credentialValidFor(cred, url.toString())) throw new WebError(`Web credential ${cred.name} is not valid for ${url.origin}.`);
@@ -140,6 +172,9 @@ async function send(appId: number, o: S3StoreConfig, method: 'PUT' | 'GET' | 'DE
 
 /** Store a file; returns its key. */
 export async function putObject(appId: number, o: ObjectStoreConfig, filename: string, content: Buffer, mime: string) {
+  // checked here too: a configuration may have come in through SQL or an import
+  const problem = objectStoreProblem(o);
+  if (problem) throw new WebError(problem);
   if (o.provider === 'graph') return putGraph(appId, o, filename, content, mime);
   const key = newObjectKey(o, filename);
   const res = await send(appId, o, 'PUT', key, content, mime);
@@ -163,3 +198,18 @@ export async function deleteObject(appId: number, o: ObjectStoreConfig, key: str
   if (res.status !== 404 && (res.status < 200 || res.status >= 300)) throw new WebError(`The object store did not remove the file (HTTP ${res.status}).`, res.status);
 }
 
+
+/**
+ * (sprint 253, MG-30) A file in the object store of the file item `item` of application `appId` (a document
+ * template's <img src="stored:ITEM:key">, an attachment of meta.add_mail_attachment_stored), or null when it is not
+ * there. Refused: an item that is not a file item of that application, or has no object store; the key must lie in
+ * the store (prefix / folder) as for a download.
+ */
+export async function storedObject(appId: number, item: string, key: string) {
+  const r = await owner.one<{ config: Record<string, any> | null }>(
+    `select i.config from meta.item i join meta.page p on p.id = i.page_id
+      where p.app_id = $1 and i.name = upper($2) and i.type = 'file' and i.config ? 'object_store' order by p.page_no limit 1`, [appId, item.slice(0, 128)]);
+  const store = objectStoreOf(r?.config);
+  if (!store) throw new WebError(`${item} is not a file item with an object store in this application.`);
+  return getObject(appId, store, key);
+}

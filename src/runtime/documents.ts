@@ -73,6 +73,7 @@ export async function templatePdf(ctx: PageContext, tpl: DocumentTemplate) {
     author: ctx.user,
     footer: layout.footer === null ? title : layoutText(layout.footer, extra, ctx),
     pageLabel: (page, pages) => ctx.locale.t('pdf.page', { page: String(page), pages: String(pages) }),
+    appId: ctx.app.id,
   });
   return { file, type: 'application/pdf', name: documentFilename(substitute(tpl.filename ?? tpl.name.toLowerCase(), ctx, (v) => v)) };
 }

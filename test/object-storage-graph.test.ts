@@ -12,10 +12,14 @@ import '../src/env.ts';
 import { buildApp } from '../src/app.ts';
 import { closePools, owner } from '../src/db.ts';
 import { objectStoreOf, objectStoreProblem } from '../src/objectstore.ts';
-import { GRAPH_CHUNK, graphFileName, pathUrl } from '../src/objectstore-graph.ts';
+import { driveUrl, GRAPH_CHUNK, graphFileName, pathUrl } from '../src/objectstore-graph.ts';
+import { putObject, resolveStore, staticPart } from '../src/objectstore.ts';
+import { documentPdf } from '../src/runtime/document.ts';
+import { BUILT_IN } from '../src/runtime/pdf.ts';
+import { mailTick } from '../src/mail/mail.ts';
 import { encryptSecret } from '../src/secrets.ts';
 import { Browser } from './helpers.ts';
-import { startGraphStub, STUB_CLIENT_ID, STUB_CLIENT_SECRET, STUB_TOKEN, type GraphStub } from './graph-stub.ts';
+import { startGraphStub, stubItem, STUB_CLIENT_ID, STUB_CLIENT_SECRET, STUB_TOKEN, type GraphStub } from './graph-stub.ts';
 
 process.env.PGKILN_SECRET_KEY = 'test-only-secret-key-0123456789abcdef';
 
@@ -205,6 +209,123 @@ describe('object storage in OneDrive / SharePoint (Microsoft Graph)', () => {
     const id = await putObject(appId, { ...store, credential: 'GRAPH_BEARER' }, 'bearer.txt', Buffer.from('b'), 'text/plain');
     assert.equal(stub.items.get(id)?.name, 'bearer.txt');
     stub.items.delete(id);
+  });
+});
+
+describe('stored files in PDFs and mails, a folder per record (sprint 253, MG-30, MG-31)', () => {
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+  const store = () => ({ provider: 'graph' as const, url: stub.url, drive: DRIVE, folder: 'HR/Documents', credential: 'GRAPH' });
+  const setFolder = (folder: string) =>
+    owner.query(`update meta.item set config = jsonb_set(config, '{object_store,folder}', to_jsonb($2::text)) where name = 'P1_FILE' and page_id in (select id from meta.page where app_id = $1)`, [appId, folder]);
+
+  test('substitutions: checked as a segment, each value one safe segment, the static part for containment', () => {
+    const o = { ...store(), folder: 'Orders/&P3_ID./Photos' };
+    assert.equal(objectStoreProblem(o), null);
+    assert.equal(objectStoreProblem({ provider: 's3', url: 'https://x/b', credential: 'S3', prefix: 'orders/&P3_ID./' }), null);
+    const v = (x: string | null) => (resolveStore(o, () => x) as typeof o).folder;
+    assert.equal(v('42'), 'Orders/42/Photos');
+    assert.equal(v('../../Finance'), 'Orders/____Finance/Photos');
+    assert.equal(v('a\\b\u0001c. '), 'Orders/a_b_c_/Photos');
+    assert.equal(v(''), 'Orders/_/Photos');
+    assert.equal(v(null), 'Orders/_/Photos');
+    assert.equal(objectStoreProblem(resolveStore(o, () => '..')), null);
+    const s3 = resolveStore({ url: 'https://x/b', credential: 'S3', prefix: 'orders/&P3_ID./' }, () => 'A/B c..d') as { prefix: string };
+    assert.equal(s3.prefix, 'orders/A_B_c_d/');
+    assert.equal(staticPart('Orders/&P3_ID./Photos'), 'Orders/');
+    assert.equal(staticPart('Orders/WB-&P3_ID./Photos'), 'Orders/');
+    assert.equal(staticPart('&P3_ID.'), '');
+    assert.equal(staticPart('Orders/Photos'), 'Orders/Photos');
+    // (a delegated credential) the signed-in user's OneDrive
+    assert.equal(driveUrl({ provider: 'graph', credential: 'G', drive: 'me' }), 'https://graph.microsoft.com/v1.0/me/drive');
+  });
+
+  test('a folder per record: the upload goes to the record\'s folder, downloads reach any record\'s folder, nothing outside', async () => {
+    await setFolder('HR/&P1_TITLE./Files');
+    try {
+      const b = new Browser(app);
+      await b.get(`/a/${ALIAS}/1`);
+      const res = await b.upload(`/a/${ALIAS}/1`, { __request: 'CREATE', P1_TITLE: '../Fin/ance' }, { P1_FILE: file('order.txt', 'per record') });
+      assert.equal(res.statusCode, 303, res.body.slice(0, 300));
+      assert.deepEqual(stored(), [`${DRIVE}:HR/__Fin_ance/Files/order.txt`]);
+      const row = await owner.one(`select * from t_graphstore.doc where title = '../Fin/ance'`);
+      const page = (await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`)).body;
+      assert.equal((await b.get(downloads(page, 'P1_FILE')[0])).body, 'per record');
+      // a key of a file outside the static part ("HR/") is refused
+      const outside = stubItem(stub, DRIVE, 'Finance', 'salaries.txt', 'secret');
+      await owner.query(`update t_graphstore.doc set file_key = $2 where id = $1`, [row.id, outside]);
+      const page2 = (await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`)).body;
+      const dl = await b.get(downloads(page2, 'P1_FILE')[0]);
+      assert.notEqual(dl.statusCode, 200);
+      assert.doesNotMatch(dl.body, /secret/);
+      stub.items.delete(outside);
+      await owner.query(`update t_graphstore.doc set file_key = null where id = $1`, [row.id]);
+      await b.get(`/a/${ALIAS}/1?P1_ID=${row.id}`);
+      await b.submit(`/a/${ALIAS}/1`, { __request: 'DELETE', P1_ID: String(row.id), P1_TITLE: '../Fin/ance' });
+    } finally {
+      await setFolder('HR/Documents');
+      for (const [id, i] of stub.items) if (i.folder.startsWith('HR/__Fin')) stub.items.delete(id);
+    }
+  });
+
+  test('<img src="stored:ITEM:key"> in a document: fetched while drawing; a missing or refused one is left out', async () => {
+    const id = await putObject(appId, store(), 'photo.png', PNG, 'image/png');
+    const outside = stubItem(stub, DRIVE, 'Finance', 'x.png', 'not here');
+    const draw = (src: string) => documentPdf({ html: `<p>Photo</p><img src="${src}" width="20mm">`, layout: { ...BUILT_IN }, title: 't', author: 'a', footer: 'f', pageLabel: () => 'p', appId });
+    try {
+      const images = (pdf: Buffer) => (pdf.toString('latin1').match(/\/Subtype \/Image/g) ?? []).length;
+      assert.ok(images(await draw(`stored:P1_FILE:${id}`)) > 0);
+      assert.ok(images(await draw(`stored:p1_file:${id}`)) > 0, 'the item name in any case');
+      assert.equal(images(await draw('stored:P1_FILE:01NOSUCHITEM')), 0);
+      assert.equal(images(await draw(`stored:P1_FILE:${outside}`)), 0, 'outside the folder');
+      assert.equal(images(await draw(`stored:P1_TITLE:${id}`)), 0, 'not a file item with an object store');
+      // without the application (a caller that does not pass it) nothing is fetched
+      assert.equal(images(await documentPdf({ html: `<img src="stored:P1_FILE:${id}">`, layout: { ...BUILT_IN }, title: 't', author: 'a', footer: 'f', pageLabel: () => 'p' })), 0);
+    } finally {
+      stub.items.delete(id);
+      stub.items.delete(outside);
+    }
+  });
+
+  test('meta.add_mail_attachment_stored: the sender fetches the file when it sends; a missing file fails the mail', async () => {
+    const id = await putObject(appId, store(), 'report.txt', Buffer.from('the report'), 'text/plain');
+    const sid = (await owner.one(`insert into meta.mail_service (name, provider, senders, settings) values ('T253_LOG', 'log', '{@example.com}', '{"default_from": "app@example.com"}') returning id`)).id;
+    await owner.query(`insert into meta.app_mail_service (app_id, service_id, from_address, is_default) values ($1, $2, 'app@example.com', true)`, [appId, sid]);
+    const queue = async (key: string) => {
+      const c = await owner.pool.connect();
+      try {
+        await c.query('begin');
+        await c.query(`select set_config('pgkiln.app_id', $1, true), set_config('pgkiln.app_user', 'KING', true)`, [String(appId)]);
+        await c.query('set local role hr_app');
+        const m = (await c.query(`select meta.send_mail('king@example.com', 'T253 report', 'x') as id`)).rows[0].id;
+        await c.query(`select meta.add_mail_attachment_stored($1, 'p1_file', $2, 'report.txt', 'text/plain')`, [m, key]);
+        await c.query('commit');
+        return m as string;
+      } catch (e) {
+        await c.query('rollback');
+        throw e;
+      } finally {
+        c.release();
+      }
+    };
+    try {
+      const m = await queue(id);
+      const a = await owner.one('select content, stored_item, stored_key from meta.mail_attachment where mail_id = $1', [m]);
+      assert.deepEqual(a, { content: null, stored_item: 'P1_FILE', stored_key: id });
+      stub.log.length = 0;
+      await mailTick();
+      const sent = await owner.one('select status, message from meta.mail_queue where id = $1', [m]);
+      assert.equal(sent.status, 'sent', sent.message);
+      assert.ok(stub.log.some((l) => l.path.endsWith(`/items/${id}/content`)), 'fetched from the store when sending');
+      const missing = await queue('01NOSUCHITEM');
+      await mailTick();
+      const failed = await owner.one('select status, message from meta.mail_queue where id = $1', [missing]);
+      assert.equal(failed.status, 'error');
+      assert.match(failed.message, /not in the object store of P1_FILE/);
+    } finally {
+      stub.items.delete(id);
+      await owner.query(`delete from meta.mail_queue where app_id = $1`, [appId]);
+      await owner.query(`delete from meta.mail_service where name = 'T253_LOG'`);
+    }
   });
 });
 

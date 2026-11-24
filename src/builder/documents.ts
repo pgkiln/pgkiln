@@ -56,7 +56,7 @@ export async function documentRoutes(app: FastifyInstance) {
       const layout = await layoutFor(a.id, tpl.layout ?? undefined);
       const file = await documentPdf({
         html: htmlOut, layout, title: tpl.description ?? tpl.name, author: s.username ?? 'builder',
-        footer: `${tpl.description ?? tpl.name} · preview`, pageLabel: (p, n) => english('pdf.page', { page: String(p), pages: String(n) }),
+        appId: a.id, footer: `${tpl.description ?? tpl.name} · preview`, pageLabel: (p, n) => english('pdf.page', { page: String(p), pages: String(n) }),
       });
       return reply.type('application/pdf').header('content-disposition', `inline; filename="${tpl.name.toLowerCase()}-preview.pdf"`).send(file);
     } catch (e) {
