@@ -6,7 +6,7 @@ Released changes are in the [changelog](CHANGELOG.md).
 
 ## Where it stands
 
-- **Current release:** 0.115.0 (November 2026): multiple file items outside a form region (`parent_item`), for pages that save with their own processes. 0.114.0 before it: gaps found migrating a second Appsmith application (MG-17 … MG-29).
+- **Current release:** 0.116.0 (November 2026): files kept in object storage (OneDrive, SharePoint, S3) in document templates (`<img src="stored:ITEM:key">`) and mail attachments (`meta.add_mail_attachment_stored`), a folder per record (`&ITEM.` in `object_store.folder` / `prefix`), and fixes for Authorize on web credentials and Entra token answers over 2 KB. 0.115.0 before it: multiple file items outside a form region (`parent_item`). 0.114.0 before it: gaps found migrating a second Appsmith application (MG-17 … MG-29).
 - **APEX parity (26.2):** 174 features compared: 171 available, none partial, none missing (WS-7, the builder in
   more languages, arrived in sprint 121), 3 deliberately not planned (PostgreSQL or the platform covers them).
 
