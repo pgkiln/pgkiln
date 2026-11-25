@@ -30,6 +30,8 @@ export const REGION_OPTIONS: readonly TemplateOption[] = [
   { cls: 'to-tone-danger', label: 'Danger (red background)' },
   { cls: 'to-dialog-small', label: 'Inline dialog: small (400 px)' },
   { cls: 'to-dialog-large', label: 'Inline dialog: large (960 px)' },
+  // (sprint 255) Appsmith's and APEX's left-aligned labels: one field per row, the label beside it (also on phones)
+  { cls: 'to-labels-left', label: 'Labels beside the fields (one field per row)' },
 ];
 
 export const BUTTON_OPTIONS: readonly TemplateOption[] = [
@@ -50,6 +52,7 @@ export const ITEM_OPTIONS: readonly TemplateOption[] = [
   { cls: 'to-quiet', label: 'Quiet (no border until focused)' },
   { cls: 'to-bold', label: 'Bold value' },
   { cls: 'to-hide-label', label: 'Hide the label (kept for screen readers)' },
+  { cls: 'to-label-left', label: 'Label beside the field (the whole row)' },
 ];
 
 /** (0.29) report columns: on the column's cells (region config "column_options") */
