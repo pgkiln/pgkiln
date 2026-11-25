@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.117.0] - 2026-11-25
+
 ### Added
 - **Content width** (sprint 254, MG-32): per application (Settings → User Interface, `theme.content_width`) and per
   page (`meta.page.content_width`, migration 208): `full` (the whole window, with the usual gutter) or a maximum in px
