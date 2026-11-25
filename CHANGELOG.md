@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Highlights the developer sets** (sprint 257): an interactive report's `highlights` attribute colours rows, or with
+  `"scope": "cell"` one column's cell, that match a condition, always on (APEX: the primary report's highlights;
+  Appsmith's cell colours). Operators and colours from the users' highlight lists; the column must be one of the
+  query's; the value is a literal. HR part 117: page 6.
+
 ## [0.119.0] - 2026-11-25
 
 ### Fixed
