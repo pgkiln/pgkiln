@@ -20018,8 +20018,10 @@ describe('sprint 239 MG-12/MG-4', () => {
     return b;
   };
   const REASON_239 = 'sprint 239 security';
+  // consecutive weeks from a random start: two requests of one test never overlap (the HR app refuses overlapping leave)
+  let nextDay = 7100 + 7 * Math.floor(Math.random() * 400);
   const week = () => {
-    const day = 7100 + Math.floor(Math.random() * 3000);
+    const day = (nextDay += 7);
     return { P7_START_DATE: new Date(Date.now() + day * 864e5).toISOString().slice(0, 10), P7_END_DATE: new Date(Date.now() + (day + 6) * 864e5).toISOString().slice(0, 10) };
   };
   const signer = async (user = 'allen') => {

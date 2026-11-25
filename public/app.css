@@ -457,7 +457,11 @@ dialog[data-inline-region] > .region-footer > .region-footer-buttons { display: 
   .region-tablist { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
   .region-tab { white-space: nowrap; padding: 0.5rem 0.7rem; }
 }
-.region-header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 50px; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+.region-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem 1rem; min-height: 50px; padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); }
+/* (sprint 256) a header's buttons go under the title when they don't fit, and on phones a long label wraps: the page
+   never gets wider than the screen */
+.region-header > .buttons { min-width: 0; max-width: 100%; }
+@media (max-width: 640px) { .region-header .btn { white-space: normal; text-align: center; } }
 .region-collapsible summary.region-header { cursor: pointer; list-style: none; }
 .region-collapsible summary.region-header::-webkit-details-marker { display: none; }
 .region-collapsible details:not([open]) summary.region-header { border-bottom: 0; }
