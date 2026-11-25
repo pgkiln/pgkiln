@@ -6,7 +6,7 @@ import { pushBody } from './push.ts';
 import { mapHead } from './maps.ts';
 import { staticHead } from './static-files.ts';
 import { pluginAttributes, pluginOf } from './plugins.ts';
-import { appStyles, chosenStyle, chosenStyleName, conditionalStyles, navAppearance, styleChoice, themeCss } from './styles.ts';
+import { appStyles, chosenStyle, contentWidth, chosenStyleName, conditionalStyles, navAppearance, styleChoice, themeCss } from './styles.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon } from '../icons.ts';
 import { documentShell } from '../layout.ts';
@@ -152,6 +152,12 @@ async function navTree(ctx: PageContext, topNav = false) {
 
 // ---------------------------------------------------------------- theme
 
+/** (sprint 254, MG-32) The page's content width, else the application's: the whole window, or a centred maximum. */
+function contentWidthClass(ctx: PageContext) {
+  const w = ctx.dialog ? null : contentWidth(ctx.page.content_width) ?? contentWidth(ctx.app.theme?.content_width);
+  return w ? ` t-own-width ${ctx.css.cls(`--content-width:${w === 'full' ? 'none' : `${w}px`}`)}` : '';
+}
+
 /** Per-app colours (Theme Roller) and the style variant in use. Only checked values reach the CSS (styles.ts). */
 export const themeStyle = (ctx: Pick<PageContext, 'app' | 'session' | 'styleByCondition'>) =>
   themeCss(ctx.app.theme, chosenStyle(ctx.app, ctx.session, ctx.styleByCondition), (name) => {
@@ -277,7 +283,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string, slots: 
   if (ctx.page.page_template === 'no_navigation')
     return documentShell(
       `${title} · ${ctx.app.name}`,
-      html`<main class="t-main t-nonav-main" id="main">${main}
+      html`<main class="t-main t-nonav-main${contentWidthClass(ctx)}" id="main">${main}
         ${ctx.app.version ? html`<footer class="t-footer"><span class="t-version">${ctx.locale.tr(ctx.app.version)}</span></footer>` : ''}</main>
       ${devbarHtml(ctx)}`,
       't-nonav',
@@ -349,7 +355,7 @@ export async function chrome(ctx: PageContext, main: Raw, title: string, slots: 
     <div class="t-body">
       <nav id="t-nav" class="t-nav" aria-label="Main"><ul>${nav}</ul></nav>
       <a href="#" class="t-nav-backdrop" tabindex="-1" aria-hidden="true"></a>
-      <main class="t-main" id="main">${main}
+      <main class="t-main${contentWidthClass(ctx)}" id="main">${main}
         <footer class="t-footer">${ctx.app.version ? html`<span class="t-version">${ctx.locale.tr(ctx.app.version)}</span>` : ''}<a class="t-top" href="#top">${icon('arrow-up')} ${t('common.back_to_top')}</a></footer></main>
     </div>
     ${devbarHtml(ctx)}`,

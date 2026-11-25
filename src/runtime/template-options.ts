@@ -20,6 +20,16 @@ export const REGION_OPTIONS: readonly TemplateOption[] = [
   { cls: 'to-stretch', label: 'Stretch to the row height' },
   { cls: 'to-center', label: 'Centre the text' },
   { cls: 'to-hide-header', label: 'Hide the header (kept for screen readers)' },
+  // (sprint 254, MG-34, MG-35) text weight and size, a coloured background (a notification), inline dialog sizes
+  { cls: 'to-text-right', label: 'Right-align the text' },
+  { cls: 'to-bold', label: 'Bold text' },
+  { cls: 'to-text-large', label: 'Large text' },
+  { cls: 'to-tone-info', label: 'Information (accent background)' },
+  { cls: 'to-tone-success', label: 'Success (green background)' },
+  { cls: 'to-tone-warning', label: 'Warning (amber background)' },
+  { cls: 'to-tone-danger', label: 'Danger (red background)' },
+  { cls: 'to-dialog-small', label: 'Inline dialog: small (400 px)' },
+  { cls: 'to-dialog-large', label: 'Inline dialog: large (960 px)' },
 ];
 
 export const BUTTON_OPTIONS: readonly TemplateOption[] = [
