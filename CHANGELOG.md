@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.116.0] - 2026-11-24
+
 ### Added
 - **Stored files in PDFs and mails** (sprint 253, MG-30): a file that a file item keeps in object storage (S3,
   OneDrive, SharePoint) can go into a document template as `<img src="stored:ITEM:key">` (fetched by the server while
