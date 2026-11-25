@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.120.0] - 2026-11-25
+
 ### Added
 - **Highlights the developer sets** (sprint 257): an interactive report's `highlights` attribute colours rows, or with
   `"scope": "cell"` one column's cell, that match a condition, always on (APEX: the primary report's highlights;
