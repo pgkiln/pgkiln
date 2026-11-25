@@ -123,6 +123,20 @@ only; breadcrumb regions and regions in the banner position still show. On a mod
 nothing (a dialog has no header or menu), which the Advisor says. HR page 68 *Visitor sign-in* uses
 it (HR part 104).
 
+### Content width
+
+(sprint 254) A page's content stops at 1500 px and starts at the left, beside the navigation menu. **Content width**
+changes that, for the whole application (**Settings → User Interface → Content width**, kept in the theme as
+`content_width`) and for a page (Page Designer → Page → Appearance; `content_width` in the files), the page's value
+winning:
+
+- `full`: the content uses the whole window, with the usual gutter of 1.5 rem on each side (as low-code tools that
+  draw on a canvas do);
+- a number from 320 to 3840: at most so many px, centred.
+
+Empty means the application's setting, and the application's empty setting the default. The footer (version, *Back
+to top*) follows the same width. Modal pages keep their dialog size. HR page 78 *Launchpad* uses `full` (HR part 115).
+
 ### Side columns and display positions
 
 Like APEX's Universal Theme, a page has **display positions** and a region chooses one with its
@@ -217,7 +231,7 @@ Region **templates**:
 | `hero` | A large banner: an icon (`{"icon": "users"}` in the attributes), the title, the text and the buttons (APEX: Hero) |
 | `title_bar` | The title and buttons on one line over the content, without a card (APEX: Title Bar) |
 | `buttons_container` | The buttons only (after any text), without a header (APEX: Buttons Container) |
-| `inline_dialog` | Hidden until opened, then a dialog over the page with a close button; Esc and a click beside it close it too (APEX: Inline Dialog) |
+| `inline_dialog` | Hidden until opened, then a dialog centred over the page with a close button; Esc and a click beside it close it too (APEX: Inline Dialog). [Template options](#template-options) make it a notification: no header, a coloured background, large bold text, small or large |
 | `inline_drawer` | The same, as a panel docked to the right edge (APEX: Inline Drawer) |
 | `wizard` | A narrow, centred card for one step of a wizard; a [list](#list-lists) region with template `wizard_progress` above it shows the steps (APEX: Wizard Container) |
 | `tabs_container` | (sprint 195) A card whose [sub regions](#sub-regions) are tabs: one tab per sub region, its title as the tab's label (APEX: Tabs Container) |
@@ -358,7 +372,15 @@ in `public/app.css`, and follow the app's [style variant](14-globalization.md#st
 | Scroll the body | `to-scroll` | The body is at most 24 rem high and scrolls |
 | Stretch to the row height | `to-stretch` | Regions side by side get the same height |
 | Centre the text | `to-center` | Body text centred |
-| Hide the header | `to-hide-header` | The header is hidden visually but kept for screen readers (standard template) |
+| Hide the header | `to-hide-header` | The header is hidden visually but kept for screen readers (standard template, inline dialog: Esc and a click outside still close it) |
+| Right-align the text | `to-text-right` | (sprint 254) Body text right-aligned |
+| Bold text / Large text | `to-bold`, `to-text-large` | (sprint 254) The body's text bold, or 1.35 rem (a greeting, a notification) |
+| Information / Success / Warning / Danger | `to-tone-info`, `to-tone-success`, `to-tone-warning`, `to-tone-danger` | (sprint 254) A soft background in that colour with a coloured left border (also for inline dialogs: a notification) |
+| Inline dialog: small / large | `to-dialog-small`, `to-dialog-large` | (sprint 254) An inline dialog 400 px or 960 px wide (default 640 px) |
+
+Centre the text, Right-align, Bold and Large text also work on plain regions (no frame), e.g. a centred bold
+greeting. (sprint 254) An inline dialog is always centred, also when the application's own CSS gives regions a
+margin (`.t-regions > .region { margin: … }` used to push it into the top-left corner).
 
 | Button option | Class | Effect |
 |---|---|---|
@@ -1606,7 +1628,7 @@ select d.dname as label, 2 as page, null::jsonb as items, 'building' as icon,
 ```
 
   Only `label` is required; the other columns are `page`, `items` (JSON object of item values),
-  `url`, `icon`, `badge`, `description`, and `id` / `parent_id` for nesting. At most 500 rows.
+  `url`, `icon`, `badge`, `description`, `color` (a tile's `#rrggbb`), and `id` / `parent_id` for nesting. At most 500 rows.
 
 An entry's **target** is a page of the application with item values (`{"P3_ID": "&P2_ID."}`; links
 carry the [checksum](08-security.md#session-state-protection) like other generated links), a path
@@ -1625,7 +1647,16 @@ Attributes (the region's **Settings** in the page designer):
 | Key | Meaning |
 |---|---|
 | `list` | The list's name (upper case) |
-| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description; (sprint 88) a colour band and the icon in a round badge, in the chart palette's order), `tabs` (the top-level entries as tabs) or `wizard_progress` (numbered steps: the entry of the current page is the current step, the ones before it are done and link back; APEX: Wizard Progress) |
+| `template` | `links` (default: nested links), `badges` (a row of tiles with the badge as the value), `cards` (a card per entry with its description; (sprint 88) a colour band and the icon in a round badge, in the chart palette's order), `tabs` (the top-level entries as tabs), `wizard_progress` (numbered steps: the entry of the current page is the current step, the ones before it are done and link back; APEX: Wizard Progress) or (sprint 254) `tiles` (see below) |
+| `tile_height`, `tile_gap`, `tile_columns`, `tile_icon_size`, `tile_align` | `tiles` only: the row height (32–400 px, default 90), the gap (0–64 px, default 8), the number of columns (1–12; default as many 14 rem tiles as fit; phones always one), the icon size (16–200 px, default 45) and where icon and label sit (`left`, `right`, default centred) |
+
+**Tiles** (sprint 254; Appsmith's home-screen containers) show each entry as a coloured link: its icon and its label
+as real text (screen readers, translations and the search of the browser read it, unlike a picture with the text
+drawn in). An entry's **Tile colour** (`color`, `#rrggbb`; a query's `color` column) is its background, the accent
+colour without one; the text is black or white, whichever has the better contrast. The icon is an icon name or a
+picture among the application's files (`#APP_FILES#tile-orders.svg`, any path on this server); other addresses show
+no icon. HR page 78 *Launchpad* has a list `HR_LAUNCHPAD` with six tiles in three columns, one of which opens an
+inline dialog shown as a notification (`#launch-reminder`).
 
 The HR example's page 31 (Shortcuts) shows a static list with each template (with a badge from an
 item, child entries, a manager-only entry and one of an excluded build option) and a department
