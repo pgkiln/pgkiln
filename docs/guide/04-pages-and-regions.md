@@ -377,6 +377,7 @@ in `public/app.css`, and follow the app's [style variant](14-globalization.md#st
 | Bold text / Large text | `to-bold`, `to-text-large` | (sprint 254) The body's text bold, or 1.35 rem (a greeting, a notification) |
 | Information / Success / Warning / Danger | `to-tone-info`, `to-tone-success`, `to-tone-warning`, `to-tone-danger` | (sprint 254) A soft background in that colour with a coloured left border (also for inline dialogs: a notification) |
 | Inline dialog: small / large | `to-dialog-small`, `to-dialog-large` | (sprint 254) An inline dialog 400 px or 960 px wide (default 640 px) |
+| Labels beside the fields | `to-labels-left` | (sprint 255) One field per row with its label to the left (a third of the row, at least 6 rem), also on phones: APEX's left-aligned labels, Appsmith's label position *Left*. Checkbox groups and radio groups keep their legend above |
 
 Centre the text, Right-align, Bold and Large text also work on plain regions (no frame), e.g. a centred bold
 greeting. (sprint 254) An inline dialog is always centred, also when the application's own CSS gives regions a
@@ -398,6 +399,7 @@ margin (`.t-regions > .region { margin: … }` used to push it into the top-left
 | Quiet | `to-quiet` | No border or background until the field has the focus |
 | Bold value | `to-bold` | The value in bold (also for display items) |
 | Hide the label | `to-hide-label` | The label is hidden visually but kept for screen readers |
+| Label beside the field | `to-label-left` | (sprint 255) This field takes the whole row with its label to the left; for one field of a form whose others keep their labels above |
 
 **Report columns** get a **Display** choice in the region's *Report settings* (one per column): *Bold*
 (`to-col-bold`), *Muted*, *No wrapping*, *Monospace*, *Right-aligned* or *Centred*, kept in the region's config as

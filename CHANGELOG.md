@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Labels beside the fields** (sprint 255): region template option `to-labels-left` (one field per row, the label in
+  the left third, also on phones; APEX's left-aligned labels, Appsmith's label position *Left*) and item option
+  `to-label-left` for a single field. Found comparing two migrated Appsmith applications page by page.
+
 ## [0.117.0] - 2026-11-25
 
 ### Added
