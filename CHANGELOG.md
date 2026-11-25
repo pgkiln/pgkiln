@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.119.0] - 2026-11-25
+
 ### Fixed
 - A region header with long button labels made the page wider than a phone's screen (the header didn't wrap, a
   button never broke its label): the buttons now go under the title when they don't fit, and on phones a long label
