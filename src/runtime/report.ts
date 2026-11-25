@@ -290,6 +290,19 @@ interface Highlight extends Filter {
   color: string;
 }
 
+/**
+ * (sprint 257) Highlights the developer set in the region's config ({"highlights": [{"column": "besteldatum", "op":
+ * "null", "color": "yellow", "scope": "cell"}]}): always on, not removable. Operators and colours from the users'
+ * lists; the column must be one of the query's (checked when the SQL is made); the value is a literal like a user's.
+ */
+export function configHighlights(r: Pick<Region, 'config'>): (Highlight & { cell: boolean })[] {
+  const list = Array.isArray(r.config?.highlights) ? r.config.highlights : [];
+  return list.slice(0, 10).flatMap((h: any) =>
+    h && typeof h.column === 'string' && HIGHLIGHT_OPERATORS.includes(h.op) && HIGHLIGHT_COLORS.includes(h.color)
+      ? [{ column: h.column, op: h.op, color: h.color, value: h.value == null ? '' : String(h.value).slice(0, 500), raw: '', cell: h.scope === 'cell' }]
+      : []);
+}
+
 export interface ReportState {
   search: string;
   /** (sprint 76) the column the search is limited to (the search field's column list), or null: all */
@@ -574,7 +587,7 @@ export async function filtered(ctx: PageContext, r: Region, st: ReportState) {
   const p = new SqlParams();
   const hides = hidesColumns(r);
   const facets = facetFilters(ctx.params, r.id, reportFacetDefs(ctx.page.regions, r.id, ctx.vis?.regions), undefined, appDateReader(ctx));
-  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort)) || st.search;
+  const needCols = st.filters.length || facets.length || st.breakCol || st.aggregates.length || st.highlights.length || configHighlights(r).length || st.view !== 'report' || st.area || st.near || keysetColumns(r) || (hides && (st.search || st.sort)) || st.search;
   // column name → type oid
   const fields = needCols ? await fieldsOf(ctx, src) : [];
   const cols = new Map<string, number>(fields.map((f) => [f.name, f.dataTypeID]));
@@ -622,6 +635,10 @@ export async function buildSql(ctx: PageContext, r: Region, st: ReportState, mod
     // highlights: one boolean per rule, the first true one colors the row
     st.highlights.forEach((h, i) => {
       if (userCols.has(h.column)) extra.push(`coalesce(${OPERATORS[h.op].sql(q(h.column), h.value)}, false) as "__h${i}"`);
+    });
+    // (sprint 257) the developer's highlights: any column of the query, also a hidden one
+    configHighlights(r).forEach((h, i) => {
+      if (cols.has(h.column)) extra.push(`coalesce(${OPERATORS[h.op].sql(q(h.column), h.value)}, false) as "__d${i}"`);
     });
   }
   const order: string[] = [];
@@ -1016,6 +1033,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     if (info.page > 2) info.prev = seekToken(ctx, r, st, info.page - 1, 'p', at(info.rows[0]));
   }
   const hlIdx = st.highlights.map((_, i) => res.fields.findIndex((f) => f.name === `__h${i}`));
+  const devHl = configHighlights(r).map((h, i) => ({ ...h, idx: res.fields.findIndex((f) => f.name === `__d${i}`) })).filter((h) => h.idx >= 0);
   // (sprint 76) without the columns the user hid (a heading's menu → Hide)
   const userHidden = new Set(st.hideCols.map((c) => c.toLowerCase()));
   // (143) in the user's order
@@ -1120,7 +1138,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
         body.push(html`<tr class="break-row"><th colspan="${cols.length + lead || 1}" scope="colgroup">${headingOf(r, breakField.name, ctx.locale.tr)}: ${value || '—'}</th></tr>`);
       }
     }
-    const hl = st.highlights.find((_, hi) => hlIdx[hi] >= 0 && row[hlIdx[hi]] === true);
+    const hl = st.highlights.find((_, hi) => hlIdx[hi] >= 0 && row[hlIdx[hi]] === true) ?? devHl.find((h) => !h.cell && row[h.idx] === true);
+    const cellHl = (name: string) => devHl.find((h) => h.cell && h.column === name && row[h.idx] === true);
     const pick = selIdx >= 0
       ? html`<td class="row-select" data-label="${t('report.select_row')}"><input type="checkbox" name="${selection!.item}" value="${cell(row[selIdx])}"${selected.has(cell(row[selIdx])) ? raw(' checked') : ''} aria-label="${t('report.select_row')} ${cell(row[selIdx])}"></td>`
       : '';
@@ -1130,7 +1149,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       : '';
     body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${edit}${lk ? lk.rowLead(row, rowNum) : ''}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
-      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name)].filter(Boolean).join(' ') || null;
+      const ch = cellHl(f.name);
+      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name), ch ? `hl-cell hl-${ch.color}` : ''].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
       const tpl = templated.get(i);
       if (tpl) return html`<td class="${cls ? `${cls} tc-cell` : 'tc-cell'}" data-label="${label}">${tpl(row, rowNum)}</td>`;

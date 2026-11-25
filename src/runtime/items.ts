@@ -16,7 +16,9 @@ import { markdownHtml, sanitizeHtml } from '../richtext.ts';
 import { qrSvg, type Ecc } from '../qrcode.ts';
 import { formatNumber, isPlainNumber, maskError } from '../numformat.ts';
 import { addressControl, imageControl } from './data-items.ts';
-import { applyMask, formatMaskError, monthNames, parseDateMask } from './format.ts';
+import { applyMask, DATE_OID, formatMaskError, monthNames, parseDateMask } from './format.ts';
+/** timestamp without time zone */
+const TIMESTAMP_OID = 1114;
 import { heading, itemLabel, itemPlaceholder, NULL_CHOICE_TYPES, PLACEHOLDER_TYPES } from './item-texts.ts';
 
 const TRUTHY = new Set(['true', 't', 'on', '1', 'yes', 'y']);
@@ -228,6 +230,11 @@ export function itemMask(item: Item): string | null {
 
 /** The value as the item shows it: a number with the item's mask; anything else (e.g. text typed in error) as it is. */
 function maskedValue(ctx: PageContext, item: Item, value: string) {
+  // (sprint 257) a read-only date or date-time: in the item's date mask, else the application's date / timestamp format
+  if ((item.type === 'date' || item.type === 'datetime') && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+    const own = typeof item.config?.format_mask === 'string' && !formatMaskError(item.config.format_mask.trim()) ? item.config.format_mask.trim() : null;
+    return ctx.locale.masked(own)(value.replace(' ', 'T'), item.type === 'date' ? DATE_OID : TIMESTAMP_OID) ?? value;
+  }
   const m = itemMask(item);
   if (!m || !value || !isPlainNumber(value)) return value;
   return formatNumber(value, m, ctx.locale.numbers) ?? value;

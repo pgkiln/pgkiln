@@ -21727,3 +21727,35 @@ describe('sprint 254 layout MG-32 … MG-35', () => {
     }
   });
 });
+
+describe('sprint 257 report highlights from the config', () => {
+  // A developer's highlight writes a column, an operator and a value into the report's SQL: only a column of the
+  // query, an operator and a colour from the fixed lists, and the value as an escaped literal.
+  test('unknown columns, operators and colours are ignored; a value cannot break out of its literal', async () => {
+    const { configHighlights } = await import('../src/runtime/report.ts');
+    assert.deepEqual(configHighlights({ config: { highlights: [
+      { column: 'status', op: 'eq', value: 'X', color: 'yellow', scope: 'cell' },
+      { column: 'status', op: 'drop table', value: 'X', color: 'yellow' },
+      { column: 'status', op: 'eq', value: 'X', color: 'url(x)' },
+      { column: 1, op: 'eq', value: 'X', color: 'red' },
+      'nonsense', null] } }).map((h) => [h.column, h.op, h.color, h.cell]), [['status', 'eq', 'yellow', true]]);
+    assert.deepEqual(configHighlights({ config: { highlights: 'x' } }), []);
+    const region = await owner.one(`select r.id, r.config from meta.region r join meta.page p on p.id = r.page_id
+      where p.app_id = $1 and p.page_no = 6 and r.title = 'Requests you can see'`, [appId]);
+    await owner.query(`update meta.region set config = config || $2::jsonb where id = $1`, [region.id, JSON.stringify({ highlights: [
+      { column: 'status', op: 'eq', value: `PENDING') or (select pg_sleep(3)) is null or ('`, color: 'red' },
+      { column: 'no_such_column"; drop table hr.emp; --', op: 'null', color: 'red' },
+      { column: 'status', op: 'eq', value: 'PENDING', color: 'yellow', scope: 'cell' }] })]);
+    try {
+      const t0 = Date.now();
+      const res = await (await as('king')).get('/a/hr/6');
+      assert.equal(res.statusCode, 200);
+      assert.ok(Date.now() - t0 < 2500, 'the value is a literal, not SQL');
+      assert.match(res.body, /<td class="hl-cell hl-yellow" data-label="Status">PENDING<\/td>/);
+      assert.doesNotMatch(res.body, /<tr class="hl-red"/);
+      assert.equal(Number((await owner.one(`select count(*) as n from hr.emp`)).n) > 0, true);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [region.id, region.config]);
+    }
+  });
+});

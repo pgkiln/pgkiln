@@ -5,6 +5,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Highlights the developer sets** (sprint 257): an interactive report's `highlights` attribute colours rows, or with
+  `"scope": "cell"` one column's cell, that match a condition, always on (APEX: the primary report's highlights;
+  Appsmith's cell colours). Operators and colours from the users' highlight lists; the column must be one of the
+  query's; the value is a literal. HR part 117: page 6.
+
+### Fixed
+- A read-only date or date-time item showed its raw value (`2026-09-29T07:50`): it now uses the item's date mask, else
+  the application's date / timestamp format; a timestamp without a format shows `2026-09-29 07:50` (sprint 257).
+
 ## [0.119.0] - 2026-11-25
 
 ### Fixed
