@@ -433,7 +433,7 @@ src/
                            page has a breadcrumb region), the page's help text (meta.page.help) as Markdown with escaped &ITEM. values
     styles.ts              base styles (BASE_STYLES: Iris, Lavender, Standard; baseStyleOf → html data-style), Theme Roller style variants: fixed lists (fonts, sizes, corners), parseStyle/appStyles checks, the request's
                            style (user choice, default), themeCss() (only hex values and constants reach the CSS); (sprint 117) NAV_APPEARANCES
-                           (Pillar Light / Dark), navAppearance() → the <body> classes nav-pillar-*, the header strip (--strip)
+                           (Pillar Light / Dark), navAppearance() → the <body> classes nav-pillar-*, the header strip (--strip); (254) contentWidth() (full or 320–3840 px), used by render.ts contentWidthClass (--content-width on <main>)
     template-options.ts    template options: the fixed CSS class list per region and button, templateClasses() (unknown values ignored)
     regions.ts             region shell + chart (drill-down links, gauge settings)/cards/dynamic dispatch with row limits, lazy placeholder and cache, buttons (menu buttons, badges; (124) menu entries {action} → data-menu-entry for menu_entry dynamic actions)
                            (sprint 195, migration 172) sub regions: childrenOf, renderChildren (tabs_container: tab links + panels that app.js
@@ -508,7 +508,7 @@ src/
     rest-sources.ts        REST data sources in apps: regions and LOVs as SQL over "rest", the invoke_api process (items; the call is websources.ts invoke()),
                            write-back of forms (fetch, form_dml) and grids (grid_dml) through the source's operations
     tree.ts                tree region
-    lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar
+    lists.ts               lists: static entries or a query, visibility (authorization, conditions, page access), safe URLs; list regions, navigation menu and bar; (254) the tiles template (tilesMarkup, textOn: black or white on an entry's colour)
     template-components.ts template components: template language (allow-list, directives, escaping), plug-in files, report column templates
     builtin-components.ts  built-in template components (ut_avatar, ut_badge, ut_comments, ut_content_row, ut_media_list, ut_metric_card, ut_timeline)
     template-region.ts     template_component region
@@ -574,7 +574,7 @@ src/
                            which security.ts adds to the CSP's img-src (normalised origins only, at most 50)
     data-items.ts          display image and address items (migration 086): imageUrl (https origins into the CSP's img-src),
                            GET …/image/:item (a BLOB from the item's query), POST …/geocode/:item, and items kept per user
-                           (loadPreferences / savePreferences through meta.get_preference / set_preference)
+                           (loadPreferences / savePreferences through meta.get_preference / set_preference); (254) imageBox: an image item's height/fit/position/align as CSS variables
     data-export.ts         the download process's {"export": …}: meta.data_export for csv/json/xml/html, Excel and PDF here
     devbar.ts              developer toolbar and session state viewer (migration 079): the pgkiln_devbar token of a builder
                            session (ensureDevbar/devbarOf), the toolbar markup, the viewer, clear and per-session debug routes

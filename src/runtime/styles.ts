@@ -242,3 +242,13 @@ export function themeCss(theme: App['theme'] | undefined, style: StyleVariant | 
   }
   return out.join('');
 }
+
+/**
+ * (sprint 254, MG-32) A content width as stored ('full', or a maximum in px from 320 to 3840), or null for anything
+ * else: the value is checked here again before it reaches the page's CSS.
+ */
+export function contentWidth(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim().toLowerCase().replace(/px$/, '') : typeof v === 'number' ? String(v) : '';
+  if (s === 'full') return s;
+  return /^\d{3,4}$/.test(s) && Number(s) >= 320 && Number(s) <= 3840 ? s : null;
+}

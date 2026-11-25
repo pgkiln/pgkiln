@@ -372,7 +372,11 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .crumbs li + li::before { content: "/"; margin-right: 0.35rem; color: var(--border); }
 .crumbs a { color: var(--muted); text-decoration: none; }
 .crumbs a:hover { color: var(--accent); text-decoration: underline; }
-.t-content { padding: 1.25rem 1.5rem 3rem; max-width: 1500px; }
+.t-content { padding: 1.25rem 1.5rem 3rem; max-width: var(--content-width, 1500px); }
+/* (sprint 254, MG-32) the page's or application's content width: the whole window (with the gutter) or a centred maximum */
+.t-main.t-own-width > .t-content { margin-inline: auto; }
+.t-main.t-own-width > .t-footer { margin-inline: auto; width: calc(100% - 3rem); }
+.t-nonav-main.t-own-width { max-width: none; }
 .t-regions { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; align-items: start; }
 .t-regions > .region { grid-column: span 12; }
 .t-regions > .col-1 { grid-column: span 1; } .t-regions > .col-2 { grid-column: span 2; } .t-regions > .col-3 { grid-column: span 3; }
@@ -399,6 +403,9 @@ details.menu > summary::-webkit-details-marker { display: none; }
 .region-wizard { max-width: 640px; width: 100%; margin-left: auto; margin-right: auto; }
 dialog[data-inline-region] { padding: 0; max-width: min(640px, calc(100vw - 2rem)); width: 100%; color: var(--text); }
 dialog[data-inline-region]::backdrop { background: rgb(0 0 0 / 45%); }
+/* (sprint 254, MG-35) a modal inline dialog is centred by its margins: layout rules for regions (an application's own
+   margins on .t-regions > .region) must not move it to a corner */
+dialog.region-inline_dialog:modal { inset: 0; margin: auto !important; }
 dialog[data-inline-region] .region-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 dialog.region-inline_drawer { margin: 0 0 0 auto; height: 100vh; max-height: 100vh; max-width: min(480px, 100vw); border-radius: 0; }
 /* without JavaScript: a link to #R<id> shows it */
@@ -1888,6 +1895,9 @@ td.tc-cell { overflow-wrap: anywhere; }
 /* (086) display image and address items */
 .display-image { padding: 0.3rem 0; }
 .display-image img { max-width: 100%; height: auto; border-radius: 4px; }
+/* (sprint 254, MG-33) a box of its own height: the picture fits in (contain) or fills it (cover) */
+.display-image.is-fitted img { display: block; width: var(--image-width, 100%); height: var(--image-height); object-fit: var(--image-fit); object-position: var(--image-position, center); border-radius: 0; }
+.display-image.is-fitted { padding: 0; }
 .geocode-places { list-style: none; margin: 0.3rem 0 0; padding: 0.3rem 0; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); }
 .geocode-places li { padding: 0.15rem 0.6rem; }
 .geocode-places .link-button { text-align: start; }
@@ -1906,6 +1916,18 @@ td.tc-cell { overflow-wrap: anywhere; }
 .list-badge-value { display: grid; place-items: center; min-width: 3rem; height: 3rem; padding: 0 0.6rem; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font-size: 1.3rem; font-weight: 700; }
 .list-badge-label { overflow-wrap: anywhere; }
 .list-cards { list-style: none; margin: 0; padding: 0; }
+/* (sprint 254, MG-34) tiles: a coloured link per entry, its icon and its label as text; sizes from the region's config */
+.list-tiles { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--tile-gap, 8px);
+  grid-template-columns: var(--tile-columns, repeat(auto-fill, minmax(min(100%, 14rem), 1fr))); }
+.list-tile { display: flex; align-items: center; justify-content: var(--tile-align, center); gap: 0.75rem; min-height: var(--tile-height, 90px);
+  padding: 0.5rem 1rem; border-radius: var(--radius); background: var(--tile-bg, var(--accent)); color: var(--tile-fg, var(--accent-text));
+  font-size: 1.375rem; font-weight: 600; line-height: 1.2; text-decoration: none; }
+.list-tile:hover, .list-tile:focus-visible { color: var(--tile-fg, var(--accent-text)); filter: brightness(1.1); text-decoration: none; }
+.list-tile-icon { flex: none; display: inline-grid; place-items: center; }
+.list-tile-icon img, .list-tile-icon .icon { width: var(--tile-icon, 45px); height: var(--tile-icon, 45px); object-fit: contain; }
+.list-tile-label { min-width: 0; overflow-wrap: break-word; }
+/* phones: one tile per row, whatever the columns */
+@media (max-width: 640px) { .list-tiles { grid-template-columns: minmax(0, 1fr); } .list-tile { font-size: 1.15rem; } }
 .list-card:hover { border-color: var(--accent); }
 .list-card-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
 .list-card-head h3 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -1941,6 +1963,21 @@ td.tc-cell { overflow-wrap: anywhere; }
 .region.to-hide-header > .region-header {
   position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+/* (sprint 254, MG-34, MG-35) text alignment, weight and size; a coloured background; inline dialog sizes */
+.region.to-text-right > .region-body, .region.to-text-right > details > .region-body { text-align: right; }
+/* a plain region has no body wrapper: the region itself */
+.region-plain.to-center { text-align: center; } .region-plain.to-text-right { text-align: right; }
+.region-plain.to-bold { font-weight: 700; } .region-plain.to-text-large { font-size: 1.35rem; line-height: 1.4; }
+.region.to-bold > .region-body, .region.to-bold > details > .region-body { font-weight: 700; }
+.region.to-text-large > .region-body, .region.to-text-large > details > .region-body { font-size: 1.35rem; line-height: 1.4; }
+.region.to-tone-info { --tone-bg: var(--accent-soft); --tone-border: var(--accent); }
+.region.to-tone-success { --tone-bg: var(--success-soft); --tone-border: var(--success); }
+.region.to-tone-warning { --tone-bg: var(--warning-soft); --tone-border: #b7791f; }
+.region.to-tone-danger { --tone-bg: var(--danger-soft); --tone-border: var(--danger); }
+.region[class*=" to-tone-"] { background: var(--tone-bg); border: 1px solid var(--tone-border); border-inline-start-width: 4px; color: var(--text); }
+.region[class*=" to-tone-"] > .region-header, .region[class*=" to-tone-"] > .region-footer { background: transparent; }
+dialog[data-inline-region].to-dialog-small { max-width: min(400px, calc(100vw - 2rem)); }
+dialog[data-inline-region].to-dialog-large { max-width: min(960px, calc(100vw - 2rem)); }
 /* items (066) */
 .field.to-large input:not([type="checkbox"]):not([type="radio"]), .field.to-large select, .field.to-large textarea { font-size: 1.1rem; padding: 0.6rem 0.75rem; }
 .field.to-quiet input:not([type="checkbox"]):not([type="radio"]), .field.to-quiet select, .field.to-quiet textarea { border-color: transparent; background: transparent; }
@@ -2264,7 +2301,7 @@ a.search-hit:hover, a.search-hit:focus-visible { background: var(--accent-soft);
 
 /* (sprint 88, GEN-4; APEX: the page footer) the application's version and Back to top, under the content */
 .t-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem 1rem;
-  margin: 0 1.5rem 1rem; max-width: calc(1500px - 3rem); padding: 0.75rem 0 0.25rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
+  margin: 0 1.5rem 1rem; max-width: calc(var(--content-width, 1500px) - 3rem); padding: 0.75rem 0 0.25rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.85rem; }
 @media (max-width: 640px) { .t-footer { margin: 0 0.75rem 1rem; } }
 .t-footer .t-top { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; color: inherit; }
 .t-footer .t-top:hover, .t-footer .t-top:focus-visible { color: var(--accent); }

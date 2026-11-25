@@ -5,6 +5,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Content width** (sprint 254, MG-32): per application (Settings → User Interface, `theme.content_width`) and per
+  page (`meta.page.content_width`, migration 208): `full` (the whole window, with the usual gutter) or a maximum in px
+  (320–3840), centred; the page's value wins, empty keeps 1500 px. The footer follows it.
+- **Image box** (sprint 254, MG-33): a Display Image item's `{"height": 150, "fit": "cover" | "contain", "position":
+  "left top", "align": "center"}` shows a banner or logo at a fixed height across the region (Appsmith's image widget);
+  a value starting with `#APP_FILES#` / `#WORKSPACE_FILES#` is a static file of the application or workspace.
+- **Tiles** (sprint 254, MG-34): list template `tiles`, a coloured link per entry with its icon (an icon name or a
+  picture file) and its label as text; `meta.list_entry.color` (migration 208) or a query's `color` column; the text is
+  black or white by contrast; the region sets row height, gap, columns, icon size and alignment; one per row on phones.
+- **Region template options** (sprint 254, MG-34/MG-35): right-aligned, bold and large text (also on plain regions),
+  `to-tone-info` / `success` / `warning` / `danger` backgrounds, and small or large inline dialogs: with *Hide the
+  header* an inline dialog becomes a notification.
+- HR example part 115: page 78 *Launchpad* (full width, a banner, tiles, a notification dialog).
+
+### Fixed
+- An inline dialog opened in the top-left corner when the application's CSS gave regions a margin
+  (`.t-regions > .region { margin: … }`): a modal inline dialog is now always centred.
+
 ## [0.116.0] - 2026-11-24
 
 ### Added

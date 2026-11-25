@@ -164,6 +164,8 @@ export interface App {
     accent_dark?: string; header_dark?: string;
     /** (sprint 117) the navigation appearance (Pillar Light / Dark) and the header pillar strip's colours */
     appearance?: string; strip?: string; strip_dark?: string;
+    /** (sprint 254, MG-32) 'full' or a maximum in px: see contentWidth() in src/runtime/styles.ts */
+    content_width?: string;
   };
   /** primary language, translated languages, and how the language is chosen */
   language: string;
@@ -491,6 +493,8 @@ export interface Page extends PageSummary {
   page_template: 'standard' | 'minimal' | 'left_side_column' | 'right_side_column' | 'no_navigation';
   /** (140) the page's help text (Markdown), shown by a help_text region */
   help: string | null;
+  /** (sprint 254, MG-32) 'full' or a maximum in px; null: the application's theme.content_width */
+  content_width?: string | null;
   /** (sprint 229, AX-8) merged from the Global Page (page 0): its page id, Authorization and Page requires sign-in */
   global?: { page_id: number; authz: string | null; requires_auth: boolean; applied?: boolean };
 }
@@ -610,7 +614,7 @@ export function mergeGlobalPage(page: Page, global: Page) {
 async function loadPageRows(appId: number, pageNo: number) {
   return (await runtime.query<Page>(
     `select p.id, p.app_id, p.page_no, p.name, p.title, p.requires_auth, p.parent_page, p.mode, p.alias,
-            p.protection, p.authz, p.warn_unsaved, p.page_template, p.help,
+            p.protection, p.authz, p.warn_unsaved, p.page_template, p.help, p.content_width,
             ${agg('meta.region', 'page_id', 'p', 'p.app_id')} as regions,
             ${agg('meta.item', 'page_id', 'p', 'p.app_id')} as items,
             ${agg('meta.button', 'page_id', 'p', 'p.app_id')} as buttons,

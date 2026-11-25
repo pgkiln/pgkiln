@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { owner } from '../db.ts';
 import { html, raw, type Raw } from '../html.ts';
 import { icon, LUCIDE_VERSION, searchIcons } from '../icons.ts';
-import { appStyles, BASE_STYLES, baseStyleOf } from '../runtime/styles.ts';
+import { appStyles, BASE_STYLES, baseStyleOf, contentWidth } from '../runtime/styles.ts';
 import { APP_TYPE_LABELS, APP_TYPES } from '../subscriptions.ts';
 import { pwaSection } from './pwa.ts';
 import { documentShell } from '../layout.ts';
@@ -909,6 +909,7 @@ export async function builderRoutes(app: FastifyInstance) {
               ${select('nav', tx('st.nav'), a.theme?.nav ?? 'side', [['side', tx('st.nav.side')], ['top', tx('st.nav.top')]], tx('st.nav_help'))}
               ${select('nav_list', tx('st.nav_list'), a.nav_list ?? '', listChoices(a.nav_list, tx('st.nav_entries')), tx('st.nav_list_help'))}
               ${select('navbar_list', tx('st.navbar_list'), a.navbar_list ?? '', listChoices(a.navbar_list, tx('st.none_option')), tx('st.navbar_help'))}
+              ${input('content_width', tx('st.content_width'), a.theme?.content_width ?? '', { placeholder: tx('pdz.content_width_ph'), help: tx('st.content_width_help') })}
               ${select('mode', tx('st.mode'), a.theme?.mode ?? 'auto', (['auto', 'light', 'dark'] as const).map((k): [string, string] => [k, tx(`st.mode.${k}`)]))}
             </div>
             <div class="field"><label class="check"><input type="checkbox" name="user_choice" value="true"${a.theme?.user_choice !== false ? raw(' checked') : ''}> ${tx('st.user_choice')}</label>
@@ -1033,12 +1034,15 @@ export async function builderRoutes(app: FastifyInstance) {
     const b = req.body ?? {};
     try {
       // (sprint 186, NX-S2) a role of its own, never empty or powerful (meta.app refuses them too: migration 167)
+      // (sprint 254, MG-32) empty: the default width
+      const width = String(b.content_width ?? '').trim();
+      if (width && !contentWidth(width)) throw new Error(tr(s)('pdz.content_width_invalid', { value: width }));
       const problem = await roleProblem(owner, b.db_role);
       if (problem) throw new Error(tr(s)(problem === 'missing' ? 'st.err.role_required' : 'st.err.role_powerful', { role: String(b.db_role ?? '').trim() }));
       await owner.query(
         `update meta.app set name = $2, alias = $3, home_page = $4, authentication = $5, db_role = $6, debug = $7,
                 -- (053) the Theme Roller's styles stay: only the keys of this form are replaced
-                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice' - 'base' - 'accent_dark' - 'header_dark') || $8::jsonb,
+                theme = (theme - 'accent' - 'header' - 'nav' - 'mode' - 'user_choice' - 'base' - 'accent_dark' - 'header_dark' - 'content_width') || $8::jsonb,
                 local_login = $9, sso_providers = $10, language = $11, languages = $12, language_from = $13,
                 date_format = $14, timestamp_format = $15, remember_me_days = $16, ldap_directories = $17,
                 header_name = $18, header_auto_create = $19, logout_url = $20, db_auth_roles = $21, db_auth_member_of = $22,
@@ -1055,6 +1059,7 @@ export async function builderRoutes(app: FastifyInstance) {
            nav: b.nav === 'top' ? 'top' : 'side',
            mode: ['light', 'dark'].includes(b.mode ?? '') ? b.mode : 'auto',
            user_choice: b.user_choice === 'true',
+           content_width: contentWidth(width) ?? undefined,
          }),
          b.local_login === 'true',
          ([] as string[]).concat((b.sso_providers as unknown as string | string[] | undefined) ?? []).filter(Boolean),

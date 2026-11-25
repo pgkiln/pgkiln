@@ -27,6 +27,7 @@ import { processJobsPanel } from './process-jobs.ts';
 import { appLocks, lockPanel, lockText } from './locks.ts';
 import { pageCreateLinks, pageUtilityLinks } from './page-utilities.ts';
 import { HEADER_POSITIONS, pageHasPosition, PAGE_POSITIONS, positionDropped } from '../page-positions.ts';
+import { contentWidth } from '../runtime/styles.ts';
 import { arrangeRoutes, CONTAINER_LABELS, CONTAINER_TEMPLATES, deleteRegion, BOTTOM_SLOTS, BUTTON_ACTIONS, BUTTON_LABELS, ITEM_LABELS, ITEM_TYPES, POSITION_LABELS, POSITIONS, REGION_LABELS, REGION_TYPES, SLOT_LABELS, TOP_SLOTS, undoState } from './arrange.ts';
 
 /** (sprint 193) why an alias was refused, in the builder's words */
@@ -511,6 +512,7 @@ export async function designerRoutes(app: FastifyInstance) {
             ${select('mode', tx('pdz.page_mode'), p.mode, [['normal', tx('pdz.normal')], ['modal', tx('pdz.modal_dialog')]])}
             ${select('page_group', tx('pdz.page_group'), p.page_group ?? '', [['', tx('pdz.none')], ...lk.pageGroups.map((g): [string, string] => [g, g]), ...(p.page_group && !lk.pageGroups.includes(p.page_group) ? [[p.page_group, `${p.page_group} (no such group)`] as [string, string]] : [])], tx('pdz.organises_the_pages_in_the'))}
             ${select('page_template', tx('pdz.page_template'), p.page_template ?? 'standard', [['standard', tx('pdz.standard')], ['left_side_column', tx('pdz.left_side_column')], ['right_side_column', tx('pdz.right_side_column')], ['minimal', tx('pdz.minimal_no_navigation')], ['no_navigation', tx('pdz.no_navigation')]], tx('pdz.side_column_regions_with_position'))}
+            ${input('content_width', tx('pdz.content_width'), p.content_width ?? '', { placeholder: tx('pdz.content_width_ph'), help: tx('pdz.content_width_help') })}
             ${select('dialog_position', tx('pdz.dialog_position'), p.dialog_position ?? 'center', [['center', tx('pdz.centred_dialog')], ['right', tx('pdz.drawer_from_the_right')], ['left', tx('pdz.drawer_from_the_left')], ['top', tx('pdz.drawer_from_the_top')], ['bottom', tx('pdz.drawer_from_the_bottom')]], tx('pdz.modal_pages_only_on_phones'))}
             ${select('dialog_size', tx('pdz.dialog_size'), p.dialog_size ?? 'medium', [['small', tx('pdz.small')], ['medium', tx('pdz.medium')], ['large', tx('pdz.large')]], tx('pdz.the_width_the_height_of'))}
             ${input('static_includes', tx('pdz.javascript_and_css_files'), (p.static_includes ?? []).join(', '), { placeholder: tx('pdz.e_g_page_3_js'), help: tx('pdz.static_application_files_js_css') })}
@@ -661,12 +663,16 @@ export async function designerRoutes(app: FastifyInstance) {
         if (await owner.one('select 1 as x from meta.page where app_id = $1 and alias = $2 and id <> $3', [before.app_id, alias, req.params.pid]))
           throw new Error(tr(s)('pdz.alias_taken', { alias }));
       }
+      // (sprint 254, MG-32) empty: the application's content width
+      const width = String(b.content_width ?? '').trim();
+      if (width && !contentWidth(width)) throw new Error(tr(s)('pdz.content_width_invalid', { value: width }));
       await owner.query(
         `update meta.page set page_no = $2, name = $3, title = $4, requires_auth = $5, mode = $6, parent_page = $7, authz = $8, protection = $9, build_option = $10,
-                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16, help = $17, alias = $18 where id = $1`,
+                dialog_position = $11, dialog_size = $12, static_includes = $13, warn_unsaved = $14, page_template = $15, page_group = $16, help = $17, alias = $18,
+                content_width = $19 where id = $1`,
         [req.params.pid, Number(b.page_no), b.name?.trim(), b.title?.trim() || null, b.requires_auth === 'true', b.mode, b.parent_page ? Number(b.parent_page) : null, b.authz || null, b.protection, b.build_option?.trim().toUpperCase() || null,
          ['left', 'right', 'top', 'bottom'].includes(b.dialog_position ?? '') ? b.dialog_position : 'center', ['small', 'large'].includes(b.dialog_size ?? '') ? b.dialog_size : 'medium', parseIncludes(b.static_includes), b.warn_unsaved === 'true', ['minimal', 'left_side_column', 'right_side_column', 'no_navigation'].includes(b.page_template ?? '') ? b.page_template : 'standard', b.page_group?.trim() || null,
-         typeof b.help === 'string' && b.help.trim() ? b.help.replace(/\r\n?/g, '\n').trim().slice(0, 20000) : null, alias || null],
+         typeof b.help === 'string' && b.help.trim() ? b.help.replace(/\r\n?/g, '\n').trim().slice(0, 20000) : null, alias || null, contentWidth(width)],
       );
       // the page's lock and comments follow a new page number
       // (sprint 229) page_no 0 of a lock or comment is the application's (the Global Page's are too): those stay

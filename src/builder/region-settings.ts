@@ -396,6 +396,12 @@ export function mergeListSettings(config: Config, b: Body): Config {
   const name = (b.list ?? '').trim().toUpperCase();
   set('list', /^[A-Z][A-Z0-9_]{0,59}$/.test(name) ? name : undefined);
   set('template', (LIST_TEMPLATES as readonly string[]).includes(b.template ?? '') && b.template !== 'links' ? b.template : undefined);
+  // (sprint 254, MG-34) the tiles template's sizes (empty: the default)
+  for (const [k, min, max] of [['tile_height', 32, 400], ['tile_gap', 0, 64], ['tile_columns', 1, 12], ['tile_icon_size', 16, 200]] as const) {
+    const n = Number(b[k]);
+    set(k, b[k] !== undefined && b[k] !== '' && Number.isInteger(n) && n >= min && n <= max ? n : undefined);
+  }
+  set('tile_align', b.tile_align === 'left' || b.tile_align === 'right' ? b.tile_align : undefined);
   return out;
 }
 
@@ -918,7 +924,13 @@ async function typeSettingsForm(pageId: number, appId: number, r: RegionRow, s: 
           <div class="field"><label class="label" for="${id('list')}">${tx('rs.list')}</label>
             <select id="${id('list')}" name="list">${opt('', tx('rs.choose'), cfg.list)}${lists.map((l) => opt(l.name, `${l.name} (${l.type})`, cfg.list))}${cfg.list && !lists.some((l) => l.name === cfg.list) ? opt(cfg.list, `${cfg.list} (missing!)`, cfg.list) : ''}</select></div>
           <div class="field"><label class="label" for="${id('template')}">${tx('rs.template')}</label>
-            <select id="${id('template')}" name="template">${opt('', tx('rs.links_nested'), cfg.template)}${opt('badges', tx('rs.badge_list'), cfg.template)}${opt('cards', tx('rs.cards_menu'), cfg.template)}${opt('tabs', tx('rs.tabs'), cfg.template)}${opt('wizard_progress', tx('rs.wizard_progress_numbered_steps'), cfg.template)}</select></div>
+            <select id="${id('template')}" name="template">${opt('', tx('rs.links_nested'), cfg.template)}${opt('badges', tx('rs.badge_list'), cfg.template)}${opt('cards', tx('rs.cards_menu'), cfg.template)}${opt('tabs', tx('rs.tabs'), cfg.template)}${opt('wizard_progress', tx('rs.wizard_progress_numbered_steps'), cfg.template)}${opt('tiles', tx('rs.tiles'), cfg.template)}</select></div>
+        </div></fieldset>
+        <fieldset class="prop-group"><legend>${tx('rs.tiles')}</legend><p class="muted u-mt0">${tx('rs.tiles_help')}</p><div class="form-grid">
+          ${([['tile_height', 'rs.tile_height', 32, 400, 90], ['tile_gap', 'rs.tile_gap', 0, 64, 8], ['tile_columns', 'rs.tile_columns', 1, 12, ''], ['tile_icon_size', 'rs.tile_icon_size', 16, 200, 45]] as const).map(([k, label, min, max, ph]) =>
+            html`<div class="field"><label class="label" for="${id(k)}">${tx(label)}</label><input id="${id(k)}" name="${k}" type="number" min="${min}" max="${max}" value="${cfg[k] ?? ''}" placeholder="${ph}"></div>`)}
+          <div class="field"><label class="label" for="${id('tile_align')}">${tx('rs.tile_align')}</label>
+            <select id="${id('tile_align')}" name="tile_align">${opt('', tx('rs.align_center'), cfg.tile_align)}${opt('left', tx('rs.align_left'), cfg.tile_align)}${opt('right', tx('rs.align_right'), cfg.tile_align)}</select></div>
         </div></fieldset>`;
       break;
     }

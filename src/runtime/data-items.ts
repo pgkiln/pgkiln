@@ -45,7 +45,8 @@ export function imageUrl(ctx: PageContext, item: Item, value: string): string | 
     const v = createHash('sha256').update(used).digest('base64url').slice(0, 12);
     return `${ctx.base}/${ctx.page.page_no}/image/${item.name}?v=${v}`;
   }
-  const s = value.trim();
+  // (sprint 254) a static file of the application or its workspace: only this prefix is replaced (a value is data)
+  const s = value.trim().replace(/^#(APP|WORKSPACE)_FILES#/, (_, kind: string) => `${ctx.base}/${kind === 'APP' ? 'static' : 'workspace-files'}/`);
   if (!s) return null;
   if (DATA_IMAGE.test(s)) return s;
   if (/^\/(?![/\\])/.test(s)) return s;
@@ -60,7 +61,25 @@ export function imageControl(ctx: PageContext, item: Item, value: string): Raw {
   const alt = typeof item.config?.alt === 'string' ? substitute(item.config.alt, ctx, (v) => v) : (item.label ?? '');
   const w = px(item.config?.width);
   const h = px(item.config?.height);
-  return html`<div class="display-image" id="${item.name}"><img src="${src}" alt="${alt}"${w ? raw(` width="${w}"`) : ''}${h ? raw(` height="${h}"`) : ''} loading="lazy" decoding="async"></div>`;
+  return html`<div class="display-image${imageBox(ctx, item.config, h, w)}" id="${item.name}"><img src="${src}" alt="${alt}"${w ? raw(` width="${w}"`) : ''}${h ? raw(` height="${h}"`) : ''} loading="lazy" decoding="async"></div>`;
+}
+
+const POSITION = /^(center|top|bottom|left|right)( (center|top|bottom))?$/;
+
+/**
+ * (sprint 254, MG-33) The picture in a box of its own height (Appsmith's image widget): {"height": 150, "fit": "cover"}
+ * fills the box (cropping), "contain" shows all of it; "position" ("top", "left center", …) says which part stays in
+ * view, "align" (left, center, right) where a picture without a fit sits. Only checked values reach the CSS.
+ */
+function imageBox(ctx: PageContext, c: Record<string, any> | undefined, h: number | null, w: number | null): string {
+  const fit = c?.fit === 'contain' || c?.fit === 'cover' ? c.fit : null;
+  const align = c?.align === 'left' || c?.align === 'center' || c?.align === 'right' ? c.align : null;
+  const vars = [
+    ...(fit && h ? [`--image-height:${h}px`, `--image-width:${w ? `${w}px` : '100%'}`, `--image-fit:${fit}`] : []),
+    ...(fit && h && typeof c?.position === 'string' && POSITION.test(c.position) ? [`--image-position:${c.position}`] : []),
+    ...(align ? [`text-align:${align}`] : []),
+  ];
+  return vars.length ? `${fit && h ? ' is-fitted' : ''} ${ctx.css.cls(vars.join(';'))}` : '';
 }
 
 /** A text input with a "Check address" button (when the installation has a geocoder). */

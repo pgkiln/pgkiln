@@ -232,6 +232,14 @@ sources:
 `config`: `{"alt": "Photo of &P43_ENAME.", "width": 160, "height": 160}` (the alternative text,
 `&ITEM.` substitutions allowed; it defaults to the label).
 
+(sprint 254) A banner or a logo gets a box of its own height, as Appsmith's image widget does: `{"height": 150,
+"fit": "cover"}` fills a box 150 px high across the region (cropping what doesn't fit), `"fit": "contain"` shows the
+whole picture in it; `"position"` (`center`, `top`, `bottom`, `left`, `right` or two of them, e.g. `"left top"`) says
+which part stays in view, and `"width"` narrows the box. Without a fit, `"align"` (`left`, `center`, `right`) places
+the picture at its own size. A value that starts with `#APP_FILES#` (or `#WORKSPACE_FILES#`) is a static file of the
+application (or workspace): `#APP_FILES#logo.png` as the item's default works under any alias; nothing else in a value
+is substituted. HR page 78 shows a banner 140 px high (HR part 115).
+
 **Geocoded address** (`address`, APEX: *Geocoded Address*) is a text field with a *Check address*
 button. The server asks the installation's geocoder for the typed text and shows up to five
 matching addresses; the one chosen replaces the text, and with

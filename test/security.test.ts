@@ -21638,3 +21638,90 @@ describe('sprint 253 MG-30/MG-31', () => {
     }
   });
 });
+
+describe('sprint 254 layout MG-32 … MG-35', () => {
+  // Content width, tiles and image boxes write values into the page's nonce'd <style> (PageCss): only checked
+  // values may get there, whatever a hand-edited theme, a list query or a region's config holds.
+  const EVIL = '1;}body{display:none}';
+  let pageId: number;
+  let regionId: number;
+  before(async () => {
+    pageId = (await owner.one(`select id from meta.page where app_id = $1 and page_no = 78`, [appId])).id;
+    regionId = (await owner.one(`select id from meta.region where page_id = $1 and type = 'list'`, [pageId])).id;
+  });
+  const css = (html: string) => /<style nonce="[^"]+" id="pgkiln-css">([\s\S]*?)<\/style>/.exec(html)?.[1] ?? '';
+
+  test('content width: only full or 320 to 3840 px reach the CSS; the database and the forms refuse the rest', async () => {
+    const { contentWidth } = await import('../src/runtime/styles.ts');
+    assert.deepEqual(['full', 'FULL', '1280', '1280px', 320, '3840'].map(contentWidth), ['full', 'full', '1280', '1280', '320', '3840']);
+    for (const v of [EVIL, '319', '3841', 'calc(100%)', '50%', '', null, {}, '1280 px'] as unknown[]) assert.equal(contentWidth(v), null, String(v));
+    await assert.rejects(owner.query(`update meta.page set content_width = $2 where id = $1`, [pageId, EVIL]), /content_width_check/);
+    await assert.rejects(owner.query(`update meta.page set content_width = '100' where id = $1`, [pageId]), /content_width_check/);
+    // a hand-edited theme: ignored
+    await owner.query(`update meta.page set content_width = null where id = $1`, [pageId]);
+    await owner.query(`update meta.app set theme = theme || jsonb_build_object('content_width', $2::text) where id = $1`, [appId, EVIL]);
+    try {
+      const html = (await (await as('king')).get('/a/hr/78')).body;
+      assert.doesNotMatch(html, /t-own-width/);
+      assert.doesNotMatch(css(html), /display:none/);
+      // the forms: an error, nothing saved
+      const dev = new Browser();
+      await dev.get('/builder/login');
+      await dev.post('/builder/login', { __csrf: dev.lastCsrf, username: 'admin', password: 'admin' });
+      await dev.get(`/builder/pages/${pageId}?c=page`);
+      await dev.post(`/builder/pages/${pageId}`, { __csrf: dev.lastCsrf, page_no: '78', name: 'Launchpad', mode: 'normal', protection: 'checksum', content_width: EVIL });
+      assert.match((await dev.get(`/builder/pages/${pageId}?c=page`)).body, /Content width “1;}body\{display:none}”: enter full/);
+      assert.equal((await owner.one(`select content_width from meta.page where id = $1`, [pageId])).content_width, null);
+      const before = (await owner.one(`select theme from meta.app where id = $1`, [appId])).theme;
+      await dev.get(`/builder/apps/${appId}/settings`);
+      await dev.post(`/builder/apps/${appId}/settings`, { __csrf: dev.lastCsrf, name: 'x', alias: 'hr', content_width: '99999' });
+      assert.deepEqual((await owner.one(`select theme from meta.app where id = $1`, [appId])).theme, before);
+    } finally {
+      await owner.query(`update meta.app set theme = theme - 'content_width' where id = $1`, [appId]);
+      await owner.query(`update meta.page set content_width = 'full' where id = $1`, [pageId]);
+    }
+  });
+
+  test('tiles: an entry colour, an icon and the region\'s sizes are checked before they reach the page', async () => {
+    await assert.rejects(owner.query(`update meta.list_entry set color = 'red' where app_id = $1 and list_name = 'HR_LAUNCHPAD'`, [appId]), /list_entry_color_check/);
+    await owner.query(`insert into meta.list (app_id, name, type, query) values ($1, 'S254_TILES', 'sql', $2)`, [appId,
+      `select * from (values ('A', 1, '${EVIL}', 'javascript:alert(1)'), ('B', 2, '#12345g', '//evil.example/x.png'), ('C', 3, '#ABCDEF', '/a/hr/static/x.svg"><script>alert(1)</script>'),
+         ('D', 4, '#000000', '#APP_FILES#tile-team.svg')) as t (label, page, color, icon)`]);
+    const config = (await owner.one(`select config from meta.region where id = $1`, [regionId])).config;
+    await owner.query(`update meta.region set config = $2 where id = $1`, [regionId, { list: 'S254_TILES', template: 'tiles', tile_height: EVIL, tile_gap: -5, tile_columns: '3;x', tile_align: 'left;}', tile_icon_size: 1e9 }]);
+    try {
+      const html = (await (await as('king')).get('/a/hr/78')).body;
+      const style = css(html);
+      assert.doesNotMatch(style, /display:none|evil|javascript|script|;x|left;/);
+      assert.match(style, /--tile-height:90px;--tile-gap:8px;--tile-icon:45px;--tile-align:center\}/);
+      assert.match(style, /--tile-bg:#abcdef;--tile-fg:#000000/);
+      assert.match(style, /--tile-bg:#000000;--tile-fg:#ffffff/);
+      const tiles = html.slice(html.indexOf('<ul class="list-tiles'), html.indexOf('</ul>', html.indexOf('<ul class="list-tiles')));
+      assert.equal((tiles.match(/<img /g) ?? []).length, 1, 'only the application file is a picture');
+      assert.match(tiles, /<img src="\/a\/hr\/static\/tile-team.svg" alt=""/);
+      assert.doesNotMatch(tiles, /<script|javascript:|evil\.example/);
+    } finally {
+      await owner.query(`update meta.region set config = $2 where id = $1`, [regionId, config]);
+      await owner.query(`delete from meta.list where app_id = $1 and name = 'S254_TILES'`, [appId]);
+    }
+  });
+
+  test('image item: fit, position and align only from fixed lists; only the #APP_FILES# prefix is replaced', async () => {
+    const item = await owner.one(`select id, config from meta.item where page_id = $1 and name = 'P78_BANNER'`, [pageId]);
+    await owner.query(`update meta.item set config = $2 where id = $1`, [item.id, { height: 140, fit: 'cover', position: `center;}${EVIL}`, align: 'left;}x{' }]);
+    try {
+      let style = css((await (await as('king')).get('/a/hr/78')).body);
+      assert.match(style, /--image-height:140px;--image-width:100%;--image-fit:cover\}/);
+      assert.doesNotMatch(style, /display:none|x\{|left;/);
+      await owner.query(`update meta.item set config = $2 where id = $1`, [item.id, { height: 140, fit: 'url(x)', position: 'top left' }]);
+      style = css((await (await as('king')).get('/a/hr/78')).body);
+      assert.doesNotMatch(style, /--image-fit|url\(/, 'no box without a known fit');
+      // a value with &ITEM. text is data: not substituted
+      const b = await as('king');
+      await owner.query(`update meta.item set default_value = '/a/hr/static/&APP_USER..svg', config = '{}' where id = $1`, [item.id]);
+      assert.match((await b.get('/a/hr/78')).body, /<img src="\/a\/hr\/static\/&amp;APP_USER..svg"/);
+    } finally {
+      await owner.query(`update meta.item set config = $2, default_value = '#APP_FILES#banner.svg' where id = $1`, [item.id, item.config]);
+    }
+  });
+});

@@ -7,6 +7,7 @@ import { isAuthorized, pageAllowed, sqlTrue } from './authz.ts';
 import { bindValues, publicError, stripSemicolon, substitute, type PageContext } from './context.ts';
 import { isModal, pageHref } from './links.ts';
 import { overlayHash, STATIC_HASH } from './open-region.ts';
+import { HEX } from './styles.ts';
 
 // Lists (APEX: Shared Components > Lists): links with a label, a target (a
 // page of the app with item values, a path inside the app, or an http(s)
@@ -32,6 +33,8 @@ export interface ListNode {
   /** (154) the entry's id (a query's id column, else its label): finds its badge again for a live refresh */
   key: string;
   description: string | null;
+  /** (sprint 254, MG-34) the entry's tile background, #rrggbb */
+  color: string | null;
   /** the entry's page is the current page */
   current: boolean;
   /** the current page is below the entry (its page, a parent page of it, or a child entry) */
@@ -39,7 +42,7 @@ export interface ListNode {
   children: ListNode[];
 }
 
-export const LIST_TEMPLATES = ['links', 'badges', 'cards', 'tabs', 'wizard_progress'] as const;
+export const LIST_TEMPLATES = ['links', 'badges', 'cards', 'tabs', 'wizard_progress', 'tiles'] as const;
 export type ListTemplate = (typeof LIST_TEMPLATES)[number];
 /** Most rows a list query may give. */
 export const LIST_MAX_ROWS = 500;
@@ -56,6 +59,7 @@ interface Entry {
   /** (154) a SELECT whose first value is the badge (static entries; wins over badge) */
   badge_query?: string | null;
   description: string | null;
+  color?: string | null;
   condition?: string | null;
   authz?: string | null;
 }
@@ -102,6 +106,7 @@ async function entriesOf(ctx: PageContext, name: string): Promise<Entry[] | null
         icon: r.icon == null ? null : String(r.icon),
         badge: r.badge == null || r.badge === '' ? null : String(r.badge),
         description: r.description == null ? null : String(r.description),
+        color: r.color == null ? null : String(r.color),
       }));
     } catch (e) {
       ctx.errors.page.push(await publicError(ctx, e, `list ${name}`));
@@ -110,7 +115,7 @@ async function entriesOf(ctx: PageContext, name: string): Promise<Entry[] | null
   }
   const rows = (
     await runtime.query(
-      `select id, parent_id, label, target_page, target_items, target_url, icon, badge, badge_query, description, condition, authz
+      `select id, parent_id, label, target_page, target_items, target_url, icon, badge, badge_query, description, color, condition, authz
          from meta.list_entry where app_id = $1 and list_name = $2 and meta.build_option_on(app_id, build_option)
         order by seq, id`,
       [ctx.app.id, name.toUpperCase()],
@@ -118,7 +123,7 @@ async function entriesOf(ctx: PageContext, name: string): Promise<Entry[] | null
   ).rows;
   return rows.map((r) => ({
     id: r.id, parent_id: r.parent_id, label: ctx.locale.tr(r.label), page: r.target_page, items: r.target_items ?? {}, url: r.target_url,
-    icon: r.icon, badge: r.badge, badge_query: r.badge_query, description: r.description ? ctx.locale.tr(r.description) : null, condition: r.condition, authz: r.authz,
+    icon: r.icon, badge: r.badge, badge_query: r.badge_query, description: r.description ? ctx.locale.tr(r.description) : null, color: r.color, condition: r.condition, authz: r.authz,
   }));
 }
 
@@ -185,6 +190,7 @@ export async function listTree(ctx: PageContext, name: string): Promise<ListNode
         : e.badge === null ? null : substitute(e.badge, ctx, (x) => x),
       key: String(e.id ?? e.label),
       description: e.description === null ? null : substitute(e.description, ctx, (x) => x),
+      color: e.color && HEX.test(e.color) ? e.color.toLowerCase() : null,
       current: isCurrent,
       inTrail: isCurrent || (e.page !== null && current.has(e.page)) || children.some((c) => c.inTrail),
       children,
@@ -260,6 +266,8 @@ export async function renderListRegion(ctx: PageContext, r: Region): Promise<Raw
       return html`<ul class="list-badges">${flat(nodes).map((n) => html`<li><a ${linkAttrs(n, 'list-badge')}><span class="list-badge-value">${n.badge ?? icon(n.icon ?? 'chevron')}</span><span class="list-badge-label">${n.label}</span></a></li>`)}</ul>`;
     case 'cards':
       return html`<ul class="cards list-cards">${flat(nodes).map((n) => html`<li><a ${linkAttrs(n, 'card list-card')}><span class="list-card-head"><span class="list-card-icon">${icon(n.icon ?? 'chevron')}</span><h3>${n.label}</h3>${badge(n)}</span>${n.description ? html`<p class="muted">${n.description}</p>` : ''}</a></li>`)}</ul>`;
+    case 'tiles':
+      return tilesMarkup(ctx, r, flat(nodes));
     case 'tabs':
       return html`<nav class="list-tabs" aria-label="${label}"><ul class="rds-list">${nodes.filter((n) => n.href).map((n) => html`<li><a ${linkAttrs(n, `rds-tab${n.inTrail ? ' is-current' : ''}`)}>${icon(n.icon)}<span>${n.label}</span>${badge(n)}</a></li>`)}</ul></nav>`;
     case 'wizard_progress': {
@@ -275,4 +283,51 @@ export async function renderListRegion(ctx: PageContext, r: Region): Promise<Raw
     default:
       return html`<nav aria-label="${label}">${linksMarkup(nodes)}</nav>`;
   }
+}
+
+/** (sprint 254, MG-34) A number from a region's config within [min, max], else the default. */
+const within = (v: unknown, min: number, max: number, dflt: number) => {
+  const n = Math.round(Number(v));
+  return v !== undefined && v !== null && v !== '' && Number.isFinite(n) && n >= min && n <= max ? n : dflt;
+};
+
+/** Black or white, whichever reads better on a #rrggbb background (WCAG relative luminance). */
+export function textOn(hex: string): '#000000' | '#ffffff' {
+  const lin = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const l = 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5);
+  return (l + 0.05) / 0.05 > 1.05 / (l + 0.05) ? '#000000' : '#ffffff';
+}
+
+/** A tile's icon: an icon name, or a picture among the application's files (#APP_FILES#tile.svg; a path on this site). */
+function tileIcon(ctx: PageContext, value: string | null): Raw | '' {
+  if (!value) return '';
+  if (isIcon(value)) return icon(value);
+  const src = substitute(value.trim(), ctx, encodeURIComponent);
+  return /^\/(?![/\\])[^\s"'<>]*$/.test(src) ? html`<img src="${src}" alt="" loading="lazy" decoding="async">` : '';
+}
+
+/**
+ * (sprint 254, MG-34) Tiles (Appsmith's home-screen containers): one coloured tile per entry with its icon (an icon
+ * name or a picture file) and its label as real text. The region's config sets the row height, the gap, the number
+ * of columns (none: as many as fit), the alignment and the icon size: {"tile_height": 90, "tile_gap": 8,
+ * "tile_columns": 1, "tile_align": "center", "tile_icon_size": 45}. Colours come from each entry's color (else the
+ * accent colour); the text is black or white, whichever reads better.
+ */
+function tilesMarkup(ctx: PageContext, r: Region, nodes: ListNode[]): Raw {
+  const c = r.config ?? {};
+  const cols = within(c.tile_columns, 1, 12, 0);
+  const vars = [
+    `--tile-height:${within(c.tile_height, 32, 400, 90)}px`,
+    `--tile-gap:${within(c.tile_gap, 0, 64, 8)}px`,
+    `--tile-icon:${within(c.tile_icon_size, 16, 200, 45)}px`,
+    `--tile-align:${c.tile_align === 'left' ? 'flex-start' : c.tile_align === 'right' ? 'flex-end' : 'center'}`,
+    ...(cols ? [`--tile-columns:repeat(${cols},minmax(0,1fr))`] : []),
+  ].join(';');
+  return html`<ul class="list-tiles ${ctx.css.cls(vars)}">${nodes.filter((n) => n.href).map((n) => {
+    const colour = n.color ? ` ${ctx.css.cls(`--tile-bg:${n.color};--tile-fg:${textOn(n.color)}`)}` : '';
+    return html`<li><a ${linkAttrs(n, `list-tile${colour}`)}>${n.icon ? html`<span class="list-tile-icon">${tileIcon(ctx, n.icon)}</span>` : ''}<span class="list-tile-label">${n.label}</span>${badge(n)}</a></li>`;
+  })}</ul>`;
 }
