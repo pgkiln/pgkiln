@@ -143,6 +143,9 @@ describe('number format masks (HR page 29)', () => {
     assert.equal(f('abc', 25), undefined);
     const d = maskedFormatter(base, 'en', EN_SYMBOLS, 'DD.MM.YYYY');
     assert.equal(d('2026-10-05', 1082), '05.10.2026');
+    // (sprint 257) a timestamp without a mask: YYYY-MM-DD HH:MI, also from an ISO value (a date-time item's)
+    assert.equal(base('2026-09-29T07:50', 1114), '2026-09-29 07:50');
+    assert.equal(d('2026-09-29T07:50', 1114), '29.09.2026');
     assert.equal(d('1234.5', 1700), undefined);
     assert.equal(maskedFormatter(base, 'en', EN_SYMBOLS, ''), base);
     assert.equal(maskedFormatter(base, 'de', numberSymbols('de', 'EUR'), 'FML999G990D00')('1234.5', 1700), '€1.234,50');

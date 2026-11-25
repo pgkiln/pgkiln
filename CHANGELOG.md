@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows
   Appsmith's cell colours). Operators and colours from the users' highlight lists; the column must be one of the
   query's; the value is a literal. HR part 117: page 6.
 
+### Fixed
+- A read-only date or date-time item showed its raw value (`2026-09-29T07:50`): it now uses the item's date mask, else
+  the application's date / timestamp format; a timestamp without a format shows `2026-09-29 07:50` (sprint 257).
+
 ## [0.119.0] - 2026-11-25
 
 ### Fixed

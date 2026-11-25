@@ -131,7 +131,8 @@ export function dateFormatter(lang: string, dateMask: string | null, timestampMa
   return (v, oid) => {
     if (v === null || v === undefined || oid === undefined) return undefined;
     if (oid === DATE_OID) return dateMask ? applyMask(String(v), dateMask, lang) : undefined;
-    if (TIMESTAMP_OIDS.has(oid)) return timestampMask ? applyMask(String(v), timestampMask, lang) : String(v).slice(0, 16);
+    // (sprint 257) without a mask: YYYY-MM-DD HH:MI (an ISO value's T as a space)
+    if (TIMESTAMP_OIDS.has(oid)) return timestampMask ? applyMask(String(v), timestampMask, lang) : String(v).slice(0, 16).replace('T', ' ');
     return undefined;
   };
 }
