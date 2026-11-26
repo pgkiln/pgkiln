@@ -13,7 +13,7 @@ examples/plugins/          plug-in files (template components) to import
 examples/gallery/          the App Gallery: gallery.json, starters/ and utilities/ (blueprints), samples/ (single-file sample apps)
 scripts/migrate.ts         migration/seed runner (src/migrate.ts does the work)
 website/                   the website pgkiln.vargar.eu (VitePress): landing page + this guide, synced from docs/ at build time;
-                           cd website && npm install && npm run dev; scripts/deploy.sh publishes it (see website/deploy/)
+                           cd website && npm install && npm run dev; npm run build writes the static site to website/.vitepress/dist
 scripts/screenshots.ts     the README's screenshots in docs/images/ (npm run screenshots, HR example)
 scripts/oracle-e2e.sh      (sprint 192) Oracle Free + ora2pg (Docker) → PostgreSQL → import-apex --check and the import of f77536.sql;
                            scripts/apex-e2e-pages.ts opens every page as a user (.github/workflows/oracle-e2e.yml: manual, weekly;
