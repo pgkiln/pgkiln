@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.123.0] - 2026-11-27
+
 ### Added
 - **Date-time items in the application's date format** (sprint 261): the date with pgkiln's date picker and the time
   (`HH:MI`) in a field of its own, instead of the browser's date-time field (`mm/dd/yyyy` and a 12-hour clock in US
