@@ -177,6 +177,11 @@ rendered on the server: headings, paragraphs, emphasis, ~~strikethrough~~, inlin
 fenced code, lists (nested), quotes, horizontal rules, links and bare `https://` addresses. HTML in
 the Markdown is shown as text, and the result passes through the same allow-list.
 
+
+(sprint 259) Rich text keeps the editor's **text and background colours and text alignment** (a `span`, a paragraph or a
+cell with `color`, `background-color` or `text-align`, as `#rrggbb`, `rgb()` or a keyword): stored as a style
+attribute, and shown as a class of the page's CSS, as the Content-Security-Policy allows no style attributes. Other
+styles are dropped.
 ## Star rating, combobox, date range, password reveal and QR code
 
 - **Star rating** (`rating`): radio buttons, so the keyboard (arrow keys) and screen readers work as

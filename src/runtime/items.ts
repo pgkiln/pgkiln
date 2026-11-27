@@ -337,7 +337,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     control = displayMap(ctx, item, value);
   } else if (!editable && (item.type === 'richtext' || item.type === 'markdown')) {
     // rebuilt from the allow-list every time: the value may come from the table, not from this form
-    control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value)) || ' ')}</div>`;
+    control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value, { css: ctx.css })) || ' ')}</div>`;
   } else if (!editable && item.type === 'rating') {
     const n = /^\d+$/.test(value) ? Math.min(Number(value), ratingMax(item, ctx.app.component_settings)) : 0;
     control = n
@@ -464,7 +464,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
             <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}"><span aria-hidden="true">↗</span><span class="sr-only">${t('editor.link')}</span></button>
             ${rich ? html`${tool('unlink', 'editor.unlink', '⊘')}${tool('clear', 'editor.clear', 'Tx')}` : ''}
           </div>
-          <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value) : value}</textarea>
+          <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value, { keepStyle: true }) : value}</textarea>
           <small class="help rte-hint">${t(rich ? 'item.richtext_hint' : 'item.markdown_hint')}</small>
         </div>`;
         break;

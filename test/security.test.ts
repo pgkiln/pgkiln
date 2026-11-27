@@ -21791,7 +21791,7 @@ describe('sprint 259 row links, body buttons, highlight colours, item defaults f
     assert.match(body, /class="region-body-buttons region-body-top"><div class="buttons"><a class="btn btn-hot to-block"/);
     const cls = /<td class="hl-cell hl-custom (x[A-Za-z0-9]{10})"/.exec(body);
     assert.ok(cls, 'the approved status cell has a page CSS class');
-    assert.match(body, new RegExp(`\\.${cls![1]}\\{--hl:#dcfce7\\}`));
+    assert.match(body, new RegExp(`\\.${cls![1]}\\{--hl:#dcfce7;--hl-text:#000000\\}`));
   });
 
   // A button's own CSS classes go into its class attribute: the database takes class names only.
@@ -21806,6 +21806,19 @@ describe('sprint 259 row links, body buttons, highlight colours, item defaults f
     } finally {
       await owner.query(`update meta.button set css_classes = null where id = $1`, [b.id]);
     }
+  });
+
+  // Rich text keeps an editor's colours and alignment: only a parsed #rrggbb or a keyword gets through, never a url(),
+  // an expression or a quote that leaves the attribute; on the page it is a CSS class, not a style attribute.
+  test('rich text keeps only safe colours and alignment', async () => {
+    const { sanitizeHtml, safeStyle } = await import('../src/richtext.ts');
+    assert.equal(safeStyle('color: rgb(149, 165, 166); text-align: center; width: 100%'), 'color:#95a5a6;text-align:center');
+    for (const bad of ['color: url(x)', 'color: expression(alert(1))', 'background-color: #fff" onclick="x', 'color: rgb(1,2,3) ; x', 'text-align: "center"', 'color: rgb(300,0,0)'])
+      assert.doesNotMatch(safeStyle(bad), /url|expression|onclick|"|300/);
+    assert.equal(sanitizeHtml('<span style="color:#fff&quot; onclick=&quot;x">a</span>', { keepStyle: true }), '<span>a</span>');
+    const page = sanitizeHtml('<p style="color: rgb(1, 2, 3)">a</p>', { css: { cls: (d) => `c-${d.length}` } });
+    assert.equal(page, '<p class="c-13">a</p>');
+    assert.doesNotMatch(sanitizeHtml('<p style="color: #123456">a</p>'), /style|class/);
   });
 
   // default_sql runs as the application's database role, with the page's binds as parameters: no superuser view.

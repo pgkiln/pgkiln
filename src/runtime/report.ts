@@ -1,4 +1,5 @@
 import { withJsonColumns } from '../json-sources.ts';
+import { textOn } from './lists.ts';
 import { componentSetting } from './component-settings.ts';
 import { icon } from '../icons.ts';
 import pg from 'pg';
@@ -300,7 +301,8 @@ const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 /** The class of a highlight's colour: a named one, or (sprint 259) a #rrggbb as a page CSS class setting --hl. */
 function hlClass(ctx: PageContext, color: string) {
-  return HEX_COLOR.test(color) ? `hl-custom ${ctx.css.cls(`--hl:${color}`)}` : `hl-${color}`;
+  // the text in black or white, whichever reads on it (also in the dark theme)
+  return HEX_COLOR.test(color) ? `hl-custom ${ctx.css.cls(`--hl:${color};--hl-text:${textOn(color)}`)}` : `hl-${color}`;
 }
 
 export function configHighlights(r: Pick<Region, 'config'>): (Highlight & { cell: boolean })[] {

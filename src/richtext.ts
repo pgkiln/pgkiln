@@ -23,6 +23,8 @@ const ALLOWED = new Set([
   'p', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'del', 'strike', 'sub', 'sup', 'ul', 'ol', 'li',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'a', 'hr', 'div',
   'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  // (sprint 259) for a colour of its own
+  'span',
 ]);
 /** (sprint 235) Table parts and the elements each may be directly inside. */
 const TABLE_PARENT: Record<string, string[]> = { thead: ['table'], tbody: ['table'], tr: ['table', 'thead', 'tbody'], td: ['tr'], th: ['tr'] };
@@ -44,6 +46,45 @@ const RAWTEXT = new Set(['script', 'style', 'textarea', 'title', 'xmp', 'noembed
 /** Dropped tags that have no contents or end tag. */
 const DROP_VOID = new Set(['embed', 'frame', 'base', 'link', 'meta', 'img', 'input', 'source', 'track', 'param', 'area', 'col', 'wbr', 'keygen']);
 const MAX_DEPTH = 40;
+
+/** (sprint 259) The styles kept from an editor's style attribute: text and background colours, text alignment. */
+const STYLE_PROPS = new Set(['color', 'background-color', 'text-align']);
+
+/** #rgb, #rrggbb or rgb(r, g, b) as #rrggbb; anything else: null. */
+function cssColor(v: string): string | null {
+  const t = v.trim().toLowerCase();
+  let m = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/.exec(t);
+  if (m) return `#${m[1]}${m[1]}${m[2]}${m[2]}${m[3]}${m[3]}`;
+  if (/^#[0-9a-f]{6}$/.test(t)) return t;
+  m = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*(?:1|1\.0+|0?\.\d+|0)\s*)?\)$/.exec(t);
+  if (m && [m[1], m[2], m[3]].every((x) => Number(x) <= 255)) return `#${[m[1], m[2], m[3]].map((x) => Number(x).toString(16).padStart(2, '0')).join('')}`;
+  return null;
+}
+
+/** The safe declarations of a style attribute, e.g. "color:#95a5a6;text-align:center" (or ''). */
+export function safeStyle(style: string | undefined): string {
+  if (!style) return '';
+  const out: string[] = [];
+  for (const decl of style.slice(0, 1000).split(';')) {
+    const at = decl.indexOf(':');
+    if (at < 0) continue;
+    const prop = decl.slice(0, at).trim().toLowerCase();
+    const val = decl.slice(at + 1).trim().toLowerCase();
+    if (!STYLE_PROPS.has(prop) || out.some((d) => d.startsWith(`${prop}:`))) continue;
+    const v = prop === 'text-align' ? (['left', 'right', 'center', 'justify'].includes(val) ? val : null) : cssColor(val);
+    if (v) out.push(`${prop}:${v}`);
+  }
+  return out.join(';');
+}
+
+/**
+ * How kept styles are written: as a page CSS class (css: the page's sheet; the Content-Security-Policy allows no style
+ * attributes), or as a style attribute again (keepStyle: the value that is stored and edited).
+ */
+export interface StyleOutput {
+  css?: { cls(declarations: string): string };
+  keepStyle?: boolean;
+}
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', colon: ':', tab: '\t', newline: '\n' };
 
@@ -132,7 +173,7 @@ function tablePart(open: string[]) {
 const ATTR = /[\s/]*([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"?|'([^']*)'?|([^\s>]*)))?/y;
 
 /** Rebuild HTML from the allow-list (see the top of this file). */
-export function sanitizeHtml(input: string | null | undefined): string {
+export function sanitizeHtml(input: string | null | undefined, styles: StyleOutput = {}): string {
   const s = String(input ?? '').replace(/\0/g, '');
   const lower = s.replace(/[A-Z]+/g, (c) => c.toLowerCase()); // ASCII only: same length, same indexes
   const out: string[] = [];
@@ -235,7 +276,11 @@ export function sanitizeHtml(input: string | null | undefined): string {
       const href = attrs.href === undefined ? null : safeHref(attrs.href);
       if (href === null || open.includes('a')) continue; // no link: keep the text
       out.push(`<a href="${esc(href)}" rel="noopener noreferrer nofollow">`);
-    } else out.push(`<${name}>`);
+    } else {
+      // (sprint 259) an editor's colours and alignment: a page CSS class, or the style attribute again
+      const st = styles.css || styles.keepStyle ? safeStyle(attrs.style) : '';
+      out.push(!st ? `<${name}>` : styles.css ? `<${name} class="${styles.css.cls(st)}">` : `<${name} style="${st}">`);
+    }
     open.push(name);
   }
   while (open.length) out.push(`</${open.pop()}>`);
@@ -247,7 +292,7 @@ export const htmlText = (h: string) => decodeEntities(h.replace(/<[^>]*>/g, ''))
 
 /** Sanitised rich text, or '' when it has no text (an empty editor posts "<br>" or "<p></p>"). */
 export function cleanRichText(input: string | null | undefined): string {
-  const h = sanitizeHtml(input);
+  const h = sanitizeHtml(input, { keepStyle: true });
   return htmlText(h).trim() || /<hr>/.test(h) ? h : '';
 }
 

@@ -1529,6 +1529,8 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .report tr[class^="hl-"] td, .report tr[class^="hl-"]:hover td { background: var(--hl); }
 /* (sprint 257) a developer's highlight of one column's cell */
 .report td.hl-cell { background: var(--hl); }
+/* (sprint 259) a developer's #rrggbb highlight: its text black or white, whichever reads on it */
+.report tr.hl-custom td, .report td.hl-cell.hl-custom { color: var(--hl-text); }
 /* (sprint 259) buttons in the region body (Top of Region, Bottom of Region) */
 .region-body-buttons > .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
 .region-body-top { margin-bottom: 0.75rem; }
