@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.122.0] - 2026-11-27
+
 ### Added
 - **A link column between the report's own columns** (sprint 260): link column attribute `after` names the column it
   follows, e.g. a quantity button between an order line's name and its unit (found comparing a migrated Appsmith
