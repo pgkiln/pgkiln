@@ -91,7 +91,9 @@ describe('calendar and chart interactions', () => {
     const slot = await cell.getAttribute('data-drop');
     await Promise.all([page.waitForNavigation(), cell.click({ position: { x: 8, y: 30 } })]);
     assert.match(page.url(), /P24_STARTS_AT=/);
-    assert.equal(await page.inputValue('#P24_STARTS_AT'), slot);
+    // (sprint 261) the date in the app's date format, the time in a field of its own
+    assert.ok(await page.inputValue('#P24_STARTS_AT'), 'the date is filled in');
+    assert.equal(await page.inputValue('#P24_STARTS_AT_time'), slot!.slice(11, 16));
     await page.fill('#P24_TITLE', 'E2E meeting');
     await Promise.all([page.waitForNavigation(), page.click('button.btn[value="CREATE"]')]);
     assert.equal((await owner.one(`select to_char(starts_at, 'YYYY-MM-DD"T"HH24:MI') as s from hr.meeting where title = 'E2E meeting'`)).s, slot);

@@ -31,6 +31,15 @@ A `file` item shows a file input. When the page is submitted, the uploaded file 
 upload is kept when validation fails, so users don't have to choose the file again. Where the
 file goes next depends on the item.
 
+### A button instead of the browser's file field
+
+(Sprint 261.) The browser draws a file field itself: *Choose File* and *No file chosen* in the browser's language,
+whatever the application's. With `{"button": true}` in the item's attributes the field is a button in the application's
+style (*Choose a file*, or *Choose files* for a multiple file item, in the application's language) with the chosen
+files' names beside it; `{"button": "Add photos"}` gives it a label of its own (translated as a text message). The file
+input stays in the page, hidden but reachable with the keyboard, so the item works without JavaScript and the drop
+zone below still takes dropped and pasted files. HR's employee form (page 3) chooses its photo this way (part 121).
+
 ### Dropping and pasting files
 
 With JavaScript, every file item is also a **drop zone**: users can drag files from their desktop

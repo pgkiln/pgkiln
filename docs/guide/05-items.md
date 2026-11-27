@@ -12,7 +12,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `textarea` | multi-line text (always full width) | text |
 | `number` | number field (numeric keyboard on phones) | e.g. `1250.50` |
 | `date` | a text field in the item's date format mask, else the application's date format, else `YYYY-MM-DD`, with pgkiln's [date picker](#the-date-picker) (sprint 84; was the browser's); typed dates are read back in the format | `YYYY-MM-DD` |
-| `datetime` | date-time picker | `YYYY-MM-DDTHH:MM` |
+| `datetime` | (sprint 261) the date in the item's or the application's date format with pgkiln's [date picker](#the-date-picker), and the time (`HH:MI`) in a field of its own (was the browser's date-time field, `mm/dd/yyyy` and a 12-hour clock in US English browsers); the time may be typed as `9:05`, `0905` or `09.05` | `YYYY-MM-DDTHH:MM` |
 | `email`, `tel`, `url` | typed fields with the matching phone keyboard | text |
 | `password` | password field; never shown back, empty = unchanged | text |
 | `color` | colour picker | `#rrggbb` |
@@ -81,7 +81,7 @@ browser's date and time field.
 | `seq` | Order within its region |
 | `source_column` | For **form** regions: the table column it maps to |
 | `default_value` | Shown when the item has no value; (sprint 259) `{"default_sql": "select current_date"}` in the attributes instead takes the first value of a query, run as the application's role with the page's `:BINDS` (APEX: Default Type SQL Query), e.g. today or now on a new record. HR page 37 (part 119) |
-| `required` | Must have a value on submit ("Salary is required."); marked with `*` |
+| `required` | Must have a value on submit ("Salary is required."); marked with `*`; (sprint 261) with `{"required_when": ["SEND"]}` in the attributes only for those buttons, e.g. a draft that is saved half filled in and checked when it is sent (the `*` shows always) |
 | `help` | Help text under the field |
 | `lov` | List of values for select/radio/checkbox group/multi-select/popup/display items |
 | `readonly_condition` | SQL expression; when true the item is shown read-only and ignored on submit |
@@ -96,6 +96,8 @@ Attributes (`config`):
 | `submit_on_change` | `true`: submit the page when the value changes (typical for report filters) |
 | `warn_unsaved` | `false`: a change of this item doesn't count for the page's [warn on unsaved changes](04-pages-and-regions.md#warn-on-unsaved-changes) |
 | `null_label` | Text of the empty option in select lists (default `- Select -`); `false` removes the empty option |
+| `required_when` | (sprint 261) The buttons (requests) a `required` item is checked for: `["SEND"]` or `"SEND,SUBMIT"`; without it every submit checks it. A request is always a visible submit button of the page |
+| `button` | (sprint 261) `file`: `true` shows a button in the application's style (*Choose a file*, *Choose files*, translated) with the chosen files' names beside it instead of the browser's own file field, whose words follow the browser's language; a text, e.g. `"Add photos"`, is the button's label. The drop zone stays ([chapter 16](16-files.md)) |
 | `cascade_parents` | Comma-separated items this list depends on, see [cascading lists](#cascading-lists-of-values) |
 | `wide` | `true`: take the full width of the form |
 | `column_span`, `new_row` | (sprint 258) The item's width in the region's 12 columns (1–12) and `true` to start a new row: see [placing items in rows and columns](#placing-items-in-rows-and-columns) |

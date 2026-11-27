@@ -53,6 +53,7 @@ export const ITEM_OPTIONS: readonly TemplateOption[] = [
   { cls: 'to-bold', label: 'Bold value' },
   { cls: 'to-hide-label', label: 'Hide the label (kept for screen readers)' },
   { cls: 'to-label-left', label: 'Label beside the field (the whole row)' },
+  { cls: 'to-readonly-field', label: 'Read-only as a greyed field (with its placeholder)' },
 ];
 
 /** (0.29) report columns: on the column's cells (region config "column_options") */

@@ -219,6 +219,13 @@ async function validationPasses(ctx: PageContext, v: Validation, value: string |
  * but runs the validations made for DELETE (when_button = 'DELETE'), e.g. "approved requests can't
  * be deleted".
  */
+/** (sprint 261) config.required_when: the requests (button names) a required item is checked for; null: every submit. */
+export function requiredWhen(i: Item): string[] | null {
+  const w = i.config?.required_when;
+  const list = (Array.isArray(w) ? w : typeof w === 'string' ? w.split(',') : []).map((x) => String(x).trim().toUpperCase()).filter(Boolean);
+  return list.length ? list : null;
+}
+
 export async function validate(ctx: PageContext) {
   const c = ctx.client!;
   const deleting = ctx.request === 'DELETE';
@@ -234,6 +241,9 @@ export async function validate(ctx: PageContext) {
 
   for (const i of deleting ? [] : ctx.page.items) {
     if (!i.required || !vis.editable.has(i.name)) continue;
+    // (sprint 261) {"required_when": ["SUBMIT"]}: checked only for these buttons (requests); the * shows always
+    const only = requiredWhen(i);
+    if (only && !only.includes(String(ctx.request ?? '').toUpperCase())) continue;
     let missing = (state[i.name] ?? null) === null;
     // a file item keeps the stored file unless a new one is uploaded
     if (isMultiple(i)) {
@@ -263,7 +273,7 @@ export async function validate(ctx: PageContext) {
       };
       if (!m || !valid(m[1]) || !valid(m[2])) fail(i.name, ctx.locale.t('error.daterange', { label }));
       else if (m[1] && m[2] && m[1] > m[2]) fail(i.name, ctx.locale.t('error.daterange_order', { label }));
-      else if (i.required && (!m[1] || !m[2])) fail(i.name, ctx.locale.t('error.required', { label }));
+      else if (i.required && (!requiredWhen(i) || requiredWhen(i)!.includes(String(ctx.request ?? '').toUpperCase())) && (!m[1] || !m[2])) fail(i.name, ctx.locale.t('error.required', { label }));
     }
   }
   // a number item holds a number (one with a format mask was read in the language's notation on submit)

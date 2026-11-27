@@ -199,8 +199,9 @@ export const appDateReader = (ctx: PageContext) => (text: string) => parseDateMa
  * else the application's date format, else YYYY-MM-DD; null for other items.
  */
 export function itemDateMask(ctx: PageContext, item: Item): string | null {
-  if (item.type !== 'date' && item.type !== 'daterange') return null;
-  const own = typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '';
+  if (item.type !== 'date' && item.type !== 'daterange' && item.type !== 'datetime') return null;
+  // (sprint 261) a date-time item's date part: its own mask up to the time (DD-MM-YYYY HH24:MI → DD-MM-YYYY)
+  const own = (typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '').replace(/\s*(HH|HH12|HH24|MI|SS|AM|PM)\b.*$/i, '').trim();
   if (own && /(YYYY|YY|MM|DD|MON)/i.test(own) && !formatMaskError(own)) return own;
   return appDateMask(ctx);
 }
@@ -358,9 +359,15 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     if (item.type === 'checkbox' || item.type === 'switch') shown = isTruthy(value) ? ctx.locale.t('item.yes') : ctx.locale.t('item.no');
     if (item.type === 'password') shown = value ? '••••••••' : '';
     const at = item.type === 'location' ? LOCATION.exec(value) : null;
+    // (sprint 261) template option to-readonly-field: the field's box stays, greyed, and an empty one shows its placeholder
+    // or a select list's empty choice (as a disabled field; Appsmith's disabled widgets)
+    const boxed = Array.isArray(item.template_options) && item.template_options.includes('to-readonly-field');
+    const filler = boxed && !shown
+      ? (NULL_CHOICE_TYPES.has(item.type) && item.config?.null_label !== false ? nullText(ctx.locale.t('lov.none')) : hint)
+      : null;
     control = at
       ? html`<div class="display-value" id="${id}">${value} <a href="https://www.openstreetmap.org/?mlat=${at[1]}&amp;mlon=${at[2]}#map=17/${at[1]}/${at[2]}" target="_blank" rel="noopener noreferrer">${ctx.locale.t('item.show_map')}</a></div>`
-      : html`<div class="display-value" id="${id}">${shown || ' '}</div>`;
+      : html`<div class="display-value" id="${id}">${filler ? html`<span class="display-placeholder">${filler}</span>` : shown || ' '}</div>`;
   } else {
     switch (item.type) {
       case 'textarea':
@@ -444,10 +451,16 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
             html`<label class="check"><input type="radio" id="${i === 0 ? id : `${id}_${i}`}" name="${id}" value="${o.value}"${o.value === value ? raw(' checked') : ''}${aria}> ${o.display}</label>`,
         )}</div>`;
         break;
-      case 'datetime':
-        // a date alone (e.g. from a calendar's create link) is midnight
-        control = html`<input type="datetime-local" id="${id}" name="${id}" value="${/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00` : value.slice(0, 16).replace(' ', 'T')}"${aria}>`;
+      case 'datetime': {
+        // (sprint 261) the date in the app's (or the item's) date format with pgkiln's date picker, and the time as HH:MI
+        // in a text field of its own (was the browser's datetime-local: mm/dd/yyyy and a 12-hour clock in en-US
+        // browsers); both are posted under the item's name and read back as YYYY-MM-DDTHH:MI
+        const v = value.replace(' ', 'T');
+        const [d, tm = ''] = v.split('T');
+        const time = /^\d{2}:\d{2}/.test(tm) ? tm.slice(0, 5) : tm;
+        control = html`<span class="datetime-field" data-datetime>${dateField(ctx, { id, iso: d, typed: d, mask: itemDateMask(ctx, item)!, attrs: html` name="${id}"${aria}`, editable, placeholder: hint })}<input type="text" class="time-field" id="${id}_time" name="${id}" value="${time}" placeholder="--:--" inputmode="numeric" autocomplete="off" maxlength="5" aria-label="${label} (${ctx.locale.t('item.time')})"></span>`;
         break;
+      }
       case 'richtext':
       case 'markdown': {
         // a plain textarea (HTML or Markdown) that works without JavaScript; app.js adds the
@@ -618,7 +631,15 @@ function fileInput(ctx: PageContext, item: Item, aria: Raw) {
   const crop = !isMultiple(item) && typeof conf.crop === 'string' && CROP_RATIOS.includes(conf.crop) ? raw(` data-crop="${conf.crop}"`) : '';
   // data-drop: app.js turns the field into a drop zone that also takes pasted files, with this hint
   const drop = ctx.locale.t(isMultiple(item) ? 'file.drop_many' : 'file.drop');
-  return html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx}${crop} data-drop="${drop}"${aria}>`;
+  const input = html`<input type="file" id="${item.name}" name="${item.name}"${conf.accept ? raw(` accept="${String(conf.accept).replace(/[^\w/*.,+ -]/g, '')}"`) : ''}${multiple}${capture}${maxPx}${crop} data-drop="${drop}"${aria}>`;
+  // (sprint 261) {"button": true} or {"button": "Select files"}: a button in the app's style instead of the browser's own
+  // "Choose file / No file chosen" (its words follow the browser's language); the input stays, visually hidden but
+  // focusable, and app.js writes the chosen files' names next to the button
+  const button = (item.config as { button?: unknown } | undefined)?.button;
+  if (button !== true && !(typeof button === 'string' && button.trim())) return input;
+  const t = ctx.locale.t;
+  const text = typeof button === 'string' ? ctx.locale.tr(button.trim().slice(0, 100)) : t(isMultiple(item) ? 'file.choose_many' : 'file.choose');
+  return html`<span class="file-button">${input}<label for="${item.name}" class="btn">${icon('upload')} ${text}</label><span class="file-button-names" aria-live="polite">${t('file.none')}</span></span>`;
 }
 
 /** A multiple file item: its files (stored and new), each with a remove box, and the file input. */
