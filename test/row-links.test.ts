@@ -1,6 +1,6 @@
 // Sprint 238 (MG-6, MG-14; migration 194): a report's link columns and row actions, and inline dialog regions opened by
 // their static id (a link to #<static id>, a redirect button's target_region, a process's or branch's open_region, and
-// again after an error inside the dialog). HR page 66 shows them.
+// again after an error inside the dialog). HR page 66 shows them. (sprint 260) A link column "after" a report column.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -60,6 +60,15 @@ before(async () => {
     type: 'classic_report', source: `select dname as title, loc as description, deptno from hr.dept where deptno = 10`,
     config: { report_template: 'media_list', hidden: ['deptno'], link_columns: [{ label: 'Edit', page: 3, items: { P3_ID: '#deptno#' }, style: 'button' }] },
   });
+  R.mid = await region(1, 'Placed', {
+    type: 'classic_report', source: `select deptno, dname, loc, 'x' as gone from hr.dept where deptno in (10, 20) order by deptno`,
+    config: { hidden: ['gone'], link_columns: [
+      { label: 'Last', page: 3 },
+      { label: 'Qty', page: 3, items: { P3_ID: '#deptno#' }, style: 'button', after: 'DNAME' },
+      { label: 'Nowhere', page: 3, after: 'no_such_column' },
+      { label: 'Of hidden', page: 3, after: 'gone', position: 'start' },
+    ] },
+  });
   R.intro = await region(1, 'Intro', { source: '<p><a href="#note">Add a note</a></p>' });
   R.note = await region(1, 'Note', { template: 'inline_dialog', static_id: 'note', source: '<p>Write it.</p>' });
   R.kept = await region(1, 'Kept', { template: 'inline_dialog', static_id: 'kept', source: '<p>Kept: &P1_LAST.</p>' });
@@ -98,14 +107,15 @@ describe('link columns and row actions: the settings', () => {
     const cols = linkColumnsOf(reg({ link_columns: [
       { label: 'Edit #name#', page: 3, items: { P3_ID: '#id#', bad: { x: 1 } } },
       { label: 'Icon only', page: '4', style: 'icon' },
-      { label: 'Odd', page: 3, style: 'weird', icon: 'not-an-icon', position: 'middle', when: 'drop table x' },
+      { label: 'Odd', page: 3, style: 'weird', icon: 'not-an-icon', position: 'middle', when: 'drop table x', after: 'x; drop' },
       { label: '', page: 3 }, { label: 'No page' }, { label: 'Bad page', page: 'javascript:alert(1)' }, { label: 'Zero', page: 0 }, null, 'x',
     ] }));
     assert.equal(cols.length, 3);
-    assert.deepEqual(cols[0], { label: 'Edit #name#', page: 3, items: { P3_ID: '#id#' }, style: 'link', icon: null, heading: 'Edit', position: 'end', when: null });
+    assert.deepEqual(cols[0], { label: 'Edit #name#', page: 3, items: { P3_ID: '#id#' }, style: 'link', icon: null, heading: 'Edit', position: 'end', after: null, when: null });
     assert.equal(cols[1].style, 'link', 'icon style without an icon is a link');
     assert.equal(cols[1].page, 4);
-    assert.deepEqual([cols[2].style, cols[2].icon, cols[2].position, cols[2].when], ['link', null, 'end', null]);
+    assert.deepEqual([cols[2].style, cols[2].icon, cols[2].position, cols[2].when, cols[2].after], ['link', null, 'end', null, null]);
+    assert.equal(linkColumnsOf(reg({ link_columns: [{ label: 'Q', page: 1, after: 'Amount' }] }))[0].after, 'amount');
     assert.equal(linkColumnsOf(reg({ link_columns: Array.from({ length: 20 }, (_, i) => ({ label: `L${i}`, page: 1 })) })).length, 10);
     assert.deepEqual(linkColumnsOf(reg({ link_columns: { label: 'x', page: 1 } })), []);
   });
@@ -134,6 +144,17 @@ describe('a report with link columns', () => {
     assert.ok(ths.indexOf('link-col:Edit') < ths.findIndex((x) => /deptno/i.test(x)), 'the start column comes first');
     assert.ok(ths.indexOf('link-col:Open') > ths.findIndex((x) => /loc/i.test(x)), 'the end columns come last');
     assert.doesNotMatch(head, /Secret/, 'a link to a page the user may not open has no column');
+  });
+
+  test('"after": a link column right after that report column; after a hidden or unknown column it goes by position', () => {
+    const html = body.slice(body.indexOf(`id="R${R.mid}"`), body.indexOf(`id="R${R.intro}"`));
+    const head = /<thead><tr>([\s\S]*?)<\/tr><\/thead>/.exec(html)![1];
+    const ths = [...head.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) => m[1].replace(/<[^>]+>/g, '').replace(/[▲▼]/g, '').trim().toLowerCase());
+    assert.deepEqual(ths, ['of hidden', 'deptno', 'dname', 'qty', 'loc', 'last', 'nowhere']);
+    const row = html.split('<tr').find((r) => /ACCOUNTING/.test(r))!;
+    const cells = [...row.matchAll(/<td\b[^>]*data-label="([^"]*)"/g)].map((m) => m[1].toLowerCase());
+    assert.deepEqual(cells, ['of hidden', 'deptno', 'dname', 'qty', 'loc', 'last', 'nowhere']);
+    assert.match(row, /data-label="Qty"><a [^>]*class="btn btn-small"[^>]*>Qty<\/a>/);
   });
 
   test('each style; #column# in labels and items; signed links; a modal target opens as a dialog', () => {

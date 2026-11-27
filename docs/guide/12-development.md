@@ -462,8 +462,8 @@ src/
                            the route POST …/calendar/:id/move is in routes.ts)
     links.ts               page links with checksums; fillItems() fills #column# in link items
     link-columns.ts        (sprint 238, MG-6) a report's link_columns (linkColumnsOf: label, page, items, style, icon, heading,
-                           position, when) and row_actions (reportRowActionsOf: edit, links); reportLinks(): the cells before and
-                           after the report's columns for the user (pages they may open only), and the links under a classic
+                           position, after, when) and row_actions (reportRowActionsOf: edit, links); reportLinks(): the cells before and
+                           after the report's columns, and (sprint 260) after a named one (headAfter/rowAfter/blankAfter), for the user (pages they may open only), and the links under a classic
                            template's rows; used by report.ts (interactive and classic reports)
     open-region.ts         (sprint 238, MG-14, migration 194) inline dialog regions by static id: overlayHash (a button's
                            target_region, a list entry's #static-id), openByStaticId (the one-time session value __OPEN_REGION

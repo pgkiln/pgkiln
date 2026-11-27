@@ -777,6 +777,7 @@ column of its own, besides the one column `link` makes a link:
 | `icon` | An icon before the label (needed for `icon`) |
 | `heading` | The column's heading (default: the label without its `#column#` parts) |
 | `position` | `end` (default): after the report's columns; `start`: before them |
+| `after` | (sprint 260) A column of the query: the link column comes right after it, e.g. a quantity button between the name and the unit. When that column is hidden or missing, `position` places it |
 | `when` | A column of the query: the link shows only in rows where it is true (not null, `false`, empty, `N` or `0`); hide the column with `hidden` |
 
 At most 10 link columns; an entry without a label or a page is left out. `row_actions` gives each row the grid's ⋮
@@ -785,7 +786,7 @@ page. A grid's `duplicate` and `delete` don't apply to a report. Link columns an
 (not in group by, pivot or chart, nor in downloads); on a phone each is a labelled line of the row's card. A classic
 report has them too: in its table, and with the `value_pairs` and `media_list` templates as links under each row. The
 Advisor reports a link to a page that doesn't exist. HR's page 66 (*Row links*) shows each style, `when`, the menu and
-both classic templates.
+both classic templates; its *Locations* report puts *First department* `after` the location (HR part 120).
 
 ---
 
