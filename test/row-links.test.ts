@@ -1,6 +1,7 @@
 // Sprint 238 (MG-6, MG-14; migration 194): a report's link columns and row actions, and inline dialog regions opened by
 // their static id (a link to #<static id>, a redirect button's target_region, a process's or branch's open_region, and
 // again after an error inside the dialog). HR page 66 shows them. (sprint 260) A link column "after" a report column.
+// (sprint 261) "else": "text" (the label as text where the link doesn't show) and a row menu with a label of its own.
 import { after, before, describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { FastifyInstance } from 'fastify';
@@ -69,6 +70,11 @@ before(async () => {
       { label: 'Of hidden', page: 3, after: 'gone', position: 'start' },
     ] },
   });
+  R.otherwise = await region(1, 'Otherwise', {
+    type: 'classic_report', source: `select deptno, dname, deptno = 10 as open from hr.dept where deptno in (10, 20) order by deptno`,
+    config: { hidden: ['open'], link_columns: [{ label: '#dname#', heading: 'Qty', page: 3, items: { P3_ID: '#deptno#' }, style: 'button', when: 'open', else: 'text' }],
+      row_actions: { label: 'Options', style: 'hot', links: [{ label: 'More', page: 3, items: { P3_ID: '#deptno#' } }] } },
+  });
   R.intro = await region(1, 'Intro', { source: '<p><a href="#note">Add a note</a></p>' });
   R.note = await region(1, 'Note', { template: 'inline_dialog', static_id: 'note', source: '<p>Write it.</p>' });
   R.kept = await region(1, 'Kept', { template: 'inline_dialog', static_id: 'kept', source: '<p>Kept: &P1_LAST.</p>' });
@@ -111,7 +117,7 @@ describe('link columns and row actions: the settings', () => {
       { label: '', page: 3 }, { label: 'No page' }, { label: 'Bad page', page: 'javascript:alert(1)' }, { label: 'Zero', page: 0 }, null, 'x',
     ] }));
     assert.equal(cols.length, 3);
-    assert.deepEqual(cols[0], { label: 'Edit #name#', page: 3, items: { P3_ID: '#id#' }, style: 'link', icon: null, heading: 'Edit', position: 'end', after: null, when: null });
+    assert.deepEqual(cols[0], { label: 'Edit #name#', page: 3, items: { P3_ID: '#id#' }, style: 'link', icon: null, heading: 'Edit', position: 'end', after: null, when: null, otherwise: null });
     assert.equal(cols[1].style, 'link', 'icon style without an icon is a link');
     assert.equal(cols[1].page, 4);
     assert.deepEqual([cols[2].style, cols[2].icon, cols[2].position, cols[2].when, cols[2].after], ['link', null, 'end', null, null]);
@@ -124,7 +130,11 @@ describe('link columns and row actions: the settings', () => {
     assert.equal(reportRowActionsOf(reg({})), null);
     assert.equal(reportRowActionsOf(reg({ row_actions: { duplicate: true, delete: true } })), null);
     const ra = reportRowActionsOf(reg({ row_actions: { edit: { page: 3, items: { P3_ID: '#id#' } }, links: [{ label: 'A', page: 4 }, { page: 5 }, { label: 'B', page: 'x' }] } }))!;
-    assert.deepEqual(ra, { edit: { label: null, page: 3, items: { P3_ID: '#id#' } }, links: [{ label: 'A', page: 4, items: {} }] });
+    assert.deepEqual(ra, { edit: { label: null, page: 3, items: { P3_ID: '#id#' } }, links: [{ label: 'A', page: 4, items: {} }], label: null, hot: false });
+    const labelled = reportRowActionsOf(reg({ row_actions: { label: '  Options ', style: 'hot', links: [{ label: 'A', page: 4 }] } }))!;
+    assert.deepEqual([labelled.label, labelled.hot], ['Options', true]);
+    assert.equal(linkColumnsOf(reg({ link_columns: [{ label: 'Q', page: 1, when: 'open', else: 'text' }] }))[0].otherwise, 'text');
+    assert.equal(linkColumnsOf(reg({ link_columns: [{ label: 'Q', page: 1, when: 'open', else: '<b>' }] }))[0].otherwise, null);
   });
 });
 
@@ -155,6 +165,15 @@ describe('a report with link columns', () => {
     const cells = [...row.matchAll(/<td\b[^>]*data-label="([^"]*)"/g)].map((m) => m[1].toLowerCase());
     assert.deepEqual(cells, ['of hidden', 'deptno', 'dname', 'qty', 'loc', 'last', 'nowhere']);
     assert.match(row, /data-label="Qty"><a [^>]*class="btn btn-small"[^>]*>Qty<\/a>/);
+  });
+
+  test('"else": "text" shows the label as text where the link doesn\'t; a row menu with its own label', () => {
+    const html = body.slice(body.indexOf(`id="R${R.otherwise}"`), body.indexOf(`id="R${R.intro}"`));
+    const rows = html.split('<tr').filter((x) => /<td/.test(x));
+    assert.match(rows.find((x) => /ACCOUNTING/.test(x))!, /data-label="Qty"><a [^>]*class="btn btn-small"[^>]*>ACCOUNTING<\/a>/);
+    assert.match(rows.find((x) => /RESEARCH/.test(x))!, /data-label="Qty"><span class="link-col-text">RESEARCH<\/span>/);
+    assert.equal((html.match(/<th scope="col" class="link-col">Qty<\/th>/g) ?? []).length, 1, 'one column');
+    assert.match(html, /<summary class="btn btn-small btn-hot" aria-label="Options \([^)]*\)">Options<\/summary>/);
   });
 
   test('each style; #column# in labels and items; signed links; a modal target opens as a dialog', () => {

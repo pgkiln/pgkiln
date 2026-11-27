@@ -441,6 +441,17 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
       ctx.session.state[item.name] = parts.some(Boolean) ? (parts.length === 1 ? `${parts[0]}:` : parts.join(':')) : null;
       continue;
     }
+    if (item.type === 'datetime' && raw !== undefined) {
+      // (sprint 261) the date (in the date format, or YYYY-MM-DD) and the time (H:MM, HH:MM, HHMM or HH.MM) → YYYY-MM-DDTHH:MI;
+      // what can't be read is kept as typed, and the database reports it
+      // two fields, or one value "date time" / "dateTtime" (a dynamic action, an Ajax call)
+      const [d = '', tm = ''] = (Array.isArray(raw) ? raw : String(raw).trim().split(/[T ]+/)).map((v) => String(v).trim());
+      const iso = d ? parseDateMask(d, itemDateMask(ctx, item)!, ctx.locale.lang) : null;
+      const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(tm);
+      const time = m && Number(m[1]) < 24 && Number(m[2]) < 60 ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+      ctx.session.state[item.name] = !d && !tm ? null : iso && (time || !tm) ? `${iso}T${time ?? '00:00'}` : [d, tm].filter(Boolean).join(' ');
+      continue;
+    }
     if (item.type === 'combobox' && comboMultiple(item)) {
       // tags: colon-separated, trimmed, each once
       const tags = [...new Set((Array.isArray(raw) ? raw : [raw ?? '']).flatMap((v) => String(v).split(':')).map((v) => v.trim()).filter(Boolean))];

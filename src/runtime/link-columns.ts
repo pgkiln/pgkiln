@@ -13,9 +13,12 @@
 //   after     (sprint 260) a column of the query: the link column comes right after it (when that column is shown; else
 //             where position puts it), e.g. a quantity button between the name and the unit
 //   when      a column of the query: the link shows in rows where it is true (not null, false, '', 'N', 'n', '0' or 'f')
+//   else      (sprint 261) "text": in the other rows the label shows as plain text instead of nothing (a quantity that
+//             is a button while an order is open, and its number once it is sent)
 //
 // config.row_actions: {"edit": {"page": 3, "items": {"P3_ID": "#id#"}, "label": "Edit"}, "links": [{"label", "page",
 //   "items"}, …]}: the grid's ⋮ menu for each row of a report (a grid's duplicate and delete don't apply to a report).
+//   (sprint 261) "label": "Options" shows that text on the menu's button instead of ⋮; "style": "hot" makes it a primary button.
 
 import { html, raw, type Raw } from '../html.ts';
 import { icon, isIcon } from '../icons.ts';
@@ -37,6 +40,8 @@ export interface LinkColumn {
   position: 'start' | 'end';
   after: string | null;
   when: string | null;
+  /** (sprint 261) "text": the label as text where `when` is false */
+  otherwise: 'text' | null;
 }
 
 interface RowLink {
@@ -78,13 +83,14 @@ export function linkColumnsOf(r: Region): LinkColumn[] {
       position: x.position === 'start' ? 'start' : 'end',
       after: typeof x.after === 'string' && COLUMN.test(x.after) ? x.after.toLowerCase() : null,
       when: typeof x.when === 'string' && COLUMN.test(x.when) ? x.when.toLowerCase() : null,
+      otherwise: x.else === 'text' ? 'text' : null,
     });
   }
   return out;
 }
 
 /** config.row_actions of a report: an edit link and other links (a grid's duplicate and delete don't apply). */
-export function reportRowActionsOf(r: Region): { edit: RowLink | null; links: RowLink[] } | null {
+export function reportRowActionsOf(r: Region): { edit: RowLink | null; links: RowLink[]; label: string | null; hot: boolean } | null {
   const ra = r.config?.row_actions;
   if (!ra || typeof ra !== 'object' || Array.isArray(ra)) return null;
   const link = (x: any): RowLink | null => {
@@ -93,7 +99,8 @@ export function reportRowActionsOf(r: Region): { edit: RowLink | null; links: Ro
   };
   const links = (Array.isArray(ra.links) ? ra.links : []).slice(0, 10).map(link).filter((x: RowLink | null): x is RowLink => !!x?.label);
   const edit = link(ra.edit);
-  return edit || links.length ? { edit, links } : null;
+  const label = typeof ra.label === 'string' && ra.label.trim() ? ra.label.trim().slice(0, 100) : null;
+  return edit || links.length ? { edit, links, label, hot: ra.style === 'hot' } : null;
 }
 
 /** A row value as true: not null, false, '', 'N', 'n', '0' or 'f'. */
@@ -163,7 +170,8 @@ export async function reportLinks(ctx: PageContext, r: Region, text: (row: unkno
   const visible = (c: LinkColumn, row: unknown[]) => !c.when || truthy(raw0(row, c.when));
   const heading = (c: LinkColumn) => tr(c.heading);
   const cellOf = (c: LinkColumn, row: unknown[]) =>
-    html`<td class="link-col link-col-${c.style}" data-label="${heading(c)}">${visible(c, row) ? anchor(c, row) : ''}</td>`;
+    html`<td class="link-col link-col-${c.style}" data-label="${heading(c)}">${
+      visible(c, row) ? anchor(c, row) : c.otherwise === 'text' ? html`<span class="link-col-text">${fill(row, tr(c.label))}</span>` : ''}</td>`;
   const headOf = (c: LinkColumn) =>
     c.style === 'icon' || !c.heading
       ? html`<th scope="col" class="link-col" aria-label="${heading(c) || tr(c.label)}"></th>`
@@ -176,7 +184,9 @@ export async function reportLinks(ctx: PageContext, r: Region, text: (row: unkno
 
   const menu = (row: unknown[], rowNo: number) =>
     html`<td class="row-actions" data-label="${t('grid.row_actions')}"><details class="menu row-menu">
-      <summary class="btn btn-small" aria-label="${t('grid.row_actions_for', { row: rowNo })}"><span aria-hidden="true">⋮</span></summary>
+      ${ra?.label
+        ? html`<summary class="btn btn-small${ra.hot ? ' btn-hot' : ''}" aria-label="${fill(row, tr(ra.label))} (${t('grid.row_actions_for', { row: rowNo })})">${fill(row, tr(ra.label))}</summary>`
+        : html`<summary class="btn btn-small${ra?.hot ? ' btn-hot' : ''}" aria-label="${t('grid.row_actions_for', { row: rowNo })}"><span aria-hidden="true">⋮</span></summary>`}
       <div class="menu-panel menu-links">
         ${edit ? html`<a ${linkAttrs(ctx, edit.page, itemsFor(row, edit.items))}>${icon('edit')} ${edit.label ? fill(row, tr(edit.label)) : t('report.edit')}</a>` : ''}
         ${extra.map((l) => html`<a ${linkAttrs(ctx, l.page, itemsFor(row, l.items))}>${fill(row, tr(l.label!))}</a>`)}

@@ -21836,4 +21836,27 @@ describe('sprint 259 row links, body buttons, highlight colours, item defaults f
       await owner.query(`update meta.item set config = $2 where id = $1`, [item.id, item.config]);
     }
   });
+  // (sprint 261) A date-time item's two fields: text that isn't a date and a time is kept as typed and shown escaped,
+  // never as markup; a file button's own label is escaped; required_when names only buttons, which must be real
+  // visible submit buttons (a forged request is refused), so it can't be used to skip a check.
+  test('date-time fields, a file button label and required_when', async () => {
+    const king = await as('king');
+    await king.get('/a/hr/24');
+    await king.post('/a/hr/24', { __csrf: king.lastCsrf, P24_TITLE: 'x', P24_STARTS_AT: ['"><script>alert(1)</script>', '<b>9</b>'], __request: 'CREATE' });
+    const html = (await king.get('/a/hr/24')).body;
+    assert.doesNotMatch(html, /<script>alert\(1\)<\/script>|<b>9<\/b>/);
+    const item = await owner.one(`select i.id, i.config from meta.item i join meta.page p on p.id = i.page_id where p.app_id = $1 and p.page_no = 3 and i.name = 'P3_PHOTO'`, [appId]);
+    try {
+      await owner.query(`update meta.item set config = config || '{"button": "<img src=x onerror=alert(1)>"}' where id = $1`, [item.id]);
+      const page = (await king.get('/a/hr/3')).body;
+      assert.doesNotMatch(page, /<img src=x onerror/);
+    } finally {
+      await owner.query(`update meta.item set config = $2 where id = $1`, [item.id, item.config]);
+    }
+    await king.get('/a/hr/37');
+    const forged = await king.post('/a/hr/37', { __csrf: king.lastCsrf, P37_START_DATE: '', __request: 'NO_SUCH_BUTTON' });
+    assert.equal(forged.statusCode, 403);
+    const missing = await king.post('/a/hr/37', { __csrf: king.lastCsrf, P37_START_DATE: '', __request: 'REQUEST' });
+    assert.equal(missing.statusCode, 422, 'Request leave needs the first day');
+  });
 });

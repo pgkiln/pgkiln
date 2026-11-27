@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Date-time items in the application's date format** (sprint 261): the date with pgkiln's date picker and the time
+  (`HH:MI`) in a field of its own, instead of the browser's date-time field (`mm/dd/yyyy` and a 12-hour clock in US
+  English browsers). Found comparing two migrated Appsmith applications (Jira PGKIL-12).
+- **A file item as a button** (sprint 261): attribute `button` (`true` or a label) shows a button in the application's
+  style with the chosen files' names, instead of the browser's own file field; the drop zone stays.
+- **Read-only items as greyed fields** (sprint 261): item template option `to-readonly-field` keeps the field's box and
+  shows its placeholder or empty choice when there is no value (as Appsmith's and APEX's disabled items).
+- **Required for some buttons only** (sprint 261): attribute `required_when` (`["SEND"]`): a draft is saved half filled
+  in and checked when it is sent; the `*` shows always.
+- **Link columns with text where the link doesn't show** (sprint 261): link column attribute `else: "text"`; a report's
+  row menu with a label of its own (`row_actions.label`, `style: "hot"`). HR part 121: pages 3, 24 and 37.
+
 ## [0.122.0] - 2026-11-27
 
 ### Added

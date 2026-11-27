@@ -262,6 +262,8 @@ const pgkilnUnsaved = (() => {
     const el = els[0];
     // a date range item: two date inputs with the same name, "from:to"
     if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
+    // (sprint 261) a date-time item: the date field and the time field, "date time"
+    if (el.closest('[data-datetime]')) return els.slice(0, 2).map((e) => e.value.trim()).filter(Boolean).join(' ');
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
     // (sprint 235) a checkbox group: the ticked values colon-separated, like a multiselect
     if (el.type === 'checkbox' && el.closest('.radio-group')) return els.filter((e) => e.checked).map((e) => e.value).join(':');
@@ -283,6 +285,11 @@ const pgkilnUnsaved = (() => {
     if (el.closest('[data-range]')) {
       const parts = String(value ?? '').split(':');
       els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
+    } else if (el.closest('[data-datetime]')) {
+      // "YYYY-MM-DDTHH:MI" (or "date time"): the date part in the date field, the time in the time field
+      const [d = '', tm = ''] = String(value ?? '').trim().split(/[T ]+/);
+      els[0].value = d;
+      if (els[1]) els[1].value = tm.slice(0, 5);
     } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
     else if (el.type === 'checkbox' && el.closest('.radio-group')) {
       const values = String(value ?? '').split(':');
@@ -3599,6 +3606,23 @@ const liveBadges = (() => {
     input.files = dt.files;
   });
 
+  // (sprint 261) a date-time item's time field: 930, 9.30 or 9:30 becomes 09:30 when it is left (the server reads them too)
+  document.addEventListener('change', (e) => {
+    const f = e.target;
+    if (!(f instanceof HTMLInputElement) || !f.classList.contains('time-field')) return;
+    const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(f.value.trim());
+    if (m && Number(m[1]) < 24 && Number(m[2]) < 60) f.value = `${m[1].padStart(2, '0')}:${m[2]}`;
+  });
+
+  // (sprint 261) a file item shown as a button: the chosen files' names next to it
+  document.addEventListener('change', (e) => {
+    const input = e.target;
+    const names = input instanceof HTMLInputElement && input.type === 'file' ? input.closest('.file-button')?.querySelector('.file-button-names') : null;
+    if (!names) return;
+    if (!names.dataset.none) names.dataset.none = names.textContent;
+    names.textContent = input.files.length ? [...input.files].map((f) => f.name).join(', ') : names.dataset.none;
+  });
+
   // file items (data-drop): drop files on the field, or paste them (a screenshot, a copied file).
   // The files go into the <input type="file">, so the form posts them as usual.
   function addFiles(input, files) {
@@ -3611,14 +3635,16 @@ const liveBadges = (() => {
   // wrap each file input in a drop zone with its hint (again after a dynamic action replaced an item)
   function dropZones(root) {
     for (const input of root.querySelectorAll('input[type=file][data-drop]')) {
-      if (input.parentElement.classList.contains('file-drop')) continue;
+      // (sprint 261) a file item shown as a button: the zone takes the button with its input
+      const host = input.closest('.file-button') || input;
+      if (host.parentElement.classList.contains('file-drop')) continue;
       const zone = document.createElement('div');
       zone.className = 'file-drop';
-      input.before(zone);
+      host.before(zone);
       const hint = document.createElement('span');
       hint.className = 'file-drop-hint';
       hint.textContent = input.dataset.drop;
-      zone.append(input, hint);
+      zone.append(host, hint);
     }
   }
   if (window.DataTransfer) {
