@@ -14,6 +14,7 @@ All notable changes to this project are documented here. The format follows
   or under the content; with the template option Full width a bar over the whole width (migration 209).
 - **A report row that opens its record** (sprint 259): attribute `row_link` makes a click anywhere on a row follow its link.
 - **Highlight colours of the developer's own** (sprint 259): a developer highlight's `color` may be `#rrggbb`.
+- **CSS classes on buttons** (sprint 259; APEX: Appearance → CSS Classes): class names of the developer's own (migration 209).
 - **Item defaults from SQL** (sprint 259; APEX: Default Type SQL Query): attribute `default_sql`, run as the application's
   role. Found comparing two migrated Appsmith applications page by page; HR part 119: pages 6 and 37.
 

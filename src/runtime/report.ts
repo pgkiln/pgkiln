@@ -1165,7 +1165,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       const tpl = templated.get(i);
       if (tpl) return html`<td class="${cls ? `${cls} tc-cell` : 'tc-cell'}" data-label="${label}">${tpl(row, rowNum)}</td>`;
       return i === linkIdx && !editIcon
-        ? html`<td class="${cls}" data-label="${label}"><a class="${rowLink ? 'row-open' : null}" ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
+        ? html`<td class="${cls}" data-label="${label}"><a class="${rowLink ? 'row-open' : null}" ${linkAttrs(ctx, link!.page, rowItems(row))}${rowLink && !text ? html` aria-label="${t('report.edit')}"` : ''}>${text || (rowLink ? '' : t('report.edit'))}</a></td>`
         : html`<td class="${cls}" data-label="${label}">${text}</td>`;
     })}${lk ? lk.rowTrail(row) : ''}</tr>`);
   }

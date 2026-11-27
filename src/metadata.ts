@@ -278,6 +278,8 @@ export interface Item extends FromGlobal {
 
 export interface Button extends FromGlobal {
   id: number;
+  /** (sprint 259, migration 209; APEX: CSS Classes) */
+  css_classes?: string | null;
   region_id: number | null;
   seq: number;
   name: string;

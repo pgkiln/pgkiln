@@ -196,6 +196,9 @@ Positions apply to the `standard`, `collapsible`, `plain`, `tabs_container` and 
 also to [sub regions](#sub-regions) with them); the other templates place every button where they always do.
 Page-level buttons have no position.
 
+(sprint 259; APEX: Appearance → CSS Classes) A button's **CSS classes** (`css_classes`) adds class names of your own to it, for the
+application's CSS (letters, digits, `-` and `_`; checked by the database), besides its [template options](#template-options).
+
 ### Dialogs and drawers
 
 A modal page (Page Designer → Page → Appearance: *Page mode* Modal dialog) opens over the page that linked to it.

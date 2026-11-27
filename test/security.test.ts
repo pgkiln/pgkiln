@@ -21794,6 +21794,20 @@ describe('sprint 259 row links, body buttons, highlight colours, item defaults f
     assert.match(body, new RegExp(`\\.${cls![1]}\\{--hl:#dcfce7\\}`));
   });
 
+  // A button's own CSS classes go into its class attribute: the database takes class names only.
+  test('a button\'s CSS classes are class names only', async () => {
+    const b = await owner.one(`select b.id from meta.button b join meta.page p on p.id = b.page_id where p.app_id = $1 and p.page_no = 6 and b.name = 'NEW'`, [appId]);
+    for (const bad of ['a" onclick="x', 'a<b', 'x;y', '"']) {
+      await assert.rejects(owner.query(`update meta.button set css_classes = $2 where id = $1`, [b.id, bad]), /check constraint/);
+    }
+    await owner.query(`update meta.button set css_classes = 'my-wide is_new' where id = $1`, [b.id]);
+    try {
+      assert.match((await (await as('king')).get('/a/hr/6')).body, /class="btn btn-hot to-block my-wide is_new"/);
+    } finally {
+      await owner.query(`update meta.button set css_classes = null where id = $1`, [b.id]);
+    }
+  });
+
   // default_sql runs as the application's database role, with the page's binds as parameters: no superuser view.
   test('an item default from SQL is the first value of its query, as the application role', async () => {
     const item = await owner.one(`select i.id, i.config from meta.item i join meta.region r on r.id = i.region_id join meta.page p on p.id = r.page_id

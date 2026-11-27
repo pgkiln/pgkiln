@@ -90,7 +90,8 @@ async function renderMenu(ctx: PageContext, b: Button, cls: string, badge: Raw |
 }
 
 export async function renderButton(ctx: PageContext, b: Button) {
-  const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}${templateClasses('button', b.template_options)}`;
+  // (sprint 259; APEX: Appearance → CSS Classes) the button's own classes (checked by the database)
+  const cls = `btn${b.hot ? ' btn-hot' : ''}${b.name === 'DELETE' ? ' btn-danger' : ''}${templateClasses('button', b.template_options)}${b.css_classes ? ` ${b.css_classes.trim()}` : ''}`;
   const confirm = b.confirm ? raw(` data-confirm="${esc(await expandShortcuts(ctx, b.confirm, 'text'))}"`) : '';
   const badge = b.badge || b.badge_query ? await badgeOf(ctx, b) : '';
   // (sprint 249, MG-27) &ITEM. substitutions, escaped by html``
