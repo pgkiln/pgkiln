@@ -6,7 +6,8 @@
 --
 -- Page 6 "Requests you can see": a click anywhere on a row opens the
 -- request (row_link); "New" is a full-width bar above the report (button
--- position Top of Region, template option Full width); an approved
+-- position Top of Region, template option Full width), "Send reminders
+-- now" under it (Bottom of Region); an approved
 -- request's status cell is #dcfce7.
 -- Page 37 "Leave assistant": the start date is today when empty
 -- (default_sql).
@@ -24,3 +25,7 @@ update meta.button b set slot = 'top_of_region', template_options = array_append
 update meta.item i set config = i.config || '{"default_sql": "select current_date"}'
   from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
  where i.region_id = r.id and a.alias = 'hr' and p.page_no = 37 and i.name = 'P37_START_DATE';
+
+update meta.button b set slot = 'bottom_of_region'
+  from meta.region r join meta.page p on p.id = r.page_id join meta.app a on a.id = p.app_id
+ where b.region_id = r.id and a.alias = 'hr' and p.page_no = 6 and r.title = 'Requests you can see' and b.name = 'SEND_REMINDERS';
