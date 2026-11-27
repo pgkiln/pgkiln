@@ -664,6 +664,8 @@ export const zhCN: BuilderMessages = {
   'slot.close': '关闭',
   'slot.delete': '删除',
   'slot.next': '下一个',
+  'slot.top_of_region': '区域顶部',
+  'slot.bottom_of_region': '区域底部',
   // the gallery (REGION_LABELS, ITEM_LABELS, BUTTON_LABELS in arrange.ts)
   'gallery.region.report': '交互式报表',
   'gallery.region.grid': '交互式网格',

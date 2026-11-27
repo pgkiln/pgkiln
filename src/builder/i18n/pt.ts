@@ -664,6 +664,8 @@ export const pt: BuilderMessages = {
   'slot.close': 'Fechar',
   'slot.delete': 'Excluir',
   'slot.next': 'Próximo',
+  'slot.top_of_region': 'Topo da região',
+  'slot.bottom_of_region': 'Base da região',
   // the gallery (REGION_LABELS, ITEM_LABELS, BUTTON_LABELS in arrange.ts)
   'gallery.region.report': 'Relatório Interativo',
   'gallery.region.grid': 'Grade Interativa',

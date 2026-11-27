@@ -271,14 +271,26 @@ function displayMap(ctx: PageContext, item: Item, value: string): Raw {
 /** (167) A hidden item the browser may set ({"value_protected": false}): a hidden input, its posted value taken like a field's. */
 export const unprotectedHidden = (i: { type: string; config?: Record<string, any> | null }) => i.type === 'hidden' && i.config?.value_protected === false;
 
+/** An item without a value shows its default: (sprint 259) {"default_sql": "select current_date"} in the attributes (the
+ * first column of the first row, with :BINDS, as the application's role; APEX: Default Type SQL Query), else default_value. */
+export async function itemDefault(ctx: PageContext, item: Item): Promise<string> {
+  const sql = item.config?.default_sql;
+  if (typeof sql === 'string' && sql.trim() && ctx.client) {
+    const client = ctx.client;
+    const res = await savepoint(client, () => client.query({ text: stripSemicolon(applyBinds(sql, bindValues(ctx))), rowMode: 'array' }));
+    return toState(res.rows[0]?.[0]) ?? '';
+  }
+  return item.default_value ?? '';
+}
+
 export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = false): Promise<Raw | ''> {
   if (!ctx.vis!.items.has(item.name)) return '';
   if (item.type === 'hidden') {
     // (167) protected (the default): the value stays on the server; {"value_protected": false}: a hidden input
     if (!unprotectedHidden(item)) return '';
-    return html`<input type="hidden" id="${item.name}" name="${item.name}" value="${ctx.session.state[item.name] ?? item.default_value ?? ''}" data-item="${item.name}">`;
+    return html`<input type="hidden" id="${item.name}" name="${item.name}" value="${ctx.session.state[item.name] ?? await itemDefault(ctx, item)}" data-item="${item.name}">`;
   }
-  const value = ctx.session.state[item.name] ?? item.default_value ?? '';
+  const value = ctx.session.state[item.name] ?? await itemDefault(ctx, item);
   const id = item.name;
   const error = ctx.errors.items[item.name];
   const editable = ctx.vis!.editable.has(item.name);
@@ -325,7 +337,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     control = displayMap(ctx, item, value);
   } else if (!editable && (item.type === 'richtext' || item.type === 'markdown')) {
     // rebuilt from the allow-list every time: the value may come from the table, not from this form
-    control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value)) || ' ')}</div>`;
+    control = html`<div class="display-value rich-text" id="${id}">${raw((item.type === 'markdown' ? markdownHtml(value) : sanitizeHtml(value, { css: ctx.css })) || ' ')}</div>`;
   } else if (!editable && item.type === 'rating') {
     const n = /^\d+$/.test(value) ? Math.min(Number(value), ratingMax(item, ctx.app.component_settings)) : 0;
     control = n
@@ -452,7 +464,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
             <button type="button" class="btn rte-btn" data-cmd="link" data-prompt="${t('editor.link_prompt')}" title="${t('editor.link')}"><span aria-hidden="true">↗</span><span class="sr-only">${t('editor.link')}</span></button>
             ${rich ? html`${tool('unlink', 'editor.unlink', '⊘')}${tool('clear', 'editor.clear', 'Tx')}` : ''}
           </div>
-          <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value) : value}</textarea>
+          <textarea id="${id}" name="${id}" rows="${item.config?.rows ?? 8}"${aria}>${rich ? sanitizeHtml(value, { keepStyle: true }) : value}</textarea>
           <small class="help rte-hint">${t(rich ? 'item.richtext_hint' : 'item.markdown_hint')}</small>
         </div>`;
         break;
@@ -552,6 +564,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       item.config?.cascade_parents ? `data-cascade="${String(item.config.cascade_parents).replace(/[^A-Z0-9_,]/gi, '')}"` : '',
       hiddenByDa ? 'hidden' : '',
       item.config?.wide || item.type === 'textarea' || item.type === 'richtext' || item.type === 'markdown' || templateClasses('item', item.template_options).includes(' to-stretch') ? 'data-wide' : '',
+      gridPlacement(item.config),
     ]
       .filter(Boolean)
       .map((a) => ` ${a}`)
@@ -566,6 +579,15 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     ${item.help ? html`<small class="help" id="${id}_help">${await expandShortcuts(ctx, item.help, 'text')}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}
   ${raw(`</${tag}>`)}`;
+}
+
+/** (sprint 258, PGKIL-7) {"column_span": 1–12, "new_row": true}: the field's place in the region's 12-column grid
+ * (APEX: Column Span, Start New Row); app.css switches a form grid with such a field to 12 columns. */
+export function gridPlacement(config: Record<string, any> | null | undefined): string {
+  const span = Number(config?.column_span);
+  const out = Number.isInteger(span) && span >= 1 && span <= 12 ? [`data-span="${span}"`] : [];
+  if (config?.new_row === true) out.push('data-new-row');
+  return out.join(' ');
 }
 
 /** A QR code of the item's value ({"ecc": "L|M|Q|H", "size": 200}), drawn on the server as SVG. */

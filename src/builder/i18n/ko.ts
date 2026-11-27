@@ -664,6 +664,8 @@ export const ko: BuilderMessages = {
   'slot.close': '닫기',
   'slot.delete': '삭제',
   'slot.next': '다음',
+  'slot.top_of_region': '영역 상단',
+  'slot.bottom_of_region': '영역 하단',
   // the gallery (REGION_LABELS, ITEM_LABELS, BUTTON_LABELS in arrange.ts)
   'gallery.region.report': '대화형 보고서',
   'gallery.region.grid': '대화형 그리드',

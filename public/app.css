@@ -507,6 +507,23 @@ dialog[data-inline-region] > .region-footer > .region-footer-buttons { display: 
 .region.to-labels-left .field:not(fieldset) > :not(.label), .field.to-label-left:not(fieldset) > :not(.label) { grid-column: 2; }
 .region.to-labels-left .field:not(fieldset) > .label, .field.to-label-left:not(fieldset) > .label { grid-column: 1; overflow-wrap: anywhere; }
 .region.to-labels-left .field-textarea > .label, .field-textarea.to-label-left > .label { align-self: start; padding-top: 0.45rem; }
+/* (sprint 258) items placed in a 12-column grid (item attributes column_span, new_row): a field without a span takes
+   the row; on phones one field per row again */
+.form-grid:has(> .field[data-span]) { grid-template-columns: repeat(12, minmax(0, 1fr)); }
+.form-grid:has(> .field[data-span]) > :not([data-span]) { grid-column: 1 / -1; }
+.form-grid > .field[data-span="1"] { grid-column: auto / span 1; }
+.form-grid > .field[data-span="2"] { grid-column: auto / span 2; }
+.form-grid > .field[data-span="3"] { grid-column: auto / span 3; }
+.form-grid > .field[data-span="4"] { grid-column: auto / span 4; }
+.form-grid > .field[data-span="5"] { grid-column: auto / span 5; }
+.form-grid > .field[data-span="6"] { grid-column: auto / span 6; }
+.form-grid > .field[data-span="7"] { grid-column: auto / span 7; }
+.form-grid > .field[data-span="8"] { grid-column: auto / span 8; }
+.form-grid > .field[data-span="9"] { grid-column: auto / span 9; }
+.form-grid > .field[data-span="10"] { grid-column: auto / span 10; }
+.form-grid > .field[data-span="11"] { grid-column: auto / span 11; }
+.form-grid > .field[data-span="12"] { grid-column: auto / span 12; }
+.form-grid > .field[data-new-row] { grid-column-start: 1; }
 .label { font-size: 0.84rem; font-weight: 600; color: var(--muted); padding: 0; }
 .req { color: var(--danger); margin-left: 0.2em; }
 input:not([type=checkbox]):not([type=radio]), select, textarea {
@@ -1078,6 +1095,8 @@ pre.source { font-family: var(--mono); font-size: 0.82rem; background: var(--sur
   .region-body { padding: 0.85rem; }
   .region-header { padding: 0.5rem 0.85rem; }
   .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-grid:has(> .field[data-span]) { grid-template-columns: minmax(0, 1fr); }
+  .form-grid > .field[data-span] { grid-column: 1 / -1; }
   .search { margin-left: 0; max-width: none; flex-basis: 100%; }
   .report-toolbar .field { flex: 1 1 100%; }
   .filter-row { min-width: 0; grid-template-columns: 1fr; }
@@ -1510,6 +1529,16 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .report tr[class^="hl-"] td, .report tr[class^="hl-"]:hover td { background: var(--hl); }
 /* (sprint 257) a developer's highlight of one column's cell */
 .report td.hl-cell { background: var(--hl); }
+/* (sprint 259) a developer's #rrggbb highlight: its text black or white, whichever reads on it */
+.report tr.hl-custom td, .report td.hl-cell.hl-custom { color: var(--hl-text); }
+/* (sprint 259) buttons in the region body (Top of Region, Bottom of Region) */
+.region-body-buttons > .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+.region-body-top { margin-bottom: 0.75rem; }
+.region-body-bottom { margin-top: 0.75rem; }
+/* (sprint 259) row_link: the whole row opens the record */
+.report tr.row-link { cursor: pointer; }
+.report tr.row-link a.row-open { color: inherit; text-decoration: none; }
+.report tr.row-link:not([class*="hl-"]):hover td { background: var(--surface-2); }
 .chip .swatch { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 3px; background: var(--hl); border: 1px solid var(--border); }
 .saved-reports { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
 .saved-reports li { display: flex; align-items: center; gap: 0.35rem; }

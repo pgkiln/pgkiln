@@ -664,6 +664,8 @@ export const it: BuilderMessages = {
   'slot.close': 'Chiudi',
   'slot.delete': 'Elimina',
   'slot.next': 'Successivo',
+  'slot.top_of_region': 'In alto nella regione',
+  'slot.bottom_of_region': 'In basso nella regione',
   // the gallery (REGION_LABELS, ITEM_LABELS, BUTTON_LABELS in arrange.ts)
   'gallery.region.report': 'Report interattivo',
   'gallery.region.grid': 'Griglia interattiva',

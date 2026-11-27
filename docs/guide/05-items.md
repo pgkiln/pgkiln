@@ -80,7 +80,7 @@ browser's date and time field.
 | `region_id` | The region the item is shown in (empty = page level, above the regions) |
 | `seq` | Order within its region |
 | `source_column` | For **form** regions: the table column it maps to |
-| `default_value` | Shown when the item has no value |
+| `default_value` | Shown when the item has no value; (sprint 259) `{"default_sql": "select current_date"}` in the attributes instead takes the first value of a query, run as the application's role with the page's `:BINDS` (APEX: Default Type SQL Query), e.g. today or now on a new record. HR page 37 (part 119) |
 | `required` | Must have a value on submit ("Salary is required."); marked with `*` |
 | `help` | Help text under the field |
 | `lov` | List of values for select/radio/checkbox group/multi-select/popup/display items |
@@ -98,6 +98,7 @@ Attributes (`config`):
 | `null_label` | Text of the empty option in select lists (default `- Select -`); `false` removes the empty option |
 | `cascade_parents` | Comma-separated items this list depends on, see [cascading lists](#cascading-lists-of-values) |
 | `wide` | `true`: take the full width of the form |
+| `column_span`, `new_row` | (sprint 258) The item's width in the region's 12 columns (1–12) and `true` to start a new row: see [placing items in rows and columns](#placing-items-in-rows-and-columns) |
 | `rows` | Number of lines of a textarea (default 4), rich text or Markdown editor (default 8) |
 | `max` | `rating`: the number of stars, 3 to 10 (default 5) |
 | `multiple` | `combobox`: `false` for a single free-text value with suggestions (default: several values, as tags) |
@@ -106,6 +107,25 @@ Attributes (`config`):
 | `show_value` | `qrcode`: `true` also prints the text under the code |
 | `reveal` | `password`: `true` adds a *Show*/*Hide* button (shown only when JavaScript runs) |
 | `format_mask` | `number`, `display`: a number format mask such as `999G999G990D00`; the value is shown in the language's notation and read back into a plain number on submit (see [number formats](14-globalization.md#number-formats)) |
+
+## Placing items in rows and columns
+
+(Sprint 258; APEX: *Column Span*, *Start New Row*.) A region places its items in an auto-filling grid: as many
+260 px fields per row as fit. For a form laid out as a table, such as a checklist of points with a choice and a remark
+on each row, give the items a place in the region's **12 columns** in their attributes:
+
+```json
+{"column_span": 4, "new_row": true}
+```
+
+`column_span` (1–12) is the item's width; `new_row: true` starts a new row with it. Once one item of a region has a
+span, the region uses 12 columns and an item without one takes a whole row; `wide` items and textareas with a span
+keep their span. With [labels beside the fields](04-pages-and-regions.md#template-options) the label sits in the left
+third of the item's own cell. On phones every item takes the row again. `new_row` alone also works in the
+auto-filling grid. The APEX importer takes an item's Column Span and Start New Row along.
+
+Items keep their sequence: a span never moves an item before an earlier one. HR page 24 *Planner* (part 118): the
+meeting's title on a row of its own, start and end side by side (6 + 6), then *Private* and the organizer (6 + 6).
 
 ## Labels and placeholders
 
@@ -157,6 +177,11 @@ rendered on the server: headings, paragraphs, emphasis, ~~strikethrough~~, inlin
 fenced code, lists (nested), quotes, horizontal rules, links and bare `https://` addresses. HTML in
 the Markdown is shown as text, and the result passes through the same allow-list.
 
+
+(sprint 259) Rich text keeps the editor's **text and background colours and text alignment** (a `span`, a paragraph or a
+cell with `color`, `background-color` or `text-align`, as `#rrggbb`, `rgb()` or a keyword): stored as a style
+attribute, and shown as a class of the page's CSS, as the Content-Security-Policy allows no style attributes. Other
+styles are dropped.
 ## Star rating, combobox, date range, password reveal and QR code
 
 - **Star rating** (`rating`): radio buttons, so the keyboard (arrow keys) and screen readers work as

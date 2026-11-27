@@ -476,7 +476,9 @@
     "close",
     "delete",
     "next",
-    "region"
+    "region",
+    "top_of_region",
+    "bottom_of_region"
    ]
   },
   {

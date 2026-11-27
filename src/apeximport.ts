@@ -534,7 +534,7 @@ const DISPLAY_LOCATIONS: Record<string, string> = {
   ON_ERROR_PAGE: 'notification',
 };
 
-const BUTTON_SLOTS = new Set(['create', 'edit', 'change', 'copy', 'help', 'up', 'previous', 'close', 'delete', 'next']);
+const BUTTON_SLOTS = new Set(['create', 'edit', 'change', 'copy', 'help', 'up', 'previous', 'close', 'delete', 'next', 'top_of_region', 'bottom_of_region']);
 
 const DA_EVENTS: Record<string, string> = {
   change: 'change',
@@ -1715,6 +1715,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       else if (sub === 'URL') type = 'url';
     }
     if (type === 'hidden' && /^n$/i.test(attributeAt(a, apexType, 1) ?? '')) config.value_protected = false;
+    // (sprint 258) Column Span and Start New Row; without a span pgkiln's own grid places the item
+    const colspan = num(a, 'p_colspan') ?? num(a, 'p_grid_column_span');
+    if (colspan && colspan >= 1 && colspan <= 12) {
+      config.column_span = colspan;
+      if (!/^n$/i.test(str(a, 'p_begin_on_new_line') ?? '')) config.new_row = true;
+    }
     e.target = type;
     const sourceType = (str(a, 'p_source_type') ?? '').toUpperCase();
     // (sprint 192) APEX 26.2 leaves out p_source_type for a column of the item's source region (its default)
@@ -1831,7 +1837,9 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       document: null,
     };
     const pos = (str(a, 'p_button_position') ?? '').toUpperCase().replace(/^REGION_TEMPLATE_/, '').toLowerCase();
-    if (BUTTON_SLOTS.has(pos)) row.slot = pos;
+    // (sprint 259) APEX's TOP and BOTTOM are the region body's Top of Region and Bottom of Region
+    const slot = pos === 'top' ? 'top_of_region' : pos === 'bottom' ? 'bottom_of_region' : pos;
+    if (BUTTON_SLOTS.has(slot)) row.slot = slot;
     if (action === 'SUBMIT') row.action = 'submit';
     else if (action === 'DEFINED_BY_DA') row.action = 'da';
     else if (action === 'REDIRECT_PAGE' || action === 'REDIRECT_URL') {

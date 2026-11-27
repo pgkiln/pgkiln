@@ -21759,3 +21759,81 @@ describe('sprint 257 report highlights from the config', () => {
     }
   });
 });
+
+describe('sprint 258 items in rows and columns', () => {
+  // column_span and new_row come from the item's attributes into the field's HTML: only an integer 1–12 and true.
+  test('only a span of 1 to 12 and new_row true are written; nothing else reaches the attribute', async () => {
+    const { gridPlacement } = await import('../src/runtime/items.ts');
+    assert.equal(gridPlacement({ column_span: 4, new_row: true }), 'data-span="4" data-new-row');
+    for (const bad of [0, 13, 2.5, '4" onmouseover="x', '4', null, -1]) assert.equal(gridPlacement({ column_span: bad }), bad === '4' ? 'data-span="4"' : '');
+    assert.equal(gridPlacement({ new_row: 'yes' }), '');
+    assert.equal(gridPlacement(null), '');
+    const body = (await (await as('king')).get('/a/hr/24')).body;
+    assert.match(body, /data-item="P24_STARTS_AT"[^>]*data-span="6"/);
+    assert.match(body, /data-item="P24_PRIVATE"[^>]*data-span="6" data-new-row/);
+  });
+});
+
+describe('sprint 259 row links, body buttons, highlight colours, item defaults from SQL', () => {
+  // A developer's highlight colour goes into the page's CSS: only a #rrggbb gets through, nothing that leaves the declaration.
+  test('a highlight colour is a name from the list or #rrggbb; nothing else reaches the CSS', async () => {
+    const { configHighlights } = await import('../src/runtime/report.ts');
+    const colours = (c: unknown) => configHighlights({ config: { highlights: [{ column: 'status', op: 'eq', value: 'X', color: c }] } }).map((h) => h.color);
+    assert.deepEqual(colours('#FFFF00'), ['#ffff00']);
+    assert.deepEqual(colours('red'), ['red']);
+    for (const bad of ['#ff0', '#ffff00;background:url(x)', 'ffff00', '#gggggg', 'url(x)', '}body{', 1]) assert.deepEqual(colours(bad), []);
+  });
+
+  test('page 6: rows open their request, the button stands above the report, the approved cell has its own colour', async () => {
+    const body = (await (await as('king')).get('/a/hr/6')).body;
+    assert.match(body, /<tr class="[^"]*row-link/);
+    assert.match(body, /<a class="row-open" href="\/a\/hr\/7\?/);
+    assert.match(body, /class="region-body-buttons region-body-top"><div class="buttons"><a class="btn btn-hot to-block"/);
+    const cls = /<td class="hl-cell hl-custom (x[A-Za-z0-9]{10})"/.exec(body);
+    assert.ok(cls, 'the approved status cell has a page CSS class');
+    assert.match(body, new RegExp(`\\.${cls![1]}\\{--hl:#dcfce7;--hl-text:#000000\\}`));
+  });
+
+  // A button's own CSS classes go into its class attribute: the database takes class names only.
+  test('a button\'s CSS classes are class names only', async () => {
+    const b = await owner.one(`select b.id from meta.button b join meta.page p on p.id = b.page_id where p.app_id = $1 and p.page_no = 6 and b.name = 'NEW'`, [appId]);
+    for (const bad of ['a" onclick="x', 'a<b', 'x;y', '"']) {
+      await assert.rejects(owner.query(`update meta.button set css_classes = $2 where id = $1`, [b.id, bad]), /check constraint/);
+    }
+    await owner.query(`update meta.button set css_classes = 'my-wide is_new' where id = $1`, [b.id]);
+    try {
+      assert.match((await (await as('king')).get('/a/hr/6')).body, /class="btn btn-hot to-block my-wide is_new"/);
+    } finally {
+      await owner.query(`update meta.button set css_classes = null where id = $1`, [b.id]);
+    }
+  });
+
+  // Rich text keeps an editor's colours and alignment: only a parsed #rrggbb or a keyword gets through, never a url(),
+  // an expression or a quote that leaves the attribute; on the page it is a CSS class, not a style attribute.
+  test('rich text keeps only safe colours and alignment', async () => {
+    const { sanitizeHtml, safeStyle } = await import('../src/richtext.ts');
+    assert.equal(safeStyle('color: rgb(149, 165, 166); text-align: center; width: 100%'), 'color:#95a5a6;text-align:center');
+    for (const bad of ['color: url(x)', 'color: expression(alert(1))', 'background-color: #fff" onclick="x', 'color: rgb(1,2,3) ; x', 'text-align: "center"', 'color: rgb(300,0,0)'])
+      assert.doesNotMatch(safeStyle(bad), /url|expression|onclick|"|300/);
+    assert.equal(sanitizeHtml('<span style="color:#fff&quot; onclick=&quot;x">a</span>', { keepStyle: true }), '<span>a</span>');
+    const page = sanitizeHtml('<p style="color: rgb(1, 2, 3)">a</p>', { css: { cls: (d) => `c-${d.length}` } });
+    assert.equal(page, '<p class="c-13">a</p>');
+    assert.doesNotMatch(sanitizeHtml('<p style="color: #123456">a</p>'), /style|class/);
+  });
+
+  // default_sql runs as the application's database role, with the page's binds as parameters: no superuser view.
+  test('an item default from SQL is the first value of its query, as the application role', async () => {
+    const item = await owner.one(`select i.id, i.config from meta.item i join meta.region r on r.id = i.region_id join meta.page p on p.id = r.page_id
+      where p.app_id = $1 and p.page_no = 37 and i.name = 'P37_START_DATE'`, [appId]);
+    const king = await as('king');
+    assert.match((await king.get('/a/hr/37')).body, new RegExp(`id="P37_START_DATE"[^>]*value="${new Date().toISOString().slice(0, 10)}"|value="${new Date().toISOString().slice(0, 10)}"[^>]*id="P37_START_DATE"`));
+    try {
+      await owner.query(`update meta.item set config = config || '{"default_sql": "select current_user"}' where id = $1`, [item.id]);
+      const html = (await king.get('/a/hr/37')).body;
+      const v = /id="P37_START_DATE"[^>]*value="([^"]*)"|value="([^"]*)"[^>]*id="P37_START_DATE"/.exec(html);
+      assert.ok(v && !/^(pgkiln|postgres)$/.test(v[1] ?? v[2]), `the default runs as the application's role, not ${v?.[1] ?? v?.[2]}`);
+    } finally {
+      await owner.query(`update meta.item set config = $2 where id = $1`, [item.id, item.config]);
+    }
+  });
+});

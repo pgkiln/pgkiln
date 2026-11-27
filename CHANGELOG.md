@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Items in rows and columns** (sprint 258): item attributes `column_span` (1–12) and `new_row` place items in the
+  region's 12 columns, e.g. a checklist with a choice and a remark on each row (APEX: Column Span, Start New Row; found
+  comparing a migrated Appsmith application). Phones keep one item per row; the APEX importer maps both. HR part 118:
+  page 24.
+- **Button positions Top of Region and Bottom of Region** (sprint 259; APEX: the same): a region button in its body, above
+  or under the content; with the template option Full width a bar over the whole width (migration 209).
+- **A report row that opens its record** (sprint 259): attribute `row_link` makes a click anywhere on a row follow its link.
+- **Highlight colours of the developer's own** (sprint 259): a developer highlight's `color` may be `#rrggbb`.
+- **CSS classes on buttons** (sprint 259; APEX: Appearance → CSS Classes): class names of the developer's own (migration 209).
+- **Rich text keeps colours and alignment** (sprint 259): text and background colours and text alignment from the editor
+  (shown as page CSS classes; the Content-Security-Policy allows no style attributes).
+- **Item defaults from SQL** (sprint 259; APEX: Default Type SQL Query): attribute `default_sql`, run as the application's
+  role. Found comparing two migrated Appsmith applications page by page; HR part 119: pages 6 and 37.
+
 ## [0.120.0] - 2026-11-25
 
 ### Added

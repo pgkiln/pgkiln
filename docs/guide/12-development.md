@@ -448,7 +448,7 @@ src/
                            (140) classic_report through renderReport: reportState drops the interactive settings, classicTemplate (value_pairs, badges, media_list),
                            pagination total/range/none;
                            items.ts: lovOptions, searchLov/lovLookup for popup LOVs, served by POST /a/:alias/:page/lov/:item/search in routes.ts;
-                           LOV_TYPES / LOV_CHECKED / MULTI_VALUE: the list item types (shuttle, select_one, select_many since 140) checked on submit and colon-separated)
+                           LOV_TYPES / LOV_CHECKED / MULTI_VALUE: the list item types (shuttle, select_one, select_many since 140) checked on submit and colon-separated; (sprint 258) gridPlacement: column_span/new_row as data-span/data-new-row, app.css "items placed in a 12-column grid"; (sprint 259) itemDefault: default_sql or default_value)
     region-cache.ts        region caching (keys per scope, CSRF placeholder, invalidation on submit) and lazy regions (GET …/region/:id is in routes.ts)
     region-props.ts        (sprint 230, migration 188, AX-9..11) a region's other property groups at runtime: gridClasses
                            (col-N, col-start-N), arrangeRows (Row CSS Classes: <div class="t-row">), shellExtras (CSS classes,

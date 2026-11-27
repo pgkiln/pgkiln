@@ -5680,3 +5680,15 @@ document.addEventListener('change', (e) => {
     box.closest('form')?.dispatchEvent(new Event('input', { bubbles: true }));
   });
 })();
+
+// (sprint 259) a report with row_link: a click anywhere on a row follows the row's link (a dialog page opens as a
+// dialog, as the link would); clicks on the row's own links, buttons and fields, and a text selection, are left alone
+document.addEventListener('click', (e) => {
+  const tr = e.target.closest?.('tr.row-link');
+  if (!tr || e.defaultPrevented || e.button !== 0 || e.target.closest('a, button, input, select, textarea, label, summary')) return;
+  if (String(window.getSelection?.() ?? '')) return;
+  const a = tr.querySelector('a.row-open');
+  if (!a) return;
+  if (e.ctrlKey || e.metaKey) window.open(a.href, '_blank', 'noopener');
+  else a.click();
+});
