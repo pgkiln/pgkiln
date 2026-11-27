@@ -2616,6 +2616,6 @@ body.nav-pillar-dark .t-nav details:has(> summary.in-trail) > ul { border-inline
 
 /* (sprint 261) a date-time item: the date field with its picker and a narrow time field */
 .datetime-field { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
-.datetime-field > .date-field { flex: 1 1 10rem; min-width: 10rem; }
-.datetime-field > .date-field input { min-width: 6.5rem; }
+.datetime-field > .date-field { flex: 1 1 8rem; min-width: 0; max-width: 100%; }
+.datetime-field > .date-field input { min-width: 4rem; }
 .datetime-field > .time-field { flex: 0 0 4.5rem; width: 4.5rem; text-align: center; }

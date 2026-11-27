@@ -140,10 +140,14 @@ describe('calendar: create on click', () => {
     assert.equal(q.get('P24_ENDS_AT'), `${monday} 11:00`);
     assert.equal(q.get('cs'), urlChecksum(appId, 24, 'king', { P24_STARTS_AT: `${monday} 10:00`, P24_ENDS_AT: `${monday} 11:00` }));
     const form = (await king.get(at10)).body;
-    assert.match(form, new RegExp(`id="P24_STARTS_AT" name="P24_STARTS_AT" value="${monday}T10:00"`));
+    // (sprint 261) the date in the date format and the time in a field of its own
+    assert.match(form, new RegExp(`id="P24_STARTS_AT" name="P24_STARTS_AT"[^>]* value="${monday}"`));
+    assert.match(form, /id="P24_STARTS_AT_time" name="P24_STARTS_AT" value="10:00"/);
     // an all-day slot gives a date, which a datetime item shows as midnight
     const allDay = links.find((h) => h.includes(`P24_STARTS_AT=${monday}&`))!;
-    assert.match((await king.get(allDay)).body, new RegExp(`name="P24_STARTS_AT" value="${monday}T00:00"`));
+    const allDayForm = (await king.get(allDay)).body;
+    assert.match(allDayForm, new RegExp(`id="P24_STARTS_AT" name="P24_STARTS_AT"[^>]* value="${monday}"`));
+    assert.match(allDayForm, /id="P24_STARTS_AT_time" name="P24_STARTS_AT" value=""/);
   });
 });
 
