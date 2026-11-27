@@ -10,6 +10,8 @@
 //   icon      an icon before the label (one of pgkiln's icons)
 //   heading   the column's heading (default: the label without #column#)
 //   position  start (before the report's columns) or end (default)
+//   after     (sprint 260) a column of the query: the link column comes right after it (when that column is shown; else
+//             where position puts it), e.g. a quantity button between the name and the unit
 //   when      a column of the query: the link shows in rows where it is true (not null, false, '', 'N', 'n', '0' or 'f')
 //
 // config.row_actions: {"edit": {"page": 3, "items": {"P3_ID": "#id#"}, "label": "Edit"}, "links": [{"label", "page",
@@ -33,6 +35,7 @@ export interface LinkColumn {
   icon: string | null;
   heading: string;
   position: 'start' | 'end';
+  after: string | null;
   when: string | null;
 }
 
@@ -73,6 +76,7 @@ export function linkColumnsOf(r: Region): LinkColumn[] {
       icon: ic,
       heading: typeof x.heading === 'string' ? x.heading.slice(0, 200) : label.replace(/#[A-Za-z0-9_$]+#/g, '').trim(),
       position: x.position === 'start' ? 'start' : 'end',
+      after: typeof x.after === 'string' && COLUMN.test(x.after) ? x.after.toLowerCase() : null,
       when: typeof x.when === 'string' && COLUMN.test(x.when) ? x.when.toLowerCase() : null,
     });
   }
@@ -104,9 +108,10 @@ const STYLE_CLASS: Record<LinkStyle, string | null> = {
 };
 
 export interface ReportLinks {
-  /** cells before and after the report's own columns (link columns, row actions) */
+  /** cells before and after the report's own columns (link columns, row actions), and between them ("after") */
   lead: number;
   trail: number;
+  mid: number;
   headLead: Raw[];
   headTrail: Raw[];
   rowLead(row: unknown[], rowNo: number): Raw[];
@@ -114,16 +119,21 @@ export interface ReportLinks {
   /** empty cells in an aggregate row */
   blankLead: Raw[];
   blankTrail: Raw[];
+  /** the heading, cells and empty aggregate cells of the link columns placed after this column of the report */
+  headAfter(column: string): Raw[];
+  rowAfter(column: string, row: unknown[]): Raw[];
+  blankAfter(column: string): Raw[];
   /** (classic report templates) the row's links side by side */
   linksOf(row: unknown[]): Raw | '';
 }
 
 /**
  * The link columns and row actions of a report region, for the user and the query's columns. `text(row, column)` is a
- * row's value as text (undefined: no such column), as config.link fills #column#.
+ * row's value as text (undefined: no such column), as config.link fills #column#. `shown` are the report's columns on
+ * screen: a link column "after" one of them goes there.
  */
 export async function reportLinks(ctx: PageContext, r: Region, text: (row: unknown[], column: string) => string | undefined,
-  raw0: (row: unknown[], column: string) => unknown): Promise<ReportLinks> {
+  raw0: (row: unknown[], column: string) => unknown, shown: string[] = []): Promise<ReportLinks> {
   const t = ctx.locale.t;
   const tr = ctx.locale.tr;
   const allowed = new Map<number, boolean>();
@@ -150,16 +160,19 @@ export async function reportLinks(ctx: PageContext, r: Region, text: (row: unkno
       return html`<a ${linkAttrs(ctx, c.page, itemsFor(row, c.items))} class="${cls}" aria-label="${label}" title="${label}">${ic}</a>`;
     return html`<a ${linkAttrs(ctx, c.page, itemsFor(row, c.items))}${cls ? raw(` class="${cls}"`) : ''}>${ic}${ic ? ' ' : ''}${label}</a>`;
   };
-  const shown = (c: LinkColumn, row: unknown[]) => !c.when || truthy(raw0(row, c.when));
+  const visible = (c: LinkColumn, row: unknown[]) => !c.when || truthy(raw0(row, c.when));
   const heading = (c: LinkColumn) => tr(c.heading);
   const cellOf = (c: LinkColumn, row: unknown[]) =>
-    html`<td class="link-col link-col-${c.style}" data-label="${heading(c)}">${shown(c, row) ? anchor(c, row) : ''}</td>`;
+    html`<td class="link-col link-col-${c.style}" data-label="${heading(c)}">${visible(c, row) ? anchor(c, row) : ''}</td>`;
   const headOf = (c: LinkColumn) =>
     c.style === 'icon' || !c.heading
       ? html`<th scope="col" class="link-col" aria-label="${heading(c) || tr(c.label)}"></th>`
       : html`<th scope="col" class="link-col">${heading(c)}</th>`;
-  const start = cols.filter((c) => c.position === 'start');
-  const end = cols.filter((c) => c.position === 'end');
+  const onScreen = new Set(shown.map((c) => c.toLowerCase()));
+  const placed = (c: LinkColumn) => !!c.after && onScreen.has(c.after);
+  const start = cols.filter((c) => !placed(c) && c.position === 'start');
+  const end = cols.filter((c) => !placed(c) && c.position === 'end');
+  const afterOf = (column: string) => cols.filter((c) => placed(c) && c.after === column.toLowerCase());
 
   const menu = (row: unknown[], rowNo: number) =>
     html`<td class="row-actions" data-label="${t('grid.row_actions')}"><details class="menu row-menu">
@@ -173,14 +186,18 @@ export async function reportLinks(ctx: PageContext, r: Region, text: (row: unkno
   return {
     lead: (actions ? 1 : 0) + start.length,
     trail: end.length,
+    mid: cols.filter(placed).length,
     headLead: [...(actions ? [html`<th scope="col" class="row-actions" aria-label="${t('grid.row_actions')}"></th>`] : []), ...start.map(headOf)],
     headTrail: end.map(headOf),
     rowLead: (row, rowNo) => [...(actions ? [menu(row, rowNo)] : []), ...start.map((c) => cellOf(c, row))],
     rowTrail: (row) => end.map((c) => cellOf(c, row)),
     blankLead: [...(actions ? [blank('row-actions')] : []), ...start.map(() => blank('link-col'))],
     blankTrail: end.map(() => blank('link-col')),
+    headAfter: (column) => afterOf(column).map(headOf),
+    rowAfter: (column, row) => afterOf(column).map((c) => cellOf(c, row)),
+    blankAfter: (column) => afterOf(column).map(() => blank('link-col')),
     linksOf: (row) => {
-      const links = cols.filter((c) => shown(c, row)).map((c) => anchor(c, row));
+      const links = cols.filter((c) => visible(c, row)).map((c) => anchor(c, row));
       return links.length ? html`<span class="cr-links">${links}</span>` : '';
     },
   };

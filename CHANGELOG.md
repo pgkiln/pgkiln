@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A link column between the report's own columns** (sprint 260): link column attribute `after` names the column it
+  follows, e.g. a quantity button between an order line's name and its unit (found comparing a migrated Appsmith
+  application, Jira PGKIL-11). HR part 120: page 66.
+
 ## [0.121.0] - 2026-11-27
 
 ### Added

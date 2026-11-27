@@ -1074,9 +1074,10 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   // (sprint 238, MG-6) link columns and row actions (the report view only)
   const fieldIdx = (col: string) => fields.findIndex((f) => f.name.toLowerCase() === col.toLowerCase());
   const lk = st.view === 'report'
-    ? await reportLinks(ctx, r, (row, col) => { const i = fieldIdx(col); return i === -1 ? undefined : cell(row[i]); }, (row, col) => { const i = fieldIdx(col); return i === -1 ? undefined : row[i]; })
+    ? await reportLinks(ctx, r, (row, col) => { const i = fieldIdx(col); return i === -1 ? undefined : cell(row[i]); }, (row, col) => { const i = fieldIdx(col); return i === -1 ? undefined : row[i]; },
+      cols.map(({ f }) => f.name))
     : null;
-  const lead = (selIdx >= 0 ? 1 : 0) + (editIcon ? 1 : 0) + (lk ? lk.lead + lk.trail : 0);
+  const lead = (selIdx >= 0 ? 1 : 0) + (editIcon ? 1 : 0) + (lk ? lk.lead + lk.trail + lk.mid : 0);
   // columns rendered through a template component (config.column_templates)
   const fmtOf = columnFormats(ctx, r);
   const templated = st.view === 'report' ? await columnTemplates(ctx, r, fields, (v, oid) => cell(v, oid, ctx.locale.format), (v) => cell(v)) : new Map();
@@ -1117,9 +1118,11 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     const menu = interactive
       ? raw(` data-col="${esc(f.name)}" data-label="${esc(label)}" data-asc="${esc(set((p) => { p.set(key(r, 's'), String(pos)); p.delete(key(r, 'd')); }))}" data-desc="${esc(set((p) => { p.set(key(r, 's'), String(pos)); p.set(key(r, 'd'), 'desc'); }))}" data-hide="${esc(set((p) => p.append(key(r, 'x'), f.name)))}" data-break="${esc(set((p) => p.set(key(r, 'b'), f.name)))}" data-filter="${esc(key(r, 'f'))}" data-values="${esc(`${ctx.base}/${ctx.page.page_no}/report/${r.id}/values`)}"`)
       : '';
-    return html`<th scope="col" class="${cls}" aria-sort="${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"${menu}><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
+    return html`<th scope="col" class="${cls}" aria-sort=""${active ? (st.desc ? 'descending' : 'ascending') : 'none'}"${menu}><a href="${href}">${label}<span class="sort-ind" aria-hidden="true">${active ? (st.desc ? '▼' : '▲') : ''}</span></a></th>`;
   });
   if (lk) {
+    // (sprint 260) link columns placed after one of the report's columns
+    header.splice(0, header.length, ...cols.flatMap(({ f }, k) => [header[k], ...lk.headAfter(f.name)]));
     header.unshift(...lk.headLead);
     header.push(...lk.headTrail);
   }
@@ -1132,7 +1135,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     html`<tr class="${cls}">${selIdx >= 0 ? html`<td class="row-select"></td>` : ''}${editIcon ? html`<td class="row-edit"></td>` : ''}${lk?.blankLead ?? ''}${cols.map(({ f }, ci) => {
       const parts = agg!.aggs.flatMap((a, ai) => (a.column === f.name ? [`${t(`agg.${a.fn}`)}: ${cell(values[ai], agg!.types[ai], aggregateFormat(a.fn, f.name, fmtOf, ctx.locale.format))}`] : []));
       const text = [ci === 0 ? label : '', ...parts].filter(Boolean).join(' · ');
-      return html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`;
+      return [html`<td class="${parts.length && NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : null}" data-label="${parts.length ? headingOf(r, f.name, ctx.locale.tr) : ''}">${text}</td>`, ...(lk?.blankAfter(f.name) ?? [])];
     })}${lk?.blankTrail ?? ''}</tr>`;
   const breakKey = (v: unknown) => (v === null || v === undefined ? '\u0000' : String(v));
   const breakField = breakIdx >= 0 ? fields[breakIdx] : undefined;
@@ -1159,7 +1162,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
     const edit = editIcon
       ? html`<td class="row-edit"><a${rowLink ? raw(' class="row-open"') : ''} ${linkAttrs(ctx, link!.page, rowItems(row))} aria-label="${t('report.edit')} ${cell(row[linkIdx])}" title="${t('report.edit')}">${icon('edit')}</a></td>`
       : '';
-    body.push(html`<tr class="${[hl ? hlClass(ctx, hl.color) : '', rowLink ? 'row-link' : ''].filter(Boolean).join(' ') || null}">${pick}${edit}${lk ? lk.rowLead(row, rowNum) : ''}${cols.map(({ f, i }) => {
+    const after = (f: { name: string }) => (lk ? lk.rowAfter(f.name, row) : []);
+    body.push(html`<tr class="${[hl ? hlClass(ctx, hl.color) : '', rowLink ? 'row-link' : ''].filter(Boolean).join(' ') || null}">${pick}${edit}${lk ? lk.rowLead(row, rowNum) : ''}${cols.map(({ f, i }) => [(() => {
       const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
       const ch = cellHl(f.name);
       const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name), ch ? `hl-cell ${hlClass(ctx, ch.color)}` : ''].filter(Boolean).join(' ') || null;
@@ -1169,7 +1173,7 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       return i === linkIdx && !editIcon
         ? html`<td class="${cls}" data-label="${label}"><a${rowLink ? raw(' class="row-open"') : ''} ${linkAttrs(ctx, link!.page, rowItems(row))}${rowLink && !text ? html` aria-label="${t('report.edit')}"` : ''}>${text || (rowLink ? '' : t('report.edit'))}</a></td>`
         : html`<td class="${cls}" data-label="${label}">${text}</td>`;
-    })}${lk ? lk.rowTrail(row) : ''}</tr>`);
+    })(), ...after(f)])}${lk ? lk.rowTrail(row) : ''}</tr>`);
   }
   // the last group's subtotal once the group has ended (on the last page)
   if (breakField && group !== undefined && lastPage && agg?.groups.has(group)) body.push(aggRow(agg.groups.get(group)!, t('report.subtotal'), 'agg-row subtotal'));
