@@ -21773,3 +21773,40 @@ describe('sprint 258 items in rows and columns', () => {
     assert.match(body, /data-item="P24_PRIVATE"[^>]*data-span="6" data-new-row/);
   });
 });
+
+describe('sprint 259 row links, body buttons, highlight colours, item defaults from SQL', () => {
+  // A developer's highlight colour goes into the page's CSS: only a #rrggbb gets through, nothing that leaves the declaration.
+  test('a highlight colour is a name from the list or #rrggbb; nothing else reaches the CSS', async () => {
+    const { configHighlights } = await import('../src/runtime/report.ts');
+    const colours = (c: unknown) => configHighlights({ config: { highlights: [{ column: 'status', op: 'eq', value: 'X', color: c }] } }).map((h) => h.color);
+    assert.deepEqual(colours('#FFFF00'), ['#ffff00']);
+    assert.deepEqual(colours('red'), ['red']);
+    for (const bad of ['#ff0', '#ffff00;background:url(x)', 'ffff00', '#gggggg', 'url(x)', '}body{', 1]) assert.deepEqual(colours(bad), []);
+  });
+
+  test('page 6: rows open their request, the button stands above the report, the approved cell has its own colour', async () => {
+    const body = (await (await as('king')).get('/a/hr/6')).body;
+    assert.match(body, /<tr class="[^"]*row-link/);
+    assert.match(body, /<a class="row-open" href="\/a\/hr\/7\?/);
+    assert.match(body, /class="region-body-buttons region-body-top"><div class="buttons"><a class="btn btn-hot to-block"/);
+    const cls = /<td class="hl-cell hl-custom (x[A-Za-z0-9]{10})"/.exec(body);
+    assert.ok(cls, 'the approved status cell has a page CSS class');
+    assert.match(body, new RegExp(`\\.${cls![1]}\\{--hl:#dcfce7\\}`));
+  });
+
+  // default_sql runs as the application's database role, with the page's binds as parameters: no superuser view.
+  test('an item default from SQL is the first value of its query, as the application role', async () => {
+    const item = await owner.one(`select i.id, i.config from meta.item i join meta.region r on r.id = i.region_id join meta.page p on p.id = r.page_id
+      where p.app_id = $1 and p.page_no = 37 and i.name = 'P37_START_DATE'`, [appId]);
+    const king = await as('king');
+    assert.match((await king.get('/a/hr/37')).body, new RegExp(`id="P37_START_DATE"[^>]*value="${new Date().toISOString().slice(0, 10)}"|value="${new Date().toISOString().slice(0, 10)}"[^>]*id="P37_START_DATE"`));
+    try {
+      await owner.query(`update meta.item set config = config || '{"default_sql": "select current_user"}' where id = $1`, [item.id]);
+      const html = (await king.get('/a/hr/37')).body;
+      const v = /id="P37_START_DATE"[^>]*value="([^"]*)"|value="([^"]*)"[^>]*id="P37_START_DATE"/.exec(html);
+      assert.ok(v && !/^(pgkiln|postgres)$/.test(v[1] ?? v[2]), `the default runs as the application's role, not ${v?.[1] ?? v?.[2]}`);
+    } finally {
+      await owner.query(`update meta.item set config = $2 where id = $1`, [item.id, item.config]);
+    }
+  });
+});

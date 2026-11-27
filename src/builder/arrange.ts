@@ -38,10 +38,12 @@ export const POSITION_LABELS: Record<string, string> = {
 export const SLOT_LABELS: Record<string, string> = {
   region: 'Region buttons', create: 'Create', edit: 'Edit', change: 'Change', copy: 'Copy', help: 'Help', up: 'Up',
   previous: 'Previous', close: 'Close', delete: 'Delete', next: 'Next',
+  // (sprint 259) in the region body
+  top_of_region: 'Top of Region', bottom_of_region: 'Bottom of Region',
 };
 /** The button positions in a region's header and in its bottom bar (previous, close, delete at the left; next at the right). */
-export const TOP_SLOTS = ['create', 'edit', 'change', 'copy', 'help', 'up'];
-export const BOTTOM_SLOTS = ['previous', 'close', 'delete', 'next'];
+export const TOP_SLOTS = ['create', 'edit', 'change', 'copy', 'help', 'up', 'top_of_region'];
+export const BOTTOM_SLOTS = ['bottom_of_region', 'previous', 'close', 'delete', 'next'];
 
 /** Gallery names and icons. */
 export const REGION_LABELS: Record<string, [string, string]> = {

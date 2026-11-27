@@ -295,11 +295,19 @@ interface Highlight extends Filter {
  * "null", "color": "yellow", "scope": "cell"}]}): always on, not removable. Operators and colours from the users'
  * lists; the column must be one of the query's (checked when the SQL is made); the value is a literal like a user's.
  */
+/** (sprint 259) a developer's highlight may also be a colour of its own (Appsmith's #ffff00); users keep the list */
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/** The class of a highlight's colour: a named one, or (sprint 259) a #rrggbb as a page CSS class setting --hl. */
+function hlClass(ctx: PageContext, color: string) {
+  return HEX_COLOR.test(color) ? `hl-custom ${ctx.css.cls(`--hl:${color}`)}` : `hl-${color}`;
+}
+
 export function configHighlights(r: Pick<Region, 'config'>): (Highlight & { cell: boolean })[] {
   const list = Array.isArray(r.config?.highlights) ? r.config.highlights : [];
   return list.slice(0, 10).flatMap((h: any) =>
-    h && typeof h.column === 'string' && HIGHLIGHT_OPERATORS.includes(h.op) && HIGHLIGHT_COLORS.includes(h.color)
-      ? [{ column: h.column, op: h.op, color: h.color, value: h.value == null ? '' : String(h.value).slice(0, 500), raw: '', cell: h.scope === 'cell' }]
+    h && typeof h.column === 'string' && HIGHLIGHT_OPERATORS.includes(h.op) && (HIGHLIGHT_COLORS.includes(h.color) || HEX_COLOR.test(h.color))
+      ? [{ column: h.column, op: h.op, color: h.color.toLowerCase(), value: h.value == null ? '' : String(h.value).slice(0, 500), raw: '', cell: h.scope === 'cell' }]
       : []);
 }
 
@@ -1059,6 +1067,8 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
   const selected = new Set(selIdx >= 0 ? splitValues(ctx.session.state[selection!.item] ?? '') : []);
   // (097) {"link": {"icon": true}}: a pencil link in a column of its own; the key column is plain text
   const editIcon = linkIdx >= 0 && link!.icon === true && st.view === 'report';
+  // (sprint 259) a click anywhere on a row follows its link (Appsmith opens a row by clicking it); app.js, the link stays
+  const rowLink = linkIdx >= 0 && r.config.row_link === true && st.view === 'report';
   // (sprint 238, MG-6) link columns and row actions (the report view only)
   const fieldIdx = (col: string) => fields.findIndex((f) => f.name.toLowerCase() === col.toLowerCase());
   const lk = st.view === 'report'
@@ -1145,17 +1155,17 @@ export async function renderReport(ctx: PageContext, r: Region, filterItems: Raw
       : '';
     rowNum++;
     const edit = editIcon
-      ? html`<td class="row-edit"><a ${linkAttrs(ctx, link!.page, rowItems(row))} aria-label="${t('report.edit')} ${cell(row[linkIdx])}" title="${t('report.edit')}">${icon('edit')}</a></td>`
+      ? html`<td class="row-edit"><a class="${rowLink ? 'row-open' : null}" ${linkAttrs(ctx, link!.page, rowItems(row))} aria-label="${t('report.edit')} ${cell(row[linkIdx])}" title="${t('report.edit')}">${icon('edit')}</a></td>`
       : '';
-    body.push(html`<tr class="${hl ? `hl-${hl.color}` : null}">${pick}${edit}${lk ? lk.rowLead(row, rowNum) : ''}${cols.map(({ f, i }) => {
+    body.push(html`<tr class="${[hl ? hlClass(ctx, hl.color) : '', rowLink ? 'row-link' : ''].filter(Boolean).join(' ') || null}">${pick}${edit}${lk ? lk.rowLead(row, rowNum) : ''}${cols.map(({ f, i }) => {
       const text = cell(row[i], f.dataTypeID, fmtOf(f.name));
       const ch = cellHl(f.name);
-      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name), ch ? `hl-cell hl-${ch.color}` : ''].filter(Boolean).join(' ') || null;
+      const cls = [NUMERIC_OIDS.has(f.dataTypeID) ? 'num' : '', pre.has(f.name.toLowerCase()) ? 'pre' : '', colOpts(f.name), ch ? `hl-cell ${hlClass(ctx, ch.color)}` : ''].filter(Boolean).join(' ') || null;
       const label = headingOf(r, f.name, ctx.locale.tr);
       const tpl = templated.get(i);
       if (tpl) return html`<td class="${cls ? `${cls} tc-cell` : 'tc-cell'}" data-label="${label}">${tpl(row, rowNum)}</td>`;
       return i === linkIdx && !editIcon
-        ? html`<td class="${cls}" data-label="${label}"><a ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
+        ? html`<td class="${cls}" data-label="${label}"><a class="${rowLink ? 'row-open' : null}" ${linkAttrs(ctx, link!.page, rowItems(row))}>${text || t('report.edit')}</a></td>`
         : html`<td class="${cls}" data-label="${label}">${text}</td>`;
     })}${lk ? lk.rowTrail(row) : ''}</tr>`);
   }

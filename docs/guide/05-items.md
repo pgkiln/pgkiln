@@ -80,7 +80,7 @@ browser's date and time field.
 | `region_id` | The region the item is shown in (empty = page level, above the regions) |
 | `seq` | Order within its region |
 | `source_column` | For **form** regions: the table column it maps to |
-| `default_value` | Shown when the item has no value |
+| `default_value` | Shown when the item has no value; (sprint 259) `{"default_sql": "select current_date"}` in the attributes instead takes the first value of a query, run as the application's role with the page's `:BINDS` (APEX: Default Type SQL Query), e.g. today or now on a new record. HR page 37 (part 119) |
 | `required` | Must have a value on submit ("Salary is required."); marked with `*` |
 | `help` | Help text under the field |
 | `lov` | List of values for select/radio/checkbox group/multi-select/popup/display items |

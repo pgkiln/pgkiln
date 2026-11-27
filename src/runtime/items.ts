@@ -271,14 +271,26 @@ function displayMap(ctx: PageContext, item: Item, value: string): Raw {
 /** (167) A hidden item the browser may set ({"value_protected": false}): a hidden input, its posted value taken like a field's. */
 export const unprotectedHidden = (i: { type: string; config?: Record<string, any> | null }) => i.type === 'hidden' && i.config?.value_protected === false;
 
+/** An item without a value shows its default: (sprint 259) {"default_sql": "select current_date"} in the attributes (the
+ * first column of the first row, with :BINDS, as the application's role; APEX: Default Type SQL Query), else default_value. */
+export async function itemDefault(ctx: PageContext, item: Item): Promise<string> {
+  const sql = item.config?.default_sql;
+  if (typeof sql === 'string' && sql.trim() && ctx.client) {
+    const client = ctx.client;
+    const res = await savepoint(client, () => client.query({ text: stripSemicolon(applyBinds(sql, bindValues(ctx))), rowMode: 'array' }));
+    return toState(res.rows[0]?.[0]) ?? '';
+  }
+  return item.default_value ?? '';
+}
+
 export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = false): Promise<Raw | ''> {
   if (!ctx.vis!.items.has(item.name)) return '';
   if (item.type === 'hidden') {
     // (167) protected (the default): the value stays on the server; {"value_protected": false}: a hidden input
     if (!unprotectedHidden(item)) return '';
-    return html`<input type="hidden" id="${item.name}" name="${item.name}" value="${ctx.session.state[item.name] ?? item.default_value ?? ''}" data-item="${item.name}">`;
+    return html`<input type="hidden" id="${item.name}" name="${item.name}" value="${ctx.session.state[item.name] ?? await itemDefault(ctx, item)}" data-item="${item.name}">`;
   }
-  const value = ctx.session.state[item.name] ?? item.default_value ?? '';
+  const value = ctx.session.state[item.name] ?? await itemDefault(ctx, item);
   const id = item.name;
   const error = ctx.errors.items[item.name];
   const editable = ctx.vis!.editable.has(item.name);

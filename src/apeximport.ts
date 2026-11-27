@@ -534,7 +534,7 @@ const DISPLAY_LOCATIONS: Record<string, string> = {
   ON_ERROR_PAGE: 'notification',
 };
 
-const BUTTON_SLOTS = new Set(['create', 'edit', 'change', 'copy', 'help', 'up', 'previous', 'close', 'delete', 'next']);
+const BUTTON_SLOTS = new Set(['create', 'edit', 'change', 'copy', 'help', 'up', 'previous', 'close', 'delete', 'next', 'top_of_region', 'bottom_of_region']);
 
 const DA_EVENTS: Record<string, string> = {
   change: 'change',
@@ -1837,7 +1837,9 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       document: null,
     };
     const pos = (str(a, 'p_button_position') ?? '').toUpperCase().replace(/^REGION_TEMPLATE_/, '').toLowerCase();
-    if (BUTTON_SLOTS.has(pos)) row.slot = pos;
+    // (sprint 259) APEX's TOP and BOTTOM are the region body's Top of Region and Bottom of Region
+    const slot = pos === 'top' ? 'top_of_region' : pos === 'bottom' ? 'bottom_of_region' : pos;
+    if (BUTTON_SLOTS.has(slot)) row.slot = slot;
     if (action === 'SUBMIT') row.action = 'submit';
     else if (action === 'DEFINED_BY_DA') row.action = 'da';
     else if (action === 'REDIRECT_PAGE' || action === 'REDIRECT_URL') {

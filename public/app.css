@@ -1529,6 +1529,13 @@ dl.details dd { margin: 0; overflow-wrap: anywhere; }
 .report tr[class^="hl-"] td, .report tr[class^="hl-"]:hover td { background: var(--hl); }
 /* (sprint 257) a developer's highlight of one column's cell */
 .report td.hl-cell { background: var(--hl); }
+/* (sprint 259) buttons in the region body (Top of Region, Bottom of Region) */
+.region-body-buttons > .buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
+.region-body-top { margin-bottom: 0.75rem; }
+.region-body-bottom { margin-top: 0.75rem; }
+/* (sprint 259) row_link: the whole row opens the record */
+.report tr.row-link { cursor: pointer; }
+.report tr.row-link:not([class*="hl-"]):hover td { background: var(--surface-2); }
 .chip .swatch { display: inline-block; width: 0.8em; height: 0.8em; border-radius: 3px; background: var(--hl); border: 1px solid var(--border); }
 .saved-reports { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; }
 .saved-reports li { display: flex; align-items: center; gap: 0.35rem; }

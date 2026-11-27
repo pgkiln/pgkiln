@@ -667,6 +667,8 @@ export const en = {
   'slot.close': 'Close',
   'slot.delete': 'Delete',
   'slot.next': 'Next',
+  'slot.top_of_region': 'Top of Region',
+  'slot.bottom_of_region': 'Bottom of Region',
   // the gallery (REGION_LABELS, ITEM_LABELS, BUTTON_LABELS in arrange.ts)
   'gallery.region.report': 'Interactive Report',
   'gallery.region.grid': 'Interactive Grid',

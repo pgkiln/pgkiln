@@ -664,6 +664,8 @@ export const ja: BuilderMessages = {
   'slot.close': '閉じる',
   'slot.delete': '削除',
   'slot.next': '次へ',
+  'slot.top_of_region': 'リージョンの上部',
+  'slot.bottom_of_region': 'リージョンの下部',
   // the gallery (REGION_LABELS, ITEM_LABELS, BUTTON_LABELS in arrange.ts)
   'gallery.region.report': '対話モード・レポート',
   'gallery.region.grid': '対話グリッド',

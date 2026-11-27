@@ -605,6 +605,11 @@ async function slottedShell(ctx: PageContext, r: Region, hidden: Set<string>, bo
   const left = await buttonsFor(ctx, r.id, (b) => LEFT_SLOTS.has(b.slot ?? ''));
   // (167) Next is the last button of the bar, as in APEX: the region's own buttons come before it
   const right = await buttonsFor(ctx, r.id, (b) => b.slot === 'next' || (!onTop && plain(b)), (b) => (b.slot === 'next' ? 1 : 0));
+  // (sprint 259; APEX: Top of Region, Bottom of Region) in the body, above and under its content
+  const bodyTop = await buttonsFor(ctx, r.id, (b) => b.slot === 'top_of_region');
+  const bodyBottom = await buttonsFor(ctx, r.id, (b) => b.slot === 'bottom_of_region');
+  if (bodyTop || bodyBottom)
+    body = html`${bodyTop ? html`<div class="region-body-buttons region-body-top">${bodyTop}</div>` : ''}${body}${bodyBottom ? html`<div class="region-body-buttons region-body-bottom">${bodyBottom}</div>` : ''}`;
   const extra = shellExtras(ctx, r);
   const cls = `region region-${r.type} region-${r.template} ${extra.cls}${templateClasses('region', r.template_options)}`;
   const hiddenAttr = hidden.has(`R${r.id}`) ? raw(' hidden') : '';
