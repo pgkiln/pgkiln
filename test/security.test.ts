@@ -21759,3 +21759,17 @@ describe('sprint 257 report highlights from the config', () => {
     }
   });
 });
+
+describe('sprint 258 items in rows and columns', () => {
+  // column_span and new_row come from the item's attributes into the field's HTML: only an integer 1–12 and true.
+  test('only a span of 1 to 12 and new_row true are written; nothing else reaches the attribute', async () => {
+    const { gridPlacement } = await import('../src/runtime/items.ts');
+    assert.equal(gridPlacement({ column_span: 4, new_row: true }), 'data-span="4" data-new-row');
+    for (const bad of [0, 13, 2.5, '4" onmouseover="x', '4', null, -1]) assert.equal(gridPlacement({ column_span: bad }), bad === '4' ? 'data-span="4"' : '');
+    assert.equal(gridPlacement({ new_row: 'yes' }), '');
+    assert.equal(gridPlacement(null), '');
+    const body = (await (await as('king')).get('/a/hr/24')).body;
+    assert.match(body, /data-item="P24_STARTS_AT"[^>]*data-span="6"/);
+    assert.match(body, /data-item="P24_PRIVATE"[^>]*data-span="6" data-new-row/);
+  });
+});

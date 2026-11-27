@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Items in rows and columns** (sprint 258): item attributes `column_span` (1–12) and `new_row` place items in the
+  region's 12 columns, e.g. a checklist with a choice and a remark on each row (APEX: Column Span, Start New Row; found
+  comparing a migrated Appsmith application). Phones keep one item per row; the APEX importer maps both. HR part 118:
+  page 24.
+
 ## [0.120.0] - 2026-11-25
 
 ### Added

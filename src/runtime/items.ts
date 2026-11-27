@@ -552,6 +552,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
       item.config?.cascade_parents ? `data-cascade="${String(item.config.cascade_parents).replace(/[^A-Z0-9_,]/gi, '')}"` : '',
       hiddenByDa ? 'hidden' : '',
       item.config?.wide || item.type === 'textarea' || item.type === 'richtext' || item.type === 'markdown' || templateClasses('item', item.template_options).includes(' to-stretch') ? 'data-wide' : '',
+      gridPlacement(item.config),
     ]
       .filter(Boolean)
       .map((a) => ` ${a}`)
@@ -566,6 +567,15 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
     ${item.help ? html`<small class="help" id="${id}_help">${await expandShortcuts(ctx, item.help, 'text')}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}
   ${raw(`</${tag}>`)}`;
+}
+
+/** (sprint 258, PGKIL-7) {"column_span": 1–12, "new_row": true}: the field's place in the region's 12-column grid
+ * (APEX: Column Span, Start New Row); app.css switches a form grid with such a field to 12 columns. */
+export function gridPlacement(config: Record<string, any> | null | undefined): string {
+  const span = Number(config?.column_span);
+  const out = Number.isInteger(span) && span >= 1 && span <= 12 ? [`data-span="${span}"`] : [];
+  if (config?.new_row === true) out.push('data-new-row');
+  return out.join(' ');
 }
 
 /** A QR code of the item's value ({"ecc": "L|M|Q|H", "size": 200}), drawn on the server as SVG. */

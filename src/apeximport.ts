@@ -1715,6 +1715,12 @@ export function apexToDoc(source: string, opts: ApexImportOptions = {}): { doc: 
       else if (sub === 'URL') type = 'url';
     }
     if (type === 'hidden' && /^n$/i.test(attributeAt(a, apexType, 1) ?? '')) config.value_protected = false;
+    // (sprint 258) Column Span and Start New Row; without a span pgkiln's own grid places the item
+    const colspan = num(a, 'p_colspan') ?? num(a, 'p_grid_column_span');
+    if (colspan && colspan >= 1 && colspan <= 12) {
+      config.column_span = colspan;
+      if (!/^n$/i.test(str(a, 'p_begin_on_new_line') ?? '')) config.new_row = true;
+    }
     e.target = type;
     const sourceType = (str(a, 'p_source_type') ?? '').toUpperCase();
     // (sprint 192) APEX 26.2 leaves out p_source_type for a column of the item's source region (its default)
