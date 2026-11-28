@@ -584,6 +584,9 @@ textarea.code { font-family: var(--mono); font-size: 0.84rem; line-height: 1.45;
 .btn:hover { background: var(--surface-3); }
 .btn-hot { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .btn-hot:hover { background: color-mix(in srgb, var(--accent) 86%, black); }
+/* (sprint 264) a button a dynamic action disabled (a link button: aria-disabled, its clicks stopped) */
+.btn:disabled, a.btn[aria-disabled] { opacity: 0.5; cursor: not-allowed; }
+a.btn[aria-disabled] { pointer-events: none; }
 .btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
 .btn-danger:hover { background: var(--danger-soft); }
 .btn-badge { display: inline-block; min-width: 1.4em; padding: 0.05rem 0.4rem; border-radius: 99px; font-size: 0.72rem; font-weight: 650; line-height: 1.3; text-align: center; background: var(--accent); color: var(--accent-text); }

@@ -587,7 +587,8 @@
     "not_in_list",
     "contains",
     "not_contains",
-    "contains_any"
+    "contains_any",
+    "all_not_null"
    ]
   },
   {

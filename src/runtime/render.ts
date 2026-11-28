@@ -82,6 +82,7 @@ function conditionHolds(type: string | null, expected: string | null, value: str
     case 'in_list': return (expected ?? '').split(',').map((x) => x.trim()).includes(value);
     case 'is_null': return value === '';
     case 'is_not_null': return value !== '';
+    // (sprint 264) all_not_null is checked by initiallyHidden over every trigger item
     // (156) greater / less: numbers as numbers, else text (ISO dates sort as text); not_in_list
     case 'greater': return value !== '' && compareValues(value, expected ?? '') > 0;
     case 'greater_equal': return value !== '' && compareValues(value, expected ?? '') >= 0;
@@ -106,7 +107,9 @@ function initiallyHidden(ctx: PageContext) {
     if (!ctx.vis!.dynamicActions.has(d.id) || (d.action !== 'show' && d.action !== 'hide') || d.event === 'dialog_closed') continue;
     const trigger = list(d.trigger_element)[0];
     const value = trigger ? (ctx.session.state[trigger] ?? '') : '';
-    const holds = conditionHolds(d.condition_type, d.condition_value, value);
+    const holds = d.condition_type === 'all_not_null'
+      ? list(d.trigger_element).every((t) => (ctx.session.state[t] ?? '') !== '')
+      : conditionHolds(d.condition_type, d.condition_value, value);
     const show = (d.action === 'show') === holds;
     const targets = [...list(d.affected_items), ...(d.affected_region_id ? [`R${d.affected_region_id}`] : [])];
     for (const t of targets) show ? hidden.delete(t) : hidden.add(t);

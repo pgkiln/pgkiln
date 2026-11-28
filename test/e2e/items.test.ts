@@ -196,3 +196,23 @@ describe('sprint 263 help as a tooltip', () => {
     await page.context().close();
   });
 });
+
+describe('sprint 264 a button grey until the fields it needs are filled in', () => {
+  test('HR page 37: Request leave is disabled until First day and Last day have a value', async () => {
+    const page = await open();
+    await page.goto(`${base}/a/hr/37`);
+    const request = page.locator('[data-button="REQUEST"]');
+    assert.equal(await request.isDisabled(), true, 'disabled at first');
+    await page.fill('#P37_START_DATE', '01-12-2026');
+    await page.locator('#P37_START_DATE').dispatchEvent('change');
+    assert.equal(await request.isDisabled(), true, 'still disabled with one day');
+    await page.fill('#P37_END_DATE', '05-12-2026');
+    await page.locator('#P37_END_DATE').dispatchEvent('change');
+    assert.equal(await request.isDisabled(), false, 'enabled with both days');
+    await page.fill('#P37_END_DATE', '');
+    await page.locator('#P37_END_DATE').dispatchEvent('change');
+    assert.equal(await request.isDisabled(), true, 'disabled again without the last day');
+    assert.deepEqual(await violations(page), []);
+    await page.context().close();
+  });
+});

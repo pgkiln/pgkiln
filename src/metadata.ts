@@ -397,7 +397,7 @@ export interface DynamicAction extends FromGlobal {
     | 'grid_row_init' | 'grid_save' | 'calendar_date_select' | 'calendar_view_change' | 'map_object_click' | 'map_change' | 'tree_selection_change' | 'timer';
   trigger_element: string | null;
   condition_type: 'equals' | 'not_equals' | 'in_list' | 'is_null' | 'is_not_null' | 'greater' | 'greater_equal' | 'less' | 'less_equal' | 'not_in_list'
-    | 'contains' | 'not_contains' | 'contains_any' | null;
+    | 'contains' | 'not_contains' | 'contains_any' | 'all_not_null' | null;
   condition_value: string | null;
   action: 'show' | 'hide' | 'enable' | 'disable' | 'set_value' | 'execute_sql' | 'refresh_region' | 'refresh_item' | 'alert' | 'submit'
     | 'set_focus' | 'add_class' | 'remove_class' | 'show_success' | 'show_error' | 'clear_errors' | 'ai_generate'
