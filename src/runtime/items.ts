@@ -201,7 +201,7 @@ export const appDateReader = (ctx: PageContext) => (text: string) => parseDateMa
 export function itemDateMask(ctx: PageContext, item: Item): string | null {
   if (item.type !== 'date' && item.type !== 'daterange' && item.type !== 'datetime') return null;
   // (sprint 261) a date-time item's date part: its own mask up to the time (DD-MM-YYYY HH24:MI → DD-MM-YYYY)
-  const own = (typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '').replace(/\s*(HH|HH12|HH24|MI|SS|AM|PM)\b.*$/i, '').trim();
+  const own = (typeof item.config?.format_mask === 'string' ? item.config.format_mask.trim() : '').replace(/\s*("[^"]*"\s*)?(HH|HH12|HH24|MI|SS|AM|PM)\b.*$/i, '').trim();
   if (own && /(YYYY|YY|MM|DD|MON)/i.test(own) && !formatMaskError(own)) return own;
   return appDateMask(ctx);
 }
@@ -220,6 +220,22 @@ export function dateField(ctx: PageContext, o: { id: string; iso: string; mask: 
   const numeric = /MON|DAY|DY/i.test(o.mask.replace(/"[^"]*"/g, '')) ? '' : raw(' inputmode="numeric"');
   return html`<span class="input-with-button date-field"><input type="text" id="${o.id}"${o.attrs ?? ''} value="${shown}" placeholder="${o.placeholder ?? o.mask}" autocomplete="off"${numeric} data-date-mask="${o.mask}" data-months="${JSON.stringify(monthNames(ctx.locale.lang))}"${editable ? '' : raw(' readonly')}>${
     editable ? html`<button type="button" class="btn" data-date-pick="${o.id}" aria-label="${t('item.choose_date')}" title="${t('item.choose_date')}" aria-haspopup="dialog">${icon('calendar')}</button>` : ''}</span>`;
+}
+
+/** (sprint 261) config.required_when: the requests (button names) a required item is checked for; null: every submit. */
+export function requiredWhen(i: Item): string[] | null {
+  const w = i.config?.required_when;
+  const list = (Array.isArray(w) ? w : typeof w === 'string' ? w.split(',') : []).map((x) => String(x).trim().toUpperCase()).filter(Boolean);
+  return list.length ? list : null;
+}
+
+/**
+ * (sprint 262) A date-time value → [date, time]: "YYYY-MM-DDTHH:MI[:SS…]", "date time" or a date alone. Only a time at the
+ * end (H:MM or H.MM) is split off, so a date format with a T or a space (DD-MON-YYYY, DD MM YYYY) stays whole.
+ */
+export function splitDateTime(v: string): [string, string] {
+  const m = /^(.*?)(?:[T ]+(\d{1,2}[:.]\d{2}(?::\d{2})?\S*))?$/.exec(v.trim())!;
+  return [m[1].trim(), m[2] ?? ''];
 }
 
 /** A number or display item's number format mask ({"format_mask": "999G990D00"}), when it is a valid one. */
@@ -455,10 +471,9 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
         // (sprint 261) the date in the app's (or the item's) date format with pgkiln's date picker, and the time as HH:MI
         // in a text field of its own (was the browser's datetime-local: mm/dd/yyyy and a 12-hour clock in en-US
         // browsers); both are posted under the item's name and read back as YYYY-MM-DDTHH:MI
-        const v = value.replace(' ', 'T');
-        const [d, tm = ''] = v.split('T');
+        const [d, tm] = splitDateTime(value);
         const time = /^\d{2}:\d{2}/.test(tm) ? tm.slice(0, 5) : tm;
-        control = html`<span class="datetime-field" data-datetime>${dateField(ctx, { id, iso: d, typed: d, mask: itemDateMask(ctx, item)!, attrs: html` name="${id}"${aria}`, editable, placeholder: hint })}<input type="text" class="time-field" id="${id}_time" name="${id}" value="${time}" placeholder="--:--" inputmode="numeric" autocomplete="off" maxlength="5" aria-label="${label} (${ctx.locale.t('item.time')})"></span>`;
+        control = html`<span class="datetime-field" data-datetime>${dateField(ctx, { id, iso: d, typed: d, mask: itemDateMask(ctx, item)!, attrs: html` name="${id}"${aria}`, editable, placeholder: hint })}<input type="text" class="time-field" id="${id}_time" name="${id}" value="${time}" placeholder="--:--" inputmode="numeric" autocomplete="off" maxlength="5"${aria} aria-label="${label} (${ctx.locale.t('item.time')})"></span>`;
         break;
       }
       case 'richtext':
@@ -493,7 +508,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
           );
         // the "no rating" choice comes first, so CSS can dim the stars after the checked one (it is shown last)
         control = html`<div class="rating">${
-          item.required
+          item.required && !requiredWhen(item)
             ? ''
             : html`<input type="radio" id="${id}_0" name="${id}" value=""${value === '' ? raw(' checked') : ''}${aria}><label class="rating-clear" for="${id}_0">${ctx.locale.t('item.rating_none')}</label>`
         }${stars}</div>`;
@@ -621,7 +636,7 @@ function qrControl(ctx: PageContext, item: Item, value: string) {
 export const CROP_RATIOS = ['free', '1:1', '4:3', '3:4', '16:9', '3:2', '2:3'];
 
 /** The <input type="file"> of a file item, with its accept, capture, max_px and crop attributes. */
-function fileInput(ctx: PageContext, item: Item, aria: Raw) {
+function fileInput(ctx: PageContext, item: Item, aria: Raw, stored = false) {
   const conf = (item.config ?? {}) as { accept?: string; capture?: string; max_px?: number; crop?: string };
   // capture: open the camera on phones ("environment" = the back camera); max_px: photos are made smaller before upload (app.js)
   const capture = conf.capture === 'user' || conf.capture === 'environment' ? raw(` capture="${conf.capture}"`) : '';
@@ -639,7 +654,7 @@ function fileInput(ctx: PageContext, item: Item, aria: Raw) {
   if (button !== true && !(typeof button === 'string' && button.trim())) return input;
   const t = ctx.locale.t;
   const text = typeof button === 'string' ? ctx.locale.tr(button.trim().slice(0, 100)) : t(isMultiple(item) ? 'file.choose_many' : 'file.choose');
-  return html`<span class="file-button">${input}<label for="${item.name}" class="btn">${icon('upload')} ${text}</label><span class="file-button-names" aria-live="polite">${t('file.none')}</span></span>`;
+  return html`<span class="file-button">${input}<label for="${item.name}" class="btn">${icon('upload')} ${text}</label><span class="file-button-names" aria-live="polite">${stored ? '' : t('file.none')}</span></span>`;
 }
 
 /** A multiple file item: its files (stored and new), each with a remove box, and the file input. */
@@ -698,7 +713,8 @@ async function fileControl(ctx: PageContext, item: Item, editable: boolean, aria
     : '';
   if (!editable) return html`<div class="display-value" id="${id}">${current || t('file.none')}</div>`;
   if (signature) return html`${current}${signaturePad(ctx, item, aria)}`;
-  return html`${current}${fileInput(ctx, item, aria)}`;
+  // (sprint 262) a stored file shows above the button, so no "No file" next to it
+  return html`${current}${fileInput(ctx, item, aria, !!f)}`;
 }
 
 /**

@@ -218,6 +218,8 @@ const pgkilnUnsaved = (() => {
   return { changed, mayLeave, text };
 })();
 
+// (sprint 262) the date picker's mask format and parse (set below), for a date-time item's getValue / setValue
+let dateCodec = null;
 
 (() => {
   const body = document.body;
@@ -262,8 +264,15 @@ const pgkilnUnsaved = (() => {
     const el = els[0];
     // a date range item: two date inputs with the same name, "from:to"
     if (el.closest('[data-range]')) return els.some((e) => e.value) ? els.slice(0, 2).map((e) => e.value).join(':') : '';
-    // (sprint 261) a date-time item: the date field and the time field, "date time"
-    if (el.closest('[data-datetime]')) return els.slice(0, 2).map((e) => e.value.trim()).filter(Boolean).join(' ');
+    // (sprint 261) a date-time item: the date field and the time field; (sprint 262) as YYYY-MM-DDTHH:MI, like its
+    // session state, when both can be read; else "date time" as typed (the server reads it the same way)
+    if (el.closest('[data-datetime]')) {
+      const [d, tm] = els.slice(0, 2).map((e) => (e ? e.value.trim() : ''));
+      const iso = d && dateCodec ? dateCodec.parse(d, el.dataset.dateMask || 'YYYY-MM-DD', dateCodec.monthsOf(el)) : null;
+      const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(tm);
+      if (iso && (!tm || (m && Number(m[1]) < 24 && Number(m[2]) < 60))) return `${iso}T${m ? `${m[1].padStart(2, '0')}:${m[2]}` : '00:00'}`;
+      return [d, tm].filter(Boolean).join(' ');
+    }
     if (el.type === 'radio') return (els.find((e) => e.checked) || {}).value || '';
     // (sprint 235) a checkbox group: the ticked values colon-separated, like a multiselect
     if (el.type === 'checkbox' && el.closest('.radio-group')) return els.filter((e) => e.checked).map((e) => e.value).join(':');
@@ -286,9 +295,11 @@ const pgkilnUnsaved = (() => {
       const parts = String(value ?? '').split(':');
       els.slice(0, 2).forEach((e, i) => (e.value = parts[i] || ''));
     } else if (el.closest('[data-datetime]')) {
-      // "YYYY-MM-DDTHH:MI" (or "date time"): the date part in the date field, the time in the time field
-      const [d = '', tm = ''] = String(value ?? '').trim().split(/[T ]+/);
-      els[0].value = d;
+      // "YYYY-MM-DDTHH:MI" (or "date time"): the date part in the date field (in its mask), the time in the time field;
+      // (sprint 262) only a time at the end is split off, as items.ts splitDateTime does (DD-MON-YYYY has a T)
+      const m = /^(.*?)(?:[T ]+(\d{1,2}[:.]\d{2}(?::\d{2})?\S*))?$/.exec(String(value ?? '').trim());
+      const d = m[1].trim(), tm = m[2] || '';
+      els[0].value = dateCodec && /^\d{4}-\d{2}-\d{2}$/.test(d) ? dateCodec.format(d, els[0].dataset.dateMask || 'YYYY-MM-DD', dateCodec.monthsOf(els[0])) : d;
       if (els[1]) els[1].value = tm.slice(0, 5);
     } else if (el.type === 'radio') els.forEach((e) => (e.checked = e.value === value));
     else if (el.type === 'checkbox' && el.closest('.radio-group')) {
@@ -5386,6 +5397,7 @@ document.addEventListener('change', (e) => {
     const out = `${String(y).padStart(4, '0')}-${pad(mo)}-${pad(d)}`;
     return isoOf(dateOf(out)) === out ? out : null;
   };
+  dateCodec = { format, parse, monthsOf };
 
   let open = null; // { box, field, btn, focus, view }
   function close(back) {

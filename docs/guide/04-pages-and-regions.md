@@ -780,7 +780,7 @@ column of its own, besides the one column `link` makes a link:
 | `position` | `end` (default): after the report's columns; `start`: before them |
 | `after` | (sprint 260) A column of the query: the link column comes right after it, e.g. a quantity button between the name and the unit. When that column is hidden or missing, `position` places it |
 | `when` | A column of the query: the link shows only in rows where it is true (not null, `false`, empty, `N` or `0`); hide the column with `hidden` |
-| `else` | (sprint 261) `"text"`: where `when` is false the label shows as plain text instead of nothing, e.g. a quantity that is a button while an order is open and its number once it is sent (one column instead of a button column and a text column) |
+| `else` | (sprint 261) `"text"`: where `when` is false the label shows as plain text instead of nothing, e.g. a quantity that is a button while an order is open and its number once it is sent (one column instead of a button column and a text column); (sprint 262) users who may not open the link's page see the label as text in every row |
 
 At most 10 link columns; an entry without a label or a page is left out. `row_actions` gives each row the grid's ⋮
 menu: *Edit* (with an `edit` link; its `label` is optional) and the `links`, each shown only when the user may open its

@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Date-time items** (sprint 262, review of sprint 261): one value from a dynamic action or an Ajax call in a date
+  format with a `T` or a space (`DD-MON-YYYY`) is read again (only a time at the end is split off); what can't be read
+  is an error on the item instead of a database error; `pgkiln.getValue` returns `YYYY-MM-DDTHH:MI` and `setValue`
+  shows the date in the format; a format mask with a quoted `"T"` gives the date field its date part only; the time
+  field has the item's `aria-*` attributes.
+- **Link columns with `else: "text"`** (sprint 262): users who may not open the link's page see the label as text
+  instead of no column. HR part 122: page 66 (and its row menu as a primary button "Options").
+- **A rating required for some buttons only** (`required_when`) can be cleared again; **a file button** no longer
+  says "No file" next to a stored file.
+
 ## [0.123.0] - 2026-11-27
 
 ### Added
