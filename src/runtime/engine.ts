@@ -12,7 +12,7 @@ import { invokeApi, restFetchRow, restFormDml } from './rest-sources.ts';
 import { runPending } from '../webrequests.ts';
 import { runPendingAi } from '../ai/requests.ts';
 import { runAiProcess } from './ai.ts';
-import { itemMask, LOV_CHECKED, lovContains, MULTI_VALUE, ratingMax, splitValues } from './items.ts';
+import { itemMask, LOV_CHECKED, lovContains, MULTI_VALUE, ratingMax, requiredWhen, splitValues } from './items.ts';
 import { formatNumber, isPlainNumber } from '../numformat.ts';
 import { parseDateMask } from './format.ts';
 import { itemLabel } from './item-texts.ts';
@@ -219,13 +219,6 @@ async function validationPasses(ctx: PageContext, v: Validation, value: string |
  * but runs the validations made for DELETE (when_button = 'DELETE'), e.g. "approved requests can't
  * be deleted".
  */
-/** (sprint 261) config.required_when: the requests (button names) a required item is checked for; null: every submit. */
-export function requiredWhen(i: Item): string[] | null {
-  const w = i.config?.required_when;
-  const list = (Array.isArray(w) ? w : typeof w === 'string' ? w.split(',') : []).map((x) => String(x).trim().toUpperCase()).filter(Boolean);
-  return list.length ? list : null;
-}
-
 export async function validate(ctx: PageContext) {
   const c = ctx.client!;
   const deleting = ctx.request === 'DELETE';
@@ -290,6 +283,12 @@ export async function validate(ctx: PageContext) {
     const v = state[i.name];
     if (i.type !== 'date' || !v || !vis.editable.has(i.name) || errors.items[i.name] || /^\d{4}-\d{2}-\d{2}$/.test(v)) continue;
     fail(i.name, ctx.locale.t('error.not_date', { label: errLabel(i) }));
+  }
+  // (sprint 262) a date-time item holds a date and a time (what the two fields couldn't read is kept as typed, see routes.ts)
+  for (const i of deleting ? [] : ctx.page.items) {
+    const v = state[i.name];
+    if (i.type !== 'datetime' || !v || !vis.editable.has(i.name) || errors.items[i.name] || /^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}\S*)?$/.test(v)) continue;
+    fail(i.name, ctx.locale.t('jsonform.not_datetime', { label: errLabel(i) }));
   }
   for (const i of deleting ? [] : ctx.page.items) {
     const v = state[i.name];

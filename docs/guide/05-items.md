@@ -12,7 +12,7 @@ page, optionally inside a region. Name them `P<page>_<NAME>` (uppercase letters,
 | `textarea` | multi-line text (always full width) | text |
 | `number` | number field (numeric keyboard on phones) | e.g. `1250.50` |
 | `date` | a text field in the item's date format mask, else the application's date format, else `YYYY-MM-DD`, with pgkiln's [date picker](#the-date-picker) (sprint 84; was the browser's); typed dates are read back in the format | `YYYY-MM-DD` |
-| `datetime` | (sprint 261) the date in the item's or the application's date format with pgkiln's [date picker](#the-date-picker), and the time (`HH:MI`) in a field of its own (was the browser's date-time field, `mm/dd/yyyy` and a 12-hour clock in US English browsers); the time may be typed as `9:05`, `0905` or `09.05` | `YYYY-MM-DDTHH:MM` |
+| `datetime` | (sprint 261) the date in the item's or the application's date format with pgkiln's [date picker](#the-date-picker), and the time (`HH:MI`) in a field of its own (was the browser's date-time field, `mm/dd/yyyy` and a 12-hour clock in US English browsers); the time may be typed as `9:05`, `0905` or `09.05`; (sprint 262) what the two fields can't read is an error on the item (*… must be a date and time.*), and `pgkiln.getValue` returns `YYYY-MM-DDTHH:MI` (`setValue` takes it and shows the date in the format) | `YYYY-MM-DDTHH:MM` |
 | `email`, `tel`, `url` | typed fields with the matching phone keyboard | text |
 | `password` | password field; never shown back, empty = unchanged | text |
 | `color` | colour picker | `#rrggbb` |

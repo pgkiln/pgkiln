@@ -94,6 +94,13 @@ describe('calendar and chart interactions', () => {
     // (sprint 261) the date in the app's date format, the time in a field of its own
     assert.ok(await page.inputValue('#P24_STARTS_AT'), 'the date is filled in');
     assert.equal(await page.inputValue('#P24_STARTS_AT_time'), slot!.slice(11, 16));
+    // (sprint 262) getValue gives YYYY-MM-DDTHH:MI, as the session state; setValue shows the date in the format
+    assert.equal(await page.evaluate(() => (window as any).pgkiln.getValue('P24_STARTS_AT')), slot);
+    const shown = await page.inputValue('#P24_STARTS_AT');
+    await page.evaluate((v) => (window as any).pgkiln.setValue('P24_STARTS_AT', v), `${slot!.slice(0, 10)}T08:15`);
+    assert.equal(await page.inputValue('#P24_STARTS_AT'), shown);
+    assert.equal(await page.inputValue('#P24_STARTS_AT_time'), '08:15');
+    await page.fill('#P24_STARTS_AT_time', slot!.slice(11, 16));
     await page.fill('#P24_TITLE', 'E2E meeting');
     await Promise.all([page.waitForNavigation(), page.click('button.btn[value="CREATE"]')]);
     assert.equal((await owner.one(`select to_char(starts_at, 'YYYY-MM-DD"T"HH24:MI') as s from hr.meeting where title = 'E2E meeting'`)).s, slot);

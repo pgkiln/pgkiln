@@ -149,7 +149,12 @@ export async function reportLinks(ctx: PageContext, r: Region, text: (row: unkno
     return allowed.get(page)!;
   };
   const cols: LinkColumn[] = [];
-  for (const c of linkColumnsOf(r)) if (await may(c.page)) cols.push(c);
+  // (sprint 262) a column with "else": "text" stays for users who may not open its page: its label as text in every row
+  const denied = new Set<LinkColumn>();
+  for (const c of linkColumnsOf(r)) {
+    if (await may(c.page)) cols.push(c);
+    else if (c.otherwise === 'text') cols.push(c), denied.add(c);
+  }
   const ra = reportRowActionsOf(r);
   const edit = ra?.edit && (await may(ra.edit.page)) ? ra.edit : null;
   const extra: RowLink[] = [];
@@ -167,7 +172,7 @@ export async function reportLinks(ctx: PageContext, r: Region, text: (row: unkno
       return html`<a ${linkAttrs(ctx, c.page, itemsFor(row, c.items))} class="${cls}" aria-label="${label}" title="${label}">${ic}</a>`;
     return html`<a ${linkAttrs(ctx, c.page, itemsFor(row, c.items))}${cls ? raw(` class="${cls}"`) : ''}>${ic}${ic ? ' ' : ''}${label}</a>`;
   };
-  const visible = (c: LinkColumn, row: unknown[]) => !c.when || truthy(raw0(row, c.when));
+  const visible = (c: LinkColumn, row: unknown[]) => !denied.has(c) && (!c.when || truthy(raw0(row, c.when)));
   const heading = (c: LinkColumn) => tr(c.heading);
   const cellOf = (c: LinkColumn, row: unknown[]) =>
     html`<td class="link-col link-col-${c.style}" data-label="${heading(c)}">${

@@ -30,7 +30,7 @@ import { aiInputs, aiProcessOf, runAiProcess } from './ai.ts';
 import { branchTaken, ComputationFailed, inDialog, inPageBelow, runComputations, staysInDialog } from './logic.ts';
 import { notePageView } from './navigation.ts';
 import { openAfterError, openByStaticId } from './open-region.ts';
-import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitValues } from './items.ts';
+import { comboMultiple, itemDateMask, itemMask, MULTI_VALUE, popupPageSize, renderItem, searchLov, splitDateTime, splitValues } from './items.ts';
 import { parseNumber } from '../numformat.ts';
 import { parseDateMask } from './format.ts';
 import { cleanRichText } from '../richtext.ts';
@@ -445,7 +445,8 @@ function applyPostedItems(ctx: PageContext, body: Body, only?: string[]) {
       // (sprint 261) the date (in the date format, or YYYY-MM-DD) and the time (H:MM, HH:MM, HHMM or HH.MM) → YYYY-MM-DDTHH:MI;
       // what can't be read is kept as typed, and the database reports it
       // two fields, or one value "date time" / "dateTtime" (a dynamic action, an Ajax call)
-      const [d = '', tm = ''] = (Array.isArray(raw) ? raw : String(raw).trim().split(/[T ]+/)).map((v) => String(v).trim());
+      // (sprint 262) one value: only the time at the end is split off (a date format may have a T or a space: DD-MON-YYYY)
+      const [d = '', tm = ''] = (Array.isArray(raw) ? raw : splitDateTime(String(raw))).map((v) => String(v).trim());
       const iso = d ? parseDateMask(d, itemDateMask(ctx, item)!, ctx.locale.lang) : null;
       const m = /^(\d{1,2})[:.]?(\d{2})$/.exec(tm);
       const time = m && Number(m[1]) < 24 && Number(m[2]) < 60 ? `${m[1].padStart(2, '0')}:${m[2]}` : null;

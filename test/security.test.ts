@@ -21860,3 +21860,35 @@ describe('sprint 259 row links, body buttons, highlight colours, item defaults f
     assert.equal(missing.statusCode, 422, 'Request leave needs the first day');
   });
 });
+
+describe('sprint 262 date-time input, link column text for users who may not open its page', () => {
+  const alias = 'ts-sec262';
+  before(async () => {
+    await owner.query(`delete from meta.app where alias = $1`, [alias]);
+    const a = (await owner.one(`insert into meta.app (alias, name, authentication, db_role) values ($1, 'Sec 262', 'none', 'hr_app') returning id`, [alias])).id;
+    await owner.query(`insert into meta.authz_scheme (app_id, name, type, value) values ($1, 'ADMINS', 'role', 'admin')`, [a]);
+    const p = (await owner.one(`insert into meta.page (app_id, page_no, name, title, requires_auth) values ($1, 1, 'P', 'P', false) returning id`, [a])).id;
+    await owner.query(`insert into meta.page (app_id, page_no, name, title, requires_auth, authz) values ($1, 2, 'Secret', 'Secret', false, 'ADMINS')`, [a]);
+    const r = (await owner.one(`insert into meta.region (page_id, seq, title, type, source, config) values ($1, 10, 'R', 'classic_report', 'select 1 as id',
+      '{"link_columns": [{"label": "Open #id#", "page": 2, "items": {"P2_ID": "#id#"}, "else": "text"}]}') returning id`, [p])).id;
+    await owner.query(`insert into meta.item (page_id, region_id, seq, name, label, type) values ($1, $2, 10, 'P1_AT', 'At', 'datetime')`, [p, r]);
+    await owner.query(`insert into meta.button (page_id, region_id, seq, name, label, action) values ($1, $2, 10, 'SAVE', 'Save', 'submit')`, [p, r]);
+  });
+  after(() => owner.query(`delete from meta.app where alias = $1`, [alias]));
+
+  // The page a user may not open gets no link (and no checksum for its items): only the label, escaped, as text.
+  test('a link column with "else": "text" never links a page the user may not open', async () => {
+    const body = (await new FileBrowser(app).get(`/a/${alias}/1`)).body;
+    assert.match(body, /<span class="link-col-text">Open 1<\/span>/);
+    assert.doesNotMatch(body, /\/a\/ts-sec262\/2|P2_ID=/);
+  });
+
+  // Text the two fields couldn't read never reaches the database: an item error, not a raw timestamp cast.
+  test('a date-time that can\'t be read is an item error', async () => {
+    const b = new FileBrowser(app);
+    await b.get(`/a/${alias}/1`);
+    const res = await b.submit(`/a/${alias}/1`, { P1_AT: `x'); drop table hr.emp; --`, __request: 'SAVE' });
+    assert.equal(res.statusCode, 422);
+    assert.match(res.body, /At must be a date and time/);
+  });
+});
