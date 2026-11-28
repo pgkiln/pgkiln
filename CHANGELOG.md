@@ -5,6 +5,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Help as a tooltip of a `?` after the label** (sprint 263): item attribute `help_icon: true` shows the item's help text
+  while the pointer is on the label or the field has focus, instead of under the field (Appsmith's label tooltip; found
+  comparing the migrated Appsmith applications a fifth time). Escape hides it. HR part 123: page 3.
+
 ## [0.124.0] - 2026-11-28
 
 ### Fixed

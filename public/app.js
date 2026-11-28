@@ -3625,6 +3625,16 @@ const liveBadges = (() => {
     if (m && Number(m[1]) < 24 && Number(m[2]) < 60) f.value = `${m[1].padStart(2, '0')}:${m[2]}`;
   });
 
+  // (sprint 263) Escape hides a field's help tooltip ({"help_icon": true}) until the field is left (WCAG 1.4.13)
+  document.addEventListener('keydown', (e) => {
+    const f = e.key === 'Escape' && e.target instanceof Element ? e.target.closest('.field:has(.help-tip)') : null;
+    if (f && !f.classList.contains('help-tip-off')) f.classList.add('help-tip-off');
+  });
+  document.addEventListener('focusout', (e) => {
+    const f = e.target instanceof Element ? e.target.closest('.field.help-tip-off') : null;
+    if (f && !f.contains(e.relatedTarget)) f.classList.remove('help-tip-off');
+  });
+
   // (sprint 261) a file item shown as a button: the chosen files' names next to it
   document.addEventListener('change', (e) => {
     const input = e.target;

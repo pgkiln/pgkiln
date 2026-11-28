@@ -238,6 +238,9 @@ export function splitDateTime(v: string): [string, string] {
   return [m[1].trim(), m[2] ?? ''];
 }
 
+/** (sprint 263) {"help_icon": true}: the item's help text as a tooltip of a ? after its label instead of under the field. */
+export const helpIcon = (item: Item) => item.config?.help_icon === true;
+
 /** A number or display item's number format mask ({"format_mask": "999G990D00"}), when it is a valid one. */
 export function itemMask(item: Item): string | null {
   if (item.type !== 'number' && item.type !== 'display') return null;
@@ -579,11 +582,14 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   }
 
   const isCheck = editable && (item.type === 'checkbox' || item.type === 'switch');
+  // (sprint 263) {"help_icon": true}: the help text as a tooltip of a ? after the label (Appsmith: label tooltip); it shows
+  // while the pointer is on the label or the field has focus, Escape hides it (app.js); screen readers read it as before
+  const tip = item.help && helpIcon(item) && !isCheck ? html`<span class="help-tip" aria-hidden="true">${icon('help')}</span>` : '';
   const labelHtml = isCheck
     ? html`<span class="label" aria-hidden="true"></span>`
     : useLegend
-      ? html`<legend class="label">${label}${item.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}</legend>`
-      : html`<label class="label" for="${id}">${label}${item.required && editable ? html`<span class="req" aria-hidden="true">*</span>` : ''}</label>`;
+      ? html`<legend class="label">${label}${item.required ? html`<span class="req" aria-hidden="true">*</span>` : ''}${tip}</legend>`
+      : html`<label class="label" for="${id}">${label}${item.required && editable ? html`<span class="req" aria-hidden="true">*</span>` : ''}${tip}</label>`;
   const attrs = raw(
     [
       item.config?.submit_on_change ? 'data-submit-on-change' : '',
@@ -604,7 +610,7 @@ export async function renderItem(ctx: PageContext, item: Item, hiddenByDa = fals
   const tag = useLegend ? 'fieldset' : 'div';
   return html`${raw(`<${tag}`)} class="field field-${item.type}${error ? ' has-error' : ''}${editable ? '' : ' readonly'}${templateClasses('item', item.template_options)}" data-item="${item.name}"${attrs}${pluginAttrs}>
     ${labelHtml}${control}${lovError}
-    ${item.help ? html`<small class="help" id="${id}_help">${await expandShortcuts(ctx, item.help, 'text')}</small>` : ''}
+    ${item.help ? html`<small class="help${tip ? ' help-tip-text' : ''}" id="${id}_help"${tip ? raw(' role="tooltip"') : ''}>${await expandShortcuts(ctx, item.help, 'text')}</small>` : ''}
     ${error ? html`<small class="error" id="${id}_error">${error}</small>` : ''}
   ${raw(`</${tag}>`)}`;
 }
