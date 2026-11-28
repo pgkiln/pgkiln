@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **A button grey until the fields it needs are filled in** (sprint 264, migration 210): the dynamic action condition
+  `all_not_null` holds when every trigger item has a value, and `show` / `hide` / `enable` / `disable` act on buttons
+  named in `affected_items` (Appsmith's `isDisabled` on a button; found comparing the migrated Appsmith applications).
+  HR part 124: page 37 *Request leave* once both days are filled in.
+
 ## [0.125.0] - 2026-11-28
 
 ### Added

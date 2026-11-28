@@ -364,6 +364,8 @@ let dateCodec = null;
       case 'in_list': return da.cond.value.split(',').map((s) => s.trim()).includes(v);
       case 'is_null': return v === '';
       case 'is_not_null': return v !== '';
+      // (sprint 264) every trigger item has a value, e.g. a button grey until the fields it needs are filled in
+      case 'all_not_null': return da.trigger.every((n) => itemValue(n) !== '');
       // (156) numbers compared as numbers, other values (ISO dates) as text
       case 'greater': return v !== '' && compare(v, da.cond.value) > 0;
       case 'greater_equal': return v !== '' && compare(v, da.cond.value) >= 0;
@@ -448,8 +450,9 @@ let dateCodec = null;
     el.focus();
   }
 
+  // (sprint 264) an affected name that is no item may be a button of the page
   const targets = (da) => [
-    ...da.items.map(wrapperOf).filter(Boolean),
+    ...da.items.map((n) => wrapperOf(n) || document.querySelector(`[data-button="${CSS.escape(n)}"]`)).filter(Boolean),
     ...(da.region ? [document.getElementById(`R${da.region}`)].filter(Boolean) : []),
   ];
 
@@ -616,7 +619,14 @@ let dateCodec = null;
       case 'enable':
       case 'disable': {
         const enable = (da.action === 'enable') === holds;
-        targets(da).forEach((el) => el.querySelectorAll('input, select, textarea, button').forEach((c) => (c.disabled = !enable)));
+        targets(da).forEach((el) => {
+          if (el.matches('button')) el.disabled = !enable;
+          // a link button: no disabled attribute, so aria-disabled (app.css stops its clicks) and out of the tab order
+          else if (el.matches('a.btn')) {
+            el.toggleAttribute('aria-disabled', !enable);
+            if (enable) el.removeAttribute('tabindex'); else el.setAttribute('tabindex', '-1');
+          } else el.querySelectorAll('input, select, textarea, button').forEach((c) => (c.disabled = !enable));
+        });
         return;
       }
     }
