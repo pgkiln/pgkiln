@@ -5,6 +5,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.124.0] - 2026-11-28
+
 ### Fixed
 - **Date-time items** (sprint 262, review of sprint 261): one value from a dynamic action or an Ajax call in a date
   format with a `T` or a space (`DD-MON-YYYY`) is read again (only a time at the end is split off); what can't be read
