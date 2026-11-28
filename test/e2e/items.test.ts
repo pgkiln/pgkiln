@@ -178,3 +178,21 @@ describe('popup LOV', () => {
     await page.context().close();
   });
 });
+
+describe('sprint 263 help as a tooltip', () => {
+  test('HR page 3: Salary\'s help shows on hover and focus, Escape hides it', async () => {
+    const page = await open();
+    await page.goto(`${base}/a/hr/3`);
+    const tip = page.locator('#P3_SAL_help');
+    assert.equal(await tip.isVisible(), false, 'hidden at first');
+    await page.hover('label[for="P3_SAL"]');
+    assert.equal(await tip.isVisible(), true, 'shown on hover of the label');
+    await page.mouse.move(0, 0);
+    await page.focus('#P3_SAL');
+    assert.equal(await tip.isVisible(), true, 'shown while the field has focus');
+    await page.keyboard.press('Escape');
+    assert.equal(await tip.isVisible(), false, 'Escape hides it');
+    assert.deepEqual(await violations(page), []);
+    await page.context().close();
+  });
+});

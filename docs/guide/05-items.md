@@ -82,7 +82,7 @@ browser's date and time field.
 | `source_column` | For **form** regions: the table column it maps to |
 | `default_value` | Shown when the item has no value; (sprint 259) `{"default_sql": "select current_date"}` in the attributes instead takes the first value of a query, run as the application's role with the page's `:BINDS` (APEX: Default Type SQL Query), e.g. today or now on a new record. HR page 37 (part 119) |
 | `required` | Must have a value on submit ("Salary is required."); marked with `*`; (sprint 261) with `{"required_when": ["SEND"]}` in the attributes only for those buttons, e.g. a draft that is saved half filled in and checked when it is sent (the `*` shows always) |
-| `help` | Help text under the field |
+| `help` | Help text under the field; (sprint 263) with `{"help_icon": true}` in the attributes a tooltip of a `?` after the label instead |
 | `lov` | List of values for select/radio/checkbox group/multi-select/popup/display items |
 | `readonly_condition` | SQL expression; when true the item is shown read-only and ignored on submit |
 | `condition_type`, `condition_expr`, `condition_value` | A [server-side condition](06-processing.md#server-side-conditions) (sprint 154): when it doesn't hold, the item isn't rendered and takes no submitted value |
@@ -96,6 +96,7 @@ Attributes (`config`):
 | `submit_on_change` | `true`: submit the page when the value changes (typical for report filters) |
 | `warn_unsaved` | `false`: a change of this item doesn't count for the page's [warn on unsaved changes](04-pages-and-regions.md#warn-on-unsaved-changes) |
 | `null_label` | Text of the empty option in select lists (default `- Select -`); `false` removes the empty option |
+| `help_icon` | (sprint 263) `true`: the item's help text is a tooltip of a `?` after the label (as Appsmith's label tooltip) instead of a line under the field. It shows while the pointer is on the label or the field has focus (a tap on the label on a phone); Escape hides it until the field is left. Screen readers read it with the field, as before. HR page 3 (part 123) |
 | `required_when` | (sprint 261) The buttons (requests) a `required` item is checked for: `["SEND"]` or `"SEND,SUBMIT"`; without it every submit checks it. A request is always a visible submit button of the page |
 | `button` | (sprint 261) `file`: `true` shows a button in the application's style (*Choose a file*, *Choose files*, translated) with the chosen files' names beside it instead of the browser's own file field, whose words follow the browser's language; a text, e.g. `"Add photos"`, is the button's label. The drop zone stays ([chapter 16](16-files.md)) |
 | `cascade_parents` | Comma-separated items this list depends on, see [cascading lists](#cascading-lists-of-values) |
